@@ -406,4 +406,37 @@ public partial class DebugRpcModuleTests
             $"Streamed JSON differs from serializer output for {traceCount} traces");
     }
 
+    [TestCase("debug_traceBlock")]
+    [TestCase("debug_traceBlockByNumber")]
+    [TestCase("debug_traceBlockByHash")]
+    public async Task Debug_traceBlock_json_rpc_request_returns_valid_json(string method)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        object? arg = method switch
+        {
+            "debug_traceBlock" => Rlp.Encode(context.Blockchain.BlockTree.Head).ToString(),
+            "debug_traceBlockByNumber" => context.Blockchain.BlockTree.Head!.Number,
+            _ => context.Blockchain.BlockTree.Head!.Hash
+        };
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, arg, new GethTraceOptions());
+
+        TestContext.Out.WriteLine(response);
+
+        using JsonDocument doc = JsonDocument.Parse(response);
+        JsonElement root = doc.RootElement;
+
+        Assert.That(root.TryGetProperty("result", out JsonElement resultArray), Is.True, "Missing 'result' field");
+        Assert.That(resultArray.ValueKind, Is.EqualTo(JsonValueKind.Array), "'result' must be an array");
+        Assert.That(resultArray.GetArrayLength(), Is.GreaterThan(0), "Result array must not be empty");
+
+        foreach (JsonElement entry in resultArray.EnumerateArray())
+        {
+            Assert.That(entry.TryGetProperty("result", out _), Is.True, "Each entry must have 'result'");
+            Assert.That(entry.TryGetProperty("txHash", out _), Is.True, "Each entry must have 'txHash'");
+        }
+    }
+
 }
