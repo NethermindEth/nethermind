@@ -91,69 +91,53 @@ public class AdminRpcModule : IAdminRpcModule
         _nodeInfo.Protocols[Protocol.Eth].Config = _parameters;
     }
 
-    public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
+    public async Task<ResultWrapper<bool>> admin_addPeer(string enode, bool persistent = false)
     {
-        bool added;
-        if (addToStaticNodes)
+        if (!Enode.IsEnode(enode, out _))
         {
-            added = await _staticNodesManager.AddAsync(enode);
-        }
-        else
-        {
-            NetworkNode networkNode = new(enode);
-            _peerPool.GetOrAdd(new Node(networkNode));
-            added = true;
+            return ResultWrapper<bool>.Fail($"invalid enode: {enode}", ErrorCodes.InvalidParams);
         }
 
-        return added
-            ? ResultWrapper<string>.Success(enode)
-            : ResultWrapper<string>.Fail("Failed to add peer.");
+        await _staticNodesManager.AddAsync(enode, updateFile: persistent);
+        return ResultWrapper<bool>.Success(true);
     }
 
-    public async Task<ResultWrapper<string>> admin_removePeer(string enode, bool removeFromStaticNodes = false)
+    public async Task<ResultWrapper<bool>> admin_removePeer(string enode, bool persistent = false)
     {
-        bool removed;
-        if (removeFromStaticNodes)
+        if (!Enode.IsEnode(enode, out _))
         {
-            removed = await _staticNodesManager.RemoveAsync(enode);
-        }
-        else
-        {
-            removed = _peerPool.TryRemove(new NetworkNode(enode).NodeId, out Peer _);
+            return ResultWrapper<bool>.Fail($"invalid enode: {enode}", ErrorCodes.InvalidParams);
         }
 
-        return removed
-            ? ResultWrapper<string>.Success(enode)
-            : ResultWrapper<string>.Fail("Failed to remove peer.");
+        NetworkNode networkNode = new(enode);
+        await _staticNodesManager.RemoveAsync(enode, updateFile: persistent);
+        _peerPool.TryRemove(networkNode.NodeId, out _);
+        return ResultWrapper<bool>.Success(true);
     }
 
-    public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode)
+    public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode, bool persistent = false)
     {
+        if (!Enode.IsEnode(enode, out _))
+        {
+            return ResultWrapper<bool>.Fail($"invalid enode: {enode}", ErrorCodes.InvalidParams);
+        }
+
         Enode enodeObj = new(enode);
-
-        if (_trustedNodesManager.IsTrusted(enodeObj) || await _trustedNodesManager.AddAsync(enodeObj, updateFile: true))
-        {
-            _peerPool.GetOrAdd(new NetworkNode(enodeObj));
-            return ResultWrapper<bool>.Success(true);
-        }
-        else
-        {
-            return ResultWrapper<bool>.Fail("Failed to add trusted peer.");
-        }
+        await _trustedNodesManager.AddAsync(enodeObj, updateFile: persistent);
+        _peerPool.GetOrAdd(new NetworkNode(enodeObj));
+        return ResultWrapper<bool>.Success(true);
     }
 
-    public async Task<ResultWrapper<bool>> admin_removeTrustedPeer(string enode)
+    public async Task<ResultWrapper<bool>> admin_removeTrustedPeer(string enode, bool persistent = false)
     {
-        Enode enodeObj = new(enode);
+        if (!Enode.IsEnode(enode, out _))
+        {
+            return ResultWrapper<bool>.Fail($"invalid enode: {enode}", ErrorCodes.InvalidParams);
+        }
 
-        if (await _trustedNodesManager.RemoveAsync(enodeObj, updateFile: true))
-        {
-            return ResultWrapper<bool>.Success(true);
-        }
-        else
-        {
-            return ResultWrapper<bool>.Fail("Failed to remove trusted peer.");
-        }
+        Enode enodeObj = new(enode);
+        await _trustedNodesManager.RemoveAsync(enodeObj, updateFile: persistent);
+        return ResultWrapper<bool>.Success(true);
     }
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
