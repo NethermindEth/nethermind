@@ -310,7 +310,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(Hash256StructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
 
-        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
+        public AddressStructRef(in ValueHash256 keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength)) { }
 
         public readonly byte this[int index] => Bytes[index];
 
