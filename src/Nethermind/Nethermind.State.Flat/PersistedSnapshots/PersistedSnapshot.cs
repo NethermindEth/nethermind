@@ -3,6 +3,7 @@
 
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -46,8 +47,19 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] SelfDestructSubTag = [0x02];
     internal static readonly byte[] AccountSubTag = [0x03];
 
+    // Tiny per-snapshot CLOCK caches that skip the outer-column + entity-hash seeks on
+    // repeat lookups. The cached Bound is the inner-HSST bound after seeking
+    // (column-tag, address) for accounts and (StorageNodeTag, address-hash[..20]) for
+    // storage trie. Bounds are stable for the lifetime of the snapshot since the data
+    // is immutable; we only cache successful seeks (negative lookups go through the
+    // bloom filter).
+    private const int AddressBoundCacheCapacity = 8;
+    private const int StorageBoundCacheCapacity = 8;
+
     private readonly ArenaReservation _reservation;
     private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
+    private readonly ClockCache<AddressAsKey, Bound> _addressBoundCache = new(AddressBoundCacheCapacity);
+    private readonly ClockCache<Hash256AsKey, Bound> _storageBoundCache = new(StorageBoundCacheCapacity);
     private BloomFilter? _keyBloom;
     private BloomFilter? _trieBloom;
 
@@ -132,6 +144,32 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         }
     }
 
+    /// <summary>
+    /// Resolve the per-address inner-HSST bound, hitting the address LRU first so repeat
+    /// lookups for the same address skip the outer column-tag + 20-byte address seeks.
+    /// Returns false (with default <paramref name="addressBound"/>) when the address is
+    /// not present in this snapshot.
+    /// </summary>
+    private bool TryGetAddressBound(in ArenaByteReader reader, Address address, out Bound addressBound)
+    {
+        if (_addressBoundCache.TryGet(address, out addressBound))
+            return true;
+        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, address, out addressBound))
+            return false;
+        _addressBoundCache.Set(address, addressBound);
+        return true;
+    }
+
+    private bool TryGetStorageBound(in ArenaByteReader reader, Hash256 address, out Bound storageBound)
+    {
+        if (_storageBoundCache.TryGet(address, out storageBound))
+            return true;
+        if (!PersistedSnapshotReader.TryGetStorageHsstBound<ArenaByteReader, NoOpPin>(in reader, address, out storageBound))
+            return false;
+        _storageBoundCache.Set(address, storageBound);
+        return true;
+    }
+
     public bool TryGetAccount(Address address, out Account? account)
     {
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
@@ -140,7 +178,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return false;
         }
         ArenaByteReader reader = CreateReader();
-        if (!PersistedSnapshotReader.TryGetAccount<ArenaByteReader, NoOpPin>(in reader, address, out Bound b))
+        if (!TryGetAddressBound(in reader, address, out Bound addrBound) ||
+            !PersistedSnapshotReader.TryGetAccount<ArenaByteReader, NoOpPin>(in reader, addrBound, out Bound b))
         {
             account = null;
             return false;
@@ -167,7 +206,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
                 return false;
         }
         ArenaByteReader reader = CreateReader();
-        if (!PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, address, in index, out Bound b))
+        if (!TryGetAddressBound(in reader, address, out Bound addrBound) ||
+            !PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, addrBound, in index, out Bound b))
             return false;
         Span<byte> buf = stackalloc byte[32];
         Span<byte> raw = buf[..b.Length];
@@ -181,7 +221,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return false;
         ArenaByteReader reader = CreateReader();
-        return PersistedSnapshotReader.IsSelfDestructed<ArenaByteReader, NoOpPin>(in reader, address);
+        return TryGetAddressBound(in reader, address, out Bound addrBound)
+            && PersistedSnapshotReader.IsSelfDestructed<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
 
     /// <summary>
@@ -194,7 +235,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return null;
         ArenaByteReader reader = CreateReader();
-        return PersistedSnapshotReader.TryGetSelfDestructFlag<ArenaByteReader, NoOpPin>(in reader, address);
+        if (!TryGetAddressBound(in reader, address, out Bound addrBound))
+            return null;
+        return PersistedSnapshotReader.TryGetSelfDestructFlag<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
 
     public bool TryLoadStateNodeRlp(scoped in TreePath path, out byte[]? nodeRlp)
@@ -222,8 +265,20 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             return false;
         }
         ArenaByteReader reader = CreateReader();
-        if (!PersistedSnapshotReader.TryLoadStorageNodeRlp<ArenaByteReader, NoOpPin>(in reader, address, in path, out Bound bound))
+        Bound bound;
+        if (TryGetStorageBound(in reader, address, out Bound storageBound))
         {
+            if (!PersistedSnapshotReader.TryLoadStorageNodeRlpInBound<ArenaByteReader, NoOpPin>(in reader, storageBound, address, in path, out bound))
+            {
+                nodeRlp = null;
+                return false;
+            }
+        }
+        else if (!PersistedSnapshotReader.TryLoadStorageNodeRlp<ArenaByteReader, NoOpPin>(in reader, address, in path, out bound))
+        {
+            // Fallback path: even on a cache miss the address-hash may exist only in the
+            // StorageNodeFallbackTag column (long path-length nodes), which the LRU does
+            // not pre-position; defer to the original full-seek helper.
             nodeRlp = null;
             return false;
         }
