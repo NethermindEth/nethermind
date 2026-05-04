@@ -127,9 +127,12 @@ byte. Reading an index node backward from its exclusive-end offset:
 `KeySize` / `ValueSize` semantics depend on the corresponding type:
 
 - **Variable (0)** — the value of `KeySize`/`ValueSize` is the *section's*
-  total byte size. The section starts with a `KeyCount * 2`-byte
-  little-endian offset table, followed by `LEB128 length || bytes` per entry
-  at the indexed offset.
+  total byte size. The section holds `LEB128 length || bytes` per entry at
+  the front, followed by a `KeyCount * 2`-byte little-endian offset table at
+  the **end** of the section. Offsets are relative to the section's start
+  (i.e. the first entry sits at offset 0). The maximum addressable section
+  data region is therefore 64 KiB; the writer rejects nodes that would
+  exceed it.
 - **Uniform (1)** — packed fixed-width entries. Each entry is exactly
   `KeySize` (or `ValueSize`) bytes; section size is `KeyCount * size`.
 - **UniformWithLen (2)** — fixed slot size, but the last byte of each slot

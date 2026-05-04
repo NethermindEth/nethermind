@@ -39,6 +39,11 @@ internal struct BSearchIndexMetadata
 ///
 /// Index block layout: [Values section][Keys section][Metadata][MetadataLength: u8]
 ///
+/// Variable-encoded sections place entry data first, followed by the
+/// count × u16 offset table at the end of the section. This matches the
+/// back-to-front layout of the rest of the format and lets the writer stream
+/// entries forward, appending offsets at finalization.
+///
 /// Metadata: [Flags: 1][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128?]
 ///
 /// Usage: create with writer + metadata + key scratch buffer, call AddKey(key, value)
@@ -200,7 +205,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     {
         int tableSize = _count * 2;
 
-        // Pre-compute offsets by iterating key lengths
+        // Pre-compute offsets (relative to section start) by iterating key lengths.
         Span<ushort> offsets = stackalloc ushort[_count];
         int keySrc = 0;
         int dataOffset = 0;
@@ -208,17 +213,13 @@ internal ref struct BSearchIndexWriter<TWriter>
         {
             int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
             keySrc += 2 + len;
+            if (dataOffset > ushort.MaxValue)
+                throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
             offsets[i] = (ushort)dataOffset;
             dataOffset += Leb128.EncodedSize(len) + len;
         }
 
-        // Write offset table
-        Span<byte> table = _writer.GetSpan(tableSize);
-        for (int i = 0; i < _count; i++)
-            BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
-        _writer.Advance(tableSize);
-
-        // Write key data
+        // Write key data first
         keySrc = 0;
         for (int i = 0; i < _count; i++)
         {
@@ -236,7 +237,13 @@ internal ref struct BSearchIndexWriter<TWriter>
             keySrc += len;
         }
 
-        int keysSize = tableSize + dataOffset;
+        // Then write offset table at the end of the section
+        Span<byte> table = _writer.GetSpan(tableSize);
+        for (int i = 0; i < _count; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
+        _writer.Advance(tableSize);
+
+        int keysSize = dataOffset + tableSize;
         return keysSize;
     }
 
@@ -279,7 +286,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     {
         int tableSize = _count * 2;
 
-        // Pre-compute offsets
+        // Pre-compute offsets (relative to section start)
         Span<ushort> offsets = stackalloc ushort[_count];
         int valSrc = 0;
         int dataOffset = 0;
@@ -287,17 +294,13 @@ internal ref struct BSearchIndexWriter<TWriter>
         {
             int len = BinaryPrimitives.ReadUInt16LittleEndian(_valueBuf[valSrc..]);
             valSrc += 2 + len;
+            if (dataOffset > ushort.MaxValue)
+                throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
             offsets[i] = (ushort)dataOffset;
             dataOffset += Leb128.EncodedSize(len) + len;
         }
 
-        // Write offset table
-        Span<byte> table = _writer.GetSpan(tableSize);
-        for (int i = 0; i < _count; i++)
-            BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
-        _writer.Advance(tableSize);
-
-        // Write value data
+        // Write value data first
         valSrc = 0;
         for (int i = 0; i < _count; i++)
         {
@@ -315,7 +318,13 @@ internal ref struct BSearchIndexWriter<TWriter>
             valSrc += len;
         }
 
-        return tableSize + dataOffset;
+        // Then write offset table at the end of the section
+        Span<byte> table = _writer.GetSpan(tableSize);
+        for (int i = 0; i < _count; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
+        _writer.Advance(tableSize);
+
+        return dataOffset + tableSize;
     }
 
     private void WriteMetadata(int keySize, int valueSize)

@@ -17,7 +17,8 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=HasBaseOffset
 ///
 /// KeyType/ValueType:
-///   0 = Variable: offset table + length-prefixed entries
+///   0 = Variable: length-prefixed entries followed by a u16 offset table at
+///       the end of the section (offsets relative to section start)
 ///   1 = Uniform: packed fixed-width entries
 ///   2 = UniformWithLen: fixed slot size, last byte = actual length
 /// </summary>
@@ -126,11 +127,10 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ReadOnlySpan<byte> GetVariableEntry(ReadOnlySpan<byte> section, int index, int count)
     {
-        // Offset table: count * 2 bytes at start
-        int tableEnd = count * 2;
-        int relativeOffset = BinaryPrimitives.ReadUInt16LittleEndian(section[(index * 2)..]);
-        int entryStart = tableEnd + relativeOffset;
-        int pos = entryStart;
+        // Offset table: count * 2 bytes at end of section; offsets relative to section start
+        int tableStart = section.Length - count * 2;
+        int relativeOffset = BinaryPrimitives.ReadUInt16LittleEndian(section[(tableStart + index * 2)..]);
+        int pos = relativeOffset;
         int len = Leb128.Read(section, ref pos);
         return section.Slice(pos, len);
     }

@@ -197,11 +197,11 @@ public class BSearchIndexTests
         //
         //   "00000000" - Values[0]: 0 as int32 LE
         //   "37000000" - Values[1]: 55 as int32 LE
-        //   "0000"     - OffsetTable[0]: 0 (u16 LE) — entry 0 key data starts at offset 0
-        //   "0100"     - OffsetTable[1]: 1 (u16 LE) — entry 1 key data starts at offset 1
         //   "00"       - LEB128(0): separator length 0 (entry 0, empty)
         //   "03"       - LEB128(3): separator length 3 (entry 1)
         //   "7A8B49"   - Key bytes for entry 1
+        //   "0000"     - OffsetTable[0]: 0 (u16 LE) — entry 0 key data starts at section offset 0
+        //   "0100"     - OffsetTable[1]: 1 (u16 LE) — entry 1 key data starts at section offset 1
         //   "08"       - Metadata.Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)
         //   "02"       - Metadata.KeyCount: 2
         //   "09"       - Metadata.KeySize: 9 (total Keys section size for Variable)
@@ -209,7 +209,7 @@ public class BSearchIndexTests
         //   "04"       - MetadataLength: 4 bytes
         yield return new TestCaseData(
             new[] { "", "7A8B49" }, new[] { 0, 55 },
-            "00000000" + "37000000" + "0000" + "0100" + "00" + "03" + "7A8B49" + "08" + "02" + "09" + "04" + "04"
+            "00000000" + "37000000" + "00" + "03" + "7A8B49" + "0000" + "0100" + "08" + "02" + "09" + "04" + "04"
         ).SetName("Variable_EmptyAndThreeBytes");
 
         // Three entries with varying separator lengths: 1, 2, 3 bytes.
@@ -219,23 +219,23 @@ public class BSearchIndexTests
         //   "00000000"   - Values[0]: 0 as int32 LE
         //   "64000000"   - Values[1]: 100 as int32 LE
         //   "C8000000"   - Values[2]: 200 as int32 LE
-        //   "0000"       - OffsetTable[0]: 0 (u16 LE)
-        //   "0200"       - OffsetTable[1]: 2 (u16 LE) — after LEB128(1)+1 = 2 bytes
-        //   "0500"       - OffsetTable[2]: 5 (u16 LE) — after 2 + LEB128(2)+2 = 5 bytes
         //   "01"         - LEB128(1): separator length 1 (entry 0)
         //   "41"         - Key bytes for entry 0
         //   "02"         - LEB128(2): separator length 2 (entry 1)
         //   "4243"       - Key bytes for entry 1
         //   "03"         - LEB128(3): separator length 3 (entry 2)
         //   "444546"     - Key bytes for entry 2
+        //   "0000"       - OffsetTable[0]: 0 (u16 LE)
+        //   "0200"       - OffsetTable[1]: 2 (u16 LE) — after LEB128(1)+1 = 2 bytes
+        //   "0500"       - OffsetTable[2]: 5 (u16 LE) — after 2 + LEB128(2)+2 = 5 bytes
         //   "08"         - Metadata.Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)
         //   "03"         - Metadata.KeyCount: 3
-        //   "0F"         - Metadata.KeySize: 15 (total Keys section: 6 offset table + 2+3+4 data)
+        //   "0F"         - Metadata.KeySize: 15 (total Keys section: 2+3+4 data + 6 offset table)
         //   "04"         - Metadata.ValueSize: 4
         //   "04"         - MetadataLength: 4 bytes
         yield return new TestCaseData(
             new[] { "41", "4243", "444546" }, new[] { 0, 100, 200 },
-            "0000000064000000C8000000" + "0000" + "0200" + "0500" + "01" + "41" + "02" + "4243" + "03" + "444546" + "08" + "03" + "0F" + "04" + "04"
+            "0000000064000000C8000000" + "01" + "41" + "02" + "4243" + "03" + "444546" + "0000" + "0200" + "0500" + "08" + "03" + "0F" + "04" + "04"
         ).SetName("Variable_VaryingSeparators");
     }
 
@@ -267,6 +267,35 @@ public class BSearchIndexTests
             byte[] expectedSep = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
             Assert.That(index.GetKey(i).ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
         }
+    }
+
+    [Test]
+    public void IndexBuilder_VariableKeys_DataRegionExceeds64KiB_Throws()
+    {
+        // 256 entries of 256-byte keys → cumulative data offset crosses ushort.MaxValue
+        // (each entry contributes LEB128(256)=2 + 256 = 258 bytes; 255 * 258 = 65 790 > 65 535).
+        const int entries = 256;
+        const int keyLen = 256;
+
+        byte[] keyBuf = new byte[entries * (2 + keyLen)];
+        byte[] output = new byte[entries * (2 + keyLen) + 1024];
+        SpanBufferWriter bufWriter = new(output);
+        BSearchIndexWriter<SpanBufferWriter> writer = new(ref bufWriter, new BSearchIndexMetadata { KeyType = 0 }, keyBuf);
+        Span<byte> valBuf = stackalloc byte[4];
+        byte[] key = new byte[keyLen];
+        for (int i = 0; i < entries; i++)
+        {
+            // sorted keys via 2-byte big-endian prefix
+            key[0] = (byte)(i >> 8);
+            key[1] = (byte)i;
+            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i);
+            writer.AddKey(key, valBuf);
+        }
+
+        InvalidOperationException? caught = null;
+        try { writer.FinalizeNode(); }
+        catch (InvalidOperationException ex) { caught = ex; }
+        Assert.That(caught, Is.Not.Null, "Expected InvalidOperationException for u16 offset overflow");
     }
 
     // ===== HEX FIXTURE TESTS: UNIFORM-WITH-LEN KEYS =====
