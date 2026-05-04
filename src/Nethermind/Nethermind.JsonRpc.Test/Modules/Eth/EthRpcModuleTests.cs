@@ -1459,47 +1459,42 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase(null)]
-    [TestCase(0)]
-    public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
+    [TestCase(0L)]
+    public static void ToTransaction_uses_long_max_when_gasCap_is_null_or_zero(long? gasCap)
     {
         LegacyTransactionForRpc rpcTx = new();
 
-        rpcTx.EnsureDefaults(gasCap);
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
 
-        Assert.That(rpcTx.Gas, Is.EqualTo(long.MaxValue), "Gas must be set to max if gasCap is null or 0");
+        Assert.That(tx.GasLimit, Is.EqualTo(long.MaxValue), "GasLimit must default to long.MaxValue when gasCap is null or 0");
     }
 
     [Test]
-    public static void Should_handle_fromAddress_as_zero_if_null()
+    public static void ToTransaction_defaults_sender_to_zero_when_from_is_null()
     {
         LegacyTransactionForRpc rpcTx = new();
 
-        rpcTx.EnsureDefaults(0);
+        Transaction tx = (Transaction)rpcTx.ToTransaction();
 
-        Assert.That(rpcTx.From, Is.EqualTo(Address.Zero), "From address must be set to zero if tx.from is null");
+        Assert.That(tx.SenderAddress, Is.EqualTo(Address.Zero), "SenderAddress must default to Address.Zero when From is null");
     }
 
-    [Ignore(reason: "Shows disparity across 'default' methods")]
-    [TestCase(null)]
-    [TestCase(0)]
-    public static void ToTransactionWithDefaults_and_EnsureDefaults_same_GasLimit(long? gasCap)
+    [TestCase(null, null, long.MaxValue)]
+    [TestCase(null, 0L, long.MaxValue)]
+    [TestCase(null, 1_000_000L, 1_000_000L)]
+    [TestCase(0L, null, 0L)]
+    [TestCase(0L, 1_000_000L, 0L)]
+    [TestCase(50_000L, null, 50_000L)]
+    [TestCase(50_000L, 0L, 50_000L)]
+    [TestCase(50_000L, 100_000L, 50_000L)]
+    [TestCase(200_000L, 100_000L, 100_000L)]
+    public static void ToTransaction_caps_and_defaults_gas(long? gas, long? gasCap, long expectedGasLimit)
     {
-        long toTransactionWitDefaultsGasLimit;
-        {
-            LegacyTransactionForRpc rpcTx = new();
-            Result<Transaction> tx = rpcTx.ToTransaction();
-            toTransactionWitDefaultsGasLimit = ((Transaction)tx).GasLimit;
-        }
+        LegacyTransactionForRpc rpcTx = new() { Gas = gas };
 
-        long ensureDefaultsGasLimit;
-        {
-            LegacyTransactionForRpc rpcTx = new();
-            rpcTx.EnsureDefaults(gasCap);
-            Result<Transaction> tx = rpcTx.ToTransaction();
-            ensureDefaultsGasLimit = ((Transaction)tx).GasLimit;
-        }
+        Transaction tx = (Transaction)rpcTx.ToTransaction(gasCap: gasCap);
 
-        toTransactionWitDefaultsGasLimit.Should().Be(ensureDefaultsGasLimit);
+        tx.GasLimit.Should().Be(expectedGasLimit);
     }
 
     [Test]

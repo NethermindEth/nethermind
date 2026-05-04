@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 IReleaseSpec spec = GetSpec(header);
-                Result<Transaction> result = call.ToTransaction(validateUserInput: true, spec: spec);
+                Result<Transaction> result = call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
                 if (result.IsError) return result;
 
                 Transaction tx = result.Data;
@@ -78,11 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Dictionary<Address, AccountOverride>? stateOverride = null,
                 SearchResult<BlockHeader>? searchResult = null)
             {
-
-                // enforces gas cap
                 NoBaseFee = !transactionCall.ShouldSetBaseFee();
-
-                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
@@ -160,7 +156,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 SearchResult<BlockHeader>? searchResult = null)
             {
                 // Match Geth: when no gas is specified, binary search is bounded by blockGasLimit (then
-                // capped at gasCap by EnsureDefaults). eth_call uses gasCap directly because it is a
+                // capped at gasCap inside ToTransaction). eth_call uses gasCap directly because it is a
                 // pure simulation; estimateGas is computing gas for a real transaction that must fit in a block.
                 if (transactionCall.Gas is null)
                 {
