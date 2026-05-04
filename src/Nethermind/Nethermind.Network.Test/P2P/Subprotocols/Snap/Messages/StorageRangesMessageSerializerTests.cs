@@ -22,13 +22,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             using StorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(),
+                RequestId = 2,
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
                 Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
             };
             StorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.TestZero(serializer, msg, "c302c0c0");
         }
 
         [Test]

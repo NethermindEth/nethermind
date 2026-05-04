@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -22,9 +22,9 @@ namespace Nethermind.Taiko.Precompiles;
 /// </summary>
 public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 {
-    public static readonly L1SloadPrecompile Instance = new();
-
     private const string L1StorageAccessFailed = "l1 storage access failed";
+
+    public static L1SloadPrecompile Instance { get; } = new();
 
     private L1SloadPrecompile()
     {

@@ -15,11 +15,7 @@ internal class MasternodesCalculator(ISnapshotManager snapshotManager, IPenaltyH
     public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
     {
         int maxMasternodes = spec.MaxMasternodes;
-        Snapshot previousSnapshot = snapshotManager.GetSnapshotByBlockNumber(blockNumber, spec);
-
-        if (previousSnapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
-
+        Snapshot previousSnapshot = snapshotManager.GetSnapshotByBlockNumber(blockNumber, spec) ?? throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
         Address[] candidates = previousSnapshot.NextEpochCandidates;
 
         if (blockNumber == spec.SwitchBlock + 1)

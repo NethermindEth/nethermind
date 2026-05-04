@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Configuration;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using Nethermind.Api;
@@ -68,4 +69,10 @@ public class JsonConfigProviderTests
 
     [Test]
     public void Can_load_raw_value() => Assert.That(_configProvider.GetRawValue("KeyStoreConfig", "KdfparamsDklen"), Is.EqualTo("100"));
+
+    [Test]
+    public void Duplicate_module_names_throw() =>
+        Assert.That(
+            static () => _ = new JsonConfigSource("SampleJson/DuplicateModuleNames.json"),
+            Throws.TypeOf<ConfigurationErrorsException>().With.Message.Contains("Duplicated config module"));
 }

@@ -69,15 +69,9 @@ namespace Nethermind.Synchronization.FastSync
                 return (int)BitOperations.Crc32C(hash0, hash1);
             }
 
-            public static bool operator ==(in NodeKey left, in NodeKey right)
-            {
-                return left.Equals(right);
-            }
+            public static bool operator ==(in NodeKey left, in NodeKey right) => left.Equals(right);
 
-            public static bool operator !=(in NodeKey left, in NodeKey right)
-            {
-                return !(left == right);
-            }
+            public static bool operator !=(in NodeKey left, in NodeKey right) => !(left == right);
         }
     }
 }

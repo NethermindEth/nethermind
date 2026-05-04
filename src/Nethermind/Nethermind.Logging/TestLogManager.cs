@@ -48,7 +48,7 @@ namespace Nethermind.Logging
                 }
             }
 
-            public void Error(string text, Exception ex = null)
+            public void Error(string text, Exception? ex = null)
             {
                 if (IsError)
                 {
@@ -64,7 +64,7 @@ namespace Nethermind.Logging
 
             private bool CheckLevel(LogLevel logLevel) => level >= logLevel;
 
-            private static void Log(string text, Exception ex = null)
+            private static void Log(string text, Exception? ex = null)
             {
                 Console.Error.WriteLine(text);
 

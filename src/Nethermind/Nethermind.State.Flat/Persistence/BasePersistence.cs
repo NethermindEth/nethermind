@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -29,6 +30,7 @@ public static class BasePersistence
     public const int StoragePrefixPortion = 4;
 
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
+    private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
 
     internal static StateId ReadCurrentState(IReadOnlyKeyValueStore kv)
     {
@@ -44,6 +46,66 @@ public static class BasePersistence
         BinaryPrimitives.WriteInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
         kv.PutSpan(CurrentStateKey, bytes);
+    }
+
+    internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
+    {
+        byte[]? bytes = kv.Get(LayoutKey);
+        if (bytes is null || bytes.Length == 0) return null;
+        if (!Enum.IsDefined((FlatLayout)bytes[0]))
+            throw new InvalidConfigurationException(
+                $"Flat DB metadata contains an unrecognized layout byte '{bytes[0]}'. The DB may be corrupt or was written by a newer version.",
+                -1);
+        return (FlatLayout)bytes[0];
+    }
+
+    internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
+    {
+        Span<byte> bytes = stackalloc byte[1];
+        bytes[0] = (byte)layout;
+        kv.PutSpan(LayoutKey, bytes);
+    }
+
+    /// <summary>
+    /// Validates that <paramref name="layout"/> matches the value previously persisted in the flat DB's
+    /// metadata column. Throws <see cref="InvalidConfigurationException"/> on mismatch.
+    /// On a fresh DB (no stored value) the check is a no-op; the layout is written by the first write
+    /// batch through <see cref="RecordLayoutOnFirstBatch"/>.
+    /// </summary>
+    internal static void ValidateLayout(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
+    {
+        FlatLayout? stored = ReadLayout(db.GetColumnDb(FlatDbColumns.Metadata));
+        if (stored is not null && stored != layout)
+        {
+            throw new InvalidConfigurationException(
+                $"Flat DB was previously synced with layout '{stored}', but the configured layout is '{layout}'. " +
+                $"Either set 'IFlatDbConfig.Layout' back to '{stored}', or wipe the flat DB and re-sync.",
+                -1);
+        }
+    }
+
+    /// <summary>
+    /// Calls <see cref="ValidateLayout"/> and returns 0 for use as the initial value of the
+    /// per-persistence "layout recorded" field (which is written on the first batch via
+    /// <see cref="RecordLayoutOnFirstBatch"/>).
+    /// </summary>
+    internal static int ValidateLayoutReturnFlag(IColumnsDb<FlatDbColumns> db, FlatLayout layout)
+    {
+        ValidateLayout(db, layout);
+        return 0;
+    }
+
+    /// <summary>
+    /// On the first call, records the persistence's <see cref="FlatLayout"/> in the supplied batch's
+    /// metadata column. Subsequent calls are no-ops. The write goes through the batch, so it is
+    /// committed atomically with the rest of the batch's contents.
+    /// </summary>
+    internal static void RecordLayoutOnFirstBatch(IWriteOnlyKeyValueStore metadataBatch, ref int flag, FlatLayout layout)
+    {
+        if (Interlocked.CompareExchange(ref flag, 1, 0) == 0)
+        {
+            SetLayout(metadataBatch, layout);
+        }
     }
 
     internal static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)

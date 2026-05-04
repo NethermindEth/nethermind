@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -177,6 +176,26 @@ public partial class DebugRpcModuleTests
         withOverride.BlockOverride = new BlockOverride { GasLimit = 30_000_000 };
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
+        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+    }
+
+    [TestCase(3, TestName = "Debug_traceCallMany_with_minimum_block_number_gap_returns_one_entry_per_bundle")]
+    [TestCase(5, TestName = "Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle")]
+    public async Task Debug_traceCallMany_with_block_number_gap_returns_one_entry_per_bundle(int secondBundleOffset)
+    {
+        using Context ctx = await CreateContext();
+        long headNumber = ctx.Blockchain.BlockTree.Head!.Number;
+
+        TransactionBundle first = CreateBundle(CreateTransaction());
+        first.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + 1) };
+
+        TransactionBundle second = CreateBundle(CreateTransaction(to: TestItem.AddressD));
+        second.BlockOverride = new BlockOverride { Number = (ulong)(headNumber + secondBundleOffset) };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
+
+        result.Data.Should().HaveCount(2);
         result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
     }
 

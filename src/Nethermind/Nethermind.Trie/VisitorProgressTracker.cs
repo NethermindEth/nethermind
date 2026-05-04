@@ -39,7 +39,7 @@ public class VisitorProgressTracker
 
         _operationName = operationName;
         _printNodes = printNodes;
-        _logger = new ProgressLogger(operationName, logManager);
+        _logger = new ProgressLogger(operationName, logManager, logLevel: LogLevel.Debug);
         _logger.Reset(0, 10000); // Use 10000 for 0.01% precision
         _logger.SetFormat(FormatProgress);
         _reportingInterval = reportingInterval;
