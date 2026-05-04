@@ -12,12 +12,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync;
 public class SyncedTxGossipPolicyTests
 {
     [TestCase(SyncMode.FastSync, ExpectedResult = false)]
-    [TestCase(SyncMode.SnapSync, ExpectedResult = false)]
     [TestCase(SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.FastSync | SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.FastHeaders, ExpectedResult = false)]
     [TestCase(SyncMode.BeaconHeaders, ExpectedResult = false)]
-    [TestCase(SyncMode.FastHeaders | SyncMode.BeaconHeaders | SyncMode.SnapSync, ExpectedResult = false)]
+    [TestCase(SyncMode.FastHeaders | SyncMode.BeaconHeaders | SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.WaitingForBlock, ExpectedResult = true)]
     [TestCase(SyncMode.FastBodies | SyncMode.WaitingForBlock, ExpectedResult = true)]
     [TestCase(SyncMode.FastReceipts | SyncMode.WaitingForBlock, ExpectedResult = true)]
@@ -45,7 +44,7 @@ public class SyncedTxGossipPolicyTests
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
 
         // Transition back to sync: gossip must become disabled again
-        selector.Current = SyncMode.SnapSync;
+        selector.Current = SyncMode.StateNodes;
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
     }
 

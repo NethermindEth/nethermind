@@ -497,20 +497,20 @@
       },
       "PierTwo.Lantern.Discv5.Enr": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "oNF8cPIbYt+8xWoCqPCDfKOEsxhlFUWEXmoV45/XTKipU5ZqvmdTsESCv0o97TP2sNZaZrFrvpovf7aNk3BUKw==",
+        "resolved": "1.0.0-preview.8",
+        "contentHash": "NI1titqkA2KwIgNdPMJuLPNirgAPTNaL7K7x2Qf6RQpPI6AbMoGO0ny6CL4H/VLMVYQVzT1NzwLqJ78wNeUYJg==",
         "dependencies": {
           "Keccak256": "1.0.0",
           "Multiformats.Base": "2.0.2",
           "Multiformats.Hash": "1.5.0",
           "NBitcoin.Secp256k1": "3.1.5",
-          "PierTwo.Lantern.Discv5.Rlp": "1.0.0-preview.7"
+          "PierTwo.Lantern.Discv5.Rlp": "1.0.0-preview.8"
         }
       },
       "PierTwo.Lantern.Discv5.Rlp": {
         "type": "Transitive",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "tAwonG4x8SWFBxd06JvzYNo0xvTsDoM9xfk2tnwIcFzCvY7PORvpOiy9AQcyjqomFQmCNqF4ezwZoRZJV32iQg=="
+        "resolved": "1.0.0-preview.8",
+        "contentHash": "d50BMHF1g7rgcJLJmu7ytqFYRmMfkBkc2VddzTFVmEVPzb2Uk7genfObgwqMtvmHbYk6zQE57f2r5oZwU5B08g=="
       },
       "Polly.Core": {
         "type": "Transitive",
@@ -1017,7 +1017,7 @@
           "Nethermind.Facade": "[1.37.0-unstable, )",
           "Nethermind.Network": "[1.37.0-unstable, )",
           "Nethermind.Network.Enr": "[1.37.0-unstable, )",
-          "PierTwo.Lantern.Discv5.WireProtocol": "[1.0.0-preview.7, )"
+          "PierTwo.Lantern.Discv5.WireProtocol": "[1.0.0-preview.8, )"
         }
       },
       "nethermind.network.dns": {
@@ -1590,14 +1590,14 @@
       },
       "PierTwo.Lantern.Discv5.WireProtocol": {
         "type": "CentralTransitive",
-        "requested": "[1.0.0-preview.7, )",
-        "resolved": "1.0.0-preview.7",
-        "contentHash": "wfa8Drf8r8Ty8r6cebobxANFmM2h0ckA/fWIKkQCnC+Af91IKFTAtiVhtu5oCjRxY21MLuWxqObV8r+JkKSYrg==",
+        "requested": "[1.0.0-preview.8, )",
+        "resolved": "1.0.0-preview.8",
+        "contentHash": "mSHH0TEVdN2dQhvVnBrAUbSQiszO4YcjKkCurQJJxzBoYCp6R//ckfRa87fFkdqWKXJFHPJf2fWgd0vSmyB/Cw==",
         "dependencies": {
           "BouncyCastle.Cryptography": "2.4.0",
           "NBitcoin.Secp256k1": "3.1.5",
-          "PierTwo.Lantern.Discv5.Enr": "1.0.0-preview.7",
-          "PierTwo.Lantern.Discv5.Rlp": "1.0.0-preview.7"
+          "PierTwo.Lantern.Discv5.Enr": "1.0.0-preview.8",
+          "PierTwo.Lantern.Discv5.Rlp": "1.0.0-preview.8"
         }
       },
       "Polly": {

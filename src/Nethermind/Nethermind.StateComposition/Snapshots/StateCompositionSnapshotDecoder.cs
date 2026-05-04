@@ -156,7 +156,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         ref Rlp.ValueDecoderContext ctx,
         DecodeValueDelegate<TValue> decodeValue)
     {
-        int count = ctx.DecodeInt();
+        int count = ctx.DecodePositiveInt();
         Dictionary<ValueHash256, TValue> map = new(count);
         for (int i = 0; i < count; i++)
         {

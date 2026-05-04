@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.ParallelSync;
