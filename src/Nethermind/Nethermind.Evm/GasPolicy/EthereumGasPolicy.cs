@@ -132,7 +132,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     // child. Descendant spill remains tracked in StateGasSpill for block-level deduction.
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
     {
-        _ = initialStateReservoir;
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childStateRefund;
         parentGas.StateGasSpill += childGas.StateGasSpill;
     }
@@ -146,12 +145,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         parentGas.StateReservoir += GetRestoredChildStateReservoir(in childGas, initialStateReservoir);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
+    public static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
     {
         // Code deposit failure is an exceptional halt: the child's state is reverted.
         // Refund already added child.StateReservoir, child.StateGasUsed, and child.StateGasSpill to parent.
         // Halt semantics discard child's StateGasUsed and return it to the reservoir.
-        _ = childStateRefund;
         parentGas.StateReservoir += GetRestoredChildStateReservoir(in childGas, initialStateReservoir) - childGas.StateReservoir;
         parentGas.StateGasUsed -= childGas.StateGasUsed;
     }
@@ -302,10 +300,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ResetForHalt(ref EthereumGasPolicy gas, long initialStateReservoir, long initialStateGasUsed)
+    public static void ResetForHalt(ref EthereumGasPolicy gas, long initialStateReservoir)
     {
+        // Reservoir snaps back to its tx-start value (user can't reclaim the
+        // reservoir-portion via a halt) and spill is zeroed. Per EIP-8037,
+        // StateGasUsed is left intact so the block-level state dimension reflects
+        // the actual state-gas charged during execution; resetting it here would
+        // silently drop the spilled portion from sum_state and undercount
+        // block.gasUsed = max(sum_regular, sum_state).
         gas.StateReservoir = initialStateReservoir;
-        gas.StateGasUsed = initialStateGasUsed;
         gas.StateGasSpill = 0;
     }
 

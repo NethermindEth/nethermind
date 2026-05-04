@@ -179,8 +179,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="parentGas">The parent gas state to adjust.</param>
     /// <param name="childGas">The child gas state that was previously merged via Refund.</param>
     /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
-    /// <param name="childStateRefund">Inline state-gas refunds already applied inside the child frame.</param>
-    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir, long childStateRefund) { }
+    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
 
     /// <summary>
     /// Mark the gas state as out of gas.
@@ -345,17 +344,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) { }
 
     /// <summary>
-    /// EIP-8037 top-level halt reset: snaps the state-gas dimension back to its tx-start
-    /// shape (reservoir=R0, used=intrinsicStateUsed, spill=0). All in-flight state-gas
-    /// activity — including reservoir credits that propagated up from inner-call REVERTs —
-    /// is discarded so spentGas reduces cleanly to txGasLimit - R0. The intrinsic
-    /// state-gas-used is preserved so a CREATE tx still bills its top-level CreateState.
+    /// EIP-8037 top-level halt reset: reservoir snaps back to its tx-start value (R0)
+    /// — discarding any reservoir credits that propagated up from inner-call REVERTs
+    /// so spentGas reduces cleanly to txGasLimit - R0 — and StateGasSpill is zeroed.
+    /// StateGasUsed is preserved so block-level sum_state still reflects the actual
+    /// state-gas charged during execution, including the spilled portion.
     /// Pre-EIP-8037 policies are noop.
     /// </summary>
     /// <param name="gas">The gas state to reset.</param>
     /// <param name="initialStateReservoir">Reservoir at the top frame's creation (R0).</param>
-    /// <param name="initialStateGasUsed">State-gas-used floor (intrinsic state cost).</param>
-    static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir, long initialStateGasUsed) { }
+    static virtual void ResetForHalt(ref TSelf gas, long initialStateReservoir) { }
 
     /// <summary>
     /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).

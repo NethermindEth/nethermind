@@ -448,7 +448,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Refund already merged the child's state gas (reservoir, stateGasUsed) into the parent,
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
-            TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir, previousState.StateGasRefund);
+            TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
             CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
@@ -624,13 +624,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void RefundHaltedTopLevelStateGas() =>
-        // EIP-8037 top-level halt: frame resets to (gas_left=0, reservoir=R0). All
-        // execution gas — both state gas charged from the reservoir and state gas that
-        // spilled into gas_left — is burned. The reservoir snaps back to its tx-start
-        // value and spill is zeroed; state-gas-used is reset to its intrinsic floor so a
-        // CREATE tx still bills its top-level CreateState while spentGas resolves cleanly
-        // to txGasLimit - R0.
-        TGasPolicy.ResetForHalt(ref _currentState.Gas, _currentState.InitialStateReservoir, _currentState.InitialStateGasUsed);
+        // EIP-8037 top-level halt: frame resets to (gas_left=0, reservoir=R0). The
+        // reservoir snaps back to its tx-start value and spill is zeroed. StateGasUsed
+        // is preserved so block-level sum_state reflects the actual state-gas charged
+        // during execution; spentGas resolves cleanly to txGasLimit - R0.
+        TGasPolicy.ResetForHalt(ref _currentState.Gas, _currentState.InitialStateReservoir);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void CreditStateGasRefund(ref TGasPolicy gas, long amount)
