@@ -454,27 +454,37 @@ public class Eth70ProtocolHandlerTests
         Assert.ThrowsAsync<SubprotocolException>(async () => await act());
     }
 
-    [TestCase(false, "Block gas used exceeds header value")]
-    [TestCase(true, null)]
-    public async Task Should_validate_receipt_cumulative_against_header_gas_used_unless_eip8037(bool isEip8037Enabled, string? expectedException)
+    [TestCase(false, false, 1, 2, "Block gas used exceeds header value")]
+    [TestCase(true, false, 1, 2, "Block gas used exceeds header value")]
+    [TestCase(false, true, 1, 2, null)]
+    [TestCase(true, true, 1, 2, null)]
+    [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header")]
+    [TestCase(true, false, 2, 1, null)]
+    public async Task Should_validate_receipt_cumulative_against_header_gas_used_by_spec(
+        bool isEip7778Enabled,
+        bool isEip8037Enabled,
+        int headerGasUsedMultiplier,
+        int receiptGasUsedMultiplier,
+        string? expectedException)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader
             .WithHash(blockHash)
             .WithNumber(1)
-            .WithGasUsed(GasCostOf.Transaction)
+            .WithGasUsed(GasCostOf.Transaction * headerGasUsedMultiplier)
             .TestObject;
         _syncManager.FindHeader(blockHash).Returns(header);
 
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip7778Enabled.Returns(isEip7778Enabled);
         spec.IsEip8037Enabled.Returns(isEip8037Enabled);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
-        TxReceipt[] receipts =
-        [
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
-            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
-        ];
+        TxReceipt[] receipts = new TxReceipt[receiptGasUsedMultiplier];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] };
+        }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
