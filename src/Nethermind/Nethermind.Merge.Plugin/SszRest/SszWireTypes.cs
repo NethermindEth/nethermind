@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -8,10 +10,30 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-[SszContainer]
-public partial struct SszBytes8
+/// <summary>
+/// An allocation-free 8-byte value type used wherever the Engine API wire format
+/// requires a fixed-length 8-byte field (e.g. PayloadId).
+/// </summary>
+[StructLayout(LayoutKind.Sequential, Size = 8)]
+public struct SszBytes8
 {
-    [SszVector(8)] public byte[]? Bytes { get; set; }
+    private ulong _value;
+
+    /// <summary>
+    /// Creates an <see cref="SszBytes8"/> from exactly 8 bytes without any heap allocation.
+    /// </summary>
+    public static SszBytes8 FromSpan(ReadOnlySpan<byte> span)
+    {
+        if (span.Length != 8)
+            throw new ArgumentException("SszBytes8 requires exactly 8 bytes", nameof(span));
+
+        SszBytes8 result = default;
+        span.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref result, 1)));
+        return result;
+    }
+
+    public ReadOnlySpan<byte> AsSpan() =>
+        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
 }
 
 /// <summary>

@@ -119,9 +119,22 @@ class SszType
             CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
             CustomDecodeTemplate = "{1} = new Bloom({0});",
         });
+
+        KnownTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Merge.Plugin.SszRest",
+            Name = "SszBytes8",
+            Kind = Kind.Basic,
+            StaticLength = 8,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.AsSpan().CopyTo({0});",
+            CustomDecodeTemplate = "{1} = SszBytes8.FromSpan({0});",
+        });
     }
 
     public static List<SszType> BasicTypes { get; set; } = [];
+
+    public static List<SszType> KnownTypes { get; set; } = [];
 
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
@@ -164,6 +177,13 @@ class SszType
         if (existingType is not null)
         {
             return existingType;
+        }
+
+        SszType? knownType = KnownTypes.FirstOrDefault(t => t.Name == name && t.Namespace == @namespace);
+        if (knownType is not null)
+        {
+            types.Add(knownType);
+            return knownType;
         }
 
         INamedTypeSymbol? enumType = (type as INamedTypeSymbol)?.EnumUnderlyingType;

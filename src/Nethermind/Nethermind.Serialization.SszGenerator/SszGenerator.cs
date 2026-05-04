@@ -117,6 +117,7 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -352,14 +353,16 @@ internal static class SszCodecHelpers
         if (bytes.Length <= 32)
         {
             Span<byte> chunk = stackalloc byte[32];
-            chunk.Clear();
+            if (bytes.Length < 32) chunk.Clear();
             bytes.CopyTo(chunk);
-            root = new UInt256(chunk);
             Merkle.Merkleize(out root, chunk);
         }
         else
         {
-            MerkleizeProgressiveBytes(bytes, out root);
+            // SSZ spec: fixed-length byte vector — pack into 32-byte chunks and merkleize
+            // with chunk_count = ceil(N/32). MerkleizeProgressiveBytes is wrong here.
+            ulong chunkCount = ((ulong)bytes.Length + 31UL) / 32UL;
+            Merkle.Merkleize(out root, bytes, chunkCount);
         }
     }
 
@@ -367,30 +370,10 @@ internal static class SszCodecHelpers
 
     internal static void MerkleizeRefTypeVector<T>(ReadOnlySpan<T> items, ulong length, int itemSize, EncodeItem<T> encode, out UInt256 root)
     {
-        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
-        UInt256[] subRoots = new UInt256[items.Length];
-        try
-        {
-            for (int i = 0; i < items.Length; i++)
-            {
-                Span<byte> span = buf.AsSpan(0, itemSize);
-                span.Clear();
-                encode(items[i], span);
-                MerkleizeFixedSizeBytes(span, out subRoots[i]);
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buf);
-        }
-        Merkle.Merkleize(out root, subRoots);
-    }
-
-    internal static void MerkleizeRefTypeList<T>(ReadOnlySpan<T> items, ulong limit, int itemSize, EncodeItem<T> encode, out UInt256 root)
-    {
+        Debug.Assert((ulong)items.Length == length, "Vector items count must equal declared length");
         int count = items.Length;
         byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
-        UInt256[] subRoots = new UInt256[count];
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
         try
         {
             for (int i = 0; i < count; i++)
@@ -405,7 +388,31 @@ internal static class SszCodecHelpers
         {
             ArrayPool<byte>.Shared.Return(buf);
         }
-        Merkle.Merkleize(out root, subRoots, limit);
+        Merkle.Merkleize(out root, subRoots.AsSpan(0, count));
+        ArrayPool<UInt256>.Shared.Return(subRoots);
+    }
+
+    internal static void MerkleizeRefTypeList<T>(ReadOnlySpan<T> items, ulong limit, int itemSize, EncodeItem<T> encode, out UInt256 root)
+    {
+        int count = items.Length;
+        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> span = buf.AsSpan(0, itemSize);
+                span.Clear();
+                encode(items[i], span);
+                MerkleizeFixedSizeBytes(span, out subRoots[i]);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
+        }
+        Merkle.Merkleize(out root, subRoots.AsSpan(0, count), limit);
+        ArrayPool<UInt256>.Shared.Return(subRoots);
         Merkle.MixIn(ref root, count);
     }
 
@@ -413,7 +420,7 @@ internal static class SszCodecHelpers
     {
         int count = items.Length;
         byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
-        UInt256[] subRoots = new UInt256[count];
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
         try
         {
             for (int i = 0; i < count; i++)
@@ -428,7 +435,8 @@ internal static class SszCodecHelpers
         {
             ArrayPool<byte>.Shared.Return(buf);
         }
-        Merkle.MerkleizeProgressive(out root, subRoots);
+        Merkle.MerkleizeProgressive(out root, subRoots.AsSpan(0, count));
+        ArrayPool<UInt256>.Shared.Return(subRoots);
         Merkle.MixIn(ref root, count);
     }
 }
@@ -725,6 +733,7 @@ internal static class SszCodecHelpers
         merkleizer.CalculateRoot(out root);";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Merkleization;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -857,43 +866,66 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
     public static void MerkleizeVector(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
     {{
-        UInt256[] subRoots = new UInt256[container.Length];
-        for(int i = 0; i < container.Length; i++)
+        int count = container.Length;
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.Merkleize(out root, subRoots);
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count));
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
     }}
 {Whitespace}
     public static void MerkleizeList(ReadOnlySpan<{decl.Name}> container, ulong limit, out UInt256 root)
     {{
         int count = container.Length;
-        UInt256[] subRoots = new UInt256[count];
-        for(int i = 0; i < count; i++)
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.Merkleize(out root, subRoots, limit);
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count), limit);
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
         Merkle.MixIn(ref root, count);
     }}
 {Whitespace}
     public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
     {{
         int count = container.Length;
-        UInt256[] subRoots = new UInt256[count];
-        for(int i = 0; i < count; i++)
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.MerkleizeProgressive(out root, subRoots);
+            Merkle.MerkleizeProgressive(out root, subRoots.AsSpan(0, count));
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
         Merkle.MixIn(ref root, count);
     }}
 }}
 " :
 (decl.Kind == Kind.Container || decl.Kind == Kind.ProgressiveContainer) ? $@"using Nethermind.Merkleization;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -1045,65 +1077,68 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
     public static void MerkleizeVector(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
     {{
-        UInt256[] subRoots = new UInt256[container.Length];
-        for(int i = 0; i < container.Length; i++)
+        int count = container.Length;
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.Merkleize(out root, subRoots);
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count));
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
     }}
 {Whitespace}
     public static void MerkleizeList(ReadOnlySpan<{decl.Name}> container, ulong limit, out UInt256 root)
     {{
         int count = container.Length;
-        UInt256[] subRoots = new UInt256[count];
-        for(int i = 0; i < count; i++)
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.Merkleize(out root, subRoots, limit);
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count), limit);
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
         Merkle.MixIn(ref root, count);
     }}
 {Whitespace}
     public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
     {{
         int count = container.Length;
-        UInt256[] subRoots = new UInt256[count];
-        for(int i = 0; i < count; i++)
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.MerkleizeProgressive(out root, subRoots);
+            Merkle.MerkleizeProgressive(out root, subRoots.AsSpan(0, count));
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
         Merkle.MixIn(ref root, count);
     }}
 }}
 " :
 // Compatible unions
 $@"using Nethermind.Merkleization;
+using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using Nethermind.Serialization.Ssz;
-using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
-{Whitespace}
-using SszLib = Nethermind.Serialization.Ssz.Ssz;
-{Whitespace}
-{NamespaceLine(decl)}
-{Whitespace}
-{PartialTypeDeclaration(decl)}
-{{
-    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
-    {{
-        {(decl.IsStruct ? "" : @"if(container is null)
-        {
-            return 0;
-        }")}
-        switch(container.Selector)
-        {{
 {Shift(3, decl.CompatibleUnionMembers!.Select(m =>
 {
     string validation = ValidationStatement(decl, m, $"container.{m.Name}");
@@ -1242,38 +1277,60 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
     public static void MerkleizeVector(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
     {{
-        UInt256[] subRoots = new UInt256[container.Length];
-        for(int i = 0; i < container.Length; i++)
+        int count = container.Length;
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.Merkleize(out root, subRoots);
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count));
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
     }}
 {Whitespace}
     public static void MerkleizeList(ReadOnlySpan<{decl.Name}> container, ulong limit, out UInt256 root)
     {{
         int count = container.Length;
-        UInt256[] subRoots = new UInt256[count];
-        for(int i = 0; i < count; i++)
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.Merkleize(out root, subRoots, limit);
+            Merkle.Merkleize(out root, subRoots.AsSpan(0, count), limit);
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
         Merkle.MixIn(ref root, count);
     }}
 {Whitespace}
     public static void MerkleizeProgressiveList(ReadOnlySpan<{decl.Name}> container, out UInt256 root)
     {{
         int count = container.Length;
-        UInt256[] subRoots = new UInt256[count];
-        for(int i = 0; i < count; i++)
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
         {{
-            Merkleize(container[i], out subRoots[i]);
-        }}
+            for(int i = 0; i < count; i++)
+            {{
+                Merkleize(container[i], out subRoots[i]);
+            }}
 {Whitespace}
-        Merkle.MerkleizeProgressive(out root, subRoots);
+            Merkle.MerkleizeProgressive(out root, subRoots.AsSpan(0, count));
+        }}
+        finally
+        {{
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }}
         Merkle.MixIn(ref root, count);
     }}
 }}

@@ -27,6 +27,15 @@ public sealed class ForkchoiceUpdatedSszHandler(IEngineRpcModule engineModule) :
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
+        if (version > EngineApiVersions.Fcu.V4)
+        {
+            await WriteSszResultAsync(ctx,
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
+                    $"Unsupported engine_forkchoiceUpdated version: {version}", ErrorCodes.MethodNotFound),
+                SszCodec.EncodeForkchoiceUpdatedResponse);
+            return;
+        }
+
         (ForkchoiceStateV1 state, PayloadAttributes? attrs) =
             SszCodec.DecodeForkchoiceUpdatedRequest(body.Span, version);
 

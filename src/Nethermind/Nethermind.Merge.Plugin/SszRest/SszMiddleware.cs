@@ -23,19 +23,13 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// ASP.NET Core middleware that routes binary SSZ-REST engine API calls to
 /// the appropriate <see cref="ISszEndpointHandler"/>.
 /// </summary>
-public sealed class SszMiddleware(
-    RequestDelegate next,
-    IJsonRpcUrlCollection urlCollection,
-    IRpcAuthentication auth,
-    IEnumerable<ISszEndpointHandler> handlers,
-    IProcessExitSource processExitSource,
-    ILogManager logManager)
+public sealed class SszMiddleware
 {
-    private readonly RequestDelegate _next = next;
-    private readonly IJsonRpcUrlCollection _urlCollection = urlCollection;
-    private readonly IRpcAuthentication _auth = auth;
-    private readonly ILogger _logger = logManager.GetClassLogger<SszMiddleware>();
-    private readonly CancellationToken _processExitToken = processExitSource.Token;
+    private readonly RequestDelegate _next;
+    private readonly IJsonRpcUrlCollection _urlCollection;
+    private readonly IRpcAuthentication _auth;
+    private readonly ILogger _logger;
+    private readonly CancellationToken _processExitToken;
 
     // Path: /engine/v{N}/{resource}[/{extra}]
     private const string EnginePrefix = "/engine/v";
@@ -46,20 +40,53 @@ public sealed class SszMiddleware(
     /// (see https://github.com/ethereum/execution-apis/pull/764)
     /// </summary>
     public const int MaxBodySize = 0x1000000;
-    private readonly FrozenDictionary<(string Method, string Resource), List<ISszEndpointHandler>> _routes = BuildRoutes(handlers);
 
-    private static FrozenDictionary<(string, string), List<ISszEndpointHandler>> BuildRoutes(
-        IEnumerable<ISszEndpointHandler> handlers)
+    private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _postRoutes;
+    private readonly FrozenDictionary<string, List<ISszEndpointHandler>> _getRoutes;
+
+    private readonly (string Method, string Resource, List<ISszEndpointHandler> Handlers)[] _allRoutes;
+
+    public SszMiddleware(
+        RequestDelegate next,
+        IJsonRpcUrlCollection urlCollection,
+        IRpcAuthentication auth,
+        IEnumerable<ISszEndpointHandler> handlers,
+        IProcessExitSource processExitSource,
+        ILogManager logManager)
     {
-        Dictionary<(string, string), List<ISszEndpointHandler>> dict = [];
+        _next = next;
+        _urlCollection = urlCollection;
+        _auth = auth;
+        _logger = logManager.GetClassLogger<SszMiddleware>();
+        _processExitToken = processExitSource.Token;
+        (_postRoutes, _getRoutes, _allRoutes) = BuildRoutes(handlers);
+    }
+
+    private static (FrozenDictionary<string, List<ISszEndpointHandler>> post,
+                    FrozenDictionary<string, List<ISszEndpointHandler>> get,
+                    (string, string, List<ISszEndpointHandler>)[] all)
+        BuildRoutes(IEnumerable<ISszEndpointHandler> handlers)
+    {
+        Dictionary<string, List<ISszEndpointHandler>> postDict = [];
+        Dictionary<string, List<ISszEndpointHandler>> getDict = [];
+
         foreach (ISszEndpointHandler h in handlers)
         {
-            (string, string) key = (h.HttpMethod.ToLowerInvariant(), h.Resource.ToLowerInvariant());
-            if (!dict.TryGetValue(key, out List<ISszEndpointHandler>? list))
-                dict[key] = list = [];
+            string resource = h.Resource.ToLowerInvariant();
+            Dictionary<string, List<ISszEndpointHandler>> dict =
+                h.HttpMethod.Equals("GET", StringComparison.OrdinalIgnoreCase) ? getDict : postDict;
+            if (!dict.TryGetValue(resource, out List<ISszEndpointHandler>? list))
+                dict[resource] = list = [];
             list.Add(h);
         }
-        return dict.ToFrozenDictionary();
+
+        FrozenDictionary<string, List<ISszEndpointHandler>> post = postDict.ToFrozenDictionary();
+        FrozenDictionary<string, List<ISszEndpointHandler>> get = getDict.ToFrozenDictionary();
+
+        List<(string, string, List<ISszEndpointHandler>)> all = [];
+        foreach ((string r, List<ISszEndpointHandler> list) in post) all.Add(("post", r, list));
+        foreach ((string r, List<ISszEndpointHandler> list) in get) all.Add(("get", r, list));
+        return (post, get, all.ToArray());
     }
 
     public async Task InvokeAsync(HttpContext ctx)
@@ -180,29 +207,38 @@ public sealed class SszMiddleware(
         handler = null;
         extra = default;
 
-        string methodLower = method.ToLowerInvariant();
-        string segmentStr = pathSegment.ToString();
+        bool isPost = method is "POST" || method.Equals("post", StringComparison.OrdinalIgnoreCase);
+        bool isGet = !isPost && (method is "GET" || method.Equals("get", StringComparison.OrdinalIgnoreCase));
 
-        if (_routes.TryGetValue((methodLower, segmentStr), out List<ISszEndpointHandler>? exactList))
+        FrozenDictionary<string, List<ISszEndpointHandler>>? exactDict =
+            isPost ? _postRoutes : isGet ? _getRoutes : null;
+
+        if (exactDict is not null)
         {
-            ISszEndpointHandler? fallback = null;
-            foreach (ISszEndpointHandler candidate in exactList)
+            FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
+                lookup = exactDict.GetAlternateLookup<ReadOnlySpan<char>>();
+
+            if (lookup.TryGetValue(pathSegment, out List<ISszEndpointHandler>? exactList))
             {
-                if (candidate.Version == version) { handler = candidate; extra = default; return true; }
-                if (candidate.Version is null) fallback = candidate;
+                ISszEndpointHandler? fallback = null;
+                foreach (ISszEndpointHandler candidate in exactList)
+                {
+                    if (candidate.Version == version) { handler = candidate; extra = default; return true; }
+                    if (candidate.Version is null) fallback = candidate;
+                }
+                if (fallback is not null) { handler = fallback; extra = default; return true; }
             }
-            if (fallback is not null) { handler = fallback; extra = default; return true; }
         }
 
         ReadOnlySpan<char> methodSpan = method.AsSpan();
         ISszEndpointHandler? prefixFallback = null;
         ReadOnlySpan<char> prefixFallbackExtra = default;
 
-        foreach (KeyValuePair<(string Method, string Resource), List<ISszEndpointHandler>> kvp in _routes)
+        foreach ((string routeMethod, string routeResource, List<ISszEndpointHandler> candidates) in _allRoutes)
         {
-            if (!methodSpan.Equals(kvp.Key.Method.AsSpan(), StringComparison.OrdinalIgnoreCase)) continue;
+            if (!methodSpan.Equals(routeMethod.AsSpan(), StringComparison.OrdinalIgnoreCase)) continue;
 
-            ReadOnlySpan<char> resourceSpan = kvp.Key.Resource.AsSpan();
+            ReadOnlySpan<char> resourceSpan = routeResource.AsSpan();
 
             if (MemoryExtensions.Equals(pathSegment, resourceSpan, StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -214,7 +250,7 @@ public sealed class SszMiddleware(
 
             ReadOnlySpan<char> tailSpan = pathSegment[(resourceSpan.Length + 1)..];
 
-            foreach (ISszEndpointHandler candidate in kvp.Value)
+            foreach (ISszEndpointHandler candidate in candidates)
             {
                 if (!candidate.AcceptsPathExtra) continue;
 
@@ -297,7 +333,7 @@ public sealed class SszMiddleware(
                         result = ArrayPool<byte>.Shared.Rent(Math.Max(needed, 4096));
                     else if (result.Length < needed)
                     {
-                        byte[] larger = ArrayPool<byte>.Shared.Rent(Math.Max(needed, result.Length * 2));
+                        byte[] larger = ArrayPool<byte>.Shared.Rent((int)Math.Min(MaxBodySize, Math.Max(needed, (long)result.Length * 2)));
                         result.AsSpan(0, written).CopyTo(larger);
                         ArrayPool<byte>.Shared.Return(result);
                         result = larger;

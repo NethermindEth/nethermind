@@ -22,9 +22,9 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
-        ClientVersionV1 callerVersion = SszCodec.DecodeClientVersionRequest(body.Span);
+        _ = SszCodec.DecodeClientVersionRequest(body.Span);
 
-        ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(callerVersion);
+        ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(new ClientVersionV1());
 
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeClientVersionResponse);
     }

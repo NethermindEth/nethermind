@@ -57,8 +57,7 @@ public static class SszCodec
                 throw new InvalidOperationException($"Invalid payload id '{resp.PayloadId}': expected 16 hex chars, got {hex.Length}");
             Span<byte> stack = stackalloc byte[8];
             Bytes.FromHexString(hex, stack);
-            byte[] padded = stack.ToArray();
-            pidList = [new SszBytes8 { Bytes = padded }];
+            pidList = [SszBytes8.FromSpan(stack)];
         }
 
         return EncodePooled(new ForkchoiceUpdatedResponseWire
