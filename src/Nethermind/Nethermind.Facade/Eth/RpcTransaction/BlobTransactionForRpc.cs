@@ -35,7 +35,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
     {
         if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
             return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
@@ -55,7 +55,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         if (validateUserInput && MaxFeePerBlobGas?.IsZero == true)
             return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
 
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (!baseResult) return baseResult;
 
         Transaction tx = baseResult.Data;
