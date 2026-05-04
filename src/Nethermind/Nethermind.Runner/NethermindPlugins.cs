@@ -19,6 +19,7 @@ public static class NethermindPlugins
         typeof(Nethermind.HealthChecks.HealthChecksPlugin),
         typeof(Nethermind.Hive.HivePlugin),
         typeof(Nethermind.Init.Snapshot.SnapshotPlugin),
+        typeof(Nethermind.Mcp.McpServerPlugin),
         typeof(Nethermind.Merge.AuRa.AuRaMergePlugin),
         typeof(Nethermind.Merge.Plugin.MergePlugin),
         typeof(Nethermind.Optimism.OptimismPlugin),
