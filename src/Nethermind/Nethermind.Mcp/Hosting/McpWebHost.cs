@@ -189,7 +189,7 @@ public class McpWebHost : IAsyncDisposable
             ApplicationName = "Nethermind.Mcp",
         });
 
-        IPAddress address = IPAddress.Parse(_config.HttpHost);
+        IPAddress address = ResolveBindAddress(_config.HttpHost);
         int port = _config.HttpPort;
         builder.WebHost.UseKestrel(options => options.Listen(address, port));
 
@@ -243,6 +243,22 @@ public class McpWebHost : IAsyncDisposable
         {
             services.AddSingleton(instance);
         }
+    }
+
+    /// <summary>
+    /// Maps a small whitelist of well-known bind names to <see cref="IPAddress"/>. Numeric IPs
+    /// (v4 and v6, with or without brackets) round-trip through <see cref="IPAddress.Parse"/>.
+    /// Arbitrary hostnames (e.g. <c>"mynode.local"</c>) are intentionally not resolved — they
+    /// throw <see cref="FormatException"/>, which is then caught and logged by
+    /// <see cref="StartAsync"/>.
+    /// </summary>
+    internal static IPAddress ResolveBindAddress(string host)
+    {
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return IPAddress.Loopback;
+        if (host == "0.0.0.0") return IPAddress.Any;
+        if (host == "::" || host == "[::]") return IPAddress.IPv6Any;
+        if (host == "::1" || host == "[::1]") return IPAddress.IPv6Loopback;
+        return IPAddress.Parse(host);
     }
 
     private static Uri? ReadBoundUri(WebApplication app)

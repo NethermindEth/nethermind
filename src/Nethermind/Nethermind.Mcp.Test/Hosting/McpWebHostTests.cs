@@ -148,6 +148,48 @@ public class McpWebHostTests
         await host.StopAsync(CancellationToken.None);
     }
 
+    [TestCase("localhost", "127.0.0.1")]
+    [TestCase("LOCALHOST", "127.0.0.1")]
+    [TestCase("127.0.0.1", "127.0.0.1")]
+    [TestCase("0.0.0.0", "0.0.0.0")]
+    [TestCase("::", "::")]
+    [TestCase("[::]", "::")]
+    [TestCase("::1", "::1")]
+    [TestCase("[::1]", "::1")]
+    [TestCase("192.168.1.5", "192.168.1.5")]
+    public void ResolveBindAddress_maps_well_known_names(string input, string expected)
+    {
+        IPAddress address = McpWebHost.ResolveBindAddress(input);
+        Assert.That(address, Is.EqualTo(IPAddress.Parse(expected)));
+    }
+
+    [Test]
+    public void ResolveBindAddress_throws_FormatException_for_arbitrary_hostname() =>
+        Assert.Throws<FormatException>(() => McpWebHost.ResolveBindAddress("mynode.local"));
+
+    [Test]
+    public async Task Start_with_localhost_binds_to_loopback()
+    {
+        McpConfig config = new()
+        {
+            Enabled = true,
+            HttpEnabled = true,
+            HttpHost = "localhost",
+            HttpPort = 0,
+            ApiKey = null,
+            MaxConcurrent = 4,
+        };
+        await using McpWebHost host = new(config, LimboLogs.Instance, BuildMcpServices());
+
+        bool started = await host.StartAsync(CancellationToken.None);
+
+        Assert.That(started, Is.True);
+        Assert.That(host.BoundUri, Is.Not.Null);
+        Assert.That(host.BoundUri!.Host, Is.EqualTo("127.0.0.1"));
+
+        await host.StopAsync(CancellationToken.None);
+    }
+
     /// <summary>
     /// Bridges an Autofac container to <see cref="IServiceProvider"/> for tests.
     /// </summary>
