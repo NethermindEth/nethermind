@@ -375,8 +375,36 @@ internal static class PersistedSnapshotUtils
                                 byte[]? bundleSlot = bundle.GetSlot(address, slot, -1);
                                 ReadOnlySpan<byte> expectedSlot = bundleSlot ?? ReadOnlySpan<byte>.Empty;
 
-                                if (!slotValue.SequenceEqual(expectedSlot))
-                                    throw new InvalidOperationException($"Storage {address}:{slot}: mismatch");
+                                // The two paths use different "zero" encodings: compacted stores the slot
+                                // value via WithoutLeadingZeros() — a fully-zero slot collapses to empty.
+                                // bundle.GetSlot routes through SlotValue.ToEvmBytes() which encodes zero
+                                // as a single 0x00 byte. Normalise both to zero-stripped form before
+                                // comparing so this isn't a spurious mismatch.
+                                ReadOnlySpan<byte> compactedNorm = slotValue.WithoutLeadingZeros();
+                                ReadOnlySpan<byte> expectedNorm = expectedSlot.WithoutLeadingZeros();
+                                if (!compactedNorm.SequenceEqual(expectedNorm))
+                                {
+                                    // Probe each source independently — bypass the bundle's bloom/short-circuit
+                                    // so we can tell apart "compactor wrote wrong value" from "bundle/bloom
+                                    // hides the real value". For each source we report: bloom verdict,
+                                    // post-bloom TryGetSlot result, and a raw HsstReader seek (bloom-free).
+                                    System.Text.StringBuilder sb = new();
+                                    sb.Append($"Storage {address}:{slot}: mismatch. ")
+                                      .Append($"compactedValue={slotValue.ToHexString()} (len={slotValue.Length}); ")
+                                      .Append($"bundleValue={(bundleSlot is null ? "<null>" : bundleSlot.AsSpan().ToHexString())} (len={(bundleSlot?.Length ?? 0)}); ")
+                                      .Append($"prefixKey={prefixKey.ToHexString()} suffixKey={suffixKey.ToHexString()} ");
+                                    for (int i = 0; i < snapshots.Count; i++)
+                                    {
+                                        SlotValue sv = default;
+                                        bool tryGetOk = snapshots[i].TryGetSlot(address, slot, ref sv);
+                                        sb.Append($"src[{i}](id={snapshots[i].Id} {snapshots[i].From.BlockNumber}->{snapshots[i].To.BlockNumber}): ");
+                                        sb.Append($"TryGetSlot={tryGetOk}");
+                                        if (tryGetOk) sb.Append($"={sv.AsReadOnlySpan.ToHexString()}");
+                                        sb.Append("; ");
+                                    }
+                                    if (dumpWhenFailed) DumpPersistedSnapshotsToJson(snapshots, filename);
+                                    throw new InvalidOperationException(sb.ToString());
+                                }
                             }
                         }
                     }
