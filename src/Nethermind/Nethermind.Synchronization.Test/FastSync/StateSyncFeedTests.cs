@@ -404,7 +404,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = BuildTestContainerBuilder(remote)
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
-            ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            ctx.TreeFeed.ResetStateRootToBestSuggested();
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
@@ -423,7 +423,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await using IContainer container = BuildTestContainerBuilder(remote)
                 .Build();
             SafeContext ctx = container.Resolve<SafeContext>();
-            ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            ctx.TreeFeed.ResetStateRootToBestSuggested();
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
             request.Should().NotBeNull();
@@ -549,17 +549,21 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             await using IContainer container = PrepareDownloader(remote);
             SafeContext ctx = container.Resolve<SafeContext>();
-            ctx.TreeFeed.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            ctx.TreeFeed.ResetStateRootToBestSuggested();
             ISyncDownloader<StateSyncBatch> downloader = container.Resolve<ISyncDownloader<StateSyncBatch>>();
 
             async Task<int> RunOneRequest()
             {
-                using StateSyncBatch? request = await ctx.Feed.PrepareRequest(cancellation);
+                // Drive TreeSync directly: the feed wrapper only returns null on cancellation,
+                // round-termination signalling lives in StateSyncRunner. This test wants the
+                // single-shot "is there a batch right now" semantics that TreeSync exposes.
+                if (ctx.TreeFeed.IsSyncRoundFinished()) return 0;
+                using StateSyncBatch? request = await ctx.TreeFeed.PrepareRequest();
                 if (request is null) return 0;
                 PeerInfo peer = new(ctx.SyncPeerMocks[0]);
                 await downloader.Dispatch(peer, request!, cancellation);
                 int requestCount = request.RequestedNodes?.Count ?? 0;
-                ctx.Feed.HandleResponse(request, peer);
+                ctx.TreeFeed.HandleResponse(request, peer);
                 return requestCount;
             }
 
