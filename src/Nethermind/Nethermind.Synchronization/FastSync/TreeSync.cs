@@ -744,26 +744,22 @@ namespace Nethermind.Synchronization.FastSync
 
         public void VerifyPostSyncCleanUp()
         {
-            try
+            lock (_dependencies)
             {
-                lock (_dependencies)
+                if (_dependencies.Count != 0)
                 {
-                    if (_dependencies.Count != 0)
-                    {
-                        if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
-                    }
-
-                    _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
+                    if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                if (_pendingItems.Count != 0)
-                {
-                    if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {_pendingItems.Count}");
-                }
-
-                CleanupMemory();
+                _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
             }
-            catch (ObjectDisposedException) { }
+
+            if (_pendingItems.Count != 0)
+            {
+                if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {_pendingItems.Count}");
+            }
+
+            CleanupMemory();
         }
 
         private void CleanupMemory()

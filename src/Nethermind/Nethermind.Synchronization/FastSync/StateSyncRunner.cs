@@ -64,6 +64,11 @@ public class StateSyncRunner(
         {
             // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
         }
+        catch (ObjectDisposedException)
+        {
+            // DBs / stores can be torn down while sync is in progress on shutdown — same
+            // semantics as cancellation: swallow rather than logging "State sync failed".
+        }
     }
 
     public async Task RunStateSyncRounds(CancellationToken token)
