@@ -403,7 +403,23 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        await RunSnapSyncOnce(cancellationTokenSource.Token);
+    }
 
+    // Stress reproducer for SnapSync Windows flake — run manually; see PR #11443 for context.
+    [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
+    [TestCaseSource(nameof(StressIterations))]
+    public async Task SnapSync_StressRepro(int iteration)
+    {
+        if (dbMode != DbMode.Flat) Assert.Ignore("Stress repro only targets the Flat dbMode where the flake was observed");
+        _ = iteration; // index is purely to give NUnit a unique case per attempt
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        await RunSnapSyncOnce(cancellationTokenSource.Token);
+    }
+
+    private async Task RunSnapSyncOnce(CancellationToken cancellationToken)
+    {
         PrivateKey clientKey = TestItem.PrivateKeyD;
         await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
@@ -411,7 +427,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             syncConfig.FastSync = true;
             syncConfig.SnapSync = true;
 
-            await SetPivot(syncConfig, cancellationTokenSource.Token);
+            await SetPivot(syncConfig, cancellationToken);
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
@@ -420,8 +436,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             networkConfig.FilterDiscoveryNodesByRecentIp = false;
         });
 
-        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
     }
+
+    private const int StressIterationCount = 30;
+    private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
 
     [Test]
     [Retry(5)]
