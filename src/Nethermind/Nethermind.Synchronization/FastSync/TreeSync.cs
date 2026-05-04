@@ -340,7 +340,6 @@ namespace Nethermind.Synchronization.FastSync
             if (_rootSaved == 1)
             {
                 if (_logger.IsInfo) _logger.Info("StateNode sync: falling asleep - root saved");
-                VerifyPostSyncCleanUp();
                 return true;
             }
 
@@ -381,22 +380,42 @@ namespace Nethermind.Synchronization.FastSync
 
             if (rootNodeKeyExists)
             {
-                try
-                {
-                    _logger.Info($"STATE SYNC FINISHED:{Metrics.StateSyncRequests}, {Metrics.SyncedStateTrieNodes}");
-
-                    VerifyPostSyncCleanUp();
-                }
-                catch (ObjectDisposedException) { }
+                _logger.Info($"STATE SYNC FINISHED:{Metrics.StateSyncRequests}, {Metrics.SyncedStateTrieNodes}");
                 return true;
             }
 
             return false;
         }
 
+        public void FinalizeSync(BlockHeader pivotHeader) => _store.FinalizeSync(pivotHeader);
+
+        public void VerifyPostSyncCleanUp()
+        {
+            try
+            {
+                lock (_dependencies)
+                {
+                    if (_dependencies.Count != 0)
+                    {
+                        if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
+                    }
+
+                    _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
+                }
+
+                if (_pendingItems.Count != 0)
+                {
+                    if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {_pendingItems.Count}");
+                }
+
+                CleanupMemory();
+            }
+            catch (ObjectDisposedException) { }
+        }
+
         public void ResetStateRoot(SyncFeedState currentState) => ResetStateRoot(_blockNumber, _rootNode, currentState);
 
-        public void ResetStateRootToBestSuggested(SyncFeedState currentState)
+        public BlockHeader? ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
             if (currentState == SyncFeedState.Dormant)
             {
@@ -408,11 +427,12 @@ namespace Nethermind.Synchronization.FastSync
             if (headerForState is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"State pivot header not known.");
-                return;
+                return null;
             }
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
             ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);
+            return headerForState;
         }
 
         private void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)
@@ -713,12 +733,11 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
-                {
-                    _store.FinalizeSync(pivotHeader);
-                }
                 _codeDb.Flush();
 
+                // FinalizeSync is no longer invoked here. StateSyncRunner observes _rootSaved
+                // and calls TreeSync.FinalizeSync at the quiescent point between rounds, so
+                // the mutating GetPivotHeader() call doesn't race with in-flight SaveNodes.
                 Interlocked.Exchange(ref _rootSaved, 1);
             }
 
@@ -766,26 +785,6 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             return dependentItem.Counter == 0;
-        }
-
-        private void VerifyPostSyncCleanUp()
-        {
-            lock (_dependencies)
-            {
-                if (_dependencies.Count != 0)
-                {
-                    if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
-                }
-
-                _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
-            }
-
-            if (_pendingItems.Count != 0)
-            {
-                if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Nodes left after the root node saved - count: {_pendingItems.Count}");
-            }
-
-            CleanupMemory();
         }
 
         private void CleanupMemory()

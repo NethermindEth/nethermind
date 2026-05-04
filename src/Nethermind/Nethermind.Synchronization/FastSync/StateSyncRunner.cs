@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -18,7 +19,6 @@ namespace Nethermind.Synchronization.FastSync;
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
     TreeSync treeSync,
-    IStateSyncPivot stateSyncPivot,
     SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
     ISyncConfig syncConfig,
     ISyncModeSelector syncModeSelector,
@@ -70,6 +70,8 @@ public class StateSyncRunner(
     {
         if (_logger.IsInfo) _logger.Info("Starting state sync.");
 
+        BlockHeader? finalPivot = null;
+
         while (!token.IsCancellationRequested)
         {
             // Yield between rounds when the mode selector has moved away from StateNodes
@@ -78,18 +80,34 @@ public class StateSyncRunner(
             // in StateNodes mode and close to head.
             await StateSyncPrecursorWait(token);
 
-            treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            BlockHeader? roundPivot = treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            if (roundPivot is null) continue;
+
             await stateSyncDispatcher.Run(token);
 
-            if (treeSync.IsRootComplete) break;
+            // If sync completed in this round, the pivot it committed against is roundPivot.
+            // Capturing here avoids re-reading GetPivotHeader() (mutating) for FinalizeSync.
+            if (treeSync.IsRootComplete)
+            {
+                finalPivot = roundPivot;
+                break;
+            }
         }
+
+        if (finalPivot is null) return;
 
         if (_logger.IsInfo) _logger.Info("State sync completed.");
 
-        if (syncConfig.VerifyTrieOnStateSyncFinished && stateSyncPivot.GetPivotHeader() is { } pivot)
-        {
-            verifyTrieStarter?.TryStartVerifyTrie(pivot);
-        }
+        // FinalizeSync used to be invoked inside TreeSync.SaveNode's IsRoot branch, where
+        // GetPivotHeader's mutating side effect could race with concurrent root-saves
+        // (svlachakis #11457/#11458). Calling it here, with the captured per-round pivot,
+        // serialises the pivot read against in-flight handlers and pins the pivot value.
+        treeSync.VerifyPostSyncCleanUp();
+        try { treeSync.FinalizeSync(finalPivot); }
+        catch (ObjectDisposedException) { }
+
+        if (syncConfig.VerifyTrieOnStateSyncFinished)
+            verifyTrieStarter?.TryStartVerifyTrie(finalPivot);
     }
 
     private void TuneStateDb(ITunableDb.TuneType tuneType)

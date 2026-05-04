@@ -554,12 +554,16 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             async Task<int> RunOneRequest()
             {
-                using StateSyncBatch? request = await ctx.Feed.PrepareRequest(cancellation);
+                // Drive TreeSync directly: the feed wrapper only returns null on cancellation,
+                // round-termination signalling lives in StateSyncRunner. This test wants the
+                // single-shot "is there a batch right now" semantics that TreeSync exposes.
+                if (ctx.TreeFeed.IsSyncRoundFinished()) return 0;
+                using StateSyncBatch? request = await ctx.TreeFeed.PrepareRequest();
                 if (request is null) return 0;
                 PeerInfo peer = new(ctx.SyncPeerMocks[0]);
                 await downloader.Dispatch(peer, request!, cancellation);
                 int requestCount = request.RequestedNodes?.Count ?? 0;
-                ctx.Feed.HandleResponse(request, peer);
+                ctx.TreeFeed.HandleResponse(request, peer);
                 return requestCount;
             }
 
