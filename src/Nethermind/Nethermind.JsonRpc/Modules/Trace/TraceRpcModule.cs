@@ -120,7 +120,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
             Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
-            Transaction tx = _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            Transaction tx = _txDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
             tx.CapGasLimit(jsonRpcConfig.GasCap);
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
