@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -18,7 +19,6 @@ namespace Nethermind.Synchronization.FastSync;
 public class StateSyncRunner(
     ISnapSyncRunner snapSyncRunner,
     TreeSync treeSync,
-    IStateSyncPivot stateSyncPivot,
     SimpleDispatcher<StateSyncBatch> stateSyncDispatcher,
     ISyncConfig syncConfig,
     ISyncModeSelector syncModeSelector,
@@ -57,7 +57,8 @@ public class StateSyncRunner(
             }
             finally
             {
-                TuneStateDb(ITunableDb.TuneType.Default);
+                // Skip on shutdown so we don't touch DBs that may already be disposed.
+                if (!token.IsCancellationRequested) TuneStateDb(ITunableDb.TuneType.Default);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -70,6 +71,8 @@ public class StateSyncRunner(
     {
         if (_logger.IsInfo) _logger.Info("Starting state sync.");
 
+        BlockHeader? finalPivot = null;
+
         while (!token.IsCancellationRequested)
         {
             // Yield between rounds when the mode selector has moved away from StateNodes
@@ -78,18 +81,35 @@ public class StateSyncRunner(
             // in StateNodes mode and close to head.
             await StateSyncPrecursorWait(token);
 
-            treeSync.ResetStateRootToBestSuggested(SyncFeedState.Dormant);
+            BlockHeader? roundPivot = treeSync.ResetStateRootToBestSuggested();
+            if (roundPivot is null)
+            {
+                // Pivot not known yet — wait and retry. StateSyncPrecursorWait can return
+                // immediately, so without this we'd spin tightly.
+                await Task.Delay(1000, token);
+                continue;
+            }
+
             await stateSyncDispatcher.Run(token);
 
-            if (treeSync.IsRootComplete) break;
+            // If sync completed in this round, the pivot it committed against is roundPivot.
+            // Capturing here avoids re-reading GetPivotHeader() (mutating) for FinalizeSync.
+            if (treeSync.IsRootComplete)
+            {
+                finalPivot = roundPivot;
+                break;
+            }
         }
 
-        if (_logger.IsInfo) _logger.Info("State sync completed.");
+        if (finalPivot is null) return;
 
-        if (syncConfig.VerifyTrieOnStateSyncFinished && stateSyncPivot.GetPivotHeader() is { } pivot)
-        {
-            verifyTrieStarter?.TryStartVerifyTrie(pivot);
-        }
+        if (_logger.IsInfo) _logger.Info($"STATE SYNC FINISHED:{Metrics.StateSyncRequests}, {Metrics.SyncedStateTrieNodes}");
+
+        treeSync.VerifyPostSyncCleanUp();
+        treeSync.FinalizeSync(finalPivot);
+
+        if (syncConfig.VerifyTrieOnStateSyncFinished)
+            verifyTrieStarter?.TryStartVerifyTrie(finalPivot);
     }
 
     private void TuneStateDb(ITunableDb.TuneType tuneType)
