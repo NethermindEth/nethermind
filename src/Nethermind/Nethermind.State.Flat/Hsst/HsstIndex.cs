@@ -18,6 +18,13 @@ public readonly ref struct HsstIndex
     public bool IsIntermediate => _inner.IsIntermediate;
     public BSearchIndexReader.IndexMetadata Metadata => _inner.Metadata;
 
+    /// <summary>
+    /// Bytes shared by every key in this node. <see cref="GetKey"/> returns the per-entry
+    /// suffix; the full stored key is <see cref="CommonKeyPrefix"/> followed by the suffix.
+    /// Empty when the node was written without the common-prefix optimization.
+    /// </summary>
+    public ReadOnlySpan<byte> CommonKeyPrefix => _inner.CommonKeyPrefix;
+
     public static HsstIndex ReadFromEnd(ReadOnlySpan<byte> data, int indexEnd) =>
         new(BSearchIndexReader.ReadFromEnd(data, indexEnd));
 
@@ -25,6 +32,7 @@ public readonly ref struct HsstIndex
     public ReadOnlySpan<byte> GetValue(int index) => _inner.GetValue(index);
     public int GetIntValue(int index) => _inner.GetIntValue(index);
     public int FindFloorIndex(ReadOnlySpan<byte> key) => _inner.FindFloorIndex(key);
+    public int GetFullKey(int index, Span<byte> dest) => _inner.GetFullKey(index, dest);
 
     public bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue) =>
         _inner.TryGetFloor(key, out floorKey, out floorValue);

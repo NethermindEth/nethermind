@@ -110,7 +110,7 @@ byte. Reading an index node backward from its exclusive-end offset:
 ### Metadata
 
 ```
-[Flags: u8][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128 optional]
+[Flags: u8][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128 optional][CommonKeyPrefixLen: u8 + bytes optional]
 ```
 
 `Flags` bits:
@@ -121,8 +121,19 @@ byte. Reading an index node backward from its exclusive-end offset:
 | 1–2  | `KeyType`        — 0 Variable / 1 Uniform / 2 UniformWithLen |
 | 3–4  | `ValueType`      — 0 Variable / 1 Uniform / 2 UniformWithLen |
 | 5    | `HasBaseOffset`  — 1 = `BaseOffset` LEB128 follows |
-| 6    | reserved (0)    |
-| 7    | reserved (0)    |
+| 6    | `HasCommonKeyPrefix` — 1 = `CommonKeyPrefixLen` (u8) + prefix bytes follow |
+| 7    | `HasFlagsContinuation` — 1 = a second flags byte follows the first, reserved for future expansion. Current writers always emit 0; current readers may reject `1` as unsupported. |
+
+When `HasCommonKeyPrefix` is set, every stored key in the node equals
+`CommonKeyPrefix || suffix_i` where `suffix_i` is what the keys section
+encodes. `KeySize` / slot semantics apply to the *suffixes* — `Uniform` slot
+size is `commonSuffixLen`, `UniformWithLen` slot is `maxSuffixLen + 1`,
+`Variable` section size covers only suffix LEB-prefixed bytes plus the
+offset table. The prefix bytes live entirely inside metadata; section size
+math is unchanged. Writers cap the prefix at **128 bytes** so the metadata
+stays well under the `MetadataLength` u8 ceiling, and only emit it when
+`prefixLen × (count − 1) > 1` (i.e. it strictly pays back its
+`1 + prefixLen` overhead) and when at least one suffix is non-empty.
 
 `KeySize` / `ValueSize` semantics depend on the corresponding type:
 

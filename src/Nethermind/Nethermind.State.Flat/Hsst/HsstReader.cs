@@ -95,7 +95,12 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 {
                     int floorIdx = node.FindFloorIndex(key);
                     if (floorIdx < 0) return false;
-                    if (exactMatch && !key.SequenceEqual(node.GetKey(floorIdx))) return false;
+                    if (exactMatch)
+                    {
+                        ReadOnlySpan<byte> p = node.CommonKeyPrefix;
+                        if (!key.StartsWith(p) || !key[p.Length..].SequenceEqual(node.GetKey(floorIdx)))
+                            return false;
+                    }
                     ReadOnlySpan<byte> val = node.GetValue(floorIdx);
                     if (val.IsEmpty)
                     {
@@ -114,10 +119,14 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     if (!node.TryGetFloor(key, out ReadOnlySpan<byte> separator, out ReadOnlySpan<byte> metaBytes))
                         return false;
 
-                    // Cheap reject path: the stored full key starts with the leaf separator,
+                    // Cheap reject path: the stored full key starts with (commonPrefix + separator),
                     // so the input must too. Saves a length-mismatch read in the common
                     // exact-miss case.
-                    if (exactMatch && !key.StartsWith(separator)) return false;
+                    if (exactMatch)
+                    {
+                        ReadOnlySpan<byte> p = node.CommonKeyPrefix;
+                        if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
+                    }
 
                     int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
                     long absMetaStart = _bound.Offset + 1 + metaStart;
