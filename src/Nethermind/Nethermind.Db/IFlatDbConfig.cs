@@ -61,6 +61,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
 
+    [ConfigItem(Description = "Persisted-snapshot arena page-cache budget in bytes. Backs the PageClockCache that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the cache.", DefaultValue = "17179869184")]
+    long PersistedSnapshotPageCacheBytes { get; set; }
+
     [ConfigItem(Description = "Max persisted snapshot compaction size (hierarchical compaction ceiling for persisted layer)", DefaultValue = "1024")]
     int PersistedSnapshotMaxCompactSize { get; set; }
 

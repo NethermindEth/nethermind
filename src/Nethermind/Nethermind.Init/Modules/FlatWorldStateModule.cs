@@ -75,16 +75,18 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IPersistenceManager, PersistenceManager>()
             .AddSingleton<IArenaManager>((ctx) =>
             {
+                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"));
+                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotPageCacheBytes);
             })
             .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
             {
+                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"));
+                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"), cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotPageCacheBytes);
                 IArenaManager compactedArena = ctx.Resolve<IArenaManager>();
                 IDb catalogDb = ctx.Resolve<IColumnsDb<FlatDbColumns>>().GetColumnDb(FlatDbColumns.PersistedSnapshotCatalog);
-                PersistedSnapshotRepository repo = new(baseArena, compactedArena, catalogDb, ctx.Resolve<IFlatDbConfig>());
+                PersistedSnapshotRepository repo = new(baseArena, compactedArena, catalogDb, cfg);
                 repo.LoadFromCatalog();
                 return repo;
             })

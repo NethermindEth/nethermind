@@ -25,6 +25,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int LongFinalityReorgDepth { get; set; } = 90000;
     public string PersistedSnapshotPath { get; set; } = "snapshots";
     public long ArenaFileSizeBytes { get; set; } = 1L * 1024 * 1024 * 1024;
+    public long PersistedSnapshotPageCacheBytes { get; set; } = 16L * 1024 * 1024 * 1024;
     public int PersistedSnapshotMaxCompactSize { get; set; } = 1024 * 8;
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 10.0;
