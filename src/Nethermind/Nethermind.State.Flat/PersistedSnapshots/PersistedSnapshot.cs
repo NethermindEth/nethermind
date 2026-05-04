@@ -268,6 +268,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     internal long KeyBloomCount => _keyBloom?.Count ?? 0;
     internal long TrieBloomCount => _trieBloom?.Count ?? 0;
+    internal long KeyBloomBytes => _keyBloom?.DataBytes ?? 0;
+    internal long TrieBloomBytes => _trieBloom?.DataBytes ?? 0;
 
     internal void AttachKeyBloom(BloomFilter bloom) => _keyBloom = bloom;
     internal void AttachTrieBloom(BloomFilter bloom) => _trieBloom = bloom;

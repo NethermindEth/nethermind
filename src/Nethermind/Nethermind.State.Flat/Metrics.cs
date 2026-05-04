@@ -106,6 +106,14 @@ public static class Metrics
     [Description("Estimated memory used by compacted persisted snapshots in bytes")]
     public static long CompactedPersistedSnapshotMemory { get; set; }
 
+    [GaugeMetric]
+    [Description("Memory used by per-snapshot key bloom filters (address/slot/self-destruct) in bytes")]
+    public static long PersistedSnapshotKeyBloomMemory { get; set; }
+
+    [GaugeMetric]
+    [Description("Memory used by per-snapshot trie bloom filters (state and storage trie nodes) in bytes")]
+    public static long PersistedSnapshotTrieBloomMemory { get; set; }
+
     [DetailedMetric]
     [CounterMetric]
     [Description("Number of persisted snapshot compactions performed")]

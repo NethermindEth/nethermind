@@ -34,6 +34,10 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count + _persistableCompactedSnapshots.Count;
     public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
     public long CompactedSnapshotMemory => SumMemory(_compactedSnapshots) + SumMemory(_persistableCompactedSnapshots);
+    public long KeyBloomMemory =>
+        SumKeyBloomBytes(_baseSnapshots) + SumKeyBloomBytes(_compactedSnapshots) + SumKeyBloomBytes(_persistableCompactedSnapshots);
+    public long TrieBloomMemory =>
+        SumTrieBloomBytes(_baseSnapshots) + SumTrieBloomBytes(_compactedSnapshots) + SumTrieBloomBytes(_persistableCompactedSnapshots);
     public int ArenaFileCount => _baseArenaManager.ArenaFileCount + _compactedArenaManager.ArenaFileCount;
     public long ArenaMappedBytes => _baseArenaManager.ArenaMappedBytes + _compactedArenaManager.ArenaMappedBytes;
 
@@ -473,6 +477,22 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         long total = 0;
         foreach (KeyValuePair<StateId, PersistedSnapshot> kv in dict)
             total += kv.Value.Size;
+        return total;
+    }
+
+    private static long SumKeyBloomBytes(ConcurrentDictionary<StateId, PersistedSnapshot> dict)
+    {
+        long total = 0;
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in dict)
+            total += kv.Value.KeyBloomBytes;
+        return total;
+    }
+
+    private static long SumTrieBloomBytes(ConcurrentDictionary<StateId, PersistedSnapshot> dict)
+    {
+        long total = 0;
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in dict)
+            total += kv.Value.TrieBloomBytes;
         return total;
     }
 

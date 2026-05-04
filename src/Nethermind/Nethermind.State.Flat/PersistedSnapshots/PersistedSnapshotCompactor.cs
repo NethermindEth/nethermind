@@ -159,6 +159,8 @@ public class PersistedSnapshotCompactor(
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
         Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
         Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
+        Metrics.PersistedSnapshotKeyBloomMemory = persistedSnapshotRepository.KeyBloomMemory;
+        Metrics.PersistedSnapshotTrieBloomMemory = persistedSnapshotRepository.TrieBloomMemory;
         Metrics.ArenaFileCount = persistedSnapshotRepository.ArenaFileCount;
         Metrics.ArenaMappedBytes = persistedSnapshotRepository.ArenaMappedBytes;
         return true;
