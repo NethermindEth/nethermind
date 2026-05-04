@@ -466,17 +466,6 @@ internal static class SszCodecHelpers
     private static string EncodeValueExpression(SszProperty property, string expression) =>
         property.Kind is Kind.BitList or Kind.ProgressiveBitList ? $"{expression} ?? new BitArray(0)" : expression;
 
-    /// <summary>
-    /// Wraps <paramref name="expression"/> in a <see cref="System.ReadOnlySpan{T}"/>.
-    /// Both bridges return an empty span when the source is null.
-    /// </summary>
-    /// <remarks>
-    /// The non-array branch emits <c>CollectionsMarshal.AsSpan(...)</c>, which only accepts
-    /// <see cref="System.Collections.Generic.List{T}"/>. Declaring an SSZ property as
-    /// <c>IList&lt;T&gt;?</c>, <c>IReadOnlyList&lt;T&gt;?</c>, or any custom collection type will
-    /// produce a generated file that fails to compile — surface a clearer contract here if that
-    /// ever becomes a real constraint.
-    /// </remarks>
     private static string SpanExpression(SszProperty property, string expression) =>
         property.IsArrayProperty ? $"{expression}.AsSpan()" : $"CollectionsMarshal.AsSpan({expression})";
 
@@ -492,12 +481,6 @@ internal static class SszCodecHelpers
         }
     }
 
-    /// <summary>
-    /// Emits a single encode statement for a fixed-length (static) field at a known byte offset.
-    /// For types with <see cref="SszType.CustomEncodeTemplate"/>, expands the template inline
-    /// instead of routing through <c>SszLib.Encode</c> or <c>TypeName.Encode</c>.
-    /// Template placeholders: {0} = destination Span&lt;byte&gt; expression, {1} = value expression.
-    /// </summary>
     private static string StaticFieldEncodeStatement(SszProperty property, int staticOffset, string containerExpr)
     {
         string destSpan = $"data.Slice({staticOffset}, {property.StaticLength})";
@@ -562,16 +545,6 @@ internal static class SszCodecHelpers
         return string.IsNullOrEmpty(validation2) ? $"{decode} {assignment2}" : $"{decode} {assignment2} {validation2}";
     }
 
-    /// <summary>
-    /// Emits code that encodes a ref-typed basic (Hash256, Address, Bloom) to a stackalloc byte span
-    /// using its CustomEncodeTemplate, then merkleizes those raw bytes into <paramref name="rootName"/>.
-    /// Template placeholder: {0} = dest span expr, {1} = value expr.
-    /// </summary>
-    /// <summary>
-    /// Encodes a ref-typed basic (Hash256, Address, Bloom) to a stackalloc byte span then merkleizes it.
-    /// When rootName is of the form "UInt256 varName" (a declaration), the UInt256 is pre-declared
-    /// before the braced block so it stays in scope afterward.
-    /// </summary>
     private static string RefTypeBasicMerkleizeStatement(SszProperty property, string expression, string rootName)
     {
         int size = property.Type.StaticLength;
@@ -579,8 +552,6 @@ internal static class SszCodecHelpers
             .Replace("{0}", "__refBytes")
             .Replace("{1}", expression);
 
-        // If rootName includes the type ("UInt256 fooRoot"), pre-declare outside the block
-        // so the variable remains in scope after the closing brace.
         const string prefix = "UInt256 ";
         if (rootName.StartsWith(prefix))
         {
@@ -614,7 +585,6 @@ internal static class SszCodecHelpers
     private static string MerkleizeFeedStatement(SszProperty property, string expression) =>
         property.Kind switch
         {
-            // Ref-typed basics cannot be fed directly — compute their root first then feed it.
             Kind.Basic when property.Type.IsRefType => $"{MerkleizeRootStatement(property, expression, $"UInt256 {VarName(property.Name)}Root")} merkleizer.Feed({VarName(property.Name)}Root);",
             Kind.Basic or Kind.BitVector => $"merkleizer.Feed({expression});",
             Kind.BitList => $"merkleizer.Feed({expression} ?? new BitArray(0), {property.Limit});",
@@ -671,13 +641,21 @@ internal static class SszCodecHelpers
         }
         else if (property.Kind == Kind.ProgressiveBitList)
         {
-            arguments += $", {UnboundedBitlistLimit}"; // Progressive bitlists are intentionally unbounded.
+            arguments += $", {UnboundedBitlistLimit}";
         }
 
         return $"{(property.HandledByStd ? "SszLib.Encode" : $"{property.Type.Name}.Encode")}({arguments});";
     }
 
     private static bool RequiresNullGuard(SszProperty property) => !(property.Type.IsStruct || property.Kind is Kind.BitList or Kind.ProgressiveBitList);
+
+    private static string UsingsBlock(List<SszType> foundTypes) =>
+        string.Join("\n", foundTypes
+            .Select(x => x.Namespace)
+            .Distinct()
+            .OrderBy(x => x)
+            .Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz")
+            .Select(n => $"using {n};"));
 
     private static string? GenerateClassCode(SourceProductionContext context, SszType decl, List<SszType> foundTypes, Location? location)
     {
@@ -739,7 +717,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
+{UsingsBlock(foundTypes)}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -924,14 +902,15 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
     }}
 }}
 " :
-(decl.Kind == Kind.Container || decl.Kind == Kind.ProgressiveContainer) ? $@"using Nethermind.Merkleization;
+(decl.Kind == Kind.Container || decl.Kind == Kind.ProgressiveContainer) ?
+$@"using Nethermind.Merkleization;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
+{UsingsBlock(foundTypes)}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -1139,6 +1118,25 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 $@"using Nethermind.Merkleization;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices;
+using Nethermind.Serialization.Ssz;
+using static Nethermind.Serialization.SszCodecHelpers;
+{UsingsBlock(foundTypes)}
+{Whitespace}
+using SszLib = Nethermind.Serialization.Ssz.Ssz;
+{Whitespace}
+{NamespaceLine(decl)}
+{Whitespace}
+{PartialTypeDeclaration(decl)}
+{{
+    public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
+    {{
+        {(decl.IsStruct ? "" : @"if(container is null)
+        {
+            return 0;
+        }")}
+        switch(container.Selector) {{
 {Shift(3, decl.CompatibleUnionMembers!.Select(m =>
 {
     string validation = ValidationStatement(decl, m, $"container.{m.Name}");
