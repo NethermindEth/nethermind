@@ -26,7 +26,7 @@ using NonBlocking;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class TreeSync : ITreeSync
+    public class TreeSync
     {
         public const int AlreadySavedCapacity = 1024 * 1024;
         public const int MaxRequestSize = 384; // TODO: Consider using peer-specific limits from NodeStats
@@ -80,8 +80,6 @@ namespace Nethermind.Synchronization.FastSync
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
         private long _blockNumber;
-
-        public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
         public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, IStateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
@@ -788,11 +786,6 @@ namespace Nethermind.Synchronization.FastSync
             }
 
             CleanupMemory();
-
-            if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
-            {
-                SyncCompleted?.Invoke(this, new ITreeSync.SyncCompletedEventArgs(pivotHeader));
-            }
         }
 
         private void CleanupMemory()

@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Network.Config;
 using Nethermind.State;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
@@ -23,7 +22,6 @@ public class SynchronizerModuleTests
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(networkConfig))
             .AddModule(new SynchronizerModule(new TestSyncConfig()))
-            .AddSingleton(Substitute.For<ITreeSync>())
             .AddSingleton(Substitute.For<IWorldStateManager>())
             .Build();
 
