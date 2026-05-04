@@ -344,6 +344,49 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Refund_state_gas_marks_spilled_refund()
+    {
+        EthereumGasPolicy gas = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, 200), Is.True);
+
+        EthereumGasPolicy.RefundStateGas(ref gas, 80, stateGasFloor: 0);
+
+        Assert.That((gas.StateGasUsed, gas.StateReservoir, gas.StateGasSpill, gas.StateGasSpillRefunded),
+            Is.EqualTo((120L, 80L, 200L, 80L)));
+    }
+
+    [Test]
+    public void Refunded_spill_propagates_through_success_chain()
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 500);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref child, 200), Is.True);
+        EthereumGasPolicy.RefundStateGas(ref child, 80, stateGasFloor: 0);
+
+        EthereumGasPolicy.Refund(ref parent, in child);
+
+        Assert.That((parent.StateGasSpill, parent.StateGasSpillRefunded), Is.EqualTo((200L, 80L)));
+        Assert.That((parent.StateGasSpillReclassified, parent.StateGasSpillBurned), Is.EqualTo((0L, 0L)));
+    }
+
+    [Test]
+    public void Revert_with_partial_spill_refund_reclassifies_only_unrefunded_spill()
+    {
+        EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
+        EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 500);
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref child, 200), Is.True);
+        EthereumGasPolicy.RefundStateGas(ref child, 80, stateGasFloor: 0);
+
+        EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, initialStateReservoir: 0, childStateRefund: 80);
+
+        Assert.That(parent.StateGasSpillRefunded, Is.EqualTo(80L));
+        Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(120L),
+            "only the unrefunded spill is moved back to block regular gas");
+        Assert.That(parent.StateGasSpillBurned, Is.EqualTo(120L),
+            "only the unrefunded spill contributes to top-level halt reattribution");
+    }
+
+    [Test]
     public void Code_deposit_halt_does_not_restore_spilled_state_refund_above_initial_reservoir()
     {
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
