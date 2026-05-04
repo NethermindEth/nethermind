@@ -134,6 +134,7 @@ public class L1SloadPrecompileTests
 
     [TestCase(900ul, 1000ul, 700ul, false, Description = "Block 700 is 300 away from l1Origin 1000 — exceeds 256 lookback")]
     [TestCase(500ul, 1000ul, 744ul, true, Description = "Block 744 is exactly 256 from l1Origin 1000 — should be accepted")]
+    [TestCase(500ul, 1000ul, 743ul, false, Description = "Block 743 is 257 from l1Origin 1000 — one past the inclusive boundary")]
     [TestCase(500ul, 1000ul, 1000ul, true, Description = "Block 1000 == l1Origin 1000 — upper inclusive edge")]
     [TestCase(900ul, 1000ul, 1001ul, false, Description = "Block 1001 > l1Origin 1000 — must be rejected")]
     [TestCase(1100ul, 1000ul, 999ul, false, Description = "l1Origin 1000 < anchor 1100 is an invariant violation")]

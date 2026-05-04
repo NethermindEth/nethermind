@@ -14,7 +14,10 @@ internal static class L1PrecompileContextInitializer
     //   bytes [0..4)   = function selector
     //   bytes [4..36)  = uint48 anchorBlockId (right-padded to a 32-byte word)
     //   bytes [36..68) = bytes32 (the parent meta-hash; not consumed here)
-    // 4 + 32 + 32 = 68 — the minimum length we need before reading anchorBlockId.
+    // 4 + 32 + 32 = 68 — structural plausibility guard requiring the first two ABI
+    // words to be present before we slice anchorBlockId out (only 36 bytes are
+    // strictly needed for the slice itself; the extra 32 reject obviously-malformed
+    // calldata that wouldn't survive a real ABI decode).
     private const int AnchorV4MinimumLength = 68;
 
     // 4 selector + 32 uint48-word — exclusive end offset of the anchorBlockId ABI word,
