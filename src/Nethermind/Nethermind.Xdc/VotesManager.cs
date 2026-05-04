@@ -85,7 +85,11 @@ internal class VotesManager(
         // Collect votes
         _votePool.Add(vote);
         IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote);
-        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
+        IReadOnlyCollection<Vote> roundVotesFromOtherKeys = _votePool.GetItemsFromRoundExcludingKey(vote);
+        // Forensics is expected to run asynchronously and must not block vote processing.
+        // The two calls are complementary: one checks signer conflicts across pool keys in the same round,
+        // the other validates against committed-QC ancestry.
+        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotesFromOtherKeys);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
         if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)

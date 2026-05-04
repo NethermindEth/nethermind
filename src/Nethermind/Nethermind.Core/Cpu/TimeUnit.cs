@@ -106,13 +106,7 @@ public class TimeUnit : IEquatable<TimeUnit>
 
     public override int GetHashCode() => (((((Name is not null) ? Name.GetHashCode() : 0) * 397) ^ ((Description is not null) ? Description.GetHashCode() : 0)) * 397) ^ NanosecondAmount.GetHashCode();
 
-    public static bool operator ==(TimeUnit left, TimeUnit right)
-    {
-        return object.Equals(left, right);
-    }
+    public static bool operator ==(TimeUnit left, TimeUnit right) => object.Equals(left, right);
 
-    public static bool operator !=(TimeUnit left, TimeUnit right)
-    {
-        return !object.Equals(left, right);
-    }
+    public static bool operator !=(TimeUnit left, TimeUnit right) => !object.Equals(left, right);
 }

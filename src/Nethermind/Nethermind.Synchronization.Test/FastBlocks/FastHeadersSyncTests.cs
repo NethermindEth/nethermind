@@ -59,6 +59,39 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public void When_initialized_with_no_inserted_headers_progress_starts_at_zero()
+    {
+        // Regression test for issue #11447: Reset() with a null LowestInsertedBlockHeader used to fall
+        // back to 0, producing a current value of (_pivotNumber + 1) — visible as "Old Headers
+        // 24,998,904 / 24,998,903 (100.00 %)" right after a fresh FlatDB sync started.
+        const long pivotNumber = 1000;
+        BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        blockTree.SyncPivot = (pivotNumber, TestItem.KeccakA);
+
+        ISyncReport syncReport = new NullSyncReport();
+        using HeadersSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: Substitute.For<ISyncPeerPool>(),
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = pivotNumber,
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000"
+            },
+            poSSwitcher: Substitute.For<IPoSSwitcher>(),
+            syncReport: syncReport,
+            logManager: LimboLogs.Instance,
+            chainLevelInfoRepository: Substitute.For<IChainLevelInfoRepository>(),
+            headerStore: Substitute.For<IHeaderStore>());
+
+        feed.InitializeFeed();
+
+        syncReport.FastBlocksHeaders.CurrentValue.Should().Be(0);
+        syncReport.FastBlocksHeaders.TargetValue.Should().Be(pivotNumber);
+    }
+
+    [Test]
     public async Task Can_prepare_3_requests_in_a_row()
     {
         BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
