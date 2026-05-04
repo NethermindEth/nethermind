@@ -51,7 +51,7 @@ public class L1SloadPrecompileTests
     [Test]
     public void DataGasCost_With_Valid_Input_Should_Calculate_Correctly()
     {
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
         Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(L1PrecompileConstants.L1SloadPerLoadGasCost));
     }
 
@@ -79,7 +79,7 @@ public class L1SloadPrecompileTests
         UInt256 expectedValue = (UInt256)0x123456789abcdef;
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning(expectedValue);
 
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -94,7 +94,7 @@ public class L1SloadPrecompileTests
     public void Run_With_No_Provider_Should_Fail()
     {
         L1SloadPrecompile.L1StorageProvider = null;
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -107,7 +107,7 @@ public class L1SloadPrecompileTests
     {
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.ReturningNull();
 
-        byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1000, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(123), storageKey: (UInt256)1, blockNumber: (UInt256)1000);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -142,7 +142,7 @@ public class L1SloadPrecompileTests
     {
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
         L1PrecompileExecutionContext.Set(anchor: anchor, l1Origin: l1Origin);
-        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)blockNumber, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(1), storageKey: (UInt256)1, blockNumber: (UInt256)blockNumber);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -154,7 +154,7 @@ public class L1SloadPrecompileTests
     {
         L1SloadPrecompile.L1StorageProvider = MockL1StorageProvider.Returning((UInt256)42);
         L1PrecompileExecutionContext.Clear();
-        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)12_345, (UInt256)1);
+        byte[] input = CreateValidInput(Address.FromNumber(1), storageKey: (UInt256)1, blockNumber: (UInt256)12_345);
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -162,10 +162,10 @@ public class L1SloadPrecompileTests
     }
 
     /// <summary>
-    /// Input byte order matches spec: [address|storageKey|blockNumber].
-    /// Interface order is (address, blockNumber, storageKey) for consistency with L1STATICCALL.
+    /// Parameter order matches the wire layout [address | storageKey | blockNumber] so callers
+    /// constructing test bytes don't have to mentally invert anything.
     /// </summary>
-    private static byte[] CreateValidInput(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
+    private static byte[] CreateValidInput(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
         byte[] input = new byte[L1PrecompileConstants.L1SloadExpectedInputLength];
 

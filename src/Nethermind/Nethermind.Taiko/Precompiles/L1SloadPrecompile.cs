@@ -54,6 +54,12 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
             return Errors.InvalidInputLength;
         }
 
+        if (L1StorageProvider is null)
+        {
+            if (Logger.IsWarn) Logger.Warn("L1SLOAD: no L1StorageProvider configured");
+            return L1StorageAccessFailed;
+        }
+
         Address contractAddress = new(inputData.Span[..Address.Size]);
         UInt256 storageKey = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)], isBigEndian: true);
         UInt256 blockNumber = new(inputData.Span[(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)..], isBigEndian: true);
