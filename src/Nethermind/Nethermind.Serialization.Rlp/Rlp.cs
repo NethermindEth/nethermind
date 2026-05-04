@@ -72,7 +72,7 @@ namespace Nethermind.Serialization.Rlp
         public int Length => Bytes.Length;
 
         private static readonly Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder = new();
-        private static Lock _decoderLock = new();
+        private static readonly Lock _decoderLock = new();
 
         public static void ResetDecoders()
         {
@@ -1257,7 +1257,7 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
-            public byte[][] DecodeByteArrays()
+            public byte[][] DecodeByteArrays(RlpLimit? limit = null)
             {
                 int length = ReadSequenceLength();
                 if (length is 0)
@@ -1267,6 +1267,7 @@ namespace Nethermind.Serialization.Rlp
 
                 int checkPosition = Position + length;
                 int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
+                GuardLimit(itemsCount, limit);
                 byte[][] result = new byte[itemsCount][];
 
                 for (int i = 0; i < itemsCount; i++)
