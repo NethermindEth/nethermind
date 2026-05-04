@@ -21,10 +21,22 @@ public class McpServerPluginTests
     [Test]
     public void Plugin_is_disabled_by_default()
     {
-        // A fresh config has Enabled = false; before Init runs, the plugin reports disabled.
-        McpServerPlugin plugin = new();
+        // A fresh config has Enabled = false; the plugin must report disabled at the moment
+        // PluginLoader reads it (immediately after Autofac resolution, before Init).
+        McpServerPlugin plugin = new(new McpConfig(), LimboLogs.Instance);
 
         Assert.That(plugin.Enabled, Is.False);
+    }
+
+    [Test]
+    public void Plugin_reflects_config_Enabled_before_Init()
+    {
+        // Regression: PluginLoader inspects plugin.Enabled right after container build.
+        // The plugin must observe its config via constructor injection — not via Init —
+        // otherwise it gets filtered out and InitRpcModules never runs.
+        McpServerPlugin plugin = new(new McpConfig { Enabled = true }, LimboLogs.Instance);
+
+        Assert.That(plugin.Enabled, Is.True);
     }
 
     [Test]
@@ -41,9 +53,7 @@ public class McpServerPluginTests
 
         InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
         interfaceLogger.IsWarn.Returns(true);
-        INethermindApi api = BuildApi(config, interfaceLogger);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger);
         await plugin.Init(api);
 
         interfaceLogger.Received(1).Warn(Arg.Is<string>(s => s.Contains("MCP exposed without authentication")));
@@ -66,9 +76,7 @@ public class McpServerPluginTests
 
         InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
         interfaceLogger.IsWarn.Returns(true);
-        INethermindApi api = BuildApi(config, interfaceLogger);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger);
         await plugin.Init(api);
 
         interfaceLogger.DidNotReceive().Warn(Arg.Is<string>(s => s.Contains("MCP exposed without authentication")));
@@ -88,9 +96,7 @@ public class McpServerPluginTests
         InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
         McpWebHost host = Substitute.For<McpWebHost>();
         host.StartAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
-        INethermindApi api = BuildApi(config, interfaceLogger, host);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger, host);
         await plugin.Init(api);
         await plugin.InitRpcModules();
 
@@ -112,9 +118,7 @@ public class McpServerPluginTests
         interfaceLogger.IsError.Returns(true);
         McpWebHost host = Substitute.For<McpWebHost>();
         host.StartAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
-        INethermindApi api = BuildApi(config, interfaceLogger, host);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger, host);
         await plugin.Init(api);
         Assert.DoesNotThrowAsync(async () => await plugin.InitRpcModules());
 
@@ -134,9 +138,7 @@ public class McpServerPluginTests
 
         InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
         McpWebHost host = Substitute.For<McpWebHost>();
-        INethermindApi api = BuildApi(config, interfaceLogger, host);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger, host);
         await plugin.Init(api);
         await plugin.InitRpcModules();
 
@@ -156,9 +158,7 @@ public class McpServerPluginTests
 
         InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
         McpWebHost host = Substitute.For<McpWebHost>();
-        INethermindApi api = BuildApi(config, interfaceLogger, host);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger, host);
         await plugin.Init(api);
         await plugin.InitRpcModules();
 
@@ -181,9 +181,7 @@ public class McpServerPluginTests
         host.StartAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
         host.StopAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         host.DisposeAsync().Returns(default(System.Threading.Tasks.ValueTask));
-        INethermindApi api = BuildApi(config, interfaceLogger, host);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger, host);
         await plugin.Init(api);
         await plugin.InitRpcModules();
 
@@ -206,9 +204,7 @@ public class McpServerPluginTests
 
         InterfaceLogger interfaceLogger = Substitute.For<InterfaceLogger>();
         McpWebHost host = Substitute.For<McpWebHost>();
-        INethermindApi api = BuildApi(config, interfaceLogger, host);
-
-        McpServerPlugin plugin = new();
+        (INethermindApi api, McpServerPlugin plugin) = BuildContext(config, interfaceLogger, host);
         await plugin.Init(api);
 
         await plugin.DisposeAsync();
@@ -220,7 +216,7 @@ public class McpServerPluginTests
     [Test]
     public void Module_returns_McpServerPluginModule()
     {
-        McpServerPlugin plugin = new();
+        McpServerPlugin plugin = new(new McpConfig(), LimboLogs.Instance);
 
         Assert.That(plugin.Module, Is.InstanceOf<McpServerPluginModule>());
     }
@@ -228,7 +224,7 @@ public class McpServerPluginTests
     [Test]
     public void Plugin_metadata_is_set()
     {
-        McpServerPlugin plugin = new();
+        McpServerPlugin plugin = new(new McpConfig(), LimboLogs.Instance);
 
         Assert.That(plugin.Name, Is.EqualTo("Mcp"));
         Assert.That(plugin.Description, Is.EqualTo("Model Context Protocol server"));
@@ -236,7 +232,8 @@ public class McpServerPluginTests
         Assert.That(plugin.MustInitialize, Is.False);
     }
 
-    private static INethermindApi BuildApi(IMcpConfig config, InterfaceLogger interfaceLogger, McpWebHost? host = null)
+    private static (INethermindApi Api, McpServerPlugin Plugin) BuildContext(
+        IMcpConfig config, InterfaceLogger interfaceLogger, McpWebHost? host = null)
     {
         INethermindApi api = Substitute.For<INethermindApi>();
 
@@ -259,6 +256,9 @@ public class McpServerPluginTests
         IContainer container = builder.Build();
         api.Context.Returns(container);
 
-        return api;
+        // Construct the plugin with the same log manager wired to interfaceLogger so
+        // that warning/error assertions observe the plugin's actual log calls.
+        McpServerPlugin plugin = new(config, logManager);
+        return (api, plugin);
     }
 }
