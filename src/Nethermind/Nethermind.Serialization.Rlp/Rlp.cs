@@ -1340,7 +1340,7 @@ namespace Nethermind.Serialization.Rlp
                     case 128:
                         SkipBytes(1);
                         return 0;
-                    case 129 when PeekByte(Position + 1) < 128:
+                    case 129 when PeekByte(1) < 128:
                         RlpHelpers.ThrowNonCanonicalInteger(position);
                         return 0;
                     case 129:
