@@ -57,17 +57,13 @@ public class StateSyncRunner(
             }
             finally
             {
-                TuneStateDb(ITunableDb.TuneType.Default);
+                // Skip on shutdown so we don't touch DBs that may already be disposed.
+                if (!token.IsCancellationRequested) TuneStateDb(ITunableDb.TuneType.Default);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
             // Clean shutdown — swallow so Synchronizer doesn't log "State sync failed".
-        }
-        catch (ObjectDisposedException)
-        {
-            // DBs / stores can be torn down while sync is in progress on shutdown — same
-            // semantics as cancellation: swallow rather than logging "State sync failed".
         }
     }
 

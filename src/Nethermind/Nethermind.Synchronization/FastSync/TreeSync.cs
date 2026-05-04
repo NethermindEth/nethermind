@@ -66,11 +66,8 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IBlockTree _blockTree;
         private readonly IStateSyncPivot _stateSyncPivot;
 
-        // The five fields below were previously guarded by an RWLock so HandleResponse (read)
-        // could run concurrently with ResetStateRoot / CleanupMemory (write). The lock is no
-        // longer needed: SimpleDispatcher.Run drains all in-flight workers before returning,
-        // and StateSyncRunner only calls reset/cleanup outside dispatcher.Run, so the drain is
-        // the sole synchronisation barrier.
+        // SimpleDispatcher.Run drains in-flight workers before returning, and StateSyncRunner
+        // only resets / cleans up outside dispatcher.Run — the drain is the sole barrier.
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _ongoingRequests = new();
         private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
         private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
