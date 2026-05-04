@@ -27,9 +27,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.GnosisForks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
@@ -39,8 +37,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
-using Nethermind.Serialization.Json;
-using System.Reflection;
 using System.Text.Json;
 
 namespace Ethereum.Test.Base;
