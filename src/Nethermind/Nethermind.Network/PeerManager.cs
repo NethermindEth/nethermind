@@ -101,7 +101,7 @@ namespace Nethermind.Network
 
         public int MaxActivePeers => _networkConfig.MaxActivePeers + _peerPool.StaticPeerCount;
         public int ActivePeersCount => _peerPool.ActivePeerCount;
-        public int ConnectedPeersCount => _peerPool.ActivePeers.Select(static kvp => kvp.Value).Count(IsConnected);
+        public int ConnectedPeersCount => _peerPool.ActivePeers.Count(static kvp => IsConnected(kvp.Value));
         private int AvailableActivePeersCount => MaxActivePeers - _peerPool.ActivePeers.Count;
 
         /// <summary>
