@@ -96,15 +96,10 @@ public class StateSyncRunner(
 
         if (finalPivot is null) return;
 
-        if (_logger.IsInfo) _logger.Info("State sync completed.");
+        if (_logger.IsInfo) _logger.Info($"STATE SYNC FINISHED:{Metrics.StateSyncRequests}, {Metrics.SyncedStateTrieNodes}");
 
-        // FinalizeSync used to be invoked inside TreeSync.SaveNode's IsRoot branch, where
-        // GetPivotHeader's mutating side effect could race with concurrent root-saves
-        // (svlachakis #11457/#11458). Calling it here, with the captured per-round pivot,
-        // serialises the pivot read against in-flight handlers and pins the pivot value.
         treeSync.VerifyPostSyncCleanUp();
-        try { treeSync.FinalizeSync(finalPivot); }
-        catch (ObjectDisposedException) { }
+        treeSync.FinalizeSync(finalPivot);
 
         if (syncConfig.VerifyTrieOnStateSyncFinished)
             verifyTrieStarter?.TryStartVerifyTrie(finalPivot);
