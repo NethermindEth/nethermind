@@ -110,19 +110,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         return true;
     }
 
-    public bool IsTrusted(Enode enode)
-    {
-        if (enode.PublicKey is null)
-        {
-            return false;
-        }
-        if (_nodes.TryGetValue(enode.PublicKey, out NetworkNode storedNode))
-        {
-            // Compare not only the public key, but also the host and port.
-            return storedNode.Host == enode.HostIp?.ToString() && storedNode.Port == enode.Port;
-        }
-        return false;
-    }
+    public bool IsTrusted(Enode enode) => _nodes.ContainsKey(enode.PublicKey);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 

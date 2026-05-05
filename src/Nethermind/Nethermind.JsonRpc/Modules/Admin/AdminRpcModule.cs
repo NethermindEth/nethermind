@@ -99,6 +99,12 @@ public class AdminRpcModule : IAdminRpcModule
     public async Task<ResultWrapper<bool>> admin_addTrustedPeer(string enode, bool persistent = false)
     {
         if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
+
+        if (_trustedNodesManager.IsTrusted(enodeObj!))
+        {
+            return ResultWrapper<bool>.Success(true);
+        }
+
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         // GetOrAdd in finally guarantees the synchronous-pool-insertion contract holds even if
