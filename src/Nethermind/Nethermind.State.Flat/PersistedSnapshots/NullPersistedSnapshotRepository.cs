@@ -16,8 +16,6 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public int SnapshotCount => 0;
     public long BaseSnapshotMemory => 0;
     public long CompactedSnapshotMemory => 0;
-    public long KeyBloomMemory => 0;
-    public long TrieBloomMemory => 0;
     public int ArenaFileCount => 0;
     public long ArenaMappedBytes => 0;
     public PersistedSnapshotBloomFilterManager BloomManager { get; } = new();

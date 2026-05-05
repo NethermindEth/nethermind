@@ -39,8 +39,6 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count + _persistableCompactedSnapshots.Count;
     public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
     public long CompactedSnapshotMemory => SumMemory(_compactedSnapshots) + SumMemory(_persistableCompactedSnapshots);
-    public long KeyBloomMemory => _bloomManager.TotalKeyBloomBytes;
-    public long TrieBloomMemory => _bloomManager.TotalTrieBloomBytes;
     public int ArenaFileCount => _baseArenaManager.ArenaFileCount + _compactedArenaManager.ArenaFileCount;
     public long ArenaMappedBytes => _baseArenaManager.ArenaMappedBytes + _compactedArenaManager.ArenaMappedBytes;
 

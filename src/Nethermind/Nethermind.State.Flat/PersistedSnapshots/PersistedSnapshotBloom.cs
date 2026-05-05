@@ -12,14 +12,28 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// <see cref="PersistedSnapshotBloomFilterManager"/>; the manager and any read-side
 /// lessees each hold one lease, so the underlying <see cref="BloomFilter"/>s are
 /// only released when every slot and every reader has disposed its lease.
+///
+/// On construction/cleanup the wrapper updates
+/// <see cref="Metrics.PersistedSnapshotKeyBloomMemory"/> and
+/// <see cref="Metrics.PersistedSnapshotTrieBloomMemory"/> incrementally, so the
+/// gauges always reflect the live bloom set without a polling pass.
 /// </summary>
-public sealed class PersistedSnapshotBloom(StateId from, StateId to, BloomFilter keyBloom, BloomFilter trieBloom)
-    : RefCountingDisposable
+public sealed class PersistedSnapshotBloom : RefCountingDisposable
 {
-    public BloomFilter KeyBloom { get; } = keyBloom;
-    public BloomFilter TrieBloom { get; } = trieBloom;
-    public StateId From { get; } = from;
-    public StateId To { get; } = to;
+    public BloomFilter KeyBloom { get; }
+    public BloomFilter TrieBloom { get; }
+    public StateId From { get; }
+    public StateId To { get; }
+
+    public PersistedSnapshotBloom(StateId from, StateId to, BloomFilter keyBloom, BloomFilter trieBloom)
+    {
+        From = from;
+        To = to;
+        KeyBloom = keyBloom;
+        TrieBloom = trieBloom;
+        Interlocked.Add(ref Metrics._persistedSnapshotKeyBloomMemory, keyBloom.DataBytes);
+        Interlocked.Add(ref Metrics._persistedSnapshotTrieBloomMemory, trieBloom.DataBytes);
+    }
 
     /// <summary>Lease for an additional concurrent user. Returns false if already disposed.</summary>
     public bool TryAcquire() => TryAcquireLease();
@@ -31,6 +45,8 @@ public sealed class PersistedSnapshotBloom(StateId from, StateId to, BloomFilter
 
     protected override void CleanUp()
     {
+        Interlocked.Add(ref Metrics._persistedSnapshotKeyBloomMemory, -KeyBloom.DataBytes);
+        Interlocked.Add(ref Metrics._persistedSnapshotTrieBloomMemory, -TrieBloom.DataBytes);
         KeyBloom.Dispose();
         TrieBloom.Dispose();
     }

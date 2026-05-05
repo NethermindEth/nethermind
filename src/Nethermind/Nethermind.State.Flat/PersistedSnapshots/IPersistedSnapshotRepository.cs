@@ -12,8 +12,6 @@ public interface IPersistedSnapshotRepository : IDisposable
     int SnapshotCount { get; }
     long BaseSnapshotMemory { get; }
     long CompactedSnapshotMemory { get; }
-    long KeyBloomMemory { get; }
-    long TrieBloomMemory { get; }
     int ArenaFileCount { get; }
     long ArenaMappedBytes { get; }
     PersistedSnapshotBloomFilterManager BloomManager { get; }

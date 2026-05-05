@@ -130,21 +130,6 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
         return pruned;
     }
 
-    public long TotalKeyBloomBytes => SumDistinctBytes(static b => b.KeyBloomBytes);
-    public long TotalTrieBloomBytes => SumDistinctBytes(static b => b.TrieBloomBytes);
-
-    private long SumDistinctBytes(Func<PersistedSnapshotBloom, long> selector)
-    {
-        // Distinct instances only — the same bloom may live in many slots.
-        HashSet<PersistedSnapshotBloom> seen = new(ReferenceEqualityComparer.Instance);
-        long total = 0;
-        foreach (KeyValuePair<StateId, BloomEntry> kv in _blooms)
-        {
-            if (seen.Add(kv.Value.Bloom)) total += selector(kv.Value.Bloom);
-        }
-        return total;
-    }
-
     public void Dispose()
     {
         foreach (KeyValuePair<StateId, BloomEntry> kv in _blooms)
