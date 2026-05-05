@@ -23,7 +23,6 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
