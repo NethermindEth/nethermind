@@ -16,7 +16,7 @@ using PatternAnalyzerFileTracer = Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern
 namespace Nethermind.StatsAnalyzer.Plugin;
 
 public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, ICallAnalyzerConfig callAnalyzerConfig)
-    : INethermindPlugin
+    : INethermindPlugin, IAsyncDisposable
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private INethermindApi _api = null!;
