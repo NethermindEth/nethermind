@@ -97,12 +97,15 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
             _logger.Info($"Trusted node was removed: {enode}");
         }
 
+        // Fire NodeRemoved (drives PeerPool disconnect via the event chain) BEFORE the file write,
+        // so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected.
+        // Mirrors StaticNodesManager.RemoveAsync ordering.
+        OnNodeRemoved(networkNode);
+
         if (updateFile)
         {
             await SaveFileAsync(cancellationToken);
         }
-
-        OnNodeRemoved(networkNode);
 
         return true;
     }
