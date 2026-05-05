@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -15,9 +16,7 @@ public class NGramTests
         get
         {
             yield return new TestCaseData(new[] { Instruction.POP },
-                    new Instruction[][]
-                    {
-                    })
+                    Array.Empty<Instruction[]>())
                 .SetName("OneGramTest");
             yield return new TestCaseData(new[] { Instruction.POP, Instruction.POP },
                     new Instruction[][]
@@ -160,8 +159,8 @@ public class NGramTests
         var ngram = new NGram(testcase);
 
 
-        Assert.That(ngram.GetSubsequences().Count() == expectedSubsequences.Count(),
-            $"Found: {ngram.GetSubsequences().Count()}, Expected: {expectedSubsequences.Count()}");
+        Assert.That(ngram.GetSubsequences().Count() == expectedSubsequences.Length,
+            $"Found: {ngram.GetSubsequences().Count()}, Expected: {expectedSubsequences.Length}");
 
         var expectedSubsequence = 0;
 

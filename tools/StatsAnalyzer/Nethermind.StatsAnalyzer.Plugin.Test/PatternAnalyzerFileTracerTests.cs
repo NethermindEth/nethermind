@@ -7,6 +7,7 @@ using Nethermind.Core.Resettables;
 using Nethermind.Evm;
 using Nethermind.Evm.Test;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 using Nethermind.StatsAnalyzer.Plugin.Types;
@@ -42,7 +43,7 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         _fileSystem.Directory.CreateDirectory(_fileSystem.Path.GetTempPath());
         _fileSystem.File.WriteAllText(_testFileName, "File content");
         _fileSystem.File.WriteAllText(_testIgnoreFileName, "File content");
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<PatternAnalyzerFileTracerTests>();
 
         var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _patternStatsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
