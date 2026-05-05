@@ -123,12 +123,15 @@ public class HsstLeafHashProbeTests
 
         // Force a single leaf by allowing 255 entries per leaf.
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
-        HsstBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(),
-            leafHashProbeMode: HashProbeMode.OneByte);
+        HsstBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), new HsstBTreeOptions
+        {
+            LeafHashProbeMode = HashProbeMode.OneByte,
+            MaxLeafEntries = 255,
+        });
         try
         {
             for (int i = 0; i < count; i++) builder.Add(keys[i], values[i]);
-            builder.Build(maxLeafEntries: 255);
+            builder.Build();
         }
         finally
         {

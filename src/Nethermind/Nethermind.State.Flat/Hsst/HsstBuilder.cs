@@ -42,32 +42,21 @@ namespace Nethermind.State.Flat.Hsst;
 public ref struct HsstBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
-    /// <summary>
-    /// Default maximum entries per leaf B-tree node. Above this, the builder splits and
-    /// promotes a separator into an intermediate node.
-    /// </summary>
-    public const int MaxLeafEntries = 256;
-
     private ref TWriter _writer;
     private int _writtenBeforeValue;
     private readonly int _baseOffset;
-
-    private readonly int _minSeparatorLength;
-    private readonly bool _inlineValues;
-    private readonly bool _useHashIndex;
-    private readonly double _hashIndexTargetUtilization;
-    private readonly HashProbeMode _leafHashProbeMode;
+    private readonly HsstBTreeOptions _options;
 
     // Working buffers allocated from NativeMemory
     private NativeMemoryListRef<byte> _separatorBuffer;
     private NativeMemoryListRef<HsstEntry> _entriesBuffer;
     private NativeMemoryListRef<byte> _prevKeyBuffer;
 
-    // Inline value buffers (only allocated when _inlineValues is true)
+    // Inline value buffers (only allocated when InlineValues is true)
     private NativeMemoryListRef<byte> _inlineValueBuffer;
     private NativeMemoryListRef<int> _inlineValueLengths;
 
-    // Hash index entry hashes (only allocated when _useHashIndex is true)
+    // Hash index entry hashes (only allocated when UseHashIndex or LeafHashProbeMode != None)
     private NativeMemoryListRef<uint> _entryHashes;
 
     public readonly struct HsstEntry(int sepOffset, int sepLen, int metadataStart)
@@ -88,20 +77,17 @@ public ref struct HsstBuilder<TWriter>
     /// <paramref name="expectedKeyCount"/> sizes the entry/separator working buffers up front;
     /// pass an estimate when known to avoid resize allocations. The buffers still grow on demand.
     /// </summary>
-    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false, int expectedKeyCount = 16, bool useHashIndex = false, double hashIndexTargetUtilization = 0.75, HashProbeMode leafHashProbeMode = HashProbeMode.None)
+    public HsstBuilder(ref TWriter writer, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
     {
-        if (useHashIndex && inlineValues)
+        HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
+        if (opts.UseHashIndex && opts.InlineValues)
             throw new NotSupportedException("Hash index is not supported with inline values.");
-        if (useHashIndex && !(hashIndexTargetUtilization > 0.1 && hashIndexTargetUtilization <= 1.0))
-            throw new ArgumentOutOfRangeException(nameof(hashIndexTargetUtilization), "Must be in (0.1, 1.0].");
+        if (opts.UseHashIndex && !(opts.HashIndexTargetUtilization > 0.1 && opts.HashIndexTargetUtilization <= 1.0))
+            throw new ArgumentOutOfRangeException(nameof(options), "HashIndexTargetUtilization must be in (0.1, 1.0].");
 
         _writer = ref writer;
         _baseOffset = _writer.Written;
-        _minSeparatorLength = minSeparatorLength;
-        _inlineValues = inlineValues;
-        _useHashIndex = useHashIndex;
-        _hashIndexTargetUtilization = hashIndexTargetUtilization;
-        _leafHashProbeMode = leafHashProbeMode;
+        _options = opts;
 
         // Heuristic: ~32 bytes per separator/value. The buffers grow as needed.
         int byteCap = Math.Max(64, expectedKeyCount * 32);
@@ -109,19 +95,19 @@ public ref struct HsstBuilder<TWriter>
         _entriesBuffer = new NativeMemoryListRef<HsstEntry>(expectedKeyCount);
         _prevKeyBuffer = new NativeMemoryListRef<byte>(256);
 
-        if (inlineValues)
+        if (opts.InlineValues)
         {
             _inlineValueBuffer = new NativeMemoryListRef<byte>(byteCap);
             _inlineValueLengths = new NativeMemoryListRef<int>(expectedKeyCount);
         }
 
-        if (useHashIndex || leafHashProbeMode != HashProbeMode.None)
+        if (opts.UseHashIndex || opts.LeafHashProbeMode != HashProbeMode.None)
         {
             _entryHashes = new NativeMemoryListRef<uint>(expectedKeyCount);
         }
     }
 
-    private bool NeedsEntryHashes => _useHashIndex || _leafHashProbeMode != HashProbeMode.None;
+    private bool NeedsEntryHashes => _options.UseHashIndex || _options.LeafHashProbeMode != HashProbeMode.None;
 
     /// <summary>
     /// Free working NativeMemory buffers.
@@ -131,7 +117,7 @@ public ref struct HsstBuilder<TWriter>
         _separatorBuffer.Dispose();
         _entriesBuffer.Dispose();
         _prevKeyBuffer.Dispose();
-        if (_inlineValues)
+        if (_options.InlineValues)
         {
             _inlineValueBuffer.Dispose();
             _inlineValueLengths.Dispose();
@@ -148,7 +134,7 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public ref TWriter BeginValueWrite()
     {
-        if (_inlineValues) throw new NotSupportedException("BeginValueWrite not supported in inline mode. Use Add() instead.");
+        if (_options.InlineValues) throw new NotSupportedException("BeginValueWrite not supported in inline mode. Use Add() instead.");
         _writtenBeforeValue = _writer.Written;
         return ref _writer;
     }
@@ -159,7 +145,7 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
     {
-        if (_inlineValues) throw new NotSupportedException("FinishValueWrite not supported in inline mode. Use Add() instead.");
+        if (_options.InlineValues) throw new NotSupportedException("FinishValueWrite not supported in inline mode. Use Add() instead.");
         ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
 
         int actualLen = _writer.Written - _writtenBeforeValue;
@@ -171,7 +157,7 @@ public ref struct HsstBuilder<TWriter>
             _prevKeyBuffer.AsSpan(),
             key,
             nextKey: default,
-            _minSeparatorLength);
+            _options.MinSeparatorLength);
 
         int sepOffset = _separatorBuffer.Count;
         _separatorBuffer.AddRange(key[..sepLen]);
@@ -209,7 +195,7 @@ public ref struct HsstBuilder<TWriter>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
-        if (_inlineValues)
+        if (_options.InlineValues)
         {
             // Inline: separator = full key, buffer value separately
             int sepOffset = _separatorBuffer.Count;
@@ -242,11 +228,13 @@ public ref struct HsstBuilder<TWriter>
     /// The root index node is readable from the end via its MetadataLength byte; the IndexType
     /// byte sits one byte further out, at the very end of the HSST.
     /// </summary>
-    public void Build(int maxLeafEntries = MaxLeafEntries)
+    public void Build()
     {
         ReadOnlySpan<uint> entryHashes = NeedsEntryHashes ? _entryHashes.AsSpan() : default;
+        int maxLeafEntries = _options.MaxLeafEntries;
+        int maxIntermediateEntries = _options.MaxIntermediateEntries;
 
-        if (_inlineValues)
+        if (_options.InlineValues)
         {
             // Inline: no data section, index starts at byte 0 of the HSST.
             int absoluteIndexStart = 0;
@@ -257,9 +245,9 @@ public ref struct HsstBuilder<TWriter>
                 _inlineValueBuffer.AsSpan(),
                 _inlineValueLengths.AsSpan(),
                 entryHashes,
-                _leafHashProbeMode);
+                _options.LeafHashProbeMode);
 
-            indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
+            indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries);
         }
         else
         {
@@ -269,15 +257,15 @@ public ref struct HsstBuilder<TWriter>
                 ref _writer, _entriesBuffer.AsSpan(),
                 _separatorBuffer.AsSpan(),
                 entryHashes,
-                _leafHashProbeMode);
+                _options.LeafHashProbeMode);
 
-            indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
+            indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries);
         }
 
         // Optional hash index section. Empty HSSTs fall back to plain BTree because
         // a 0-entry table has no benefit and an empty data region would make the
         // 0 sentinel ambiguous.
-        bool emitHashIndex = _useHashIndex && _entriesBuffer.Count > 0;
+        bool emitHashIndex = _options.UseHashIndex && _entriesBuffer.Count > 0;
         if (emitHashIndex)
         {
             EmitHashTable();
@@ -286,7 +274,7 @@ public ref struct HsstBuilder<TWriter>
         // Trailing IndexType byte (last byte of the HSST).
         IndexType tag;
         if (emitHashIndex) tag = IndexType.BTreeHashIndex;
-        else if (_inlineValues) tag = IndexType.BTreeInlineValue;
+        else if (_options.InlineValues) tag = IndexType.BTreeInlineValue;
         else tag = IndexType.BTree;
         Span<byte> tail = _writer.GetSpan(1);
         tail[0] = (byte)tag;
@@ -299,7 +287,7 @@ public ref struct HsstBuilder<TWriter>
         ReadOnlySpan<uint> hashes = _entryHashes.AsSpan();
         int n = entries.Length;
 
-        int tableSize = HsstHash.BucketCount(n, _hashIndexTargetUtilization);
+        int tableSize = HsstHash.BucketCount(n, _options.HashIndexTargetUtilization);
         int log2 = BitOperations.TrailingZeroCount(tableSize);
         uint mask = (uint)(tableSize - 1);
 

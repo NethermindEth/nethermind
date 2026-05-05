@@ -257,9 +257,12 @@ public static class PersistedSnapshotBuilder
 
         // Address-level HSST
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> addressLevel = new(ref addressWriter, minSeparatorLength: 2, expectedKeyCount: uniqueAddresses.Count,
-            useHashIndex: hashIndex.ForAddressIndex,
-            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
+        using HsstBuilder<TWriter> addressLevel = new(ref addressWriter, new HsstBTreeOptions
+        {
+            MinSeparatorLength = 2,
+            UseHashIndex = hashIndex.ForAddressIndex,
+            HashIndexTargetUtilization = hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75,
+        }, expectedKeyCount: uniqueAddresses.Count);
         byte[] rlpBuffer = new byte[256];
         RlpStream rlpStream = new(rlpBuffer);
         Span<byte> slotKey = stackalloc byte[32];
@@ -286,7 +289,7 @@ public static class PersistedSnapshotBuilder
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBuilder<TWriter> prefixLevel = new(ref slotWriter, minSeparatorLength: 2);
+                using HsstBuilder<TWriter> prefixLevel = new(ref slotWriter, new HsstBTreeOptions { MinSeparatorLength = 2 });
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.Bytes.SequenceEqual(address.Bytes))
@@ -296,7 +299,7 @@ public static class PersistedSnapshotBuilder
                     ReadOnlySpan<byte> currentPrefix = currentPrefixBuf;
 
                     ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
-                    using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, minSeparatorLength: 2, inlineValues: true);
+                    using HsstBuilder<TWriter> suffixLevel = new(ref suffixWriter, new HsstBTreeOptions { MinSeparatorLength = 2, InlineValues = true });
 
                     while (storageIdx < sortedStorages.Count &&
                         sortedStorages[storageIdx].Key.Addr.Bytes.SequenceEqual(address.Bytes))
@@ -367,9 +370,12 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 3, expectedKeyCount: stateNodes.Count,
-            useHashIndex: hashIndex.ForTriesIndex,
-            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
+        {
+            MinSeparatorLength = 3,
+            UseHashIndex = hashIndex.ForTriesIndex,
+            HashIndexTargetUtilization = hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75,
+        }, expectedKeyCount: stateNodes.Count);
         Span<byte> keyBuffer = stackalloc byte[3];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
@@ -385,9 +391,12 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8, expectedKeyCount: stateNodes.Count,
-            useHashIndex: hashIndex.ForTriesIndex,
-            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
+        {
+            MinSeparatorLength = 8,
+            UseHashIndex = hashIndex.ForTriesIndex,
+            HashIndexTargetUtilization = hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75,
+        }, expectedKeyCount: stateNodes.Count);
         Span<byte> keyBuffer = stackalloc byte[8];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
@@ -403,9 +412,11 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, expectedKeyCount: stateNodes.Count,
-            useHashIndex: hashIndex.ForTriesIndex,
-            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
+        {
+            UseHashIndex = hashIndex.ForTriesIndex,
+            HashIndexTargetUtilization = hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75,
+        }, expectedKeyCount: stateNodes.Count);
         Span<byte> keyBuffer = stackalloc byte[33];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
@@ -423,7 +434,7 @@ public static class PersistedSnapshotBuilder
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2);
+        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, new HsstBTreeOptions { MinSeparatorLength = 2 });
         Span<byte> pathKey = stackalloc byte[8];
         int i = 0;
         while (i < storageNodes.Count)
@@ -431,9 +442,12 @@ public static class PersistedSnapshotBuilder
             Hash256 currentHash = storageNodes[i].Key.Addr;
 
             ref TWriter innerWriter = ref hashLevel.BeginValueWrite();
-            using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8,
-                useHashIndex: hashIndex.ForTriesIndex,
-                hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
+            using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
+            {
+                MinSeparatorLength = 8,
+                UseHashIndex = hashIndex.ForTriesIndex,
+                HashIndexTargetUtilization = hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75,
+            });
 
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {
@@ -456,7 +470,7 @@ public static class PersistedSnapshotBuilder
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, minSeparatorLength: 2);
+        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, new HsstBTreeOptions { MinSeparatorLength = 2 });
         Span<byte> pathKey = stackalloc byte[33];
         int i = 0;
         while (i < storageNodes.Count)
@@ -464,9 +478,11 @@ public static class PersistedSnapshotBuilder
             Hash256 currentHash = storageNodes[i].Key.Addr;
 
             ref TWriter innerWriter = ref hashLevel.BeginValueWrite();
-            using HsstBuilder<TWriter> inner = new(ref innerWriter,
-                useHashIndex: hashIndex.ForTriesIndex,
-                hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
+            using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
+            {
+                UseHashIndex = hashIndex.ForTriesIndex,
+                HashIndexTargetUtilization = hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75,
+            });
 
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {
@@ -553,7 +569,7 @@ public static class PersistedSnapshotBuilder
         int minSeparatorLength = 0) where TWriter : IByteBufferWriter
     {
         SpanByteReader reader = new(column);
-        HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues: true);
+        HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength, InlineValues = true });
         using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, column.Length));
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
@@ -581,7 +597,7 @@ public static class PersistedSnapshotBuilder
     {
         int columnOffsetInSnapshot = SpanOffset(snapshotData, column);
         SpanByteReader reader = new(column);
-        HsstBuilder<TWriter> builder = new(ref writer, outerMinSep);
+        HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
         using HsstEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, column.Length));
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
@@ -590,7 +606,7 @@ public static class PersistedSnapshotBuilder
             Bound innerScope = outerEnum.Current.ValueBound;
 
             ref TWriter innerWriter = ref builder.BeginValueWrite();
-            HsstBuilder<TWriter> innerBuilder = new(ref innerWriter, innerMinSep, inlineValues: true);
+            HsstBuilder<TWriter> innerBuilder = new(ref innerWriter, new HsstBTreeOptions { MinSeparatorLength = innerMinSep, InlineValues = true });
             using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerScope);
 
             while (innerEnum.MoveNext())
@@ -730,7 +746,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
-            using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
+            using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength, InlineValues = inlineValues });
 
             while (true)
             {
@@ -793,7 +809,7 @@ public static class PersistedSnapshotBuilder
         ref TWriter writer,
         int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false) where TWriter : IByteBufferWriter
     {
-        using HsstBuilder<TWriter> builder = new(ref writer, outerMinSep);
+        using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
         // Temp list for collecting matching source indices
         using ArrayPoolList<int> matchingSourcesList = new(n, n);
@@ -881,7 +897,7 @@ public static class PersistedSnapshotBuilder
                 innerHasMore[j] = innerEnums[j].MoveNext(innerSpan);
             }
 
-            using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength, inlineValues);
+            using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength, InlineValues = inlineValues });
 
             while (true)
             {
@@ -998,7 +1014,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
-            using HsstBuilder<TWriter> builder = new(ref writer, minSeparatorLength: 2);
+            using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 2 });
 
             while (true)
             {

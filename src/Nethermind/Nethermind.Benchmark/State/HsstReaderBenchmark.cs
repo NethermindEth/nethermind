@@ -61,7 +61,11 @@ public class HsstReaderBenchmark
 
         using PooledByteBufferWriter pooled = new(1024 * 1024 * 1024);
         HsstBuilder<PooledByteBufferWriter.Writer> builder = new(
-            ref pooled.GetWriter(), minSeparatorLength: MinSep);
+            ref pooled.GetWriter(), new HsstBTreeOptions
+            {
+                MinSeparatorLength = MinSep,
+                MaxLeafEntries = MaxLeafEntries,
+            });
         try
         {
             Span<byte> value = stackalloc byte[8];
@@ -71,7 +75,7 @@ public class HsstReaderBenchmark
                     value[7 - b] = (byte)((ulong)i >> (b * 8));
                 builder.Add(keys[i], value);
             }
-            builder.Build(MaxLeafEntries);
+            builder.Build();
             _hsst = pooled.WrittenSpan.ToArray();
         }
         finally
