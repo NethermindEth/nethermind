@@ -81,10 +81,17 @@ public class AdminRpcModule : IAdminRpcModule
 
         // Static-set removal triggers session disconnect via the NodeRemoved event chain
         // (CompositeNodeSource -> PeerPool.NodeSourceOnNodeRemoved -> TryRemove -> MarkDisconnected).
-        // The direct TryRemove below is the idempotent fallback for non-static (discovered) peers,
+        // The direct TryRemove in finally is the idempotent fallback for non-static (discovered) peers,
         // matching geth's Server.RemovePeer which works on any connected peer regardless of static membership.
-        await _staticNodesManager.RemoveAsync(networkNode!, updateFile: persistent, timeout.Token);
-        _peerPool.TryRemove(networkNode!.NodeId, out _);
+        // The finally guarantees the fallback runs even if SaveFileAsync is cancelled (persistent=true + RPC timeout).
+        try
+        {
+            await _staticNodesManager.RemoveAsync(networkNode!, updateFile: persistent, timeout.Token);
+        }
+        finally
+        {
+            _peerPool.TryRemove(networkNode!.NodeId, out _);
+        }
         return ResultWrapper<bool>.Success(true);
     }
 
@@ -93,8 +100,18 @@ public class AdminRpcModule : IAdminRpcModule
         if (TryParseAsEnode(enode, out Enode? enodeObj) is { } error) return error;
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
-        await _trustedNodesManager.AddAsync(enodeObj!, updateFile: persistent, timeout.Token);
-        _peerPool.GetOrAdd(new NetworkNode(enodeObj!));
+        // GetOrAdd in finally guarantees the synchronous-pool-insertion contract holds even if
+        // AddAsync is cancelled (persistent=true + RPC timeout, or channel-write cancellation):
+        // without this, a peer could be added to the trusted in-memory dict but never reach the pool
+        // because the channel feed it depends on was aborted.
+        try
+        {
+            await _trustedNodesManager.AddAsync(enodeObj!, updateFile: persistent, timeout.Token);
+        }
+        finally
+        {
+            _peerPool.GetOrAdd(new NetworkNode(enodeObj!));
+        }
         return ResultWrapper<bool>.Success(true);
     }
 
