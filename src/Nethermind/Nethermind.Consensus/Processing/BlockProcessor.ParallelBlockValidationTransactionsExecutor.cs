@@ -44,7 +44,7 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
 
             return !block.IsGenesis && balManager.ParallelExecutionEnabled
-                ? ProcessTransactionsParallel(block, processingOptions, token)
+                ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
         }
 
@@ -79,7 +79,7 @@ public partial class BlockProcessor
             return [.. receiptsTracer.TxReceipts];
         }
 
-        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, CancellationToken token)
+        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
         {
             int len = block.Transactions.Length;
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
@@ -97,91 +97,115 @@ public partial class BlockProcessor
 
             try
             {
-                // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
-                ParallelUnbalancedWork.For(
-                    0,
-                    len + 1,
-                    ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
-                    static (i, state) =>
-                    {
-                        if (i == 0)
-                        {
-                            // ApplyStateChanges mutates the shared stateProvider so runs inside
-                            // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                            // workers read from BAL-backed world states, not stateProvider.
-                            BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
-                            return state;
-                        }
-
-                        int txIndex = i - 1;
-                        Transaction tx = state.txs[txIndex];
-                        try
-                        {
-                            // The using block detaches the worker's BAL into _perTxBal[i] and
-                            // recycles the pool slot via Dispose BEFORE we signal the gas result,
-                            // so the validator finds _perTxBal[i] populated when it awaits
-                            // gasResults[i-1] — even if ProcessTransaction throws.
-                            using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)i))
-                            {
-                                ProcessTransaction(
-                                    lease.Adapter,
-                                    state.stateProvider,
-                                    state.block,
-                                    tx,
-                                    txIndex,
-                                    state.receiptsTracers[txIndex],
-                                    state.processingOptions);
-                            }
-                            state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
-                        }
-                        catch (InvalidBlockException ex)
-                        {
-                            // A rejected tx contributes nothing to block accumulators —
-                            // the sequential path never reaches gas accounting for it because
-                            // the exception bubbles up immediately. IncrementalValidation also
-                            // rethrows on `ex is not null` before doing any accounting, so the
-                            // tuple values here are observed only as cross-mode telemetry; we
-                            // still report (0, 0) so any future consumer agrees with sequential.
-                            state.gasResults[txIndex].SetResult((0, 0, ex));
-                        }
-                        catch
-                        {
-                            // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
-                            // if an unexpected exception escapes the worker (e.g. NRE, OCE).
-                            // SetCanceled unblocks the inner GetAwaiter().GetResult() loop.
-                            state.gasResults[txIndex].TrySetCanceled();
-                            throw;
-                        }
-
-                        return state;
-                    });
-            }
-            catch
-            {
-                // Observe the background task before propagating, so its exception isn't lost
-                // as an unobserved task exception. The worker's TrySetCanceled above guarantees
-                // IncrementalValidation will unblock and complete.
                 try
                 {
-                    incrementalValidationTask.GetAwaiter().GetResult();
-                }
-                catch (TaskCanceledException)
-                {
-                    // Expected: induced by our own TrySetCanceled in the worker catch.
-                }
-                catch (Exception ex)
-                {
-                    // Independent secondary fault (BAL validator, gas check, etc.). Surfacing
-                    // here because the original exception is what we rethrow — this branch is
-                    // the only place this fault is observable.
-                    if (_logger.IsError) _logger.Error("BAL incremental validation faulted while a parallel worker was already failing.", ex);
-                }
-                throw;
-            }
+                    // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
+                    ParallelUnbalancedWork.For(
+                        0,
+                        len + 1,
+                        ParallelUnbalancedWork.DefaultOptions,
+                        (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                        static (i, state) =>
+                        {
+                            if (i == 0)
+                            {
+                                // ApplyStateChanges mutates the shared stateProvider so runs inside
+                                // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
+                                // workers read from BAL-backed world states, not stateProvider.
+                                BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                return state;
+                            }
 
-            incrementalValidationTask.GetAwaiter().GetResult();
-            return CombineReceipts(receiptsTracers, len, block);
+                            int txIndex = i - 1;
+                            Transaction tx = state.txs[txIndex];
+                            try
+                            {
+                                // The using block detaches the worker's BAL into _perTxBal[i] and
+                                // recycles the pool slot via Dispose BEFORE we signal the gas result,
+                                // so the validator finds _perTxBal[i] populated when it awaits
+                                // gasResults[i-1] — even if ProcessTransaction throws.
+                                using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)i))
+                                {
+                                    ProcessTransaction(
+                                        lease.Adapter,
+                                        state.stateProvider,
+                                        state.block,
+                                        tx,
+                                        txIndex,
+                                        state.receiptsTracers[txIndex],
+                                        state.processingOptions);
+                                }
+                                state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
+                            }
+                            catch (InvalidBlockException ex)
+                            {
+                                // A rejected tx contributes nothing to block accumulators —
+                                // the sequential path never reaches gas accounting for it because
+                                // the exception bubbles up immediately. IncrementalValidation also
+                                // rethrows on `ex is not null` before doing any accounting, so the
+                                // tuple values here are observed only as cross-mode telemetry; we
+                                // still report (0, 0) so any future consumer agrees with sequential.
+                                state.gasResults[txIndex].SetResult((0, 0, ex));
+                            }
+                            catch
+                            {
+                                // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
+                                // if an unexpected exception escapes the worker (e.g. NRE, OCE).
+                                // SetCanceled unblocks the inner GetAwaiter().GetResult() loop.
+                                state.gasResults[txIndex].TrySetCanceled();
+                                throw;
+                            }
+
+                            return state;
+                        });
+                }
+                catch
+                {
+                    // Observe the background task before propagating, so its exception isn't lost
+                    // as an unobserved task exception. The worker's TrySetCanceled above guarantees
+                    // IncrementalValidation will unblock and complete.
+                    try
+                    {
+                        incrementalValidationTask.GetAwaiter().GetResult();
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        // Expected: induced by our own TrySetCanceled in the worker catch.
+                    }
+                    catch (Exception ex)
+                    {
+                        // Independent secondary fault (BAL validator, gas check, etc.). Surfacing
+                        // here because the original exception is what we rethrow — this branch is
+                        // the only place this fault is observable.
+                        if (_logger.IsError) _logger.Error("BAL incremental validation faulted while a parallel worker was already failing.", ex);
+                    }
+                    throw;
+                }
+
+                incrementalValidationTask.GetAwaiter().GetResult();
+                return CombineReceipts(receiptsTracers, len, block);
+            }
+            finally
+            {
+                // Always populate the outer tracer with per-tx receipts so the parallel path's
+                // tracer state matches what the sequential path would have produced. Needed for
+                // BlockTraceDumper's invalid-block dump on failure, and keeps tracer state
+                // consistent on success.
+                HarvestPerTxReceiptsIntoOuter(receiptsTracers, outerReceiptsTracer);
+            }
+        }
+
+        private static void HarvestPerTxReceiptsIntoOuter(BlockReceiptsTracer[] perTxTracers, BlockReceiptsTracer outer)
+        {
+            // Index-based placement preserves tx order despite parallel out-of-order completion;
+            // gaps for txs the worker threw on (no MarkAs* fired) stay null so the dump shows
+            // exactly which tx caused the rejection.
+            for (int i = 0; i < perTxTracers.Length; i++)
+            {
+                ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
+                if (receipts.IsEmpty) continue;
+                outer.SetReceipt(i, receipts[0]);
+            }
         }
 
         private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)

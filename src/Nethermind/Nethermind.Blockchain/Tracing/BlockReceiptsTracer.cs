@@ -237,6 +237,22 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     public TxReceipt LastReceipt => _txReceipts[^1];
 
     /// <summary>
+    /// Diagnostic-only: place a receipt at a specific tx index, leaving any prior gaps as null.
+    /// Leaves <c>_cumulativeBlockGasPerTx</c> alone, and forwards to a wrapped receipts tracer so
+    /// invalid-block dumps see receipts harvested from parallel workers.
+    /// </summary>
+    public void SetReceipt(int index, TxReceipt receipt)
+    {
+        if (_txReceipts.Count <= index) CollectionsMarshal.SetCount(_txReceipts, index + 1);
+        _txReceipts[index] = receipt;
+
+        if (!ReferenceEquals(_otherTracer, this) && _otherTracer is BlockReceiptsTracer receiptsTracer)
+        {
+            receiptsTracer.SetReceipt(index, receipt);
+        }
+    }
+
+    /// <summary>
     /// EIP-8037: cumulative state gas for the last tracked tx.
     /// Used by parallel execution to pass state gas back for 2D block gas accounting.
     /// </summary>

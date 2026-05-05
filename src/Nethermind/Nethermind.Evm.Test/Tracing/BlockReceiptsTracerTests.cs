@@ -86,5 +86,24 @@ namespace Nethermind.Evm.Test.Tracing
 
             (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, [], logEntries, TestItem.KeccakF);
         }
+
+        [Test]
+        public void SetReceipt_forwards_to_wrapped_receipts_tracer()
+        {
+            Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+
+            BlockReceiptsTracer wrappedTracer = new();
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(wrappedTracer);
+            tracer.StartNewBlockTrace(block);
+            TxReceipt receipt = new() { TxHash = TestItem.KeccakA };
+
+            tracer.SetReceipt(2, receipt);
+
+            tracer.TxReceipts.Length.Should().Be(3);
+            wrappedTracer.TxReceipts.Length.Should().Be(3);
+            tracer.TxReceipts[2].Should().BeSameAs(receipt);
+            wrappedTracer.TxReceipts[2].Should().BeSameAs(receipt);
+        }
     }
 }
