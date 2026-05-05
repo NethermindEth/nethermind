@@ -158,10 +158,6 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public async Task Records_metric_when_per_method_enabled_even_without_info_logging()
         {
-            // Regression: per-method metric observation must not be suppressed when Info logging is
-            // disabled. Only the textual report depends on Info; the Prometheus metric is gated solely
-            // on EnablePerMethodMetrics. The ILogger wrapper struct snapshots IsInfo at construction,
-            // so the silent logger has to be built before the log manager.
             RecordingMetricObserver observer = new();
             IMetricObserver previous = Metrics.JsonRpcCallLatencyMicros;
             Metrics.JsonRpcCallLatencyMicros = observer;

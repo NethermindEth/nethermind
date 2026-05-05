@@ -530,8 +530,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Method_not_found_response_is_reported_with_unknown_method_label()
     {
-        // Regression: keep the per-method metric label cardinality bounded by replacing the raw
-        // caller-supplied method name with RpcReport.UnknownMethod when the method does not resolve.
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
             .Returns(ci => new JsonRpcErrorResponse
@@ -555,8 +553,6 @@ public class JsonRpcProcessorTests(bool returnErrors)
     [Test]
     public async Task Resolved_method_response_keeps_original_method_name_in_report()
     {
-        // Sanity check: only MethodNotFound triggers the cardinality guard — every other code path
-        // must preserve the caller-supplied method name so dashboards can break out per real method.
         IJsonRpcService service = Substitute.For<IJsonRpcService>();
         service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
             .Returns(ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
