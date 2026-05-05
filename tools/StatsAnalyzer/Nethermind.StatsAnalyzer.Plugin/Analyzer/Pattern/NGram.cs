@@ -142,7 +142,7 @@ public readonly struct NGram(ulong value = NGram.Null) : IEquatable<NGram>
         foreach (var instruction in ToInstructions(ngram))
         {
             stringBuilder.Append(instruction.ToString());
-            stringBuilder.Append(" ");
+            stringBuilder.Append(' ');
         }
 
         return stringBuilder.ToString().TrimEnd();
