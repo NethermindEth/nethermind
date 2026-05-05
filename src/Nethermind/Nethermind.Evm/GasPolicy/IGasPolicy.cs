@@ -138,6 +138,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <returns>Reclassified state gas spill to add back to block regular gas.</returns>
     static virtual long GetStateGasSpillReclassified(in TSelf gas) => 0;
 
+    /// <summary>
+    /// Gets state gas spill that was refunded via state-gas-refund operations
+    /// (e.g. EIP-8037 Change #2 SSTORE 0→x→0, Change #3 CREATE silent failure).
+    /// The refunded portion of a spill remains genuinely spent in regular gas, so
+    /// it should NOT be subtracted from the block regular dim by Calculate8037BlockRegularGas.
+    /// Pre-EIP-8037 policies return 0.
+    /// </summary>
+    /// <param name="gas">The gas state to query.</param>
+    /// <returns>Spill amount whose state-side has been refunded but regular-side stays spent.</returns>
+    static virtual long GetStateGasSpillRefunded(in TSelf gas) => 0;
+
 
     /// <summary>
     /// Consume gas for an EVM operation.

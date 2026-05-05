@@ -199,12 +199,18 @@ public partial class BlockProcessor
         {
             // Index-based placement preserves tx order despite parallel out-of-order completion;
             // gaps for txs the worker threw on (no MarkAs* fired) stay null so the dump shows
-            // exactly which tx caused the rejection.
+            // exactly which tx caused the rejection. Recompute GasUsedTotal across the harvested
+            // sequence: each per-tx tracer's _cumulativeReceiptGas only tracks that single tx
+            // (resets to 0 per tracer), so the dump would otherwise show GasUsedTotal = GasUsed.
+            long cumulativeGas = 0;
             for (int i = 0; i < perTxTracers.Length; i++)
             {
                 ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
                 if (receipts.IsEmpty) continue;
-                outer.SetReceipt(i, receipts[0]);
+                TxReceipt receipt = receipts[0];
+                cumulativeGas += receipt.GasUsed;
+                receipt.GasUsedTotal = cumulativeGas;
+                outer.SetReceipt(i, receipt);
             }
         }
 

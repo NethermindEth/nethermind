@@ -886,13 +886,25 @@ namespace Nethermind.Evm.TransactionProcessing
             TGasPolicy intrinsicGasStandard = gas.Standard;
             if (spec.IsEip8037Enabled)
             {
+                RefundRevertedExecutionStateGas(spec, in intrinsicGasStandard, ref gasAvailable);
+                long refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gasAvailable);
                 long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
                 // Use postIntrinsicStateReservoir captured before EVM execution so any
                 // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
                 // (otherwise the sender pays AccountCreationCost per refunded auth even
                 // though no account was created).
                 TGasPolicy.ResetForHalt(ref gasAvailable, postIntrinsicStateReservoir, intrinsicStateGas);
-                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong, burnRemainingRegularGas: true, burnRemainingRegularGasForBlock: true);
+                gasConsumed = RefundOnFail(
+                    tx,
+                    spec,
+                    opts,
+                    in gasAvailable,
+                    VirtualMachine.TxExecutionContext.GasPrice,
+                    in intrinsicGasStandard,
+                    floorGasLong,
+                    burnRemainingRegularGas: true,
+                    burnRemainingRegularGasForBlock: true,
+                    refundedCreateStateSpillForHalt: refundedCreateStateSpillForHalt);
             }
             else
             {
@@ -933,7 +945,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long floorGas = 0,
             bool burnRemainingRegularGas = false,
             bool burnRemainingRegularGasForBlock = false,
-            bool burnRemainingStateReservoir = false)
+            bool burnRemainingStateReservoir = false,
+            long refundedCreateStateSpillForHalt = 0)
         {
             if (spec.IsEip8037Enabled)
             {
@@ -943,21 +956,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 long blockStateGas;
                 long spentGasRaw = tx.GasLimit - remainingRegularGas - stateReservoir;
                 long spentGas = Math.Max(spentGasRaw, floorGas);
-                // EIP-8037: when a top-level halt burns all regular gas for the block, the
-                // spilled state-gas portion is part of that burn. Calculate8037BlockRegularGas's
-                // `- stateGasSpill` adjustment would subtract it again, undercounting block.gasUsed
-                // by the spill amount. The halt's true block-regular cost is the original regular
-                // budget = txGasLimit - intrinsicState - initialReservoir, plus any state spill
-                // from inner frames that reverted or halted earlier in the tx (StateGasSpillBurned):
-                // that gas was paid from gas_left, so it belongs in the regular dimension, not the
-                // state dimension. Reattribute by reducing the intrinsic-state subtraction.
+                // EIP-8037: a top-level halt burns the original regular budget. Spill that was
+                // already burned by child-frame cleanup stays regular, while whole CREATE-state
+                // spill refunded by nested cleanup but not returned to the top-level reservoir
+                // stays state.
                 long blockGas;
                 if (burnRemainingRegularGasForBlock)
                 {
                     long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
                     long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
                     long spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
-                    long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned);
+                    long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned) + refundedCreateStateSpillForHalt;
                     blockGas = Math.Max(tx.GasLimit - effectiveStateGas - initialReservoir, floorGas);
                     blockStateGas = effectiveStateGas;
                 }
@@ -1135,6 +1144,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (substate.IsError && spec.IsEip8037Enabled)
             {
                 RefundRevertedExecutionStateGas(spec, in intrinsicGasStandard, ref gasAfterExecution);
+                long refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gasAfterExecution);
 
                 long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
                 // Use postIntrinsicStateReservoir captured before EVM execution so any
@@ -1143,7 +1153,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 // auth-refund reservoir gas (1x AccountCreationCost = 131,488 per refund).
                 TGasPolicy.ResetForHalt(ref gasAfterExecution, postIntrinsicStateReservoir, intrinsicStateGas);
 
-                return RefundOnFail(tx, spec, opts, in gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, burnRemainingRegularGas: true, burnRemainingRegularGasForBlock: true);
+                return RefundOnFail(
+                    tx,
+                    spec,
+                    opts,
+                    in gasAfterExecution,
+                    in gasPrice,
+                    in intrinsicGasStandard,
+                    floorGasLong,
+                    burnRemainingRegularGas: true,
+                    burnRemainingRegularGasForBlock: true,
+                    refundedCreateStateSpillForHalt: refundedCreateStateSpillForHalt);
             }
 
             (long spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertRegularRefund);
@@ -1174,6 +1194,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
 
             return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static long CalculateRefundedCreateStateSpillForHalt(in TGasPolicy gas)
+        {
+            long returnedSpillNotInReservoir =
+                TGasPolicy.GetStateGasSpill(in gas) -
+                TGasPolicy.GetStateReservoir(in gas) -
+                TGasPolicy.GetStateGasSpillBurned(in gas);
+            long createStateGas = TGasPolicy.GetCreateStateCost(in gas);
+            return Math.Max(0, returnedSpillNotInReservoir / createStateGas * createStateGas);
         }
 
         private static (long blockGas, long blockStateGas) CalculateBlockGas(

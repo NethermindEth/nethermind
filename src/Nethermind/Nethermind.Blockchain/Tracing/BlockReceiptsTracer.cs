@@ -107,6 +107,11 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         long cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
         Transaction transaction = CurrentTx!;
+        // Diagnostic-only: effective gas price after EIP-1559 baseFee adjustment.
+        // Computed eagerly so the diagnostic dump (which doesn't run through the
+        // ReceiptForRpc pipeline) doesn't see effectiveGasPrice as null.
+        UInt256 baseFee = Block.Header.BaseFeePerGas;
+        UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(eip1559Enabled: baseFee > 0, baseFee);
         TxReceipt txReceipt = new()
         {
             Logs = logEntries,
@@ -119,11 +124,28 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
             BlockNumber = Block.Number,
             Index = _currentIndex,
             GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
+            EffectiveGasPrice = effectiveGasPrice,
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,
             PostTransactionState = stateRoot
         };
+
+        // EIP-7778: regular-dimension block accounting introduces the
+        // pre-refund/post-refund split. BlockGasUsed is pre-refund; ExecutionGasUsed
+        // (= OperationGas) is post-refund without EIP-7976 floor.
+        if (gasConsumed.BlockGas > 0)
+        {
+            txReceipt.BlockGasUsed = gasConsumed.EffectiveBlockGas;
+            txReceipt.ExecutionGasUsed = gasConsumed.OperationGas;
+        }
+
+        // EIP-8037: state-dim block accounting. Only set when the tx actually consumed
+        // state gas - state-untouching txs leave StorageGasUsed at zero.
+        if (gasConsumed.BlockStateGas > 0)
+        {
+            txReceipt.StorageGasUsed = gasConsumed.BlockStateGas;
+        }
 
         return txReceipt;
     }
