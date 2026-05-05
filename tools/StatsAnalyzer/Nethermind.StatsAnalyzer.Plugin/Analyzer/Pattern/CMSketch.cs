@@ -125,7 +125,7 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     private ulong Increment(ulong item, int hasher)
     {
         return Interlocked.Increment(
-            ref _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)numberOfBuckets)]);
+            ref _sketch[(ulong)hasher * (ulong)numberOfBuckets + ComputeHash(item, hasher) % (ulong)numberOfBuckets]);
     }
 
     public ulong Query(ulong item)
@@ -133,7 +133,7 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
         var minCount = ulong.MaxValue;
         for (var hasher = 0; hasher < numberOfhashFunctions; hasher++)
             minCount = Math.Min(minCount,
-                _sketch[(ulong)(hasher + 1) * (ComputeHash(item, hasher) % (ulong)numberOfBuckets)]);
+                _sketch[(ulong)hasher * (ulong)numberOfBuckets + ComputeHash(item, hasher) % (ulong)numberOfBuckets]);
         return minCount;
     }
 
