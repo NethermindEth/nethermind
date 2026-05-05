@@ -184,19 +184,22 @@ hash table.
   multiply (`offset = i * (KeySize + ValueSize)`). Both `KeySize` and
   `ValueSize` are immutable per HSST and read from `Metadata`.
 - **`Summary L0..L(D-1)`** — `Depth` levels of summary, each a contiguous
-  array of `Count_k` records of
-  `[CheckpointKey: KeySize bytes][LastEntryIndex: u32 LE]`.
-  - **Level 0** indexes into `Data`: the builder emits one checkpoint each
-    time the cumulative `(key+value)` bytes written cross the configurable
-    stride threshold (default 1 KiB), plus a final checkpoint covering the
-    last entry. `LastEntryIndex` is the entry's absolute index in `Data`.
-  - **Level k+1** indexes into level k: the builder walks level k's records
-    `(KeySize+4)` bytes at a time and emits one summary record per stride,
-    plus a final tail record. `LastEntryIndex` at level k+1 is the index of
-    the last record in level k that this checkpoint covers.
+  array of `Count_k` records of just `[CheckpointKey: KeySize bytes]` —
+  no per-record index field. Slab boundaries are derived from position
+  alone, using the strides recorded in `Metadata`:
+  - **Level 0** indexes into `Data` with stride
+    `N = 1 << EntriesPerCkLevel0Log2`: the builder emits a checkpoint
+    after every `N`-th data entry, plus a final tail checkpoint when
+    `EntryCount & (N-1) != 0`. `N` is always a power of two so the reader
+    uses a mask + shift instead of div/mod. The checkpoint key at index
+    `i` is the key of the last data entry it covers — i.e. data index
+    `min((i+1)*N - 1, EntryCount - 1)`.
+  - **Level k+1** indexes into level k with stride
+    `M = 1 << RecordsPerCkHigherLog2` (also a power of two, ≥ 2 when used):
+    same scheme over the `Count_k` records of level k.
   - Levels are stored in order on disk (Level 0 closest to `Data`, Level
     `Depth-1` closest to `HashTable`/`Metadata`). The builder stops adding
-    levels once a level produces ≤ 1 record.
+    levels once a level would produce ≤ 1 record.
   - `Depth = 0` is legal — for tiny HSSTs the data range is searched
     directly.
 - **`HashTable`** — Optional. When `TableSize == 0` the section is omitted
@@ -210,9 +213,11 @@ hash table.
 - **`Metadata`** — sequence of LEB128 varints, read forward from
   `metaAbsStart = hsstEnd - 2 - MetadataLength`:
   ```
-  [KeySize: LEB128][ValueSize: LEB128][EntryCount: LEB128][TableSize: LEB128][Depth: LEB128][Count_0: LEB128]…[Count_{Depth-1}: LEB128]
+  [KeySize][ValueSize][EntryCount][TableSize][EntriesPerCkLevel0Log2][RecordsPerCkHigherLog2][Depth][Count_0]…[Count_{Depth-1}]
   ```
   `TableSize == 0` signals "no hash table"; `Depth` is capped at 8.
+  `RecordsPerCkHigherLog2` must be ≥ 1 when `Depth >= 2`; for `Depth ≤ 1`
+  it is ignored on read but still written.
 
 **Lookup procedure** (exact and floor):
 
@@ -222,11 +227,14 @@ hash table.
    return; on mismatch + exact → not found; otherwise fall through. Empty
    slot on exact → not found; on floor fall through. Collision → fall
    through.
-2. **Recursive summary descent.** Starting at the top level (Depth-1), find
-   the smallest checkpoint whose key is `≥ target` within the active slab.
-   That checkpoint's `LastEntryIndex` plus the previous checkpoint's
-   `LastEntryIndex+1` (or 0 at the slab start) define the slab at the next
-   level down. Repeat until level 0 yields a slab in `Data`.
+2. **Recursive summary descent.** Maintain a slab `[lo, hi]` of records at
+   the current level. Start at level `Depth-1` with the full range
+   `[0, Count_{Depth-1} - 1]`. Binary-search the slab for the smallest ck
+   index `c` whose key is `≥ target`. If none exists in the slab, set
+   `c = hi` (floor) or return "not found" (exact). The slab at the level
+   below is `[c*stride, min((c+1)*stride - 1, parentCount - 1)]`, where
+   `stride = N` if descending into `Data` (level 0 → data), else
+   `stride = M`, and `parentCount = EntryCount` or `Count_{k-1}`.
 3. **Data binary search.** Binary-search the level-0 slab for the smallest
    entry whose key is `≥ target`. If equal, return; for floor on a miss
    return entry at `insertionPoint − 1` (the data array is globally sorted,
@@ -239,12 +247,12 @@ hash table.
 - `MetadataLength` is a single byte — metadata is small, so this never
   binds in practice.
 - Per-entry overhead is zero (no LEB128 length prefixes, no per-entry
-  metadata pointer); checkpoint overhead is `(KeySize + 4) bytes` per
-  ~`stride` bytes of data, plus a geometrically smaller cost from the
-  higher summary levels, plus the optional hash table.
+  metadata pointer); summary overhead is `KeySize` bytes per checkpoint
+  (no `LastEntryIndex` field — slab bounds are derived from position),
+  plus a geometrically smaller cost from higher levels, plus the optional
+  hash table.
 - Random access by entry index is `O(1)`; lookups are
-  `O(Depth · log(stride/(KeySize+4)) + log entriesPerStride)` reads, each
-  of which is `KeySize` bytes.
+  `O(Depth · log(stride/KeySize) + log N)` reads of `KeySize` bytes each.
 
 ## B-tree index node layout
 

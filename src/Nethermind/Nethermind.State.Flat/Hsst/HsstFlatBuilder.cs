@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
@@ -14,19 +15,23 @@ namespace Nethermind.State.Flat.Hsst;
 ///
 /// Binary layout (read backward from the trailing discriminator byte):
 ///   [Data: EntryCount * (KeySize+ValueSize)]
-///   [Summary L0: Count_0 * (KeySize+4)]
-///   [Summary L1: Count_1 * (KeySize+4)]
+///   [Summary L0: Count_0 * KeySize]
+///   [Summary L1: Count_1 * KeySize]
 ///   ...
-///   [Summary L(D-1): Count_{D-1} * (KeySize+4)]
+///   [Summary L(D-1): Count_{D-1} * KeySize]
 ///   [HashTable: 4 * TableSize bytes]   (omitted when TableSize == 0)
-///   [Metadata: KeySize, ValueSize, EntryCount, TableSize, Depth, Count_0..Count_{D-1} as LEB128]
+///   [Metadata: KeySize, ValueSize, EntryCount, TableSize, EntriesPerCkLevel0,
+///              RecordsPerCkHigher, Depth, Count_0..Count_{D-1} as LEB128]
 ///   [MetadataLength: u8]
 ///   [IndexType: u8 = 0x06]
 ///
-/// Each summary level uses the same `[CheckpointKey][LastEntryIndex: u32 LE]` record;
-/// level 0 indexes into Data, level k+1 indexes into level k. The hash table is optional
-/// (controlled by the <c>useHashIndex</c> ctor flag); when enabled, the slot for a key is
-/// computed via Lemire's multiply-shift reduction so the table need not be a power of two.
+/// Each summary record is just the checkpoint key — the slab boundaries at the level below
+/// are derived from the level's strides (<c>EntriesPerCkLevel0</c> for level 0, which spans
+/// data; <c>RecordsPerCkHigher</c> for level k+1, which spans level k). Level 0 ck i covers
+/// data entries [i*N, min((i+1)*N - 1, EntryCount - 1)]; higher-level ck i covers level-below
+/// records [i*M, min((i+1)*M - 1, prevCount - 1)]. The hash table is optional (controlled by
+/// the <c>useHashIndex</c> ctor flag); when enabled, the slot for a key is computed via
+/// Lemire's multiply-shift reduction so the table need not be a power of two.
 /// </summary>
 public ref struct HsstFlatBuilder<TWriter>
     where TWriter : IByteBufferWriter
@@ -37,7 +42,6 @@ public ref struct HsstFlatBuilder<TWriter>
     /// <summary>Hash table is sized so its load factor stays at or below this value.</summary>
     private const double HashTableTargetUtilization = 0.75;
 
-
     private const uint HashEmpty = 0u;
     private const uint HashCollision = 0xFFFFFFFFu;
 
@@ -47,15 +51,15 @@ public ref struct HsstFlatBuilder<TWriter>
     private readonly int _valueSize;
     private readonly int _strideBytes;
     private readonly bool _useHashIndex;
+    private readonly int _entriesPerCkLevel0Log2;
+    private readonly int _entriesPerCkLevel0;
 
     private NativeMemoryListRef<byte> _prevKeyBuffer;
     private NativeMemoryListRef<byte> _checkpointKeys;
-    private NativeMemoryListRef<int> _checkpointIndices;
     private NativeMemoryListRef<uint> _entryHashes;
 
     private int _entryCount;
-    private int _bytesSinceLastCheckpoint;
-    private int _entryIndexAtLastCheckpoint;
+    private int _level0Count;
 
     /// <summary>
     /// Create a builder writing via <paramref name="writer"/>. <paramref name="keySize"/> /
@@ -79,24 +83,30 @@ public ref struct HsstFlatBuilder<TWriter>
         _valueSize = valueSize;
         _strideBytes = binaryIndexStrideBytes;
         _useHashIndex = useHashIndex;
+        // Entries-per-ck at level 0: floor(stride / entry size), then rounded down to the
+        // nearest power of two so the reader can use a mask + shift instead of div/mul.
+        // With fixed-size entries this turns the byte-stride knob into an exact entry-count
+        // boundary, which lets the reader compute slabs from position alone — no need to
+        // store LastEntryIndex per checkpoint.
+        int entrySize = Math.Max(1, _keySize + _valueSize);
+        int rawN = Math.Max(1, _strideBytes / entrySize);
+        _entriesPerCkLevel0Log2 = BitOperations.Log2((uint)rawN);
+        _entriesPerCkLevel0 = 1 << _entriesPerCkLevel0Log2;
 
         _prevKeyBuffer = new NativeMemoryListRef<byte>(Math.Max(1, keySize));
         // One checkpoint per stride; size lower bound is keySize bytes.
         int checkpointSlots = Math.Max(8, expectedKeyCount / 8);
         _checkpointKeys = new NativeMemoryListRef<byte>(Math.Max(64, checkpointSlots * Math.Max(1, keySize)));
-        _checkpointIndices = new NativeMemoryListRef<int>(checkpointSlots);
         _entryHashes = useHashIndex ? new NativeMemoryListRef<uint>(expectedKeyCount) : default;
 
         _entryCount = 0;
-        _bytesSinceLastCheckpoint = 0;
-        _entryIndexAtLastCheckpoint = -1;
+        _level0Count = 0;
     }
 
     public void Dispose()
     {
         _prevKeyBuffer.Dispose();
         _checkpointKeys.Dispose();
-        _checkpointIndices.Dispose();
         if (_useHashIndex) _entryHashes.Dispose();
     }
 
@@ -120,16 +130,17 @@ public ref struct HsstFlatBuilder<TWriter>
 
         if (_useHashIndex) _entryHashes.Add(HsstHash.HashKey(key));
 
-        _bytesSinceLastCheckpoint += _keySize + _valueSize;
         _entryCount++;
 
         _prevKeyBuffer.Clear();
         _prevKeyBuffer.AddRange(key);
 
-        if (_bytesSinceLastCheckpoint >= _strideBytes)
+        // Emit at exact entries-per-ck boundaries so reader can derive slab bounds.
+        // _entriesPerCkLevel0 is a power of two — use mask in place of modulo.
+        if ((_entryCount & (_entriesPerCkLevel0 - 1)) == 0)
         {
-            EmitCheckpoint(key, _entryCount - 1);
-            _bytesSinceLastCheckpoint = 0;
+            if (_keySize > 0) _checkpointKeys.AddRange(key);
+            _level0Count++;
         }
     }
 
@@ -139,106 +150,105 @@ public ref struct HsstFlatBuilder<TWriter>
     /// </summary>
     public void Build()
     {
-        // Always include a final checkpoint covering the last entry. Without it a target key
-        // greater than every checkpoint key would have an empty candidate range.
-        if (_entryCount > 0 && _entryIndexAtLastCheckpoint != _entryCount - 1)
+        // Tail checkpoint: cover the last entry when the entry count is not a multiple of
+        // the level-0 stride. Without it a target greater than every emitted ck would have
+        // an empty candidate range.
+        if (_entryCount > 0 && (_entryCount & (_entriesPerCkLevel0 - 1)) != 0)
         {
-            EmitCheckpoint(_prevKeyBuffer.AsSpan(), _entryCount - 1);
+            if (_keySize > 0) _checkpointKeys.AddRange(_prevKeyBuffer.AsSpan());
+            _level0Count++;
         }
 
-        int entrySize = _keySize + 4;
+        // Records-per-ck for higher levels: floor(stride / KeySize), rounded down to a
+        // power of two. Must be ≥ 2 to guarantee strict reduction. Higher levels cannot be
+        // built when KeySize is zero (the keys carry no info).
+        int recordsPerCkHigherLog2 = 0;
+        int recordsPerCkHigher = 0;
+        if (_keySize > 0)
+        {
+            int rawM = Math.Max(2, _strideBytes / _keySize);
+            recordsPerCkHigherLog2 = BitOperations.Log2((uint)rawM);
+            if (recordsPerCkHigherLog2 < 1) recordsPerCkHigherLog2 = 1;
+            recordsPerCkHigher = 1 << recordsPerCkHigherLog2;
+        }
 
         // Build all summary levels in memory first, then flush them in order to the writer.
-        // Level 0 is already accumulated in _checkpointKeys / _checkpointIndices.
         using NativeMemoryListRef<int> levelCounts = new(HsstFlatLayout.MaxSummaryDepth);
 
-        int level0Count = _checkpointIndices.Count;
-        if (level0Count > 0) levelCounts.Add(level0Count);
+        if (_level0Count > 0) levelCounts.Add(_level0Count);
 
-        // Higher levels: each summary entry covers a stride-sized window of the level below.
-        // We collect them into a single staging buffer plus per-level (startRec) pointers.
+        // Higher levels staged into a single buffer + per-level (startRec) pointers.
         using NativeMemoryListRef<byte> higherLevelsKeys = new(64);
-        using NativeMemoryListRef<int> higherLevelsIdx = new(8);
         using NativeMemoryListRef<int> higherLevelStartRec = new(HsstFlatLayout.MaxSummaryDepth);
 
         // Track the previous level by (startRec, count, fromLevel0) so we re-fetch its span
-        // each iteration — adding to higherLevels* may move the underlying NativeMemory.
+        // each iteration — adding to higherLevelsKeys may move the underlying NativeMemory.
         int prevStartRec = -1;
-        int prevCount = _checkpointIndices.Count;
+        int prevCount = _level0Count;
         bool prevIsLevel0 = true;
 
-        while (prevCount > 1)
+        if (recordsPerCkHigher >= 2)
         {
-            ReadOnlySpan<byte> prevKeys = prevIsLevel0
-                ? _checkpointKeys.AsSpan()
-                : higherLevelsKeys.AsSpan().Slice(prevStartRec * _keySize, prevCount * _keySize);
-
-            int newLevelStartRec = higherLevelsIdx.Count;
-
-            int bytesAccumulated = 0;
-            int lastEmittedIdx = -1;
-            for (int i = 0; i < prevCount; i++)
+            while (prevCount > 1)
             {
-                bytesAccumulated += entrySize;
-                if (bytesAccumulated >= _strideBytes)
+                ReadOnlySpan<byte> prevKeys = prevIsLevel0
+                    ? _checkpointKeys.AsSpan()
+                    : higherLevelsKeys.AsSpan().Slice(prevStartRec * _keySize, prevCount * _keySize);
+
+                int newLevelStartRec = higherLevelsKeys.Count / _keySize;
+                int newCount = 0;
+
+                // Emit a checkpoint at every recordsPerCkHigher boundary; the ck records the
+                // key of the last record in its slab — i.e. record index (k+1)*M - 1.
+                for (int i = recordsPerCkHigher - 1; i < prevCount; i += recordsPerCkHigher)
                 {
-                    if (_keySize > 0) higherLevelsKeys.AddRange(prevKeys.Slice(i * _keySize, _keySize));
-                    higherLevelsIdx.Add(i);
-                    lastEmittedIdx = i;
-                    bytesAccumulated = 0;
+                    higherLevelsKeys.AddRange(prevKeys.Slice(i * _keySize, _keySize));
+                    newCount++;
                 }
+                int lastEmittedIdx = (newCount << recordsPerCkHigherLog2) - 1;
+                // Tail ck for the partial last slab.
+                if (lastEmittedIdx != prevCount - 1)
+                {
+                    int i = prevCount - 1;
+                    higherLevelsKeys.AddRange(prevKeys.Slice(i * _keySize, _keySize));
+                    newCount++;
+                }
+
+                if (newCount == 0 || newCount >= prevCount)
+                {
+                    higherLevelsKeys.Truncate(newLevelStartRec * _keySize);
+                    break;
+                }
+
+                if (levelCounts.Count >= HsstFlatLayout.MaxSummaryDepth)
+                    throw new InvalidOperationException($"FlatEntries summary depth exceeded {HsstFlatLayout.MaxSummaryDepth}.");
+
+                higherLevelStartRec.Add(newLevelStartRec);
+                levelCounts.Add(newCount);
+
+                prevStartRec = newLevelStartRec;
+                prevCount = newCount;
+                prevIsLevel0 = false;
+
+                if (newCount <= 1) break;
             }
-            // Final summary entry: covers the tail of the previous level.
-            if (lastEmittedIdx != prevCount - 1)
-            {
-                int i = prevCount - 1;
-                if (_keySize > 0) higherLevelsKeys.AddRange(prevKeys.Slice(i * _keySize, _keySize));
-                higherLevelsIdx.Add(i);
-            }
-
-            int newCount = higherLevelsIdx.Count - newLevelStartRec;
-            if (newCount == 0 || newCount >= prevCount)
-            {
-                // No reduction — drop this level and bail out.
-                higherLevelsKeys.Truncate(newLevelStartRec * _keySize);
-                higherLevelsIdx.Truncate(newLevelStartRec);
-                break;
-            }
-
-            if (levelCounts.Count >= HsstFlatLayout.MaxSummaryDepth)
-                throw new InvalidOperationException($"FlatEntries summary depth exceeded {HsstFlatLayout.MaxSummaryDepth}.");
-
-            higherLevelStartRec.Add(newLevelStartRec);
-            levelCounts.Add(newCount);
-
-            // Promote: prev is now this just-built level.
-            prevStartRec = newLevelStartRec;
-            prevCount = newCount;
-            prevIsLevel0 = false;
-
-            if (newCount <= 1) break;
         }
 
         int depth = levelCounts.Count;
 
-        // Flush level 0 to the writer.
-        if (level0Count > 0)
+        // Flush level 0.
+        if (_level0Count > 0)
         {
             ReadOnlySpan<byte> ckKeys = _checkpointKeys.AsSpan();
-            ReadOnlySpan<int> ckIdx = _checkpointIndices.AsSpan();
-            for (int i = 0; i < level0Count; i++)
+            for (int i = 0; i < _level0Count; i++)
             {
                 if (_keySize > 0)
                     IByteBufferWriter.Copy(ref _writer, ckKeys.Slice(i * _keySize, _keySize));
-                Span<byte> idxBuf = _writer.GetSpan(4);
-                BinaryPrimitives.WriteInt32LittleEndian(idxBuf, ckIdx[i]);
-                _writer.Advance(4);
             }
         }
 
-        // Flush levels 1..depth-1 in order from the staging buffer.
+        // Flush higher levels in order from the staging buffer.
         ReadOnlySpan<byte> hlKeys = higherLevelsKeys.AsSpan();
-        ReadOnlySpan<int> hlIdx = higherLevelsIdx.AsSpan();
         for (int lvl = 1; lvl < depth; lvl++)
         {
             int startRec = higherLevelStartRec[lvl - 1];
@@ -248,9 +258,6 @@ public ref struct HsstFlatBuilder<TWriter>
                 int rec = startRec + i;
                 if (_keySize > 0)
                     IByteBufferWriter.Copy(ref _writer, hlKeys.Slice(rec * _keySize, _keySize));
-                Span<byte> idxBuf = _writer.GetSpan(4);
-                BinaryPrimitives.WriteInt32LittleEndian(idxBuf, hlIdx[rec]);
-                _writer.Advance(4);
             }
         }
 
@@ -267,6 +274,8 @@ public ref struct HsstFlatBuilder<TWriter>
         WriteLeb128(_valueSize);
         WriteLeb128(_entryCount);
         WriteLeb128(tableSize);
+        WriteLeb128(_entriesPerCkLevel0Log2);
+        WriteLeb128(recordsPerCkHigherLog2);
         WriteLeb128(depth);
         for (int i = 0; i < depth; i++) WriteLeb128(levelCounts[i]);
         int metaLen = _writer.Written - metaStart;
@@ -277,13 +286,6 @@ public ref struct HsstFlatBuilder<TWriter>
         trail[0] = (byte)metaLen;
         trail[1] = (byte)IndexType.FlatEntries;
         _writer.Advance(2);
-    }
-
-    private void EmitCheckpoint(scoped ReadOnlySpan<byte> key, int entryIdx)
-    {
-        if (_keySize > 0) _checkpointKeys.AddRange(key);
-        _checkpointIndices.Add(entryIdx);
-        _entryIndexAtLastCheckpoint = entryIdx;
     }
 
     private void WriteLeb128(int value)

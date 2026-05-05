@@ -14,8 +14,7 @@ namespace Nethermind.State.Flat.Hsst;
 internal static class HsstFlatReader
 {
     /// <summary>
-    /// Parsed footer of a FlatEntries HSST: section starts/ends, stride, and per-level
-    /// summary offsets.
+    /// Parsed footer of a FlatEntries HSST: section starts and per-level summary geometry.
     /// </summary>
     internal ref struct Layout
     {
@@ -26,12 +25,13 @@ internal static class HsstFlatReader
         public long HashTableStart;
         public int HashTableSize;
         public int Depth;
+        public int EntriesPerCkLevel0Log2;
+        public int RecordsPerCkHigherLog2;
         // Inline arrays sized to MaxSummaryDepth. Only [0..Depth) are valid.
         public InlineLevelArray LevelStarts;
         public InlineLevelArray LevelCounts;
 
         public int EntryStride => KeySize + ValueSize;
-        public int CheckpointEntrySize => KeySize + 4;
         public long EntryAbsStart(int entryIdx) => DataStart + (long)entryIdx * EntryStride;
         public long ValueAbsStart(int entryIdx) => EntryAbsStart(entryIdx) + KeySize;
     }
@@ -53,7 +53,6 @@ internal static class HsstFlatReader
         long hsstStart = bound.Offset;
         long hsstEnd = bound.Offset + bound.Length;
 
-        // [Metadata][MetadataLength: u8][IndexType: u8].
         if (bound.Length < 3) return false;
         Span<byte> oneByte = stackalloc byte[1];
         if (!reader.TryRead(hsstEnd - 2, oneByte)) return false;
@@ -69,23 +68,30 @@ internal static class HsstFlatReader
         int valueSize = Leb128.Read(metaBuf, ref p);
         int entryCount = Leb128.Read(metaBuf, ref p);
         int tableSize = Leb128.Read(metaBuf, ref p);
+        int entriesPerCk0Log2 = Leb128.Read(metaBuf, ref p);
+        int recordsPerCkHigherLog2 = Leb128.Read(metaBuf, ref p);
         int depth = Leb128.Read(metaBuf, ref p);
-        if (keySize < 0 || valueSize < 0 || entryCount < 0 || tableSize < 0 || depth < 0) return false;
+        if (keySize < 0 || valueSize < 0 || entryCount < 0 || tableSize < 0 ||
+            entriesPerCk0Log2 < 0 || recordsPerCkHigherLog2 < 0 || depth < 0) return false;
         if (keySize > 255) return false;
         if (depth > HsstFlatLayout.MaxSummaryDepth) return false;
+        // Clamp shifts to a safe range — bigger than 30 would overflow int slab arithmetic.
+        if (entriesPerCk0Log2 > 30 || recordsPerCkHigherLog2 > 30) return false;
+        if (depth >= 2 && recordsPerCkHigherLog2 < 1) return false;
 
         layout.KeySize = keySize;
         layout.ValueSize = valueSize;
         layout.EntryCount = entryCount;
         layout.HashTableSize = tableSize;
         layout.Depth = depth;
+        layout.EntriesPerCkLevel0Log2 = entriesPerCk0Log2;
+        layout.RecordsPerCkHigherLog2 = recordsPerCkHigherLog2;
 
-        // Read per-level counts.
         Span<int> counts = stackalloc int[HsstFlatLayout.MaxSummaryDepth];
         for (int i = 0; i < depth; i++)
         {
             int c = Leb128.Read(metaBuf, ref p);
-            if (c < 0) return false;
+            if (c <= 0) return false;
             counts[i] = c;
             layout.LevelCounts[i] = c;
         }
@@ -96,21 +102,17 @@ internal static class HsstFlatReader
         if (hashTableStart < hsstStart) return false;
         layout.HashTableStart = hashTableStart;
 
-        // Summaries lie before the hash table (or before metadata when there's no hash
-        // table). Level (Depth-1) is closest to the hash table; Level 0 is closest to Data.
+        // Summaries lie before the hash table. Each record is exactly KeySize bytes.
         long cursor = hashTableStart;
-        // Walk backward: level (Depth-1) is closest to the hash table; level 0 is closest to Data.
-        int entrySize = keySize + 4;
         for (int lvl = depth - 1; lvl >= 0; lvl--)
         {
-            long lvlBytes = (long)counts[lvl] * entrySize;
+            long lvlBytes = (long)counts[lvl] * keySize;
             long lvlStart = cursor - lvlBytes;
             if (lvlStart < hsstStart) return false;
             layout.LevelStarts[lvl] = lvlStart;
             cursor = lvlStart;
         }
 
-        // Data ends where level 0 begins (or where the hash table begins, when depth == 0).
         long dataBytes = (long)entryCount * (keySize + valueSize);
         if (hsstStart + dataBytes != cursor) return false;
         layout.DataStart = hsstStart;
@@ -149,7 +151,6 @@ internal static class HsstFlatReader
             if (slotValue == Empty)
             {
                 if (exactMatch) return false;
-                // Floor: fall through to summary descent.
             }
             else if (slotValue != Collision)
             {
@@ -164,85 +165,61 @@ internal static class HsstFlatReader
                     return true;
                 }
                 if (exactMatch) return false;
-                // Floor: fall through.
             }
-            // Collision sentinel: fall through.
         }
 
-        // Recursive summary descent: at each level k from top to 0, find the smallest
-        // checkpoint with key >= target, then narrow the search range at level k-1 (or in
-        // Data when k == 0) to the slab covered by that checkpoint.
+        // Recursive summary descent. At each level k, the active slab is [levelLo, levelHi]
+        // (closed). Find the smallest ck c with key >= target in that slab; if none, take
+        // c = levelHi for floor (covers the last child slab). Slab semantics:
+        //   stride = (k == 0) ? EntriesPerCkLevel0 : RecordsPerCkHigher
+        //   parentCount = (k == 0) ? EntryCount : Count_{k-1}
+        //   childSlab = [c*stride, min((c+1)*stride - 1, parentCount - 1)]
         int rangeStart;
         int rangeEnd;
 
         if (L.Depth == 0)
         {
-            // No summary at all — search the whole Data range.
             rangeStart = 0;
             rangeEnd = L.EntryCount - 1;
         }
         else
         {
-            // Start at the top level with full range.
             int levelLo = 0;
             int levelHi = (int)L.LevelCounts[L.Depth - 1] - 1;
-
-            // Walk levels top-down. At each level we narrow [levelLo, levelHi]; when we drop
-            // to the next level down we read the chosen checkpoint's LastEntryIndex bounds.
-            for (int lvl = L.Depth - 1; lvl >= 0; lvl--)
+            int curLvl = L.Depth - 1;
+            rangeStart = 0;
+            rangeEnd = -1;
+            while (true)
             {
-                long lvlStart = L.LevelStarts[lvl];
                 int ckIdx = SearchSummaryLevel<TReader, TPin>(
-                    in reader, lvlStart, L.KeySize, levelLo, levelHi + 1, key, out bool readOk);
+                    in reader, L.LevelStarts[curLvl], L.KeySize, levelLo, levelHi + 1, key, out bool readOk);
                 if (!readOk) return false;
 
                 if (ckIdx > levelHi)
                 {
-                    // Target greater than every checkpoint in this slab.
                     if (exactMatch) return false;
-                    if (lvl == 0)
-                    {
-                        // Floor: largest entry overall in the slab — but since we exhausted
-                        // this slab's level-0 checkpoints, the floor is the last data entry
-                        // covered by this slab. Use the last checkpoint's LastEntryIndex.
-                        if (!ReadCheckpointEntryIdx<TReader, TPin>(in reader, lvlStart, L.KeySize, levelHi, out int last)) return false;
-                        resultBound = new Bound(L.ValueAbsStart(last), L.ValueSize);
-                        return true;
-                    }
-                    // For non-leaf summary levels, "off the end" means the target is greater
-                    // than every key in the slab; the floor lives in the last child slab.
                     ckIdx = levelHi;
                 }
 
-                // Compute the slab at the next level down: [prev.LastEntryIndex+1, ck.LastEntryIndex].
-                if (!ReadCheckpointEntryIdx<TReader, TPin>(in reader, lvlStart, L.KeySize, ckIdx, out int newHi)) return false;
-                int newLo;
-                if (ckIdx == 0)
-                {
-                    newLo = 0;
-                }
-                else
-                {
-                    if (!ReadCheckpointEntryIdx<TReader, TPin>(in reader, lvlStart, L.KeySize, ckIdx - 1, out int prev)) return false;
-                    newLo = prev + 1;
-                }
+                int strideLog2 = (curLvl == 0) ? L.EntriesPerCkLevel0Log2 : L.RecordsPerCkHigherLog2;
+                int parentCount = (curLvl == 0) ? L.EntryCount : (int)L.LevelCounts[curLvl - 1];
+                int newLo = ckIdx << strideLog2;
+                int newHi = Math.Min(((ckIdx + 1) << strideLog2) - 1, parentCount - 1);
 
-                if (lvl == 0)
+                if (curLvl == 0)
                 {
                     rangeStart = newLo;
                     rangeEnd = newHi;
-                    goto finish;
+                    break;
                 }
                 levelLo = newLo;
                 levelHi = newHi;
+                curLvl--;
             }
-            // Should be unreachable given the goto above.
-            return false;
         }
 
-    finish:
-        // Binary search within [rangeStart, rangeEnd] inclusive in Data for the smallest
-        // entry whose key is >= target.
+        // Binary search [rangeStart, rangeEnd] in Data for the smallest entry whose key
+        // is >= target.
         int lo = rangeStart;
         int hi = rangeEnd + 1;
         Span<byte> stored2 = stackalloc byte[255];
@@ -276,6 +253,7 @@ internal static class HsstFlatReader
     /// <summary>
     /// Binary-search a summary level slab `[lo, hi)` for the smallest checkpoint whose key
     /// is &gt;= <paramref name="key"/>. Returns <c>hi</c> when no such checkpoint exists.
+    /// Each summary record is exactly <paramref name="keySize"/> bytes (no trailing index).
     /// </summary>
     private static int SearchSummaryLevel<TReader, TPin>(
         scoped in TReader reader, long levelStart, int keySize,
@@ -286,11 +264,10 @@ internal static class HsstFlatReader
         readOk = true;
         Span<byte> ckBuf = stackalloc byte[255];
         Span<byte> ckSlice = ckBuf[..keySize];
-        int entrySize = keySize + 4;
         while (lo < hi)
         {
             int mid = (int)(((uint)lo + (uint)hi) >> 1);
-            long ckEntryStart = levelStart + (long)mid * entrySize;
+            long ckEntryStart = levelStart + (long)mid * keySize;
             if (!reader.TryRead(ckEntryStart, ckSlice))
             {
                 readOk = false;
@@ -300,18 +277,5 @@ internal static class HsstFlatReader
             else hi = mid;
         }
         return lo;
-    }
-
-    private static bool ReadCheckpointEntryIdx<TReader, TPin>(
-        scoped in TReader reader, long levelStart, int keySize, int ckIdx, out int entryIdx)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        entryIdx = 0;
-        Span<byte> idxBuf = stackalloc byte[4];
-        long off = levelStart + (long)ckIdx * (keySize + 4) + keySize;
-        if (!reader.TryRead(off, idxBuf)) return false;
-        entryIdx = BinaryPrimitives.ReadInt32LittleEndian(idxBuf);
-        return true;
     }
 }
