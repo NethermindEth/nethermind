@@ -639,9 +639,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     [Test]
     public void Test_CallTrace_DeepNesting_DoesNotThrow()
     {
-        // Regression for incomplete JSON returned by debug_traceBlockByNumber on blocks with a
-        // deeply-nested call chain: each frame contributes ~2 JSON levels, and the EVM allows up
-        // to 1024 calls, so MaxDepth must comfortably exceed 2 * MaxCallDepth.
         using NativeCallTracerCallFrame root = BuildLinearCallChain(VirtualMachineStatics.MaxCallDepth);
         GethLikeCustomTrace customTrace = new() { Value = root };
 
@@ -653,10 +650,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     [Test]
     public void Test_CallTrace_DeepNesting_StreamedJsonIsComplete()
     {
-        // Streaming counterpart: with JsonRpcConfig.BufferResponses=false the response is written
-        // directly to the wire, so a mid-serialization throw produces a truncated body. Verify the
-        // streamed bytes form a complete, well-formed JSON document whose structure matches the
-        // constructed chain.
         int depth = VirtualMachineStatics.MaxCallDepth;
         using NativeCallTracerCallFrame root = BuildLinearCallChain(depth);
         GethLikeCustomTrace customTrace = new() { Value = root };
@@ -684,10 +677,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     [Test]
     public void Test_CallTrace_DeepNesting_FailsBeyondMaxDepth()
     {
-        // Boundary check: each frame contributes 2 JSON levels, so a chain of MaxDepth/2 frames
-        // is the largest the configured serializer accepts. One frame more must throw with a
-        // depth-related error rather than silently truncate — that's the fail-safe guarantee
-        // against the original bug reappearing if MaxDepth is ever lowered.
         int boundary = EthereumJsonSerializer.DefaultMaxDepth / 2;
 
         using NativeCallTracerCallFrame atBoundary = BuildLinearCallChain(boundary);

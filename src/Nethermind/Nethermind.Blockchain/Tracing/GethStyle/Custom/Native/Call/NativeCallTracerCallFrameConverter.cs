@@ -18,10 +18,6 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         {
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
 
-            // Iterative DFS: recursing through JsonSerializer.Serialize for child frames adds ~9
-            // stack frames per level (converter + memory/collection wrappers), so chains approaching
-            // the EVM's MaxCallDepth=1024 blow the thread stack. The explicit work stack tracks each
-            // frame's progress through its Calls list and emits matching close tokens on the way up.
             Stack<(NativeCallTracerCallFrame Frame, int NextChild)> work = new();
             work.Push((value, -1));
 
