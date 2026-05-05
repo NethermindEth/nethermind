@@ -3,6 +3,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
+using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.Benchmarks.State;
@@ -12,13 +13,12 @@ namespace Nethermind.Benchmarks.State;
 /// (<see cref="HsstReader{TReader, TPin}.TrySeek"/> +
 /// <see cref="Nethermind.State.Flat.BSearchIndex.BSearchIndexReader"/> binary search).
 ///
-/// Uses 32-byte uniformly-random keys to mirror Ethereum state-tree shape (account
-/// hashes, storage slot keys). With this distribution, leaves overwhelmingly use
-/// <c>UniformWithLen KeySize=4</c> (3-byte separators stored in 4-byte slots) and
-/// upper levels use <c>Variable</c>; <c>Uniform KeyType=1</c> is essentially absent.
+/// Uses 32-byte uniformly-random keys with <c>minSeparatorLength=4</c> to mirror the
+/// production state-tree shape (UnL-4 dominant). Sweeps over leaf size and
+/// SIMD-on/off so we can compare scalar binary search against the SIMD floor scan.
 ///
-/// Recommended invocation (<c>--quick</c> is broken — see global CLAUDE.md):
-/// <c>--launchCount 1 --warmupCount 3 --iterationCount 3 --filter '*HsstReaderBenchmark*'</c>.
+/// Recommended invocation: <c>--filter '*HsstReaderBenchmark*' --launchCount 1
+/// --warmupCount 3 --iterationCount 5</c>.
 /// </summary>
 [MemoryDiagnoser]
 public class HsstReaderBenchmark
@@ -27,20 +27,29 @@ public class HsstReaderBenchmark
     private byte[][] _hitKeys = null!;
     private byte[][] _missKeys = null!;
 
-    [Params(100_000)]
+    [Params(8_000_000)]
     public int EntryCount { get; set; }
 
     [Params(64, 128, 256, 512, 1024)]
     public int MaxLeafEntries { get; set; }
 
+    [Params(false, true)]
+    public bool SimdEnabled { get; set; }
+
+    [Params(false, true)]
+    public bool BranchlessSearch { get; set; }
+
     private const int KeyLen = 32;
-    private const int LookupBatch = 1024;
+    private const int MinSep = 4;
+    private const int LookupBatch = 10_000;
 
     [GlobalSetup]
     public void Setup()
     {
-        Random rng = new(42);
+        BSearchIndexReaderSimd.Enabled = SimdEnabled;
+        BSearchIndexReader.BranchlessSearch = BranchlessSearch;
 
+        Random rng = new(42);
         byte[][] keys = new byte[EntryCount][];
         for (int i = 0; i < EntryCount; i++)
         {
@@ -50,8 +59,9 @@ public class HsstReaderBenchmark
         }
         Array.Sort(keys, static (a, b) => a.AsSpan().SequenceCompareTo(b));
 
-        using PooledByteBufferWriter pooled = new(256 * 1024 * 1024);
-        HsstBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter());
+        using PooledByteBufferWriter pooled = new(1024 * 1024 * 1024);
+        HsstBuilder<PooledByteBufferWriter.Writer> builder = new(
+            ref pooled.GetWriter(), minSeparatorLength: MinSep);
         try
         {
             Span<byte> value = stackalloc byte[8];
