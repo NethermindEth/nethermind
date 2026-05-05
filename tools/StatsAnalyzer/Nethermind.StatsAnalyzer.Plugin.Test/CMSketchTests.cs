@@ -142,17 +142,19 @@ public class CmSketchTests
     [TestCase(4, 10, 100)]
     public void validate_confidence(int hashFunctions, int buckets, int numberOfItemsInStream = 1)
     {
-        var random = new Random();
+        // Seeded for reproducibility — an unseeded Random produced different
+        // empirical breach counts each run, making the assertion below flaky.
+        var random = new Random(42);
         ulong randomUlong;
 
 
         var sketch = new CmSketchBuilder().SetHashFunctions(hashFunctions).SetBuckets(buckets).Build();
         Dictionary<ulong, ulong> actualCounts;
 
-        double confidence = 100;
+        const double trials = 100;
         var observedConfidence = 0d;
 
-        for (var trials = 0; trials < confidence; trials++)
+        for (var trial = 0; trial < trials; trial++)
         {
             sketch.Reset();
             actualCounts = new Dictionary<ulong, ulong>();
@@ -174,8 +176,12 @@ public class CmSketchTests
             observedConfidence += check_confidence(sketch, actualCounts, sketch.Error, sketch.Confidence) ? 1d : 0d;
         }
 
-        // 99% certainity that the confidence holds
-        observedConfidence.Should().BeGreaterThanOrEqualTo(confidence - 1);
+        // CM-Sketch only guarantees per-trial pass probability >= sketch.Confidence
+        // (Markov bound; for k hashes the bound is 1 - 1/2^k). Over 100 trials we
+        // expect at least 100 * sketch.Confidence successes. Allow a 10-trial slack
+        // for marginal parameter sets like (3, 10, 5) where Confidence = 0.875,
+        // so the asymptotic expected success count is only ~87.5.
+        observedConfidence.Should().BeGreaterThanOrEqualTo(trials * sketch.Confidence - 10);
     }
 
     // Probability(ObservedFreq <= ActualFreq + error * numberOfItemsInStream) <= confidence
