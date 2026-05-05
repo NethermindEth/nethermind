@@ -30,6 +30,12 @@ internal struct BSearchIndexMetadata
     public int ValueType = 1;
     /// <summary>Uniform/UniformWithLen: fixed value size or slot size. Default: 4-byte int offsets.</summary>
     public int ValueSlotSize = 4;
+    /// <summary>
+    /// Optional in-leaf hash probe mode. When non-None, the writer emits a hash
+    /// table between the keys section and the metadata; the caller must pass a
+    /// per-entry hash span via the constructor. Leaf-only.
+    /// </summary>
+    public HashProbeMode HashProbeMode = HashProbeMode.None;
 
     public BSearchIndexMetadata() { }
 }
@@ -61,6 +67,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     private readonly Span<byte> _keyBuf;
     private readonly Span<byte> _valueBuf;
     private readonly ReadOnlySpan<byte> _commonKeyPrefix;
+    private readonly ReadOnlySpan<uint> _entryHashes;
     private int _count;
     private int _keyPos;    // grows forward from 0 in _keyBuf
     private int _valuePos;  // grows forward from 0 in _valueBuf
@@ -69,7 +76,8 @@ internal ref struct BSearchIndexWriter<TWriter>
         ref TWriter writer,
         BSearchIndexMetadata metadata,
         Span<byte> keyBuffer,
-        ReadOnlySpan<byte> commonKeyPrefix = default)
+        ReadOnlySpan<byte> commonKeyPrefix = default,
+        ReadOnlySpan<uint> entryHashes = default)
     {
         _writer = ref writer;
         _startWritten = _writer.Written;
@@ -77,6 +85,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         _keyBuf = keyBuffer;
         _valueBuf = default;
         _commonKeyPrefix = commonKeyPrefix;
+        _entryHashes = entryHashes;
         _count = 0;
         _keyPos = 0;
         _valuePos = 0;
@@ -87,7 +96,8 @@ internal ref struct BSearchIndexWriter<TWriter>
         BSearchIndexMetadata metadata,
         Span<byte> keyBuffer,
         Span<byte> valueBuffer,
-        ReadOnlySpan<byte> commonKeyPrefix = default)
+        ReadOnlySpan<byte> commonKeyPrefix = default,
+        ReadOnlySpan<uint> entryHashes = default)
     {
         _writer = ref writer;
         _startWritten = _writer.Written;
@@ -95,6 +105,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         _keyBuf = keyBuffer;
         _valueBuf = valueBuffer;
         _commonKeyPrefix = commonKeyPrefix;
+        _entryHashes = entryHashes;
         _count = 0;
         _keyPos = 0;
         _valuePos = 0;
@@ -171,7 +182,85 @@ internal ref struct BSearchIndexWriter<TWriter>
             _ => FinalizeVariableKeys(),
         };
 
-        WriteMetadata(keySize, valueSize, _commonKeyPrefix);
+        // Write the in-leaf hash probe section (if any) immediately after keys
+        // and before the metadata.
+        HashProbeMode probeMode = ResolveProbeMode();
+        if (probeMode != HashProbeMode.None)
+            WriteHashProbeSection(probeMode);
+
+        WriteMetadata(keySize, valueSize, _commonKeyPrefix, probeMode);
+
+        // When a section uses Variable encoding, its u16 offset table cannot
+        // address bytes past 64 KiB. The per-section writer already enforces
+        // that on the section itself; here we additionally cap the *total* node
+        // size at 64 KiB so a node that mixes Variable + non-Variable sections
+        // (or carries a probe section + metadata) can never grow into a state
+        // where any future Variable-relative offset would overflow. Keeps the
+        // node-size invariant tight enough that callers above this layer don't
+        // have to track per-section vs whole-node accounting separately.
+        if (_metadata.KeyType == 0 || _metadata.ValueType == 0)
+        {
+            int totalNodeSize = _writer.Written - _startWritten;
+            const int MaxVariableNodeSize = 64 * 1024;
+            if (totalNodeSize > MaxVariableNodeSize)
+                throw new InvalidOperationException(
+                    $"Index node with Variable key/value section exceeds 64 KiB ({totalNodeSize} bytes); split before finalizing.");
+        }
+    }
+
+    /// <summary>
+    /// Returns the effective probe mode for this node. Falls back to
+    /// <see cref="HashProbeMode.None"/> when probe is unsupported (intermediate
+    /// node, no hashes provided, count out of range, or count == 0).
+    /// </summary>
+    private readonly HashProbeMode ResolveProbeMode()
+    {
+        HashProbeMode requested = _metadata.HashProbeMode;
+        if (requested == HashProbeMode.None) return HashProbeMode.None;
+        if (_metadata.IsIntermediate) return HashProbeMode.None;
+        if (_count == 0) return HashProbeMode.None;
+        if (_entryHashes.Length < _count) return HashProbeMode.None;
+        if (requested == HashProbeMode.OneByte && _count > 254) return HashProbeMode.None;
+        if (requested == HashProbeMode.TwoBytes && _count > 65534) return HashProbeMode.None;
+        return requested;
+    }
+
+    private void WriteHashProbeSection(HashProbeMode mode)
+    {
+        int slotWidth = mode == HashProbeMode.OneByte ? 1 : 2;
+        int bucketCount = HsstHash.BucketCount(_count);
+        uint mask = (uint)(bucketCount - 1);
+        int sectionSize = bucketCount * slotWidth;
+
+        Span<byte> dst = _writer.GetSpan(sectionSize);
+        Span<byte> section = dst[..sectionSize];
+
+        if (mode == HashProbeMode.OneByte)
+        {
+            section.Fill(0xFF);
+            for (int i = 0; i < _count; i++)
+            {
+                int slot = (int)(_entryHashes[i] & mask);
+                byte cur = section[slot];
+                if (cur == 0xFF) section[slot] = (byte)i;
+                else if (cur != 0xFE) section[slot] = 0xFE;
+            }
+        }
+        else
+        {
+            section.Fill(0xFF);
+            for (int i = 0; i < _count; i++)
+            {
+                int slot = (int)(_entryHashes[i] & mask);
+                ushort cur = BinaryPrimitives.ReadUInt16LittleEndian(section[(slot * 2)..]);
+                if (cur == 0xFFFF)
+                    BinaryPrimitives.WriteUInt16LittleEndian(section[(slot * 2)..], (ushort)i);
+                else if (cur != 0xFFFE)
+                    BinaryPrimitives.WriteUInt16LittleEndian(section[(slot * 2)..], 0xFFFE);
+            }
+        }
+
+        _writer.Advance(sectionSize);
     }
 
     private void WriteEmptyNode()
@@ -344,21 +433,36 @@ internal ref struct BSearchIndexWriter<TWriter>
         return dataOffset + tableSize;
     }
 
-    private void WriteMetadata(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix)
+    private void WriteMetadata(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix, HashProbeMode probeMode)
     {
         int metadataStart = _writer.Written;
         bool hasBaseOffset = _metadata.BaseOffset > 0;
         bool hasCommonPrefix = commonKeyPrefix.Length > 0;
+        bool hasExtFlags = probeMode != HashProbeMode.None;
         byte flags = (byte)(
             (_metadata.IsIntermediate ? 0x01 : 0x00) |
             (_metadata.KeyType << 1) |
             (_metadata.ValueType << 3) |
             (hasBaseOffset ? 0x20 : 0x00) |
-            (hasCommonPrefix ? 0x40 : 0x00));
+            (hasCommonPrefix ? 0x40 : 0x00) |
+            (hasExtFlags ? 0x80 : 0x00));
 
         Span<byte> span = _writer.GetSpan(1);
         span[0] = flags;
         _writer.Advance(1);
+
+        if (hasExtFlags)
+        {
+            byte extFlags = probeMode switch
+            {
+                HashProbeMode.OneByte => 0x01,
+                HashProbeMode.TwoBytes => 0x02,
+                _ => 0x00,
+            };
+            span = _writer.GetSpan(1);
+            span[0] = extFlags;
+            _writer.Advance(1);
+        }
 
         Span<byte> leb = _writer.GetSpan(10);
         int lebLen = Leb128.Write(leb, 0, _count);

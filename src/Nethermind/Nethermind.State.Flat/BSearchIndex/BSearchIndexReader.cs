@@ -4,17 +4,53 @@
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Utils;
+using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.BSearchIndex;
+
+/// <summary>
+/// Optional in-leaf hash probe mode. When set, the leaf node carries a hash
+/// table immediately after its keys section that maps <c>hash(key) &amp; mask</c>
+/// to an entry index in <c>0..N-1</c>. Lets exact-match lookups skip the binary
+/// search on the leaf.
+/// </summary>
+public enum HashProbeMode : byte
+{
+    None = 0,
+    /// <summary>1-byte slots; <c>0xFF</c>=empty, <c>0xFE</c>=collision; entry indices 0..253.</summary>
+    OneByte = 1,
+    /// <summary>2-byte (LE) slots; <c>0xFFFF</c>=empty, <c>0xFFFE</c>=collision; entry indices 0..65533.</summary>
+    TwoBytes = 2,
+}
+
+/// <summary>
+/// Tri-state result of <see cref="BSearchIndexReader.ProbeSlot"/>.
+/// </summary>
+public enum ProbeResult
+{
+    /// <summary>Slot was empty — exact-match miss without consulting the keys section.</summary>
+    Empty = 0,
+    /// <summary>Slot recorded a collision — caller must fall back to binary search.</summary>
+    Collision = 1,
+    /// <summary>Slot resolved to a single candidate index — caller still verifies the key.</summary>
+    Found = 2,
+}
 
 /// <summary>
 /// Reads a B-tree index block. An index block stores sorted key-value pairs with separate
 /// sections for values and keys, and metadata at the end for backward reading.
 ///
-/// Layout: [Values section][Keys section][Metadata][MetadataLength: u8]
+/// Layout: [Values section][Keys section][HashProbe section?][Metadata][MetadataLength: u8]
 ///
-/// Metadata: [Flags][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128 optional][CommonPrefixLen: u8 + bytes optional]
-/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=HasBaseOffset, bit6=HasCommonKeyPrefix
+/// Metadata: [Flags][ExtFlags?][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128 optional][CommonPrefixLen: u8 + bytes optional]
+/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=HasBaseOffset, bit6=HasCommonKeyPrefix, bit7=HasExtendedFlags
+/// ExtFlags (only when bit7 is set): bit0=HasHashProbe1Byte, bit1=HasHashProbe2Byte (mutually exclusive); bits2-7 reserved.
+///
+/// HashProbe section is leaf-only and present only when the corresponding ExtFlags bit is set.
+/// It sits between the Keys section and the Metadata. Size = bucketCount(KeyCount) × slotWidth.
+/// Slot encoding:
+///   1-byte mode: 0xFF=empty, 0xFE=collision; otherwise entry index (0..253).
+///   2-byte mode (LE): 0xFFFF=empty, 0xFFFE=collision; otherwise entry index (0..65533).
 ///
 /// KeyType/ValueType:
 ///   0 = Variable: length-prefixed entries followed by a u16 offset table at
@@ -30,19 +66,22 @@ public readonly ref struct BSearchIndexReader
     private readonly IndexMetadata _metadata;
     private readonly ReadOnlySpan<byte> _values;
     private readonly ReadOnlySpan<byte> _keys;
+    private readonly ReadOnlySpan<byte> _hashProbe;
     private readonly ReadOnlySpan<byte> _commonKeyPrefix;
 
-    private BSearchIndexReader(IndexMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> commonKeyPrefix)
+    private BSearchIndexReader(IndexMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> hashProbe, ReadOnlySpan<byte> commonKeyPrefix)
     {
         _metadata = metadata;
         _values = values;
         _keys = keys;
+        _hashProbe = hashProbe;
         _commonKeyPrefix = commonKeyPrefix;
     }
 
     public int EntryCount => _metadata.KeyCount;
     public bool IsIntermediate => _metadata.IsIntermediate;
     public IndexMetadata Metadata => _metadata;
+    public HashProbeMode HashProbeMode => _metadata.HashProbeMode;
 
     /// <summary>
     /// Bytes shared by every stored key. Empty when the node was written without the
@@ -67,8 +106,12 @@ public readonly ref struct BSearchIndexReader
         int metadataStart = indexEnd - 1 - metadataLen;
         IndexMetadata metadata = ReadMetadata(data, metadataStart, out ReadOnlySpan<byte> commonKeyPrefix);
 
-        // 3. Compute section boundaries
-        int keysEnd = metadataStart;
+        // 3. Compute section boundaries (HashProbe section, if any, sits between
+        //    keys and metadata).
+        int probeSize = metadata.HashProbeSectionSize;
+        int probeEnd = metadataStart;
+        int probeStart = probeEnd - probeSize;
+        int keysEnd = probeStart;
         int keysStart = keysEnd - metadata.KeySectionSize;
         int valuesEnd = keysStart;
         int valuesStart = valuesEnd - metadata.ValueSectionSize;
@@ -77,6 +120,7 @@ public readonly ref struct BSearchIndexReader
             metadata,
             data.Slice(valuesStart, metadata.ValueSectionSize),
             data.Slice(keysStart, metadata.KeySectionSize),
+            probeSize > 0 ? data.Slice(probeStart, probeSize) : default,
             commonKeyPrefix);
     }
 
@@ -84,6 +128,9 @@ public readonly ref struct BSearchIndexReader
     {
         int pos = start;
         byte flags = data[pos++];
+        byte extFlags = 0;
+        if ((flags & 0x80) != 0)
+            extFlags = data[pos++];
         int keyCount = Leb128.Read(data, ref pos);
         int keySize = Leb128.Read(data, ref pos);
         int valueSize = Leb128.Read(data, ref pos);
@@ -101,6 +148,7 @@ public readonly ref struct BSearchIndexReader
         return new IndexMetadata
         {
             Flags = flags,
+            ExtFlags = extFlags,
             KeyCount = keyCount,
             KeySize = keySize,
             ValueSize = valueSize,
@@ -198,6 +246,46 @@ public readonly ref struct BSearchIndexReader
     /// the JIT-emitted cmov has not yet been spot-checked across all architectures.
     /// </summary>
     public static bool BranchlessSearch = false;
+
+    /// <summary>
+    /// Probe the in-leaf hash slot for <paramref name="key"/>. Returns
+    /// <see cref="ProbeResult.Empty"/> when the slot is empty (exact-match miss
+    /// without consulting the keys section), <see cref="ProbeResult.Collision"/>
+    /// when the slot recorded a collision (caller falls back to binary search),
+    /// or <see cref="ProbeResult.Found"/> with <paramref name="index"/> set to a
+    /// candidate entry index (caller still verifies the key matches). Returns
+    /// <see cref="ProbeResult.Collision"/> when no probe section is present so
+    /// callers can use it unconditionally.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ProbeResult ProbeSlot(ReadOnlySpan<byte> key, out int index)
+    {
+        index = -1;
+        if (_hashProbe.IsEmpty) return ProbeResult.Collision;
+
+        HashProbeMode mode = _metadata.HashProbeMode;
+        int slotWidth = mode == HashProbeMode.OneByte ? 1 : 2;
+        int bucketCount = _hashProbe.Length / slotWidth;
+        uint mask = (uint)(bucketCount - 1);
+        uint slot = HsstHash.HashKey(key) & mask;
+
+        if (mode == HashProbeMode.OneByte)
+        {
+            byte v = _hashProbe[(int)slot];
+            if (v == 0xFF) return ProbeResult.Empty;
+            if (v == 0xFE) return ProbeResult.Collision;
+            index = v;
+            return ProbeResult.Found;
+        }
+        else
+        {
+            ushort v = BinaryPrimitives.ReadUInt16LittleEndian(_hashProbe[((int)slot * 2)..]);
+            if (v == 0xFFFF) return ProbeResult.Empty;
+            if (v == 0xFFFE) return ProbeResult.Collision;
+            index = v;
+            return ProbeResult.Found;
+        }
+    }
 
     /// <summary>
     /// Find the index of the largest entry whose key is &lt;= searchKey.
@@ -425,6 +513,8 @@ public readonly ref struct BSearchIndexReader
     public readonly struct IndexMetadata
     {
         public byte Flags { get; init; }
+        /// <summary>Extended flags byte; only valid when <see cref="HasExtendedFlags"/>.</summary>
+        public byte ExtFlags { get; init; }
         public int KeyCount { get; init; }
         /// <summary>KeyType=0: section size. KeyType=1: fixed key length. KeyType=2: slot size.</summary>
         public int KeySize { get; init; }
@@ -437,6 +527,25 @@ public readonly ref struct BSearchIndexReader
         public int ValueType => (Flags >> 3) & 0x03;
         public bool HasBaseOffset => (Flags & 0x20) != 0;
         public bool HasCommonKeyPrefix => (Flags & 0x40) != 0;
+        public bool HasExtendedFlags => (Flags & 0x80) != 0;
+
+        public HashProbeMode HashProbeMode => HasExtendedFlags
+            ? ((ExtFlags & 0x01) != 0 ? HashProbeMode.OneByte
+                : (ExtFlags & 0x02) != 0 ? HashProbeMode.TwoBytes
+                : HashProbeMode.None)
+            : HashProbeMode.None;
+
+        /// <summary>Byte size of the in-leaf hash probe section. 0 when absent.</summary>
+        public int HashProbeSectionSize
+        {
+            get
+            {
+                HashProbeMode mode = HashProbeMode;
+                if (mode == HashProbeMode.None || KeyCount == 0) return 0;
+                int slotWidth = mode == HashProbeMode.OneByte ? 1 : 2;
+                return HsstHash.BucketCount(KeyCount) * slotWidth;
+            }
+        }
 
         /// <summary>Total byte size of the Keys section.</summary>
         public int KeySectionSize => KeyType switch

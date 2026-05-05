@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.State.Flat.Test;
@@ -13,14 +14,15 @@ internal static class HsstTestUtil
     /// <summary>
     /// Helper for tests: Create builder, execute action, dispose and return result.
     /// </summary>
-    public static byte[] BuildToArray(BuildAction buildAction, int maxLeafEntries = HsstBuilder<PooledByteBufferWriter.Writer>.MaxLeafEntries, int minSeparatorLength = 0, bool inlineValues = false, bool useHashIndex = false, double hashIndexTargetUtilization = 0.75)
+    public static byte[] BuildToArray(BuildAction buildAction, int maxLeafEntries = HsstBuilder<PooledByteBufferWriter.Writer>.MaxLeafEntries, int minSeparatorLength = 0, bool inlineValues = false, bool useHashIndex = false, double hashIndexTargetUtilization = 0.75, HashProbeMode leafHashProbeMode = HashProbeMode.None)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
         HsstBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(),
             minSeparatorLength: minSeparatorLength,
             inlineValues: inlineValues,
             useHashIndex: useHashIndex,
-            hashIndexTargetUtilization: hashIndexTargetUtilization);
+            hashIndexTargetUtilization: hashIndexTargetUtilization,
+            leafHashProbeMode: leafHashProbeMode);
         try
         {
             buildAction(ref builder);
