@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -17,7 +18,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProvider : SpecProviderBase, IForkAwareSpecProvider
     {
         private readonly ChainSpec _chainSpec;
-        private Dictionary<string, IReleaseSpec> _forks;
+        private FrozenDictionary<string, IReleaseSpec> _forks;
 
         public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
             : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
@@ -125,7 +126,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             LoadTransitions(allTransitions);
 
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
-            _forks = CreateNamedForks(_chainSpec);
+            _forks = CreateNamedForks(_chainSpec).ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
