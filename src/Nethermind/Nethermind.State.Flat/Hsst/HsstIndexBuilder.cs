@@ -47,8 +47,12 @@ public ref struct HsstIndexBuilder<TWriter>
     /// <summary>
     /// Build B-tree index via writer.
     /// The absolute data region start offset (= 1 + dataLen) is needed to compute child offsets.
+    /// If <paramref name="leafChildOffsets"/> is non-empty, it must be sized to at least
+    /// <c>ceil(entries.Length / maxLeafEntries)</c>; the i-th slot is filled with the
+    /// inclusive last-byte offset (within the HSST) of the i-th leaf node, in build order.
+    /// Used by the node-hash-index variant which needs to point hash slots at leaves.
     /// </summary>
-    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBuilder<TWriter>.MaxLeafEntries)
+    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBuilder<TWriter>.MaxLeafEntries, Span<int> leafChildOffsets = default)
     {
         int startWritten = _writer.Written;
 
@@ -105,6 +109,11 @@ public ref struct HsstIndexBuilder<TWriter>
                     childOffset,
                     first,
                     last);
+
+                if (!leafChildOffsets.IsEmpty)
+                {
+                    leafChildOffsets[currentLevelCount - 1] = childOffset;
+                }
 
                 entryIdx += count;
             }

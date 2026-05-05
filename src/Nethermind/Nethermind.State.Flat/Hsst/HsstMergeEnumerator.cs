@@ -42,12 +42,14 @@ public sealed class HsstMergeEnumerator : IDisposable
             return;
         }
 
-        // Last byte of the HSST is the IndexType byte. For BTreeHashIndex the
+        // Last byte of the HSST is the IndexType byte. For hash-index variants the
         // appended hash table sits between the root and the IndexType byte; skip
         // past it to find where the root ends.
         IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
         int rootEnd = hsstData.Length - 1;
-        if (tag == IndexType.BTreeHashIndex)
+        if (tag == IndexType.BTreeHashIndex
+            || tag == IndexType.BTreeNodeHashIndex
+            || tag == IndexType.BTreeNodeHashIndexInlineValue)
         {
             int log2 = hsstData[hsstData.Length - 2];
             rootEnd = hsstData.Length - 2 - (1 << log2) * 4;

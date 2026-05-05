@@ -41,6 +41,8 @@ A compact, immutable binary format for sorted key/value tables.
 | **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
 | **BTreeInlineValue** | `[Index Region][IndexType: u8 = 0x02]` |
 | **BTreeHashIndex** | `[Data Region][Index Region][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x03]` |
+| **BTreeNodeHashIndex** | `[Data Region][Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x04]` |
+| **BTreeNodeHashIndexInlineValue** | `[Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x05]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -50,6 +52,8 @@ the variant by enumerated value (not a bitfield):
 | `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
 | `0x02` | `BTreeInlineValue` | No data region; leaves hold values inline. |
 | `0x03` | `BTreeHashIndex` | `BTree` plus a trailing open-address hash table of metaStart pointers. |
+| `0x04` | `BTreeNodeHashIndex` | `BTree` plus a trailing hash table of leaf-node pointers. |
+| `0x05` | `BTreeNodeHashIndexInlineValue` | `BTreeInlineValue` plus a trailing hash table of leaf-node pointers. |
 
 Other values are reserved for future index strategies. The root B-tree
 node lives just before the index type byte (or just before the hash table,
@@ -161,6 +165,49 @@ The B-tree under the hash table is identical to a `BTree` HSST and remains
 authoritative — readers that only know `BTree` could parse this variant by
 peeling off the trailing `2 + 4·2^L` bytes and reading the rest as a
 `BTree` HSST. The hash table is purely a fast path.
+
+### BTreeNodeHashIndex / BTreeNodeHashIndexInlineValue variants
+
+Same shape as `BTreeHashIndex` (table of `2^L` little-endian `u32` slots
+followed by `TableSizeLog2` then the discriminator byte), but the slot's
+non-sentinel value is the **inclusive last-byte offset of a leaf node**
+within the HSST — the same encoding used by intermediate B-tree
+child-pointers. `BTreeNodeHashIndex` (0x04) sits over a non-inline B-tree;
+`BTreeNodeHashIndexInlineValue` (0x05) sits over a `BTreeInlineValue`
+B-tree.
+
+Slot semantics:
+
+- `0x00000000` — empty: no key in the HSST hashes to this slot.
+- `0xFFFFFFFF` — collision: two or more **distinct** leaf nodes share this
+  slot; the reader must consult the B-tree.
+- otherwise — leaf-node end offset. Multiple keys that share a leaf
+  collapse onto the same slot value (this is not a collision); only
+  distinct leaves on the same slot trigger the sentinel.
+
+Slot index is computed identically to `BTreeHashIndex`
+(`slot = HashKey(key) & ((1 << L) - 1)`). The empty sentinel is
+unambiguous because a leaf node's last-byte offset is never 0 (an empty
+HSST is encoded as plain `BTree`).
+
+**Lookup procedure.** Compute `slot`; read the slot value:
+
+1. **Empty.** Exact-match returns "not found"; floor must consult the
+   B-tree.
+2. **Collision.** Consult the B-tree.
+3. **Leaf pointer.** Load the indicated leaf node and run the in-leaf
+   binary search exactly as the B-tree walk would for that leaf. On exact
+   match, decode the value (from the data region for `0x04`, from the
+   leaf's value section for `0x05`); on miss, exact-match returns "not
+   found" (the slot is authoritative — the key would have been built into
+   the same slot value or marked collision). Floor must consult the
+   B-tree because a floor inside the hashed leaf is not necessarily the
+   global floor.
+
+**Sizing.** Builders pick the smallest `2^L` such that
+`leafCount / 2^L ≤ targetUtilization` — the table population is bounded
+by the number of distinct leaves, not the entry count, so the table is
+typically much smaller than a `BTreeHashIndex` over the same data.
 
 ## B-tree index node layout
 

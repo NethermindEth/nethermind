@@ -12,4 +12,6 @@ public enum IndexType : byte
     BTree = 0x01,
     BTreeInlineValue = 0x02,
     BTreeHashIndex = 0x03,
+    BTreeNodeHashIndex = 0x04,
+    BTreeNodeHashIndexInlineValue = 0x05,
 }
