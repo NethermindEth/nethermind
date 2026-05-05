@@ -1,9 +1,9 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Evm;
-using Nethermind.PatternAnalyzer.Plugin.Types;
+using Nethermind.StatsAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
+namespace Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 
 public readonly record struct PatternStat(NGram Ngram, ulong Count);
 

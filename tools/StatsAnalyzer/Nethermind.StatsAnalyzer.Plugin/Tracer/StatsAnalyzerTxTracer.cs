@@ -3,7 +3,7 @@
 
 using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing;
-using Nethermind.PatternAnalyzer.Plugin.Types;
+using Nethermind.StatsAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer;

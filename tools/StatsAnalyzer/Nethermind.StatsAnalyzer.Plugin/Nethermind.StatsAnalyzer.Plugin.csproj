@@ -4,7 +4,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <RootNamespace>Nethermind.PatternAnalyzer.Plugin</RootNamespace>
+    <RootNamespace>Nethermind.StatsAnalyzer.Plugin</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

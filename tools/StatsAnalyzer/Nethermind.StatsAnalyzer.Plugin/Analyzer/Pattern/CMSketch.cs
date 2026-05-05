@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
+namespace Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 
 public class CmSketchBuilder
 {

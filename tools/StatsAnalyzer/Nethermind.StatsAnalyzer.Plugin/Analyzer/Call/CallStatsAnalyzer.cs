@@ -1,10 +1,10 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.PatternAnalyzer.Plugin.Types;
+using Nethermind.StatsAnalyzer.Plugin.Types;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Call;
+namespace Nethermind.StatsAnalyzer.Plugin.Analyzer.Call;
 
 public readonly record struct CallStat(Address Address, ulong Count);
 

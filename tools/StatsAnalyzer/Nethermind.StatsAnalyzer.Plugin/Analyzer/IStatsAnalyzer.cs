@@ -1,4 +1,4 @@
-using Nethermind.PatternAnalyzer.Plugin.Types;
+using Nethermind.StatsAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 

@@ -1,5 +1,5 @@
 using Nethermind.Evm;
-using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
+using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 

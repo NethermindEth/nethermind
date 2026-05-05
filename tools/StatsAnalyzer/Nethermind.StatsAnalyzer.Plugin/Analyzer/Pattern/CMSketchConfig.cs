@@ -1,4 +1,4 @@
-namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
+namespace Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 
 public class CmSketchConfig
 {

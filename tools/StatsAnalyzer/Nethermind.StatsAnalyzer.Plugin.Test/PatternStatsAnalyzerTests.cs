@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Nethermind.Evm;
-using Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
-using Nethermind.PatternAnalyzer.Plugin.Types;
+using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
+using Nethermind.StatsAnalyzer.Plugin.Types;
 using NUnit.Framework;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Test;

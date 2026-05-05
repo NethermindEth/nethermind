@@ -5,8 +5,8 @@ using System.IO.Abstractions;
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
-using Nethermind.PatternAnalyzer.Plugin.Analyzer.Call;
-using Nethermind.PatternAnalyzer.Plugin.Types;
+using Nethermind.StatsAnalyzer.Plugin.Analyzer.Call;
+using Nethermind.StatsAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
 

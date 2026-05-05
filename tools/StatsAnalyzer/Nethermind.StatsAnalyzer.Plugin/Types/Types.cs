@@ -1,4 +1,4 @@
-namespace Nethermind.PatternAnalyzer.Plugin.Types;
+namespace Nethermind.StatsAnalyzer.Plugin.Types;
 
 public enum ProcessingMode
 {

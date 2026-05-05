@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <RootNamespace>Nethermind.PatternAnalyzer.Plugin.Test</RootNamespace>
+    <RootNamespace>Nethermind.StatsAnalyzer.Plugin.Test</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

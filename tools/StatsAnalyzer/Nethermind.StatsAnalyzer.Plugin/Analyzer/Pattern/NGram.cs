@@ -2,7 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Evm;
 
-namespace Nethermind.PatternAnalyzer.Plugin.Analyzer.Pattern;
+namespace Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 
 public readonly struct NGram(ulong value = NGram.Null) : IEquatable<NGram>
 {
