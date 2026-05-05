@@ -20,7 +20,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public sealed class PersistedSnapshotBloomFilterManager : IDisposable
 {
     private readonly ConcurrentDictionary<StateId, BloomEntry> _blooms = new();
-    private readonly Lock _writeLock = new();
 
     /// <summary>
     /// One slot in the registry: the bloom plus the predecessor <see cref="StateId"/>.
@@ -39,63 +38,61 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
     /// For a base snapshot (range size 1) only the <c>To</c> slot is set, with
     /// <see cref="BloomEntry.ParentState"/> = <paramref name="bloom"/>.From. For a
     /// compacted snapshot the chain is walked from <c>To</c> backwards via
-    /// <see cref="BloomEntry.ParentState"/>, replacing each slot until block-number
-    /// crosses <c>From</c>; each replaced slot keeps its original predecessor link.
-    /// One lease is acquired per slot; the caller's creation lease is released here.
+    /// <see cref="BloomEntry.ParentState"/>; each slot whose existing bloom covers a
+    /// strictly wider range is skipped (the existing entry already supersedes the
+    /// incoming bloom). If the chain is not populated for a key, registration stops
+    /// — base-snapshot inserts are the only writers that may add a new slot, so
+    /// inserting here would break future chain walks. The caller's creation lease
+    /// is released by this method.
     /// </summary>
     public void Register(PersistedSnapshotBloom bloom)
     {
         long fromBlock = bloom.From.BlockNumber;
-        long toBlock = bloom.To.BlockNumber;
-        long rangeSize = toBlock - fromBlock;
+        long newRange = bloom.To.BlockNumber - fromBlock;
+        bool isBase = newRange == 1;
+        StateId cur = bloom.To;
 
-        lock (_writeLock)
+        while (cur.BlockNumber > fromBlock)
         {
-            if (rangeSize == 1)
+            if (_blooms.TryGetValue(cur, out BloomEntry existing))
             {
-                AssignSlot(bloom.To, bloom, parentState: bloom.From);
+                long existingRange = existing.Bloom.To.BlockNumber - existing.Bloom.From.BlockNumber;
+                if (existingRange > newRange)
+                {
+                    // Existing entry already covers a wider range — leave it in place.
+                    cur = existing.ParentState;
+                    continue;
+                }
+                // TryAcquire — not AcquireLease: a concurrent prune/dispose may have
+                // released the bloom we are trying to register before we finished
+                // walking. On failure, abandon the rest of the registration (the
+                // bloom is dead — there is nothing useful to insert).
+                if (!bloom.TryAcquire()) return;
+                if (!_blooms.TryUpdate(cur, new BloomEntry(bloom, existing.ParentState), existing))
+                {
+                    bloom.Dispose(); // lost CAS, undo the lease and retry the same key
+                    continue;
+                }
+                existing.Bloom.Dispose();
+                cur = existing.ParentState;
             }
             else
             {
-                StateId cur = bloom.To;
-                while (cur.BlockNumber > fromBlock)
+                if (!isBase)
                 {
-                    if (!_blooms.TryGetValue(cur, out BloomEntry prev))
-                    {
-                        // Chain not yet populated for this key (e.g. registered out of
-                        // order). Insert with ParentState = bloom.From and stop —
-                        // caller will repopulate intermediate slots when those base
-                        // snapshots register.
-                        AssignSlot(cur, bloom, parentState: bloom.From);
-                        break;
-                    }
-                    AssignSlot(cur, bloom, parentState: prev.ParentState);
-                    cur = prev.ParentState;
+                    // Compacted register on an unpopulated key: stop without inserting.
+                    // Inserting here would break the parent-state chain that future
+                    // compactions rely on.
+                    break;
                 }
+                if (!bloom.TryAcquire()) return;
+                if (_blooms.TryAdd(cur, new BloomEntry(bloom, bloom.From)))
+                    break;
+                bloom.Dispose(); // raced with a concurrent insert; retry via the update path
             }
+        }
 
-            // Release the caller's creation lease. Slot leases acquired in
-            // AssignSlot keep the bloom alive.
-            bloom.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Replace <c>_blooms[key]</c> with <paramref name="bloom"/>, acquiring one new
-    /// lease and disposing any previous slot's bloom lease.
-    /// </summary>
-    private void AssignSlot(StateId key, PersistedSnapshotBloom bloom, StateId parentState)
-    {
-        bloom.TryAcquire();
-        if (_blooms.TryGetValue(key, out BloomEntry prev))
-        {
-            _blooms[key] = new BloomEntry(bloom, parentState);
-            prev.Bloom.Dispose();
-        }
-        else
-        {
-            _blooms[key] = new BloomEntry(bloom, parentState);
-        }
+        bloom.Dispose(); // creation lease
     }
 
     /// <summary>
@@ -116,24 +113,21 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
     /// </summary>
     public int PruneBefore(StateId stateId)
     {
-        lock (_writeLock)
+        int pruned = 0;
+        using ArrayPoolList<StateId> toRemove = new(0);
+        foreach (KeyValuePair<StateId, BloomEntry> kv in _blooms)
         {
-            int pruned = 0;
-            using ArrayPoolList<StateId> toRemove = new(0);
-            foreach (KeyValuePair<StateId, BloomEntry> kv in _blooms)
-            {
-                if (kv.Key.BlockNumber < stateId.BlockNumber) toRemove.Add(kv.Key);
-            }
-            foreach (StateId key in toRemove)
-            {
-                if (_blooms.TryRemove(key, out BloomEntry entry))
-                {
-                    entry.Bloom.Dispose();
-                    pruned++;
-                }
-            }
-            return pruned;
+            if (kv.Key.BlockNumber < stateId.BlockNumber) toRemove.Add(kv.Key);
         }
+        foreach (StateId key in toRemove)
+        {
+            if (_blooms.TryRemove(key, out BloomEntry entry))
+            {
+                entry.Bloom.Dispose();
+                pruned++;
+            }
+        }
+        return pruned;
     }
 
     public long TotalKeyBloomBytes => SumDistinctBytes(static b => b.KeyBloomBytes);
@@ -153,11 +147,8 @@ public sealed class PersistedSnapshotBloomFilterManager : IDisposable
 
     public void Dispose()
     {
-        lock (_writeLock)
-        {
-            foreach (KeyValuePair<StateId, BloomEntry> kv in _blooms)
-                kv.Value.Bloom.Dispose();
-            _blooms.Clear();
-        }
+        foreach (KeyValuePair<StateId, BloomEntry> kv in _blooms)
+            kv.Value.Bloom.Dispose();
+        _blooms.Clear();
     }
 }
