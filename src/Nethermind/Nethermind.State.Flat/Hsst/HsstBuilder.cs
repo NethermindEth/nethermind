@@ -28,16 +28,6 @@ namespace Nethermind.State.Flat.Hsst;
 ///   the same MetadataStart that the B-tree would yield. 0 = empty slot;
 ///   0xFFFFFFFF = collision sentinel — reader must consult the B-tree.
 ///
-/// Binary layout (BTreeNodeHashIndex):
-///   [Data Region][Index Region][NodeHashTable: 4*2^L bytes][TableSizeLog2: u8][IndexType: u8 = 0x04]
-///   Same shape as BTreeHashIndex but slot values are leaf-node end offsets
-///   (the inclusive last-byte position of the leaf within the HSST, identical
-///   to the encoding used by intermediate-node child pointers) rather than
-///   per-entry MetadataStart pointers. Multiple entries that share a leaf
-///   collapse onto the same slot value; only distinct leaves on the same slot
-///   are flagged as 0xFFFFFFFF. Compatible with both regular and inline-value
-///   leaves — the reader loads the leaf and runs an in-leaf binary search.
-///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
 ///   [Value][ValueLength: LEB128][KeyLength: u8][FullKey]
 /// MetadataStart points at the ValueLength LEB128. KeyLength is a single byte: keys are
@@ -64,7 +54,6 @@ public ref struct HsstBuilder<TWriter>
     private readonly int _minSeparatorLength;
     private readonly bool _inlineValues;
     private readonly bool _useHashIndex;
-    private readonly bool _useNodeHashIndex;
     private readonly double _hashIndexTargetUtilization;
 
     // Working buffers allocated from NativeMemory
@@ -97,13 +86,11 @@ public ref struct HsstBuilder<TWriter>
     /// <paramref name="expectedKeyCount"/> sizes the entry/separator working buffers up front;
     /// pass an estimate when known to avoid resize allocations. The buffers still grow on demand.
     /// </summary>
-    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false, int expectedKeyCount = 16, bool useHashIndex = false, double hashIndexTargetUtilization = 0.75, bool useNodeHashIndex = false)
+    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false, int expectedKeyCount = 16, bool useHashIndex = false, double hashIndexTargetUtilization = 0.75)
     {
         if (useHashIndex && inlineValues)
             throw new NotSupportedException("Hash index is not supported with inline values.");
-        if (useHashIndex && useNodeHashIndex)
-            throw new ArgumentException("useHashIndex and useNodeHashIndex are mutually exclusive.");
-        if ((useHashIndex || useNodeHashIndex) && !(hashIndexTargetUtilization > 0.1 && hashIndexTargetUtilization <= 1.0))
+        if (useHashIndex && !(hashIndexTargetUtilization > 0.1 && hashIndexTargetUtilization <= 1.0))
             throw new ArgumentOutOfRangeException(nameof(hashIndexTargetUtilization), "Must be in (0.1, 1.0].");
 
         _writer = ref writer;
@@ -111,7 +98,6 @@ public ref struct HsstBuilder<TWriter>
         _minSeparatorLength = minSeparatorLength;
         _inlineValues = inlineValues;
         _useHashIndex = useHashIndex;
-        _useNodeHashIndex = useNodeHashIndex;
         _hashIndexTargetUtilization = hashIndexTargetUtilization;
 
         // Heuristic: ~32 bytes per separator/value. The buffers grow as needed.
@@ -126,7 +112,7 @@ public ref struct HsstBuilder<TWriter>
             _inlineValueLengths = new NativeMemoryListRef<int>(expectedKeyCount);
         }
 
-        if (useHashIndex || useNodeHashIndex)
+        if (useHashIndex)
         {
             _entryHashes = new NativeMemoryListRef<uint>(expectedKeyCount);
         }
@@ -145,7 +131,7 @@ public ref struct HsstBuilder<TWriter>
             _inlineValueBuffer.Dispose();
             _inlineValueLengths.Dispose();
         }
-        if (_useHashIndex || _useNodeHashIndex)
+        if (_useHashIndex)
         {
             _entryHashes.Dispose();
         }
@@ -203,7 +189,7 @@ public ref struct HsstBuilder<TWriter>
 
         _entriesBuffer.Add(new HsstEntry(sepOffset, sepLen, metadataStart));
 
-        if (_useHashIndex || _useNodeHashIndex)
+        if (_useHashIndex)
         {
             _entryHashes.Add(HsstHash.HashKey(key));
         }
@@ -230,11 +216,6 @@ public ref struct HsstBuilder<TWriter>
 
             _entriesBuffer.Add(new HsstEntry(sepOffset, key.Length, valueOffset));
 
-            if (_useNodeHashIndex)
-            {
-                _entryHashes.Add(HsstHash.HashKey(key));
-            }
-
             _prevKeyBuffer.Clear();
             _prevKeyBuffer.AddRange(key);
         }
@@ -253,18 +234,6 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public void Build(int maxLeafEntries = MaxLeafEntries)
     {
-        // For BTreeNodeHashIndex we need to know the inclusive last-byte offset of every
-        // leaf node so the hash table can point at leaves. The index builder writes
-        // those offsets into this scratch span as it emits leaves.
-        bool emitNodeHashIndex = _useNodeHashIndex && _entriesBuffer.Count > 0;
-        int leafCount = emitNodeHashIndex
-            ? (_entriesBuffer.Count + maxLeafEntries - 1) / maxLeafEntries
-            : 0;
-        using NativeMemoryListRef<int> leafChildOffsetsBuf = emitNodeHashIndex
-            ? new NativeMemoryListRef<int>(leafCount, leafCount)
-            : default;
-        Span<int> leafChildOffsets = emitNodeHashIndex ? leafChildOffsetsBuf.AsSpan() : default;
-
         if (_inlineValues)
         {
             // Inline: no data section, index starts at byte 0 of the HSST.
@@ -276,7 +245,7 @@ public ref struct HsstBuilder<TWriter>
                 _inlineValueBuffer.AsSpan(),
                 _inlineValueLengths.AsSpan());
 
-            indexBuilder.Build(absoluteIndexStart, maxLeafEntries, leafChildOffsets);
+            indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
         }
         else
         {
@@ -286,7 +255,7 @@ public ref struct HsstBuilder<TWriter>
                 ref _writer, _entriesBuffer.AsSpan(),
                 _separatorBuffer.AsSpan());
 
-            indexBuilder.Build(absoluteIndexStart, maxLeafEntries, leafChildOffsets);
+            indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
         }
 
         // Optional hash index section. Empty HSSTs fall back to plain BTree because
@@ -297,15 +266,10 @@ public ref struct HsstBuilder<TWriter>
         {
             EmitHashTable();
         }
-        else if (emitNodeHashIndex)
-        {
-            EmitNodeHashTable(leafChildOffsets, maxLeafEntries);
-        }
 
         // Trailing IndexType byte (last byte of the HSST).
         IndexType tag;
         if (emitHashIndex) tag = IndexType.BTreeHashIndex;
-        else if (emitNodeHashIndex) tag = _inlineValues ? IndexType.BTreeNodeHashIndexInlineValue : IndexType.BTreeNodeHashIndex;
         else if (_inlineValues) tag = IndexType.BTreeInlineValue;
         else tag = IndexType.BTree;
         Span<byte> tail = _writer.GetSpan(1);
@@ -363,56 +327,6 @@ public ref struct HsstBuilder<TWriter>
         log2Span[0] = (byte)log2;
         _writer.Advance(1);
     }
-
-    private void EmitNodeHashTable(ReadOnlySpan<int> leafChildOffsets, int maxLeafEntries)
-    {
-        ReadOnlySpan<uint> hashes = _entryHashes.AsSpan();
-        int n = hashes.Length;
-        int leafCount = leafChildOffsets.Length;
-
-        // Sized off leaf count: many entries can share a slot when they share a leaf,
-        // so the slot population is bounded by the leaf count, not the entry count.
-        long required = (long)Math.Ceiling(leafCount / _hashIndexTargetUtilization);
-        if (required < 1) required = 1;
-        int log2 = required <= 1 ? 0 : (32 - BitOperations.LeadingZeroCount((uint)(required - 1)));
-        if (log2 > 31) throw new InvalidOperationException("Node hash index table size too large.");
-        int tableSize = 1 << log2;
-        uint mask = (uint)(tableSize - 1);
-
-        using NativeMemoryListRef<uint> table = new(tableSize, tableSize);
-        Span<uint> slots = table.AsSpan();
-
-        const uint Empty = 0u;
-        const uint Collision = 0xFFFFFFFFu;
-
-        for (int i = 0; i < n; i++)
-        {
-            uint slot = hashes[i] & mask;
-            uint leafEnd = (uint)leafChildOffsets[i / maxLeafEntries];
-            uint cur = slots[(int)slot];
-            if (cur == Empty)
-            {
-                slots[(int)slot] = leafEnd;
-            }
-            else if (cur != leafEnd && cur != Collision)
-            {
-                slots[(int)slot] = Collision;
-            }
-            // else: same leaf already recorded, or already a collision — nothing to do.
-        }
-
-        for (int i = 0; i < tableSize; i++)
-        {
-            Span<byte> dst = _writer.GetSpan(4);
-            BinaryPrimitives.WriteUInt32LittleEndian(dst, slots[i]);
-            _writer.Advance(4);
-        }
-
-        Span<byte> log2Span = _writer.GetSpan(1);
-        log2Span[0] = (byte)log2;
-        _writer.Advance(1);
-    }
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ComputeSeparatorLength(ReadOnlySpan<byte> prevKey, ReadOnlySpan<byte> currKey, ReadOnlySpan<byte> nextKey, int minSeparatorLength = 0)

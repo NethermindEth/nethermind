@@ -101,9 +101,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                 _rootAbsEnd = _hsstEnd - 1;
                 break;
             case IndexType.BTreeHashIndex:
-            case IndexType.BTreeNodeHashIndex:
-            case IndexType.BTreeNodeHashIndexInlineValue:
-                _isInline = (IndexType)idxType[0] == IndexType.BTreeNodeHashIndexInlineValue;
+                _isInline = false;
                 Span<byte> log2Buf = stackalloc byte[1];
                 if (!_reader.TryRead(_hsstEnd - 2, log2Buf))
                 {

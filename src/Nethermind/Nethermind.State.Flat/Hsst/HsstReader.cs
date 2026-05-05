@@ -72,14 +72,11 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         if (!_reader.TryRead(_bound.Offset + _bound.Length - 1, idxType)) return false;
         bool isInline;
         bool hasHashIndex;
-        bool hasNodeHashIndex;
         switch ((IndexType)idxType[0])
         {
-            case IndexType.BTree: isInline = false; hasHashIndex = false; hasNodeHashIndex = false; break;
-            case IndexType.BTreeInlineValue: isInline = true; hasHashIndex = false; hasNodeHashIndex = false; break;
-            case IndexType.BTreeHashIndex: isInline = false; hasHashIndex = true; hasNodeHashIndex = false; break;
-            case IndexType.BTreeNodeHashIndex: isInline = false; hasHashIndex = false; hasNodeHashIndex = true; break;
-            case IndexType.BTreeNodeHashIndexInlineValue: isInline = true; hasHashIndex = false; hasNodeHashIndex = true; break;
+            case IndexType.BTree: isInline = false; hasHashIndex = false; break;
+            case IndexType.BTreeInlineValue: isInline = true; hasHashIndex = false; break;
+            case IndexType.BTreeHashIndex: isInline = false; hasHashIndex = true; break;
             case IndexType.FlatEntries:
                 if (HsstFlatReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatBound))
                 {
@@ -173,57 +170,6 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                         return true;
                     }
                 }
-            }
-        }
-
-        if (hasNodeHashIndex)
-        {
-            // Node hash table layout (read backward from IndexType byte):
-            //   [HashTable: 2^log2 * 4 bytes][TableSizeLog2: u8][IndexType: u8]
-            // Slot semantics:
-            //   0x00000000      — empty (no entry hashes here; exact-match miss)
-            //   0xFFFFFFFF      — collision sentinel (distinct leaves on this slot)
-            //   otherwise       — leaf node's inclusive last-byte offset within the HSST
-            Span<byte> log2Buf = stackalloc byte[1];
-            if (!_reader.TryRead(_bound.Offset + _bound.Length - 2, log2Buf)) return false;
-            int log2 = log2Buf[0];
-            if (log2 > 31) return false;
-            long tableSize = 1L << log2;
-            long tableBytes = tableSize * 4;
-            long tableStart = _bound.Offset + _bound.Length - 2 - tableBytes;
-            if (tableStart < _bound.Offset) return false;
-
-            // Root b-tree node ends right before the hash table.
-            currentAbsEnd = tableStart;
-
-            // For floor lookups, the hashed leaf's local floor is not necessarily the
-            // global floor (could live in an earlier leaf), so always fall through to
-            // the b-tree walk for floor. Same rationale as BTreeHashIndex.
-            if (exactMatch)
-            {
-                uint h = HsstHash.HashKey(key);
-                uint mask = (uint)(tableSize - 1);
-                uint slot = h & mask;
-                Span<byte> slotBuf = stackalloc byte[4];
-                if (!_reader.TryRead(tableStart + slot * 4, slotBuf)) return false;
-                uint slotValue = BinaryPrimitives.ReadUInt32LittleEndian(slotBuf);
-
-                const uint Empty = 0u;
-                const uint Collision = 0xFFFFFFFFu;
-
-                if (slotValue == Empty)
-                {
-                    // No entry hashes here — exact-match cannot succeed.
-                    return false;
-                }
-                if (slotValue != Collision)
-                {
-                    // Slot points at the leaf where the key would live (if it exists).
-                    // Skip the b-tree intermediate walk: redirect currentAbsEnd to that
-                    // leaf's exclusive end and let the shared loop run the leaf branch.
-                    currentAbsEnd = _bound.Offset + (long)slotValue + 1;
-                }
-                // else: distinct-leaf collision — fall through to b-tree.
             }
         }
 
