@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -165,6 +166,33 @@ public class BloomFilterTests
         {
             bloom.MightContain(i).Should().BeTrue($"hash {i} should be found");
         }
+    }
+
+    #endregion
+
+    #region Constructor Validation
+
+    [TestCase(0)]
+    [TestCase(-1)]
+    [TestCase(long.MinValue)]
+    public void Constructor_RejectsNonPositiveCapacity(long capacity) =>
+        Assert.That(() => new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity, bitsPerKey: 10),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [TestCase(0.0)]
+    [TestCase(-1.0)]
+    [TestCase(double.NaN)]
+    [TestCase(double.PositiveInfinity)]
+    [TestCase(double.NegativeInfinity)]
+    public void Constructor_RejectsInvalidBitsPerKey(double bitsPerKey) =>
+        Assert.That(() => new Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter(capacity: 100, bitsPerKey),
+            Throws.TypeOf<ArgumentOutOfRangeException>());
+
+    [Test]
+    public void Constructor_AcceptsInitialCount()
+    {
+        using Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter bloom = new(capacity: 100, bitsPerKey: 10, initialCount: 42);
+        bloom.Count.Should().Be(42);
     }
 
     #endregion
