@@ -51,13 +51,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             ctx.GuardLimit(length, RlpLimit);
 
             ArrayPoolList<Transaction> result = new(length);
-            for (int i = 0; i < length; i++)
+            try
             {
-                result.Add(TxDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
+                for (int i = 0; i < length; i++)
+                {
+                    result.Add(TxDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
+                }
+                ctx.Check(checkPosition);
+                return result;
             }
-
-            ctx.Check(checkPosition);
-            return result;
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
         }
     }
 }

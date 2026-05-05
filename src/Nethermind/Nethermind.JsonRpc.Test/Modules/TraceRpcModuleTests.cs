@@ -33,7 +33,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;

@@ -448,6 +448,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        /// <summary>
+        /// Calls <see cref="ZeroNettyP2PHandler.ExceptionCaught"/> with <see cref="RlpException"/> directly
+        /// (without testing the whole pipeline) and verifies disconnect was triggered.
+        /// </summary>
         [Test]
         public void Disconnects_peer_on_transaction_deserialization_exception()
         {
