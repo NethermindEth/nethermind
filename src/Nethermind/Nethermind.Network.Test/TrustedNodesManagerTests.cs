@@ -38,5 +38,7 @@ public class TrustedNodesManagerTests
 
         nodeRemovedFired.Should().BeTrue(
             because: "NodeRemoved must fire before the file write, so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected via the missed disconnect event chain");
+        manager.Nodes.Should().NotContain(n => n.NodeId == enode.PublicKey,
+            because: "the in-memory dict must already be cleared before the cancellation point, so an aborted file write cannot leave the peer trusted in memory");
     }
 }
