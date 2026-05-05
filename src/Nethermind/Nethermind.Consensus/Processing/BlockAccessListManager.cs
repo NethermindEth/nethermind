@@ -187,6 +187,13 @@ public class BlockAccessListManager(
             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
             for (int j = chunkStart; j < chunkEnd; j++)
             {
+                Transaction tx = block.Transactions[j];
+
+                // EIP-8037 per-tx 2D inclusion check (execution-specs PR 2703).
+                // totalRegularGas/totalStateGas reflect the cumulatives BEFORE this tx;
+                // the worst-case per-dimension contribution must fit the remaining budget.
+                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas);
+
                 (long blockGasUsed, long blockStateGasUsed, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
 
                 // Surface the worker's original tx-rejection reason before running any
@@ -223,6 +230,35 @@ public class BlockAccessListManager(
             if (effectiveGas > block.Header.GasLimit)
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
+            }
+        }
+
+        static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
+        {
+            // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
+            // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
+            // continue to rely solely on the post-execution running max(R,S) check.
+            if (!spec.IsEip8037Enabled) return;
+
+            IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
+            long intrinsicRegular = intrinsic.Standard.Value;
+            long intrinsicState = intrinsic.Standard.StateReservoir;
+
+            Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
+                block.Header.GasLimit,
+                cumulativeRegular,
+                cumulativeState,
+                tx.GasLimit,
+                intrinsicRegular,
+                intrinsicState);
+
+            if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
+            {
+                throw new InvalidBlockException(block,
+                    $"Block gas limit exceeded: tx {index} fails EIP-8037 inclusion check ({outcome}); " +
+                    $"regular_available={block.Header.GasLimit - cumulativeRegular}, " +
+                    $"state_available={block.Header.GasLimit - cumulativeState}, " +
+                    $"tx.gas={tx.GasLimit}, intrinsic.regular={intrinsicRegular}, intrinsic.state={intrinsicState}.");
             }
         }
     }

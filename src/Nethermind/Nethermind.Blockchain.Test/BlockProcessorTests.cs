@@ -371,8 +371,13 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void IncrementalValidation_accepts_eip8037_tx_when_gas_limit_exceeds_ordered_remaining_gas_but_actual_gas_fits()
+    public void IncrementalValidation_rejects_eip8037_tx_at_inclusion_when_worst_case_exceeds_remaining_budget()
     {
+        // execution-specs PR 2703: the per-tx 2D inclusion check rejects a tx whose
+        // worst-case dimension contribution exceeds the remaining budget, even if its
+        // actual post-execution gas would have fit. tx1.GasLimit (50_000) exceeds the
+        // remaining regular budget of 35_000 left after tx0's 65_000 actual usage, so
+        // the spec rejects tx1 at inclusion regardless of its actual usage.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
             .WithHash(TestItem.KeccakA)
@@ -402,9 +407,11 @@ public class BlockProcessorTests
         gasResults[0].SetResult((65_000, 0, null));
         gasResults[1].SetResult((21_000, 0, null));
 
-        Assert.DoesNotThrow(() =>
+        InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(86_000));
+
+        Assert.That(exception!.Message, Does.Contain("EIP-8037 inclusion check"));
+        Assert.That(exception.Message, Does.Contain("RegularDimensionExceeded"));
     }
 
     [Test]
@@ -448,6 +455,12 @@ public class BlockProcessorTests
     [Test]
     public void IncrementalValidation_eip8037_block_gas_check_uses_actual_state_dimension()
     {
+        // CREATE tx GasLimit sized to pass the EIP-8037 worst-case inclusion check
+        // (worst-case state = GasLimit - intrinsic.regular must <= state_available
+        // = 200_000 - 60_000 = 140_000). A 165_000 limit gives worst-case state of
+        // ~135_000, which fits. Actual post-execution state is GasCostOf.CreateState
+        // (the AccountCreationCost) so the post-exec max(R,S) check still ends up
+        // verifying the state dimension drives block.Header.GasUsed.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
             .WithHash(TestItem.KeccakA)
@@ -456,7 +469,7 @@ public class BlockProcessorTests
         Transaction createTx = Build.A.Transaction
             .WithHash(TestItem.KeccakB)
             .WithCode([])
-            .WithGasLimit(200_000)
+            .WithGasLimit(165_000)
             .WithNonce(1)
             .TestObject;
         Block block = Build.A.Block
@@ -490,10 +503,13 @@ public class BlockProcessorTests
         // produced an InvalidBlockException). Even if tx0's reported gas would also trip downstream
         // gas accounting, the validator must surface the worker's original cause so parallel mode
         // reports the same root cause as sequential.
+        // Tx GasLimit must pass the EIP-8037 inclusion check (worst-case <= block budget)
+        // so the inclusion check doesn't fire before we can read the worker exception.
+        // 50_000 worst-case <= 100_000 budget; the worker rejection then surfaces.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction onlyTx = Build.A.Transaction
             .WithHash(TestItem.KeccakA)
-            .WithGasLimit(100_001) // exceeds block gas limit
+            .WithGasLimit(50_000)
             .TestObject;
         Block block = Build.A.Block
             .WithNumber(1)
@@ -527,14 +543,20 @@ public class BlockProcessorTests
         // InvalidBlockException("Block gas limit exceeded") that masks the worker's original cause.
         // Even with the worker now reporting (0, 0, ex), this test feeds the legacy shape so the
         // validator's exception-first ordering is verified directly, independent of worker behaviour.
+        // tx0 has GasLimit 30_000 (passes inclusion: worst-case 30_000 <= 100_000) but
+        // its ACTUAL gas reported by the worker is 80_000 (legacy buggy worker shape).
+        // tx1 has GasLimit 20_000, which still passes inclusion (worst-case 20_000 <=
+        // remaining 20_000 - strict > check) but its worker rejected. The validator
+        // must surface tx1's worker exception, not the post-exec gas-limit overshoot
+        // it would otherwise compute from the buggy (50_000, 0, ex) gas tuple.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
             .WithHash(TestItem.KeccakA)
-            .WithGasLimit(50_000)
+            .WithGasLimit(30_000)
             .TestObject;
         Transaction secondTx = Build.A.Transaction
             .WithHash(TestItem.KeccakB)
-            .WithGasLimit(50_000)
+            .WithGasLimit(20_000)
             .WithNonce(1)
             .TestObject;
         Block block = Build.A.Block
