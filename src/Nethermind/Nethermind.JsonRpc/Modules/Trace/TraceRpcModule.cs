@@ -401,12 +401,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             if (!spec.IsEip4844Enabled)
             {
-                adjusted.BlobGasUsed = null;
                 adjusted.ExcessBlobGas = null;
             }
             else
             {
-                adjusted.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
                 adjusted.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
             }
 
