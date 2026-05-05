@@ -403,6 +403,21 @@ namespace Nethermind.Core.Test
             Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(data); ctx.DecodeByteArray(); });
         }
 
+        [Test]
+        public void Encode_stream_with_null_items_produces_empty_list()
+        {
+            RlpStream stream = new(Rlp.OfEmptyList.Length);
+            TxDecoder.Instance.Encode(stream, (Transaction[]?)null);
+            Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+        }
+
+        [Test]
+        public void Encode_object_with_null_items_produces_empty_list()
+        {
+            Rlp result = AccountDecoder.Instance.Encode((Account[]?)null);
+            Assert.That(result, Is.EqualTo(Rlp.OfEmptyList));
+        }
+
         private static HashSet<long> LongValues()
         {
             const long minusBit = 1L << 63;
