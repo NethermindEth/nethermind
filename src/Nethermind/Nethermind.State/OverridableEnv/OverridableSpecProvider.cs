@@ -14,6 +14,8 @@ public class OverridableSpecProvider(ISpecProvider inner) : ISpecProvider
 {
     private IReleaseSpec? _override;
 
+    public ISpecProvider SpecProvider => inner;
+
     public IReleaseSpec GetSpec(ForkActivation forkActivation) => _override ?? inner.GetSpec(forkActivation);
 
     internal void SetOverride(IReleaseSpec spec) => _override = spec;

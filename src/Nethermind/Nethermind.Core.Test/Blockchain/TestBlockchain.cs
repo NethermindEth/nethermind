@@ -271,9 +271,18 @@ public class TestBlockchain : IDisposable
             MinGasPrice = 0 // Tx pool test seems to need this.
         }];
 
-    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider) => specProvider is TestSpecProvider { AllowTestChainOverride: false }
+    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider)
+    {
+        ISpecProvider unwrapped = specProvider;
+        if (specProvider is Nethermind.State.OverridableEnv.OverridableSpecProvider envSpecProvider)
+        {
+            unwrapped = envSpecProvider.SpecProvider;
+        }
+
+        return unwrapped is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
+    }
 
     protected virtual IBlockProducer CreateTestBlockProducer()
     {
