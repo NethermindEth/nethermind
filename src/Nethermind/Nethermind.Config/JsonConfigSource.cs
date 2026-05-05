@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 using System.Linq;
 
 namespace Nethermind.Config;
@@ -178,7 +179,7 @@ public class JsonConfigSource : IConfigSource
         }
         else if (value.TryGetDouble(out double doubleResult))
         {
-            return result.ToString();
+            return doubleResult.ToString(CultureInfo.InvariantCulture);
         }
         else
         {
