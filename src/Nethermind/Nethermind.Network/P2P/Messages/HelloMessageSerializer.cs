@@ -68,13 +68,17 @@ namespace Nethermind.Network.P2P.Messages
 
             helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
             {
-                c.ReadSequenceLength();
-                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan();
+                int length = c.ReadSequenceLength();
+                int checkPosition = c.Position + length;
+
+                ReadOnlySpan<byte> protocolSpan = c.DecodeByteArraySpan(RlpLimit.L8);
                 if (!Contract.P2P.ProtocolParser.TryGetProtocolCode(protocolSpan, out string? protocolCode))
                 {
                     protocolCode = Encoding.UTF8.GetString(protocolSpan);
                 }
                 int version = c.DecodeByte();
+
+                c.Check(checkPosition);
                 return new Capability(protocolCode, version);
             }, limit: RlpLimit.L64);
 
