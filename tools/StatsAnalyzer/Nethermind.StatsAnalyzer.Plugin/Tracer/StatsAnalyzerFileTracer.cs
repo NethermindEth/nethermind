@@ -4,6 +4,7 @@
 using System.IO;
 using System.IO.Abstractions;
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
