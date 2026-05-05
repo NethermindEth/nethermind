@@ -89,8 +89,8 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
             _api.FileSystem,
             _logger,
             patternAnalyzerConfig.WriteFrequency,
-            (ProcessingMode)Enum.Parse(typeof(ProcessingMode), callAnalyzerConfig.ProcessingMode),
-            (SortOrder)Enum.Parse(typeof(SortOrder), callAnalyzerConfig.Sort),
+            (ProcessingMode)Enum.Parse(typeof(ProcessingMode), patternAnalyzerConfig.ProcessingMode),
+            (SortOrder)Enum.Parse(typeof(SortOrder), patternAnalyzerConfig.Sort),
             patternAnalyzerConfig.File!,
             _cancellationTokenSource.Token);
         _api.MainProcessingContext!.BlockchainProcessor!.Tracers.Add(patternAnalyzerFileTracer);
