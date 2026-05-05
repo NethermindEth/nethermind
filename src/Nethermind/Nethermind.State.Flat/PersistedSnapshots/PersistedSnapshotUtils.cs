@@ -301,119 +301,119 @@ internal static class PersistedSnapshotUtils
                 HsstReader<SpanByteReader, NoOpPin> outerReader = new(in reader);
                 if (outerReader.TrySeek(PersistedSnapshot.AccountColumnTag, out _))
                 {
-                Span<byte> slotBytes = stackalloc byte[32];
-                Bound accountColumnBound = outerReader.GetBound();
-                using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
-                while (addrEnum.MoveNext())
-                {
-                    ReadOnlySpan<byte> addrKey = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
-                    Address address = new(addrKey);
-                    ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
-
-                    // Validate account sub-tag (0x03)
-                    if (TryGet(perAddrSpan, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp))
+                    Span<byte> slotBytes = stackalloc byte[32];
+                    Bound accountColumnBound = outerReader.GetBound();
+                    using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
+                    while (addrEnum.MoveNext())
                     {
-                        Account? bundleAccount = bundle.GetAccount(address);
-                        if (accountRlp.IsEmpty)
+                        ReadOnlySpan<byte> addrKey = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
+                        Address address = new(addrKey);
+                        ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
+
+                        // Validate account sub-tag (0x03)
+                        if (TryGet(perAddrSpan, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp))
                         {
-                            if (bundleAccount is not null)
-                                throw new InvalidOperationException($"Account {address}: compacted=deleted but bundle={bundleAccount}");
-                        }
-                        else
-                        {
-                            Rlp.ValueDecoderContext ctx = new(accountRlp);
-                            Account? decoded = AccountDecoder.Slim.Decode(ref ctx) ?? throw new InvalidOperationException($"Account {address}: failed to decode compacted RLP");
-                            if (bundleAccount is null)
-                                throw new InvalidOperationException($"Account {address}: compacted={decoded} but bundle=null");
-                            if (decoded.Balance != bundleAccount.Balance || decoded.Nonce != bundleAccount.Nonce ||
-                                decoded.CodeHash != bundleAccount.CodeHash || decoded.StorageRoot != bundleAccount.StorageRoot)
+                            Account? bundleAccount = bundle.GetAccount(address);
+                            if (accountRlp.IsEmpty)
                             {
-                                throw new InvalidOperationException($"Account {address}: mismatch");
+                                if (bundleAccount is not null)
+                                    throw new InvalidOperationException($"Account {address}: compacted=deleted but bundle={bundleAccount}");
+                            }
+                            else
+                            {
+                                Rlp.ValueDecoderContext ctx = new(accountRlp);
+                                Account? decoded = AccountDecoder.Slim.Decode(ref ctx) ?? throw new InvalidOperationException($"Account {address}: failed to decode compacted RLP");
+                                if (bundleAccount is null)
+                                    throw new InvalidOperationException($"Account {address}: compacted={decoded} but bundle=null");
+                                if (decoded.Balance != bundleAccount.Balance || decoded.Nonce != bundleAccount.Nonce ||
+                                    decoded.CodeHash != bundleAccount.CodeHash || decoded.StorageRoot != bundleAccount.StorageRoot)
+                                {
+                                    throw new InvalidOperationException($"Account {address}: mismatch");
+                                }
                             }
                         }
-                    }
 
-                    // Validate self-destruct sub-tag (0x02)
-                    if (TryGet(perAddrSpan, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue))
-                    {
-                        bool actual = !sdValue.IsEmpty; // true = new account (0x01), false = destructed (empty)
-
-                        bool? expected = null;
-                        for (int i = 0; i < snapshots.Count; i++)
+                        // Validate self-destruct sub-tag (0x02)
+                        if (TryGet(perAddrSpan, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue))
                         {
-                            bool? flag = snapshots[i].TryGetSelfDestructFlag(PersistedSnapshotBloom.AlwaysTrue, address);
-                            if (flag is null) continue;
+                            bool actual = !sdValue.IsEmpty; // true = new account (0x01), false = destructed (empty)
+
+                            bool? expected = null;
+                            for (int i = 0; i < snapshots.Count; i++)
+                            {
+                                bool? flag = snapshots[i].TryGetSelfDestructFlag(PersistedSnapshotBloom.AlwaysTrue, address);
+                                if (flag is null) continue;
+                                if (expected is null)
+                                    expected = flag;
+                                else if (flag == false)
+                                    expected = false;
+                            }
+
                             if (expected is null)
-                                expected = flag;
-                            else if (flag == false)
-                                expected = false;
+                                throw new InvalidOperationException($"SelfDestruct {address}: in compacted but not in any source snapshot");
+                            if (expected.Value != actual)
+                                throw new InvalidOperationException($"SelfDestruct {address}: expected={expected.Value}, actual={actual}");
                         }
 
-                        if (expected is null)
-                            throw new InvalidOperationException($"SelfDestruct {address}: in compacted but not in any source snapshot");
-                        if (expected.Value != actual)
-                            throw new InvalidOperationException($"SelfDestruct {address}: expected={expected.Value}, actual={actual}");
-                    }
-
-                    // Validate storage sub-tag (0x01)
-                    if (TryGetBound(perAddrSpan, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
-                    {
-                        // slotOff/slotLen are relative to perAddrSpan; reframe to compactedData
-                        long perAddrAbs = addrEnum.Current.ValueBound.Offset;
-                        Bound slotBound = new(perAddrAbs + slotOff, slotLen);
-                        using HsstEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
-                        while (prefixEnum.MoveNext())
+                        // Validate storage sub-tag (0x01)
+                        if (TryGetBound(perAddrSpan, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                         {
-                            ReadOnlySpan<byte> prefixKey = SliceFromBound(compactedData, prefixEnum.Current.KeyBound);
-                            Bound suffixBound = prefixEnum.Current.ValueBound;
-
-                            using HsstEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, suffixBound);
-                            while (suffixEnum.MoveNext())
+                            // slotOff/slotLen are relative to perAddrSpan; reframe to compactedData
+                            long perAddrAbs = addrEnum.Current.ValueBound.Offset;
+                            Bound slotBound = new(perAddrAbs + slotOff, slotLen);
+                            using HsstEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
+                            while (prefixEnum.MoveNext())
                             {
-                                ReadOnlySpan<byte> suffixKey = SliceFromBound(compactedData, suffixEnum.Current.KeyBound);
-                                ReadOnlySpan<byte> slotValue = SliceFromBound(compactedData, suffixEnum.Current.ValueBound);
+                                ReadOnlySpan<byte> prefixKey = SliceFromBound(compactedData, prefixEnum.Current.KeyBound);
+                                Bound suffixBound = prefixEnum.Current.ValueBound;
 
-                                prefixKey.CopyTo(slotBytes);
-                                suffixKey.CopyTo(slotBytes[31..]);
-                                UInt256 slot = new(slotBytes, true);
-
-                                byte[]? bundleSlot = bundle.GetSlot(address, slot, -1);
-                                ReadOnlySpan<byte> expectedSlot = bundleSlot ?? ReadOnlySpan<byte>.Empty;
-
-                                // The two paths use different "zero" encodings: compacted stores the slot
-                                // value via WithoutLeadingZeros() — a fully-zero slot collapses to empty.
-                                // bundle.GetSlot routes through SlotValue.ToEvmBytes() which encodes zero
-                                // as a single 0x00 byte. Normalise both to zero-stripped form before
-                                // comparing so this isn't a spurious mismatch.
-                                ReadOnlySpan<byte> compactedNorm = slotValue.WithoutLeadingZeros();
-                                ReadOnlySpan<byte> expectedNorm = expectedSlot.WithoutLeadingZeros();
-                                if (!compactedNorm.SequenceEqual(expectedNorm))
+                                using HsstEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, suffixBound);
+                                while (suffixEnum.MoveNext())
                                 {
-                                    // Probe each source independently — bypass the bundle's bloom/short-circuit
-                                    // so we can tell apart "compactor wrote wrong value" from "bundle/bloom
-                                    // hides the real value". For each source we report: bloom verdict,
-                                    // post-bloom TryGetSlot result, and a raw HsstReader seek (bloom-free).
-                                    System.Text.StringBuilder sb = new();
-                                    sb.Append($"Storage {address}:{slot}: mismatch. ")
-                                      .Append($"compactedValue={slotValue.ToHexString()} (len={slotValue.Length}); ")
-                                      .Append($"bundleValue={(bundleSlot is null ? "<null>" : bundleSlot.AsSpan().ToHexString())} (len={(bundleSlot?.Length ?? 0)}); ")
-                                      .Append($"prefixKey={prefixKey.ToHexString()} suffixKey={suffixKey.ToHexString()} ");
-                                    for (int i = 0; i < snapshots.Count; i++)
+                                    ReadOnlySpan<byte> suffixKey = SliceFromBound(compactedData, suffixEnum.Current.KeyBound);
+                                    ReadOnlySpan<byte> slotValue = SliceFromBound(compactedData, suffixEnum.Current.ValueBound);
+
+                                    prefixKey.CopyTo(slotBytes);
+                                    suffixKey.CopyTo(slotBytes[31..]);
+                                    UInt256 slot = new(slotBytes, true);
+
+                                    byte[]? bundleSlot = bundle.GetSlot(address, slot, -1);
+                                    ReadOnlySpan<byte> expectedSlot = bundleSlot ?? ReadOnlySpan<byte>.Empty;
+
+                                    // The two paths use different "zero" encodings: compacted stores the slot
+                                    // value via WithoutLeadingZeros() — a fully-zero slot collapses to empty.
+                                    // bundle.GetSlot routes through SlotValue.ToEvmBytes() which encodes zero
+                                    // as a single 0x00 byte. Normalise both to zero-stripped form before
+                                    // comparing so this isn't a spurious mismatch.
+                                    ReadOnlySpan<byte> compactedNorm = slotValue.WithoutLeadingZeros();
+                                    ReadOnlySpan<byte> expectedNorm = expectedSlot.WithoutLeadingZeros();
+                                    if (!compactedNorm.SequenceEqual(expectedNorm))
                                     {
-                                        SlotValue sv = default;
-                                        bool tryGetOk = snapshots[i].TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, address, slot, ref sv);
-                                        sb.Append($"src[{i}](id={snapshots[i].Id} {snapshots[i].From.BlockNumber}->{snapshots[i].To.BlockNumber}): ");
-                                        sb.Append($"TryGetSlot={tryGetOk}");
-                                        if (tryGetOk) sb.Append($"={sv.AsReadOnlySpan.ToHexString()}");
-                                        sb.Append("; ");
+                                        // Probe each source independently — bypass the bundle's bloom/short-circuit
+                                        // so we can tell apart "compactor wrote wrong value" from "bundle/bloom
+                                        // hides the real value". For each source we report: bloom verdict,
+                                        // post-bloom TryGetSlot result, and a raw HsstReader seek (bloom-free).
+                                        System.Text.StringBuilder sb = new();
+                                        sb.Append($"Storage {address}:{slot}: mismatch. ")
+                                          .Append($"compactedValue={slotValue.ToHexString()} (len={slotValue.Length}); ")
+                                          .Append($"bundleValue={(bundleSlot is null ? "<null>" : bundleSlot.AsSpan().ToHexString())} (len={(bundleSlot?.Length ?? 0)}); ")
+                                          .Append($"prefixKey={prefixKey.ToHexString()} suffixKey={suffixKey.ToHexString()} ");
+                                        for (int i = 0; i < snapshots.Count; i++)
+                                        {
+                                            SlotValue sv = default;
+                                            bool tryGetOk = snapshots[i].TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, address, slot, ref sv);
+                                            sb.Append($"src[{i}](id={snapshots[i].Id} {snapshots[i].From.BlockNumber}->{snapshots[i].To.BlockNumber}): ");
+                                            sb.Append($"TryGetSlot={tryGetOk}");
+                                            if (tryGetOk) sb.Append($"={sv.AsReadOnlySpan.ToHexString()}");
+                                            sb.Append("; ");
+                                        }
+                                        if (dumpWhenFailed) DumpPersistedSnapshotsToJson(snapshots, filename);
+                                        throw new InvalidOperationException(sb.ToString());
                                     }
-                                    if (dumpWhenFailed) DumpPersistedSnapshotsToJson(snapshots, filename);
-                                    throw new InvalidOperationException(sb.ToString());
                                 }
                             }
                         }
                     }
-                }
                 }
             }
 

@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -70,13 +69,11 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         // IndexType byte is the last byte of the HSST.
         Span<byte> idxType = stackalloc byte[1];
         if (!_reader.TryRead(_bound.Offset + _bound.Length - 1, idxType)) return false;
-        bool isInline;
         bool hasHashIndex;
         switch ((IndexType)idxType[0])
         {
-            case IndexType.BTree: isInline = false; hasHashIndex = false; break;
-            case IndexType.BTreeInlineValue: isInline = true; hasHashIndex = false; break;
-            case IndexType.BTreeHashIndex: isInline = false; hasHashIndex = true; break;
+            case IndexType.BTree: hasHashIndex = false; break;
+            case IndexType.BTreeHashIndex: hasHashIndex = true; break;
             case IndexType.PackedArray:
                 if (HsstPackedArrayReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatBound))
                 {
@@ -196,74 +193,48 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     continue;
                 }
 
-                if (isInline)
+                if (!node.TryGetFloor(key, out ReadOnlySpan<byte> separator, out ReadOnlySpan<byte> metaBytes))
+                    return false;
+
+                // Cheap reject path: the stored full key starts with (commonPrefix + separator),
+                // so the input must too. Saves a length-mismatch read in the common
+                // exact-miss case.
+                if (exactMatch)
                 {
-                    int floorIdx = node.FindFloorIndex(key);
-                    if (floorIdx < 0) return false;
-                    if (exactMatch)
-                    {
-                        ReadOnlySpan<byte> p = node.CommonKeyPrefix;
-                        if (!key.StartsWith(p) || !key[p.Length..].SequenceEqual(node.GetKey(floorIdx)))
-                            return false;
-                    }
-                    ReadOnlySpan<byte> val = node.GetValue(floorIdx);
-                    if (val.IsEmpty)
-                    {
-                        _bound = new Bound(0, 0);
-                        return true;
-                    }
-                    ReadOnlySpan<byte> nodeBytes = pin.Buffer;
-                    int offsetInNode = (int)Unsafe.ByteOffset(
-                        ref Unsafe.AsRef(in MemoryMarshal.GetReference(nodeBytes)),
-                        ref Unsafe.AsRef(in MemoryMarshal.GetReference(val)));
-                    _bound = new Bound(nodeAbsStart + offsetInNode, val.Length);
-                    return true;
+                    ReadOnlySpan<byte> p = node.CommonKeyPrefix;
+                    if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
                 }
-                else
+
+                int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
+                long absMetaStart = _bound.Offset + metaStart;
+
+                // Read up to 6 bytes from absMetaStart: enough for ValueLength (≤5)
+                // LEB128 + KeyLength (1 byte). KeyLength only consumed when exact-matching.
+                long available = _bound.Offset + _bound.Length - absMetaStart;
+                if (available <= 0) return false;
+                Span<byte> lebBuf = stackalloc byte[6];
+                int lebRead = (int)Math.Min(6, available);
+                if (!_reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
+
+                int pos = 0;
+                int valueLength = Leb128.Read(lebBuf, ref pos);
+
+                if (exactMatch)
                 {
-                    if (!node.TryGetFloor(key, out ReadOnlySpan<byte> separator, out ReadOnlySpan<byte> metaBytes))
-                        return false;
+                    if (pos >= lebRead) return false;
+                    int keyLength = lebBuf[pos++];
+                    if (keyLength != key.Length) return false;
 
-                    // Cheap reject path: the stored full key starts with (commonPrefix + separator),
-                    // so the input must too. Saves a length-mismatch read in the common
-                    // exact-miss case.
-                    if (exactMatch)
-                    {
-                        ReadOnlySpan<byte> p = node.CommonKeyPrefix;
-                        if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
-                    }
-
-                    int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
-                    long absMetaStart = _bound.Offset + metaStart;
-
-                    // Read up to 6 bytes from absMetaStart: enough for ValueLength (≤5)
-                    // LEB128 + KeyLength (1 byte). KeyLength only consumed when exact-matching.
-                    long available = _bound.Offset + _bound.Length - absMetaStart;
-                    if (available <= 0) return false;
-                    Span<byte> lebBuf = stackalloc byte[6];
-                    int lebRead = (int)Math.Min(6, available);
-                    if (!_reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
-
-                    int pos = 0;
-                    int valueLength = Leb128.Read(lebBuf, ref pos);
-
-                    if (exactMatch)
-                    {
-                        if (pos >= lebRead) return false;
-                        int keyLength = lebBuf[pos++];
-                        if (keyLength != key.Length) return false;
-
-                        // Stored key fits in 255 bytes — single read + compare, no chunking.
-                        Span<byte> stored = stackalloc byte[255];
-                        Span<byte> storedSlice = stored[..keyLength];
-                        if (!_reader.TryRead(absMetaStart + pos, storedSlice)) return false;
-                        if (!storedSlice.SequenceEqual(key)) return false;
-                    }
-
-                    // value bytes are immediately before the metaStart
-                    _bound = new Bound(absMetaStart - valueLength, valueLength);
-                    return true;
+                    // Stored key fits in 255 bytes — single read + compare, no chunking.
+                    Span<byte> stored = stackalloc byte[255];
+                    Span<byte> storedSlice = stored[..keyLength];
+                    if (!_reader.TryRead(absMetaStart + pos, storedSlice)) return false;
+                    if (!storedSlice.SequenceEqual(key)) return false;
                 }
+
+                // value bytes are immediately before the metaStart
+                _bound = new Bound(absMetaStart - valueLength, valueLength);
+                return true;
             }
         }
     }

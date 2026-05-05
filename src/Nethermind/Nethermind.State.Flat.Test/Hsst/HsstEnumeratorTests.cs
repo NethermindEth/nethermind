@@ -169,38 +169,4 @@ public class HsstEnumeratorTests
         Assert.That(seenSubtags["addr2"], Is.EqualTo(new[] { "subtag1=x1" }));
     }
 
-    [TestCase("common_prefix_", 12)]
-    [TestCase("longer_shared_prefix_", 8)]
-    [TestCase("", 6)] // empty-prefix regression guard
-    [TestCase("p_", 5)]
-    public void Enumerate_InlineMode_KeysWithCommonPrefix_YieldsFullKeys(string prefix, int count)
-    {
-        List<(byte[] Key, byte[] Value)> entries = new(count);
-        for (int i = 0; i < count; i++)
-        {
-            entries.Add((Encoding.UTF8.GetBytes($"{prefix}{i:D3}"), Encoding.UTF8.GetBytes($"v{i:D3}")));
-        }
-
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
-        {
-            foreach ((byte[] key, byte[] value) in entries)
-                builder.Add(key, value);
-        }, maxLeafEntries: 64, inlineValues: true);
-
-        SpanByteReader reader = new(data);
-        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
-
-        int idx = 0;
-        while (e.MoveNext())
-        {
-            Bound k = e.Current.KeyBound;
-            Assert.That(data.AsSpan((int)k.Offset, k.Length).SequenceEqual(entries[idx].Key), Is.True,
-                $"Key mismatch at idx {idx}. Expected {Encoding.UTF8.GetString(entries[idx].Key)}, got {Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, k.Length))}");
-            Bound v = e.Current.ValueBound;
-            Assert.That(data.AsSpan((int)v.Offset, v.Length).SequenceEqual(entries[idx].Value), Is.True,
-                $"Value mismatch at idx {idx}");
-            idx++;
-        }
-        Assert.That(idx, Is.EqualTo(count));
-    }
 }

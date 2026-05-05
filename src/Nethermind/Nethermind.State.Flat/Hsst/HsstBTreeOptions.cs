@@ -20,9 +20,6 @@ public sealed record HsstBTreeOptions
     /// <summary>Minimum length of separators stored in leaf nodes.</summary>
     public int MinSeparatorLength { get; init; } = 0;
 
-    /// <summary>When true, leaf values are stored inline in the b-tree node instead of in a data region.</summary>
-    public bool InlineValues { get; init; } = false;
-
     /// <summary>When true, append a file-level open-addressed hash index after the root node.</summary>
     public bool UseHashIndex { get; init; } = false;
 

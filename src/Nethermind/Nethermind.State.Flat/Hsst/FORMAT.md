@@ -39,7 +39,6 @@ A compact, immutable binary format for sorted key/value tables.
 | Variant | Bytes |
 |---|---|
 | **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
-| **BTreeInlineValue** | `[Index Region][IndexType: u8 = 0x02]` |
 | **BTreeHashIndex** | `[Data Region][Index Region][HashTable: 4·N bytes][TableSize: u32 LE][IndexType: u8 = 0x03]` |
 | **FlatEntries** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]` |
 | **ByteTagMap** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x08]` |
@@ -50,7 +49,6 @@ the variant by enumerated value (not a bitfield):
 | Value | Name | Meaning |
 |---|---|---|
 | `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
-| `0x02` | `BTreeInlineValue` | No data region; leaves hold values inline. |
 | `0x03` | `BTreeHashIndex` | `BTree` plus a trailing open-address hash table of metaStart pointers. |
 | `0x06` | `FlatEntries` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
 | `0x08` | `ByteTagMap` | Tiny single-byte-keyed map (≤ 255 entries) — flat tag/end-offset trailer over a concatenated value region. |
@@ -104,13 +102,6 @@ no per-entry key reconstruction during iteration, and entries that can be
 recovered from just `(buffer, MetadataStart)` without consulting any
 index.
 
-### BTreeInlineValue variant
-
-There is no data region. Leaf B-tree nodes hold the values directly inside
-the keys section's value slots. Separators in inline-mode leaves **are** the
-full keys (no key reconstruction). Used for small fixed-width values where
-the index-vs-data split would waste space — e.g. storage slot suffixes.
-
 ### BTreeHashIndex variant
 
 A `BTree` with an extra open-address hash table appended after the root.
@@ -128,7 +119,7 @@ Layout, reading backward from the index type byte:
   - `0xFFFFFFFF` — **collision sentinel**: two or more entries hashed here;
     the reader must consult the B-tree.
   - any other value — a `MetadataStart` pointer with the same encoding as a
-    non-inline B-tree leaf value (see "BTree variant"): byte offset relative
+    B-tree leaf value (see "BTree variant"): byte offset relative
     to byte 0 of the HSST.
 
 Slot index for a key:
@@ -155,7 +146,7 @@ B-tree pointer encoding, ≈2 GiB).
 1. **Empty.** No entry could match; exact lookup returns "not found". A
    floor lookup must still consult the B-tree.
 2. **Collision.** Multiple keys hashed to this slot; consult the B-tree.
-3. **Pointer.** Resolve the candidate exactly as for a non-inline B-tree
+3. **Pointer.** Resolve the candidate exactly as for a B-tree
    leaf hit: decode `ValueLength`/`KeyLength` at the `MetadataStart` cursor
    and compare the stored key to the input. On match, return; on mismatch
    (the candidate's hash collides with the input's hash), exact lookup
@@ -389,17 +380,11 @@ byte** of the referenced child node within the HSST buffer (0-indexed from
 the first byte of the HSST). The child's exclusive end = `childOffset + 1`;
 the reader then loads the child from the end the same way it loaded the root.
 
-### Metadata-start pointers (non-inline leaves)
+### Metadata-start pointers (leaves)
 
-For a non-inline leaf node, each value is a 4-byte little-endian `int`
-(after `+ BaseOffset`) giving the entry's `MetadataStart`, *relative to the
-start of the data region* (i.e. byte 0 of the HSST is the first byte of the
-data region).
-
-### Inline values (`BTreeInlineValue` leaves)
-
-For `BTreeInlineValue` leaves, each value-section slot holds the full value
-bytes directly — there's no metaStart indirection.
+For a leaf node, each value is a 4-byte little-endian `int` (after `+ BaseOffset`)
+giving the entry's `MetadataStart`, *relative to the start of the data region*
+(i.e. byte 0 of the HSST is the first byte of the data region).
 
 ## Constraints
 
@@ -454,7 +439,7 @@ Iterators:
   reads the trailing `IndexType` byte, descends to the leftmost leaf,
   and walks key-sorted entries via end-anchored ancestor frames.
 - `Hsst/HsstMergeEnumerator.cs` — N-way-merge cursor; collects every
-  leaf entry's `(separator, metaStart-or-inline-value)` up-front so a
+  leaf entry's `(separator, metaStart)` up-front so a
   sort-merge can round-robin many cursors without per-step allocations.
 
 Size / capacity math:

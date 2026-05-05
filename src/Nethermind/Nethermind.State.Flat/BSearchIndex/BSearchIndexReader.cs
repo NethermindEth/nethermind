@@ -336,7 +336,7 @@ public readonly ref struct BSearchIndexReader
             // probeKey <= key (cmp >= 0) → advance lo past probe
             bool advance = key.SequenceCompareTo(probeKey) >= 0;
             lo = advance ? probe + 1 : lo;
-            n  = advance ? n - half - 1 : half;
+            n = advance ? n - half - 1 : half;
         }
         return lo - 1;
     }
@@ -355,7 +355,7 @@ public readonly ref struct BSearchIndexReader
             ReadOnlySpan<byte> probeKey = keys.Slice(slotStart, actualLen);
             bool advance = key.SequenceCompareTo(probeKey) >= 0;
             lo = advance ? probe + 1 : lo;
-            n  = advance ? n - half - 1 : half;
+            n = advance ? n - half - 1 : half;
         }
         return lo - 1;
     }
@@ -372,7 +372,7 @@ public readonly ref struct BSearchIndexReader
             ReadOnlySpan<byte> probeKey = GetVariableEntry(keys, probe, count);
             bool advance = key.SequenceCompareTo(probeKey) >= 0;
             lo = advance ? probe + 1 : lo;
-            n  = advance ? n - half - 1 : half;
+            n = advance ? n - half - 1 : half;
         }
         return lo - 1;
     }

@@ -19,29 +19,12 @@ public ref struct HsstIndexBuilder<TWriter>
     private ref TWriter _writer;
     private readonly ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> _entries;
     private readonly ReadOnlySpan<byte> _separatorBuffer;
-    private readonly bool _isInline;
-    private readonly ReadOnlySpan<byte> _inlineValueBuffer;
-    private readonly ReadOnlySpan<int> _inlineValueLengths;
 
     public HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries, ReadOnlySpan<byte> separatorBuffer)
     {
         _writer = ref writer;
         _entries = entries;
         _separatorBuffer = separatorBuffer;
-        _isInline = false;
-        _inlineValueBuffer = default;
-        _inlineValueLengths = default;
-    }
-
-    public HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries, ReadOnlySpan<byte> separatorBuffer,
-        ReadOnlySpan<byte> inlineValueBuffer, ReadOnlySpan<int> inlineValueLengths)
-    {
-        _writer = ref writer;
-        _entries = entries;
-        _separatorBuffer = separatorBuffer;
-        _isInline = true;
-        _inlineValueBuffer = inlineValueBuffer;
-        _inlineValueLengths = inlineValueLengths;
     }
 
     /// <summary>
@@ -154,12 +137,6 @@ public ref struct HsstIndexBuilder<TWriter>
         int absoluteNodeStart,
         int globalStartIndex)
     {
-        if (_isInline)
-        {
-            WriteLeafIndexNodeInline(entries, globalStartIndex);
-            return;
-        }
-
         // Compute BaseOffset from values
         int baseOffset = 0;
         if (entries.Length > 1)
@@ -209,102 +186,6 @@ public ref struct HsstIndexBuilder<TWriter>
             ReadOnlySpan<byte> sep = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
             BinaryPrimitives.WriteInt32LittleEndian(valueBuf, entries[i].MetadataStart - baseOffset);
             indexWriter.AddKey(sep[prefixLen..], valueBuf);
-        }
-        indexWriter.FinalizeNode();
-    }
-
-    private void WriteLeafIndexNodeInline(
-        ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries,
-        int globalStartIndex)
-    {
-        if (entries.Length == 0)
-        {
-            // Write empty node
-            scoped BSearchIndexWriter<TWriter> emptyWriter = new(ref _writer, new BSearchIndexMetadata
-            {
-                IsIntermediate = false,
-            }, []);
-            emptyWriter.FinalizeNode();
-            return;
-        }
-
-        // Auto-select ValueType from value sizes
-        int firstValLen = _inlineValueLengths[globalStartIndex];
-        bool allSameValLen = true;
-        int maxValLen = firstValLen;
-        for (int i = 1; i < entries.Length; i++)
-        {
-            int len = _inlineValueLengths[globalStartIndex + i];
-            if (len != firstValLen) allSameValLen = false;
-            if (len > maxValLen) maxValLen = len;
-        }
-
-        int valueType, valueSlotSize;
-        if (allSameValLen)
-        {
-            valueType = 1; // Uniform
-            valueSlotSize = firstValLen;
-        }
-        else if (maxValLen <= 3)
-        {
-            valueType = 2; // UniformWithLen
-            valueSlotSize = maxValLen + 1;
-        }
-        else
-        {
-            valueType = 0; // Variable
-            valueSlotSize = 0;
-        }
-
-        // Decide CommonKeyPrefix and KeyType jointly against post-strip lengths.
-        Span<int> sepOffsets = stackalloc int[entries.Length];
-        Span<int> sepLengths = stackalloc int[entries.Length];
-        for (int i = 0; i < entries.Length; i++)
-        {
-            sepOffsets[i] = entries[i].SepOffset;
-            sepLengths[i] = entries[i].SepLen;
-        }
-        // Inline leaves cannot use the CommonKeyPrefix optimization: HsstEnumerator's
-        // Current.KeyBound contract requires the key to be a contiguous slice of the
-        // reader span, but a stripped key would split into prefix-at-node-header plus
-        // suffix-at-entry. HsstMergeEnumerator's inline branch likewise copies only the
-        // separator. Keep the prefix-opt for non-inline leaves (whose enumerators read
-        // the full key from the data region) and intermediate nodes (whose values are
-        // child offsets, never read via KeyBound).
-        BSearchIndexLayoutPlanner.Plan(_separatorBuffer, sepOffsets, sepLengths,
-            out int prefixLen, out int keyType, out int keySlotSize, disablePrefix: true);
-        ReadOnlySpan<byte> commonPrefix = default;
-
-        // Compute buffer sizes (post-strip key suffixes + values).
-        int keyBufSize = 0;
-        int valueBufSize = 0;
-        for (int i = 0; i < entries.Length; i++)
-        {
-            keyBufSize += 2 + (entries[i].SepLen - prefixLen);
-            valueBufSize += 2 + _inlineValueLengths[globalStartIndex + i];
-        }
-
-        Span<byte> keyBuf = stackalloc byte[keyBufSize];
-        Span<byte> valueBuf = stackalloc byte[valueBufSize];
-
-        scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
-        {
-            IsIntermediate = false,
-            KeyType = keyType,
-            KeySlotSize = keySlotSize,
-            BaseOffset = 0,
-            ValueType = valueType,
-            ValueSlotSize = valueSlotSize,
-        }, keyBuf, valueBuf, commonPrefix);
-
-        for (int i = 0; i < entries.Length; i++)
-        {
-            ReadOnlySpan<byte> sep = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
-            ReadOnlySpan<byte> key = sep[prefixLen..];
-            int valueOffset = entries[i].MetadataStart;
-            int valueLen = _inlineValueLengths[globalStartIndex + i];
-            ReadOnlySpan<byte> value = _inlineValueBuffer.Slice(valueOffset, valueLen);
-            indexWriter.AddKey(key, value);
         }
         indexWriter.FinalizeNode();
     }

@@ -740,7 +740,7 @@ public static class PersistedSnapshotBuilder
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new HsstMergeEnumerator(column, isInline: true);
+                enums[i] = new HsstMergeEnumerator(column);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
@@ -805,7 +805,7 @@ public static class PersistedSnapshotBuilder
         HsstMergeEnumerator[] enums, bool[] hasMore, int n,
         Func<int, ReadOnlySpan<byte>> getColumnSpan,
         ref TWriter writer,
-        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false,
+        int outerMinSep = 0, int innerMinSep = 0,
         bool innerByteTagMap = false) where TWriter : IByteBufferWriter
     {
         using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
@@ -854,7 +854,7 @@ public static class PersistedSnapshotBuilder
                 // M sources: create M inner enumerators and merge
                 ref TWriter innerWriter = ref builder.BeginValueWrite();
                 NWayInnerMerge(enums, matchingSources, matchCount, getColumnSpan,
-                    ref innerWriter, innerMinSep, innerInline, innerByteTagMap);
+                    ref innerWriter, innerMinSep, innerByteTagMap);
                 builder.FinishValueWrite(minKey);
             }
 
@@ -878,7 +878,7 @@ public static class PersistedSnapshotBuilder
         HsstMergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
         Func<int, ReadOnlySpan<byte>> getColumnSpan,
         ref TWriter writer,
-        int minSeparatorLength = 0, bool inlineValues = false,
+        int minSeparatorLength = 0,
         bool useByteTagMap = false) where TWriter : IByteBufferWriter
     {
         using ArrayPoolList<HsstMergeEnumerator> innerEnums = new(matchCount, matchCount);
@@ -893,16 +893,14 @@ public static class PersistedSnapshotBuilder
                 ReadOnlySpan<byte> cs = getColumnSpan(srcIdx);
                 innerBounds[j] = outerEnums[srcIdx].GetCurrentValueBound(cs);
                 ReadOnlySpan<byte> innerSpan = cs.Slice(innerBounds[j].Offset, innerBounds[j].Length);
-                // ByteTagMap leaves are auto-detected by the merge enumerator and treated
-                // as inline regardless of the caller's hint, so this works uniformly.
-                innerEnums[j] = new HsstMergeEnumerator(innerSpan, isInline: inlineValues);
+                innerEnums[j] = new HsstMergeEnumerator(innerSpan);
                 innerHasMore[j] = innerEnums[j].MoveNext(innerSpan);
             }
 
             if (useByteTagMap)
                 MergeIntoByteTagMap(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getColumnSpan, ref writer);
             else
-                MergeIntoBTree(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getColumnSpan, ref writer, minSeparatorLength, inlineValues);
+                MergeIntoBTree(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getColumnSpan, ref writer, minSeparatorLength);
         }
         finally
         {
@@ -942,9 +940,9 @@ public static class PersistedSnapshotBuilder
         ArrayPoolList<(int Offset, int Length)> innerBounds,
         int[] matchingSources, int matchCount,
         Func<int, ReadOnlySpan<byte>> getColumnSpan,
-        ref TWriter writer, int minSeparatorLength, bool inlineValues) where TWriter : IByteBufferWriter
+        ref TWriter writer, int minSeparatorLength) where TWriter : IByteBufferWriter
     {
-        using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength, InlineValues = inlineValues });
+        using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
         while (true)
         {
             int minIdx = PickMinIdx(innerEnums, innerHasMore, matchCount);
@@ -987,7 +985,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     internal static void NWayNestedStreamingMerge<TWriter>(
         PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
-        int outerMinSep = 0, int innerMinSep = 0, bool innerInline = false) where TWriter : IByteBufferWriter
+        int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
         using ArrayPoolList<HsstMergeEnumerator> enumsList = new(n, n);
@@ -1007,13 +1005,13 @@ public static class PersistedSnapshotBuilder
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new HsstMergeEnumerator(column, isInline: false);
+                enums[i] = new HsstMergeEnumerator(column);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
             NWayNestedStreamingMerge(enums, hasMore, n,
                 i => sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length),
-                ref writer, outerMinSep, innerMinSep, innerInline);
+                ref writer, outerMinSep, innerMinSep);
         }
         finally
         {
@@ -1051,7 +1049,7 @@ public static class PersistedSnapshotBuilder
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new HsstMergeEnumerator(column, isInline: false);
+                enums[i] = new HsstMergeEnumerator(column);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
@@ -1134,7 +1132,7 @@ public static class PersistedSnapshotBuilder
                 ReadOnlySpan<byte> cs = getColumnSpan(srcIdx);
                 innerBounds[j] = outerEnums[srcIdx].GetCurrentValueBound(cs);
                 ReadOnlySpan<byte> innerSpan = cs.Slice(innerBounds[j].Offset, innerBounds[j].Length);
-                innerEnums[j] = new HsstMergeEnumerator(innerSpan, isInline: true);
+                innerEnums[j] = new HsstMergeEnumerator(innerSpan);
                 innerHasMore[j] = innerEnums[j].MoveNext(innerSpan);
             }
 
@@ -1206,7 +1204,7 @@ public static class PersistedSnapshotBuilder
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new HsstMergeEnumerator(column, isInline: false);
+                enums[i] = new HsstMergeEnumerator(column);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
@@ -1368,7 +1366,7 @@ public static class PersistedSnapshotBuilder
                     for (int j = 0; j < slotSourceCount; j++)
                     {
                         ReadOnlySpan<byte> slotSpan = sessions[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length);
-                        slotEnums[j] = new HsstMergeEnumerator(slotSpan, isInline: false);
+                        slotEnums[j] = new HsstMergeEnumerator(slotSpan);
                         slotHasMore[j] = slotEnums[j].MoveNext(slotSpan);
                     }
 
@@ -1484,12 +1482,12 @@ public static class PersistedSnapshotBuilder
     {
         // slotSection is a 2-level HSST: prefix(31 bytes) → inner ByteTagMap(suffix(1 byte) → slot value)
         Span<byte> fullSlot = stackalloc byte[32];
-        HsstMergeEnumerator outerEnum = new(slotSection, isInline: false);
+        HsstMergeEnumerator outerEnum = new(slotSection);
         while (outerEnum.MoveNext(slotSection))
         {
             outerEnum.CurrentKey.CopyTo(fullSlot);
             ReadOnlySpan<byte> innerSection = outerEnum.GetCurrentValue(slotSection);
-            HsstMergeEnumerator innerEnum = new(innerSection, isInline: true);
+            HsstMergeEnumerator innerEnum = new(innerSection);
             while (innerEnum.MoveNext(innerSection))
             {
                 innerEnum.CurrentKey.CopyTo(fullSlot[31..]);

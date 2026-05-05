@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -42,7 +41,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly long _hsstStart;
     private readonly long _hsstEnd;
     private readonly long _rootAbsEnd;
-    private readonly bool _isInline;
     private readonly bool _empty;
 
     // PackedArray state: a packed entry array, no b-tree walk. _flatIdx is the next entry to
@@ -87,7 +85,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         if (bound.Length < 2)
         {
             _empty = true;
-            _isInline = false;
             return;
         }
 
@@ -96,21 +93,14 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         if (!_reader.TryRead(_hsstEnd - 1, idxType))
         {
             _empty = true;
-            _isInline = false;
             return;
         }
         switch ((IndexType)idxType[0])
         {
             case IndexType.BTree:
-                _isInline = false;
-                _rootAbsEnd = _hsstEnd - 1;
-                break;
-            case IndexType.BTreeInlineValue:
-                _isInline = true;
                 _rootAbsEnd = _hsstEnd - 1;
                 break;
             case IndexType.BTreeHashIndex:
-                _isInline = false;
                 Span<byte> sizeBuf = stackalloc byte[4];
                 if (!_reader.TryRead(_hsstEnd - 5, sizeBuf))
                 {
@@ -132,7 +122,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                 }
                 break;
             case IndexType.PackedArray:
-                _isInline = false;
                 if (!HsstPackedArrayReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstPackedArrayReader.Layout flatLayout))
                 {
                     _empty = true;
@@ -151,7 +140,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                 }
                 break;
             case IndexType.ByteTagMap:
-                _isInline = false;
                 if (!HsstByteTagMapReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstByteTagMapReader.Layout tagLayout))
                 {
                     _empty = true;
@@ -172,7 +160,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                 break;
             default:
                 _empty = true;
-                _isInline = false;
                 return;
         }
         _empty = false;
@@ -320,38 +307,12 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 
     /// <summary>
     /// Materialise the current leaf entry: compute the (key, value) bounds without copying any
-    /// bytes into the enumerator. For inline mode the key sits inside the leaf node's pinned
-    /// buffer; for non-inline mode both key and value live in the data region with metaStart
-    /// as the pivot.
+    /// bytes into the enumerator. Key and value live in the data region with metaStart as the
+    /// pivot.
     /// </summary>
     private void UpdateCurrent()
     {
-        if (_isInline)
-        {
-            ReadOnlySpan<byte> nodeBytes = _leafPin.Buffer;
-            ref readonly byte nodeBytesRef = ref MemoryMarshal.GetReference(nodeBytes);
-
-            // Key span in the leaf — point a Bound at it via leaf abs-start + intra-node offset.
-            ReadOnlySpan<byte> keySpan = _leafNode.GetKey(_leafIdx);
-            int keyOffsetInNode = (int)Unsafe.ByteOffset(
-                ref Unsafe.AsRef(in nodeBytesRef),
-                ref Unsafe.AsRef(in MemoryMarshal.GetReference(keySpan)));
-            _currentKeyBound = new Bound(_leafAbsStart + keyOffsetInNode, keySpan.Length);
-
-            ReadOnlySpan<byte> val = _leafNode.GetValue(_leafIdx);
-            if (val.IsEmpty)
-            {
-                _currentValueBound = new Bound(0, 0);
-                return;
-            }
-            int valOffsetInNode = (int)Unsafe.ByteOffset(
-                ref Unsafe.AsRef(in nodeBytesRef),
-                ref Unsafe.AsRef(in MemoryMarshal.GetReference(val)));
-            _currentValueBound = new Bound(_leafAbsStart + valOffsetInNode, val.Length);
-            return;
-        }
-
-        // Non-inline: leaf value is a metaStart pointer into the data region.
+        // Leaf value is a metaStart pointer into the data region.
         ReadOnlySpan<byte> metaBytes = _leafNode.GetValue(_leafIdx);
         int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + _leafNode.Metadata.BaseOffset;
         long absMetaStart = _hsstStart + metaStart;

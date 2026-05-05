@@ -31,10 +31,9 @@ public sealed class HsstMergeEnumerator : IDisposable
     private int _keyLength;
     private bool _disposed;
 
-    public HsstMergeEnumerator(scoped ReadOnlySpan<byte> hsstData, bool isInline, int maxKeyLength = 64)
+    public HsstMergeEnumerator(scoped ReadOnlySpan<byte> hsstData, int maxKeyLength = 64)
     {
         _keyBufferList = new NativeMemoryList<byte>(maxKeyLength, maxKeyLength);
-        _isInline = isInline;
 
         if (hsstData.Length < 2)
         {
@@ -48,9 +47,8 @@ public sealed class HsstMergeEnumerator : IDisposable
         IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
         if (tag == IndexType.ByteTagMap)
         {
-            // Treat ByteTagMap entries as inline regardless of caller's hint: the key (1
-            // byte) lives in the tags section and the value at a known absolute offset, so
-            // GetCurrentValue / MoveNext should follow the inline-mode branches.
+            // ByteTagMap: key (1 byte) lives in the tags section, value at a known absolute
+            // offset; GetCurrentValue / MoveNext follow the inline-style branches.
             _isInline = true;
             _entries = new NativeMemoryList<(int, int, int, int)>(8);
             CollectByteTagMap(hsstData, _entries);
@@ -60,8 +58,7 @@ public sealed class HsstMergeEnumerator : IDisposable
         if (tag == IndexType.PackedArray)
         {
             // PackedArray's data section is a packed [key|value][key|value]... array. Both
-            // key and value are inline at fixed offsets, so force inline mode regardless of
-            // the caller's hint.
+            // key and value are inline at fixed offsets.
             _isInline = true;
             SpanByteReader spanReader = new(hsstData);
             if (HsstPackedArrayReader.TryReadLayout<SpanByteReader, NoOpPin>(
@@ -94,11 +91,11 @@ public sealed class HsstMergeEnumerator : IDisposable
 
         HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);
         _entries = new NativeMemoryList<(int, int, int, int)>(16);
-        CollectLeafOffsets(hsstData, rootIndex, _entries, _isInline);
+        CollectLeafOffsets(hsstData, rootIndex, _entries);
     }
 
     private static void CollectLeafOffsets(ReadOnlySpan<byte> data, HsstIndex index,
-        NativeMemoryList<(int, int, int, int)> entries, bool isInline)
+        NativeMemoryList<(int, int, int, int)> entries)
     {
         if (!index.IsIntermediate)
         {
@@ -106,17 +103,8 @@ public sealed class HsstMergeEnumerator : IDisposable
             {
                 ReadOnlySpan<byte> sep = index.GetKey(i);
                 int sepOffset = SpanOffset(data, sep);
-                if (isInline)
-                {
-                    ReadOnlySpan<byte> val = index.GetValue(i);
-                    int valOffset = val.IsEmpty ? 0 : SpanOffset(data, val);
-                    entries.Add((sepOffset, sep.Length, valOffset, val.Length));
-                }
-                else
-                {
-                    int metaStart = index.GetIntValue(i);
-                    entries.Add((sepOffset, sep.Length, metaStart, 0));
-                }
+                int metaStart = index.GetIntValue(i);
+                entries.Add((sepOffset, sep.Length, metaStart, 0));
             }
         }
         else
@@ -125,7 +113,7 @@ public sealed class HsstMergeEnumerator : IDisposable
             {
                 int childOffset = index.GetIntValue(i);
                 HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
-                CollectLeafOffsets(data, child, entries, isInline);
+                CollectLeafOffsets(data, child, entries);
             }
         }
     }
