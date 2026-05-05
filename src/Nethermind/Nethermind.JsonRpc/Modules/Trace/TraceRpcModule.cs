@@ -370,13 +370,47 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer, IReleaseSpec? specOverride = null)
         {
+            Block blockToExecute = block;
+            if (specOverride is not null)
+            {
+                BlockHeader adjustedHeader = AdjustHeaderForSpec(block.Header, baseBlock, block, specOverride);
+                blockToExecute = block.WithReplacedHeader(adjustedHeader);
+            }
+
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseBlock, specOverride: specOverride);
             ITracer tracer2 = env.Component;
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            tracer2.Execute(block, tracer.WithCancellation(cancellationToken));
+            tracer2.Execute(blockToExecute, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
+        }
+
+        private static BlockHeader AdjustHeaderForSpec(BlockHeader header, BlockHeader parentHeader, Block block, IReleaseSpec spec)
+        {
+            BlockHeader adjusted = header.Clone();
+
+            if (!spec.IsEip1559Enabled)
+            {
+                adjusted.BaseFeePerGas = UInt256.Zero;
+            }
+            else if (adjusted.BaseFeePerGas.IsZero)
+            {
+                adjusted.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
+            }
+
+            if (!spec.IsEip4844Enabled)
+            {
+                adjusted.BlobGasUsed = null;
+                adjusted.ExcessBlobGas = null;
+            }
+            else
+            {
+                adjusted.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+                adjusted.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
+            }
+
+            return adjusted;
         }
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>

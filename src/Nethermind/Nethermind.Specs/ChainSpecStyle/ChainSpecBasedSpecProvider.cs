@@ -140,6 +140,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             Dictionary<string, IReleaseSpec> forks = new(StringComparer.OrdinalIgnoreCase)
             {
+                // Always present: maps to the block-0 spec (may be Frontier, Homestead, etc.).
                 [nameof(GenesisSpec).Replace("Spec", string.Empty)] = GenesisSpec
             };
 
