@@ -194,11 +194,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, optimize, BlobBaseFeeOverride, token);
-                IReleaseSpec spec = GetSpec(header);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
-                    gasUsed: GetResultGas(tx, result, spec),
+                    gasUsed: (UInt256)result.GasSpent,
                     result.Error);
 
                 if (result.InputError)
@@ -207,29 +206,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<AccessListResultForRpc?>.Fail(wrapped, ErrorCodes.InvalidInput);
                 }
                 return ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
-            }
-
-            private static UInt256 GetResultGas(Transaction transaction, CallOutput result, IReleaseSpec spec)
-            {
-                long gas = result.GasSpent;
-                long operationGas = result.OperationGas;
-                if (result.AccessList is not null)
-                {
-                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
-                    transaction.AccessList = result.AccessList;
-                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, spec);
-                    long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
-                    if (gas > operationGas)
-                    {
-                        if (gas - operationGas < updatedAccessListCost) gas = operationGas + updatedAccessListCost;
-                    }
-                    else
-                    {
-                        gas += updatedAccessListCost;
-                    }
-                }
-
-                return (UInt256)gas;
             }
         }
     }
