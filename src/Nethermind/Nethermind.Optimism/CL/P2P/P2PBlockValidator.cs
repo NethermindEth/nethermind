@@ -9,26 +9,20 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using NonBlocking;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.P2P;
 
-public class P2PBlockValidator : IP2PBlockValidator
+public class P2PBlockValidator(
+    UInt256 chainId,
+    Address sequencerP2PAddress,
+    ITimestamper timestamper,
+    ILogManager logManager) : IP2PBlockValidator
 {
-    private readonly ILogger _logger;
-    private readonly ITimestamper _timestamper;
-    private readonly Dictionary<long, long> _numberOfBlocksSeen = new();
-    private readonly Address _sequencerP2PAddress;
-    private readonly byte[] _chainId;
-
-
-    public P2PBlockValidator(UInt256 chainId, Address sequencerP2PAddress, ITimestamper timestamper, ILogger logger)
-    {
-        _logger = logger;
-        _timestamper = timestamper;
-        _sequencerP2PAddress = sequencerP2PAddress;
-        _chainId = chainId.ToBigEndian();
-    }
+    private readonly byte[] _chainId = chainId.ToBigEndian();
+    private readonly Address _sequencerP2PAddress = sequencerP2PAddress;
+    private readonly ITimestamper _timestamper = timestamper;
+    private readonly ILogger _logger = logManager.GetClassLogger<P2PBlockValidator>();
+    private readonly Dictionary<long, long> _numberOfBlocksSeen = [];
 
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
     {
@@ -46,15 +40,12 @@ public class P2PBlockValidator : IP2PBlockValidator
     public ValidityStatus IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
     {
         // [REJECT] if more than 5 different blocks have been seen with the same block height
-        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out var currentCount);
+        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out long currentCount);
         _numberOfBlocksSeen[payload.BlockNumber] = currentCount + 1;
         return currentCount > 5 ? ValidityStatus.Reject : ValidityStatus.Valid;
     }
 
-    public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature)
-    {
-        return IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
-    }
+    public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature) => IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
 
     private bool IsTopicValid(P2PTopic topic)
     {
@@ -86,10 +77,11 @@ public class P2PBlockValidator : IP2PBlockValidator
     private bool IsBlockHashValid(ExecutionPayloadV3 payload)
     {
         // [REJECT] if the block_hash in the payload is not valid
-        payload.TryGetBlock(out Block? block);
+        BlockDecodingResult blockDecodingResult = payload.TryGetBlock();
+        Block? block = blockDecodingResult.Block;
         if (block is null)
         {
-            if (_logger.IsError) _logger.Error($"Error creating block");
+            if (_logger.IsError) _logger.Error($"Error creating block: {blockDecodingResult.Error}");
             return false;
         }
 
@@ -150,7 +142,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         byte[] signedHash = KeccakHash.ComputeHashBytes(sequencerSignedData);
 
         Span<byte> publicKey = stackalloc byte[65];
-        bool success = SpanSecP256k1.RecoverKeyFromCompact(
+        bool success = SecP256k1.RecoverKeyFromCompact(
             publicKey,
             signedHash,
             signature.Slice(0, 64),

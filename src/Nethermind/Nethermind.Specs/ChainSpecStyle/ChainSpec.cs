@@ -1,12 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Specs.ChainSpecStyle.Json;
+using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -28,7 +27,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong ChainId { get; set; }
 
-        public NetworkNode[] Bootnodes { get; set; }
+        public NetworkNode[] Bootnodes { get; set; } = [];
 
         public bool GenesisStateUnavailable { get; set; }
         public Block Genesis { get; set; }
@@ -80,5 +79,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? CancunTimestamp { get; set; }
 
         public ulong? PragueTimestamp { get; set; }
+
+        public ulong? OsakaTimestamp { get; set; }
+        public ulong? AmsterdamTimestamp { get; set; }
     }
 }

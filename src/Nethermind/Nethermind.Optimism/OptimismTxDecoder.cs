@@ -18,18 +18,6 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
     {
     }
 
-    protected override void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        transaction.SourceHash = rlpStream.DecodeKeccak();
-        transaction.SenderAddress = rlpStream.DecodeAddress();
-        transaction.To = rlpStream.DecodeAddress();
-        transaction.Mint = rlpStream.DecodeUInt256();
-        transaction.Value = rlpStream.DecodeUInt256();
-        transaction.GasLimit = rlpStream.DecodeLong();
-        transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
-        transaction.Data = rlpStream.DecodeByteArray();
-    }
-
     protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -38,7 +26,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.To = decoderContext.DecodeAddress();
         transaction.Mint = decoderContext.DecodeUInt256();
         transaction.Value = decoderContext.DecodeUInt256();
-        transaction.GasLimit = decoderContext.DecodeLong();
+        transaction.GasLimit = decoderContext.DecodePositiveLong();
         transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
         transaction.Data = decoderContext.DecodeByteArray();
     }
@@ -53,7 +41,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.SenderAddress)
         + Rlp.LengthOf(transaction.To)
         + Rlp.LengthOf(transaction.Mint)
-        + Rlp.LengthOf(transaction.Value)
+        + Rlp.LengthOf(in transaction.ValueRef)
         + Rlp.LengthOf(transaction.GasLimit)
         + Rlp.LengthOf(transaction.IsOPSystemTransaction)
         + Rlp.LengthOf(transaction.Data);
@@ -64,7 +52,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         stream.Encode(transaction.SenderAddress);
         stream.Encode(transaction.To);
         stream.Encode(transaction.Mint);
-        stream.Encode(transaction.Value);
+        stream.Encode(in transaction.ValueRef);
         stream.Encode(transaction.GasLimit);
         stream.Encode(transaction.IsOPSystemTransaction);
         stream.Encode(transaction.Data);

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -25,12 +25,6 @@ public interface IDiscoveryConfig : IConfig
     /// </summary>
     [ConfigItem(DefaultValue = "3")]
     int Concurrency { get; }
-
-    /// <summary>
-    /// Kademlia - b
-    /// </summary>
-    [ConfigItem(DisabledForCli = true)]
-    int BitsPerHop { get; }
 
     /// <summary>
     /// Max Discovery Rounds
@@ -89,7 +83,7 @@ public interface IDiscoveryConfig : IConfig
     /// <summary>
     /// Boot nodes connection details
     /// </summary>
-    string Bootnodes { get; set; }
+    NetworkNode[] Bootnodes { get; set; }
 
     /// <summary>
     /// Timeout for closing UDP channel in milliseconds
@@ -117,4 +111,11 @@ public interface IDiscoveryConfig : IConfig
 
     [ConfigItem(Description = "Discovery version(s) to enable", DefaultValue = "All", HiddenFromDocs = true)]
     DiscoveryVersion DiscoveryVersion { get; set; }
+
+    /// <summary>
+    /// When discv5 is enabled, use well known discv5 bootnodes, in addition to provided by user.
+    /// See Nethermind.Network.Discovery/Discv5/discv5-bootnodes.json
+    /// </summary>
+    [ConfigItem(Description = "Whether to use well-known discv5 bootnodes, in addition to those provided by the user.", DefaultValue = "true")]
+    public bool UseDefaultDiscv5Bootnodes { get; set; }
 }

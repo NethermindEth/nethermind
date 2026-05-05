@@ -1,15 +1,15 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -24,16 +24,16 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x9233c931ff3c17ae124b9aa2ca8db1c641a2dd87fa2d7e00030b274bcc33f928",
-        "0xe97fdbfa2fcf60073d9579d87b127cdbeffbe6c7387b9e1e836eb7f8fb2d9548",
-        "0xa272b2f949e4a0e411c9b45542bd5d0ef3c311b5f26c4ed6b7a8d4f605a91154",
-        "0x2fc07c25edadc149")]
+        "0x32fc756d56a1897bf4d53ec72a854743786b5edbd8c0feec05b245e7cc124eea",
+        "0xc1ecac4884c36982061392807b9307fb0d701a05d9d9fd7dc7e82d2ec96cf9af",
+        "0x8ffb712de6b72f59def7b84f361e6c23519f7f8674d7e6552e23617a996d8ed3",
+        "0x0f0b18188ed90425")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
@@ -108,7 +108,7 @@ public partial class EngineModuleTests
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
             withdrawals);
-        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: []);
+        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), executionRequests: [], shouldOverrideBuilder: false);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -169,16 +169,16 @@ public partial class EngineModuleTests
     public async Task NewPayloadV4_reject_payload_with_bad_authorization_list_rlp()
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
         Transaction invalidSetCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(0)
-          .WithMaxFeePerGas(9.GWei())
-          .WithMaxPriorityFeePerGas(9.GWei())
+          .WithMaxFeePerGas(9.GWei)
+          .WithMaxPriorityFeePerGas(9.GWei)
           .WithGasLimit(100_000)
           .WithAuthorizationCode(new JsonRpc.Test.Modules.Eth.EthRpcModuleTests.AllowNullAuthorizationTuple(0, null, 0, new Signature(new byte[65])))
           .WithTo(TestItem.AddressA)
@@ -195,7 +195,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
 
-        var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
 
         Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
     }
@@ -204,8 +204,8 @@ public partial class EngineModuleTests
     public async Task NewPayloadV4_reject_payload_with_bad_execution_requests()
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
 
@@ -213,7 +213,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(TestBlock);
 
         // must reject if execution requests types are not in ascending order
-        var response = await rpc.engine_newPayloadV4(
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(
                 executionPayload,
                 [],
                 TestBlock.ParentBeaconBlockRoot,
@@ -237,7 +237,7 @@ public partial class EngineModuleTests
     public async Task can_progress_chain_one_by_one_v4(int count)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
@@ -250,8 +250,8 @@ public partial class EngineModuleTests
     public async Task can_progress_chain_one_by_one_v4_with_requests(int count)
     {
         ExecutionRequestsProcessorMock executionRequestsProcessorMock = new();
-        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, executionRequestsProcessorMock);
-        IEngineRpcModule rpc = CreateEngineModule(chain);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, executionRequestsProcessorMock);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true, withRequests: true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
         chain.BlockTree.HeadHash.Should().Be(lastHash);
@@ -260,7 +260,10 @@ public partial class EngineModuleTests
         last!.IsGenesis.Should().BeTrue();
 
         Block? head = chain.BlockTree.Head;
-        head!.ExecutionRequests!.ToArray().Length.Should().Be(ExecutionRequestsProcessorMock.Requests.Length);
+        // ExecutionRequests is a transient property (not in RLP), so it may not survive
+        // cache round-trips. Verify via RequestsHash on the header instead, which IS persisted.
+        head!.Header.RequestsHash.Should().Be(
+            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests));
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
@@ -269,7 +272,7 @@ public partial class EngineModuleTests
     {
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
-        parentBlock.TryGetBlock(out Block? block);
+        Block? block = parentBlock.TryGetBlock().Block;
         UInt256? startingTotalDifficulty = block!.IsGenesis
             ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
         BlockHeader parentHeader = block!.Header;
@@ -280,7 +283,7 @@ public partial class EngineModuleTests
             ExecutionPayloadV3? getPayloadResult = await BuildAndGetPayloadOnBranchV4(rpc, chain, parentHeader,
                 parentBlock.Timestamp + 12,
                 random ?? TestItem.KeccakA, Address.Zero);
-            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, [], Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests : new byte[][] { })).Data;
+            PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, [], Keccak.Zero, executionRequests: withRequests ? ExecutionRequestsProcessorMock.Requests : Array.Empty<byte[]>())).Data;
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
             if (setHead)
             {
@@ -293,7 +296,7 @@ public partial class EngineModuleTests
 
             blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
-            parentBlock.TryGetBlock(out block!);
+            block = parentBlock.TryGetBlock().Block!;
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
             parentHeader = block.Header;
         }
@@ -356,8 +359,8 @@ public partial class EngineModuleTests
             ? chain.WaitForImprovedBlock()
             : Task.CompletedTask;
 
-        ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-        PayloadAttributes payloadAttributes = new PayloadAttributes
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
+        PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = random,

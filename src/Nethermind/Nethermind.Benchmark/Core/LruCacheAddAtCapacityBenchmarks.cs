@@ -9,19 +9,16 @@ namespace Nethermind.Benchmarks.Core
     public class LruCacheAddAtCapacityBenchmarks
     {
         const int Capacity = 16;
-        private object _object = new object();
+        private object _object = new();
         private LruCache<int, object> shared;
 
         [GlobalSetup]
-        public void Setup()
-        {
-            shared = new LruCache<int, object>(Capacity, Capacity, string.Empty);
-        }
+        public void Setup() => shared = new LruCache<int, object>(Capacity, Capacity, string.Empty);
 
         [Benchmark]
         public ICache<int, object> WithRecreation()
         {
-            LruCache<int, object> cache = new LruCache<int, object>(Capacity, Capacity, string.Empty);
+            LruCache<int, object> cache = new(Capacity, Capacity, string.Empty);
             Fill(cache);
 
             return cache;

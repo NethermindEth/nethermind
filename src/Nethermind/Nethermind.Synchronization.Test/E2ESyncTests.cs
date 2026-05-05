@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,6 +16,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -23,17 +24,20 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -64,21 +68,24 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     {
         Default,
         Hash,
-        NoPruning
+        NoPruning,
+        Flat
     }
 
     public static IEnumerable<TestFixtureParameters> CreateTestCases()
     {
         yield return new TestFixtureParameters(DbMode.Default, false);
-        yield return new TestFixtureParameters(DbMode.Hash, false);
-        yield return new TestFixtureParameters(DbMode.NoPruning, false);
         yield return new TestFixtureParameters(DbMode.Default, true);
+        yield return new TestFixtureParameters(DbMode.Hash, false);
         yield return new TestFixtureParameters(DbMode.Hash, true);
+        yield return new TestFixtureParameters(DbMode.NoPruning, false);
         yield return new TestFixtureParameters(DbMode.NoPruning, true);
+        yield return new TestFixtureParameters(DbMode.Flat, false);
+        yield return new TestFixtureParameters(DbMode.Flat, true);
     }
 
-    private static TimeSpan SetupTimeout = TimeSpan.FromSeconds(20);
-    private static TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private const int ChainLength = 1000;
     private const int HeadPivotDistance = 500;
 
@@ -86,45 +93,149 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private PrivateKey _serverKey = TestItem.PrivateKeyA;
     private IContainer _server = null!;
 
-    private int AllocatePort()
+    private int AllocatePort() =>
+        Interlocked.Increment(ref _portNumber);
+
+    /// <summary>
+    /// Replace all entries in a block-keyed dictionary with a single entry at block 0
+    /// whose value is the sum of all original values. This preserves the cumulative effect
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyDictionaryToGenesis(IDictionary<long, long>? dict)
     {
-        return Interlocked.Increment(ref _portNumber);
+        if (dict is null or { Count: 0 }) return;
+        long total = dict.Values.Sum();
+        dict.Clear();
+        dict[0] = total;
+    }
+
+    /// <summary>
+    /// Replace all entries in a block reward dictionary with a single entry at block 0
+    /// using the last (highest-block) reward value. This preserves the final block reward
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyBlockRewardToGenesis(SortedDictionary<long, UInt256>? dict)
+    {
+        if (dict is null or { Count: 0 }) return;
+        UInt256 lastReward = dict.Values.Last();
+        dict.Clear();
+        dict[0] = lastReward;
+    }
+
+    /// <summary>
+    /// Activate all block-number-based forks from genesis so that biggestBlockTransition stays at 0,
+    /// preventing the "Chainspec file is misconfigured" warning in short test chains.
+    /// </summary>
+    private static void ActivateAllBlockTransitionsFromGenesis(ChainSpec spec)
+    {
+        // ChainSpec block-number properties (collected by BuildTransitions via EndsWith("BlockNumber"))
+        spec.HomesteadBlockNumber = 0;
+        spec.DaoForkBlockNumber = null; // Disable DAO fork — it requires specific extra data in headers
+        spec.TangerineWhistleBlockNumber = 0;
+        spec.SpuriousDragonBlockNumber = 0;
+        spec.ByzantiumBlockNumber = 0;
+        // ConstantinopleBlockNumber is null on mainnet (eip1283DisableTransition not set) - keep null
+        spec.ConstantinopleFixBlockNumber = 0;
+        spec.IstanbulBlockNumber = 0;
+        spec.BerlinBlockNumber = 0;
+        spec.LondonBlockNumber = 0;
+        spec.ArrowGlacierBlockNumber = 0;
+        spec.GrayGlacierBlockNumber = 0;
+
+        // ChainParameters block transitions (collected by BuildTransitions via EndsWith("Transition"))
+        ActivateAllParameterTransitionsFromGenesis(spec.Parameters);
+
+        // Ethash engine transitions and block-keyed dictionaries
+        ActivateAllEthashTransitionsFromGenesis(spec);
+    }
+
+    private static void ActivateAllParameterTransitionsFromGenesis(ChainParameters parameters)
+    {
+        parameters.MaxCodeSizeTransition = 0;
+        parameters.Eip150Transition = 0;
+        parameters.Eip152Transition = 0;
+        parameters.Eip160Transition = 0;
+        parameters.Eip161abcTransition = 0;
+        parameters.Eip161dTransition = 0;
+        parameters.Eip155Transition = 0;
+        parameters.Eip140Transition = 0;
+        parameters.Eip211Transition = 0;
+        parameters.Eip214Transition = 0;
+        // Always on, as the timestamp based fork activation always override block number based
+        // activation. However, the receipt message serializer does not check the block header of
+        // the receipt for timestamp, only block number therefore it will always not encode with
+        // Eip658, but the block builder always build with Eip658 as the latest fork activation
+        // uses timestamp which is < than now.
+        // TODO: Need to double check which code part does not pass in timestamp from header.
+        parameters.Eip658Transition = 0;
+        parameters.Eip145Transition = 0;
+        parameters.Eip1014Transition = 0;
+        parameters.Eip1052Transition = 0;
+        parameters.Eip1108Transition = 0;
+        parameters.Eip1344Transition = 0;
+        parameters.Eip1884Transition = 0;
+        parameters.Eip2028Transition = 0;
+        parameters.Eip2200Transition = 0;
+        parameters.Eip2565Transition = 0;
+        parameters.Eip2929Transition = 0;
+        parameters.Eip2930Transition = 0;
+        parameters.Eip1559Transition = 0;
+        parameters.Eip3198Transition = 0;
+        parameters.Eip3529Transition = 0;
+        parameters.Eip3541Transition = 0;
+    }
+
+    private static void ActivateAllEthashTransitionsFromGenesis(ChainSpec spec)
+    {
+        EthashChainSpecEngineParameters ethashParams = spec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ethashParams.HomesteadTransition = 0;
+        ethashParams.DaoHardforkTransition = null; // Disable DAO fork — it requires specific extra data in headers
+        ethashParams.Eip100bTransition = 0;
+        // Re-key block-number-keyed dictionaries to block 0 so they don't inflate
+        // biggestBlockTransition. Keep the values — clearing them breaks block rewards.
+        RekeyDictionaryToGenesis(ethashParams.DifficultyBombDelays);
+        RekeyBlockRewardToGenesis(ethashParams.BlockReward);
     }
 
     /// <summary>
     /// Common code for all node
     /// </summary>
-    private IContainer CreateNode(PrivateKey nodeKey, Action<IConfigProvider, ChainSpec> configurer)
+    private Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer) =>
+        CreateNode(nodeKey, configurer, dbMode);
+
+    private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer, DbMode dbModeOverride)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
-        spec.Genesis.Header.BaseFeePerGas = 1.GWei();
+        spec.Genesis.Header.BaseFeePerGas = 10.Wei;
 
         // Needed for generating spam state.
-        spec.Genesis.Header.GasLimit = 100000000;
-        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(30.Ether());
+        spec.Genesis.Header.GasLimit = 1_000_000_000;
+        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether);
 
-        // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
-        // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
-        // always not encode with Eip658, but the block builder always build with Eip658 as the latest fork activation
-        // uses timestamp which is < than now.
-        // TODO: Need to double check which code part does not pass in timestamp from header.
-        spec.Parameters.Eip658Transition = 0;
-
-        if (!isPostMerge)
+        spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
         {
-            // Disable as the built block always don't have withdrawal (it came from engine) so it fail validation.
-            spec.Parameters.Eip4895TransitionTimestamp = null;
+            Code = Eip7002TestConstants.Code,
+            Nonce = Eip7002TestConstants.Nonce
+        };
 
-            // 4844 add BlobGasUsed which in the header decoder also imply WithdrawalRoot which would be set to 0 instead of null
-            // which become invalid when using block body with null withdrawal.
-            // Basically, these need merge block builder, or it will fail block validation on download.
-            spec.Parameters.Eip4844TransitionTimestamp = null;
-        }
-        else
+        spec.Allocations[Eip7251Constants.ConsolidationRequestPredeployAddress] = new ChainSpecAllocation
+        {
+            Code = Eip7251TestConstants.Code,
+            Nonce = Eip7251TestConstants.Nonce
+        };
+
+        // Activate all block-number-based forks from genesis. The test builds a short chain
+        // (1000 blocks) with post-merge timestamps. Without this, the chainspec has block
+        // transitions at high mainnet block numbers (e.g. London at 12,965,000), causing a
+        // legitimate "Chainspec file is misconfigured" warning when GetSpec is called with
+        // low block numbers but high timestamps.
+        ActivateAllBlockTransitionsFromGenesis(spec);
+
+        if (isPostMerge)
         {
             spec.Genesis.Header.Difficulty = 10000;
 
@@ -134,9 +245,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             mergeConfig.FinalTotalDifficulty = "10000";
         }
 
-        configurer.Invoke(configProvider, spec);
+        await configurer(configProvider, spec);
 
-        switch (dbMode)
+        switch (dbModeOverride)
         {
             case DbMode.Default:
                 // Um... nothing?
@@ -153,146 +264,211 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     pruningConfig.Mode = PruningMode.None;
                     break;
                 }
+            case DbMode.Flat:
+                {
+                    IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+                    flatDbConfig.Enabled = true;
+                    flatDbConfig.VerifyWithTrie = true;
+                    break;
+                }
         }
 
-        var builder = new ContainerBuilder()
-            .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
+            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
             .AddSingleton<SyncTestContext>()
             .AddSingleton<ITestEnv, PreMergeTestEnv>()
-            ;
+            .AddSingleton<BlockProcessorExceptionDetector>()
+            .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Info)) // Put last or it wont work.
+            .AddDecorator<IBlockProcessor, BlockProcessorExceptionDetector.BlockProcessorInterceptor>();
 
         if (isPostMerge)
         {
+            // Activate configured mainnet future EIP
+            ManualTimestamper timestamper = new(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
             builder
-                .AddModule(new MergeModule(
-                    configProvider.GetConfig<ITxPoolConfig>(),
-                    configProvider.GetConfig<IMergeConfig>(),
-                    configProvider.GetConfig<IBlocksConfig>()
-                ))
+                .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
+                .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
                 .AddDecorator<ITestEnv, PostMergeTestEnv>()
                 ;
-
+        }
+        else
+        {
+            // So that any EIP after the merge is not activated.
+            ManualTimestamper timestamper = ManualTimestamper.PreMerge;
+            builder
+                .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
+                .AddSingleton<ITimestamper>(timestamper)
+                ;
         }
 
-        return builder
-            .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
-            .Build();
+        return builder.Build();
     }
 
     [OneTimeSetUp]
     public async Task SetupServer()
     {
-        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+        using CancellationTokenSource cancellationTokenSource = new();
         cancellationTokenSource.CancelAfter(SetupTimeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         PrivateKey serverKey = TestItem.PrivateKeyA;
         _serverKey = serverKey;
-        _server = CreateNode(serverKey, (cfg, spec) =>
+        _server = await CreateNode(serverKey, (cfg, spec) =>
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+            return Task.CompletedTask;
         });
 
         SyncTestContext serverCtx = _server.Resolve<SyncTestContext>();
         await serverCtx.StartBlockProcessing(cancellationToken);
 
-        byte[] spam = Prepare.EvmCode
-            .ForCreate2Of(
-                Prepare.EvmCode
-                    .PushData(100)
-                    .PushData(100)
-                    .Op(Instruction.SSTORE)
-                    .PushData(100)
-                    .PushData(101)
-                    .Op(Instruction.SSTORE)
-                    .PushData(100)
-                    .Op(Instruction.SLOAD)
-                    .PushData(101)
-                    .Op(Instruction.SLOAD)
-                    .PushData(102)
-                    .Done)
-            .Done;
-
         for (int i = 0; i < ChainLength; i++)
         {
-            await serverCtx.BuildBlockWithCode([spam, spam, spam], cancellationToken);
+            await serverCtx.BuildBlockWithStorage(i, cancellationToken);
         }
 
         await serverCtx.StartNetwork(cancellationToken);
     }
 
     [OneTimeTearDown]
-    public async Task TearDownServer()
-    {
-        await _server.DisposeAsync();
-    }
+    public Task TearDownServer() =>
+        _server.DisposeAsync().AsTask();
 
     [Test]
+    [Retry(5)]
     public async Task FullSync()
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyB;
-        await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
+        await using IContainer client = await CreateNode(clientKey, (cfg, spec) =>
         {
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+            return Task.CompletedTask;
         });
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
     [Test]
+    [Retry(5)]
     public async Task FastSync()
     {
+        // After the nodedata satellite protocol was removed, fast sync without snap can no longer
+        // retrieve state on eth >= 67 (no GetNodeData in those versions). The SnapSync test below
+        // covers fast sync with state retrieval via snap.
+        Assert.Ignore("Fast sync without snap is not supported for eth >= 67 after nodedata satellite removal");
+
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
         PrivateKey clientKey = TestItem.PrivateKeyC;
-        await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
             SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
             syncConfig.FastSync = true;
 
-            IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
-            long serverHeadNumber = serverBlockTree.Head!.Number;
-            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
-            syncConfig.PivotHash = pivot.Hash!.ToString();
-            syncConfig.PivotNumber = pivot.Number.ToString();
-            syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
+            await SetPivot(syncConfig, cancellationTokenSource.Token);
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
         });
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
+    private async Task SetPivot(SyncConfig syncConfig, CancellationToken cancellationToken)
+    {
+        IBlockProcessingQueue blockProcessingQueue = _server.Resolve<IBlockProcessingQueue>();
+        await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
+        IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
+        long serverHeadNumber = serverBlockTree.Head!.Number;
+        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
+        syncConfig.PivotHash = pivot.Hash!.ToString();
+        syncConfig.PivotNumber = pivot.Number;
+        syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
+    }
+
     [Test]
+    [Retry(5)]
     public async Task SnapSync()
     {
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        await RunSnapSyncOnce(cancellationTokenSource.Token);
+    }
 
+    // Stress reproducer for SnapSync Windows flake — run manually; see PR #11443 for context.
+    [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
+    [TestCaseSource(nameof(StressIterations))]
+    public async Task SnapSync_StressRepro(int iteration)
+    {
+        if (dbMode != DbMode.Flat) Assert.Ignore("Stress repro only targets the Flat dbMode where the flake was observed");
+        _ = iteration; // index is purely to give NUnit a unique case per attempt
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        await RunSnapSyncOnce(cancellationTokenSource.Token);
+    }
+
+    private async Task RunSnapSyncOnce(CancellationToken cancellationToken)
+    {
         PrivateKey clientKey = TestItem.PrivateKeyD;
-        await using IContainer client = CreateNode(clientKey, (cfg, spec) =>
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
             SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
             syncConfig.FastSync = true;
             syncConfig.SnapSync = true;
 
-            IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
-            long serverHeadNumber = serverBlockTree.Head!.Number;
-            BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
-            syncConfig.PivotHash = pivot.Hash!.ToString();
-            syncConfig.PivotNumber = pivot.Number.ToString();
-            syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
+            await SetPivot(syncConfig, cancellationToken);
 
             INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
             networkConfig.P2PPort = AllocatePort();
+            // Disable IP filtering for E2E tests as all nodes run on localhost
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
         });
+
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+    }
+
+    private const int StressIterationCount = 30;
+    private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
+
+    [Test]
+    [Retry(5)]
+    public async Task SnapSync_HalfPathServer_HashClient()
+    {
+        if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+
+        PrivateKey clientKey = TestItem.PrivateKeyD;
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+        {
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = true;
+            syncConfig.SnapSync = true;
+
+            await SetPivot(syncConfig, cancellationTokenSource.Token);
+
+            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
+            networkConfig.P2PPort = AllocatePort();
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+        }, DbMode.Hash);
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
@@ -353,7 +529,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
         {
             if (modeCheck(syncModeSelector.Current)) return;
-
             await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
                 h => syncModeSelector.Changed += h,
                 h => syncModeSelector.Changed -= h,
@@ -387,15 +562,16 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 PrevRandao = Hash256.Zero,
                 SuggestedFeeRecipient = TestItem.AddressA,
                 Withdrawals = [],
+                ParentBeaconBlockRoot = Hash256.Zero,
                 Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
             });
             payloadId.Should().NotBeNullOrEmpty();
 
-            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!);
+            IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
             blockProductionContext.Should().NotBeNull();
             blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
 
-            blockTree.SuggestBlock(blockProductionContext.CurrentBestBlock!).Should().Be(AddBlockResult.Added);
+            (await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!)).Should().Be(AddBlockResult.Added);
 
             await newBlockTask;
         }
@@ -415,77 +591,135 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken);
         }
 
-        public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
-        {
-            await preMergeTestEnv.WaitForSyncMode(modeCheck, cancellationToken);
-        }
+        public Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken) =>
+            preMergeTestEnv.WaitForSyncMode(modeCheck, cancellationToken);
     }
 
     private class SyncTestContext(
         [KeyFilter(TestEnvironmentModule.NodeKey)] PrivateKey nodeKey,
-        IWorldStateManager worldStateManager,
         ISpecProvider specProvider,
         IEthereumEcdsa ecdsa,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
-        MainBlockProcessingContext mainBlockProcessingContext,
+        IBlockProcessingQueue blockProcessingQueue,
         ITestEnv testEnv,
         IRlpxHost rlpxHost,
+        IWorldStateManager worldStateManager,
         PseudoNethermindRunner runner,
-        ImmediateDisconnectFailure immediateDisconnectFailure)
+        ImmediateDisconnectFailure immediateDisconnectFailure,
+        BlockProcessorExceptionDetector blockProcessorExceptionDetector)
     {
         // These check is really slow (it doubles the test time) so its disabled by default.
         private const bool CheckBlocksAndReceiptsContent = false;
         private const bool VerifyTrieOnFinished = false;
+        private const int DeployEveryNBlocks = 10;
 
-        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
+        private readonly BlockDecoder _blockDecoder = new();
         private readonly ReceiptsMessageSerializer _receiptsMessageSerializer = new(specProvider);
 
-        public async Task StartBlockProcessing(CancellationToken cancellationToken)
-        {
-            await runner.StartBlockProcessing(cancellationToken);
-        }
+        // Track deployed contracts for storage testing
+        private readonly List<Address> _deployedContracts = [];
+        private readonly Random _random = new(42); // Fixed seed for reproducibility
 
-        public async Task StartNetwork(CancellationToken cancellationToken)
-        {
-            await runner.StartNetwork(cancellationToken);
-        }
+        // Runtime code: SLOAD slot 0, ADD 1, SSTORE to slot 0
+        private readonly byte[] _runtimeCode = Prepare.EvmCode
+            .PushData(0)              // slot 0
+            .Op(Instruction.SLOAD)    // load current value
+            .PushData(1)              // value to add
+            .Op(Instruction.ADD)      // add 1
+            .PushData(0)              // slot 0
+            .Op(Instruction.SSTORE)   // store incremented value
+            .Op(Instruction.STOP)
+            .Done;
+
+        // Initcode: set initial value in slot 0, then return runtime code
+        private byte[]? _initCode;
+        private byte[] InitCode => _initCode ??= Prepare.EvmCode
+            .PushData(1)              // initial value
+            .PushData(0)              // slot 0
+            .Op(Instruction.SSTORE)   // set initial storage
+            .ForInitOf(_runtimeCode)  // return runtime code
+            .Done;
+
+        public Task StartBlockProcessing(CancellationToken cancellationToken) =>
+            runner.StartBlockProcessing(cancellationToken);
+
+        public Task StartNetwork(CancellationToken cancellationToken) =>
+            runner.StartNetwork(cancellationToken);
 
         private async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
         {
             IEnode serverEnode = server.Resolve<IEnode>();
-            Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
-            await rlpxHost.ConnectAsync(serverNode);
+            Node serverNode = new(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
+            if (!await rlpxHost.ConnectAsync(serverNode))
+            {
+                throw new NetworkingException($"Failed to connect to {serverNode:s}", NetworkExceptionType.TargetUnreachable);
+            }
         }
+
+        private readonly Dictionary<Address, UInt256> _nonces = [];
 
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
-            long gasLimit = 100000;
+            long gasLimit = 1_000_000;
 
-            Hash256 stateRoot = blockTree.Head?.StateRoot!;
-            UInt256 currentNonce = worldStateManager.GlobalStateReader.GetNonce(stateRoot, nodeKey.Address);
+            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
                     .WithNonce(currentNonce++)
                     .WithGasLimit(gasLimit)
-                    .WithGasPrice(10.GWei())
+                    .WithGasPrice(10.GWei)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
-
+            _nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs(txs, cancellation);
+        }
+
+        public async Task BuildBlockWithStorage(int blockNumber, CancellationToken cancellation)
+        {
+            long gasLimit = 200_000;
+
+            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
+            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0) + 1, null);
+
+            Transaction tx;
+
+            if (blockNumber % DeployEveryNBlocks == 0 || _deployedContracts.Count == 0)
+            {
+                // Deploy new contract
+                tx = Build.A.Transaction
+                    .WithCode(InitCode)
+                    .WithNonce(currentNonce++)
+                    .WithGasLimit(gasLimit)
+                    .WithGasPrice(10.GWei)
+                    .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
+
+                // Calculate deployed address and track it
+                Address deployedAddress = ContractAddress.From(nodeKey.Address, currentNonce - 1);
+                _deployedContracts.Add(deployedAddress);
+            }
+            else
+            {
+                // Call random existing contract
+                Address target = _deployedContracts[_random.Next(_deployedContracts.Count)];
+                tx = Build.A.Transaction
+                    .WithTo(target)
+                    .WithData([])
+                    .WithNonce(currentNonce++)
+                    .WithGasLimit(gasLimit)
+                    .WithGasPrice(10.GWei)
+                    .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
+            }
+
+            _nonces[nodeKey.Address] = currentNonce;
+            await testEnv.BuildBlockWithTxs([tx], cancellation);
         }
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
         {
-            IBlockProcessingQueue queue = mainBlockProcessingContext.BlockProcessingQueue;
-            if (!queue.IsEmpty)
-            {
-                await Wait.ForEvent(cancellationToken,
-                    e => queue.ProcessingQueueEmpty += e,
-                    e => queue.ProcessingQueueEmpty -= e);
-            }
+            await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
 
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
 
@@ -535,16 +769,14 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             stream1.AsSpan().ToArray().Should().BeEquivalentTo(stream2.AsSpan().ToArray());
         }
 
-        private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2)
-        {
+        private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
             // The network encoding is not the same as storage encoding.
             EncodeReceipts(receipts1).Should().BeEquivalentTo(EncodeReceipts(receipts2));
-        }
 
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
             TxReceipt[][] wrappedReceipts = new[] { receipts };
-            using ReceiptsMessage asReceiptsMessage = new ReceiptsMessage(wrappedReceipts.ToPooledList());
+            using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
             IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
             try
@@ -562,12 +794,25 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
             {
-                await runner.StartNetwork(token);
-                await ConnectTo(server, token);
-                await testEnv.SyncUntilFinished(server, token);
-                await VerifyHeadWith(server, token);
-                await VerifyAllBlocksAndReceipts(server, token);
+                await blockProcessorExceptionDetector.WatchForFailure(async (token) =>
+                {
+                    await runner.StartNetwork(token);
+                    await ConnectTo(server, token);
+                    await testEnv.SyncUntilFinished(server, token);
+                    await VerifyHeadWith(server, token);
+                    await VerifyAllBlocksAndReceipts(server, token);
+                }, token);
             }, cancellationToken);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // On flat, verify trie only work with persistence
+            worldStateManager.FlushCache(cancellationToken);
+
+            BlockHeader? head = blockTree.Head?.Header;
+            Console.Error.WriteLine($"On {head?.ToString(BlockHeader.Format.Short)}");
+            bool stateVerified = worldStateManager.VerifyTrie(head!, cancellationToken);
+            Assert.That(stateVerified, Is.True);
         }
     }
 
@@ -575,17 +820,17 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private class ImmediateDisconnectFailure : IDisconnectsAnalyzer
     {
         private string? DisconnectFailure = null;
-        private CancellationTokenSource _cts = new CancellationTokenSource();
+        private readonly CancellationTokenSource _cts = new();
 
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
-            DisconnectFailure = $"{reason.ToString()} {details}";
+            DisconnectFailure = $"{reason} {details}";
             _cts.Cancel();
         }
 
         public async Task WatchForDisconnection(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
             try
             {
                 await act(cts.Token);
@@ -595,6 +840,63 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             {
                 if (DisconnectFailure == null) throw; // Timeout without disconnect
                 Assert.Fail($"Disconnect detected. {DisconnectFailure}");
+            }
+        }
+    }
+
+    internal class BlockProcessorExceptionDetector
+    {
+        internal static void Configure(ContainerBuilder builder) =>
+            builder.AddSingleton<BlockProcessorExceptionDetector>()
+                .AddDecorator<IBlockProcessor, BlockProcessorInterceptor>();
+
+        private Exception? BlockProcessingFailure;
+        private CancellationTokenSource _cts = new();
+
+        private void ReportException(Exception exception)
+        {
+            BlockProcessingFailure = exception;
+            _cts.Cancel();
+        }
+
+
+        public async Task WatchForFailure(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
+        {
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            try
+            {
+                await act(cts.Token);
+                if (BlockProcessingFailure != null) Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (BlockProcessingFailure == null) throw; // Timeout without disconnect
+                Assert.Fail($"Block processing failure detected. {BlockProcessingFailure}");
+            }
+        }
+
+        internal class BlockProcessorInterceptor(
+            IBlockProcessor blockProcessor,
+            BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
+        {
+            public event Action? TransactionsExecuted
+            {
+                add => blockProcessor.TransactionsExecuted += value;
+                remove => blockProcessor.TransactionsExecuted -= value;
+            }
+
+            public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+                IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
+            {
+                try
+                {
+                    return blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                }
+                catch (Exception ex)
+                {
+                    blockProcessorExceptionDetector.ReportException(ex);
+                    throw;
+                }
             }
         }
     }

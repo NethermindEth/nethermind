@@ -11,6 +11,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
     {
         string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
 
-        ValueTask<IBlockProductionContext?> GetPayload(string payloadId);
+        ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false);
+        void CancelBlockProduction(string payloadId);
     }
 }

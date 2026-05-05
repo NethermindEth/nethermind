@@ -8,7 +8,6 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
@@ -28,9 +27,9 @@ public partial class ForwardHeaderProviderTests
     [TestCase(16L, 32L, 32, 32, 3, 32)]
     [TestCase(16L, 32L, 32, 29, 3, 29)]
     [TestCase(16L, 32L, 0, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, 32, 32, 3, 32)]
-    [TestCase(16L, SyncBatchSize.Max * 8, 32, SyncBatchSize.Max * 8 - 16L, 3, 130)]
+    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
+    [TestCase(16L, SyncBatchSizeMax * 8, 32, 32, 3, 32)]
+    [TestCase(16L, SyncBatchSizeMax * 8, 32, SyncBatchSizeMax * 8 - 16L, 3, 130)]
     public async Task Merge_Happy_path(long beaconPivot, long headNumber, int threshold, long insertedBeaconBlocks, long expectedFirstBlock, long expectedLastBlock)
     {
         int notSyncedTreeStartingBlockNumber = 3;
@@ -88,7 +87,6 @@ public partial class ForwardHeaderProviderTests
             ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
-        PeerInfo peerInfo = new(syncPeer);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(syncPeer);
@@ -132,21 +130,19 @@ public partial class ForwardHeaderProviderTests
         return CreateNode((builder) =>
         {
             builder
-                .AddModule(new MergeModule(configProvider))
+                .AddModule(new TestMergeModule(configProvider))
                 .AddSingleton<PostMergeContext>();
             configurer?.Invoke(builder);
         }, configProvider);
     }
 
-    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs)
-    {
-        return CreateMergeNode((builder) =>
+    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs) =>
+        CreateMergeNode((builder) =>
         {
             builder
                 .AddSingleton<IBlockTree>(treeBuilder.NotSyncedTree)
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb);
         }, configs);
-    }
 
     private record PostMergeContext(
         IBeaconPivot BeaconPivot,

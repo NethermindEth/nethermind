@@ -6,8 +6,9 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -26,7 +27,7 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
         UInt256 value = default)
     {
         (Block block, Transaction transaction) = input is null ? PrepareTx(Activation, 100000, code) : PrepareTx(Activation, 100000, code, input, value);
-        Native4ByteTracer tracer = new Native4ByteTracer(transaction, GethTraceOptions.Default);
+        Native4ByteTracer tracer = new(transaction, GethTraceOptions.Default);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
         return tracer.BuildResult();
     }
@@ -59,8 +60,8 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
                 .DelegateCall(TestItem.AddressC, 50000)
                 .STOP()
                 .Done;
-            var singleCall4ByteIds = new Dictionary<string, int>
-                {
+            Dictionary<string, int> singleCall4ByteIds = new()
+            {
                     { "0x62b15678-1", 1 }
                 };
             yield return new TestCaseData(delegateCallEvmCode, sampleInput)

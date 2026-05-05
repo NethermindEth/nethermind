@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -13,35 +14,21 @@ using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
-    public class PersonalRpcModule : IPersonalRpcModule
+    public class PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore) : IPersonalRpcModule
     {
-        private readonly IEcdsa _ecdsa;
-        private readonly IWallet _wallet;
-        private readonly IKeyStore _keyStore;
-
-        public PersonalRpcModule(IEcdsa ecdsa, IWallet wallet, IKeyStore keyStore)
-        {
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _keyStore = keyStore;
-        }
-
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Address> personal_importRawKey(byte[] keyData, string passphrase)
         {
             PrivateKey privateKey = new(keyData);
-            _keyStore.StoreKey(privateKey, passphrase.Secure());
+            keyStore.StoreKey(privateKey, passphrase.Secure());
             return ResultWrapper<Address>.Success(privateKey.Address);
         }
 
-        public ResultWrapper<Address[]> personal_listAccounts()
-        {
-            return ResultWrapper<Address[]>.Success(_wallet.GetAccounts());
-        }
+        public ResultWrapper<Address[]> personal_listAccounts() => ResultWrapper<Address[]>.Success(wallet.GetAccounts());
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
-            var locked = _wallet.LockAccount(address);
+            bool locked = wallet.LockAccount(address);
 
             return ResultWrapper<bool>.Success(locked);
         }
@@ -49,29 +36,31 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<bool> personal_unlockAccount(Address address, string passphrase)
         {
-            var notSecuredHere = passphrase.Secure();
-            var unlocked = _wallet.UnlockAccount(address, notSecuredHere);
+            SecureString notSecuredHere = passphrase.Secure();
+            bool unlocked = wallet.UnlockAccount(address, notSecuredHere);
             return ResultWrapper<bool>.Success(unlocked);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Address> personal_newAccount(string passphrase)
         {
-            var notSecuredHere = passphrase.Secure();
-            return ResultWrapper<Address>.Success(_wallet.NewAccount(notSecuredHere));
+            SecureString notSecuredHere = passphrase.Secure();
+            return ResultWrapper<Address>.Success(wallet.NewAccount(notSecuredHere));
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
-        {
-            throw new NotImplementedException();
-        }
+        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase) => throw new NotImplementedException();
 
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
+            if (signature.Length != Signature.Size)
+            {
+                return ResultWrapper<Address>.Fail($"Invalid signature length: {signature.Length}. Expected {Signature.Size} bytes.", ErrorCodes.InvalidParams);
+            }
+
             message = ToEthSignedMessage(message);
             Hash256 msgHash = Keccak.Compute(message);
-            PublicKey publicKey = _ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
+            PublicKey publicKey = ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
             return ResultWrapper<Address>.Success(publicKey.Address);
         }
 
@@ -83,19 +72,19 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Memory<byte>> personal_sign(byte[] message, Address address, string passphrase = null)
+        public ResultWrapper<string> personal_sign(byte[] message, Address address, string passphrase = null)
         {
-            if (!_wallet.IsUnlocked(address))
+            if (!wallet.IsUnlocked(address))
             {
                 if (passphrase is not null)
                 {
-                    var notSecuredHere = passphrase.Secure();
-                    _wallet.UnlockAccount(address, notSecuredHere);
+                    SecureString notSecuredHere = passphrase.Secure();
+                    wallet.UnlockAccount(address, notSecuredHere);
                 }
             }
 
             message = ToEthSignedMessage(message);
-            return ResultWrapper<Memory<byte>>.Success(_wallet.Sign(Keccak.Compute(message), address).Memory);
+            return ResultWrapper<string>.Success(wallet.Sign(Keccak.Compute(message), address).ToString());
         }
     }
 }

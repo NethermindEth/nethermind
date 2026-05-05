@@ -5,31 +5,25 @@ using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
-public class BoostBlockImprovementContextFactory : IBlockImprovementContextFactory
+public class BoostBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, IBoostRelay boostRelay, IStateReader stateReader) : IBlockImprovementContextFactory
 {
-    private readonly IBlockProducer _blockProducer;
-    private readonly TimeSpan _timeout;
-    private readonly IBoostRelay _boostRelay;
-    private readonly IStateReader _stateReader;
-
-    public BoostBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, IBoostRelay boostRelay, IStateReader stateReader)
-    {
-        _blockProducer = blockProducer;
-        _timeout = timeout;
-        _boostRelay = boostRelay;
-        _stateReader = stateReader;
-    }
+    private readonly IBlockProducer _blockProducer = blockProducer;
+    private readonly TimeSpan _timeout = timeout;
+    private readonly IBoostRelay _boostRelay = boostRelay;
+    private readonly IStateReader _stateReader = stateReader;
 
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        UInt256 currentBlockFees) =>
-        new BoostBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime);
+        UInt256 currentBlockFees,
+        SharedCancellationTokenSource cts) =>
+        new BoostBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime, cts);
 }

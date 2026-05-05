@@ -7,10 +7,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -25,7 +26,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Load_self_destruct()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -69,7 +70,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(initTx, blCtx, initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
@@ -85,7 +86,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -158,7 +159,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer0);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
@@ -191,7 +192,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store_different_cells()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -264,7 +265,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer0);
             AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
@@ -353,7 +354,7 @@ namespace Nethermind.Evm.Test
                 .CallWithValue(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             //TestState.Commit(SpecProvider.GenesisSpec);
             //TestState.CommitTree(0);
 
@@ -380,7 +381,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer);
 
             tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);

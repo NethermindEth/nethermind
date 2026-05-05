@@ -3,16 +3,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Modules;
@@ -24,7 +20,7 @@ namespace Nethermind.Runner.Ethereum.Api;
 public class ApiBuilder
 {
     private readonly IConfigProvider _configProvider;
-    private readonly IJsonSerializer _jsonSerializer;
+    private readonly EthereumJsonSerializer _jsonSerializer;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly IInitConfig _initConfig;
@@ -36,11 +32,13 @@ public class ApiBuilder
     public ApiBuilder(IProcessExitSource processExitSource, IConfigProvider configProvider, ILogManager logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<ApiBuilder>();
         _processExitSource = processExitSource;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();
-        _jsonSerializer = new EthereumJsonSerializer(configProvider.GetConfig<IJsonRpcConfig>().JsonSerializationMaxDepth);
+        IJsonRpcConfig? jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+        EthereumJsonSerializer.StrictHexFormat = jsonRpcConfig.StrictHexFormat;
+        _jsonSerializer = new EthereumJsonSerializer(jsonRpcConfig.JsonSerializationMaxDepth);
         ChainSpec = LoadChainSpec(_jsonSerializer);
     }
 
@@ -66,14 +64,21 @@ public class ApiBuilder
         return container.Resolve<EthereumRunner>();
     }
 
-    private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
+    private ChainSpec LoadChainSpec(EthereumJsonSerializer ethereumJsonSerializer)
     {
         if (_logger.IsDebug) _logger.Debug($"Loading chain spec from {_initConfig.ChainSpecPath}");
 
         ThisNodeInfo.AddInfo("Chainspec    :", _initConfig.ChainSpecPath);
 
-        var loader = new ChainSpecFileLoader(ethereumJsonSerializer, _logger);
+        ChainSpecFileLoader loader = new(ethereumJsonSerializer, _logManager);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(_initConfig.ChainSpecPath);
+
+        //overwriting NetworkId which is useful for some devnets (like bloatnet)
+        if (_initConfig.NetworkId is not null)
+        {
+            chainSpec.NetworkId = (ulong)_initConfig.NetworkId;
+        }
+
         return chainSpec;
     }
 

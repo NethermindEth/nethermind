@@ -26,6 +26,7 @@ namespace Nethermind.Api.Steps
             RunnerStepDependenciesAttribute? dependenciesAttribute =
                 StepType.GetCustomAttribute<RunnerStepDependenciesAttribute>();
             Dependencies = dependenciesAttribute?.Dependencies ?? [];
+            Dependents = dependenciesAttribute?.Dependents ?? [];
         }
 
         public Type StepBaseType { get; }
@@ -33,11 +34,9 @@ namespace Nethermind.Api.Steps
         public Type StepType { get; }
 
         public Type[] Dependencies { get; }
+        public Type[] Dependents { get; }
 
-        public override string ToString()
-        {
-            return $"{StepType.Name} : {StepBaseType.Name}";
-        }
+        public override string ToString() => $"{StepType.Name} : {StepBaseType.Name}";
 
         private static Type GetStepBaseType(Type type)
         {
@@ -49,10 +48,7 @@ namespace Nethermind.Api.Steps
             return type;
         }
 
-        public static implicit operator StepInfo(Type type)
-        {
-            return new StepInfo(type);
-        }
+        public static implicit operator StepInfo(Type type) => new(type);
 
         public static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
     }

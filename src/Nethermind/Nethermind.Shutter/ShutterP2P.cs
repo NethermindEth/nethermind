@@ -40,14 +40,13 @@ public class ShutterP2P : IShutterP2P
     private readonly ServiceProvider _serviceProvider;
     private readonly TimeSpan DisconnectionLogTimeout;
     private readonly TimeSpan DisconnectionLogInterval;
-    private CancellationTokenSource? _cts;
 
     public class ShutterP2PException(string message, Exception? innerException = null) : Exception(message, innerException);
 
 
     public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IPAddress ip)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterP2P>();
         _cfg = shutterConfig;
         _address = $"/ip4/{ip}/tcp/{_cfg.P2PPort}";
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);
@@ -99,13 +98,11 @@ public class ShutterP2P : IShutterP2P
         };
     }
 
-    public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationTokenSource? cts = null)
+    public async Task Start(IEnumerable<Multiaddress> bootnodeP2PAddresses, Func<Dto.DecryptionKeys, Task> onKeysReceived, CancellationToken cancellationToken)
     {
-        _cts = cts ?? new();
-
-        await _peer.StartListenAsync([_address], _cts.Token);
-        await _router.StartAsync(_peer, _cts.Token);
-        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(_address)], _cts.Token);
+        await _peer.StartListenAsync([_address], cancellationToken);
+        await _router.StartAsync(_peer, cancellationToken);
+        _ = _disc.StartDiscoveryAsync([Multiaddress.Decode(_address)], cancellationToken);
 
         foreach (Multiaddress address in bootnodeP2PAddresses)
         {
@@ -121,8 +118,8 @@ public class ShutterP2P : IShutterP2P
         {
             try
             {
-                using var timeoutSource = new CancellationTokenSource(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
-                using var source = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutSource.Token);
+                using CancellationTokenSource timeoutSource = new(hasTimedOut ? DisconnectionLogInterval : DisconnectionLogTimeout);
+                using CancellationTokenSource source = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutSource.Token);
 
                 byte[] msg = await _msgQueue.Reader.ReadAsync(source.Token);
                 lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
@@ -131,7 +128,7 @@ public class ShutterP2P : IShutterP2P
             }
             catch (OperationCanceledException)
             {
-                if (_cts.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested)
                 {
                     if (_logger.IsInfo) _logger.Info($"Shutting down Shutter P2P...");
                     break;
@@ -154,7 +151,6 @@ public class ShutterP2P : IShutterP2P
     public async ValueTask DisposeAsync()
     {
         _router?.UnsubscribeAll();
-        _cts?.Dispose();
         await (_serviceProvider?.DisposeAsync() ?? default);
     }
 
@@ -198,7 +194,7 @@ public class ShutterP2P : IShutterP2P
         }
         catch (InvalidProtocolBufferException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not parse Shutter decryption keys: {e}");
+            _logger.DebugWarn($"Could not parse Shutter decryption keys: {e}");
         }
     }
 }

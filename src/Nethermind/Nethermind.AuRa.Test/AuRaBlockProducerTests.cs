@@ -21,7 +21,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
@@ -66,13 +66,13 @@ namespace Nethermind.AuRa.Test
                 AuRaStepCalculator.TimeToNextStep.Returns(StepDelay);
                 BlockTree.BestKnownNumber.Returns(1);
                 BlockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithAura(10, []).TestObject).TestObject);
-                BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns(returnThis: c =>
+                BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns(returnThis: c =>
                 {
                     Block block = c.Arg<Block>();
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
-                StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
+                StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => true);
                 InitProducer();
             }
 
@@ -120,10 +120,8 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public async Task Produces_block()
-        {
+        public async Task Produces_block() =>
             (await StartStop(new Context())).ShouldProduceBlocks(Quantity.AtLeastOne());
-        }
 
         [Test]
         public async Task Can_produce_first_block_when_private_chains_allowed()
@@ -134,16 +132,12 @@ namespace Nethermind.AuRa.Test
         }
 
         [Test]
-        public async Task Cannot_produce_first_block_when_private_chains_not_allowed()
-        {
+        public async Task Cannot_produce_first_block_when_private_chains_not_allowed() =>
             (await StartStop(new Context(), false)).ShouldProduceBlocks(Quantity.None());
-        }
 
         [Test]
-        public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised()
-        {
+        public async Task Does_not_produce_block_when_ProcessingQueueEmpty_not_raised() =>
             (await StartStop(new Context(), false, true)).ShouldProduceBlocks(Quantity.None());
-        }
 
         [Test]
         public async Task Does_not_produce_block_when_QueueNotEmpty()
@@ -208,15 +202,13 @@ namespace Nethermind.AuRa.Test
         public async Task Does_not_produce_block_when_processing_fails()
         {
             Context context = new();
-            context.BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns((Block)null);
+            context.BlockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()).Returns((Block)null);
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
 
         [Test, Retry(6)]
-        public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed()
-        {
+        public async Task Does_not_produce_block_when_there_is_new_best_suggested_block_not_yet_processed() =>
             (await StartStop(new Context(), true, true)).ShouldProduceBlocks(Quantity.None());
-        }
 
         private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
         {
@@ -259,19 +251,12 @@ namespace Nethermind.AuRa.Test
             return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()));
         }
 
-        private class TestResult
+        private class TestResult(Action<Quantity> assert)
         {
-            private readonly Action<Quantity> _assert;
+            private readonly Action<Quantity> _assert = assert;
 
-            public TestResult(Action<Quantity> assert)
-            {
-                _assert = assert;
-            }
-
-            public void ShouldProduceBlocks(Quantity quantity)
-            {
+            public void ShouldProduceBlocks(Quantity quantity) =>
                 _assert(quantity);
-            }
         }
     }
 }

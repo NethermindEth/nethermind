@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -32,9 +31,7 @@ namespace Nethermind.Blockchain.Contracts
                 );
         }
 
-        public int GetHashCode(LogEntry obj)
-        {
-            return obj.Topics.Aggregate(obj.Address.GetHashCode(), static (i, keccak) => i ^ keccak.GetHashCode());
-        }
+        public int GetHashCode(LogEntry obj) =>
+            obj.Topics.Aggregate(obj.Address.GetHashCode(), static (i, keccak) => i ^ keccak.GetHashCode());
     }
 }

@@ -10,10 +10,7 @@ public class CompositePersistenceStrategy : IPersistenceStrategy
 {
     private readonly List<IPersistenceStrategy> _strategies = new();
 
-    public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies)
-    {
-        _strategies.AddRange(strategies);
-    }
+    public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies) => _strategies.AddRange(strategies);
 
     public IPersistenceStrategy AddStrategy(IPersistenceStrategy strategy)
     {
@@ -22,5 +19,4 @@ public class CompositePersistenceStrategy : IPersistenceStrategy
     }
 
     public bool ShouldPersist(long blockNumber) => _strategies.Any(strategy => strategy.ShouldPersist(blockNumber));
-    public bool IsFullPruning => _strategies.Any(static strategy => strategy.IsFullPruning);
 }

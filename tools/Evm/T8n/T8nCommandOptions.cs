@@ -7,68 +7,68 @@ namespace Evm.T8n;
 
 public static class T8nCommandOptions
 {
-    public static CliOption<string> InputAllocOpt { get; } = new("--input-alloc")
+    public static Option<string> InputAllocOpt { get; } = new("--input-alloc")
     {
         Description = "Input allocations"
     };
-    public static CliOption<string> InputEnvOpt { get; } = new("--input-env")
+    public static Option<string> InputEnvOpt { get; } = new("--input-env")
     {
         Description = "Input environment"
     };
-    public static CliOption<string> InputTxsOpt { get; } = new("--input-txs")
+    public static Option<string> InputTxsOpt { get; } = new("--input-txs")
     {
         Description = "Input transactions"
     };
 
-    public static CliOption<string> OutputAllocOpt { get; } = new("--output-alloc")
+    public static Option<string> OutputAllocOpt { get; } = new("--output-alloc")
     {
         Description = "Output allocations"
     };
-    public static CliOption<string> OutputResultOpt { get; } = new("--output-result")
+    public static Option<string> OutputResultOpt { get; } = new("--output-result")
     {
         Description = "Output result"
     };
-    public static CliOption<string> OutputBodyOpt { get; } = new("--output-body")
+    public static Option<string> OutputBodyOpt { get; } = new("--output-body")
     {
         Description = "Output body"
     };
-    public static CliOption<string> OutputBaseDirOpt { get; } = new("--output-basedir")
+    public static Option<string> OutputBaseDirOpt { get; } = new("--output-basedir")
     {
         Description = "Output base directory"
     };
 
-    public static CliOption<ulong?> StateChainIdOpt { get; } = new("--state-chainid")
+    public static Option<ulong?> StateChainIdOpt { get; } = new("--state-chainid")
     {
         Description = "State chain id"
     };
-    public static CliOption<string> StateForkOpt { get; } = new("--state-fork")
+    public static Option<string> StateForkOpt { get; } = new("--state-fork")
     {
         Description = "State fork"
     };
-    public static CliOption<string> StateRewardOpt { get; } = new("--state-reward")
+    public static Option<string> StateRewardOpt { get; } = new("--state-reward")
     {
         Description = "State reward"
     };
-    public static CliOption<bool> TraceOpt { get; } = new("--trace")
+    public static Option<bool> TraceOpt { get; } = new("--trace")
     {
         Description = "Configures the use of the JSON opcode tracer. This tracer emits traces to files as trace-<txIndex>-<txHash>.json"
     };
-    public static CliOption<bool> TraceMemoryOpt { get; } = new("--trace-memory")
+    public static Option<bool> TraceMemoryOpt { get; } = new("--trace-memory")
     {
         Description = "Trace memory"
     };
-    public static CliOption<bool> TraceNoStackOpt { get; } = new("--trace-nostack")
+    public static Option<bool> TraceNoStackOpt { get; } = new("--trace-nostack")
     {
         Description = "Trace no stack"
     };
-    public static CliOption<bool> TraceReturnDataOpt { get; } = new("--trace-returndata")
+    public static Option<bool> TraceReturnDataOpt { get; } = new("--trace-returndata")
     {
         Description = "Trace return data"
     };
 
-    public static CliCommand CreateCommand()
+    public static Command CreateCommand()
     {
-        CliCommand cmd = new("t8n", "EVM state transition")
+        Command cmd = new("t8n", "EVM state transition")
         {
             InputAllocOpt,
             InputEnvOpt,

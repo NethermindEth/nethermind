@@ -12,7 +12,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.HealthChecks;
 using Nethermind.Hive;
@@ -31,7 +30,7 @@ public class PluginLoaderTests
     public void full_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
@@ -40,13 +39,13 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
-            typeof(NethDevPlugin),
             typeof(HivePlugin),
+            typeof(NethDevPlugin),
             typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
@@ -56,7 +55,7 @@ public class PluginLoaderTests
     public void full_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
@@ -65,17 +64,17 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
-            new PluginConfig { PluginOrder = ["Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura"] };
+            new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
+            typeof(HivePlugin),
+            typeof(TestPlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(CliquePlugin),
             typeof(AuRaPlugin),
-            typeof(HivePlugin),
-            typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
@@ -84,10 +83,10 @@ public class PluginLoaderTests
     public void throws_when_multiple_consensus_plugin()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        PluginLoader loader = new PluginLoader(
+        PluginLoader loader = new(
             string.Empty,
             fileSystem,
-            new TestLogManager().GetClassLogger(),
+            new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
             typeof(AnotherAura),
             typeof(CliquePlugin),
@@ -99,7 +98,7 @@ public class PluginLoaderTests
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
 
         IConfigProvider configProvider = new ConfigProvider();
-        ChainSpec chainSpec = new ChainSpec();
+        ChainSpec chainSpec = new();
         chainSpec.SealEngineType = SealEngineType.AuRa;
 
         loader.LoadPlugins(configProvider, chainSpec).Should().Throws<InvalidOperationException>();
@@ -109,20 +108,20 @@ public class PluginLoaderTests
     public void partial_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
             new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
+            typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
-            typeof(HivePlugin),
             typeof(TestPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
@@ -132,20 +131,20 @@ public class PluginLoaderTests
     public void default_config()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin), typeof(MergePlugin));
         loader.Load();
         IPluginConfig pluginConfig =
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new()
         {
-            typeof(EthashPlugin),
-            typeof(NethDevPlugin),
-            typeof(MergePlugin),
             typeof(HealthChecksPlugin),
-            typeof(HivePlugin)
+            typeof(EthashPlugin),
+            typeof(MergePlugin),
+            typeof(HivePlugin),
+            typeof(NethDevPlugin)
         };
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
@@ -153,7 +152,7 @@ public class PluginLoaderTests
     [Test]
     public async Task Can_PassInConfig_And_OnlyLoadEnabledPlugins()
     {
-        PluginLoader loader = new PluginLoader(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger(),
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(TestPlugin1), typeof(TestPlugin2));
         loader.Load();
 
@@ -161,7 +160,7 @@ public class PluginLoaderTests
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         initConfig.DiscoveryEnabled = true;
         initConfig.PeerManagerEnabled = false;
-        ChainSpec chainSpec = new ChainSpec();
+        ChainSpec chainSpec = new();
         chainSpec.ChainId = 999;
 
         IList<INethermindPlugin> loadedPlugins = await loader.LoadPlugins(configProvider, chainSpec);
@@ -176,11 +175,6 @@ public class PluginLoaderTests
 
         // Just some arbitrary combination
         public bool Enabled => chainSpec.ChainId == 999 && initConfig.DiscoveryEnabled && !initConfig.PeerManagerEnabled;
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
     }
 
     private class TestPlugin2() : INethermindPlugin
@@ -189,11 +183,6 @@ public class PluginLoaderTests
         public string Description => "TestPlugin2";
         public string Author => "TestPlugin2";
         public bool Enabled => false;
-
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
     }
 
 
@@ -204,19 +193,9 @@ public class PluginLoaderTests
         public string Author => "TestPlugin2";
         public bool Enabled => true;
 
-        public ValueTask DisposeAsync()
-        {
-            return ValueTask.CompletedTask;
-        }
+        public IBlockProducer InitBlockProducer() => throw new NotImplementedException();
 
-        public IBlockProducer InitBlockProducer(ITxSource additionalTxSource = null)
-        {
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
             throw new NotImplementedException();
-        }
-
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            throw new NotImplementedException();
-        }
     }
 }

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Producers;
@@ -14,5 +15,6 @@ public interface IBlockImprovementContextFactory
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
-        UInt256 currentBlockFees);
+        UInt256 currentBlockFees,
+        SharedCancellationTokenSource cts);
 }

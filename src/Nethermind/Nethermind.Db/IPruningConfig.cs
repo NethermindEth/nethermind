@@ -16,15 +16,15 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "The pruning mode.", DefaultValue = "Hybrid")]
     PruningMode Mode { get; set; }
 
-    [ConfigItem(Description = "The in-memory cache size, in MB. Bigger size tend to improve performance.", DefaultValue = "1280")]
+    [ConfigItem(Description = "The in-memory cache size, in MB. Bigger size tend to improve performance.", DefaultValue = "1792")]
     long CacheMb { get; set; }
 
-    [ConfigItem(Description = "The in-memory cache size for dirty nodes, in MB. Increasing this reduces pruning interval but cause increased pruning time.", DefaultValue = "1024")]
+    [ConfigItem(Description = "The in-memory cache size for dirty nodes, in MB. Increasing this reduces pruning interval but cause increased pruning time.", DefaultValue = "1536")]
     long DirtyCacheMb { get; set; }
 
     [ConfigItem(
-        Description = "The block persistence frequency. If set to `N`, it caches after each `Nth` block even if not required by cache memory usage.",
-        DefaultValue = "8192")]
+        Description = "The block persistence frequency. Only applied with archive node.",
+        DefaultValue = "1")]
     long PersistenceInterval { get; set; }
 
     [ConfigItem(
@@ -74,12 +74,36 @@ public interface IPruningConfig : IConfig
     [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
     bool AvailableSpaceCheckEnabled { get; set; }
 
-    [ConfigItem(Description = "The ratio of memory out of `Pruning.CacheMb` to allocate for the LRU cache, used to track past keys for live pruning.", DefaultValue = "0.1")]
+    [ConfigItem(Description = "_DEPRECATED_ Pruning trie store uses pruning cache as past keys.", DefaultValue = "0.1", HiddenFromDocs = true)]
     double TrackedPastKeyCountMemoryRatio { get; set; }
+
+    [ConfigItem(Description = "Enable tracking of past key to reduce database and pruning cache growth", DefaultValue = "true")]
+    bool TrackPastKeys { get; set; }
 
     [ConfigItem(Description = "The number of past states before the state gets pruned. Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
     int PruningBoundary { get; set; }
 
     [ConfigItem(Description = "Dirty node shard count", DefaultValue = "8")]
     int DirtyNodeShardBit { get; set; }
+
+    [ConfigItem(Description = "Portion of persisted node to be prune at a time", DefaultValue = "0.05")]
+    double PrunePersistedNodePortion { get; set; }
+
+    [ConfigItem(Description = "Minimum persisted cache prune target", DefaultValue = "50000000")]
+    long PrunePersistedNodeMinimumTarget { get; set; }
+
+    [ConfigItem(Description = "Maximum number of blocks worth of unpersisted state in memory. Default is 297, which is the number of mainnet blocks per hour.", DefaultValue = "297")]
+    long MaxUnpersistedBlockCount { get; set; }
+
+    [ConfigItem(Description = "Minimum number of block worth of unpersisted state in memory. Prevent memory pruning too often due to insufficient dirty cache memory.", DefaultValue = "8")]
+    long MinUnpersistedBlockCount { get; set; }
+
+    [ConfigItem(Description = "Maximum number of block in commit buffer before blocking.", DefaultValue = "128", HiddenFromDocs = true)]
+    int MaxBufferedCommitCount { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Simulate long finalization by not moving finalized block pointer until after this depth.", DefaultValue = "0", HiddenFromDocs = true)]
+    int SimulateLongFinalizationDepth { get; set; }
+
+    [ConfigItem(Description = "If in-memory pruning is scheduled, the duration between `newPayload` and the GC trigger. If too short, it may clash with fork choice; if too long, it may overlap with GC.", DefaultValue = "75", HiddenFromDocs = true)]
+    int PruneDelayMilliseconds { get; set; }
 }

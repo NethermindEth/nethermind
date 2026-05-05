@@ -16,17 +16,17 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Shutter.Config;
 using Nethermind.Specs;
-using Nethermind.State;
 using NSubstitute;
 
 namespace Nethermind.Shutter.Test;
+
 class ShutterTestsCommon
 {
     public const int Seed = 100;
     public const ulong InitialSlot = 21;
     public const ulong InitialSlotTimestamp = 1 + 21 * 5;
     public const ulong Threshold = 10;
-    public const int ChainId = BlockchainIds.Chiado;
+    public const ulong ChainId = BlockchainIds.Chiado;
     public const ulong GenesisTimestamp = 1;
     public static readonly TimeSpan SlotLength = TimeSpan.FromSeconds(5);
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;
@@ -48,7 +48,6 @@ class ShutterTestsCommon
 
     public static ShutterApiSimulator InitApi(Random rnd, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
     {
-        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         ILogFinder logFinder = Substitute.For<ILogFinder>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -56,8 +55,8 @@ class ShutterTestsCommon
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
-            worldStateManager, Substitute.For<IFileSystem>(),
-            Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg,
+            Substitute.For<IShareableTxProcessorSource>(), new(), rnd
         );
     }
 
@@ -65,8 +64,8 @@ class ShutterTestsCommon
         => new(
             eventSimulator ?? InitEventSimulator(rnd),
             AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
-            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper, chain.WorldStateManager,
-            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, new(), rnd
+            chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper,
+            Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, chain.ShareableTxProcessorSource, new(), rnd
         );
 
     public static ShutterEventSimulator InitEventSimulator(Random rnd)
@@ -82,7 +81,7 @@ class ShutterTestsCommon
     public static Timestamper InitTimestamper(ulong slotTimestamp, ulong offsetMs)
     {
         ulong timestampMs = slotTimestamp * 1000 + offsetMs;
-        var blockTime = DateTimeOffset.FromUnixTimeMilliseconds((long)timestampMs);
+        DateTimeOffset blockTime = DateTimeOffset.FromUnixTimeMilliseconds((long)timestampMs);
         return new(blockTime.UtcDateTime);
     }
 }

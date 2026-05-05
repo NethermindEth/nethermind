@@ -12,17 +12,14 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain;
 
-public class BlockTreeOverlay : IBlockTree
+public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTree) : IBlockTree
 {
-    private readonly IBlockTree _baseTree;
-    private readonly IBlockTree _overlayTree;
+    private readonly IBlockTree _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
+    private readonly IBlockTree _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
 
-    public BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTree)
-    {
-        _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
-        _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
+    // Cannot be called until blocktree is ready.
+    public void ResetMainChain() =>
         _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
-    }
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
@@ -217,20 +214,37 @@ public class BlockTreeOverlay : IBlockTree
         }
     }
 
+    public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs> OnForkChoiceUpdated
+    {
+        add
+        {
+            _baseTree.OnForkChoiceUpdated += value;
+            _overlayTree.OnForkChoiceUpdated += value;
+        }
+
+        remove
+        {
+            _baseTree.OnForkChoiceUpdated -= value;
+            _overlayTree.OnForkChoiceUpdated -= value;
+        }
+    }
+
     public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) =>
         _overlayTree.DeleteChainSlice(startNumber, endNumber, force);
 
     public bool IsBetterThanHead(BlockHeader? header) => _overlayTree.IsBetterThanHead(header) || _baseTree.IsBetterThanHead(header);
 
-    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) =>
+    public void UpdateBeaconMainChain(IReadOnlyList<BlockInfo>? blockInfos, long clearBeaconMainChainStartPoint) =>
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
 
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
+
     public (long BlockNumber, Hash256 BlockHash) SyncPivot
     {
         get => _baseTree.SyncPivot;
         set => _baseTree.SyncPivot = value;
     }
+    public bool IsProcessingBlock { get => _baseTree.IsProcessingBlock; set => _baseTree.IsProcessingBlock = value; }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
         _overlayTree.FindBlock(blockHash, options, blockNumber) ?? _baseTree.FindBlock(blockHash, options, blockNumber);
@@ -258,4 +272,12 @@ public class BlockTreeOverlay : IBlockTree
 
     public BlockHeader FindBestSuggestedHeader() =>
         _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
+
+
+    public long GetLowestBlock() => _baseTree.GetLowestBlock();
+
+    public void NewOldestBlock(long oldestBlock) => _baseTree.NewOldestBlock(oldestBlock);
+
+    public void DeleteOldBlock(long blockNumber, Hash256 blockHash)
+        => _baseTree.DeleteOldBlock(blockNumber, blockHash);
 }

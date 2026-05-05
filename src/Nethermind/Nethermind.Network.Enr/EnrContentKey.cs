@@ -35,8 +35,8 @@ namespace Nethermind.Network.Enr
         /// <summary>
         /// Compressed secp256k1 public key, 33 bytes
         /// </summary>
-        public const string Secp256K1 = "secp256k1";
-        public static ReadOnlySpan<byte> Secp256K1U8 => "secp256k1"u8;
+        public const string SecP256k1 = "secp256k1";
+        public static ReadOnlySpan<byte> SecP256k1U8 => "secp256k1"u8;
 
         /// <summary>
         /// TCP port, big endian integer

@@ -2,21 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
-using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
-using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Api.Steps;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Merge.AuRa.InitializationSteps;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Merge.AuRa.Contracts;
+using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
@@ -50,25 +56,6 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
-        {
-            _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
-                _auraApi!,
-                _api.WorldStateManager!,
-                _api.BlockTree!,
-                _api.SpecProvider!,
-                _api.BlockValidator!,
-                _api.RewardCalculatorSource!,
-                _api.ReceiptStorage!,
-                _api.BlockPreprocessor!,
-                _api.TxPool!,
-                _api.TransactionComparerProvider!,
-                _api.Config<IBlocksConfig>(),
-                _api.LogManager);
-
-            return base.InitBlockProducer(consensusPlugin, txSource);
-        }
-
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new AuRaPostMergeBlockProducerFactory(
                 _api.SpecProvider!,
@@ -77,19 +64,43 @@ namespace Nethermind.Merge.AuRa
                 _blocksConfig,
                 _api.LogManager);
 
-        protected override IBlockFinalizationManager InitializeMergeFinilizationManager()
-        {
-            return new AuRaMergeFinalizationManager(_blockFinalizationManager,
+        protected override IBlockFinalizationManager InitializeMergeFinalizationManager() => new AuRaMergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(),
                 _auraApi!.FinalizationManager ??
                 throw new ArgumentNullException(nameof(_auraApi.FinalizationManager),
                     "Cannot instantiate AuRaMergeFinalizationManager when AuRaFinalizationManager is null!"),
-                _poSSwitcher);
-        }
+                _poSSwitcher,
+                _api.BlockTree!);
 
-        public override IEnumerable<StepInfo> GetSteps()
-        {
-            yield return typeof(InitializeBlockchainAuRaMerge);
-            yield return typeof(RegisterAuRaMergeRpcModules);
-        }
+        public override IModule Module => new AuRaMergeModule();
+    }
+
+    /// <summary>
+    /// Note: <see cref="AuRaMergeModule"/> is applied also when <see cref="AuRaModule"/> is applied.
+    /// Note: <see cref="AuRaMergePlugin"/> subclasses <see cref="MergePlugin"/>, but some component that is set
+    /// in <see cref="MergePlugin"/> is replaced later by standard AuRa components.
+    /// </summary>
+    public class AuRaMergeModule : Module
+    {
+        protected override void Load(ContainerBuilder builder) => builder
+                .AddModule(new BaseMergePluginModule())
+
+                // Aura (non merge) use `BlockProducerStarter` directly.
+                .AddSingleton<IBlockProducerTxSourceFactory, AuRaMergeBlockProducerTxSourceFactory>()
+
+                .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
+                .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
+                .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
+                .AddSingleton<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>()
+                .AddScoped<IBlockProcessor, AuRaMergeBlockProcessor>()
+
+                .AddDecorator<IHeaderValidator, MergeHeaderValidator>()
+                .AddDecorator<IUnclesValidator, MergeUnclesValidator>()
+                .AddDecorator<ISealValidator, MergeSealValidator>()
+                .AddDecorator<ISealer, MergeSealer>()
+
+                // Merge-aware override: skips wiring the branch processor on post-merge chains so
+                // the AuRa finalization manager's startup catch-up walk never runs.
+                .AddStep(typeof(InitializeBlockchainAuRaMerge))
+                ;
     }
 }

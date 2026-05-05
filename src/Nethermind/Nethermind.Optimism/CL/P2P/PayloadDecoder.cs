@@ -3,11 +3,10 @@
 
 using System;
 using System.Buffers.Binary;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Optimism.CL;
+namespace Nethermind.Optimism.CL.P2P;
 
 public class PayloadDecoder : IPayloadDecoder
 {

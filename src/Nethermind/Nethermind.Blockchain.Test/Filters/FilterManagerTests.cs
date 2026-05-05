@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
@@ -11,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -19,10 +21,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.None)]
 public class FilterManagerTests
 {
-    private IFilterStore _filterStore = null!;
-    private IBlockProcessor _blockProcessor = null!;
+    private FilterStore _filterStore = null!;
+    private TestMainProcessingContext _mainProcessingContext = null!;
     private ITxPool _txPool = null!;
     private ILogManager _logManager = null!;
     private FilterManager _filterManager = null!;
@@ -33,10 +36,22 @@ public class FilterManagerTests
     public void Setup()
     {
         _currentFilterId = 0;
-        _filterStore = Substitute.For<IFilterStore>();
-        _blockProcessor = Substitute.For<IBlockProcessor>();
+        _filterStore = new FilterStore(new TimerFactory(), 400, 100);
+        _mainProcessingContext = new TestMainProcessingContext();
         _txPool = Substitute.For<ITxPool>();
         _logManager = LimboLogs.Instance;
+    }
+
+    [TearDown]
+    public void TearDown() => _filterStore.Dispose();
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task removing_filter_removes_data()
+    {
+        LogsShouldNotBeEmpty(static _ => { }, static _ => { });
+        _filterManager.GetLogs(0).Should().NotBeEmpty();
+        await Task.Delay(600);
+        _filterManager.GetLogs(0).Should().BeEmpty();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -45,8 +60,8 @@ public class FilterManagerTests
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_default_filters_parameters()
-        => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] { static _ => { }, static _ => { }, static _ => { } },
-            new Action<ReceiptBuilder>[] { static _ => { }, static _ => { }, static _ => { } });
+        => LogsShouldNotBeEmpty([static _ => { }, static _ => { }, static _ => { }],
+            [static _ => { }, static _ => { }, static _ => { }]);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_not_be_empty_for_from_block_earliest_type()
@@ -80,16 +95,16 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_from_blocks_numbers_in_range()
         => LogsShouldNotBeEmpty(
-            new Action<FilterBuilder>[]
-            { static filter => filter.FromBlock(1L),
+            [
+                static filter => filter.FromBlock(1L),
                 static filter => filter.FromBlock(2L),
                 static filter => filter.FromBlock(3L)
-            },
-            new Action<ReceiptBuilder>[]
-            { static receipt => receipt.WithBlockNumber(1L),
+            ],
+            [
+                static receipt => receipt.WithBlockNumber(1L),
                 static receipt => receipt.WithBlockNumber(5L),
                 static receipt => receipt.WithBlockNumber(10L)
-            });
+            ]);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_from_block_number_not_in_range()
@@ -104,16 +119,16 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void many_logs_should_not_be_empty_for_to_blocks_numbers_in_range()
         => LogsShouldNotBeEmpty(
-            new Action<FilterBuilder>[]
-            { static filter => filter.ToBlock(1L),
+            [
+                static filter => filter.ToBlock(1L),
                 static filter => filter.ToBlock(5L),
                 static filter => filter.ToBlock(10L)
-            },
-            new Action<ReceiptBuilder>[]
-            { static receipt => receipt.WithBlockNumber(1L),
+            ],
+            [
+                static receipt => receipt.WithBlockNumber(1L),
                 static receipt => receipt.WithBlockNumber(2L),
                 static receipt => receipt.WithBlockNumber(3L)
-            });
+            ]);
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void logs_should_be_empty_for_to_block_number_not_in_range()
@@ -237,6 +252,7 @@ public class FilterManagerTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     [TestCase(1, 1)]
     [TestCase(5, 3)]
+    [NonParallelizable]
     public void logs_should_have_correct_log_indexes(int filtersCount, int logsPerTx)
     {
         const int txCount = 10;
@@ -264,20 +280,62 @@ public class FilterManagerTests
     }
 
 
-    private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
-        Action<ReceiptBuilder> receiptBuilder)
-        => LogsShouldNotBeEmpty(new[] { filterBuilder }, new[] { receiptBuilder });
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task concurrent_block_processing_and_poll_does_not_lose_data()
+    {
+        BlockFilter blockFilter = new(_currentFilterId++);
+        _filterStore.SaveFilter(blockFilter);
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
 
-    private void LogsShouldBeEmpty(Action<FilterBuilder> filterBuilder,
-        Action<ReceiptBuilder> receiptBuilder)
-        => LogsShouldBeEmpty(new[] { filterBuilder }, new[] { receiptBuilder });
+        Block block = Build.A.Block.TestObject;
 
-    private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
-        IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+        _filterManager.PollBlockHashes(blockFilter.Id);
+
+        const int producerCount = 4;
+        const int blocksPerProducer = 125;
+        const int blockCount = producerCount * blocksPerProducer;
+        int totalPolled = 0;
+
+        Task[] producers = new Task[producerCount];
+        for (int p = 0; p < producerCount; p++)
+        {
+            producers[p] = Task.Run(() =>
+            {
+                for (int i = 0; i < blocksPerProducer; i++)
+                    _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
+            });
+        }
+
+        Task consumer = Task.Run(async () =>
+        {
+            while (totalPolled < blockCount)
+            {
+                Hash256[] polled = _filterManager.PollBlockHashes(blockFilter.Id);
+                totalPolled += polled.Length;
+                if (polled.Length == 0) await Task.Yield();
+            }
+        });
+
+        List<Task> allTasks = new(producerCount + 1);
+        for (int p = 0; p < producerCount; p++)
+            allTasks.Add(producers[p]);
+        allTasks.Add(consumer);
+        await Task.WhenAll(allTasks);
+
+        totalPolled.Should().Be(blockCount);
+    }
+
+    private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
+        => LogsShouldNotBeEmpty([filterBuilder], [receiptBuilder]);
+
+    private void LogsShouldBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
+        => LogsShouldBeEmpty([filterBuilder], [receiptBuilder]);
+
+    private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
         => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().NotBeEmpty());
 
-    private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
-        IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
+    private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
         => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().BeEmpty());
 
     private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,
@@ -293,8 +351,8 @@ public class FilterManagerTests
         IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
         Action<IEnumerable<FilterLog>> logsAssertion)
     {
-        List<FilterBase> filters = new List<FilterBase>();
-        List<TxReceipt> receipts = new List<TxReceipt>();
+        List<FilterBase> filters = new();
+        List<TxReceipt> receipts = new();
         foreach (Action<FilterBuilder> filterBuilder in filterBuilders)
         {
             filters.Add(BuildFilter(filterBuilder));
@@ -307,20 +365,20 @@ public class FilterManagerTests
 
         // adding always a simple block filter and test
         Block block = Build.A.Block.TestObject;
-        BlockFilter blockFilter = new(_currentFilterId++, 0);
+        BlockFilter blockFilter = new(_currentFilterId++);
         filters.Add(blockFilter);
 
-        _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
-        _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
-        _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
+        _filterStore.SaveFilters(filters.OfType<LogFilter>());
+        _filterStore.SaveFilters(filters.OfType<BlockFilter>());
+        _filterManager = new FilterManager(_filterStore, _mainProcessingContext, _txPool, _logManager);
 
-        _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, []));
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
 
         int index = 1;
         foreach (TxReceipt receipt in receipts)
         {
-            _blockProcessor.TransactionProcessed += Raise.EventWith(_blockProcessor,
-                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, receipt));
+            _mainProcessingContext.RaiseTransactionProcessed(
+                new TxProcessedEventArgs(index, Build.A.Transaction.TestObject, block.Header, receipt));
             index++;
         }
 
@@ -351,5 +409,17 @@ public class FilterManagerTests
         builder(builderInstance);
 
         return builderInstance.TestObject;
+    }
+}
+
+file static class FilterExtensions
+{
+    public static void SaveFilters<T>(this FilterStore store, IEnumerable<T> filters)
+        where T : FilterBase
+    {
+        foreach (T filter in filters)
+        {
+            store.SaveFilter(filter);
+        }
     }
 }

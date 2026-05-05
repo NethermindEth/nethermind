@@ -26,6 +26,12 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
     int IntervalSeconds { get; }
 
+    [ConfigItem(DefaultValue = "60", Description = "The frequency of updating db metrics, in seconds.")]
+    int DbMetricIntervalSeconds { get; }
+
+    [ConfigItem(DefaultValue = "true", Description = "Pause db metric collection during block processing to prevent overhead.")]
+    bool PauseDbMetricDuringBlockProcessing { get; }
+
     [ConfigItem(Description = "The name to display on the Grafana dashboard.", DefaultValue = "Nethermind")]
     string NodeName { get; }
 
@@ -38,6 +44,9 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "The Prometheus metrics job name.", DefaultValue = "nethermind")]
     string MonitoringJob { get; }
 
-    [ConfigItem(Description = "Enable detailed metric", DefaultValue = "nethermind")]
+    [ConfigItem(Description = "Enable detailed metric", DefaultValue = "false")]
     bool EnableDetailedMetric { get; }
+
+    [ConfigItem(Description = "Enable static label initialization", DefaultValue = "true", HiddenFromDocs = true)]
+    bool InitializeStaticLabels { get; set; }
 }

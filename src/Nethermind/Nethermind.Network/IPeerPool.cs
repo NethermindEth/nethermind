@@ -4,15 +4,15 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
-public interface IPeerPool
+public interface IPeerPool : IStoppableService
 {
     ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; }
     ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; }
@@ -39,5 +39,4 @@ public interface IPeerPool
     event EventHandler<PeerEventArgs> PeerRemoved;
 
     void Start();
-    Task StopAsync();
 }

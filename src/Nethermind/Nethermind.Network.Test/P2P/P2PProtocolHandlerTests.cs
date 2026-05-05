@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
-using System.Text.RegularExpressions;
-using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
@@ -31,9 +30,11 @@ namespace Nethermind.Network.Test.P2P
         public void Setup()
         {
             _session = Substitute.For<ISession>();
-            _serializer = new MessageSerializationService();
-            _serializer.Register(new HelloMessageSerializer());
-            _serializer.Register(new PingMessageSerializer());
+            _serializer = new MessageSerializationService(
+                SerializerInfo.Create(new HelloMessageSerializer()),
+                SerializerInfo.Create(new PingMessageSerializer()),
+                SerializerInfo.Create(new AddCapabilityMessageSerializer())
+            );
         }
 
         [TearDown]
@@ -43,16 +44,12 @@ namespace Nethermind.Network.Test.P2P
         private IMessageSerializationService _serializer;
         private readonly Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
-        private Regex? _clientIdPattern;
 
-        private Packet CreatePacket<T>(T message) where T : P2PMessage
+        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new ZeroPacket(_serializer.ZeroSerialize(message))
         {
-            return new(new ZeroPacket(_serializer.ZeroSerialize(message))
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            });
-        }
+            Protocol = message.Protocol,
+            PacketType = (byte)message.PacketType,
+        });
 
         private const int ListenPort = 8003;
 
@@ -68,7 +65,7 @@ namespace Nethermind.Network.Test.P2P
                 TestItem.PublicKeyA,
                 _nodeStatsManager,
                 _serializer,
-                _clientIdPattern,
+                Substitute.For<IBackgroundTaskScheduler>(),
                 LimboLogs.Instance);
         }
 
@@ -85,12 +82,13 @@ namespace Nethermind.Network.Test.P2P
         public void On_init_sends_a_hello_message_with_capabilities()
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
-            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "nodedata1"];
+            string[] expectedCapabilities = ["eth66", "eth67", "eth68", "eth69", "nodedata1"];
 
             // These are called by ProtocolsManager.
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 67));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 69));
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.NodeData, 1));
 
             p2PProtocolHandler.Init();
@@ -110,11 +108,11 @@ namespace Nethermind.Network.Test.P2P
                 NodeId = TestItem.PublicKeyA,
             };
 
-            IByteBuffer data = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             // to account for adaptive packet type
             data.ReadByte();
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -124,44 +122,6 @@ namespace Nethermind.Network.Test.P2P
 
             _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
-        }
-
-        [TestCase("besu", "besu/v23.4.0/linux-x86_64/openjdk-java-17", false)]
-        [TestCase("besu", "Geth/v1.12.1-unstable-b8d7da87-20230808/linux-amd64/go1.19.2", true)]
-        [TestCase("^((?!besu).)*$", "Geth/v1.12.1-unstable-b8d7da87-20230808/linux-amd64/go1.19.2", false)]
-        [TestCase("^((?!besu).)*$", "besu/v23.4.0/linux-x86_64/openjdk-java-17", true)]
-        public void On_hello_with_not_matching_client_id(string pattern, string clientId, bool shouldDisconnect)
-        {
-            _clientIdPattern = new Regex(pattern);
-            P2PProtocolHandler p2PProtocolHandler = CreateSession();
-
-            using HelloMessage message = new()
-            {
-                Capabilities = new ArrayPoolList<Capability>(1) { new Capability(Protocol.Eth, 63) },
-                NodeId = TestItem.PublicKeyA,
-                ClientId = clientId,
-            };
-
-            IByteBuffer data = _serializer.ZeroSerialize(message);
-            // to account for adaptive packet type
-            data.ReadByte();
-
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
-            {
-                Protocol = message.Protocol,
-                PacketType = (byte)message.PacketType,
-            };
-
-            p2PProtocolHandler.HandleMessage(packet);
-
-            if (shouldDisconnect)
-            {
-                _session.Received(1).InitiateDisconnect(DisconnectReason.ClientFiltered, Arg.Any<string>());
-            }
-            else
-            {
-                _session.DidNotReceive().InitiateDisconnect(DisconnectReason.ClientFiltered, Arg.Any<string>());
-            }
         }
 
         [Test]
@@ -196,6 +156,129 @@ namespace Nethermind.Network.Test.P2P
             _session.Received(1).DeliverMessage(
                 Arg.Is<HelloMessage>(m =>
                     m.ClientId == $"{ProductInfo.Name}/v{ProductInfo.Version}"));
+        }
+
+        [Test]
+        public void On_message_exceeding_max_size_disconnects()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+
+            // Build a HelloMessage with a very large ClientId to exceed BaseProtocolMaxMsgSize
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = TestItem.PublicKeyA,
+                ClientId = new string('x', (int)P2PProtocolHandler.BaseProtocolMaxMsgSize),
+                ListenPort = 30303,
+                P2PVersion = 5,
+            };
+
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
+            data.ReadByte(); // adaptive packet type
+
+            Packet packet = new(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
+
+            p2PProtocolHandler.HandleMessage(packet);
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+        }
+
+        [Test]
+        public void On_non_hello_message_exceeding_max_size_disconnects()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+
+            // Create oversized raw packet with Ping packet type
+            byte[] oversizedData = new byte[(int)P2PProtocolHandler.BaseProtocolMaxMsgSize + 1];
+            Packet packet = new(oversizedData)
+            {
+                Protocol = Protocol.P2P,
+                PacketType = P2PMessageCode.Ping,
+            };
+
+            p2PProtocolHandler.HandleMessage(packet);
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+        }
+
+        [Test]
+        public void On_message_within_max_size_does_not_disconnect_for_size()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Eth, 68));
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = TestItem.PublicKeyA,
+                ClientId = "Nethermind/v1.0",
+                ListenPort = 30303,
+                P2PVersion = 5,
+            };
+
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
+            data.ReadByte(); // adaptive packet type
+
+            Packet packet = new(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
+
+            p2PProtocolHandler.HandleMessage(packet);
+
+            _session.DidNotReceive().InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+        }
+
+        [Test]
+        public void Duplicate_add_capability_is_ignored()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            Capability capability = new(Protocol.Eth, 68);
+            int requestedCount = 0;
+
+            p2PProtocolHandler.AddSupportedCapability(capability);
+            p2PProtocolHandler.SubprotocolRequested += (_, _) => requestedCount++;
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
+
+            requestedCount.Should().Be(1);
+            p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)).Should().Be(1);
+        }
+
+        [Test]
+        public void Too_many_add_capability_messages_disconnect()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+
+            for (int i = 0; i < 64; i++)
+            {
+                p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(new Capability($"cap{i}", 1))));
+            }
+
+            p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(new Capability("overflow", 1))));
+
+            _session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+        }
+
+        /// <summary>
+        /// Creates a Packet from a P2P message by stripping the adaptive type byte,
+        /// matching what the real network path produces for P2PProtocolHandler.HandleMessage(Packet).
+        /// </summary>
+        private Packet CreateP2PPacket<T>(T message) where T : P2PMessage
+        {
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
+            data.ReadByte();
+            return new Packet(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            };
         }
     }
 }

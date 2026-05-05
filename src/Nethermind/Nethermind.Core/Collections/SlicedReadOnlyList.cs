@@ -19,8 +19,7 @@ public class SlicedReadOnlyList<T> : IReadOnlyList<T>
 
     public SlicedReadOnlyList(IReadOnlyList<T> list, int start, int count)
     {
-        if (list == null)
-            throw new ArgumentNullException(nameof(list));
+        ArgumentNullException.ThrowIfNull(list);
         if (start < 0 || start > list.Count)
             throw new ArgumentOutOfRangeException(nameof(start), "Start index is out of range.");
         if (count < 0 || start + count > list.Count)
@@ -56,16 +55,14 @@ public class SlicedReadOnlyList<T> : IReadOnlyList<T>
 
 public static class ReadOnlyListExtensions
 {
-    public static IReadOnlyList<T> Slice<T>(this IReadOnlyList<T> list, int start, int count)
-    {
-        return new SlicedReadOnlyList<T>(list, start, count);
-    }
+    public static IReadOnlyList<T> Slice<T>(this IReadOnlyList<T> list, int start, int count) => new SlicedReadOnlyList<T>(list, start, count);
+
+    public static IReadOnlyList<T> Clamp<T>(this IReadOnlyList<T> list, int limit) => new SlicedReadOnlyList<T>(list, 0, Math.Min(limit, list.Count));
 
     // Extension method that slices from the start index to the end of the list
     public static IReadOnlyList<T> Slice<T>(this IReadOnlyList<T> list, int start)
     {
-        if (list == null)
-            throw new ArgumentNullException(nameof(list));
+        ArgumentNullException.ThrowIfNull(list);
         if (start < 0 || start > list.Count)
             throw new ArgumentOutOfRangeException(nameof(start), "Start index is out of range.");
 

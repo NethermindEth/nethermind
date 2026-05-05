@@ -1,62 +1,55 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
+using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Evm.State;
+using Nethermind.TxPool;
+using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BeaconBlockRoot;
-using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
+using Autofac;
+using FluentAssertions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
-using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Int256;
-using Nethermind.Evm;
-using Nethermind.Logging;
-using Nethermind.State;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
-using NUnit.Framework;
-using Nethermind.Config;
+using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Clique.Test;
 
 [Parallelizable(ParallelScope.All)]
 public class CliqueBlockProducerTests
 {
-    private class On
+    private class On : IDisposable
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
-        //            private ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
         private readonly CliqueConfig _cliqueConfig;
         private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = new();
         private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
-        private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
+        private readonly Dictionary<PrivateKey, IBlockTree> _blockTrees = new();
         private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
         private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = new();
-        private readonly Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
+        private readonly Dictionary<PrivateKey, ITxPool> _pools = new();
+        private readonly Dictionary<PrivateKey, IContainer> _containers = new();
 
         private On()
             : this(15)
@@ -65,7 +58,7 @@ public class CliqueBlockProducerTests
 
         private On(ulong blockPeriod)
         {
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<On>();
             _cliqueConfig = new CliqueConfig();
             _cliqueConfig.BlockPeriod = blockPeriod;
             _cliqueConfig.Epoch = 30000;
@@ -77,120 +70,98 @@ public class CliqueBlockProducerTests
         {
             if (_logger.IsInfo) _logger.Info($"CREATING NODE {privateKey.Address}");
             _logManagers[privateKey] = LimboLogs.Instance;
-            //                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
             ILogManager nodeLogManager = _logManagers[privateKey];
 
             AutoResetEvent newHeadBlockEvent = new(false);
             _blockEvents.Add(privateKey, newHeadBlockEvent);
 
-            MemDb blocksDb = new();
-            MemDb stateDb = new();
-            MemDb codeDb = new();
+            IContainer container = new ContainerBuilder()
 
-            ISpecProvider specProvider = SepoliaSpecProvider.Instance;
+                .AddModule(new TestNethermindModule())
+                .AddModule(new CliqueModule())
+                .AddSingleton<IBlockPreprocessorStep, AuthorRecoveryStep>()
+                .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .AddSingleton<CliqueChainSpecEngineParameters>(new CliqueChainSpecEngineParameters()
+                {
+                    Epoch = _cliqueConfig.Epoch,
+                    Period = _cliqueConfig.BlockPeriod,
+                })
+                .AddSingleton<ICliqueConfig>(_cliqueConfig)
+                .AddSingleton<IBlocksConfig>(new BlocksConfig()
+                {
+                    MinGasPrice = 0
+                })
 
-            var trieStore = new TrieStore(stateDb, nodeLogManager);
-            StateReader stateReader = new(trieStore, codeDb, nodeLogManager);
-            WorldState stateProvider = new(trieStore, codeDb, nodeLogManager);
-            stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-            SepoliaSpecProvider goerliSpecProvider = SepoliaSpecProvider.Instance;
-            stateProvider.Commit(goerliSpecProvider.GenesisSpec);
-            stateProvider.CommitTree(0);
+                .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new InsecureProtectedPrivateKey(privateKey))
+                .AddSingleton<ISigner>(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance))
 
-            BlockTree blockTree = Build.A.BlockTree()
-                .WithSpecProvider(goerliSpecProvider)
-                .WithBlocksDb(blocksDb)
-                .WithoutSettingHead
-                .TestObject;
+                .Build();
 
+            _containers[privateKey] = container;
+
+            SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
+            IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
+
+            IWorldState stateProvider = container.Resolve<IMainProcessingContext>().WorldState;
+            using (stateProvider.BeginScope(IWorldState.PreGenesis))
+            {
+                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether);
+                if (finalSpec.WithdrawalsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                }
+
+                if (finalSpec.ConsolidationRequestsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+                    stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
+                }
+
+                stateProvider.Commit(testnetSpecProvider.GenesisSpec);
+                stateProvider.CommitTree(0);
+                _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
+            }
+
+            IBlockTree blockTree = container.Resolve<IBlockTree>();
             blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
-            ITransactionComparerProvider transactionComparerProvider =
-                new TransactionComparerProvider(specProvider, blockTree);
 
-            CodeInfoRepository codeInfoRepository = new();
-            TxPool.TxPool txPool = new(_ethereumEcdsa,
-                new BlobTxStorage(),
-                new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SepoliaSpecProvider.Instance), blockTree, stateProvider, codeInfoRepository),
-                new TxPoolConfig(),
-                new TxValidator(goerliSpecProvider.ChainId),
-                _logManager,
-                transactionComparerProvider.GetDefaultComparer());
-            _pools[privateKey] = txPool;
-
-            BlockhashProvider blockhashProvider = new(blockTree, specProvider, stateProvider, LimboLogs.Instance);
+            _pools[privateKey] = container.Resolve<ITxPool>();
             _blockTrees.Add(privateKey, blockTree);
 
-            SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
+            ISnapshotManager snapshotManager = container.Resolve<ISnapshotManager>();
             _snapshotManager[privateKey] = snapshotManager;
-            CliqueSealer cliqueSealer = new(new Signer(BlockchainIds.Sepolia, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
-            _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             _genesis.Header.Hash = _genesis.Header.CalculateHash();
             _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
 
-            TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
-                new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
-                codeInfoRepository,
-                nodeLogManager);
-            BlockProcessor blockProcessor = new(
-                goerliSpecProvider,
-                Always.Valid,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
-                stateProvider,
-                NullReceiptStorage.Instance,
-                transactionProcessor,
-                new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                new BlockhashStore(goerliSpecProvider, stateProvider),
-                nodeLogManager);
+            IMainProcessingContext mainProcessingContext = container.Resolve<IMainProcessingContext>();
+            mainProcessingContext.BlockchainProcessor.Start();
 
-            BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
-            processor.Start();
-
-            IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
-
-            WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
-            VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
-            TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
-
-            BlockProcessor minerBlockProcessor = new(
-                goerliSpecProvider,
-                Always.Valid,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(minerTransactionProcessor, minerStateProvider, goerliSpecProvider, _logManager),
-                minerStateProvider,
-                NullReceiptStorage.Instance,
-                minerTransactionProcessor,
-                new BeaconBlockRootHandler(minerTransactionProcessor, minerStateProvider),
-                new BlockhashStore(goerliSpecProvider, minerStateProvider),
-                nodeLogManager);
-
-            BlockchainProcessor minerProcessor = new(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), stateReader, nodeLogManager, BlockchainProcessor.Options.NoReceipts);
+            IBlockProducerEnvFactory envFactory = container.Resolve<IBlockProducerEnvFactory>();
+            IBlockProducerEnv producerEnv = envFactory.CreatePersistent();
+            IWorldState minerStateProvider = producerEnv.ReadOnlyStateProvider;
 
             if (withGenesisAlreadyProcessed)
             {
                 ProcessGenesis(privateKey);
             }
-            BlocksConfig blocksConfig = new()
-            {
-                MinGasPrice = 0
-            };
-            ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(nodeLogManager, specProvider, blocksConfig);
-            TxPoolTxSource txPoolTxSource = new(txPool, specProvider, transactionComparerProvider, nodeLogManager, txFilterPipeline);
+
             CliqueBlockProducer blockProducer = new(
-                txPoolTxSource,
-                minerProcessor,
+                producerEnv.TxSource,
+                producerEnv.ChainProcessor,
                 minerStateProvider,
                 _timestamper,
                 new CryptoRandom(),
                 snapshotManager,
-                cliqueSealer,
-                new TargetAdjustedGasLimitCalculator(goerliSpecProvider, new BlocksConfig()),
+                container.Resolve<ISealer>(),
+                new TargetAdjustedGasLimitCalculator(testnetSpecProvider, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 _cliqueConfig,
                 nodeLogManager);
 
-            CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+            CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
                 _timestamper,
                 new CryptoRandom(),
@@ -201,7 +172,7 @@ public class CliqueBlockProducerTests
 
             producerRunner.Start();
 
-            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, producerRunner);
+            ProducedBlockSuggester suggester = new(blockTree, producerRunner);
 
             _producers.Add(privateKey, producerRunner);
 
@@ -239,7 +210,7 @@ public class CliqueBlockProducerTests
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new(header);
             genesis.Header.Hash = genesis.Header.CalculateHash();
-            genesis.Header.StateRoot = Keccak.EmptyTreeHash;
+            genesis.Header.StateRoot = new Hash256("0xba946bf2140ef68f7d9d57ef06a8ac0b28002b62060c462ba398389c97f1f1fa");
             genesis.Header.TxRoot = Keccak.EmptyTreeHash;
             genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesis.Header.Bloom = Bloom.Empty;
@@ -277,7 +248,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis()
         {
-            foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
+            foreach (KeyValuePair<PrivateKey, IBlockTree> node in _blockTrees)
             {
                 ProcessGenesis(node.Key);
             }
@@ -287,7 +258,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis3Validators()
         {
-            foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
+            foreach (KeyValuePair<PrivateKey, IBlockTree> node in _blockTrees)
             {
                 ProcessGenesis3Validators(node.Key);
             }
@@ -297,7 +268,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessBadGenesis()
         {
-            foreach (KeyValuePair<PrivateKey, BlockTree> node in _blockTrees)
+            foreach (KeyValuePair<PrivateKey, IBlockTree> node in _blockTrees)
             {
                 ProcessBadGenesis(node.Key);
             }
@@ -307,14 +278,16 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis(PrivateKey nodeKey)
         {
+            using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             if (_logger.IsInfo) _logger.Info($"SUGGESTING GENESIS ON {nodeKey.Address}");
-            _blockTrees[nodeKey].SuggestBlock(_genesis);
+            _blockTrees[nodeKey].SuggestBlock(_genesis).Should().Be(AddBlockResult.Added);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
         }
 
         public On ProcessGenesis3Validators(PrivateKey nodeKey)
         {
+            using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             _blockTrees[nodeKey].SuggestBlock(_genesis3Validators);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
@@ -441,10 +414,11 @@ public class CliqueBlockProducerTests
             return block;
         }
 
-        public async Task<On> StopNode(PrivateKey privateKeyA)
+        public async Task<On> StopNode(PrivateKey privateKeyA, bool dontDispose = false)
         {
             if (_logger.IsInfo) _logger.Info($"STOPPING {privateKeyA.Address}");
             await _producers[privateKeyA].StopAsync();
+            if (!dontDispose) await _containers[privateKeyA].DisposeAsync();
             return this;
         }
 
@@ -456,7 +430,7 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.Nonce = _currentNonce + 1;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -473,7 +447,7 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 0.GWei();
+            transaction.GasPrice = 0.GWei;
             transaction.Nonce = _currentNonce;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -485,7 +459,7 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.Nonce = 0;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -497,7 +471,7 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.Nonce = _currentNonce;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -506,10 +480,10 @@ public class CliqueBlockProducerTests
 
             // insufficient balance
             transaction = new Transaction();
-            transaction.Value = 1000000000.Ether();
+            transaction.Value = 1000000000.Ether;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.Nonce = _currentNonce;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -522,11 +496,11 @@ public class CliqueBlockProducerTests
         public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
         {
             // gas limit too high
-            Transaction transaction = new Transaction();
+            Transaction transaction = new();
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.Nonce = _currentNonce;
             transaction.Data = Bytes.FromHexString("0xEF");
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
@@ -543,7 +517,7 @@ public class CliqueBlockProducerTests
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 30000;
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.Nonce = _currentNonce + 1000;
             transaction.SenderAddress = TestItem.PrivateKeyD.Address;
             transaction.Hash = transaction.CalculateHash();
@@ -559,21 +533,27 @@ public class CliqueBlockProducerTests
             Thread.Sleep(i);
             return this;
         }
+
+        public void Dispose()
+        {
+            foreach (KeyValuePair<PrivateKey, IContainer> kv in _containers)
+            {
+                kv.Value.Dispose();
+            }
+        }
     }
 
     private static readonly int _timeout = 5000; // this has to cover block period of second + wiggle of up to 500ms * (signers - 1) + 100ms delay of the block readiness check
 
     [Test]
     [Retry(3)]
-    public async Task Can_produce_block_with_transactions()
-    {
+    public async Task Can_produce_block_with_transactions() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .AddPendingTransaction(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1L)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
     public async Task IsProducingBlocks_returns_expected_results()
@@ -589,8 +569,7 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
-    public async Task When_producing_blocks_skips_queued_and_bad_transactions()
-    {
+    public async Task When_producing_blocks_skips_queued_and_bad_transactions() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .AddPendingTransaction(TestItem.PrivateKeyA)
@@ -601,22 +580,18 @@ public class CliqueBlockProducerTests
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send()
-    {
+    public async Task Transaction_with_gas_limit_higher_than_block_gas_limit_should_not_be_send() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .AddTransactionWithGasLimitToHigh(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertTransactionCount(TestItem.PrivateKeyA, 1, 0)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Produces_block_on_top_of_genesis()
-    {
+    public async Task Produces_block_on_top_of_genesis() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .CreateNode(TestItem.PrivateKeyB)
@@ -627,53 +602,43 @@ public class CliqueBlockProducerTests
             .AssertOutOfTurn(TestItem.PrivateKeyB, 1)
             .StopNode(TestItem.PrivateKeyA)
             .ContinueWith(static t => t.Result.StopNode(TestItem.PrivateKeyB));
-    }
 
     [Test]
-    public void Single_validator_can_produce_first_block_in_turn()
-    {
+    public void Single_validator_can_produce_first_block_in_turn() =>
         On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyA, 1)
             .AssertInTurn(TestItem.PrivateKeyA, 1);
-    }
 
     [Test]
-    public async Task Single_validator_can_produce_first_block_out_of_turn()
-    {
+    public async Task Single_validator_can_produce_first_block_out_of_turn() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyB)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyB, 1)
             .AssertOutOfTurn(TestItem.PrivateKeyB, 1)
             .StopNode(TestItem.PrivateKeyB);
-    }
 
     [Test]
-    public async Task Cannot_produce_blocks_when_not_on_signers_list()
-    {
+    public async Task Cannot_produce_blocks_when_not_on_signers_list() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyC)
             .ProcessGenesis()
             .AssertHeadBlockIs(TestItem.PrivateKeyC, 0)
             .StopNode(TestItem.PrivateKeyC);
-    }
 
     [Test]
-    public async Task Can_cast_vote_to_include()
-    {
+    public async Task Can_cast_vote_to_include() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressC)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, TestItem.AddressC, true)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Can_uncast_vote_to()
-    {
+    public async Task Can_uncast_vote_to() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressC)
@@ -681,7 +646,6 @@ public class CliqueBlockProducerTests
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, Address.Zero, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
     public async Task Can_vote_a_validator_in()
@@ -765,37 +729,31 @@ public class CliqueBlockProducerTests
     }
 
     [Test]
-    public async Task Can_cast_vote_to_exclude()
-    {
+    public async Task Can_cast_vote_to_exclude() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToExclude(TestItem.PrivateKeyA, TestItem.AddressB)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, TestItem.AddressB, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Cannot_vote_to_exclude_node_that_is_not_on_the_list()
-    {
+    public async Task Cannot_vote_to_exclude_node_that_is_not_on_the_list() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToExclude(TestItem.PrivateKeyA, TestItem.AddressC)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, Address.Zero, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
-    public async Task Cannot_vote_to_include_node_that_is_already_on_the_list()
-    {
+    public async Task Cannot_vote_to_include_node_that_is_already_on_the_list() =>
         await On.Goerli
             .CreateNode(TestItem.PrivateKeyA)
             .VoteToInclude(TestItem.PrivateKeyA, TestItem.AddressB)
             .ProcessGenesis()
             .AssertVote(TestItem.PrivateKeyA, 1, Address.Zero, false)
             .StopNode(TestItem.PrivateKeyA);
-    }
 
     [Test]
     [Retry(3)]
@@ -878,10 +836,9 @@ public class CliqueBlockProducerTests
         On goerli = On.Goerli
             .CreateNode(TestItem.PrivateKeyA);
 
-        await goerli.StopNode(TestItem.PrivateKeyA);
+        await goerli.StopNode(TestItem.PrivateKeyA, dontDispose: true);
 
         goerli.ProcessGenesis();
-        await Task.Delay(1000);
         goerli.AssertHeadBlockIs(TestItem.PrivateKeyA, 0);
 
         await goerli.StopNode(TestItem.PrivateKeyA);
@@ -890,7 +847,7 @@ public class CliqueBlockProducerTests
     [Test, Retry(3)]
     public async Task Many_validators_can_process_blocks()
     {
-        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, AddressComparer.Instance).ToArray();
+        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, GenericComparer.GetOptimized<Address>()).ToArray();
 
         On goerli = On.FastGoerli;
         for (int i = 0; i < keys.Length; i++)

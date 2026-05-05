@@ -2,30 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Healing;
 
-public class HealingStorageTree : StorageTree
+public sealed class HealingStorageTree(IScopedTrieStore? trieStore, INodeStorage nodeStorage, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, Lazy<IPathRecovery> recovery) : StorageTree(trieStore, rootHash, logManager)
 {
-    private readonly Address _address;
-    private readonly Hash256 _stateRoot;
-    private readonly IPathRecovery? _recovery;
-
-    public HealingStorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager, Address address, Hash256 stateRoot, IPathRecovery? recovery)
-        : base(trieStore, rootHash, logManager)
-    {
-        _address = address;
-        _stateRoot = stateRoot;
-        _recovery = recovery;
-    }
+    private readonly INodeStorage _nodeStorage = nodeStorage;
+    private readonly Address _address = address;
+    private readonly Hash256 _stateRoot = stateRoot;
+    private readonly Lazy<IPathRecovery> _recovery = recovery;
 
     public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
@@ -35,7 +26,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 return base.Get(rawKey, rootHash);
@@ -53,7 +44,7 @@ public class HealingStorageTree : StorageTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 base.Set(rawKey, value);
@@ -69,13 +60,14 @@ public class HealingStorageTree : StorageTree
     {
         if (_recovery is not null)
         {
-            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Recover(_stateRoot, Keccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
+            using IOwnedReadOnlyList<(TreePath, byte[])>? rlps = _recovery.Value.Recover(_stateRoot, Keccak.Compute(_address.Bytes), missingNodePath, hash, fullPath).GetAwaiter().GetResult();
             if (rlps is not null)
             {
+                Hash256 addressHash = _address.ToAccountPath.ToCommitment();
                 foreach ((TreePath, byte[]) kv in rlps)
                 {
                     ValueHash256 nodeHash = ValueKeccak.Compute(kv.Item2);
-                    TrieStore.Set(kv.Item1, nodeHash, kv.Item2);
+                    _nodeStorage.Set(addressHash, kv.Item1, nodeHash, kv.Item2);
                 }
                 return true;
             }

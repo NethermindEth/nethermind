@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using FluentAssertions;
+using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -12,22 +9,29 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class TransactionsExecutorTests
     {
         public static IEnumerable ProperTransactionsSelectedTestCases
@@ -201,8 +205,8 @@ namespace Nethermind.Blockchain.Test
                 Transaction txAboveTheLimit = Build.A.Transaction
                     .WithSignature(signature)
                     .WithGasLimit(10000000)
-                    .WithMaxFeePerGas(100.GWei())
-                    .WithGasPrice(100.GWei())
+                    .WithMaxFeePerGas(100.GWei)
+                    .WithGasPrice(100.GWei)
                     .WithNonce(1)
                     .WithChainId(TestBlockchainIds.ChainId)
                     .To(null)
@@ -211,8 +215,8 @@ namespace Nethermind.Blockchain.Test
                 Transaction txAboveTheLimitNoContract = Build.A.Transaction
                     .WithSignature(signature)
                     .WithGasLimit(10000000)
-                    .WithMaxFeePerGas(100.GWei())
-                    .WithGasPrice(100.GWei())
+                    .WithMaxFeePerGas(100.GWei)
+                    .WithGasPrice(100.GWei)
                     .WithNonce(1)
                     .WithChainId(TestBlockchainIds.ChainId)
                     .To(TestItem.AddressB)
@@ -221,8 +225,8 @@ namespace Nethermind.Blockchain.Test
                 Transaction txBelowTheLimit = Build.A.Transaction
                     .WithSignature(signature)
                     .WithGasLimit(10000000)
-                    .WithMaxFeePerGas(100.GWei())
-                    .WithGasPrice(100.GWei())
+                    .WithMaxFeePerGas(100.GWei)
+                    .WithGasPrice(100.GWei)
                     .WithNonce(2)
                     .WithChainId(TestBlockchainIds.ChainId)
                     .To(null)
@@ -233,7 +237,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     ReleaseSpec = Shanghai.Instance,
                     BaseFee = 5,
-                    AccountStates = { { TestItem.AddressA, (30000000.Ether(), 1) } },
+                    AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
                     Transactions = new List<Transaction>() { txAboveTheLimit, txAboveTheLimitNoContract, txBelowTheLimit },
                     GasLimit = 10000000
                 };
@@ -245,7 +249,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     ReleaseSpec = London.Instance,
                     BaseFee = 5,
-                    AccountStates = { { TestItem.AddressA, (30000000.Ether(), 1) } },
+                    AccountStates = { { TestItem.AddressA, (30000000.Ether, 1) } },
                     Transactions = new List<Transaction>() { txAboveTheLimit },
                     GasLimit = 10000000
                 };
@@ -259,17 +263,15 @@ namespace Nethermind.Blockchain.Test
         [TestCaseSource(nameof(EIP3860TestCases))]
         public void Proper_transactions_selected(TransactionSelectorTests.ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new();
-            MemDb codeDb = new();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             IReleaseSpec spec = testCase.ReleaseSpec;
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<BlockExecutionContext>(), Arg.Any<ITxTracer>()))
+            transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()))
                 .Do(info =>
                 {
                     Transaction tx = info.Arg<Transaction>();
@@ -312,20 +314,169 @@ namespace Nethermind.Blockchain.Test
                 stateProvider.CommitTree(0);
             }
 
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
-                new(
-                    transactionProcessor,
-                    stateProvider,
-                    specProvider,
-                    LimboLogs.Instance);
-
             SetAccountStates(testCase.MissingAddresses);
+
+            Transaction[] selectedTransactions = RunBlockProduction(
+                new BuildUpTransactionProcessorAdapter(transactionProcessor),
+                stateProvider,
+                specProvider,
+                blockToProduce,
+                spec);
+            Assert.That(selectedTransactions, Is.EquivalentTo(testCase.ExpectedSelectedTransactions));
+        }
+
+        [Test]
+        public void BlockProductionTransactionsExecutor_calculates_block_size_using_proper_tx_form()
+        {
+            Transaction transactionInMempoolForm = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(1, true, Osaka.Instance)
+                .SignedAndResolved()
+                .TestObject;
+
+            int payloadLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, false);
+            int mempoolLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, true);
+
+            Block block = Build.A.Block
+                .WithExcessBlobGas(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithTransactions([transactionInMempoolForm])
+                .TestObject;
+
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+
+            ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+
+            IWorldState stateProvider = new WorldStateStab();
+            using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+            IReleaseSpec spec = Osaka.Instance;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+
+            BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB - 1);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance, NullBlockAccessListManager.Instance);
+
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
+
+            Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
+        }
+
+        [Test]
+        public void BlockProductionTransactionsExecutor_tx_picker_uses_state_changes_from_previous_transactions()
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            Transaction firstTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(0)
+                .WithGasPrice(1)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+
+            Transaction secondTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(1)
+                .WithGasPrice(1)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+
+            Block block = Build.A.Block
+                .WithGasLimit(GasCostOf.Transaction * 2)
+                .WithTransactions([firstTx, secondTx])
+                .TestObject;
+
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IReleaseSpec spec = Homestead.Instance;
+            transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()))
+                .Do(info =>
+                {
+                    Transaction tx = info.Arg<Transaction>();
+                    stateProvider.IncrementNonce(tx.SenderAddress!);
+                    stateProvider.SubtractFromBalance(tx.SenderAddress!, tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec);
+                });
+
+            Transaction[] selectedTransactions = RunBlockProduction(
+                new BuildUpTransactionProcessorAdapter(transactionProcessor),
+                stateProvider,
+                block,
+                spec);
+            Assert.That(selectedTransactions, Has.Length.EqualTo(2));
+            Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
+            Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+        }
+
+        private static Transaction[] RunBlockProduction(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider,
+            ISpecProvider specProvider,
+            BlockToProduce blockToProduce,
+            IReleaseSpec spec)
+        {
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                transactionProcessor,
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance);
 
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.StartNewBlockTrace(blockToProduce);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
 
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer, spec);
-            blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
+            return blockToProduce.Transactions.ToArray();
+        }
+
+        private static Transaction[] RunBlockProduction(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider,
+            Block block,
+            IReleaseSpec spec)
+        {
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+            return RunBlockProduction(transactionProcessor, stateProvider, new TestSingleReleaseSpecProvider(spec), blockToProduce, spec);
+        }
+    }
+
+    public class WorldStateStab()
+        : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
+    {
+        public new UInt256 GetBalance(Address address) => UInt256.MaxValue;
+
+        public static IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;
+
+        public new bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            account = new(UInt256.Zero, UInt256.MaxValue);
+            return true;
+        }
+
+        private sealed class TestReadOnlyStateProvider : IReadOnlyStateProvider
+        {
+            public static TestReadOnlyStateProvider Instance { get; } = new();
+
+            public Hash256 StateRoot => Keccak.EmptyTreeHash;
+
+            public bool TryGetAccount(Address address, out AccountStruct account)
+            {
+                account = new(UInt256.Zero, UInt256.MaxValue);
+                return true;
+            }
+
+            public byte[] GetCode(Address address) => [];
+
+            public byte[] GetCode(in ValueHash256 codeHash) => [];
+
+            public bool IsContract(Address address) => false;
+
+            public bool AccountExists(Address address) => true;
+
+            public bool IsDeadAccount(Address address) => false;
         }
     }
 }

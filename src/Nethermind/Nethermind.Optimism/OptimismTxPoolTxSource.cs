@@ -9,19 +9,14 @@ using Nethermind.Optimism.Rpc;
 
 namespace Nethermind.Optimism;
 
-public class OptimismTxPoolTxSource : ITxSource
+public class OptimismTxPoolTxSource(ITxSource baseTxSource) : ITxSource
 {
-    private readonly ITxSource _baseTxSource;
+    private readonly ITxSource _baseTxSource = baseTxSource;
 
     public bool SupportsBlobs => _baseTxSource.SupportsBlobs;
 
-    public OptimismTxPoolTxSource(ITxSource baseTxSource)
-    {
-        _baseTxSource = baseTxSource;
-    }
-
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes) =>
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource) =>
         payloadAttributes is OptimismPayloadAttributes { NoTxPool: true }
             ? []
-            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes);
+            : _baseTxSource.GetTransactions(parent, gasLimit, payloadAttributes, filterSource);
 }

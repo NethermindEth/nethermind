@@ -3,10 +3,10 @@
 
 using System;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             bool isCommitted = IsCommitted(parentHeader, round);
             bool revealed = SentReveal(parentHeader, round);
 
-            var phase = isCommitPhase
+            IRandomContract.Phase phase = isCommitPhase
                 ? revealed
                     ? throw new AuRaException("Revealed random number during commit phase.")
                     : !isCommitted
@@ -166,7 +166,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </remarks>
         public (Hash256 Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, in UInt256 collectRound)
         {
-            var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), SignerAddress, collectRound, SignerAddress);
+            (byte[] hash, byte[] cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), SignerAddress, collectRound, SignerAddress);
             return (new Hash256(hash), cipher);
         }
 

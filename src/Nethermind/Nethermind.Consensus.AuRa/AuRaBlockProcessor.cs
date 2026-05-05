@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
@@ -17,25 +19,24 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
     public class AuRaBlockProcessor : BlockProcessor
     {
-        private readonly ISpecProvider _specProvider;
         private readonly IBlockFinder _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
         private readonly ContractRewriter? _contractRewriter;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
+        private readonly Address _withdrawalContractAddress;
 
-        public AuRaBlockProcessor(
-            ISpecProvider specProvider,
+        public AuRaBlockProcessor(ISpecProvider specProvider,
+            AuRaChainSpecEngineParameters chainSpecEngineParameters,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
@@ -45,13 +46,12 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            ITransactionProcessor transactionProcessor,
+            IExecutionRequestsProcessor executionRequestsProcessor,
+            IBlockAccessListManager blockAccessListManager,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null,
-            IBlockCachePreWarmer? preWarmer = null,
-            IExecutionRequestsProcessor? executionRequestsProcessor = null)
+            ContractRewriter? contractRewriter = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -59,20 +59,19 @@ namespace Nethermind.Consensus.AuRa
                 blockTransactionsExecutor,
                 stateProvider,
                 receiptStorage,
-                transactionProcessor,
                 beaconBlockRootHandler,
-                new BlockhashStore(specProvider, stateProvider),
+                new BlockhashStore(stateProvider),
                 logManager,
                 withdrawalProcessor,
-                preWarmer: preWarmer,
-                executionRequestsProcessor: executionRequestsProcessor)
+                executionRequestsProcessor,
+                blockAccessListManager)
         {
-            _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
             _contractRewriter = contractRewriter;
+            _withdrawalContractAddress = chainSpecEngineParameters.WithdrawalContractAddress;
             AuRaValidator = auRaValidator ?? new NullAuRaValidator();
             if (blockTransactionsExecutor is IBlockProductionTransactionsExecutor produceBlockTransactionsStrategy)
             {
@@ -82,21 +81,38 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator AuRaValidator { get; }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             ValidateAuRa(block);
-            _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
+            RewriteContracts(block, spec);
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
+            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
 
-        // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
-        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        private void RewriteContracts(Block block, IReleaseSpec spec)
         {
-            return base.ProcessBlock(block, blockTracer, options);
+            bool wereChanges = _contractRewriter?.RewriteContracts(block.Number, _stateProvider, spec) ?? false;
+            BlockHeader? parent = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+            if (parent is not null)
+            {
+                wereChanges |= _contractRewriter?.RewriteContracts(block.Timestamp, parent.Timestamp, _stateProvider, spec) ?? false;
+            }
+
+            if (wereChanges)
+            {
+                _stateProvider.Commit(spec, commitRoots: true);
+            }
+        }
+
+        // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
+        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
+        {
+            RewriteContracts(block, spec);
+            _balManager.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
+            return base.ProcessBlock(block, blockTracer, options, spec, token);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
@@ -138,36 +154,33 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private void OnAddingTransaction(object? sender, AddingTxEventArgs e)
-        {
-            CheckTxPosdaoRules(e);
-        }
+        private void OnAddingTransaction(object? sender, AddingTxEventArgs e) => CheckTxPosdaoRules(e);
 
         private AddingTxEventArgs CheckTxPosdaoRules(AddingTxEventArgs args)
         {
-            AcceptTxResult? TryRecoverSenderAddress(Transaction tx, BlockHeader header)
+            AcceptTxResult? TryRecoverSenderAddress(Transaction tx, BlockHeader parentHeader, IReleaseSpec currentSpec)
             {
                 if (tx.Signature is not null)
                 {
-                    IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
                     EthereumEcdsa ecdsa = new(_specProvider.ChainId);
-                    Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                    Address txSenderAddress = ecdsa.RecoverAddress(tx, !currentSpec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Transaction {tx.ToShortString()} in block {args.Block.ToString(Block.Format.FullHashAndNumber)} had recovered sender address on validation.");
                         tx.SenderAddress = txSenderAddress;
-                        return _txFilter.IsAllowed(tx, header);
+                        return _txFilter.IsAllowed(tx, parentHeader, currentSpec);
                     }
                 }
 
                 return null;
             }
 
+            IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
             BlockHeader parentHeader = GetParentHeader(args.Block);
-            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader);
+            AcceptTxResult isAllowed = _txFilter.IsAllowed(args.Transaction, parentHeader, spec);
             if (!isAllowed)
             {
-                isAllowed = TryRecoverSenderAddress(args.Transaction, parentHeader) ?? isAllowed;
+                isAllowed = TryRecoverSenderAddress(args.Transaction, parentHeader, spec) ?? isAllowed;
             }
 
             if (!isAllowed)
@@ -177,12 +190,12 @@ namespace Nethermind.Consensus.AuRa
 
             return args;
         }
+    }
 
-        private class NullAuRaValidator : IAuRaValidator
-        {
-            public Address[] Validators => [];
-            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
-            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
-        }
+    public class NullAuRaValidator : IAuRaValidator
+    {
+        public Address[] Validators => [];
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
     }
 }

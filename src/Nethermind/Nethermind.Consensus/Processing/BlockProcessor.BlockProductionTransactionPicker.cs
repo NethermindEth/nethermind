@@ -3,36 +3,36 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Config;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
+        public class BlockProductionTransactionPicker(
+            ISpecProvider specProvider,
+            long maxTxLengthKilobytes = BlocksConfig.DefaultMaxTxKilobytes,
+            bool ignoreEip3607 = false)
+            : IBlockProductionTransactionPicker
         {
-            protected readonly ISpecProvider _specProvider;
-            private readonly bool _ignoreEip3607;
+            private readonly long _maxTxLengthBytes = maxTxLengthKilobytes.KiB;
 
-            public BlockProductionTransactionPicker(ISpecProvider specProvider, bool ignoreEip3607 = false)
-            {
-                _specProvider = specProvider;
-                _ignoreEip3607 = ignoreEip3607;
-            }
+            protected readonly ISpecProvider _specProvider = specProvider;
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            protected void OnAddingTransaction(AddingTxEventArgs e)
-            {
-                AddingTransaction?.Invoke(this, e);
-            }
+            protected void OnAddingTransaction(AddingTxEventArgs e) => AddingTransaction?.Invoke(this, e);
 
-            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
+            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
@@ -43,6 +43,14 @@ namespace Nethermind.Consensus.Processing
                 if (GasCostOf.Transaction > gasRemaining)
                 {
                     return args.Set(TxAction.Stop, "Block full");
+                }
+
+                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
+                {
+                    return args.Set(
+                        // If smallest tx is too large, stop picking
+                        currentTx.GasLimit == GasCostOf.Transaction ? TxAction.Stop : TxAction.Skip,
+                        "Too large for CL");
                 }
 
                 if (currentTx.SenderAddress is null)
@@ -63,10 +71,10 @@ namespace Nethermind.Consensus.Processing
                 IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 if (currentTx.IsAboveInitCode(spec))
                 {
-                    return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.Error);
+                    return args.Set(TxAction.Skip, TransactionResult.TransactionSizeOverMaxInitCodeSize.ErrorDescription);
                 }
 
-                if (!_ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                if (!ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.Taiko.Rpc;
 

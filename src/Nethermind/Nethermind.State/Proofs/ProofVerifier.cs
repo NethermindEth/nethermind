@@ -20,7 +20,7 @@ namespace Nethermind.State.Proofs
         {
             if (proof.Length == 0)
             {
-                return null;
+                return default;
             }
 
             for (int i = proof.Length; i > 0; i--)

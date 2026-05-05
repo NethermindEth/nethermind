@@ -7,18 +7,20 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Store
 {
 
     [MemoryDiagnoser]
+    [MinIterationTime(1000)]
     public class PatriciaTreeBenchmarks
     {
         private static readonly Account _empty = Build.An.Account.WithBalance(0).TestObject;
@@ -46,8 +48,10 @@ namespace Nethermind.Benchmarks.Store
         private (Hash256, Account)[] _entries;
         private (Hash256, Account)[] _entriesShuffled;
 
-        private const int _largerEntryCount = 1024 * 10 * 10;
+        private const int _largerEntryCount = 1024 * 10;
+        private const int _repeatedlyFactor = 500;
         private (bool, Hash256, Account)[] _largerEntriesAccess;
+        private (Hash256, Account)[] _uniqueLargeSet;
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
@@ -128,7 +132,7 @@ namespace Nethermind.Benchmarks.Store
                 Hash256 rootHash = tree.RootHash;
                 tree.Commit();
             }),
-            ("extenson_create_new_extension", tree =>
+            ("extension_create_new_extension", tree =>
             {
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
                 tree.Set(new Hash256("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
@@ -242,7 +246,7 @@ namespace Nethermind.Benchmarks.Store
             new Random(0).Shuffle(_entriesShuffled);
 
             _backingMemory = new MemDb();
-            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
+            StateTree tempTree = new(new RawScopedTrieStore(new NodeStorage(_backingMemory), null), NullLogManager.Instance);
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
@@ -263,13 +267,14 @@ namespace Nethermind.Benchmarks.Store
                 _uncommittedFullTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
 
-            _memoryTrieStore = new TrieStore(_backingMemory, Prune.WhenCacheReaches(1.GB()), No.Persistence, NullLogManager.Instance);
+            _memoryTrieStore = TestTrieStoreFactory.Build(_backingMemory, Prune.WhenCacheReaches(1.GB), No.Persistence, NullLogManager.Instance);
 
             // Preparing access for large entries
             List<Hash256> currentItems = new();
 
             _largerEntriesAccess = new (bool, Hash256, Account)[_largerEntryCount];
-            Random rand = new Random(0);
+            _uniqueLargeSet = new (Hash256, Account)[_largerEntryCount];
+            Random rand = new(0);
             for (int i = 0; i < _largerEntryCount; i++)
             {
                 if (rand.NextDouble() < 0.4 && currentItems.Count != 0)
@@ -298,8 +303,13 @@ namespace Nethermind.Benchmarks.Store
                         newAccount,
                         new Account((UInt256)rand.NextInt64()));
                 }
-            }
 
+                Hash256 newAccount2 = Keccak.Compute(i.ToBigEndianByteArray());
+                currentItems.Add(newAccount2);
+                _uniqueLargeSet[i] = (
+                    newAccount2,
+                    new Account((UInt256)rand.NextInt64()));
+            }
         }
 
         [Benchmark]
@@ -314,7 +324,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void InsertAndHash()
         {
-            StateTree tempTree = new StateTree();
+            StateTree tempTree = new();
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
@@ -325,7 +335,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void InsertAndCommit()
         {
-            StateTree tempTree = new StateTree(new TrieStore(new MemDb(), NullLogManager.Instance), NullLogManager.Instance);
+            StateTree tempTree = new(new RawScopedTrieStore(new MemDb()), NullLogManager.Instance);
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
@@ -336,16 +346,16 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void InsertAndCommitRepeatedlyTimes()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new(trieStore, NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
-                if (i % 2000 == 0)
+                if (i % _repeatedlyFactor == 0)
                 {
-                    using IBlockCommitter _ = trieStore.BeginBlockCommit(i / 2000);
+                    using IBlockCommitter _ = trieStore.BeginBlockCommit(i / _repeatedlyFactor);
                     tempTree.Commit();
                 }
 
@@ -364,10 +374,10 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void LargeInsertAndCommit()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(),
-                Prune.WhenCacheReaches(1.MiB()),
-                Persist.IfBlockOlderThan(2), NullLogManager.Instance);
-            StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
+            TrieStore trieStore = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = new(trieStore, NullLogManager.Instance);
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
@@ -384,6 +394,63 @@ namespace Nethermind.Benchmarks.Store
 
             using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             tempTree.Commit();
+        }
+
+        TrieStore _largeUncommittedFullTree;
+        StateTree _largeUncommittedStateTree;
+
+        [IterationSetup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+        ])]
+        public void SetupLargeUncommittedTree()
+        {
+            TrieStore trieStore = _largeUncommittedFullTree = TestTrieStoreFactory.Build(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB),
+                Persist.EveryNBlock(2), NullLogManager.Instance);
+            StateTree tempTree = _largeUncommittedStateTree = new StateTree(trieStore, NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
+        }
+
+        [IterationCleanup(Targets = [
+            nameof(LargeCommit),
+            nameof(LargeHash),
+            nameof(LargeHashNoParallel),
+        ])]
+        public void CleanupLargeUncommittedTree() => _largeUncommittedFullTree.Dispose();
+
+        [Benchmark]
+        public void LargeCommit()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.Commit();
+        }
+
+        [Benchmark]
+        public void LargeHash()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash();
+        }
+
+        [Benchmark]
+        public void LargeHashNoParallel()
+        {
+            using IBlockCommitter _ = _largeUncommittedFullTree.BeginBlockCommit(0);
+            _largeUncommittedStateTree.UpdateRootHash(canBeParallel: false);
         }
 
         [Benchmark]
@@ -407,7 +474,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadWithMemoryTrieStore()
         {
-            StateTree tempTree = new StateTree(_memoryTrieStore, NullLogManager.Instance);
+            StateTree tempTree = new(_memoryTrieStore, NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {
@@ -418,7 +485,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadWithMemoryTrieStoreReadOnly()
         {
-            StateTree tempTree = new StateTree(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
+            StateTree tempTree = new(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {
@@ -429,7 +496,7 @@ namespace Nethermind.Benchmarks.Store
         [Benchmark]
         public void ReadAndDeserialize()
         {
-            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
+            StateTree tempTree = new(new RawScopedTrieStore(_backingMemory), NullLogManager.Instance);
             tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {

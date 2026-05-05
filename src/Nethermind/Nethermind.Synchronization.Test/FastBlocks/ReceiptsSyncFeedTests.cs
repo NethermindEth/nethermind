@@ -27,6 +27,8 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Stats.SyncLimits;
+using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
@@ -66,14 +68,15 @@ public class ReceiptsSyncFeedTests
     }
 
     private static readonly ISpecProvider _specProvider;
-    private IReceiptStorage _receiptStorage = null!;
-    private ISyncPointers _syncPointers = null!;
-    private ISyncPeerPool _syncPeerPool = null!;
-    private ReceiptsSyncFeed _feed = null!;
-    private ISyncConfig _syncConfig = null!;
-    private ISyncReport _syncReport = null!;
-    private IBlockTree _blockTree = null!;
-    private IDb _metadataDb = null!;
+    private IReceiptStorage _receiptStorage;
+    private ISyncPointers _syncPointers;
+    private ISyncPeerPool _syncPeerPool;
+    private ReceiptsSyncFeed _feed;
+    private ISyncConfig _syncConfig;
+    private ISyncReport _syncReport;
+    private IBlockTree _blockTree;
+    private IDb _metadataDb;
+    private IHistoryPruner _historyPruner;
 
     private static long _pivotNumber = 1024;
 
@@ -99,11 +102,15 @@ public class ReceiptsSyncFeedTests
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _syncPointers = new MemorySyncPointers();
         _blockTree = Substitute.For<IBlockTree>();
+        _historyPruner = Substitute.For<IHistoryPruner>();
         _metadataDb = new TestMemDb();
 
-        _syncConfig = new TestSyncConfig { FastSync = true };
-        _syncConfig.PivotNumber = _pivotNumber.ToString();
-        _syncConfig.PivotHash = Keccak.Zero.ToString();
+        _syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = _pivotNumber,
+            PivotHash = Keccak.Zero.ToString()
+        };
         _blockTree.SyncPivot.Returns((_pivotNumber, Keccak.Zero));
 
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -124,9 +131,8 @@ public class ReceiptsSyncFeedTests
         _metadataDb?.Dispose();
     }
 
-    private ReceiptsSyncFeed CreateFeed()
-    {
-        return new ReceiptsSyncFeed(
+    private ReceiptsSyncFeed CreateFeed() =>
+        new(
             _specProvider,
             _blockTree,
             _receiptStorage,
@@ -134,9 +140,9 @@ public class ReceiptsSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             _syncReport,
+            _historyPruner,
             _metadataDb,
             LimboLogs.Instance);
-    }
 
     [Test]
     public void Should_throw_when_fast_block_not_enabled()
@@ -151,6 +157,7 @@ public class ReceiptsSyncFeedTests
                 _syncPeerPool,
                 _syncConfig,
                 _syncReport,
+                _historyPruner,
                 _metadataDb,
                 LimboLogs.Instance));
     }
@@ -167,6 +174,7 @@ public class ReceiptsSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             _syncReport,
+            _historyPruner,
             _metadataDb,
             LimboLogs.Instance);
         _feed.InitializeFeed();
@@ -177,22 +185,16 @@ public class ReceiptsSyncFeedTests
     }
 
     [Test]
-    public void Contexts_are_correct()
-    {
+    public void Contexts_are_correct() =>
         _feed.Contexts.Should().Be(AllocationContexts.Receipts);
-    }
 
     [Test]
-    public void Should_be_multifeed()
-    {
+    public void Should_be_multifeed() =>
         _feed.IsMultiFeed.Should().BeTrue();
-    }
 
     [Test]
-    public void Should_start_dormant()
-    {
+    public void Should_start_dormant() =>
         _feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-    }
 
     [Test]
     public void When_activating_should_emit_an_event()
@@ -243,35 +245,14 @@ public class ReceiptsSyncFeedTests
     }
 
     [TestCase(1, 1024, false, null, false)]
-    [TestCase(1, 11051474, false, null, true)]
-    [TestCase(1, 11052984, false, null, true)]
-    [TestCase(11051474, 11052984, false, null, false)]
-    [TestCase(11051474, 11051474, false, null, true)]
-    [TestCase(1, 11052985, false, null, false)]
-    [TestCase(1, 1024, false, 11052984, false)]
-    [TestCase(1, 11051474, false, 11052984, true)]
-    [TestCase(1, 11052984, false, 11052984, true)]
-    [TestCase(11051474, 11052984, false, 11052984, false)]
-    [TestCase(11051474, 11051474, false, 11052984, true)]
-    [TestCase(1, 11052985, false, 11052984, false)]
     [TestCase(1, 1024, true, null, false)]
-    [TestCase(1, 11051474, true, null, false)]
-    [TestCase(1, 11052984, true, null, false)]
-    [TestCase(11051474, 11052984, true, null, false)]
-    [TestCase(11051474, 11051474, true, null, true)]
-    [TestCase(1, 11052985, true, null, false)]
     [TestCase(1, 1024, false, 0, false)]
-    [TestCase(1, 11051474, false, 0, false)]
-    [TestCase(1, 11052984, false, 0, false)]
-    [TestCase(11051474, 11052984, false, 0, false)]
-    [TestCase(11051474, 11051474, false, 0, true)]
-    [TestCase(1, 11052985, false, 0, false)]
-    public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+    public void When_finished_sync_with_old_default_barrier_then_finishes_immediately(
         long AncientBarrierInConfig,
         long? lowestInsertedReceiptBlockNumber,
         bool JustStarted,
         long? previousBarrierInDb,
-        bool shouldfinish)
+        bool shouldFinish)
     {
         _syncPointers = Substitute.For<ISyncPointers>();
         _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
@@ -282,18 +263,60 @@ public class ReceiptsSyncFeedTests
             _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         LoadScenario(_256BodiesWithOneTxEach);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
-        _feed.IsFinished.Should().Be(shouldfinish);
+        _feed.IsFinished.Should().Be(shouldFinish);
     }
 
-    private void LoadScenario(Scenario scenario)
+    [Test]
+    public async Task When_AncientReceiptsBarrier_exceeds_SyncPivot_then_finishes_immediately()
     {
-        LoadScenario(scenario, _syncConfig);
+        // Reproduces the Hoodi case: config PivotNumber unset (0), barrier above chain length,
+        // real pivot supplied via _blockTree.SyncPivot.
+        Scenario scenario = _256BodiesWithOneTxEach;
+        _syncConfig = new TestSyncConfig
+        {
+            FastSync = true,
+            PivotNumber = 0,
+            AncientBodiesBarrier = 4_367_322,
+            AncientReceiptsBarrier = 4_367_322,
+            DownloadReceiptsInFastSync = true,
+        };
+        _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()!.Hash!));
+        _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
+            ci =>
+            {
+                Block? block = scenario.Blocks[ci.Arg<long>()];
+                return block is null
+                    ? null
+                    : new BlockInfo(block.Hash!, block.TotalDifficulty ?? 0) { BlockNumber = ci.Arg<long>() };
+            });
+        _receiptStorage.HasBlock(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
+        _syncPointers = new MemorySyncPointers();
+
+        _feed = new ReceiptsSyncFeed(
+            _specProvider,
+            _blockTree,
+            _receiptStorage,
+            _syncPointers,
+            _syncPeerPool,
+            _syncConfig,
+            _syncReport,
+            _historyPruner,
+            _metadataDb,
+            LimboLogs.Instance);
+
+        _feed.InitializeFeed();
+        using ReceiptsSyncBatch? _ = await _feed.PrepareRequest();
+
+        _feed.IsFinished.Should().BeTrue();
     }
+
+    private void LoadScenario(Scenario scenario) =>
+        LoadScenario(scenario, _syncConfig);
 
     private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
     {
         _syncConfig = syncConfig;
-        _syncConfig.PivotNumber = _pivotNumber.ToString();
+        _syncConfig.PivotNumber = _pivotNumber;
         _syncConfig.PivotHash = scenario.Blocks.Last()?.Hash?.ToString();
         _blockTree.SyncPivot.Returns((_pivotNumber, scenario.Blocks.Last()?.Hash!));
         _syncPointers = Substitute.For<ISyncPointers>();
@@ -306,6 +329,7 @@ public class ReceiptsSyncFeedTests
             _syncPeerPool,
             _syncConfig,
             _syncReport,
+            _historyPruner,
             _metadataDb,
             LimboLogs.Instance);
         _feed.InitializeFeed();
@@ -351,13 +375,16 @@ public class ReceiptsSyncFeedTests
             batches.Add(await _feed.PrepareRequest());
         }
 
-        for (int i = 0; i < 2; i++)
+        // Expected batches based on actual MaxReceiptFetch
+        int expectedBatches = (int)Math.Ceiling(256.0 / GethSyncLimits.MaxReceiptFetch);
+
+        for (int i = 0; i < expectedBatches; i++)
         {
             batches[i].Should().NotBeNull();
             batches[i]!.ToString().Should().NotBeNull();
         }
 
-        for (int i = 2; i < 100; i++)
+        for (int i = expectedBatches; i < 100; i++)
         {
             batches[i].Should().BeNull();
         }
@@ -368,7 +395,7 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_1024BodiesWithOneTxEach);
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-        var response = new ArrayPoolList<TxReceipt[]?>(batch!.Infos.Length, batch!.Infos.Length);
+        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length);
 
         // default receipts that we use when constructing receipt root for tests have stats code 0
         // so by using 1 here we create a different tx root
@@ -387,7 +414,7 @@ public class ReceiptsSyncFeedTests
 
     private static void FillBatchResponses(ReceiptsSyncBatch batch)
     {
-        var response = new ArrayPoolList<TxReceipt[]?>(batch.Infos.Length, batch.Infos.Length);
+        ArrayPoolList<TxReceipt[]?> response = new(batch.Infos.Length, batch.Infos.Length);
         for (int i = 0; i < response.Count; i++)
         {
             response[i] = new[] { Build.A.Receipt.TestObject };
@@ -419,7 +446,7 @@ public class ReceiptsSyncFeedTests
             FastSync = true,
             DownloadBodiesInFastSync = true,
             DownloadReceiptsInFastSync = true,
-            PivotNumber = "1",
+            PivotNumber = 1,
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
@@ -440,7 +467,7 @@ public class ReceiptsSyncFeedTests
             FastSync = true,
             DownloadBodiesInFastSync = false,
             DownloadReceiptsInFastSync = true,
-            PivotNumber = "1",
+            PivotNumber = 1,
         };
 
         _blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);

@@ -14,15 +14,15 @@ public static class ProductInfo
 {
     static ProductInfo()
     {
-        var assembly = Assembly.GetEntryAssembly()!;
-        var metadataAttrs = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()!;
-        var productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
-        var versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;
-        var timestamp = metadataAttrs
-            ?.FirstOrDefault(static a => a.Key.Equals("BuildTimestamp", StringComparison.Ordinal))
+        Assembly assembly = Assembly.GetEntryAssembly()!;
+        IEnumerable<AssemblyMetadataAttribute> metadataAttrs = assembly.GetCustomAttributes<AssemblyMetadataAttribute>()!;
+        AssemblyProductAttribute productAttr = assembly.GetCustomAttribute<AssemblyProductAttribute>()!;
+        AssemblyInformationalVersionAttribute versionAttr = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!;
+        string? sourceDateEpoch = metadataAttrs
+            ?.FirstOrDefault(static a => a.Key.Equals("SourceDateEpoch", StringComparison.Ordinal))
             ?.Value;
 
-        BuildTimestamp = long.TryParse(timestamp, out var t)
+        SourceDate = long.TryParse(sourceDateEpoch, out long t)
             ? DateTimeOffset.FromUnixTimeSeconds(t)
             : DateTimeOffset.MinValue;
         Name = productAttr?.Product ?? "Nethermind";
@@ -31,7 +31,7 @@ public static class ProductInfo
         Runtime = RuntimeInformation.FrameworkDescription;
         Version = versionAttr.InformationalVersion;
 
-        var index = Version.IndexOf('+', StringComparison.Ordinal);
+        int index = Version.IndexOf('+', StringComparison.Ordinal);
 
         if (index != -1)
         {
@@ -51,7 +51,7 @@ public static class ProductInfo
         PublicClientId = ClientId;
     }
 
-    public static DateTimeOffset BuildTimestamp { get; }
+    public static DateTimeOffset SourceDate { get; }
 
     private static string FormatClientId(string formatString)
     {
@@ -61,7 +61,7 @@ public static class ProductInfo
         }
 
         StringBuilder formattedClientId = new(formatString);
-        foreach (var placeholder in ClientIdParts)
+        foreach (KeyValuePair<string, string> placeholder in ClientIdParts)
         {
             formattedClientId.Replace($"{{{placeholder.Key}}}", placeholder.Value);
         }

@@ -6,35 +6,37 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-
+using System.Threading.Tasks;
 using FastEnumUtility;
+using Nethermind.Core;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Stats;
 
 /// <summary>
 /// Initial version of Reputation calculation mostly based on EthereumJ impl
 /// </summary>
-public class NodeStatsLight : INodeStats
+public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeStats
 {
-    private readonly StatsParameters _statsParameters;
+    private readonly StatsParameters _statsParameters = StatsParameters.Instance;
 
     // How much weight to put on latest speed.
-    // 1.0m means that the reported speed will always replaced with latest speed.
-    // 0.5m means that the reported speed will be (oldSpeed + newSpeed)/2;
-    // 0.25m here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
+    // 1.0 means that the reported speed will always replaced with latest speed.
+    // 0.5 means that the reported speed will be (oldSpeed + newSpeed)/2;
+    // 0.25 here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
     // modification to account for jitter.
-    private readonly decimal _latestSpeedWeight;
+    private readonly float _latestSpeedWeight = latestSpeedWeight;
 
-    private decimal? _averageNodesTransferSpeed;
-    private decimal? _averageHeadersTransferSpeed;
-    private decimal? _averageBodiesTransferSpeed;
-    private decimal? _averageReceiptsTransferSpeed;
-    private decimal? _averageSnapRangesTransferSpeed;
-    private decimal? _averageLatency;
+    // NaN signals "no value yet" (replaces nullable decimal)
+    private float _averageNodesTransferSpeed = float.NaN;
+    private float _averageHeadersTransferSpeed = float.NaN;
+    private float _averageBodiesTransferSpeed = float.NaN;
+    private float _averageReceiptsTransferSpeed = float.NaN;
+    private float _averageSnapRangesTransferSpeed = float.NaN;
+    private float _averageLatency = float.NaN;
 
-    private readonly int[] _statCountersArray;
-    private readonly Lock _speedLock = new();
+    private readonly int[] _statCountersArray = new int[_statsLength];
 
     private DisconnectReason? _lastLocalDisconnect;
     private DisconnectReason? _lastRemoteDisconnect;
@@ -48,13 +50,46 @@ public class NodeStatsLight : INodeStats
 
     private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Length;
 
-    public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
-    {
-        _statCountersArray = new int[_statsLength];
-        _statsParameters = StatsParameters.Instance;
-        _latestSpeedWeight = latestSpeedWeight;
-        Node = node;
-    }
+    private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
+        minRequestLimit: 1,
+        maxRequestLimit: 128,
+
+        // In addition to the byte limit, we also try to keep the latency of the get block bodies between these two
+        // watermark. This reduce timeout rate, and subsequently disconnection rate.
+        lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+        upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+        // When the bodies message size exceed this, we try to reduce the maximum number of block for this peer.
+        // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+        // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+        // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+        maxResponseSize: 3_000_000,
+        initialRequestSize: 4
+    );
+
+    private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
+        minRequestLimit: 1,
+        maxRequestLimit: 128,
+
+        // In addition to the byte limit, we also try to keep the latency of the get receipts between these two
+        // watermark. This reduce timeout rate, and subsequently disconnection rate.
+        lowerLatencyWatermark: TimeSpan.FromMilliseconds(2000),
+        upperLatencyWatermark: TimeSpan.FromMilliseconds(3000),
+
+        // When the receipts message size exceed this, we try to reduce the maximum number of block for this peer.
+        // This is for BeSU and Reth which does not seems to use the 2MB soft limit, causing them to send 20MB of bodies
+        // or receipts. This is not great as large message size are harder for DotNetty to pool byte buffer, causing
+        // higher memory usage. Reducing this even further does seems to help with memory, but may reduce throughput.
+        maxResponseSize: 3_000_000,
+        initialRequestSize: 8
+    );
+
+    private readonly LatencyBasedRequestSizer _snapRequestSizer = new(
+        minRequestLimit: 50000,
+        maxRequestLimit: 3_000_000,
+        lowerWatermark: TimeSpan.FromMilliseconds(2000),
+        upperWatermark: TimeSpan.FromMilliseconds(3500)
+    );
 
     public long CurrentNodeReputation(DateTime nowUTC) => CalculateCurrentReputation(nowUTC);
 
@@ -70,12 +105,9 @@ public class NodeStatsLight : INodeStats
 
     public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
-    public Node Node { get; }
+    public Node Node { get; } = node;
 
-    private void Increment(NodeStatsEventType nodeStatsEventType)
-    {
-        Interlocked.Increment(ref _statCountersArray[(int)nodeStatsEventType]);
-    }
+    private void Increment(NodeStatsEventType nodeStatsEventType) => Interlocked.Increment(ref _statCountersArray[(int)nodeStatsEventType]);
 
     public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
     {
@@ -92,10 +124,7 @@ public class NodeStatsLight : INodeStats
         Increment(nodeStatsEventType);
     }
 
-    public void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection)
-    {
-        Increment(NodeStatsEventType.HandshakeCompleted);
-    }
+    public void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection) => Increment(NodeStatsEventType.HandshakeCompleted);
 
     public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
     {
@@ -155,63 +184,43 @@ public class NodeStatsLight : INodeStats
         Increment(NodeStatsEventType.LesInitialized);
     }
 
-    public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType)
-    {
-        Increment(nodeStatsEventType);
-    }
+    public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType) => Increment(nodeStatsEventType);
 
-    public bool DidEventHappen(NodeStatsEventType nodeStatsEventType)
-    {
-        return GetStat(nodeStatsEventType) > 0;
-    }
+    public bool DidEventHappen(NodeStatsEventType nodeStatsEventType) => GetStat(nodeStatsEventType) > 0;
 
-    public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond)
-    {
-        lock (_speedLock)
-        {
-            switch (transferSpeedType)
-            {
-                case TransferSpeedType.Latency:
-                    UpdateValue(ref _averageLatency, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.NodeData:
-                    UpdateValue(ref _averageNodesTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.Headers:
-                    UpdateValue(ref _averageHeadersTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.Bodies:
-                    UpdateValue(ref _averageBodiesTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.Receipts:
-                    UpdateValue(ref _averageReceiptsTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.SnapRanges:
-                    UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
-            }
-        }
-    }
+    public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond) => UpdateValue(ref GetSpeedRef(transferSpeedType), bytesPerMillisecond);
 
-    private void UpdateValue(ref decimal? currentValue, decimal newValue)
+    private void UpdateValue(ref float currentValue, float newValue)
     {
-        currentValue = ((currentValue ?? newValue) * (1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+        float current = Volatile.Read(ref currentValue);
+        float updated = float.IsNaN(current)
+            ? newValue
+            : (current * (1.0f - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+        Volatile.Write(ref currentValue, updated);
     }
 
     public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
     {
-        return (long?)(transferSpeedType switch
+        float value = Volatile.Read(ref GetSpeedRef(transferSpeedType));
+
+        if (float.IsNaN(value))
+            return transferSpeedType == TransferSpeedType.Latency ? int.MaxValue : null;
+
+        return (long)value;
+    }
+
+    private ref float GetSpeedRef(TransferSpeedType transferSpeedType)
+    {
+        switch (transferSpeedType)
         {
-            TransferSpeedType.Latency => _averageLatency ?? int.MaxValue,
-            TransferSpeedType.NodeData => _averageNodesTransferSpeed,
-            TransferSpeedType.Headers => _averageHeadersTransferSpeed,
-            TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
-            TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
-            TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
-            _ => throw new ArgumentOutOfRangeException()
-        });
+            case TransferSpeedType.Latency: return ref _averageLatency;
+            case TransferSpeedType.NodeData: return ref _averageNodesTransferSpeed;
+            case TransferSpeedType.Headers: return ref _averageHeadersTransferSpeed;
+            case TransferSpeedType.Bodies: return ref _averageBodiesTransferSpeed;
+            case TransferSpeedType.Receipts: return ref _averageReceiptsTransferSpeed;
+            case TransferSpeedType.SnapRanges: return ref _averageSnapRangesTransferSpeed;
+            default: throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, "Unsupported transfer speed type.");
+        }
     }
 
     public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(DateTime nowUTC)
@@ -311,16 +320,10 @@ public class NodeStatsLight : INodeStats
         return disconnectDelay;
     }
 
-    private long CalculateCurrentReputation(DateTime nowUTC)
-    {
-        return CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
-    }
+    private long CalculateCurrentReputation(DateTime nowUTC) => CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private int GetStat(NodeStatsEventType nodeStatsEventType)
-    {
-        return Volatile.Read(ref _statCountersArray[(int)nodeStatsEventType]);
-    }
+    private int GetStat(NodeStatsEventType nodeStatsEventType) => Volatile.Read(ref _statCountersArray[(int)nodeStatsEventType]);
 
     private long CalculateSessionReputation()
     {
@@ -361,5 +364,40 @@ public class NodeStatsLight : INodeStats
         }
 
         return rlpxReputation;
+    }
+
+    public async Task<TResponse> RunSizeAndLatencyRequestSizer<TResponse, TRequest, TResponseItem>(RequestType requestType, IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem>
+    {
+        if (requestType == RequestType.Bodies) return await _bodiesRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
+        if (requestType == RequestType.Receipts) return await _receiptsRequestSizer.Run<TResponse, TRequest, TResponseItem>(request, func);
+
+        throw new ArgumentException($"Unsupported request type: {requestType}");
+    }
+
+    public async Task<TResponse> RunLatencyRequestSizer<TResponse>(RequestType requestType, Func<int, Task<TResponse>> func)
+    {
+        if (requestType == RequestType.SnapRanges) return await _snapRequestSizer.MeasureLatency(func);
+
+        throw new ArgumentException($"Unsupported request type: {requestType}");
+    }
+
+    public int GetCurrentRequestLimit(RequestType requestType)
+    {
+        if (requestType == RequestType.Bodies) return _bodiesRequestSizer.RequestSize;
+        if (requestType == RequestType.Receipts) return _receiptsRequestSizer.RequestSize;
+        if (requestType == RequestType.SnapRanges) return _snapRequestSizer.RequestSize;
+        if (requestType == RequestType.Headers)
+        {
+            return Node.ClientType switch
+            {
+                NodeClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
+                NodeClientType.Geth => GethSyncLimits.MaxHeaderFetch,
+                NodeClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
+                NodeClientType.Besu => BeSuSyncLimits.MaxHeaderFetch,
+                _ => GethSyncLimits.MaxHeaderFetch, // Default to Geth limits for unknown clients
+            };
+        }
+
+        throw new ArgumentException($"Unsupported request type: {requestType}");
     }
 }

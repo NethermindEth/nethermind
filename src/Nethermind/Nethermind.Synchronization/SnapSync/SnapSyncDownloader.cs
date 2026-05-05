@@ -12,20 +12,15 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncDownloader : ISyncDownloader<SnapSyncBatch>
+    public class SnapSyncDownloader(ILogManager? logManager) : ISyncDownloader<SnapSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public SnapSyncDownloader(ILogManager? logManager)
-        {
-            Logger = logManager.GetClassLogger();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<SnapSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
 
-            if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out var handler))
+            if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer handler))
             {
                 try
                 {
@@ -46,10 +41,13 @@ namespace Nethermind.Synchronization.SnapSync
                         batch.AccountsToRefreshResponse = await handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Snap sync request cancelled. Request: {batch}");
+                }
                 catch (Exception e)
                 {
-                    if (Logger.IsDebug)
-                        Logger.Error($"DEBUG/ERROR Error after dispatching the snap sync request. Request: {batch}", e);
+                    Logger.DebugError($"Error after dispatching the snap sync request. Request: {batch}", e);
                 }
             }
         }

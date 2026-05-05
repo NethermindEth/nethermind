@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using System;
 
 namespace Nethermind.Core;
+
 public static class Eip7702Constants
 {
     private readonly static byte[] _delegationHeader = [0xef, 0x01, 0x00];

@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -43,10 +42,9 @@ public class BlockingVerifyTrie
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
     {
         // This is to block processing as with halfpath old nodes will be removed
-        using IBlockCommitter? _ = _trieStore.BeginBlockCommit(stateAtBlock.Number + 1);
+        using IDisposable _ = _trieStore.BeginScope(stateAtBlock);
 
-        Hash256 rootNode = stateAtBlock.StateRoot;
-        TrieStats stats = _stateReader.CollectStats(rootNode, _codeDb, _logManager, cancellationToken);
+        TrieStats stats = _stateReader.CollectStats(stateAtBlock, _codeDb, _logManager, cancellationToken);
         if (stats.MissingNodes > 0)
         {
             if (_logger.IsError) _logger.Error($"Missing node found!");

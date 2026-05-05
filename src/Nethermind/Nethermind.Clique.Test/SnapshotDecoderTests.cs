@@ -31,7 +31,7 @@ namespace Nethermind.Clique.Test
             RlpStream stream = new(decoder.GetLength(expected, RlpBehaviors.None));
             decoder.Encode(stream, expected);
             // Decode snapshot
-            Snapshot actual = decoder.Decode(stream.Data.AsRlpStream());
+            Snapshot actual = decoder.Decode(stream.Data.AsSpan());
             // Validate fields
             Assert.That(actual.Number, Is.EqualTo(expected.Number));
             Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
@@ -54,7 +54,7 @@ namespace Nethermind.Clique.Test
 
         private Snapshot GenerateSnapshot(Hash256 hash, long number, Address candidate)
         {
-            SortedList<Address, long> signers = new(AddressComparer.Instance);
+            SortedList<Address, long> signers = new(GenericComparer.GetOptimized<Address>());
             signers.Add(_signer1, number - 2);
             signers.Add(_signer2, number - 1);
             signers.Add(_signer3, number - 3);

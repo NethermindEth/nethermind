@@ -24,8 +24,8 @@ namespace Nethermind.Synchronization.Peers
                 Version? openEthereumVersion = peerInfo.SyncPeer.GetOpenEthereumVersion(out _);
                 if (openEthereumVersion is not null)
                 {
-                    int versionComparision = openEthereumVersion.CompareTo(_openEthereumSecondRemoveGetNodeDataVersion);
-                    return versionComparision >= 0 || openEthereumVersion < _openEthereumFirstRemoveGetNodeDataVersion;
+                    int versionComparison = openEthereumVersion.CompareTo(_openEthereumSecondRemoveGetNodeDataVersion);
+                    return versionComparison >= 0 || openEthereumVersion < _openEthereumFirstRemoveGetNodeDataVersion;
                 }
             }
 

@@ -12,37 +12,32 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Core.Test.Blockchain
 {
-    public class TestBlockProducer : BlockProducerBase
+    public class TestBlockProducer(
+        ITxSource txSource,
+        IBlockchainProcessor processor,
+        IWorldState stateProvider,
+        ISealer sealer,
+        IBlockTree blockTree,
+        ITimestamper timestamper,
+        ISpecProvider specProvider,
+        ILogManager logManager,
+        IBlocksConfig blocksConfig) : BlockProducerBase(
+            txSource,
+            processor,
+            sealer,
+            blockTree,
+            stateProvider,
+            new FollowOtherMiners(specProvider),
+            timestamper,
+            specProvider,
+            logManager,
+            ConstantDifficulty.One,
+            blocksConfig)
     {
-        public TestBlockProducer(
-            ITxSource txSource,
-            IBlockchainProcessor processor,
-            IWorldState stateProvider,
-            ISealer sealer,
-            IBlockTree blockTree,
-            ITimestamper timestamper,
-            ISpecProvider specProvider,
-            ILogManager logManager,
-            IBlocksConfig blocksConfig)
-            : base(
-                txSource,
-                processor,
-                sealer,
-                blockTree,
-                stateProvider,
-                new FollowOtherMiners(specProvider),
-                timestamper,
-                specProvider,
-                logManager,
-                ConstantDifficulty.One,
-                blocksConfig)
-        {
-        }
-
         private BlockHeader? _blockParent = null;
 
         public BlockHeader? BlockParent
@@ -57,10 +52,10 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
+        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             parentHeader ??= BlockParent;
-            return base.TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
+            return base.TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes, flags);
         }
     }
 }

@@ -14,6 +14,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
@@ -28,12 +29,11 @@ namespace Nethermind.Monitoring.Metrics
 {
     public partial class MetricsController : IMetricsController
     {
-        private readonly int _intervalSeconds;
-        private Timer _timer = null!;
-        private static bool _staticLabelsInitialized = false;
+        private readonly int _intervalMilliseconds;
+        private static bool _staticLabelsInitialized;
 
         private readonly Dictionary<Type, IMetricUpdater[]> _metricUpdaters = new();
-        private readonly HashSet<Type> _metricTypes = new();
+        private volatile IMetricUpdater[][] _updaterValues = [];
 
         // Largely for testing reason
         internal readonly Dictionary<string, IMetricUpdater> _individualUpdater = new();
@@ -41,7 +41,7 @@ namespace Nethermind.Monitoring.Metrics
         private readonly bool _useCounters;
         private readonly bool _enableDetailedMetric;
 
-        private readonly List<Action> _callbacks = new();
+        private volatile Action[] _callbacks = [];
 
         public interface IMetricUpdater
         {
@@ -89,13 +89,21 @@ namespace Nethermind.Monitoring.Metrics
                             break;
                         case ITuple keyAsTuple:
                             {
-                                using ArrayPoolList<string> labels = new ArrayPoolList<string>(keyAsTuple.Length, keyAsTuple.Length);
-                                for (int i = 0; i < keyAsTuple.Length; i++)
+                                ArrayPoolListRef<string> labels = new(keyAsTuple.Length, keyAsTuple.Length);
+                                try
                                 {
-                                    labels[i] = keyAsTuple[i]!.ToString()!;
+                                    for (int i = 0; i < keyAsTuple.Length; i++)
+                                    {
+                                        labels[i] = keyAsTuple[i]!.ToString()!;
+                                    }
+
+                                    Update(value, labels.AsSpan());
+                                }
+                                finally
+                                {
+                                    labels.Dispose();
                                 }
 
-                                Update(value, labels.AsSpan());
                                 break;
                             }
                         default:
@@ -149,14 +157,6 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void RegisterMetrics(Type type)
-        {
-            if (_metricTypes.Add(type))
-            {
-                EnsurePropertiesCached(type);
-            }
-        }
-
         internal record CommonMetricInfo(string Name, string Description, Dictionary<string, string> Tags);
 
         private static CommonMetricInfo DetermineMetricInfo(MemberInfo member)
@@ -174,7 +174,7 @@ namespace Nethermind.Monitoring.Metrics
 
         private static Gauge CreateMemberInfoMetricsGauge(MemberInfo member, params string[] labels)
         {
-            var metricInfo = DetermineMetricInfo(member);
+            CommonMetricInfo metricInfo = DetermineMetricInfo(member);
             return CreateGauge(metricInfo.Name, metricInfo.Description, metricInfo.Tags, labels);
         }
 
@@ -188,7 +188,7 @@ namespace Nethermind.Monitoring.Metrics
             { nameof(ProductInfo.Version), ProductInfo.Version },
             { nameof(ProductInfo.Commit), ProductInfo.Commit },
             { nameof(ProductInfo.Runtime), ProductInfo.Runtime },
-            { nameof(ProductInfo.BuildTimestamp), ProductInfo.BuildTimestamp.ToUnixTimeSeconds().ToString() },
+            { nameof(ProductInfo.SourceDate), ProductInfo.SourceDate.ToUnixTimeSeconds().ToString() },
         };
 
         private static ObservableInstrument<double> CreateDiagnosticsMetricsObservableGauge(Meter meter, MemberInfo member, Func<double> observer)
@@ -206,11 +206,11 @@ namespace Nethermind.Monitoring.Metrics
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
             PropertyInfo info = tagsData.FirstOrDefault(info => info.Name == givenName) ?? throw new NotSupportedException("Developer error: a requested static description field was not implemented!");
-            object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialised!");
+            object value = info.GetValue(null) ?? throw new NotSupportedException("Developer error: a requested static description field was not initialized!");
             return value.ToString()!;
         }
 
-        private void EnsurePropertiesCached(Type type)
+        public void RegisterMetrics(Type type)
         {
             if (!_metricUpdaters.ContainsKey(type))
             {
@@ -222,8 +222,13 @@ namespace Nethermind.Monitoring.Metrics
 
                 IList<IMetricUpdater> metricUpdaters = new List<IMetricUpdater>();
                 IEnumerable<MemberInfo> members = type.GetProperties().Concat<MemberInfo>(type.GetFields());
-                foreach (var member in members)
+                foreach (MemberInfo member in members)
                 {
+                    if (member.GetCustomAttribute<DetailedMetricOnFlagAttribute>() is not null)
+                    {
+                        (member as PropertyInfo)?.SetValue(null, _enableDetailedMetric);
+                        continue;
+                    }
                     if (member.GetCustomAttribute<DetailedMetricAttribute>() is not null && !_enableDetailedMetric) continue;
                     if (TryCreateMetricUpdater(type, meter, member, out IMetricUpdater updater))
                     {
@@ -231,6 +236,7 @@ namespace Nethermind.Monitoring.Metrics
                     }
                 }
                 _metricUpdaters[type] = metricUpdaters.ToArray();
+                _updaterValues = [.. _metricUpdaters.Values];
             }
         }
 
@@ -276,7 +282,7 @@ namespace Nethermind.Monitoring.Metrics
 
             if (!memberType.IsEnumerable())
             {
-                Func<double> accessor = GetValueAccessor(memberInfo);
+                Func<double> accessor = memberInfo.GetValueAccessor<double>();
 
                 if (meter is not null)
                 {
@@ -316,22 +322,32 @@ namespace Nethermind.Monitoring.Metrics
 
         public MetricsController(IMetricsConfig metricsConfig)
         {
-            if (!_staticLabelsInitialized)
+            if (metricsConfig.InitializeStaticLabels && !_staticLabelsInitialized)
             {
                 _staticLabelsInitialized = true;
                 Prometheus.Metrics.DefaultRegistry.SetStaticLabels(_commonStaticTags);
             }
 
-            _intervalSeconds = metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds;
+            _intervalMilliseconds = (metricsConfig.IntervalSeconds == 0 ? 5 : metricsConfig.IntervalSeconds) * 1000 / 2;
             _useCounters = metricsConfig.CountersEnabled;
             _enableDetailedMetric = metricsConfig.EnableDetailedMetric;
         }
 
-        public void StartUpdating() => _timer = new Timer(UpdateAllMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
+        public async Task RunTimer(CancellationToken cancellationToken)
+        {
+            using PeriodicTimer standardTimer = new(TimeSpan.FromMilliseconds(_intervalMilliseconds));
 
-        public void StopUpdating() => _timer?.Change(Timeout.Infinite, 0);
-
-        private void UpdateAllMetrics(object? state) => UpdateAllMetrics();
+            try
+            {
+                while (await standardTimer.WaitForNextTickAsync(cancellationToken))
+                {
+                    UpdateAllMetrics();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
 
         public void UpdateAllMetrics()
         {
@@ -340,28 +356,16 @@ namespace Nethermind.Monitoring.Metrics
                 callback();
             }
 
-            foreach (Type metricType in _metricTypes)
+            foreach (IMetricUpdater[] updaters in _updaterValues)
             {
-                UpdateMetrics(metricType);
+                foreach (IMetricUpdater metricUpdater in updaters)
+                {
+                    metricUpdater.Update();
+                }
             }
         }
 
-        public void AddMetricsUpdateAction(Action callback)
-        {
-            _callbacks.Add(callback);
-        }
-
-        private void UpdateMetrics(Type type)
-        {
-            EnsurePropertiesCached(type);
-
-            foreach (IMetricUpdater metricUpdater in _metricUpdaters[type])
-            {
-                metricUpdater.Update();
-            }
-        }
-
-        private static Func<double> GetValueAccessor(MemberInfo member) => () => Convert.ToDouble(member.GetValue<object>());
+        public void AddMetricsUpdateAction(Action callback) => _callbacks = [.. _callbacks, callback];
 
         private static string GetGaugeNameKey(params string[] par) => string.Join('.', par);
 

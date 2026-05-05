@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -9,11 +10,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<FindNodeMsg>
+public class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<FindNodeMsg>
 {
-    public FindNodeMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver) { }
-
     public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg)
     {
         int length = GetLength(msg, out int contentLength);
@@ -32,11 +30,12 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessa
     public FindNodeMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlpStream = new(Data);
-        rlpStream.ReadSequenceLength();
-        byte[] searchedNodeId = rlpStream.DecodeByteArray();
-        long expirationTime = rlpStream.DecodeLong();
+        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        ctx.ReadSequenceLength();
+        byte[] searchedNodeId = ctx.DecodeByteArray(NodeIdRlpLimit);
+        long expirationTime = ctx.DecodeLong();
 
+        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         FindNodeMsg findNodeMsg = new(FarPublicKey, expirationTime, searchedNodeId);
         return findNodeMsg;
     }

@@ -23,14 +23,14 @@ public class ShutterTxSource(
     : ITxSource, IShutterTxSignal
 {
     private readonly LruCache<ulong, ShutterTransactions?> _txCache = new(5, "Shutter tx cache");
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterTxSource>();
     private ulong _keyWaitTaskId = 0;
     private readonly Dictionary<ulong, Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>> _keyWaitTasks = [];
     private readonly Lock _syncObject = new();
 
     public bool SupportsBlobs => false;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (!shutterConfig.Validator)
         {
@@ -43,9 +43,9 @@ public class ShutterTxSource(
         {
             (buildingSlot, _) = slotTime.GetBuildingSlotAndOffset(payloadAttributes!.Timestamp * 1000);
         }
-        catch (SlotTime.SlotCalulationException e)
+        catch (SlotTime.SlotCalculationException e)
         {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Could not calculate Shutter building slot: {e}");
+            _logger.DebugWarn($"Could not calculate Shutter building slot: {e}");
             return [];
         }
 
@@ -87,21 +87,21 @@ public class ShutterTxSource(
 
     private void CancelWaitForTransactions(ulong slot, ulong taskId)
     {
-        if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
+        lock (_syncObject)
         {
-            if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
+            if (_keyWaitTasks.TryGetValue(slot, out Dictionary<ulong, (TaskCompletionSource, CancellationTokenRegistration)>? slotWaitTasks))
             {
-                waitTask.Tcs.TrySetException(new OperationCanceledException());
-                waitTask.Ctr.Dispose();
+                if (slotWaitTasks.TryGetValue(taskId, out (TaskCompletionSource Tcs, CancellationTokenRegistration Ctr) waitTask))
+                {
+                    waitTask.Tcs.TrySetException(new OperationCanceledException());
+                    waitTask.Ctr.Dispose();
+                }
+                slotWaitTasks.Remove(taskId);
             }
-            slotWaitTasks.Remove(taskId);
         }
     }
 
-    public bool HaveTransactionsArrived(ulong slot)
-    {
-        return _txCache.Contains(slot);
-    }
+    public bool HaveTransactionsArrived(ulong slot) => _txCache.Contains(slot);
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {
@@ -124,5 +124,10 @@ public class ShutterTxSource(
     }
 
     public void Dispose()
-        => _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
+    {
+        lock (_syncObject)
+        {
+            _keyWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask => waitTask.Value.Item2.Dispose()));
+        }
+    }
 }

@@ -9,7 +9,6 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.StateSync;
 using NSubstitute;
@@ -20,6 +19,7 @@ using System.Net;
 using FluentAssertions;
 using Nethermind.Core.Test;
 using Nethermind.Trie;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests;
 
@@ -37,7 +37,8 @@ public class StateSyncDispatcherTests
 
     private readonly PublicKey _publicKey = new("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
-    private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(100).TestObject);
+    private const int ChainLength = 100;
+    private static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, static () => Build.A.BlockTree().OfChainLength(ChainLength).TestObject);
 
     [SetUp]
     public void Setup()
@@ -49,9 +50,8 @@ public class StateSyncDispatcherTests
         _pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance, 25);
         _pool.Start();
 
-        ISyncFeed<StateSyncBatch>? feed = Substitute.For<ISyncFeed<StateSyncBatch>>();
         _dispatcher =
-            new StateSyncDispatcherTester(feed, new StateSyncDownloader(_logManager), _pool, new StateSyncAllocationStrategyFactory(), _logManager);
+            new StateSyncDispatcherTester(new StateSyncDownloader(_logManager), _pool);
     }
 
     [TearDown]
@@ -69,6 +69,7 @@ public class StateSyncDispatcherTests
         peer.ProtocolVersion.Returns((byte)66);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
+        peer.HeadNumber.Returns(ChainLength - 1);
         _pool.AddPeer(peer);
 
         using StateSyncBatch batch = new(
@@ -78,7 +79,7 @@ public class StateSyncDispatcherTests
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
-        using var _ = await peer.ReceivedWithAnyArgs(1).GetNodeData(default!, default);
+        using IByteArrayList _ = await peer.ReceivedWithAnyArgs(1).GetNodeData(default!, default);
     }
 
     [Test]
@@ -89,6 +90,7 @@ public class StateSyncDispatcherTests
         peer.ProtocolVersion.Returns((byte)67);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
+        peer.HeadNumber.Returns(ChainLength - 1);
         ISnapSyncPeer snapPeer = Substitute.For<ISnapSyncPeer>();
         peer.TryGetSatelliteProtocol("snap", out Arg.Any<ISnapSyncPeer>()).Returns(
             x =>

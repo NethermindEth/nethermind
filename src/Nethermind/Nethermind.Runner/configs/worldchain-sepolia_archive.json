@@ -4,8 +4,7 @@
     "ChainSpecPath": "chainspec/worldchain-sepolia.json.zst",
     "GenesisHash": "0xf1deb67ee953f94d8545d2647918687fa8ba1f30fa6103771f11b7c483984070",
     "BaseDbPath": "nethermind_db/worldchain-sepolia_archive",
-    "LogFileName": "worldchain-sepolia_archive.log",
-    "DisableGcOnNewPayload": false
+    "LogFileName": "worldchain-sepolia_archive.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"

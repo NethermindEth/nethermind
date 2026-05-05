@@ -43,10 +43,10 @@ namespace Nethermind.Network.Benchmarks
 
         private void SetupAll(bool useLimboOutput = false)
         {
-            var secrets = NetTestVectors.GetSecretsPair();
+            (EncryptionSecrets A, EncryptionSecrets B) secrets = NetTestVectors.GetSecretsPair();
 
-            FrameCipher frameCipher = new FrameCipher(secrets.A.AesSecret);
-            FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
+            FrameCipher frameCipher = new(secrets.A.AesSecret);
+            FrameMacProcessor frameMacProcessor = new(TestItem.IgnoredPublicKey, secrets.A);
             _zeroSplitter = new TestZeroSplitter();
             _zeroSplitter.DisableFraming();
             _zeroEncoder = new TestZeroEncoder(frameCipher, frameMacProcessor);
@@ -62,35 +62,21 @@ namespace Nethermind.Network.Benchmarks
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
-            _serializationService = new MessageSerializationService();
-            _serializationService.Register(_newBlockMessageSerializer);
+            _serializationService = new MessageSerializationService(
+                SerializerInfo.Create(_newBlockMessageSerializer)
+                );
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
-        private class TestZeroEncoder : ZeroFrameEncoder
+        private class TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+            : ZeroFrameEncoder(frameCipher, frameMacProcessor)
         {
-            public void Encode(IByteBuffer message, IByteBuffer buffer)
-            {
-                base.Encode(null, message, buffer);
-            }
-
-            public TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
-                : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-            }
+            public void Encode(IByteBuffer message, IByteBuffer buffer) => base.Encode(null, message, buffer);
         }
 
         private class TestZeroSplitter : ZeroPacketSplitter
         {
-            public TestZeroSplitter()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            public void Encode(IByteBuffer input, IByteBuffer output)
-            {
-                base.Encode(null, input, output);
-            }
+            public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(null, input, output);
         }
 
         public class TestZeroSnappy : ZeroSnappyEncoder
@@ -100,10 +86,7 @@ namespace Nethermind.Network.Benchmarks
             {
             }
 
-            public void TestEncode(IByteBuffer input, IByteBuffer output)
-            {
-                Encode(null, input, output);
-            }
+            public void TestEncode(IByteBuffer input, IByteBuffer output) => Encode(null, input, output);
         }
 
         private void Check()

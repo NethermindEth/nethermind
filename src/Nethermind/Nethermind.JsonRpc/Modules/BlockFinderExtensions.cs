@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,6 +10,22 @@ namespace Nethermind.JsonRpc.Modules
 {
     public static class BlockFinderExtensions
     {
+        public const string HeaderNotFound = "header not found";
+
+        public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
+        {
+            long? requestedBlock = blockParameter.BlockNumber;
+            if (requestedBlock is null)
+            {
+                SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);
+                if (!headerResult.IsError)
+                {
+                    requestedBlock = headerResult.Object.Number;
+                }
+            }
+            return requestedBlock < blockFinder.GetLowestBlock();
+        }
+
         public static SearchResult<BlockHeader> SearchForHeader(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
             if (blockFinder.Head is null)
@@ -20,26 +35,18 @@ namespace Nethermind.JsonRpc.Modules
 
             blockParameter ??= BlockParameter.Latest;
 
-            BlockHeader header;
-            if (blockParameter.RequireCanonical)
+            BlockHeader header = blockFinder.FindHeader(blockParameter);
+            if (blockParameter.RequireCanonical && header is null && !allowNulls && blockParameter.BlockHash is not null)
             {
-                header = blockFinder.FindHeader(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-                if (header is null && !allowNulls)
+                header = blockFinder.FindHeader(blockParameter.BlockHash);
+                if (header is not null)
                 {
-                    header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header is not null)
-                    {
-                        return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
-                    }
+                    return new SearchResult<BlockHeader>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
-            }
-            else
-            {
-                header = blockFinder.FindHeader(blockParameter);
             }
 
             return header is null && !allowNulls
-                ? new SearchResult<BlockHeader>($"{blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
+                ? new SearchResult<BlockHeader>(HeaderNotFound, ErrorCodes.ResourceNotFound)
                 : new SearchResult<BlockHeader>(header);
         }
 
@@ -47,22 +54,14 @@ namespace Nethermind.JsonRpc.Modules
         {
             blockParameter ??= BlockParameter.Latest;
 
-            Block block;
-            if (blockParameter.RequireCanonical)
+            Block block = blockFinder.FindBlock(blockParameter);
+            if (blockParameter.RequireCanonical && block is null && !allowNulls && blockParameter.BlockHash is not null)
             {
-                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
-                if (block is null && !allowNulls)
+                BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
+                if (header is not null)
                 {
-                    BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
-                    if (header is not null)
-                    {
-                        return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
-                    }
+                    return new SearchResult<Block>($"{blockParameter.BlockHash} block is not canonical", ErrorCodes.InvalidInput);
                 }
-            }
-            else
-            {
-                block = blockFinder.FindBlock(blockParameter);
             }
 
             if (block is null)
@@ -72,11 +71,16 @@ namespace Nethermind.JsonRpc.Modules
                     return new SearchResult<Block>("Unknown block error", ErrorCodes.UnknownBlockError);
                 }
 
-                if (!allowNulls)
+                if (blockFinder.IsBlockPruned(blockParameter))
                 {
                     return new SearchResult<Block>(
-                        $"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found",
-                        ErrorCodes.ResourceNotFound);
+                        $"pruned history unavailable for block {blockParameter}",
+                        ErrorCodes.PrunedHistoryUnavailable);
+                }
+
+                if (!allowNulls)
+                {
+                    return new SearchResult<Block>(HeaderNotFound, ErrorCodes.ResourceNotFound);
                 }
             }
 

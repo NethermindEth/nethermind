@@ -3,11 +3,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Blocks;
 
 public interface IBlockhashStore
 {
-    public void ApplyBlockhashStateChanges(BlockHeader blockHeader);
-    public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber);
+    public void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec);
+    public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber, IReleaseSpec spec);
 }

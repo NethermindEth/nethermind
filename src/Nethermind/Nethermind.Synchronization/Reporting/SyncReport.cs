@@ -28,15 +28,16 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        private static readonly TimeSpan _defaultReportingIntervals = TimeSpan.FromSeconds(10);
+        private readonly TimeSpan _defaultReportingIntervals;
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SyncReport>() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
+            _defaultReportingIntervals = TimeSpan.FromSeconds(_logger.IsDebug ? 1 : 10);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
 
             FastBlocksHeaders = new("Old Headers", logManager);
@@ -148,11 +149,11 @@ namespace Nethermind.Synchronization.Reporting
                 {
                     if (_nodeInfoType++ % 2 == 0)
                     {
-                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
+                        _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers: {_syncPeerPool.PeerCount} | with best block: {_syncPeerPool.InitializedPeersCount}"));
                     }
                     else
                     {
-                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | node diversity : "));
+                        _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers: {_syncPeerPool.PeerCount} | node diversity : "));
                     }
                 }
             }
@@ -233,20 +234,11 @@ namespace Nethermind.Synchronization.Reporting
             if (_logger.IsTrace) _logger.Trace(builder.ToString());
         }
 
-        private void WriteStateNodesReport()
-        {
-            _logger.Info("Syncing state nodes");
-        }
+        private void WriteStateNodesReport() => _logger.Info("Syncing state nodes");
 
-        private void WriteDbSyncReport()
-        {
-            _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
-        }
+        private void WriteDbSyncReport() => _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
 
-        private void WriteNotStartedReport()
-        {
-            _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
-        }
+        private void WriteNotStartedReport() => _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
 
         private void WriteFullSyncReport()
         {
@@ -281,14 +273,8 @@ namespace Nethermind.Synchronization.Reporting
             }
         }
 
-        private void WriteBeaconSyncReport()
-        {
-            BeaconHeaders.LogProgress();
-        }
+        private void WriteBeaconSyncReport() => BeaconHeaders.LogProgress();
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

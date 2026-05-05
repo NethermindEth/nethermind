@@ -4,24 +4,20 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test
 {
     public partial class ConsensusHelperTests
     {
-        private class GethLikeTxTraceJsonRpcDataSource : JsonRpcDataSource<GethLikeTxTrace>,
+        private class GethLikeTxTraceJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : JsonRpcDataSource<GethLikeTxTrace>(uri, serializer),
             IConsensusDataSource<GethLikeTxTrace>,
             IConsensusDataSourceWithParameter<Hash256>,
             IConsensusDataSourceWithParameter<GethTraceOptions>
         {
             private Hash256 _transactionHash = null!;
             private GethTraceOptions _options = null!;
-
-            public GethLikeTxTraceJsonRpcDataSource(Uri uri, IJsonSerializer serializer) : base(uri, serializer)
-            {
-            }
 
             Hash256 IConsensusDataSourceWithParameter<Hash256>.Parameter
             {

@@ -4,8 +4,8 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Withdrawals;
 
@@ -18,7 +18,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<WithdrawalProcessor>();
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 

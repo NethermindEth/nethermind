@@ -43,7 +43,7 @@ public class ShutterTxLoader(
     private bool _loadFromReceipts = false;
     private readonly int _maxTransactions = cfg.EncryptedGasLimit / 21000;
     private readonly ShutterTxFilter _txFilter = new(specProvider, logManager);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterTxLoader>();
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {
@@ -51,7 +51,7 @@ public class ShutterTxLoader(
 
         long offset = time.GetCurrentOffsetMs(keys.Slot);
         Metrics.ShutterKeysReceivedTimeOffset = offset;
-        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms fter";
+        string offsetText = offset < 0 ? $"{-offset}ms before" : $"{offset}ms after";
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count} encrypted transactions from Shutter sequencer contract for slot {keys.Slot} at time {offsetText} slot start...");
 
         using ArrayPoolList<(Transaction Tx, UInt256 GasLimit)>? decrypted = DecryptSequencedTransactions(sequencedTransactions, keys.Keys);
@@ -119,12 +119,12 @@ public class ShutterTxLoader(
 
         using ArrayPoolList<int> sortedKeyIndexes = new(txCount, txCount);
         int keyIndex = 0;
-        foreach (SequencedTransaction index in sortedIndexes)
+        foreach (SequencedTransaction index in sortedIndexes.AsSpan())
         {
             sortedKeyIndexes[index.Index] = keyIndex++;
         }
 
-        using var decryptionKeysList = new ArrayPoolList<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)>(keyCount, decryptionKeys);
+        using ArrayPoolList<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> decryptionKeysList = new(keyCount, decryptionKeys);
 
         return sequencedTransactions
             .AsParallel()
@@ -166,23 +166,23 @@ public class ShutterTxLoader(
         }
         catch (ShutterCrypto.ShutterCryptoException e)
         {
-            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Could not decode encrypted Shutter transaction", e);
+            _logger.DebugError("Could not decode encrypted Shutter transaction", e);
         }
         catch (Bls.BlsException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not decrypt Shutter transaction with invalid key", e);
+            _logger.DebugError("Could not decrypt Shutter transaction with invalid key", e);
         }
         catch (RlpException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not decode decrypted Shutter transaction", e);
+            _logger.DebugError("Could not decode decrypted Shutter transaction", e);
         }
         catch (ArgumentException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Could not recover Shutter transaction sender address", e);
+            _logger.DebugError("Could not recover Shutter transaction sender address", e);
         }
         catch (InvalidDataException e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Decrypted Shutter transaction had no signature", e);
+            _logger.DebugError("Decrypted Shutter transaction had no signature", e);
         }
 
         return null;

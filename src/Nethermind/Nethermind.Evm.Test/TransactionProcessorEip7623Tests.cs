@@ -1,22 +1,21 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Grpc.Core;
+using System;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -25,28 +24,31 @@ public class TransactionProcessorEip7623Tests
 {
     private ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateCloser;
 
     [SetUp]
     public void Setup()
     {
-        MemDb stateDb = new();
         _specProvider = new TestSpecProvider(Prague.Instance);
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
-    [TestCase(21006, true, TestName = "GasLimit=IntrinsicGas")]
-    [TestCase(21010, false, TestName = "GasLimit=FloorGas")]
+    [TearDown]
+    public void TearDown() => _worldStateCloser?.Dispose();
 
-    public void transaction_validation_intrinsic_below_floor(long gasLimit, bool isFail)
+    [TestCase(21006, false, TestName = "GasLimit=IntrinsicGas")]
+    [TestCase(21010, true, TestName = "GasLimit=FloorGas")]
+
+    public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -55,7 +57,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
             .WithTo(TestItem.AddressB)
-            .WithValue(100.GWei())
+            .WithValue(100.GWei)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -66,13 +68,13 @@ public class TransactionProcessorEip7623Tests
             .WithGasLimit(10000000).TestObject;
 
         TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
-        Assert.That(result.Fail, Is.EqualTo(isFail));
+        Assert.That(result.TransactionExecuted, Is.EqualTo(executed));
     }
 
     [Test]
     public void balance_validation_intrinsic_below_floor()
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -81,7 +83,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
             .WithTo(TestItem.AddressB)
-            .WithValue(100.GWei())
+            .WithValue(100.GWei)
             .WithGasLimit(21010)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -94,6 +96,6 @@ public class TransactionProcessorEip7623Tests
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         UInt256 balance = _stateProvider.GetBalance(TestItem.AddressA);
-        Assert.That(balance, Is.EqualTo(1.Ether() - 100.GWei() - 21010));
+        Assert.That(balance, Is.EqualTo(1.Ether - 100.GWei - 21010));
     }
 }

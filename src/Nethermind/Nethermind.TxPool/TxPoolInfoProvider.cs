@@ -1,66 +1,160 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.TxPool
+namespace Nethermind.TxPool;
+
+public class TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxPool txPool) : ITxPoolInfoProvider
 {
-    public class TxPoolInfoProvider : ITxPoolInfoProvider
+    public TxPoolInfoProvider(IChainHeadInfoProvider chainHeadInfoProvider, ITxPool txPool)
+        : this(chainHeadInfoProvider.ReadOnlyStateProvider, txPool) { }
+
+    // Blob txs are intentionally not exposed via txpool_content / txpool_contentFrom; matches
+    // Geth's BlobPool.Content() returning empty stubs (see core/txpool/blobpool/blobpool.go).
+    // GetCounts() still includes blobs for txpool_status parity.
+    public TxPoolInfo GetInfo()
     {
-        private readonly IAccountStateProvider _stateReader;
-        private readonly ITxPool _txPool;
+        IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
 
-        public TxPoolInfoProvider(IAccountStateProvider accountStateProvider, ITxPool txPool)
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new(standardBySender.Count);
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new(standardBySender.Count);
+
+        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
         {
-            _stateReader = accountStateProvider ?? throw new ArgumentNullException(nameof(accountStateProvider));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            AddSenderToInfo(group.Key, group.Value, blobTransactions: null, pendingTransactions, queuedTransactions);
         }
 
-        public TxPoolInfo GetInfo()
+        return new TxPoolInfo(pendingTransactions, queuedTransactions);
+    }
+
+    public TxPoolSenderInfo GetSenderInfo(Address address)
+    {
+        Transaction[] standard = txPool.GetPendingTransactionsBySender(address);
+        if (standard.Length == 0) return TxPoolSenderInfo.Empty;
+
+        (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
+            SplitByNonce(standard, blobs: null, accountStateProvider.GetNonce(address));
+        return new TxPoolSenderInfo(pending, queued);
+    }
+
+    public TxPoolCounts GetCounts()
+    {
+        IDictionary<AddressAsKey, Transaction[]> standardBySender = txPool.GetPendingTransactionsBySender();
+        IDictionary<AddressAsKey, Transaction[]> blobBySender = txPool.GetPendingLightBlobTransactionsBySender();
+
+        int pendingTotal = 0;
+        int queuedTotal = 0;
+
+        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in standardBySender)
         {
-            // only std txs are picked here. Should we add blobs?
-            // BTW this class should be rewritten or removed - a lot of unnecessary allocations
-            var groupedTransactions = _txPool.GetPendingTransactionsBySender();
-            var pendingTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
-            var queuedTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
-            foreach (KeyValuePair<AddressAsKey, Transaction[]> group in groupedTransactions)
+            blobBySender.TryGetValue(group.Key, out Transaction[]? blobTransactions);
+            AddSenderToCounts(group.Key, group.Value, blobTransactions, ref pendingTotal, ref queuedTotal);
+        }
+
+        foreach (KeyValuePair<AddressAsKey, Transaction[]> group in blobBySender)
+        {
+            if (standardBySender.ContainsKey(group.Key)) continue;
+            AddSenderToCounts(group.Key, standardTransactions: null, group.Value, ref pendingTotal, ref queuedTotal);
+        }
+
+        return new TxPoolCounts(pendingTotal, queuedTotal);
+    }
+
+    private void AddSenderToInfo(
+        Address sender,
+        Transaction[]? standardTransactions,
+        Transaction[]? blobTransactions,
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions,
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions)
+    {
+        int total = (standardTransactions?.Length ?? 0) + (blobTransactions?.Length ?? 0);
+        if (total == 0) return;
+
+        (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued) =
+            SplitByNonce(standardTransactions, blobTransactions, accountStateProvider.GetNonce(sender));
+        if (pending.Count != 0) pendingTransactions[sender] = pending;
+        if (queued.Count != 0) queuedTransactions[sender] = queued;
+    }
+
+    private void AddSenderToCounts(
+        Address sender,
+        Transaction[]? standardTransactions,
+        Transaction[]? blobTransactions,
+        ref int pendingTotal,
+        ref int queuedTotal)
+    {
+        int total = (standardTransactions?.Length ?? 0) + (blobTransactions?.Length ?? 0);
+        if (total == 0) return;
+
+        int senderPending = CountPending(standardTransactions, blobTransactions, accountStateProvider.GetNonce(sender));
+        pendingTotal += senderPending;
+        queuedTotal += total - senderPending;
+    }
+
+    // Streams a two-pointer merge of two nonce-sorted bucket arrays from the standard and
+    // blob pools (TxDistinctSortedPool sorts each bucket by nonce). Pending = txs whose
+    // nonce continues from accountNonce; gap → queued. Mirrors Geth's split.
+    // Note: TxTypeTxFilter prevents a sender from holding both types simultaneously, so
+    // the merge case is rare in practice but the API handles it correctly anyway.
+    private static (IDictionary<ulong, Transaction> pending, IDictionary<ulong, Transaction> queued)
+        SplitByNonce(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
+    {
+        Dictionary<ulong, Transaction> pending = new();
+        Dictionary<ulong, Transaction> queued = new();
+        UInt256 expectedNonce = accountNonce;
+
+        int i = 0;
+        int j = 0;
+        int n = standard?.Length ?? 0;
+        int m = blobs?.Length ?? 0;
+        while (i < n || j < m)
+        {
+            Transaction next = j == m || (i < n && standard![i].Nonce <= blobs![j].Nonce)
+                ? standard![i++]
+                : blobs![j++];
+
+            ulong nonce = (ulong)next.Nonce;
+            if (next.Nonce == expectedNonce)
             {
-                Address address = group.Key;
-                var accountNonce = _stateReader.GetNonce(address);
-                var expectedNonce = accountNonce;
-                var pending = new Dictionary<ulong, Transaction>();
-                var queued = new Dictionary<ulong, Transaction>();
-                var transactionsOrderedByNonce = group.Value.OrderBy(static t => t.Nonce);
-
-                foreach (var transaction in transactionsOrderedByNonce)
-                {
-                    ulong transactionNonce = (ulong)transaction.Nonce;
-                    if (transaction.Nonce == expectedNonce)
-                    {
-                        pending.Add(transactionNonce, transaction);
-                        expectedNonce = transaction.Nonce + 1;
-                    }
-                    else
-                    {
-                        queued.Add(transactionNonce, transaction);
-                    }
-                }
-
-                if (pending.Count != 0)
-                {
-                    pendingTransactions[address] = pending;
-                }
-
-                if (queued.Count != 0)
-                {
-                    queuedTransactions[address] = queued;
-                }
+                pending[nonce] = next;
+                expectedNonce = next.Nonce + 1;
             }
-
-            return new TxPoolInfo(pendingTransactions, queuedTransactions);
+            else
+            {
+                // Indexer (not Add) so a duplicate nonce — should be impossible given
+                // TxTypeTxFilter, but defensive — does not crash the RPC handler.
+                queued[nonce] = next;
+            }
         }
+
+        return (pending, queued);
+    }
+
+    private static int CountPending(Transaction[]? standard, Transaction[]? blobs, UInt256 accountNonce)
+    {
+        int pending = 0;
+        UInt256 expectedNonce = accountNonce;
+
+        int i = 0;
+        int j = 0;
+        int n = standard?.Length ?? 0;
+        int m = blobs?.Length ?? 0;
+        while (i < n || j < m)
+        {
+            Transaction next = j == m || (i < n && standard![i].Nonce <= blobs![j].Nonce)
+                ? standard![i++]
+                : blobs![j++];
+
+            if (next.Nonce == expectedNonce)
+            {
+                pending++;
+                expectedNonce += UInt256.One;
+            }
+        }
+
+        return pending;
     }
 }

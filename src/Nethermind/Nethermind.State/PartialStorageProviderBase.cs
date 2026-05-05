@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,18 +7,18 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
-using Nethermind.State.Tracing;
 
 namespace Nethermind.State
 {
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase
+    internal abstract class PartialStorageProviderBase(ILogManager? logManager)
     {
         protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
-        protected readonly ILogger _logger;
+        protected readonly ILogger _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private readonly List<Change> _keptInCache = new();
 
@@ -26,30 +26,19 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected PartialStorageProviderBase(ILogManager? logManager)
-        {
-            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
         /// <summary>
         /// Get the storage value at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
-        {
-            return GetCurrentValue(in storageCell);
-        }
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell) => GetCurrentValue(in storageCell);
 
         /// <summary>
         /// Set the provided value to storage at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
-        {
-            PushUpdate(in storageCell, newValue);
-        }
+        public void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
 
         /// <summary>
         /// Creates a restartable snapshot.
@@ -119,6 +108,7 @@ namespace Nethermind.State
                 if (stack.Count == 0)
                 {
                     _intraBlockCache.Remove(change.StorageCell);
+                    stack.Return();
                 }
             }
 
@@ -143,37 +133,8 @@ namespace Nethermind.State
         /// <summary>
         /// Commit persistent storage
         /// </summary>
-        public void Commit(bool commitRoots = true)
-        {
-            Commit(NullStateTracer.Instance, commitRoots);
-        }
-
-        protected struct ChangeTrace
-        {
-            public static readonly ChangeTrace _zeroBytes = new(StorageTree.ZeroBytes, StorageTree.ZeroBytes);
-            public static ref readonly ChangeTrace ZeroBytes => ref _zeroBytes;
-
-            public ChangeTrace(byte[]? before, byte[]? after)
-            {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = before ?? StorageTree.ZeroBytes;
-            }
-
-            public ChangeTrace(byte[]? after)
-            {
-                After = after ?? StorageTree.ZeroBytes;
-                Before = StorageTree.ZeroBytes;
-            }
-
-            public byte[] Before;
-            public byte[] After;
-        }
-
-        /// <summary>
-        /// Commit persistent storage
-        /// </summary>
         /// <param name="stateTracer">State tracer</param>
-        public void Commit(IStorageTracer tracer, bool commitRoots = true)
+        public void Commit(IStorageTracer tracer)
         {
             if (_changes.Count == 0)
             {
@@ -183,16 +144,6 @@ namespace Nethermind.State
             {
                 CommitCore(tracer);
             }
-
-            if (commitRoots)
-            {
-                CommitStorageRoots();
-            }
-        }
-
-        protected virtual void CommitStorageRoots()
-        {
-            // Commit storage roots
         }
 
         /// <summary>
@@ -200,22 +151,19 @@ namespace Nethermind.State
         /// Used for storage-specific logic
         /// </summary>
         /// <param name="tracer">Storage tracer</param>
-        protected virtual void CommitCore(IStorageTracer tracer)
-        {
-            _changes.Clear();
-            _intraBlockCache.Clear();
-            _transactionChangesSnapshots.Clear();
-        }
+        protected virtual void CommitCore(IStorageTracer tracer) => Reset();
 
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resetBlockChanges = true)
+        public virtual void Reset(bool resetBlockChanges = true) => Reset();
+
+        private void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _changes.Clear();
-            _intraBlockCache.Clear();
+            _intraBlockCache.ResetAndClear();
             _transactionChangesSnapshots.Clear();
         }
 
@@ -256,7 +204,7 @@ namespace Nethermind.State
         {
             StackList<int> stack = SetupRegistry(cell);
             stack.Push(_changes.Count);
-            _changes.Add(new Change(ChangeType.Update, cell, value));
+            _changes.Add(new Change(in cell, value, ChangeType.Update));
         }
 
         /// <summary>
@@ -268,7 +216,7 @@ namespace Nethermind.State
             ref StackList<int>? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
             if (!exists)
             {
-                value = new StackList<int>();
+                value = StackList<int>.Rent();
             }
 
             return value;
@@ -294,18 +242,11 @@ namespace Nethermind.State
         /// <summary>
         /// Used for tracking each change to storage
         /// </summary>
-        protected readonly struct Change
+        protected readonly struct Change(in StorageCell storageCell, byte[] value, ChangeType changeType)
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
-            {
-                StorageCell = storageCell;
-                Value = value;
-                ChangeType = changeType;
-            }
-
-            public readonly ChangeType ChangeType;
-            public readonly StorageCell StorageCell;
-            public readonly byte[] Value;
+            public readonly StorageCell StorageCell = storageCell;
+            public readonly byte[] Value = value;
+            public readonly ChangeType ChangeType = changeType;
 
             public bool IsNull => ChangeType == ChangeType.Null;
         }
@@ -318,7 +259,6 @@ namespace Nethermind.State
             Null = 0,
             JustCache,
             Update,
-            Destroy,
         }
     }
 }

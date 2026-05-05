@@ -19,13 +19,12 @@ public class NullTxTracer : TxTracer
     private const string ErrorMessage = "Null tracer should never receive any calls.";
     private NullTxTracer() { }
 
-    [DoesNotReturn]
-    [StackTraceHidden]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException(ErrorMessage);
 
-    public override void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
         => ThrowInvalidOperationException();
@@ -106,7 +105,7 @@ public class NullTxTracer : TxTracer
     public override void ReportExtraGasPressure(long extraGasPressure)
         => ThrowInvalidOperationException();
 
-    public override void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+    public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
         => ThrowInvalidOperationException();
 
     public override void ReportFees(UInt256 fees, UInt256 burntFees)

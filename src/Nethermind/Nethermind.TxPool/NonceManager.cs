@@ -9,15 +9,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
-public class NonceManager : INonceManager
+public class NonceManager(IAccountStateProvider accounts) : INonceManager
 {
     private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
-    private readonly IAccountStateProvider _accounts;
-
-    public NonceManager(IAccountStateProvider accounts)
-    {
-        _accounts = accounts;
-    }
+    private readonly IAccountStateProvider _accounts = accounts;
 
     public NonceLocker ReserveNonce(Address address, out UInt256 reservedNonce)
     {
@@ -63,8 +58,9 @@ public class NonceManager : INonceManager
 
         public NonceLocker TxWithNonceReceived(UInt256 nonce)
         {
+            NonceLocker locker = new(_accountLock, TxAccepted);
             _reservedNonce = nonce;
-            return new(_accountLock, TxAccepted);
+            return locker;
         }
 
         private void ReleaseNonces(UInt256 accountNonce)

@@ -35,8 +35,7 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         context.BlockProcessingQueue.IsEmpty.Returns(false);
         Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock();
 
-        await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
-        buildTask.IsCanceled.Should().BeFalse();
+        Assert.That(() => buildTask.IsCanceled, Is.False.After(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2, 10));
 
         context.BlockProcessingQueue.IsEmpty.Returns(true);
         Block? block = await buildTask;
@@ -52,8 +51,7 @@ public class BuildBlocksOnlyWhenNotProcessingTests
         using CancellationTokenSource cancellationTokenSource = new();
         Task<Block?> buildTask = context.MainBlockProductionTrigger.BuildBlock(cancellationToken: cancellationTokenSource.Token);
 
-        await Task.Delay(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2);
-        buildTask.IsCanceled.Should().BeFalse();
+        Assert.That(() => buildTask.IsCanceled, Is.False.After(BuildBlocksOnlyWhenNotProcessing.ChainNotYetProcessedMillisecondsDelay * 2, 10));
 
         cancellationTokenSource.Cancel();
 

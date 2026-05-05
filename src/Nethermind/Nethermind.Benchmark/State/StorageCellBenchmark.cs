@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.State.Tracing;
+using Nethermind.Evm.Tracing.State;
 
 namespace Nethermind.Benchmarks.State
 {
@@ -19,10 +19,7 @@ namespace Nethermind.Benchmarks.State
 
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _tracer = new StorageTracer();
-        }
+        public void Setup() => _tracer = new StorageTracer();
 
         [Benchmark(OperationsPerInvoke = OperationsPerInvoke)]
         public void Parameter_Passing()

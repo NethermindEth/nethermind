@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -11,29 +12,28 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<NeighborsMsg>
+public class NeighborsMsgSerializer(
+    IEcdsa ecdsa,
+    [KeyFilter(IProtectedPrivateKey.NodeKey)]
+    IPrivateKeyGenerator nodeKey,
+    INodeIdResolver nodeIdResolver)
+    : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<NeighborsMsg>
 {
-    private static readonly Func<RlpStream, Node> _decodeItem = static ctx =>
+    private static readonly RlpLimit NodesRlpLimit = RlpLimit.For<NeighborsMsg>(16, nameof(NeighborsMsg.Nodes));
+    private static readonly DecodeRlpValue<Node?> _decodeItem = static (ref Rlp.ValueDecoderContext ctx) =>
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
-
-        ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
         if (count > 3)
         {
             ctx.DecodeInt();
         }
 
-        ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);
         return new Node(new PublicKey(id), address);
     };
-
-    public NeighborsMsgSerializer(IEcdsa ecdsa,
-        IPrivateKeyGenerator nodeKey,
-        INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
 
     public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)
     {
@@ -43,10 +43,10 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
         NettyRlpStream stream = new(byteBuffer);
         stream.StartSequence(contentLength);
-        if (msg.Nodes.Length != 0)
+        if (msg.Nodes.Count != 0)
         {
             stream.StartSequence(nodesContentLength);
-            for (int i = 0; i < msg.Nodes.Length; i++)
+            for (int i = 0; i < msg.Nodes.Count; i++)
             {
                 Node node = msg.Nodes[i];
                 SerializeNode(stream, node.Address, node.Id.Bytes);
@@ -54,7 +54,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         }
         else
         {
-            stream.Encode(Rlp.OfEmptySequence);
+            stream.Encode(Rlp.OfEmptyList);
         }
 
         stream.Encode(msg.ExpirationTime);
@@ -67,24 +67,20 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     {
         (PublicKey FarPublicKey, _, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
 
-        NettyRlpStream rlp = new(Data);
-        rlp.ReadSequenceLength();
-        Node[] nodes = DeserializeNodes(rlp);
+        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        ctx.ReadSequenceLength();
+        Node[] nodes = ctx.DecodeArray(_decodeItem, limit: NodesRlpLimit)!;
 
-        long expirationTime = rlp.DecodeLong();
+        long expirationTime = ctx.DecodeLong();
+        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         NeighborsMsg msg = new(FarPublicKey, expirationTime, nodes);
         return msg;
     }
 
-    private static Node[] DeserializeNodes(RlpStream rlpStream)
-    {
-        return rlpStream.DecodeArray<Node>(_decodeItem);
-    }
-
-    private static int GetNodesLength(Node[] nodes, out int contentLength)
+    private static int GetNodesLength(ArraySegment<Node> nodes, out int contentLength)
     {
         contentLength = 0;
-        for (int i = 0; i < nodes.Length; i++)
+        for (int i = 0; i < nodes.Count; i++)
         {
             Node node = nodes[i];
             contentLength += Rlp.LengthOfSequence(GetLengthSerializeNode(node.Address, node.Id.Bytes));
@@ -102,13 +98,13 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     {
         int nodesContentLength = 0;
         int contentLength = 0;
-        if (msg.Nodes.Length != 0)
+        if (msg.Nodes.Count != 0)
         {
             contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
         }
         else
         {
-            contentLength += Rlp.OfEmptySequence.Bytes.Length;
+            contentLength += Rlp.OfEmptyList.Bytes.Length;
         }
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);

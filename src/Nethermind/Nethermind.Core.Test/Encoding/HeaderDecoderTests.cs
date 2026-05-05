@@ -38,7 +38,7 @@ public class HeaderDecoderTests
     [Test]
     public void Can_decode_aura()
     {
-        var auRaSignature = new byte[64];
+        byte[] auRaSignature = new byte[64];
         new Random().NextBytes(auRaSignature);
         BlockHeader header = Build.A.BlockHeader
             .WithAura(100000000, auRaSignature)
@@ -192,7 +192,7 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_encode_decode_with_missing_excess_blob_gass()
+    public void Can_encode_decode_with_missing_excess_blob_gas()
     {
         BlockHeader header = Build.A.BlockHeader
                 .WithHash(new Hash256("0x3d8b9cc98eee58243461bd5a83663384b50293cd1e459a6841cb005296305590"))
@@ -218,6 +218,24 @@ public class HeaderDecoderTests
 
         Rlp rlp = Rlp.Encode(header);
         _ = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+    }
+
+    [Test]
+    public void Can_encode_decode_with_zero_basefee_but_has_later_field()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(0)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakB)
+            .WithRequestsHash(Keccak.Zero).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        blockHeader.Should().BeEquivalentTo(header);
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()

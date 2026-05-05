@@ -9,14 +9,12 @@ using Nethermind.Abi;
 using Nethermind.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Shutter.Config;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Shutter;
 
 public class ShutterEon(
     IReadOnlyBlockTree blockTree,
-    ReadOnlyTxProcessingEnvFactory envFactory,
+    IShareableTxProcessorSource txSource,
     IAbiEncoder abiEncoder,
     IShutterConfig shutterConfig,
     ILogManager logManager) : IShutterEon
@@ -24,14 +22,13 @@ public class ShutterEon(
     private IShutterEon.Info? _currentInfo;
     private readonly Address _keyBroadcastContractAddress = new(shutterConfig.KeyBroadcastContractAddress!);
     private readonly Address _keyperSetManagerContractAddress = new(shutterConfig.KeyperSetManagerContractAddress!);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterEon>();
 
     public IShutterEon.Info? GetCurrentEonInfo() => _currentInfo;
 
     public void Update(BlockHeader header)
     {
-        Hash256 stateRoot = blockTree.Head!.StateRoot!;
-        IReadOnlyTxProcessingScope scope = envFactory.Create().Build(stateRoot);
+        using IReadOnlyTxProcessingScope scope = txSource.Build(blockTree.Head?.Header);
         ITransactionProcessor processor = scope.TransactionProcessor;
 
         try
@@ -69,7 +66,7 @@ public class ShutterEon(
                 }
                 else if (_logger.IsError)
                 {
-                    _logger.Error("Cannot use unfinalised Shutter keyper set contract.");
+                    _logger.Error("Cannot use unfinalized Shutter keyper set contract.");
                 }
             }
         }

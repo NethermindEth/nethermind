@@ -42,14 +42,11 @@ public class TransactionTests
 
 public static class TransactionTestExtensions
 {
-    public static void EqualToTransaction(this Transaction subject, Transaction expectation)
-    {
-        subject.Should().BeEquivalentTo(
+    public static void EqualToTransaction(this Transaction subject, Transaction expectation) => subject.Should().BeEquivalentTo(
             expectation,
             static o => o
                 .ComparingByMembers<Transaction>()
-                .Using<Memory<byte>>(static ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
-                .WhenTypeIs<Memory<byte>>()
+                .Using<ReadOnlyMemory<byte>>(static ctx => ctx.Subject.AsArray().Should().BeEquivalentTo(ctx.Expectation.AsArray()))
+                .WhenTypeIs<ReadOnlyMemory<byte>>()
             );
-    }
 }

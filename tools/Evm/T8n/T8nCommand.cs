@@ -18,7 +18,7 @@ public static class T8nCommand
     private static readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private const string Stdout = "stdout";
     private static ILogManager _logManager = new NLogManager("t8n.log");
-    private static ILogger _logger = _logManager.GetClassLogger();
+    private static ILogger _logger = _logManager.GetClassLogger(typeof(T8nCommand));
 
     static T8nCommand()
     {
@@ -26,9 +26,9 @@ public static class T8nCommand
         EthereumJsonSerializer.AddConverter(new AccountStateJsonConverter());
     }
 
-    public static void Configure(ref CliRootCommand rootCmd)
+    public static void Configure(ref RootCommand rootCmd)
     {
-        CliCommand cmd = T8nCommandOptions.CreateCommand();
+        Command cmd = T8nCommandOptions.CreateCommand();
 
         cmd.SetAction(parseResult =>
         {

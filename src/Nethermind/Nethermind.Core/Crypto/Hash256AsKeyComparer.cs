@@ -15,7 +15,7 @@ public class Hash256AsKeyComparer : IEqualityComparer<Hash256AsKey>, IAlternateE
 
     public int GetHashCode(Hash256AsKey obj) => obj.GetHashCode();
 
-    public bool Equals(ValueHash256 alternate, Hash256AsKey other) => alternate.Equals(other.Value.ValueHash256);
+    public bool Equals(ValueHash256 alternate, Hash256AsKey other) => alternate.Equals(in other.Value.ValueHash256);
 
     public int GetHashCode(ValueHash256 alternate) => alternate.GetHashCode();
 

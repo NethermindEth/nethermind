@@ -23,13 +23,13 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Evm;
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 
 namespace Nethermind.AuRa.Test.Validators;
@@ -71,14 +71,17 @@ public class ContractBasedValidatorTests
             Addresses = new[] { _contractAddress },
             ValidatorType = AuRaParameters.ValidatorType.Contract
         };
-        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithAura(1, []).TestObject, new BlockBody());
+        _block = new Block(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).WithAura(1, []).TestObject, new BlockBody());
 
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
         _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<Hash256>()).Returns(new ReadOnlyTxProcessingScope(_transactionProcessor, _stateProvider, Keccak.EmptyTreeHash));
+        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(
+            _transactionProcessor,
+            new Reactive.AnonymousDisposable(() => { }),
+            _stateProvider));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder
@@ -96,6 +99,7 @@ public class ContractBasedValidatorTests
     public void TearDown()
     {
         _blockFinalizationManager?.Dispose();
+        _readOnlyTxProcessorSource?.Dispose();
     }
 
     [Test]
@@ -106,7 +110,7 @@ public class ContractBasedValidatorTests
     }
 
     [Test]
-    public void throws_ArgumentNullException_on_empty_validSealearStrategy()
+    public void throws_ArgumentNullException_on_empty_validSealerStrategy()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, null, _blockFinalizationManager, default, _logManager, 1);
         act.Should().Throw<ArgumentNullException>();
@@ -184,13 +188,11 @@ public class ContractBasedValidatorTests
         _transactionProcessor.Received()
             .CallAndRestore(
                 Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_parentHeader)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
         // finalizeChange should be called
         _transactionProcessor.Received(finalizeChangeCalled ? 1 : 0)
             .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(block.Header)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
         // initial validator should be true
@@ -565,12 +567,12 @@ public class ContractBasedValidatorTests
                     return new[]
                     {
                             Build.A.LogEntry.WithAddress(_contractAddress)
-                                .WithData(new[] {(byte) (block.Number * 10 + i++)})
+                                .WithData([(byte) (block.Number * 10 + i++)])
                                 .WithTopics(_validatorContract.AbiDefinition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash)
                                 .TestObject
                     };
                 })
-            .OfChainLength(9, 0, 0, false, validators);
+            .OfChainLength(9, blockBeneficiaries: validators);
 
         BlockTree blockTree = blockTreeBuilder.TestObject;
         SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);
@@ -603,7 +605,6 @@ public class ContractBasedValidatorTests
         // finalizeChange should be called or not based on test spec
         _transactionProcessor.Received(chain.ExpectedFinalizationCount)
             .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
         _transactionProcessor.ClearReceivedCalls();
@@ -612,15 +613,11 @@ public class ContractBasedValidatorTests
     private static Address[] GenerateValidators(int number) =>
         Enumerable.Range(1, number).Select(static i => Address.FromNumber((UInt256)i)).ToArray();
 
-    private void SetupInitialValidators(params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(params Address[] initialValidators) =>
         SetupInitialValidators(_block.Header, initialValidators);
-    }
 
-    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators) =>
         SetupInitialValidators(header, null, initialValidators);
-    }
 
     private void SetupInitialValidators(BlockHeader header, BlockHeader parentHeader, params Address[] initialValidators)
     {
@@ -634,7 +631,6 @@ public class ContractBasedValidatorTests
 
         _transactionProcessor.When(x => x.CallAndRestore(
                 Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                Arg.Any<BlockExecutionContext>(),
                 Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
             .Do(args =>
                 args.Arg<ITxTracer>().MarkAsSuccess(
@@ -646,7 +642,7 @@ public class ContractBasedValidatorTests
 
     private byte[] SetupAbiAddresses(Address[] addresses)
     {
-        byte[] data = addresses.SelectMany(static a => a.Bytes).ToArray();
+        byte[] data = addresses.SelectMany(static a => a.Bytes.ToArray()).ToArray();
 
         _abiEncoder.Decode(
             AbiEncodingStyle.None,
@@ -656,10 +652,8 @@ public class ContractBasedValidatorTests
         return data;
     }
 
-    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
-    {
-        return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
-    }
+    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo) =>
+        t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
 
     public class ConsecutiveInitiateChangeTestParameters
     {

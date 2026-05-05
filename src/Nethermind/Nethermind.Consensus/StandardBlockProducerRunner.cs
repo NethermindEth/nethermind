@@ -33,7 +33,7 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
         Block? block = null;
         try
         {
-            block = await blockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, token);
+            block = await blockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, IBlockProducer.Flags.None, token);
             if (block is not null)
             {
                 _lastProducedBlockDateTime = DateTime.UtcNow;
@@ -60,6 +60,7 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
 
     public virtual Task StopAsync()
     {
+        if (!_isRunning) return Task.CompletedTask;
         _producerCancellationToken?.Cancel();
         _isRunning = false;
         trigger.TriggerBlockProduction -= OnTriggerBlockProduction;

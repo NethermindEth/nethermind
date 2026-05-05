@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using NonBlocking;
-using System.Collections.Generic;
-using System.Linq;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using FastEnumUtility;
+using NonBlocking;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -17,147 +16,222 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class PeerInfo
+    public class PeerInfo(ISyncPeer syncPeer, AllocationAllowances? allocationAllowances = null)
     {
-        public PeerInfo(ISyncPeer syncPeer)
-        {
-            SyncPeer = syncPeer;
-        }
+        public const int SleepThreshold = 2;
+
+        private readonly AllocationAllowances _allocationAllowances = allocationAllowances ?? AllocationAllowances.Default;
+        private readonly ulong _maxPacked = (allocationAllowances ?? AllocationAllowances.Default).Pack();
+        private ulong _availableSlots = (allocationAllowances ?? AllocationAllowances.Default).Pack();
+        private uint _weaknesses;
+        private uint _sleepingContexts;
+
+        private long _lastNotifiedEarliestNumber;
+        private long _lastNotifiedLatestNumber;
 
         public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
 
-        public AllocationContexts AllocatedContexts { get; private set; }
-
-        public AllocationContexts SleepingContexts { get; private set; }
-
-        private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
-
-        public ISyncPeer SyncPeer { get; }
+        public ISyncPeer SyncPeer { get; } = syncPeer;
 
         public bool IsInitialized => SyncPeer.IsInitialized;
 
-        public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
+        /// <summary>See <see cref="ISyncPeer.TotalDifficulty"/>.</summary>
+        public UInt256? TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;
-
         public Hash256 HeadHash => SyncPeer.HeadHash;
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool CanBeAllocated(AllocationContexts contexts)
-        {
-            return !IsAsleep(contexts) &&
-                   !IsAllocated(contexts) &&
-                   this.SupportsAllocation(contexts);
-        }
+        public AllocationContexts SleepingContexts => (AllocationContexts)Volatile.Read(ref _sleepingContexts);
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsAsleep(AllocationContexts contexts)
-        {
-            return (contexts & SleepingContexts) != AllocationContexts.None;
-        }
+        private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsAllocated(AllocationContexts contexts)
-        {
-            return (contexts & AllocatedContexts) != AllocationContexts.None;
-        }
+        public AllocationContexts AllocatedContexts =>
+            AllocationAllowances.AllocatedFrom(ReadSlots(), _maxPacked);
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
+        public AllocationAllowances AvailableAllocationSlots =>
+            AllocationAllowances.Unpack(ReadSlots());
+
+        public bool CanBeAllocated(AllocationContexts contexts) =>
+            !IsAsleep(contexts) && !IsAllocationFull(contexts) && this.SupportsAllocation(contexts);
+
+        public bool IsAsleep(AllocationContexts contexts) =>
+            ((AllocationContexts)Volatile.Read(ref _sleepingContexts) & contexts) != AllocationContexts.None;
+
+        /// <summary>True if any single-bit context in <paramref name="contexts"/> currently has at least one slot taken.</summary>
+        public bool IsAllocated(AllocationContexts contexts) =>
+            AllocationAllowances.AnyAllocated(ReadSlots(), _maxPacked, contexts);
+
+        /// <summary>True if any single-bit context in <paramref name="contexts"/> has no remaining slots.</summary>
+        public bool IsAllocationFull(AllocationContexts contexts) =>
+            AllocationAllowances.AnyFull(ReadSlots(), contexts);
+
         public bool TryAllocate(AllocationContexts contexts)
         {
-            if (CanBeAllocated(contexts))
+            if (IsAsleep(contexts) || !this.SupportsAllocation(contexts)) return false;
+
+            // Vacuous success when the request carries no single-bit contexts (e.g. AllocationContexts.None);
+            // matches the bitmask-era behaviour callers depend on.
+            ulong delta = AllocationAllowances.BuildSlotDelta(contexts);
+            if (delta == 0) return true;
+            if (!TryDecrementSlots(delta)) return false;
+
+            // Lock-free TOCTOU close-out: the IsAsleep check above and the CAS are not atomic, so a concurrent
+            // PutToSleep can fire after we've taken the slots. Re-check and roll back so a sleeping peer never
+            // holds an active allocation slot once the sleeping flag is observable.
+            if (IsAsleep(contexts))
             {
-                AllocatedContexts |= contexts;
-                return true;
+                Free(contexts);
+                return false;
             }
-
-            return false;
+            return true;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Free(AllocationContexts contexts)
-        {
-            AllocatedContexts ^= contexts;
-        }
+        public void Free(AllocationContexts contexts) =>
+            IncrementSlotsBounded(AllocationAllowances.BuildSlotDelta(contexts));
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void PutToSleep(AllocationContexts contexts, DateTime dateTime)
         {
-            SleepingContexts |= contexts;
+            Interlocked.Or(ref _sleepingContexts, (uint)contexts);
             SleepingSince[contexts] = dateTime;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void TryToWakeUp(DateTime dateTime, TimeSpan wakeUpIfSleepsMoreThanThis)
         {
             foreach (KeyValuePair<AllocationContexts, DateTime?> keyValuePair in SleepingSince)
             {
-                if (IsAsleep(keyValuePair.Key))
+                if (IsAsleep(keyValuePair.Key) && dateTime - keyValuePair.Value >= wakeUpIfSleepsMoreThanThis)
                 {
-                    if (dateTime - keyValuePair.Value >= wakeUpIfSleepsMoreThanThis)
-                    {
-                        WakeUp(keyValuePair.Key);
-                    }
+                    WakeUp(keyValuePair.Key);
                 }
             }
+        }
+
+        private void WakeUp(AllocationContexts requested)
+        {
+            Interlocked.And(ref _sleepingContexts, ~(uint)requested);
+
+            uint clearMask = WeaknessTracking.ClearMaskFor(requested);
+            if (clearMask != 0) Interlocked.And(ref _weaknesses, ~clearMask);
+
+            SleepingSince.TryRemove(requested, out _);
+        }
+
+        public AllocationContexts IncreaseWeakness(AllocationContexts requested)
+        {
+            uint delta = WeaknessTracking.BuildDelta(requested);
+            if (delta == 0) return AllocationContexts.None;
+
+            uint updated = AddWeaknessSaturating(delta);
+            return WeaknessTracking.AtOrAboveThreshold(updated, requested, SleepThreshold);
+        }
+
+        public bool HasEqualOrBetterTDOrBlock(PeerInfo? other)
+        {
+            if (other is null) return true;
+            if (TotalDifficulty is null || other.TotalDifficulty is null) return HeadNumber >= other.HeadNumber;
+            return TotalDifficulty >= other.TotalDifficulty;
+        }
+
+        public void EnsureInitialized()
+        {
+            if (!IsInitialized)
+                throw new InvalidAsynchronousStateException($"{GetType().Name} found an uninitialized peer - {this}");
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private void WakeUp(AllocationContexts allocationContexts)
+        public bool ShouldNotifyNewRange(long earliestNumber, long latestNumber)
         {
-            SleepingContexts ^= allocationContexts;
-
-            foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
-            {
-                if ((allocationContexts & allocationIndex.Key) == allocationIndex.Key)
-                {
-                    _weaknesses[allocationIndex.Value] = 0;
-                }
-            }
-
-            SleepingSince.TryRemove(allocationContexts, out _);
+            // Also notify if same header as could be reorg with different hash
+            if (latestNumber < _lastNotifiedLatestNumber && earliestNumber < _lastNotifiedEarliestNumber)
+                return false;
+            _lastNotifiedEarliestNumber = earliestNumber;
+            _lastNotifiedLatestNumber = latestNumber;
+            return true;
         }
 
-        // map from AllocationContexts single flag to index in array of _weaknesses
-        private static readonly IDictionary<AllocationContexts, int> AllocationIndexes =
-            FastEnum.GetValues<AllocationContexts>()
-            .Where(static c => c != AllocationContexts.All && c != AllocationContexts.None)
-            .Select(static (a, i) => (a, i))
-            .ToDictionary(static v => v.a, static v => v.i);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ulong ReadSlots() => Volatile.Read(ref _availableSlots);
 
-        private readonly int[] _weaknesses = new int[AllocationIndexes.Count];
-
-        public const int SleepThreshold = 2;
-
-        public AllocationContexts IncreaseWeakness(AllocationContexts allocationContexts)
+        /// <summary>
+        /// Atomically subtract <paramref name="delta"/> from the packed slot word; fail if any participating slot is zero.
+        /// </summary>
+        private bool TryDecrementSlots(ulong delta)
         {
-            AllocationContexts sleeps = AllocationContexts.None;
-
-            foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
+            ulong old = ReadSlots();
+            while (true)
             {
-                if ((allocationContexts & allocationIndex.Key) == allocationIndex.Key)
-                {
-                    ResolveWeaknessChecks(ref _weaknesses[allocationIndex.Value], allocationIndex.Key, ref sleeps);
-                }
-            }
-
-            return sleeps;
-        }
-
-        private static void ResolveWeaknessChecks(ref int weakness, AllocationContexts singleContext, ref AllocationContexts sleeps)
-        {
-            int level = Interlocked.Increment(ref weakness);
-            if (level >= SleepThreshold)
-            {
-                sleeps |= singleContext;
+                if (AllocationAllowances.HasZeroSlot(old, delta)) return false;
+                ulong updated = old - delta;
+                ulong observed = Interlocked.CompareExchange(ref _availableSlots, updated, old);
+                if (observed == old) return true;
+                old = observed;
             }
         }
+
+        /// <summary>
+        /// Atomically add <paramref name="delta"/> to the packed slot word, saturating each slot at its allowance ceiling.
+        /// </summary>
+        private void IncrementSlotsBounded(ulong delta)
+        {
+            if (delta == 0) return;
+            ulong old = ReadSlots();
+            while (true)
+            {
+                ulong increments = delta & ~AllocationAllowances.CarryOnSaturation(old, delta, _maxPacked);
+                if (increments == 0) return;
+                ulong updated = old + increments;
+                ulong observed = Interlocked.CompareExchange(ref _availableSlots, updated, old);
+                if (observed == old) return;
+                old = observed;
+            }
+        }
+
+        private uint AddWeaknessSaturating(uint delta)
+        {
+            uint old = Volatile.Read(ref _weaknesses);
+            while (true)
+            {
+                uint updated = WeaknessTracking.SaturatingAdd(old, delta);
+                uint observed = Interlocked.CompareExchange(ref _weaknesses, updated, old);
+                if (observed == old) return updated;
+                old = observed;
+            }
+        }
+
+        // Per-single-bit-context glyphs in the order of AllocationAllowances.OrderedSingleContexts.
+        private static ReadOnlySpan<char> ContextChars => ['H', 'B', 'R', 'N', 'S', 'F'];
 
         private static string BuildContextString(AllocationContexts contexts)
         {
-            return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.ForwardHeader) == AllocationContexts.ForwardHeader ? "F" : " ")}";
+            Span<char> buf = stackalloc char[AllocationAllowances.SingleContextCount];
+            for (int i = 0; i < AllocationAllowances.SingleContextCount; i++)
+            {
+                AllocationContexts ctx = AllocationAllowances.OrderedSingleContexts[i];
+                buf[i] = (contexts & ctx) == ctx ? ContextChars[i] : ' ';
+            }
+            return new string(buf);
         }
 
-        public override string ToString() => $"[{BuildContextString(AllocatedContexts)} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
+        private string BuildSlotContextString()
+        {
+            AllocationAllowances available = AllocationAllowances.Unpack(ReadSlots());
+            Span<char> buf = stackalloc char[AllocationAllowances.SingleContextCount];
+            for (int i = 0; i < AllocationAllowances.SingleContextCount; i++)
+            {
+                AllocationContexts ctx = AllocationAllowances.OrderedSingleContexts[i];
+                int avail = available[ctx];
+                int taken = _allocationAllowances[ctx] - avail;
+                // Letter marks "in flight" — single take or saturated; digit shows multi-take partial fill.
+                buf[i] = (taken, avail) switch
+                {
+                    ( <= 0, _) => ' ',
+                    (1, _) or (_, 0) => ContextChars[i],
+                    _ => (char)('0' + Math.Min(taken, 9)),
+                };
+            }
+            return new string(buf);
+        }
+
+        public override string ToString() => $"[{BuildSlotContextString()} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
     }
 }

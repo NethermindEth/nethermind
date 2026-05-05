@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using CommunityToolkit.HighPerformance;
-using DotNetty.Buffers;
 using Microsoft.IO;
 using Microsoft.Win32.SafeHandles;
 using Nethermind.Core.Collections;
@@ -43,7 +41,7 @@ public class E2StoreReader : IDisposable
         Entry entry = ReadEntry(position, expectedType);
 
         int length = (int)entry.Length;
-        using ArrayPoolList<byte> buffer = new ArrayPoolList<byte>(length, length);
+        using ArrayPoolListRef<byte> buffer = new(length, length);
         RandomAccess.Read(_file, buffer.AsSpan(), position + HeaderSize);
         value = decoder(buffer.AsMemory());
         return (long)(entry.Length + HeaderSize);
@@ -62,7 +60,7 @@ public class E2StoreReader : IDisposable
         uint length = ReadUInt32(position + 2);
         ushort reserved = ReadUInt16(position + 6);
 
-        Entry entry = new Entry(type, length);
+        Entry entry = new(type, length);
         if (expectedType.HasValue && entry.Type != expectedType) throw new EraException($"Expected an entry of type {expectedType}, but got {entry.Type}.");
         if (entry.Length + (ulong)position > (ulong)_fileLength)
             throw new EraFormatException($"Entry has an invalid length of {entry.Length} at position {position}, which is longer than stream length of {_fileLength}.");
@@ -75,7 +73,7 @@ public class E2StoreReader : IDisposable
 
     private async Task<T> ReadEntryValueAsSnappy<T>(long offset, ulong length, Func<Memory<byte>, T> decoder, CancellationToken cancellation = default)
     {
-        using ArrayPoolList<byte> inputBuffer = new ArrayPoolList<byte>((int)length, (int)length);
+        using ArrayPoolList<byte> inputBuffer = new((int)length, (int)length);
         RandomAccess.Read(_file, inputBuffer.AsSpan(), offset);
         Stream inputStream = inputBuffer.AsMemory().AsStream();
 
@@ -91,16 +89,13 @@ public class E2StoreReader : IDisposable
         return decoder(segment);
     }
 
-    public void Dispose()
-    {
-        _file.Dispose();
-    }
+    public void Dispose() => _file.Dispose();
 
     public long BlockOffset(long blockNumber)
     {
         EnsureIndexAvailable();
 
-        if (blockNumber > _startBlock + _blockCount || blockNumber < _startBlock)
+        if (blockNumber >= _startBlock + _blockCount || blockNumber < _startBlock)
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside the bounds of this index.");
 
         // <offset> * 8 + <count>
@@ -169,12 +164,23 @@ public class E2StoreReader : IDisposable
         }
     }
 
-    public ValueHash256 CalculateChecksum()
+    public ValueHash256 CalculateChecksum() => ComputeChecksum(_file, _fileLength);
+
+    public static ValueHash256 ComputeChecksum(SafeFileHandle file, long fileLength)
     {
-        // Note: Don't close the stream
-        FileStream fileStream = new FileStream(_file, FileAccess.Read);
-        using SHA256 sha = SHA256.Create();
-        return new ValueHash256(sha.ComputeHash(fileStream));
+        using IncrementalHash sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        const int bufferSize = 81920;
+        byte[] buffer = new byte[bufferSize];
+        long offset = 0;
+        while (offset < fileLength)
+        {
+            int toRead = (int)Math.Min(bufferSize, fileLength - offset);
+            int read = RandomAccess.Read(file, buffer.AsSpan(0, toRead), offset);
+            if (read == 0) break;
+            sha.AppendData(buffer, 0, read);
+            offset += read;
+        }
+        return new ValueHash256(sha.GetHashAndReset());
     }
 
     private ushort ReadUInt16(long position)

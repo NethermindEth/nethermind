@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -10,13 +11,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PingMsg>
+public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
 {
-    public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
-
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
     {
         (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
@@ -46,32 +42,32 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
     public PingMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlp = new(Data);
-        rlp.ReadSequenceLength();
-        int version = rlp.DecodeInt();
+        Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
+        ctx.ReadSequenceLength();
+        int version = ctx.DecodeInt();
 
-        rlp.ReadSequenceLength();
-        ReadOnlySpan<byte> sourceAddress = rlp.DecodeByteArraySpan();
+        ctx.ReadSequenceLength();
+        ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
 
         // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
         // our discovery messages will not be routed correctly (the fix will not be part of this commit)
-        rlp.DecodeInt(); // UDP port
-        int tcpPort = rlp.DecodeInt(); // we assume here that UDP and TCP port are same
+        ctx.DecodeInt(); // UDP port
+        int tcpPort = ctx.DecodeInt(); // we assume here that UDP and TCP port are same
 
         IPEndPoint source = GetAddress(sourceAddress, tcpPort);
-        rlp.ReadSequenceLength();
-        ReadOnlySpan<byte> destinationAddress = rlp.DecodeByteArraySpan();
-        IPEndPoint destination = GetAddress(destinationAddress, rlp.DecodeInt());
-        rlp.DecodeInt(); // UDP port
+        ctx.ReadSequenceLength();
+        ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
+        IPEndPoint destination = GetAddress(destinationAddress, ctx.DecodeInt());
+        ctx.DecodeInt(); // UDP port
 
-        long expireTime = rlp.DecodeLong();
+        long expireTime = ctx.DecodeLong();
         PingMsg msg = new(FarPublicKey, expireTime, source, destination, Mdc.ToArray()) { Version = version };
 
         if (version == 4)
         {
-            if (!rlp.HasBeenRead)
+            if (ctx.Position < ctx.Length)
             {
-                long enrSequence = rlp.DecodeLong();
+                long enrSequence = ctx.DecodeLong();
                 msg.EnrSequence = enrSequence;
             }
         }
@@ -80,6 +76,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
             // what do we do when receive version 5?
         }
 
+        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
         return msg;
     }
 

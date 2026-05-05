@@ -5,17 +5,14 @@ using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromStore
     {
-        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace)
-        {
-            return ReturnActionsRecursively(txTrace, txTrace.Action);
-        }
+        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace) => ReturnActionsRecursively(txTrace, txTrace.Action);
 
         public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(IReadOnlyCollection<ParityLikeTxTrace> txTrace)
         {

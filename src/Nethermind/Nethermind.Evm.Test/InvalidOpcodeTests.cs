@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -16,8 +16,6 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class InvalidOpcodeTests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
-
         private static readonly Instruction[] FrontierInstructions =
         {
             Instruction.STOP, Instruction.ADD, Instruction.MUL, Instruction.SUB, Instruction.DIV, Instruction.SDIV,
@@ -73,19 +71,8 @@ namespace Nethermind.Evm.Test
             ConstantinopleFixInstructions.Union(
                 new[] { Instruction.SELFBALANCE, Instruction.CHAINID }).ToArray();
 
-        private static readonly Instruction[] BerlinInstructions =
-            IstanbulInstructions.Union(
-                // new[]
-                // {
-                //     Instruction.BEGINSUB,
-                //     Instruction.JUMPSUB,
-                //     Instruction.RETURNSUB
-                // }
-                System.Array.Empty<Instruction>()
-            ).ToArray();
-
         private static readonly Instruction[] LondonInstructions =
-            BerlinInstructions.Union(
+            IstanbulInstructions.Union(
                 new Instruction[]
                 {
                     Instruction.BASEFEE
@@ -112,6 +99,25 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
+        private static readonly Instruction[] OsakaInstructions =
+            CancunInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.CLZ,
+                }
+            ).ToArray();
+
+        private static readonly Instruction[] AmsterdamInstructions =
+            OsakaInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.SLOTNUM,
+                    Instruction.SWAPN,
+                    Instruction.DUPN,
+                    Instruction.EXCHANGE,
+                }
+            ).ToArray();
+
         private readonly Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
@@ -123,11 +129,14 @@ namespace Nethermind.Evm.Test
                 {(ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber, ConstantinopleFixInstructions},
                 {(ForkActivation)MainnetSpecProvider.IstanbulBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
-                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
+                {(ForkActivation)MainnetSpecProvider.BerlinBlockNumber, IstanbulInstructions},
                 {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
-                {(long.MaxValue, ulong.MaxValue), CancunInstructions}
+                {MainnetSpecProvider.PragueActivation, CancunInstructions},
+                {MainnetSpecProvider.OsakaActivation, OsakaInstructions},
+                {MainnetSpecProvider.AmsterdamActivation, AmsterdamInstructions},
+                {(long.MaxValue, ulong.MaxValue), AmsterdamInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -136,7 +145,7 @@ namespace Nethermind.Evm.Test
 
         protected override ILogManager GetLogManager()
         {
-            _logManager ??= new OneLoggerLogManager(new(new NUnitLogger(LogLevel.Trace)));
+            _logManager ??= new TestLogManager(LogLevel.Warn);
             return _logManager;
         }
 
@@ -152,17 +161,23 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp)]
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 2, MainnetSpecProvider.CancunBlockTimestamp)]
-        [TestCase(long.MaxValue, ulong.MaxValue)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 3, MainnetSpecProvider.PragueBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 4, MainnetSpecProvider.OsakaBlockTimestamp)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber + 10, MainnetSpecProvider.AmsterdamBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
-            ILogger logger = _logManager.GetClassLogger();
+            ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
-                byte[] code = Prepare.EvmCode
-                    .Op((byte)i)
-                    .Done;
+                Instruction opcode = (Instruction)i;
+
+                // Provide an in-range EIP-8024 immediate so the test checks opcode validity rather
+                // than end-of-code immediate decoding or stack behavior.
+                byte[] code = opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE
+                    ? Prepare.EvmCode.Op((byte)i).Data(0x80).Done
+                    : Prepare.EvmCode.Op((byte)i).Done;
 
                 bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
                 TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);

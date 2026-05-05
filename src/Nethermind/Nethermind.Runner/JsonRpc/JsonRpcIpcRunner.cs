@@ -17,34 +17,24 @@ using Nethermind.Sockets;
 
 namespace Nethermind.Runner.JsonRpc
 {
-    public class JsonRpcIpcRunner : IDisposable
+    public class JsonRpcIpcRunner(
+        IJsonRpcProcessor jsonRpcProcessor,
+        IConfigProvider configurationProvider,
+        ILogManager logManager,
+        IJsonRpcLocalStats jsonRpcLocalStats,
+        IJsonSerializer jsonSerializer,
+        IFileSystem fileSystem) : IDisposable
     {
         private const int OperationCancelledError = 125;
-        private readonly ILogger _logger;
-        private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly IFileSystem _fileSystem;
-        private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
+        private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
+        private readonly IFileSystem _fileSystem = fileSystem;
+        private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+        private readonly IJsonRpcConfig _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
 
         private string _path;
         private Socket _server;
-
-        public JsonRpcIpcRunner(
-            IJsonRpcProcessor jsonRpcProcessor,
-            IConfigProvider configurationProvider,
-            ILogManager logManager,
-            IJsonRpcLocalStats jsonRpcLocalStats,
-            IJsonSerializer jsonSerializer,
-            IFileSystem fileSystem)
-        {
-            _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
-            _jsonRpcProcessor = jsonRpcProcessor;
-            _logger = logManager.GetClassLogger();
-            _jsonRpcLocalStats = jsonRpcLocalStats;
-            _jsonSerializer = jsonSerializer;
-            _fileSystem = fileSystem;
-        }
 
         public void Start(CancellationToken cancellationToken)
         {
@@ -60,11 +50,19 @@ namespace Nethermind.Runner.JsonRpc
 
         private async Task StartServer(string path, CancellationToken cancellationToken)
         {
-            DeleteSocketFileIfExists(path);
+            try
+            {
+                DeleteSocketFileIfExists(path);
 
-            _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
-            _server.Bind(new UnixDomainSocketEndPoint(path));
-            _server.Listen(0);
+                _server = new(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                _server.Bind(new UnixDomainSocketEndPoint(path));
+                _server.Listen(0);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to start IPC server at {path}.", ex);
+                return;
+            }
 
             while (true)
             {

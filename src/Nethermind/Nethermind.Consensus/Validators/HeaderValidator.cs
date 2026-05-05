@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -16,28 +16,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Validators
 {
-    public class HeaderValidator : IHeaderValidator
+    public class HeaderValidator(
+        IBlockTree? blockTree,
+        ISealValidator? sealValidator,
+        ISpecProvider? specProvider,
+        ILogManager? logManager)
+        : IHeaderValidator
     {
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
-        private readonly ISealValidator _sealValidator;
-        protected readonly ISpecProvider _specProvider;
-        private readonly long? _daoBlockNumber;
-        protected readonly ILogger _logger;
-        private readonly IBlockTree _blockTree;
-
-        public HeaderValidator(
-            IBlockTree? blockTree,
-            ISealValidator? sealValidator,
-            ISpecProvider? specProvider,
-            ILogManager? logManager)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _daoBlockNumber = specProvider.DaoBlockNumber;
-        }
+        protected readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
+        protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly long? _daoBlockNumber = specProvider.DaoBlockNumber;
+        protected readonly ILogger _logger = logManager?.GetClassLogger<HeaderValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
         {
@@ -54,7 +46,7 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-                error = BlockErrorMessages.InvalidHeaderHash(header.Hash, header.CalculateHash());
+                error = BlockErrorMessages.InvalidHeaderHash(header.Hash!, header.CalculateHash());
                 return false;
             }
 
@@ -66,43 +58,51 @@ namespace Nethermind.Consensus.Validators
         /// </summary>
         /// <param name="header">BlockHeader to validate</param>
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
-        /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
+        /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
-        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
-        {
-            return Validate(header, parent, isUncle, out _);
-        }
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle = false) =>
+            Validate(header, parent, isUncle, out _);
 
         /// <summary>
         /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
         /// </summary>
         /// <param name="header">BlockHeader to validate</param>
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
-        /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
+        /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
         /// <param name="error">Detailed error message if validation fails, otherwise <value>null</value>.</param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
-        public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
+            Validate<OffFlag>(header, parent, isUncle, out error);
+
+        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
+            bool orphaned = typeof(TOrphaned) == typeof(OnFlag);
+            parent = orphaned ? null : parent!;
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
             return ValidateFieldLimit(header, ref error)
-                && ValidateHash(header, ref error)
-                && ValidateExtraData(header, parent, spec = _specProvider.GetSpec(header), isUncle, ref error)
-                && ValidateParent(header, parent, ref error)
-                && ValidateTotalDifficulty(parent!, header, ref error)
-                && ValidateSeal(header, parent, isUncle, ref error)
-                && ValidateGasUsed(header, ref error)
-                && ValidateGasLimitRange(header, parent, spec, ref error)
-                && ValidateTimestamp(header, parent, ref error)
-                && ValidateBlockNumber(header, parent, ref error)
-                && Validate1559(header, parent, spec, ref error)
-                && ValidateBlobGasFields(header, parent, spec, ref error)
-                && ValidateRequestsHash(header, spec, ref error);
+                   && ValidateHash(header, ref error)
+                   && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
+                   && (orphaned || ValidateParent(header, parent, ref error))
+                   && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
+                   && (orphaned || ValidateSeal(header, parent, isUncle, ref error))
+                   && ValidateGasUsed(header, ref error)
+                   && (orphaned || ValidateGasLimitRange(header, parent, spec, ref error))
+                   && (orphaned || ValidateTimestamp(header, parent, ref error))
+                   && (orphaned || ValidateBlockNumber(header, parent, ref error))
+                   && (orphaned || Validate1559(header, parent, spec, ref error))
+                   && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
+                   && ValidateRequestsHash(header, spec, ref error)
+                   && ValidateBlockAccessListHash(header, spec, ref error)
+                   && (orphaned || ValidateSlotNumber(header, parent, spec, ref error));
         }
 
-        private bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
+            Validate<OnFlag>(header, null, false, out error);
+
+        protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.RequestsEnabled)
             {
@@ -144,6 +144,9 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // No parent-relative block-number check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
             if (header.Number != parent.Number + 1)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
@@ -184,6 +187,12 @@ namespace Nethermind.Consensus.Validators
                     error = BlockErrorMessages.InvalidGenesisBlock;
                     return false;
                 }
+            }
+            else if (parent.Hash != header.ParentHash)
+            {
+                error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
+                parent.SlotNumber = 0;
+                return false;
             }
 
             return true;
@@ -231,7 +240,7 @@ namespace Nethermind.Consensus.Validators
 
         }
 
-        protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle, ref string? error)
+        protected virtual bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)
         {
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
                                    && (isUncle
@@ -250,6 +259,10 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
+            // ValidateParent (called earlier in the chain) accepts a null parent only for genesis.
+            // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
+            if (parent is null) return true;
+
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
@@ -259,7 +272,7 @@ namespace Nethermind.Consensus.Validators
             // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
             // In hive we have tests that using long.MaxValue in the genesis block
             // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
-            var gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
+            bool gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)
             {
@@ -271,7 +284,11 @@ namespace Nethermind.Consensus.Validators
                                      header.GasLimit >= spec.MinGasLimit;
             if (!gasLimitNotTooLow)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too low. " +
+                                                 $"Gas limit: {header.GasLimit}, " +
+                                                 $"Adjusted parent gas limit: {adjustedParentGasLimit}, " +
+                                                 $"Max gas limit difference: {maxGasLimitDifference}, " +
+                                                 $"Spec min gas limit: {spec.MinGasLimit}");
                 error = BlockErrorMessages.InvalidGasLimit;
             }
 
@@ -280,6 +297,9 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // No parent-relative timestamp check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
@@ -289,16 +309,23 @@ namespace Nethermind.Consensus.Validators
             return timestampMoreThanAtParent;
         }
 
-        protected virtual bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error)
+        protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // Same class of null-parent exposure as ValidateBlockNumber/GasLimitRange/Timestamp:
+            // ValidateParent accepts null for genesis, but the non-zero-total-difficulty branch
+            // below dereferences parent. No current fixture triggers this (TotalDifficulty is
+            // typically null on uncle headers), but the guard keeps the method consistent with
+            // its siblings.
+            if (parent is null) return true;
+
             bool result = true;
 
             if (header.TotalDifficulty is not null)
             {
-                if (header.TotalDifficulty == 0)
+                if (header.TotalDifficulty.Value.IsZero)
                 {
                     // Same as in BlockTree.SetTotalDifficulty
-                    if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
+                    if (!(_blockTree.Genesis!.Difficulty.IsZero && _specProvider.TerminalTotalDifficulty?.IsZero == true))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
                         result = false;
@@ -316,24 +343,6 @@ namespace Nethermind.Consensus.Validators
             return result;
         }
 
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle = false) => Validate(header, isUncle, out _);
-
-        /// <summary>
-        /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
-        /// </summary>
-        /// <param name="header">Block header to validate</param>
-        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
-        /// <param name="error">Detailed error message if validation fails, otherwise <value>False</value></param>
-        /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public virtual bool Validate(BlockHeader header, bool isUncle, out string? error) =>
-            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded), isUncle, out error);
-
         private bool ValidateGenesis(BlockHeader header) =>
             header.GasUsed < header.GasLimit &&
             header.GasLimit > _specProvider.GenesisSpec.MinGasLimit &&
@@ -342,7 +351,7 @@ namespace Nethermind.Consensus.Validators
             header.Bloom is not null &&
             header.ExtraData.Length <= _specProvider.GenesisSpec.MaximumExtraDataSize;
 
-        protected virtual bool ValidateBlobGasFields(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip4844Enabled)
             {
@@ -360,7 +369,7 @@ namespace Nethermind.Consensus.Validators
                     return false;
                 }
 
-                ulong? expectedExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec);
+                ulong? expectedExcessBlobGas = CalculateExcessBlobGas(parent, spec);
                 if (header.ExcessBlobGas != expectedExcessBlobGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is incorrect: {header.ExcessBlobGas}, should be {expectedExcessBlobGas}.");
@@ -387,5 +396,63 @@ namespace Nethermind.Consensus.Validators
 
             return true;
         }
+
+        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) =>
+            BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+
+        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.BlockLevelAccessListsEnabled)
+            {
+                if (header.BlockAccessListHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field is not set.");
+                    error = BlockErrorMessages.MissingBlockLevelAccessListHash;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.BlockAccessListHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field should not have value.");
+                    error = BlockErrorMessages.BlockLevelAccessListHashNotEnabled;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        protected virtual bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7843Enabled)
+            {
+                if (header.SlotNumber is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
+                    error = BlockErrorMessages.MissingSlotNumber;
+                    return false;
+                }
+
+                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
+                {
+                    error = BlockErrorMessages.InvalidSlotNumber;
+                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.SlotNumber is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");
+                    error = BlockErrorMessages.SlotNumberNotEnabled;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
     }
 }

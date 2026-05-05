@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
-
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -20,23 +20,42 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public class Address : IEquatable<Address>, IComparable<Address>
+    public sealed class Address : IEquatable<Address>, IComparable<Address>
     {
+        public static GenericEqualityComparer<Address> EqualityComparer { get; } = new();
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public static Address Zero { get; } = new(new byte[Size]);
+        public static Address Zero { get; } = new(default(AddressBytes));
         public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
 
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
         public static Address SystemUser { get; } = new(SystemUserHex);
 
-        public byte[] Bytes { get; }
+        private AddressBytes _bytes;
 
-        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size).ToArray()) { }
+        public ReadOnlySpan<byte> Bytes
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in FirstByte), Size);
+        }
 
-        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size).ToArray()) { }
+        [InlineArray(Size)]
+        internal struct AddressBytes
+        {
+            private byte _element0;
+        }
+
+        private ref readonly byte FirstByte
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => ref Unsafe.As<AddressBytes, byte>(ref Unsafe.AsRef(in _bytes));
+        }
+
+        public Address(Hash256 hash) : this(hash.Bytes.Slice(12, Size)) { }
+
+        public Address(in ValueHash256 hash) : this(hash.BytesAsSpan.Slice(12, Size)) { }
 
         public byte this[int index] => Bytes[index];
 
@@ -59,10 +78,7 @@ namespace Nethermind.Core
             for (int i = hasPrefix ? 2 : 0; i < hexString.Length; i++)
             {
                 char c = hexString[i];
-                bool isHex = (c >= '0' && c <= '9') ||
-                             (c >= 'a' && c <= 'f') ||
-                             (c >= 'A' && c <= 'F');
-
+                bool isHex = c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
                 if (!isHex) return false;
             }
 
@@ -109,7 +125,7 @@ namespace Nethermind.Core
                 {
                     if (allowOverflow)
                     {
-                        span = span[(value.Length - size)..];
+                        span = span[^size..];
                     }
                     else
                     {
@@ -126,20 +142,6 @@ namespace Nethermind.Core
             return false;
         }
 
-        public Address(byte[] bytes)
-        {
-            ArgumentNullException.ThrowIfNull(bytes);
-
-            if (bytes.Length != Size)
-            {
-                throw new ArgumentException(
-                    $"{nameof(Address)} should be {Size} bytes long and is {bytes.Length} bytes long",
-                    nameof(bytes));
-            }
-
-            Bytes = bytes;
-        }
-
         public Address(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
@@ -149,8 +151,10 @@ namespace Nethermind.Core
                     nameof(bytes));
             }
 
-            Bytes = bytes.ToArray();
+            bytes.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<AddressBytes, byte>(ref _bytes), Size));
         }
+
+        internal Address(AddressBytes bytes) => _bytes = bytes;
 
         public bool Equals(Address? other)
         {
@@ -165,8 +169,8 @@ namespace Nethermind.Core
             }
 
             // Address must be 20 bytes long Vector128 + uint
-            ref byte bytes0 = ref MemoryMarshal.GetArrayDataReference(Bytes);
-            ref byte bytes1 = ref MemoryMarshal.GetArrayDataReference(other.Bytes);
+            ref byte bytes0 = ref Unsafe.AsRef(in FirstByte);
+            ref byte bytes1 = ref Unsafe.AsRef(in other.FirstByte);
             // Compare first 16 bytes with Vector128 and last 4 bytes with uint
             return
                 Unsafe.As<byte, Vector128<byte>>(ref bytes0) ==
@@ -217,7 +221,7 @@ namespace Nethermind.Core
             return obj.GetType() == GetType() && Equals((Address)obj);
         }
 
-        public override int GetHashCode() => new ReadOnlySpan<byte>(Bytes).FastHash();
+        public override int GetHashCode() => Bytes.FastHash();
 
         public static bool operator ==(Address? a, Address? b)
         {
@@ -233,7 +237,7 @@ namespace Nethermind.Core
 
         public AddressStructRef ToStructRef() => new(Bytes);
 
-        public int CompareTo(Address? other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
+        public int CompareTo(Address? other) => other is null ? 1 : Bytes.SequenceCompareTo(other.Bytes);
 
         private class AddressTypeConverter : TypeConverter
         {
@@ -257,14 +261,29 @@ namespace Nethermind.Core
         [SkipLocalsInit]
         public ValueHash256 ToHash()
         {
-            Span<byte> addressBytes = stackalloc byte[Hash256.Size];
-            Bytes.CopyTo(addressBytes[(Hash256.Size - Address.Size)..]);
-            return new ValueHash256(addressBytes);
+            ref byte value = ref Unsafe.AsRef(in FirstByte);
+            // build the 4×8-byte lanes:
+            // - lane0 = 0UL
+            // - lane1 = first 4 bytes of 'value', shifted up into the high half
+            // - lane2 = bytes [4..11] of 'value'
+            // - lane3 = bytes [12..19] of 'value'
+            ulong lane1 = ((ulong)Unsafe.As<byte, uint>(ref value)) << 32;
+            ulong lane2 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 4));
+            ulong lane3 = Unsafe.As<byte, ulong>(ref Unsafe.Add(ref value, 12));
+
+            Unsafe.SkipInit(out ValueHash256 result);
+            Unsafe.As<ValueHash256, Vector256<byte>>(ref result)
+                = Vector256.Create(default, lane1, lane2, lane3).AsByte();
+
+            return result;
         }
+
+        internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref Unsafe.AsRef(in FirstByte));
     }
 
-    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>
+    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64bit<AddressAsKey>
     {
+        public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();
         private readonly Address _key = key;
         public Address Value => _key;
 
@@ -273,10 +292,11 @@ namespace Nethermind.Core
 
         public bool Equals(AddressAsKey other) => _key == other._key;
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
-        public override string ToString()
-        {
-            return _key?.ToString() ?? "<null>";
-        }
+        public override string ToString() => _key?.ToString() ?? "<null>";
+
+        public long GetHashCode64() => _key?.GetHashCode64() ?? 0;
+
+        public bool Equals(in AddressAsKey other) => _key == other._key;
     }
 
     public ref struct AddressStructRef

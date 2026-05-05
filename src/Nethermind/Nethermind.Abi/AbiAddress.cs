@@ -27,8 +27,8 @@ namespace Nethermind.Abi
                 {
                     case Address input:
                         {
-                            byte[] bytes = input.Bytes;
-                            return packed ? bytes : bytes.PadLeft(UInt256.LengthInBytes);
+                            ReadOnlySpan<byte> bytes = input.Bytes;
+                            return packed ? bytes.ToArray() : bytes.PadLeft(UInt256.LengthInBytes);
                         }
                     case string stringInput:
                         {
@@ -50,9 +50,8 @@ namespace Nethermind.Abi
 
         public override Type CSharpType { get; } = typeof(Address);
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
-        {
-            return (new Address(data.Slice(position + (packed ? 0 : 12), Address.LengthInBytes)), position + (packed ? Address.LengthInBytes : UInt256.LengthInBytes));
-        }
+        public override (object, int) Decode(byte[] data, int position, bool packed) =>
+            (new Address(data.Slice(position + (packed ? 0 : 12), Address.LengthInBytes)),
+                position + (packed ? Address.LengthInBytes : UInt256.LengthInBytes));
     }
 }

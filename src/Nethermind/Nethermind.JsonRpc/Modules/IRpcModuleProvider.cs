@@ -29,6 +29,6 @@ namespace Nethermind.JsonRpc.Modules
 
         void Return(string methodName, IRpcModule rpcModule);
 
-        IRpcModulePool? GetPool(string moduleType);
+        IRpcModulePool? GetPoolForMethod(string methodName);
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -14,23 +13,20 @@ namespace Nethermind.Network.Discovery;
 public interface IDiscoveryManager : IDiscoveryMsgListener
 {
     IMsgSender MsgSender { set; }
-    INodeLifecycleManager? GetNodeLifecycleManager(Node node, bool isPersisted = false);
+    INodeLifecycleManager? GetNodeLifecycleManager(Node node, bool isPersisted = false, bool isTrusted = false);
     void SendMessage(DiscoveryMsg discoveryMsg);
     Task SendMessageAsync(DiscoveryMsg discoveryMsg);
-    ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout);
+    ValueTask<bool> WasMessageReceived(Hash256 senderIdHash, MsgType msgType, int timeout, CancellationToken cancellationToken = default);
     event EventHandler<NodeEventArgs> NodeDiscovered;
 
     IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();
     IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
-    ClockKeyCache<IpAddressAsKey> NodesFilter { get; }
-    NodeRecord SelfNodeRecord { get; }
 
-    public readonly struct IpAddressAsKey(IPAddress ipAddress) : IEquatable<IpAddressAsKey>
-    {
-        private readonly IPAddress _ipAddress = ipAddress;
-        public static implicit operator IpAddressAsKey(IPAddress ip) => new(ip);
-        public bool Equals(IpAddressAsKey other) => _ipAddress.Equals(other._ipAddress);
-        public override bool Equals(object? obj) => obj is IpAddressAsKey ip && _ipAddress.Equals(ip._ipAddress);
-        public override int GetHashCode() => _ipAddress.GetHashCode();
-    }
+    /// <summary>
+    /// Determines whether the discovery manager should initiate contact with a node at the specified IP address.
+    /// </summary>
+    /// <param name="address">The IP address of the node to evaluate for contact.</param>
+    /// <returns><see langword="true"/> if the node at the given address should be contacted; otherwise, <see langword="false"/>.</returns>
+    bool ShouldContact(IPAddress address);
+    NodeRecord SelfNodeRecord { get; }
 }

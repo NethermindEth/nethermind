@@ -15,11 +15,11 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public bool SupportsBlobs => false;
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes)
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
         {
             if (ForSealing)
             {
-                var newBlockNumber = parent.Number + 1;
+                long newBlockNumber = parent.Number + 1;
                 if (newBlockNumber < _posdaoTransition)
                 {
                     if (_logger.IsTrace) _logger.Trace("Skipping a call to emitInitiateChange");

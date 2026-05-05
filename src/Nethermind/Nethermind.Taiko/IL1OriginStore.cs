@@ -12,4 +12,7 @@ public interface IL1OriginStore
 
     UInt256? ReadHeadL1Origin();
     void WriteHeadL1Origin(UInt256 blockId);
+
+    UInt256? ReadBatchToLastBlockID(UInt256 batchId);
+    void WriteBatchToLastBlockID(UInt256 batchId, UInt256 blockId);
 }

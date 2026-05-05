@@ -1,9 +1,6 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Net;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -18,8 +15,8 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
@@ -32,6 +29,8 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using System;
+using System.Net;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
@@ -41,7 +40,6 @@ public class Eth68ProtocolHandlerTests
     private IMessageSerializationService _svc = null!;
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
-    private IPooledTxsRequestor _pooledTxsRequestor = null!;
     private IGossipPolicy _gossipPolicy = null!;
     private ISpecProvider _specProvider = null!;
     private Block _genesisBlock = null!;
@@ -64,7 +62,6 @@ public class Eth68ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
-        _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
         _specProvider = Substitute.For<ISpecProvider>();
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -81,10 +78,11 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            _pooledTxsRequestor,
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>(),
             _txGossipPolicy);
         _handler.Init();
     }
@@ -118,18 +116,17 @@ public class Eth68ProtocolHandlerTests
 
         GenerateLists(txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
 
-        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
+        _session.Received(canGossipTransactions && txCount != 0 ? 1 : 0).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     [TestCase(true)]
     [TestCase(false)]
-    public void Should_throw_when_sizes_doesnt_match(bool removeSize)
+    public void Should_throw_when_sizes_do_not_match(bool removeSize)
     {
         GenerateLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
 
@@ -142,11 +139,43 @@ public class Eth68ProtocolHandlerTests
             types.RemoveAt(sizes.Count - 1);
         }
 
-        using var msg = new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+        using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
         action.Should().Throw<SubprotocolException>();
+    }
+
+
+    [Test]
+    public void Should_disconnect_if_tx_size_is_wrong()
+    {
+        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
+        sizes[0] += 10;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        using PooledTransactionsMessage txsMsg = new(1111, new(txs));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+    }
+
+
+    [Test]
+    public void Should_disconnect_if_tx_type_is_wrong()
+    {
+        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
+        types[0]++;
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        using PooledTransactionsMessage txsMsg = new(1111, new(txs));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 
     [Test]
@@ -155,14 +184,13 @@ public class Eth68ProtocolHandlerTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
             .WithHash(TestItem.KeccakA).TestObject;
 
-        using var msg = new NewPooledTransactionHashesMessage68(new ArrayPoolList<byte>(1) { (byte)tx.Type },
+        using NewPooledTransactionHashesMessage68 msg = new(new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { tx.GetLength() }, new ArrayPoolList<Hash256>(1) { tx.Hash });
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _pooledTxsRequestor.Received(1).RequestTransactionsEth68(Arg.Any<Action<GetPooledTransactionsMessage>>(),
-            Arg.Any<IOwnedReadOnlyList<Hash256>>(), Arg.Any<IOwnedReadOnlyList<int>>(), Arg.Any<IOwnedReadOnlyList<byte>>());
+        _session.Received(1).DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
     }
 
     [TestCase(1)]
@@ -230,13 +258,14 @@ public class Eth68ProtocolHandlerTests
             _syncManager,
             RunImmediatelyScheduler.Instance,
             _transactionPool,
-            new PooledTxsRequestor(_transactionPool, new TxPoolConfig() { MaxTxSize = sizeOfOneTx }, _specProvider),
             _gossipPolicy,
-            new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
+            new ForkInfo(_specProvider, _syncManager),
             LimboLogs.Instance,
+            Substitute.For<ITxPoolConfig>(),
+            Substitute.For<ISpecProvider>(),
             _txGossipPolicy);
 
-        int maxNumberOfTxsInOneMsg = sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1;
+        int maxNumberOfTxsInOneMsg = int.Min(sizeOfOneTx < TransactionsMessage.MaxPacketSize ? TransactionsMessage.MaxPacketSize / sizeOfOneTx : 1, 256);
         int messagesCount = numberOfTransactions / maxNumberOfTxsInOneMsg + (numberOfTransactions % maxNumberOfTxsInOneMsg == 0 ? 0 : 1);
 
         using ArrayPoolList<byte> types = new(numberOfTransactions);
@@ -259,37 +288,45 @@ public class Eth68ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        var statusMsg = new StatusMessage();
+        StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
     {
-        IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getBlockHeadersPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
     }
 
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {
+        GenerateTxLists(txCount, out types, out sizes, out hashes, out ArrayPoolList<Transaction> txs);
+        txs.Dispose();
+    }
+
+    private void GenerateTxLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs)
+    {
         TxDecoder txDecoder = TxDecoder.Instance;
         types = new(txCount);
         sizes = new(txCount);
         hashes = new(txCount);
+        txs = new(txCount);
 
         for (int i = 0; i < txCount; ++i)
         {
-            Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).WithData(new byte[i])
+            Transaction tx = Build.A.Transaction.WithType((TxType)(i % 3)).SignedAndResolved().WithData(new byte[i])
                 .WithHash(i % 2 == 0 ? TestItem.KeccakA : TestItem.KeccakB).TestObject;
 
             types.Add((byte)tx.Type);
             sizes.Add(txDecoder.GetLength(tx, RlpBehaviors.None));
             hashes.Add(tx.Hash);
+            txs.Add(tx);
         }
     }
 }

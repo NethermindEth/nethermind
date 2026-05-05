@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Find
     {
         private const long LogScanChunkSize = 16;
         private const int LogScanCutoffChunks = 128;
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger(typeof(LogScanner<>));
 
         public IEnumerable<T> ScanLogs(long headBlockNumber, Predicate<T> shouldStopScanning)
         {
@@ -50,7 +50,7 @@ namespace Nethermind.Facade.Find
                     count++;
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} found {count} events from logs in block range {logFilter.FromBlock} - {logFilter.ToBlock}");
+                if (_logger.IsTrace) _logger.Trace($"{GetType().Name} found {count} events from logs in block range {logFilter.FromBlock} - {logFilter.ToBlock}");
 
                 if (atGenesis || (count != 0 && shouldStopScanning(first)))
                 {
@@ -78,7 +78,7 @@ namespace Nethermind.Facade.Find
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"{GetType().Name} found {count} events events in block {blockNumber}.");
+            if (_logger.IsTrace) _logger.Trace($"{GetType().Name} found {count} events events in block {blockNumber}.");
         }
 
         protected abstract T ParseEvent(ILogEntry log);

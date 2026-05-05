@@ -7,7 +7,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Facade;
-using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -20,6 +19,9 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Config;
+using Nethermind.Db.LogIndex;
+using Nethermind.Network;
+using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -52,7 +54,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IGasPriceOracle>(),
                 Substitute.For<IEthSyncingInfo>(),
                 Substitute.For<IFeeHistoryOracle>(),
-                new BlocksConfig().SecondsPerSlot);
+                Substitute.For<IProtocolsManager>(),
+                new BlocksConfig(),
+                Substitute.For<IForkInfo>(),
+                Substitute.For<ILogIndexConfig>());
             return Task.CompletedTask;
         }
 

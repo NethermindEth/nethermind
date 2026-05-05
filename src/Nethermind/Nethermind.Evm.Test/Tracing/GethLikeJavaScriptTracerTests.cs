@@ -6,15 +6,15 @@ using System.Linq;
 using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -372,22 +372,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         }
     }
 
-    private static byte[] MStore()
-    {
-        return Prepare.EvmCode
-            .PushData(SampleHexData1.PadLeft(64, '0'))
-            .PushData(0)
-            .Op(Instruction.MSTORE)
-            .PushData(SampleHexData2.PadLeft(64, '0'))
-            .PushData(32)
-            .Op(Instruction.MSTORE)
-            .Op(Instruction.STOP)
-            .Done;
-    }
+    private static byte[] MStore() => Prepare.EvmCode
+                .PushData(SampleHexData1.PadLeft(64, '0'))
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(SampleHexData2.PadLeft(64, '0'))
+                .PushData(32)
+                .Op(Instruction.MSTORE)
+                .Op(Instruction.STOP)
+                .Done;
 
-    private static byte[] SStore_double()
-    {
-        return Prepare.EvmCode
+    private static byte[] SStore_double() => Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))
             .PushData(0)
             .Op(Instruction.SSTORE)
@@ -399,11 +394,8 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.SLOAD)
             .Op(Instruction.STOP)
             .Done;
-    }
 
-    private static byte[] SStore()
-    {
-        return Prepare.EvmCode
+    private static byte[] SStore() => Prepare.EvmCode
             .PushData(SampleHexData2.PadLeft(64, '0'))
             .PushData(SampleHexData1.PadLeft(64, '0'))
             .PushData(UInt256.One)
@@ -413,7 +405,6 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.SLOAD)
             .Op(Instruction.STOP)
             .Done;
-    }
 
     private byte[] NestedCalls()
     {
@@ -428,7 +419,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
         return Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 50000)

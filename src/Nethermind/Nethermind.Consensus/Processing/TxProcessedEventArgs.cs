@@ -5,13 +5,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Processing
 {
-    public class TxProcessedEventArgs : TxEventArgs
+    public class TxProcessedEventArgs(int index, Transaction transaction, BlockHeader blockHeader, TxReceipt txReceipt) : TxEventArgs(index, transaction)
     {
-        public TxReceipt TxReceipt { get; }
+        public TxReceipt TxReceipt { get; } = txReceipt;
 
-        public TxProcessedEventArgs(int index, Transaction transaction, TxReceipt txReceipt) : base(index, transaction)
-        {
-            TxReceipt = txReceipt;
-        }
+        public BlockHeader BlockHeader { get; } = blockHeader;
     }
 }

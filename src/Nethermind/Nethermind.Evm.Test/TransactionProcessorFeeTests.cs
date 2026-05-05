@@ -4,18 +4,19 @@
 using System;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs.GnosisForks;
@@ -26,8 +27,9 @@ public class TransactionProcessorFeeTests
 {
     private TestSpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
+    private ITransactionProcessor _transactionProcessor;
     private IWorldState _stateProvider;
+    private IDisposable _worldStateCloser;
     private OverridableReleaseSpec _spec;
 
     [SetUp]
@@ -36,18 +38,20 @@ public class TransactionProcessorFeeTests
         _spec = new(PragueGnosis.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
+
+    [TearDown]
+    public void TearDown() => _worldStateCloser.Dispose();
 
     [TestCase(true, true)]
     [TestCase(false, true)]
@@ -79,12 +83,13 @@ public class TransactionProcessorFeeTests
     }
 
     private readonly Address SelfDestructAddress = new("0x89aa9b2ce05aaef815f25b237238c0b4ffff6ae3");
+
     [Test]
     public void Check_fees_with_fee_collector_destroy_coinbase()
     {
         _spec.FeeCollector = TestItem.AddressC;
 
-        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether);
 
         byte[] byteCode = Prepare.EvmCode
             .PushData(SelfDestructAddress)
@@ -240,10 +245,10 @@ public class TransactionProcessorFeeTests
         BlockReceiptsTracer blockTracer = new();
         blockTracer.SetOtherTracer(cancellationBlockTracer);
 
-        var blkCtx = new BlockExecutionContext(block.Header, _spec);
+        BlockExecutionContext blkCtx = new(block.Header, _spec);
         blockTracer.StartNewBlockTrace(block);
         {
-            var txTracer = blockTracer.StartNewTxTrace(tx1);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(tx1);
             _transactionProcessor.Execute(tx1, blkCtx, txTracer);
             blockTracer.EndTxTrace();
         }
@@ -255,7 +260,7 @@ public class TransactionProcessorFeeTests
 
         try
         {
-            var txTracer = blockTracer.StartNewTxTrace(tx2);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(tx2);
             _transactionProcessor.Execute(tx2, blkCtx, txTracer);
             blockTracer.EndTxTrace();
             blockTracer.EndBlockTrace();
@@ -299,6 +304,44 @@ public class TransactionProcessorFeeTests
         tracer.BurntFees.Should().Be(21000);
     }
 
+    [TestCase(TxType.EIP1559)]
+    [TestCase(TxType.Legacy)]
+    public void CallAndRestore_returns_descriptive_error_when_maxFeePerGas_below_baseFee(TxType txType)
+    {
+        UInt256 baseFee = 100;
+        UInt256 feeCap = 50;
+
+        Transaction tx = txType == TxType.EIP1559
+            ? Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(feeCap)
+                .WithMaxPriorityFeePerGas(feeCap)
+                .WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject
+            : Build.A.Transaction
+                .WithType(TxType.Legacy)
+                .WithGasPrice(feeCap)
+                .WithGasLimit(21000)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBaseFeePerGas(baseFee)
+            .WithTransactions(tx)
+            .WithGasLimit(21000)
+            .TestObject;
+
+        BlockExecutionContext blkCtx = new(block.Header, _spec);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, blkCtx, NullTxTracer.Instance);
+
+        result.Error.Should().Be(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee);
+        result.ErrorDescription.Should().Contain($"maxFeePerGas: {feeCap}");
+        result.ErrorDescription.Should().Contain($"baseFee: {baseFee}");
+        result.ErrorDescription.Should().Contain(TestItem.AddressA.ToString(withEip55Checksum: true));
+    }
+
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)
     {
         BlockReceiptsTracer tracer = new();
@@ -307,7 +350,7 @@ public class TransactionProcessorFeeTests
         tracer.StartNewBlockTrace(block);
         foreach (Transaction tx in block.Transactions)
         {
-            var txTracer = tracer.StartNewTxTrace(tx);
+            ITxTracer txTracer = tracer.StartNewTxTrace(tx);
             _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
             tracer.EndTxTrace();
         }

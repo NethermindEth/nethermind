@@ -15,26 +15,18 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcLocalStats : IJsonRpcLocalStats
+public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+    : IJsonRpcLocalStats
 {
-    private readonly ITimestamper _timestamper;
-    private readonly TimeSpan _reportingInterval;
-    private readonly bool _enablePerMethodMetrics;
+    private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+    private readonly TimeSpan _reportingInterval = TimeSpan.FromSeconds(jsonRpcConfig.ReportIntervalSeconds);
+    private readonly bool _enablePerMethodMetrics = jsonRpcConfig.EnablePerMethodMetrics;
     private ConcurrentDictionary<string, MethodStats> _currentStats = new();
     private ConcurrentDictionary<string, MethodStats> _previousStats = new();
     private readonly ConcurrentDictionary<string, MethodStats> _allTimeStats = new();
-    private DateTime _lastReport;
-    private readonly ILogger _logger;
+    private DateTime _lastReport = timestamper.UtcNow;
+    private readonly ILogger _logger = logManager?.GetClassLogger<JsonRpcLocalStats>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly StringBuilder _reportStringBuilder = new();
-
-    public JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
-    {
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _reportingInterval = TimeSpan.FromSeconds(jsonRpcConfig.ReportIntervalSeconds);
-        _enablePerMethodMetrics = jsonRpcConfig.EnablePerMethodMetrics;
-        _lastReport = timestamper.UtcNow;
-    }
 
     public MethodStats GetMethodStats(string methodName) => _allTimeStats.GetValueOrDefault(methodName, new MethodStats());
 
@@ -184,10 +176,7 @@ public class JsonRpcLocalStats : IJsonRpcLocalStats
         }
     }
 
-    private void Swap()
-    {
-        (_currentStats, _previousStats) = (_previousStats, _currentStats);
-    }
+    private void Swap() => (_currentStats, _previousStats) = (_previousStats, _currentStats);
 
     [Pure]
     private static string PrepareReportLine(in string key, MethodStats methodStats) =>

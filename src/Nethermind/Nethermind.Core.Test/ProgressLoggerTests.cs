@@ -155,7 +155,7 @@ public class ProgressLoggerTests
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsInfo.Returns(true);
         ILogger logger = new(iLogger);
-        logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
         ProgressLogger measuredProgress = new("Progress", logManager, manualTimestamper);
 
@@ -171,10 +171,7 @@ public class ProgressLoggerTests
         iLogger.Received(1).Info("Progress              1 /        100 (  1.00 %) [⡆                                    ] queue       99 | skipped      90 Blk/s | current      10 Blk/s");
     }
 
-    private ProgressLogger CreateProgress()
-    {
-        return new("", LimboLogs.Instance);
-    }
+    private ProgressLogger CreateProgress() => new("", LimboLogs.Instance);
 
     private (ProgressLogger, ManualTimestamper) CreateProgressWithManualTimestamper()
     {

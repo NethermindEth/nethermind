@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -21,27 +22,24 @@ namespace Nethermind.Evm.Benchmark
         private byte[] _stack;
 
         [GlobalSetup]
-        public void GlobalSetup()
-        {
-            _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
-        }
+        public void GlobalSetup() => _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
 
         [Benchmark(OperationsPerInvoke = 4)]
         [ArgumentsSource(nameof(ValueSource))]
         public UInt256 Uint256(UInt256 v)
         {
-            EvmStack<VirtualMachine.NotTracing> stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            stack.PushUInt256(in v);
+            stack.PushUInt256<OffFlag>(in v);
             stack.PopUInt256(out UInt256 value);
 
-            stack.PushUInt256(in value);
+            stack.PushUInt256<OffFlag>(in value);
             stack.PopUInt256(out value);
 
-            stack.PushUInt256(in value);
+            stack.PushUInt256<OffFlag>(in value);
             stack.PopUInt256(out value);
 
-            stack.PushUInt256(in value);
+            stack.PushUInt256<OffFlag>(in value);
             stack.PopUInt256(out value);
 
             return value;
@@ -50,67 +48,67 @@ namespace Nethermind.Evm.Benchmark
         [Benchmark(OperationsPerInvoke = 4)]
         public byte Byte()
         {
-            EvmStack<VirtualMachine.NotTracing> stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            byte b = 1;
+            int b = 1;
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            stack.PushByte(b);
+            stack.PushByte<OffFlag>((byte)b);
             b = stack.PopByte();
 
-            return b;
+            return (byte)b;
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushZero()
         {
-            EvmStack<VirtualMachine.NotTracing> stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            stack.PushZero();
-            stack.PushZero();
-            stack.PushZero();
-            stack.PushZero();
+            stack.PushZero<OffFlag>();
+            stack.PushZero<OffFlag>();
+            stack.PushZero<OffFlag>();
+            stack.PushZero<OffFlag>();
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
         public void PushOne()
         {
-            EvmStack<VirtualMachine.NotTracing> stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            stack.PushOne();
-            stack.PushOne();
-            stack.PushOne();
-            stack.PushOne();
+            stack.PushOne<OffFlag>();
+            stack.PushOne<OffFlag>();
+            stack.PushOne<OffFlag>();
+            stack.PushOne<OffFlag>();
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
         public void Swap()
         {
-            EvmStack<VirtualMachine.NotTracing> stack = new(0, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = new(0, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            stack.Swap(2);
-            stack.Swap(2);
-            stack.Swap(2);
-            stack.Swap(2);
+            stack.Swap<OffFlag>(2);
+            stack.Swap<OffFlag>(2);
+            stack.Swap<OffFlag>(2);
+            stack.Swap<OffFlag>(2);
         }
 
         [Benchmark(OperationsPerInvoke = 4)]
         public void Dup()
         {
-            EvmStack<VirtualMachine.NotTracing> stack = new(1, NullTxTracer.Instance, _stack.AsSpan());
+            EvmStack stack = new(1, NullTxTracer.Instance, ref MemoryMarshal.GetArrayDataReference(_stack), default);
 
-            stack.Dup(1);
-            stack.Dup(1);
-            stack.Dup(1);
-            stack.Dup(1);
+            stack.Dup<OffFlag>(1);
+            stack.Dup<OffFlag>(1);
+            stack.Dup<OffFlag>(1);
+            stack.Dup<OffFlag>(1);
         }
     }
 }

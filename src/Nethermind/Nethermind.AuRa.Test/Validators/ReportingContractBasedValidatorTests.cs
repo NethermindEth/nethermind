@@ -18,7 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;

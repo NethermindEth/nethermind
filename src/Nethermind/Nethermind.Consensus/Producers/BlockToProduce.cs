@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 
@@ -12,6 +13,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Producers
 {
+    [DebuggerDisplay("{Hash} ({Number})")]
     public class BlockToProduce : Block
     {
         private IEnumerable<Transaction>? _transactions;
@@ -29,14 +31,22 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
+        public BlockToProduce(BlockHeader header) : base(
+        header,
+        new(
+            null,
+            null,
+            header.WithdrawalsRoot is null ? null : [])
+        )
+        { }
+
         public BlockToProduce(BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
             IEnumerable<Withdrawal>? withdrawals = null)
-            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals)
-        {
-            Transactions = transactions;
-        }
+            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals) => Transactions = transactions;
+
+        public long TxByteLength { get; internal set; }
 
         public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);
     }

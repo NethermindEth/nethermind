@@ -17,18 +17,18 @@ public class Eip7623Tests : VirtualMachineTestsBase
     [Test]
     public void non_zero_data_transaction_floor_cost_should_be_40()
     {
-        var transaction = new Transaction { Data = new byte[] { 1 }, To = Address.Zero };
-        IntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        cost.Should().Be(new IntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028,
-            FloorGas: GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623 * 4));
+        Transaction transaction = new() { Data = new byte[] { 1 }, To = Address.Zero };
+        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028,
+            FloorGas: GasCostOf.Transaction + Spec.GasCosts.TotalCostFloorPerToken * 4));
     }
 
     [Test]
     public void zero_data_transaction_floor_cost_should_be_10()
     {
-        var transaction = new Transaction { Data = new byte[] { 0 }, To = Address.Zero };
-        IntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        cost.Should().Be(new IntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
-            FloorGas: GasCostOf.Transaction + GasCostOf.TotalCostFloorPerTokenEip7623));
+        Transaction transaction = new() { Data = new byte[] { 0 }, To = Address.Zero };
+        EthereumIntrinsicGas cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        cost.Should().Be(new EthereumIntrinsicGas(Standard: GasCostOf.Transaction + GasCostOf.TxDataZero,
+            FloorGas: GasCostOf.Transaction + Spec.GasCosts.TotalCostFloorPerToken));
     }
 }

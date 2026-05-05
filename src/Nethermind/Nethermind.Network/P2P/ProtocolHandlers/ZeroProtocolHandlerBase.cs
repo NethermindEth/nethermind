@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -12,9 +13,16 @@ using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
-        : ProtocolHandlerBase(session, nodeStats, serializer, logManager), IZeroProtocolHandler
+    public abstract class ZeroProtocolHandlerBase(
+        ISession session,
+        INodeStatsManager nodeStats,
+        IMessageSerializationService serializer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ILogManager logManager)
+        : ProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager), IZeroProtocolHandler
     {
+        protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
+
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new(message);
@@ -28,9 +36,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        public abstract void HandleMessage(ZeroPacket message);
+        public void HandleMessage(ZeroPacket message)
+        {
+            BeforeHandleMessage(message);
+            HandleMessageCore(message);
+        }
 
-        protected async Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
+        protected virtual void BeforeHandleMessage(ZeroPacket message) { }
+
+        protected abstract void HandleMessageCore(ZeroPacket message);
+
+        protected Task<TResponse> SendRequestGeneric<TRequest, TResponse>(
             MessageQueue<TRequest, TResponse> messageQueue,
             TRequest message,
             TransferSpeedType speedType,
@@ -41,10 +57,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Request<TRequest, TResponse> request = new(message);
             messageQueue.Send(request);
 
-            return await HandleResponse(request, speedType, describeRequestFunc, token);
+            return HandleResponse(request, speedType, describeRequestFunc, token);
         }
 
-        protected async Task<TResponse> HandleResponse<TRequest, TResponse>(
+        protected Task<TResponse> HandleResponse<TRequest, TResponse>(
+            Request<TRequest, TResponse> request,
+            TransferSpeedType speedType,
+            Func<TRequest, string> describeRequestFunc,
+            CancellationToken token)
+            => HandleResponseInner(request, speedType, describeRequestFunc, token).Unwrap();
+
+        private async Task<Task<TResponse>> HandleResponseInner<TRequest, TResponse>(
             Request<TRequest, TResponse> request,
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
@@ -52,50 +75,46 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         )
         {
             Task<TResponse> task = request.CompletionSource.Task;
-            bool success = false;
-            try
+
+            using CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            CancellationToken cancellationToken = compositeCancellation.Token;
+
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, cancellationToken));
+
+            if (ReferenceEquals(firstTask, task))
             {
-                using CancellationTokenSource delayCancellation = new();
-                using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-                Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
-                if (firstTask.IsCanceled)
-                {
-                    token.ThrowIfCancellationRequested();
-                }
+                long elapsed = request.FinishMeasuringTime();
 
-                if (firstTask == task)
-                {
-                    await delayCancellation.CancelAsync();
-                    long elapsed = request.FinishMeasuringTime();
-                    long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
-                    if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
+                delayCancellation.Cancel();
 
-                    success = true;
-                    return await task;
+                long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
+                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
+            }
+            else
+            {
+                // TrySetCanceled first: if it succeeds we own the TCS and need to
+                // dispose any late-arriving response. If it fails, the response was
+                // already set by Handle() and the caller owns the data — registering
+                // a disposal continuation would dispose data the caller still holds.
+                if (request.CompletionSource.TrySetCanceled(cancellationToken))
+                {
+                    _ = task.ContinueWith(static t =>
+                    {
+                        if (t.IsCompletedSuccessfully)
+                        {
+                            t.Result.TryDispose();
+                        }
+                    });
                 }
 
                 StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
-                throw new TimeoutException($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
-            }
-            finally
-            {
-                if (!success)
-                {
-                    CleanupTimeoutTask(task);
-                }
-            }
-        }
 
-        private static void CleanupTimeoutTask<TResponse>(Task<TResponse> task)
-        {
-            task.ContinueWith(static t =>
-            {
-                if (t.IsCompletedSuccessfully)
-                {
-                    t.Result.TryDispose();
-                }
-            });
+                if (Logger.IsDebug) Logger.Debug($"{Session} Request timeout in {describeRequestFunc(request.Message)}");
+            }
+
+            return task;
         }
     }
 }

@@ -4,16 +4,14 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.Flashbots.Handlers;
-using Nethermind.Flashbots.Modules.Flashbots;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Flashbots.Test;
 
@@ -22,20 +20,18 @@ public partial class FlashbotsModuleTests
     TestKeyAndAddress? TestKeysAndAddress;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         TestKeysAndAddress = new TestKeyAndAddress();
-    }
 
     internal class TestKeyAndAddress
     {
-        public PrivateKey PrivateKey = new PrivateKey("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        public PrivateKey PrivateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
         public Address TestAddr;
 
-        public PrivateKey TestValidatorKey = new PrivateKey("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0");
+        public PrivateKey TestValidatorKey = new("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0");
         public Address TestValidatorAddr;
 
-        public PrivateKey TestBuilderKey = new PrivateKey("0bfbbbc68fefd990e61ba645efb84e0a62e94d5fff02c9b1da8eb45fea32b4e0");
+        public PrivateKey TestBuilderKey = new("0bfbbbc68fefd990e61ba645efb84e0a62e94d5fff02c9b1da8eb45fea32b4e0");
         public Address TestBuilderAddr;
 
         public UInt256 TestBalance = UInt256.Parse("2000000000000000000");
@@ -50,34 +46,11 @@ public partial class FlashbotsModuleTests
         }
     }
 
-    public ReadOnlyTxProcessingEnvFactory CreateReadOnlyTxProcessingEnvFactory(EngineModuleTests.MergeTestBlockchain chain)
-    {
-        ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
-            chain.WorldStateManager,
-            chain.BlockTree,
-            chain.SpecProvider,
-            chain.LogManager
-        );
-        return readOnlyTxProcessingEnvFactory;
-    }
-
     protected static async Task<EngineModuleTests.MergeTestBlockchain> CreateBlockChain(
         IReleaseSpec? releaseSpec = null)
-    => await new EngineModuleTests.MergeTestBlockchain().Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
-
-    private IFlashbotsRpcModule CreateFlashbotsModule(EngineModuleTests.MergeTestBlockchain chain, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
-    {
-        return new FlashbotsRpcModule(
-            new ValidateSubmissionHandler(
-                chain.HeaderValidator,
-                chain.BlockTree,
-                chain.BlockValidator,
-                readOnlyTxProcessingEnvFactory,
-                chain.LogManager,
-                chain.SpecProvider,
-                new FlashbotsConfig(),
-                chain.EthereumEcdsa
-            )
-        );
-    }
+        => await new EngineModuleTests.MergeTestBlockchain()
+            .BuildMergeTestBlockchain(configurer: (builder) => builder
+                .AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance))
+                .AddModule(new FlashbotsModule(new FlashbotsConfig(), new JsonRpcConfig()))
+            );
 }

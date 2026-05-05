@@ -11,19 +11,20 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Full traditional trie store.
     /// </summary>
-    public interface ITrieStore : IDisposable, ITrieStoreInternal
+    public interface ITrieStore : IDisposable, IScopableTrieStore
     {
-        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
-
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
-        // Used for serving via hash
-        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
-
         bool HasRoot(Hash256 stateRoot);
 
+        /// <summary>
+        /// Checks if the state root exists and the state for the given block number is still available
+        /// (i.e., not partially pruned). Implementations that perform pruning should reject blocks
+        /// whose state may have been partially pruned.
+        /// </summary>
+        bool HasRoot(Hash256 stateRoot, long blockNumber) => HasRoot(stateRoot);
+
+        IDisposable BeginScope(BlockHeader? baseBlock);
+
         IScopedTrieStore GetTrieStore(Hash256? address);
-        INodeStorage.KeyScheme Scheme { get; }
 
         /// <summary>
         /// Begin a block commit for this block number. This call may be blocked if a memory pruning is currently happening.
@@ -34,25 +35,29 @@ namespace Nethermind.Trie.Pruning
         IBlockCommitter BeginBlockCommit(long blockNumber);
     }
 
-    /// <summary>
-    /// These methods are to be used by ScopedTrieStore.
-    /// It should be considered internal to TrieStore.
-    /// It should not be used directly, nor intercepted.
-    /// </summary>
-    public interface ITrieStoreInternal
+    public interface IScopableTrieStore
     {
-        // Used by healing
-        void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp);
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
+        INodeStorage.KeyScheme Scheme { get; }
     }
 
-    public interface IPruningTrieStore
+    public interface IPruningTrieStore : ITrieStore
     {
         public void PersistCache(CancellationToken cancellationToken);
+
+        IReadOnlyTrieStore AsReadOnly();
+
+        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
+        // Used for serving via hash
+        IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        // Acquire lock, then persist and flush cache.
+        // Used for full pruning operation that change underlying node storage.
+        TrieStore.StableLockScope PrepareStableState(CancellationToken cancellationToken);
     }
 
     /// <summary>

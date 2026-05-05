@@ -22,18 +22,12 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Wrong_contract_creation_should_return_invalid_code_after_3541(
             [ValueSource(nameof(Eip3541TestCases))] Eip3541TestCase test,
-            [ValueSource(nameof(ContractDeployments))] ContractDeployment contractDeployment)
-        {
-            DeployCodeAndAssertTx(test.Code, true, contractDeployment, test.WithoutAnyInvalidCodeErrors);
-        }
+            [ValueSource(nameof(ContractDeployments))] ContractDeployment contractDeployment) => DeployCodeAndAssertTx(test.Code, true, contractDeployment, test.WithoutAnyInvalidCodeErrors);
 
         [Test]
         public void All_tx_should_pass_before_3541(
             [ValueSource(nameof(Eip3541TestCases))] Eip3541TestCase test,
-            [ValueSource(nameof(ContractDeployments))] ContractDeployment contractDeployment)
-        {
-            DeployCodeAndAssertTx(test.Code, false, contractDeployment, true);
-        }
+            [ValueSource(nameof(ContractDeployments))] ContractDeployment contractDeployment) => DeployCodeAndAssertTx(test.Code, false, contractDeployment, true);
 
         public enum ContractDeployment
         {
@@ -77,23 +71,23 @@ namespace Nethermind.Evm.Test
 
         void DeployCodeAndAssertTx(string code, bool eip3541Enabled, ContractDeployment context, bool withoutAnyInvalidCodeErrors)
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
             byte[] salt = { 4, 5, 6 };
             byte[] byteCode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
-            var createContract = context switch
+            byte[] createContract = context switch
             {
                 ContractDeployment.CREATE => Prepare.EvmCode.Create(byteCode, UInt256.Zero).Done,
                 ContractDeployment.CREATE2 => Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done,
                 _ => byteCode,
             };
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+            _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
 
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.To = null;
             transaction.Data = createContract;
             TestAllTracerWithOutput tracer = CreateTracer();

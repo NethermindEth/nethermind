@@ -7,29 +7,22 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
+public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder headerDecoder = null) : IBlockStore, IClearableCache
 {
-    private readonly BlockDecoder _blockDecoder = new();
+    private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<ValueHash256, Block>
+    private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
 
-    public void SetMetadata(byte[] key, byte[] value)
-    {
-        blockDb.Set(key, value);
-    }
+    public void SetMetadata(byte[] key, byte[] value) => blockDb.Set(key, value);
 
-    public byte[]? GetMetadata(byte[] key)
-    {
-        return blockDb.Get(key);
-    }
+    public byte[]? GetMetadata(byte[] key) => blockDb.Get(key);
 
     public bool HasBlock(long blockNumber, Hash256 blockHash)
     {
@@ -52,15 +45,9 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
         blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
     }
 
-    private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
-    {
-        blockNumber.WriteBigEndian(output);
-        blockHash!.Bytes.CopyTo(output[8..]);
-    }
-
     public void Delete(long blockNumber, Hash256 blockHash)
     {
-        _blockCache.Delete(blockHash);
+        _blockCache.Delete(in blockHash.ValueHash256);
         blockDb.Delete(blockNumber, blockHash);
         blockDb.Remove(blockHash.Bytes);
     }
@@ -76,7 +63,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        var b = blockDb.Get(dbKey);
+        byte[] b = blockDb.Get(dbKey);
         if (b is not null) return b;
         return blockDb.Get(blockHash);
     }
@@ -84,16 +71,21 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb) : IBlockStore
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
-        GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
         MemoryManager<byte>? memoryOwner = blockDb.GetOwnedMemory(keyWithBlockNumber);
         memoryOwner ??= blockDb.GetOwnedMemory(blockHash.Bytes);
+        if (memoryOwner is null) return null;
 
-        return BlockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner?.Memory ?? Memory<byte>.Empty, RlpBehaviors.None);
+        return _blockDecoder.DecodeToReceiptRecoveryBlock(memoryOwner, memoryOwner.Memory, RlpBehaviors.None);
     }
 
-    public void Cache(Block block)
-    {
-        _blockCache.Set(block.Hash, block);
-    }
+    public void Cache(Block block) =>
+        // Cache a sanitized copy to avoid retaining large BAL/account-change
+        // structures, without mutating the original block instance which may
+        // still be used by downstream consumers (e.g., TxPool reads and
+        // disposes AccountChanges after this call).
+        _blockCache.Set(in block.Hash.ValueHash256, new(block.Header, block.Body));
+
+    void IClearableCache.ClearCache() => _blockCache.Clear();
 }

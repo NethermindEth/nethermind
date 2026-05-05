@@ -3,38 +3,27 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.State;
 
 namespace Nethermind.Synchronization.ParallelSync;
 
-public class FullStateFinder : IFullStateFinder
+public class FullStateFinder(
+    IBlockTree blockTree,
+    IStateReader stateReader) : IFullStateFinder
 {
     // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
     // then we will never have to look 128 back again
     // note that we will be doing that every second or so
     private const int MaxLookupBack = 128;
-    private readonly IStateReader _stateReader;
-    private readonly IBlockTree _blockTree;
+    private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private long _lastKnownState;
 
-    public FullStateFinder(
-        IBlockTree blockTree,
-        IStateReader stateReader)
-    {
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-    }
-
-    private bool IsFullySynced(Hash256 stateRoot)
-    {
-        if (stateRoot == Keccak.EmptyTreeHash)
-        {
-            return true;
-        }
-
-        return _stateReader.HasStateForRoot(stateRoot);
-    }
+    private bool IsFullySynced(BlockHeader block) =>
+        block.StateRoot == Keccak.EmptyTreeHash || _stateReader.HasStateForBlock(block);
 
     public long FindBestFullState()
     {
@@ -65,29 +54,39 @@ public class FullStateFinder : IFullStateFinder
             }
         }
 
+        if (bestFullState != 0)
+        {
+            _lastKnownState = bestFullState;
+        }
+
         return bestFullState;
     }
 
     private long SearchForFullState(BlockHeader startHeader)
     {
         long bestFullState = 0;
-        for (int i = 0; i < MaxLookupBack; i++)
+        long maxLookupBack = MaxLookupBack;
+        if (_lastKnownState != 0)
+        {
+            maxLookupBack = long.Max(maxLookupBack, startHeader.Number - _lastKnownState + 1);
+        }
+
+        for (int i = 0; i < maxLookupBack; i++)
         {
             if (startHeader is null)
             {
                 break;
             }
 
-            if (IsFullySynced(startHeader.StateRoot!))
+            if (IsFullySynced(startHeader))
             {
                 bestFullState = startHeader.Number;
                 break;
             }
 
-            startHeader = _blockTree.FindHeader(startHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            startHeader = _blockTree.FindParentHeader(startHeader!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         return bestFullState;
     }
-
 }

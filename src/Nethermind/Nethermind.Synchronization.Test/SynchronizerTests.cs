@@ -32,6 +32,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.History;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -42,15 +43,11 @@ namespace Nethermind.Synchronization.Test;
 [TestFixture(SynchronizerType.Eth2MergeFastWithoutTTD)]
 [TestFixture(SynchronizerType.Eth2MergeFullWithoutTTD)]
 [Parallelizable(ParallelScope.Self)]
-public class SynchronizerTests
+public class SynchronizerTests(SynchronizerType synchronizerType)
 {
-    private readonly SynchronizerType _synchronizerType;
+    private const int SyncBatchSizeMax = 128;
 
-    public SynchronizerTests(SynchronizerType synchronizerType)
-    {
-        _synchronizerType = synchronizerType;
-    }
-
+    private readonly SynchronizerType _synchronizerType = synchronizerType;
     private static readonly Block _genesisBlock = Build.A.Block
         .Genesis
         .WithDifficulty(100000)
@@ -92,10 +89,8 @@ public class SynchronizerTests
 
         public override Node Node { get; set; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
-        public override void Disconnect(DisconnectReason reason, string details)
-        {
+        public override void Disconnect(DisconnectReason reason, string details) =>
             Disconnected?.Invoke(this, EventArgs.Empty);
-        }
 
         public override Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
@@ -128,7 +123,7 @@ public class SynchronizerTests
 
             int filled = 0;
             bool started = false;
-            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
+            ArrayPoolList<BlockHeader> result = new(maxBlocks, maxBlocks);
             foreach (Block block in Blocks)
             {
                 if (block.Number == number)
@@ -208,29 +203,22 @@ public class SynchronizerTests
             {
                 block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
                     .WithTotalDifficulty(block.TotalDifficulty + 2000000)
-                    .WithExtraData(j < branchStart ? [] : new[] { branchIndex }).TestObject;
+                    .WithExtraData(j < branchStart ? [] : [branchIndex]).TestObject;
                 Blocks.Add(block);
             }
 
             UpdateHead();
         }
 
-        public override string ToString()
-        {
-            return $"SyncPeerMock:{ClientId}";
-        }
+        public override string ToString() =>
+            $"SyncPeerMock:{ClientId}";
     }
 
     private WhenImplementation When => new(_synchronizerType);
 
-    private class WhenImplementation
+    private class WhenImplementation(SynchronizerType synchronizerType)
     {
-        private readonly SynchronizerType _synchronizerType;
-
-        public WhenImplementation(SynchronizerType synchronizerType)
-        {
-            _synchronizerType = synchronizerType;
-        }
+        private readonly SynchronizerType _synchronizerType = synchronizerType;
 
         public SyncingContext Syncing => new(_synchronizerType);
     }
@@ -240,7 +228,7 @@ public class SynchronizerTests
         private bool _wasStopped = false;
         public static ConcurrentQueue<SyncingContext> AllInstances { get; } = new();
 
-        private readonly Dictionary<string, ISyncPeer> _peers = new();
+        private readonly Dictionary<string, ISyncPeer> _peers = [];
         private IBlockTree BlockTree => FromContainer.BlockTree;
 
         private ISyncServer SyncServer => FromContainer.SyncServer;
@@ -277,7 +265,7 @@ public class SynchronizerTests
                     _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
                 };
 
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<ContainerDependencies>();
             ISyncConfig syncConfig = GetSyncConfig();
             IMergeConfig mergeConfig = new MergeConfig();
             IPruningConfig pruningConfig = new PruningConfig()
@@ -298,12 +286,13 @@ public class SynchronizerTests
                 .AddSingleton(Substitute.For<IProcessExitSource>())
                 .AddSingleton<ISealValidator>(Always.Valid)
                 .AddSingleton<IBlockValidator>(Always.Valid)
+                .AddSingleton(Substitute.For<IHistoryPruner>())
                 .AddSingleton<ContainerDependencies>()
                 .AddSingleton(_logManager);
 
             if (IsMerge(synchronizerType))
             {
-                builder.RegisterModule(new MergeModule(configProvider));
+                builder.RegisterModule(new TestMergeModule(configProvider));
             }
 
             Container = builder.Build();
@@ -448,10 +437,8 @@ public class SynchronizerTests
             await Container.DisposeAsync();
         }
 
-        public async ValueTask DisposeAsync()
-        {
+        public async ValueTask DisposeAsync() =>
             await StopAsync();
-        }
 
         public SyncingContext WaitALittle()
         {
@@ -475,15 +462,13 @@ public class SynchronizerTests
     }
 
     [Test, Retry(3)]
-    public async Task Init_condition_are_as_expected()
-    {
+    public async Task Init_condition_are_as_expected() =>
         await When.Syncing
             .AfterProcessingGenesis()
             .BestKnownNumberIs(0)
             .Genesis.BlockIsKnown()
             .BestSuggested.BlockIsSameAsGenesis()
             .StopAsync();
-    }
 
     [Test, Retry(3)]
     public async Task Can_sync_with_one_peer_straight()
@@ -722,10 +707,10 @@ public class SynchronizerTests
     public async Task Can_reorg_on_add_peer()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         SyncPeerMock peerB = new("B");
-        peerB.AddBlocksUpTo(SyncBatchSize.Max * 2, 0, 1);
+        peerB.AddBlocksUpTo(SyncBatchSizeMax * 2, 0, 1);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -842,7 +827,7 @@ public class SynchronizerTests
     public async Task Can_sync_more_than_a_batch()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max * 3);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax * 3);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -855,7 +840,7 @@ public class SynchronizerTests
     public async Task Can_sync_exactly_one_batch()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         await When.Syncing
             .AfterProcessingGenesis()
@@ -868,7 +853,7 @@ public class SynchronizerTests
     public async Task Can_stop()
     {
         SyncPeerMock peerA = new("A");
-        peerA.AddBlocksUpTo(SyncBatchSize.Max);
+        peerA.AddBlocksUpTo(SyncBatchSizeMax);
 
         await When.Syncing
             .StopAsync();

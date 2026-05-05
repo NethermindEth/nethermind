@@ -7,10 +7,10 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.State.Proofs;
 
 namespace Evm.T8n.JsonTypes;
@@ -21,7 +21,7 @@ public class T8nExecutionResult
     public Dictionary<Address, AccountState> Accounts { get; set; } = [];
     public byte[] TransactionsRlp { get; set; } = [];
 
-    public static T8nExecutionResult ConstructT8nExecutionResult(WorldState stateProvider,
+    public static T8nExecutionResult ConstructT8nExecutionResult(IWorldState stateProvider,
         Block block,
         T8nTest test,
         StorageTxTracer storageTracer,
@@ -31,13 +31,13 @@ public class T8nExecutionResult
     {
         IReceiptSpec receiptSpec = specProvider.GetSpec(block.Header);
         Hash256 txRoot = TxTrie.CalculateRoot(txReport.SuccessfulTransactions.ToArray());
-        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec,
+        Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(receiptSpec,
             txReport.SuccessfulTransactionReceipts.ToArray(), new ReceiptMessageDecoder());
         LogEntry[] logEntries = txReport.SuccessfulTransactionReceipts
             .SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>())
             .ToArray();
         var bloom = new Bloom(logEntries);
-        var gasUsed = blockReceiptsTracer.TxReceipts.Count == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
+        var gasUsed = blockReceiptsTracer.TxReceipts.Length == 0 ? 0 : (ulong)blockReceiptsTracer.LastReceipt.GasUsedTotal;
         ulong? blobGasUsed = test.Spec.IsEip4844Enabled ? BlobGasCalculator.CalculateBlobGas(txReport.ValidTransactions.ToArray()) : null;
 
         var postState = new PostState
@@ -46,7 +46,7 @@ public class T8nExecutionResult
             TxRoot = txRoot,
             ReceiptsRoot = receiptsRoot,
             WithdrawalsRoot = block.WithdrawalsRoot,
-            LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes),
+            LogsHash = Keccak.Compute(Rlp.OfEmptyList.Bytes),
             LogsBloom = bloom,
             Receipts = txReport.SuccessfulTransactionReceipts.ToArray(),
             Rejected = txReport.RejectedTransactionReceipts.Count == 0
@@ -69,7 +69,7 @@ public class T8nExecutionResult
         return t8NExecutionResult;
     }
 
-    private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, WorldState stateProvider, StorageTxTracer storageTracer, Block block)
+    private static Dictionary<Address, AccountState> CollectAccounts(T8nTest test, IWorldState stateProvider, StorageTxTracer storageTracer, Block block)
     {
         Dictionary<Address, AccountState?> accounts = test.Alloc.Keys.ToDictionary(address => address,
             address => GetAccountState(address, stateProvider, storageTracer));
@@ -99,17 +99,17 @@ public class T8nExecutionResult
             .ToDictionary(addressAndAccount => addressAndAccount.Key, addressAndAccount => addressAndAccount.Value!);
     }
 
-    private static AccountState? GetAccountState(Address address, WorldState stateProvider, StorageTxTracer storageTxTracer)
+    private static AccountState? GetAccountState(Address address, IWorldState stateProvider, StorageTxTracer storageTxTracer)
     {
-        if (!stateProvider.AccountExists(address))  return null;
+        if (!stateProvider.AccountExists(address)) return null;
 
-        Account account = stateProvider.GetAccount(address);
+        stateProvider.TryGetAccount(address, out AccountStruct account);
         var code = stateProvider.GetCode(address);
         var accountState = new AccountState
         {
             Nonce = account.Nonce,
             Balance = account.Balance,
-            Code = code
+            Code = code!
         };
 
         accountState.Storage = storageTxTracer.GetStorage(address) ?? [];

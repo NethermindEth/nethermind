@@ -1,22 +1,23 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Evm.State;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Evm.Test;
 
@@ -25,22 +26,24 @@ internal class TransactionProcessorEip4844Tests
 {
     private ISpecProvider _specProvider = null!;
     private IEthereumEcdsa _ethereumEcdsa = null!;
-    private TransactionProcessor _transactionProcessor = null!;
+    private ITransactionProcessor _transactionProcessor = null!;
     private IWorldState _stateProvider = null!;
+    private IDisposable _worldStateCloser;
 
     [SetUp]
     public void Setup()
     {
-        MemDb stateDb = new();
         _specProvider = new TestSpecProvider(Cancun.Instance);
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, codeInfoRepository, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
+        _stateProvider = TestWorldStateFactory.CreateForTest();
+        _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
     }
 
+    [TearDown]
+    public void TearDown() => _worldStateCloser?.Dispose();
 
     [TestCaseSource(nameof(BalanceIsAffectedByBlobGasTestCaseSource))]
     [TestCaseSource(nameof(BalanceIsNotAffectedWhenNotEnoughFunds))]
@@ -70,7 +73,7 @@ internal class TransactionProcessorEip4844Tests
             .WithBaseFeePerGas(1)
             .TestObject;
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.CallAndRestore(blobTx, blkCtx, NullTxTracer.Instance);
         UInt256 deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
         Assert.That(deltaBalance, Is.EqualTo(UInt256.Zero));
@@ -88,32 +91,32 @@ internal class TransactionProcessorEip4844Tests
             TestName = "Blob gas consumed for 1 blob, minimal balance",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for 1 blob",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 2, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 2, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for 2 blobs",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + 2 * Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, (int)Cancun.Instance.MaxBlobCount, 1ul, 0ul, 0ul)
         {
             TestName = "Blob gas consumed for max blobs",
-            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GetMaxBlobGasPerBlock()),
+            ExpectedResult = (UInt256)(GasCostOf.Transaction + Cancun.Instance.GasCosts.MaxBlobGasPerBlock),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, 0ul, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, 0ul, 0ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with {nameof(Transaction.MaxFeePerBlobGas)} more than needed",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 0ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2),
         };
-        yield return new TestCaseData(1.Ether(), 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 2ul)
+        yield return new TestCaseData(1.Ether, 1, 10ul, (ulong)Cancun.Instance.BlobBaseFeeUpdateFraction, 2ul)
         {
             TestName = $"Blob gas consumed for 1 blob, with blob gas price hiking and some {nameof(Transaction.Value)}",
             ExpectedResult = (UInt256)(GasCostOf.Transaction + Eip4844Constants.GasPerBlob * 2 + 2),

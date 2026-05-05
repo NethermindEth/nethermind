@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -16,10 +16,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -149,6 +151,9 @@ public class DebugBridge : IDebugBridge
     public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
+    public GethLikeTxTrace GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.Trace(block, txHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
     public GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
@@ -158,31 +163,23 @@ public class DebugBridge : IDebugBridge
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
+    public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Block block, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+        _tracer.TraceBlock(block, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
-        if (parameter.BlockHash is Hash256 hash)
+        if (parameter.BlockNumber is long number)
         {
-            return GetBlockRlp(hash);
-
+            Hash256? hash = _blockTree.FindHash(number);
+            if (hash is null) return null;
+            return _blockStore.GetRlp(number, hash);
         }
-        if (parameter.BlockNumber is long num)
+        else
         {
-            return GetBlockRlp(num);
+            BlockHeader? header = _blockTree.FindHeader(parameter);
+            if (header is null) return null;
+            return _blockStore.GetRlp(header.Number, header.GetOrCalculateHash());
         }
-        return null;
-    }
-
-    public byte[] GetBlockRlp(Hash256 blockHash)
-    {
-        BlockHeader? header = _blockTree.FindHeader(blockHash);
-        if (header is null) return null;
-        return _blockStore.GetRlp(header.Number, blockHash);
-    }
-
-    public byte[] GetBlockRlp(long number)
-    {
-        Hash256 hash = _blockTree.FindHash(number);
-        return hash is null ? null : _blockStore.GetRlp(number, hash);
     }
 
     public Block? GetBlock(BlockParameter param)
@@ -190,13 +187,12 @@ public class DebugBridge : IDebugBridge
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
-    public SyncReportSymmary GetCurrentSyncStage()
+    public SyncReportSummary GetCurrentSyncStage() => new()
     {
-        return new SyncReportSymmary
-        {
-            CurrentStage = _syncModeSelector.Current.ToString()
-        };
-    }
+        CurrentStage = _syncModeSelector.Current.ToString()
+    };
+
+    public bool HaveNotSyncedHeadersYet() => _syncModeSelector.Current.HaveNotSyncedHeadersYet();
 
     public IEnumerable<string> TraceBlockToFile(
         Hash256 blockHash,
@@ -209,4 +205,51 @@ public class DebugBridge : IDebugBridge
         CancellationToken cancellationToken,
         GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBadBlockToFile(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+
+    public Hash256? GetTransactionBlockHash(Hash256 transactionHash) => _receiptStorage.FindBlockHash(transactionHash);
+
+    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
+    {
+        foreach (TransactionBundle bundle in bundles)
+        {
+            yield return GetBundleTrace(bundle, blockParameter, gasCap, cancellationToken, gethTraceOptions);
+        }
+    }
+
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+    {
+        foreach (TransactionForRpc txForRpc in bundle.Transactions)
+        {
+            GethLikeTxTrace? trace;
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap);
+            if (txResult.IsError)
+            {
+                trace = CreateFailTrace(txForRpc.Gas);
+            }
+            else
+            {
+                Transaction tx = txResult.Data;
+
+                try
+                {
+                    trace = _tracer.Trace(
+                        blockParameter,
+                        tx,
+                        gethTraceOptions ?? GethTraceOptions.Default,
+                        cancellationToken);
+                }
+                catch (Exception)
+                {
+                    trace = CreateFailTrace(tx.GasLimit);
+                }
+            }
+
+            if (trace is not null)
+            {
+                yield return trace;
+            }
+        }
+
+        static GethLikeTxTrace? CreateFailTrace(long? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0, ReturnValue = [] };
+    }
 }

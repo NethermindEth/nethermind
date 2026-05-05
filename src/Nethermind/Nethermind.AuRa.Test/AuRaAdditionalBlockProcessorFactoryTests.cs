@@ -16,7 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;

@@ -17,7 +17,8 @@ namespace Nethermind.Core.Test.Encoding
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
             Rlp rlp = decoder.Encode(account);
-            (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(new RlpStream(rlp.Bytes));
+            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
+            (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
             Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
             Assert.That(TestItem.KeccakB, Is.EqualTo(storageRoot));
         }
@@ -28,11 +29,33 @@ namespace Nethermind.Core.Test.Encoding
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
             Rlp rlp = decoder.Encode(account);
-            Account decoded = decoder.Decode(new RlpStream(rlp.Bytes))!;
+            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
+            Account decoded = decoder.Decode(ref ctx)!;
             Assert.That((int)decoded.Balance, Is.EqualTo(100));
             Assert.That((int)decoded.Nonce, Is.EqualTo(0));
             Assert.That(TestItem.KeccakA, Is.EqualTo(decoded.CodeHash));
             Assert.That(TestItem.KeccakB, Is.EqualTo(decoded.StorageRoot));
+        }
+
+        [Test]
+        public void DecodeStorageRootOnly_returns_correct_value_and_advances_past_it()
+        {
+            Account account = new Account(100).WithChangedStorageRoot(TestItem.KeccakB);
+            AccountDecoder decoder = new();
+            Rlp rlp = decoder.Encode(account);
+            Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
+
+            int positionBefore = ctx.Position;
+            ctx.SkipLength();
+            ctx.SkipItem(); // nonce
+            ctx.SkipItem(); // balance
+            int positionBeforeStorageRoot = ctx.Position;
+
+            ctx.Position = positionBefore;
+            Hash256 storageRoot = decoder.DecodeStorageRootOnly(ref ctx);
+
+            Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
         }
     }
 }

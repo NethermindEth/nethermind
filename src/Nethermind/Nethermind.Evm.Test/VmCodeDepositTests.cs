@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
-using Nethermind.State;
+using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
@@ -88,7 +88,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
             byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
-            Assert.That(returnData, Is.EqualTo(deployed.Bytes), "address returned");
+            Assert.That(returnData, Is.EqualTo(deployed.Bytes.ToArray()), "address returned");
         }
     }
 }

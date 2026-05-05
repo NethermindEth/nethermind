@@ -18,10 +18,8 @@ namespace Nethermind.Blockchain.Spec
         private IReleaseSpec? _headerSpec;
         private readonly Lock _lock = new();
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-        {
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
             _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
-        }
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
@@ -66,7 +64,7 @@ namespace Nethermind.Blockchain.Spec
                 _lastHeader = headerNumber;
                 return _headerSpec = header is not null
                     ? _specProvider.GetSpec(header)
-                    : GetSpec((ForkActivation)headerNumber);
+                    : _specProvider.GetSpec((ForkActivation)headerNumber);
             }
         }
     }

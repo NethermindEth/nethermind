@@ -14,49 +14,49 @@ namespace Nethermind.State
 {
     public static class StateReaderExtensions
     {
-        public static UInt256 GetNonce(this IStateReader stateReader, Hash256 stateRoot, Address address)
+        public static UInt256 GetNonce(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
-            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            stateReader.TryGetAccount(baseBlock, address, out AccountStruct account);
             return account.Nonce;
         }
 
-        public static UInt256 GetBalance(this IStateReader stateReader, Hash256 stateRoot, Address address)
+        public static UInt256 GetBalance(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
-            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            stateReader.TryGetAccount(baseBlock, address, out AccountStruct account);
             return account.Balance;
         }
 
-        public static ValueHash256 GetStorageRoot(this IStateReader stateReader, Hash256 stateRoot, Address address)
+        public static ValueHash256 GetStorageRoot(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
-            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            stateReader.TryGetAccount(baseBlock, address, out AccountStruct account);
             return account.StorageRoot;
         }
 
-        public static byte[] GetCode(this IStateReader stateReader, Hash256 stateRoot, Address address)
-        {
-            return stateReader.GetCode(GetCodeHash(stateReader, stateRoot, address)) ?? [];
-        }
+        public static byte[] GetCode(this IStateReader stateReader, BlockHeader? baseBlock, Address address) => stateReader.GetCode(GetCodeHash(stateReader, baseBlock, address)) ?? [];
 
-        public static ValueHash256 GetCodeHash(this IStateReader stateReader, Hash256 stateRoot, Address address)
+        public static ValueHash256 GetCodeHash(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {
-            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            stateReader.TryGetAccount(baseBlock, address, out AccountStruct account);
             return account.CodeHash;
         }
 
-        public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)
-        {
-            return stateReader.HasStateForRoot(header.StateRoot!);
-        }
-
-        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
+        public static TrieStats CollectStats(this IStateReader stateProvider, BlockHeader? baseBlock, IKeyValueStore codeStorage, ILogManager logManager, CancellationToken cancellationToken = default)
         {
             TrieStatsCollector collector = new(codeStorage, logManager, cancellationToken);
-            stateProvider.RunTreeVisitor(collector, root, new VisitingOptions
+            stateProvider.RunTreeVisitor(collector, baseBlock, new VisitingOptions
             {
                 MaxDegreeOfParallelism = Environment.ProcessorCount,
-                FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
+                FullScanMemoryBudget = 16.GiB, // Gonna guess that if you are running this, you have a decent setup.
             });
+            collector.Finish();
             return collector.Stats;
+        }
+
+        public static string DumpState(this IStateReader stateReader, BlockHeader? baseBlock)
+        {
+            TreeDumper dumper = new();
+            stateReader.RunTreeVisitor(dumper, baseBlock);
+            return dumper.ToString();
         }
     }
 }

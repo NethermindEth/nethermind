@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,18 +14,27 @@ public class JsonConfigSource : IConfigSource
 {
     private const string SchemaKey = "$schema";
 
-    public JsonConfigSource(string configFilePath)
-    {
-        LoadJsonConfig(configFilePath);
-    }
+    public JsonConfigSource(string configFilePath) => LoadJsonConfig(configFilePath);
 
     private void ApplyJsonConfig(string jsonContent)
     {
         try
         {
-            using var json = JsonDocument.Parse(jsonContent);
-            foreach (var moduleEntry in json.RootElement.EnumerateObject().Where(o => o.Name != SchemaKey))
+            using JsonDocument json = JsonDocument.Parse(jsonContent);
+            HashSet<string> loadedModules = new(StringComparer.InvariantCultureIgnoreCase);
+            foreach (JsonProperty moduleEntry in json.RootElement.EnumerateObject())
             {
+                if (moduleEntry.Name == SchemaKey)
+                {
+                    continue;
+                }
+
+                string normalizedModuleName = NormalizeModuleName(moduleEntry.Name);
+                if (!loadedModules.Add(normalizedModuleName))
+                {
+                    throw new System.Configuration.ConfigurationErrorsException($"Duplicated config module: {moduleEntry.Name}");
+                }
+
                 LoadModule(moduleEntry.Name, moduleEntry.Value);
             }
         }
@@ -42,14 +51,14 @@ public class JsonConfigSource : IConfigSource
             StringBuilder missingConfigFileMessage = new($"Config file {configFilePath} does not exist.");
             try
             {
-                string directory = Path.GetDirectoryName(configFilePath);
+                string? directory = Path.GetDirectoryName(configFilePath);
                 directory = Path.IsPathRooted(configFilePath)
                     ? directory
-                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, directory);
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, directory!);
 
                 missingConfigFileMessage.AppendLine().AppendLine($"Search directory: {directory}");
 
-                string[] configFiles = Directory.GetFiles(directory, "*.json");
+                string[] configFiles = Directory.GetFiles(directory!, "*.json");
                 if (configFiles.Length > 0)
                 {
                     missingConfigFileMessage.AppendLine("Found the following config files:");
@@ -72,14 +81,19 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-        var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+        Dictionary<string, string> itemsDict = new(StringComparer.InvariantCultureIgnoreCase);
 
-        foreach (var configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
+        foreach (JsonProperty configItem in configItems.EnumerateObject())
         {
-            var key = configItem.Name;
+            if (configItem.Name == SchemaKey)
+            {
+                continue;
+            }
+
+            string key = configItem.Name;
             if (!itemsDict.ContainsKey(key))
             {
-                var value = configItem.Value;
+                JsonElement value = configItem.Value;
                 if (value.ValueKind == JsonValueKind.Number)
                 {
                     itemsDict[key] = ParseNumber(value);
@@ -112,22 +126,22 @@ public class JsonConfigSource : IConfigSource
 
     private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
     {
-        if (!configModule.EndsWith("Config"))
-        {
-            configModule += "Config";
-        }
+        configModule = NormalizeModuleName(configModule);
 
         _values[configModule] = items;
         _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
     }
 
+    private static string NormalizeModuleName(string configModule) =>
+        configModule.EndsWith("Config", StringComparison.InvariantCultureIgnoreCase) ? configModule : $"{configModule}Config";
+
     private void ParseValue(Type type, string category, string name)
     {
         string valueString = _values[category][name];
-        _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name);
+        _parsedValues[category][name] = ConfigSourceHelper.ParseValue(type, valueString, category, name)!;
     }
 
-    public (bool IsSet, object Value) GetValue(Type type, string category, string name)
+    public (bool IsSet, object? Value) GetValue(Type type, string category, string name)
     {
         (bool isSet, _) = GetRawValue(category, name);
         if (isSet)
@@ -143,7 +157,7 @@ public class JsonConfigSource : IConfigSource
         return (false, ConfigSourceHelper.GetDefault(type));
     }
 
-    public (bool IsSet, string Value) GetRawValue(string category, string name)
+    public (bool IsSet, string? Value) GetRawValue(string category, string name)
     {
         if (string.IsNullOrEmpty(category) || string.IsNullOrEmpty(name))
         {
@@ -154,10 +168,7 @@ public class JsonConfigSource : IConfigSource
         return (isSet, isSet ? _values[category][name] : null);
     }
 
-    public IEnumerable<(string Category, string Name)> GetConfigKeys()
-    {
-        return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
-    }
+    public IEnumerable<(string? Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => ((string?)m.Key, n)));
 
     private string ParseNumber(JsonElement value)
     {

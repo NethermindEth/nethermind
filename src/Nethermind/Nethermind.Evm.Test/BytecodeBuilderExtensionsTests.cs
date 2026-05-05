@@ -13,7 +13,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
-[Ignore("Broken and fails for NUnit v3.14.0. Skipped for some reason for earlier versions.")]
 public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 {
     public class TestCase
@@ -25,7 +24,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
     public static MethodInfo GetFluentOpcodeFunction(Instruction opcode)
     {
-        static bool HasDigit(Instruction opcode, Instruction[] treatLikeSuffexedOpcode, Instruction[] treatLikeNonSuffexedOpcode, out int prefixLen, out string opcodeAsString)
+        static bool HasDigit(Instruction opcode, Instruction[] treatLikeSuffixedOpcode, Instruction[] treatLikeNonSuffixedOpcode, out int prefixLen, out string opcodeAsString)
         {
             // opcode with multiple indexes at the end like PUSH or DUP or SWAP are represented as one function
             // with the char 'x' instead of the number with one byte argument to diff i.g : PUSH32 => PUSHx(32, ...)
@@ -33,13 +32,13 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
             prefixLen = opcodeAsString.Length;
 
             // STORE8 is excluded from filter and always returns false cause it is one of it own and has a function mapped directly to it
-            if (treatLikeSuffexedOpcode.Contains(opcode))
+            if (treatLikeSuffixedOpcode.Contains(opcode))
             {
                 return false;
             }
 
             // CREATE is included from filter and always return true it is mapped to CREATE(byte)
-            if (treatLikeNonSuffexedOpcode.Contains(opcode))
+            if (treatLikeNonSuffixedOpcode.Contains(opcode))
             {
                 return true;
             }
@@ -79,7 +78,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
     public static IEnumerable<TestCase> opcodes_with_0_arg()
     {
-        var opcodes = new Instruction[] {
+        Instruction[] opcodes = new Instruction[] {
                 Instruction.STOP,
                 Instruction.CALLER,
                 Instruction.CALLVALUE,
@@ -112,12 +111,12 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
                 Instruction.DUP3, Instruction.DUP7, Instruction.DUP11, Instruction.DUP15,
                 Instruction.DUP4, Instruction.DUP8, Instruction.DUP12, Instruction.DUP16,
             };
-        foreach (var opcode in opcodes)
+        foreach (Instruction opcode in opcodes)
         {
-            var initBytecode = Prepare.EvmCode;
+            Prepare initBytecode = Prepare.EvmCode;
 
             //we get MethodInfo of the function representing the opcode
-            var method = GetFluentOpcodeFunction(opcode);
+            MethodInfo method = GetFluentOpcodeFunction(opcode);
 
             //we handle the cases requiring a byte differentiator
             initBytecode = opcode switch
@@ -141,7 +140,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     public static IEnumerable<TestCase> opcodes_with_1_arg()
     {
         // opcode having 1 argument of type Address
-        var address_opcodes = new Instruction[] {
+        Instruction[] address_opcodes = new Instruction[] {
                 Instruction.BALANCE,
                 Instruction.EXTCODESIZE,
                 Instruction.EXTCODEHASH,
@@ -150,7 +149,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
         };
 
         // opcode having 1 argument of type UInt256
-        var number_opcodes = new Instruction[] {
+        Instruction[] number_opcodes = new Instruction[] {
                 Instruction.ISZERO,
                 Instruction.NOT,
                 Instruction.CALLDATALOAD,
@@ -164,7 +163,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
         foreach (Instruction opcode in address_opcodes)
         {
             Address arguments = Address.Zero;
-            var initBytecode = Prepare.EvmCode;
+            Prepare initBytecode = Prepare.EvmCode;
             MethodInfo method = GetFluentOpcodeFunction(opcode);
             initBytecode = (Prepare)method.Invoke(null, new object[] {
                 initBytecode , arguments
@@ -185,7 +184,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
         foreach (Instruction opcode in number_opcodes)
         {
             UInt256 arguments = UInt256.Zero;
-            var initBytecode = Prepare.EvmCode;
+            Prepare initBytecode = Prepare.EvmCode;
             MethodInfo method = GetFluentOpcodeFunction(opcode);
             initBytecode = (Prepare)method.Invoke(null, new object[] {
                 initBytecode , arguments
@@ -206,7 +205,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     public static IEnumerable<TestCase> opcodes_with_2_arg()
     {
         // opcode having 2 argument of diff type (UInt256, byte[])
-        var heterogeneous_opcodes = new[] {
+        Instruction[] heterogeneous_opcodes = new[] {
                     Instruction.SIGNEXTEND,
                     Instruction.MSTORE,
                     Instruction.BYTE,
@@ -216,7 +215,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
         };
 
         // opcode having 2 argument of same type UInt256
-        var homogeneous_opcodes = new[] {
+        Instruction[] homogeneous_opcodes = new[] {
                     Instruction.ADD,
                     Instruction.MUL,
                     Instruction.SUB,
@@ -246,8 +245,8 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
         foreach (Instruction opcode in homogeneous_opcodes)
         {
             (UInt256 firstArg, UInt256 secondArg) = (UInt256.Zero, UInt256.One);
-            var initBytecode = Prepare.EvmCode;
-            var method = GetFluentOpcodeFunction(opcode);
+            Prepare initBytecode = Prepare.EvmCode;
+            MethodInfo method = GetFluentOpcodeFunction(opcode);
             initBytecode = opcode switch
             {
                 >= Instruction.LOG1 and <= Instruction.LOG4 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode - Instruction.LOG1 + 1), firstArg, secondArg }),
@@ -269,8 +268,8 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
         foreach (Instruction opcode in heterogeneous_opcodes)
         {
             (UInt256 firstArg, byte[] secondArg) = (UInt256.Zero, new byte[] { 2 });
-            var initBytecode = Prepare.EvmCode;
-            var method = GetFluentOpcodeFunction(opcode);
+            Prepare initBytecode = Prepare.EvmCode;
+            MethodInfo method = GetFluentOpcodeFunction(opcode);
             initBytecode = (Prepare)method.Invoke(null, new object[] { initBytecode, firstArg, secondArg });
 
             yield return new TestCase()
@@ -289,7 +288,7 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
     public static IEnumerable<TestCase> opcodes_with_3_arg()
     {
-        var opcodes = new Instruction[] {
+        Instruction[] opcodes = new Instruction[] {
                 Instruction.ADDMOD,
                 Instruction.MULMOD,
                 Instruction.CODECOPY,
@@ -298,11 +297,11 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
                 Instruction.CREATE, Instruction.CREATE2
         };
-        foreach (var opcode in opcodes)
+        foreach (Instruction opcode in opcodes)
         {
             (UInt256 arg1, UInt256 arg2, UInt256 arg3) = (UInt256.Zero, UInt256.One, 23);
-            var initBytecode = Prepare.EvmCode;
-            var method = GetFluentOpcodeFunction(opcode);
+            Prepare initBytecode = Prepare.EvmCode;
+            MethodInfo method = GetFluentOpcodeFunction(opcode);
             initBytecode = opcode switch
             {
                 Instruction.CREATE or Instruction.CREATE2 => (Prepare)method.Invoke(null, new object[] { initBytecode, (byte)(opcode == Instruction.CREATE2 ? 2 : 0), arg1, arg2, arg3 }),
@@ -325,23 +324,23 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
 
     public static IEnumerable<TestCase> opcodes_with_3_plus_arg()
     {
-        var opcodeswith_7_args = new Instruction[] {
+        Instruction[] opcodeswith_7_args = new Instruction[] {
                 Instruction.CALL,
                 Instruction.CALLCODE,
 
         };
-        var opcodeswith_6_args = new Instruction[] {
+        Instruction[] opcodeswith_6_args = new Instruction[] {
                 Instruction.STATICCALL,
                 Instruction.DELEGATECALL,
         };
 
         (UInt256 gasLim, Address codeSrc, UInt256 callValue, UInt256 dataOffset, UInt256 dataLength, UInt256 outputOffset, UInt256 outputLength) = (UInt256.One, Address.Zero, UInt256.One, UInt256.Zero, UInt256.One, UInt256.Zero, UInt256.One);
-        foreach (var opcode in opcodeswith_7_args)
+        foreach (Instruction opcode in opcodeswith_7_args)
         {
 
-            var initBytecode = Prepare.EvmCode;
-            var method = GetFluentOpcodeFunction(opcode);
-            var args = new object[] { initBytecode, gasLim, codeSrc, callValue, dataOffset, dataLength, outputOffset, outputLength };
+            Prepare initBytecode = Prepare.EvmCode;
+            MethodInfo method = GetFluentOpcodeFunction(opcode);
+            object[] args = new object[] { initBytecode, gasLim, codeSrc, callValue, dataOffset, dataLength, outputOffset, outputLength };
 
             initBytecode = (Prepare)method.Invoke(null, args);
 
@@ -362,12 +361,12 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
             };
         }
 
-        foreach (var opcode in opcodeswith_6_args)
+        foreach (Instruction opcode in opcodeswith_6_args)
         {
 
-            var initBytecode = Prepare.EvmCode;
-            var method = GetFluentOpcodeFunction(opcode);
-            var args = new object[] { initBytecode, gasLim, codeSrc, dataOffset, dataLength, outputOffset, outputLength };
+            Prepare initBytecode = Prepare.EvmCode;
+            MethodInfo method = GetFluentOpcodeFunction(opcode);
+            object[] args = new object[] { initBytecode, gasLim, codeSrc, dataOffset, dataLength, outputOffset, outputLength };
 
             initBytecode = (Prepare)method.Invoke(null, args);
 
@@ -407,22 +406,22 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     {
         get
         {
-            foreach (var testCase in opcodes_with_0_arg())
+            foreach (TestCase testCase in opcodes_with_0_arg())
             {
                 yield return testCase;
             }
 
-            foreach (var testCase in opcodes_with_1_arg())
+            foreach (TestCase testCase in opcodes_with_1_arg())
             {
                 yield return testCase;
             }
 
-            foreach (var testCase in opcodes_with_2_arg())
+            foreach (TestCase testCase in opcodes_with_2_arg())
             {
                 yield return testCase;
             }
 
-            foreach (var testCase in opcodes_with_3_arg())
+            foreach (TestCase testCase in opcodes_with_3_arg())
             {
                 yield return testCase;
             }
@@ -605,8 +604,5 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void code_emited_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test)
-    {
-        test.FluentCodes.Should().BeEquivalentTo(test.ResultCodes, test.Description);
-    }
+    public void code_emitted_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test) => test.FluentCodes.Should().BeEquivalentTo(test.ResultCodes, test.Description);
 }

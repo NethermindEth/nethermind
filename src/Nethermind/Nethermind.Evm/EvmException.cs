@@ -12,14 +12,12 @@ namespace Nethermind.Evm
 
     public enum EvmExceptionType
     {
-        None,
+        Stop = -1,
+        None = 0,
         BadInstruction,
         StackOverflow,
         StackUnderflow,
         OutOfGas,
-        GasUInt64Overflow,
-        InvalidSubroutineEntry,
-        InvalidSubroutineReturn,
         InvalidJumpDestination,
         AccessViolation,
         StaticCallViolation,
@@ -28,6 +26,6 @@ namespace Nethermind.Evm
         NotEnoughBalance,
         Other,
         Revert,
-        InvalidCode
+        InvalidCode,
     }
 }

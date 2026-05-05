@@ -9,7 +9,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -33,11 +32,12 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private PingMsg? _lastSentPing;
     private bool _isNeighborsExpected;
+    private bool _isSplitNeighborsExpected;
 
     // private bool _receivedPing;
-    private bool _sentPing;
+    private volatile bool _sentPing;
     // private bool _sentPong;
-    private bool _receivedPong;
+    private volatile bool _receivedPong;
 
     private int _lastNeighbourSize = 0;
 
@@ -74,7 +74,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         // _receivedPing = true;
         SendPong(pingMsg);
-        if (pingMsg.EnrSequence is not null && pingMsg.EnrSequence > _lastEnrSequence)
+        if (IsBonded && pingMsg.EnrSequence is not null && pingMsg.EnrSequence > _lastEnrSequence)
         {
             SendEnrRequest();
         }
@@ -92,11 +92,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public void ProcessEnrResponseMsg(EnrResponseMsg enrResponseMsg)
     {
-        if (!IsBonded)
-        {
-            return;
-        }
+        if (!IsBonded) return;
+
+        // Only accept ENRs with higher sequence numbers (consistent with Geth implementation)
+        // https://github.com/ethereum/go-ethereum/blob/0978604196e5949cf83b45d1a08d175f0cbe4f73/p2p/discover/v4_udp.go#L388
+        if (enrResponseMsg.NodeRecord.EnrSequence <= _lastEnrSequence) return;
+
         _lastEnrSequence = enrResponseMsg.NodeRecord.EnrSequence;
+        ManagedNode.Enr = enrResponseMsg.NodeRecord.EnrString;
 
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
 
@@ -114,8 +117,12 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         if (IsBonded)
         {
-            Rlp requestRlp = Rlp.Encode(Rlp.Encode(enrRequestMessage.ExpirationTime));
-            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
+            if (enrRequestMessage.Hash is null)
+            {
+                throw new ArgumentNullException(nameof(enrRequestMessage.Hash));
+            }
+
+            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, new Hash256(enrRequestMessage.Hash.Value.Span));
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
@@ -170,18 +177,24 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_lastNeighbourSize + msg.Nodes.Length == 16)
+        if (_isNeighborsExpected)
         {
-            // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
-            // Happens about 70% of the time.
             ProcessNodes(msg);
+            _isSplitNeighborsExpected = msg.Nodes.Count < 16;
         }
-        else if (_isNeighborsExpected)
+        else if (_isSplitNeighborsExpected && _lastNeighbourSize + msg.Nodes.Count <= 16)
         {
+            // Other clients split the neighbour response into two packets (up to 12 per packet).
+            // The total may be less than 16 if the peer has fewer neighbors.
             ProcessNodes(msg);
+            _isSplitNeighborsExpected = false;
+        }
+        else
+        {
+            _isSplitNeighborsExpected = false;
         }
 
-        _lastNeighbourSize = msg.Nodes.Length;
+        _lastNeighbourSize = msg.Nodes.Count;
         _isNeighborsExpected = false;
     }
 
@@ -206,7 +219,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 // Ignore self
                 continue;
             }
-            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
+            else if (!_discoveryManager.ShouldContact(node.Address.Address))
             {
                 // Already seen this node ip recently
                 continue;
@@ -227,7 +240,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         RefreshNodeContactTime();
 
         // 12 otherwise the payload may become too big, which is out of spec.
-        var closestNodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId, bucketSize: 12);
+        NodeTable.ClosestNodesFromNodeEnumerator closestNodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId, bucketSize: 12);
         Node[] nodes = new Node[closestNodes.Count];
         int count = 0;
         foreach (Node node in closestNodes)
@@ -239,7 +252,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         SendNeighbors(nodes);
     }
 
-    private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
+    private long _lastTimeSendFindNodeMs = long.MinValue;
 
     private long _lastEnrSequence;
 
@@ -250,10 +263,15 @@ public class NodeLifecycleManager : INodeLifecycleManager
             if (_logger.IsDebug) _logger.Debug($"Sending FIND NODE on {ManagedNode} before bonding");
         }
 
-        if (DateTime.UtcNow - _lastTimeSendFindNode < TimeSpan.FromSeconds(60))
+        long now = Environment.TickCount64;
+        long lastSentFindNodeMs = Volatile.Read(ref _lastTimeSendFindNodeMs);
+        if (lastSentFindNodeMs != long.MinValue &&
+            now - lastSentFindNodeMs < TimeSpan.FromSeconds(60).TotalMilliseconds)
         {
             return;
         }
+
+        Volatile.Write(ref _lastTimeSendFindNodeMs, now);
 
         FindNodeMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), searchedNodeId);
         _isNeighborsExpected = true;
@@ -263,17 +281,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private DateTime _lastPingSent = DateTime.MinValue;
 
-    public async Task SendPingAsync()
+    public Task SendPingAsync()
     {
         _lastPingSent = DateTime.UtcNow;
         _sentPing = true;
-        await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
+        return CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
     }
 
-    private long CalculateExpirationTime()
-    {
-        return ExpirationTimeInSeconds + _timestamper.UnixTime.SecondsLong;
-    }
+    private long CalculateExpirationTime() => ExpirationTimeInSeconds + _timestamper.UnixTime.SecondsLong;
 
     public void SendPong(PingMsg discoveryMsg)
     {
@@ -281,7 +296,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         _discoveryManager.SendMessage(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
         // _sentPong = true;
-        if (IsBonded)
+        if (IsBonded && State != NodeLifecycleState.Active)
         {
             UpdateState(NodeLifecycleState.Active);
         }
@@ -300,10 +315,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursOut);
     }
 
-    public void StartEvictionProcess()
-    {
-        UpdateState(NodeLifecycleState.EvictCandidate);
-    }
+    public void StartEvictionProcess() => UpdateState(NodeLifecycleState.EvictCandidate);
 
     public void ResetUnreachableStatus()
     {
@@ -326,9 +338,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         if (newState == NodeLifecycleState.New)
         {
             //if node is just discovered we send ping to confirm it is active
-#pragma warning disable 4014
-            SendPingAsync();
-#pragma warning restore 4014
+            _ = SendPingAsync();
         }
         else if (newState == NodeLifecycleState.Active)
         {
@@ -356,9 +366,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
             if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
             {
-#pragma warning disable 4014
-                SendPingAsync();
-#pragma warning restore 4014
+                _ = SendPingAsync();
             }
             else
             {
@@ -370,6 +378,10 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         State = newState;
         OnStateChanged?.Invoke(this, State);
+        if (newState == NodeLifecycleState.Active && string.IsNullOrEmpty(ManagedNode.Enr))
+        {
+            SendEnrRequest();
+        }
     }
 
     private void RefreshNodeContactTime()

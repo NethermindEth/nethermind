@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -15,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.State")]
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
@@ -41,23 +42,35 @@ namespace Nethermind.Core
         // Field indicating if this transaction is exempt from the L2 gas limit.
         public bool IsOPSystemTransaction { get; set; }
 
+        private UInt256 _gasPrice;
         public UInt256 Nonce { get; set; }
-        public UInt256 GasPrice { get; set; }
+        public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
-        public UInt256 MaxPriorityFeePerGas => GasPrice;
+        public ref readonly UInt256 MaxPriorityFeePerGas => ref _gasPrice;
         public UInt256 DecodedMaxFeePerGas { get; set; }
         public UInt256 MaxFeePerGas => Supports1559 ? DecodedMaxFeePerGas : GasPrice;
+        public UInt256 CalculateFeeCap() => !MaxFeePerGas.IsZero ? MaxFeePerGas : GasPrice;
         public bool SupportsAccessList => Type.SupportsAccessList();
         public bool Supports1559 => Type.Supports1559();
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
         private long _spentGas;
+        private long _blockGasUsed;
         [JsonIgnore]
         public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
+        /// <summary>
+        /// Gas used for block accounting (pre-refund when EIP-7778 is enabled).
+        /// Defaults to <see cref="GasLimit"/> when unknown.
+        /// </summary>
+        [JsonIgnore]
+        public long BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
-        public UInt256 Value { get; set; }
-        public Memory<byte>? Data { get; set; }
+        private UInt256 _value;
+        public UInt256 Value { get => _value; set => _value = value; }
+        [JsonIgnore]
+        public ref readonly UInt256 ValueRef { get => ref _value; }
+        public ReadOnlyMemory<byte> Data { get; set; }
         public Address? SenderAddress { get; set; }
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
@@ -114,6 +127,7 @@ namespace Nethermind.Core
         }
 
         private Memory<byte> _preHash;
+        internal ref readonly Memory<byte> PreHash => ref _preHash;
         private IMemoryOwner<byte>? _preHashMemoryOwner;
         public void SetPreHash(ReadOnlySpan<byte> transactionSequence)
         {
@@ -165,7 +179,7 @@ namespace Nethermind.Core
 
         public UInt256 Timestamp { get; set; }
 
-        public int DataLength => Data?.Length ?? 0;
+        public int DataLength => Data.Length;
 
         public AccessList? AccessList { get; set; } // eip2930
 
@@ -198,18 +212,15 @@ namespace Nethermind.Core
         /// <summary>
         /// Encoded transaction length
         /// </summary>
-        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs)
-        {
-            return shouldCountBlobs
+        public int GetLength(ITransactionSizeCalculator sizeCalculator, bool shouldCountBlobs) => shouldCountBlobs
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
-        }
 
         public string ToShortString()
         {
             string gasPriceString =
                 Supports1559 ? $"maxPriorityFeePerGas: {MaxPriorityFeePerGas}, MaxFeePerGas: {MaxFeePerGas}" : $"gas price {GasPrice}";
-            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray()?.ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
+            return $"[TX: hash {Hash} from {SenderAddress} to {To} with data {Data.AsArray().ToHexString()}, {gasPriceString} and limit {GasLimit}, nonce {Nonce}]";
         }
 
         public string ToString(string indent)
@@ -235,11 +246,16 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Nonce:     {Nonce}");
             builder.AppendLine($"{indent}Value:     {Value}");
-            builder.AppendLine($"{indent}Data:      {(Data.AsArray() ?? []).ToHexString()}");
+            builder.AppendLine($"{indent}Data:      {Data.AsArray().ToHexString()}");
             builder.AppendLine($"{indent}Signature: {Signature?.Bytes.ToHexString()}");
             builder.AppendLine($"{indent}V:         {Signature?.V}");
             builder.AppendLine($"{indent}ChainId:   {Signature?.ChainId}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
+
+            if (AccessList is not null)
+            {
+                builder.AppendLine($"{indent}{nameof(AccessList)}: {AccessList?.Count}");
+            }
 
             if (SupportsBlobs)
             {
@@ -256,22 +272,31 @@ namespace Nethermind.Core
 
         public class PoolPolicy : IPooledObjectPolicy<Transaction>
         {
-            public Transaction Create()
-            {
-                return new Transaction();
-            }
+            public Transaction Create() => new();
 
             public bool Return(Transaction obj)
             {
+
+                // Only pool pure Transaction objects, not subclasses
+                // This prevents other subclasses from contaminating the pool
+                if (obj.GetType() != typeof(Transaction))
+                    return false;
+
                 obj.ClearPreHash();
                 obj.Hash = default;
                 obj.ChainId = default;
                 obj.Type = default;
+                obj.IsAnchorTx = default;
+                obj.SourceHash = default;
+                obj.Mint = default;
+                obj.IsOPSystemTransaction = default;
                 obj.Nonce = default;
                 obj.GasPrice = default;
                 obj.GasBottleneck = default;
                 obj.DecodedMaxFeePerGas = default;
                 obj.GasLimit = default;
+                obj._spentGas = default;
+                obj._blockGasUsed = default;
                 obj.To = default;
                 obj.Value = default;
                 obj.Data = default;
@@ -295,6 +320,7 @@ namespace Nethermind.Core
         {
             tx.ChainId = ChainId;
             tx.Type = Type;
+            tx.IsAnchorTx = IsAnchorTx;
             tx.SourceHash = SourceHash;
             tx.Mint = Mint;
             tx.IsOPSystemTransaction = IsOPSystemTransaction;
@@ -318,20 +344,30 @@ namespace Nethermind.Core
             tx._size = _size;
             tx.AuthorizationList = AuthorizationList;
         }
+
+        public virtual ProofVersion? GetProofVersion() =>
+            SupportsBlobs && this is { NetworkWrapper: ShardBlobNetworkWrapper { Version: var version } }
+                ? version
+                : null;
     }
 
     /// <summary>
     /// Transaction that is generated by the node to be included in future block. After included in the block can be handled as regular <see cref="Transaction"/>.
     /// </summary>
-    public class GeneratedTransaction : Transaction { }
+    public sealed class GeneratedTransaction : Transaction;
 
     /// <summary>
     /// System transaction that is to be executed by the node without including in the block.
     /// </summary>
-    public class SystemTransaction : Transaction
+    public sealed class SystemTransaction : Transaction
     {
         private new const long GasLimit = 30_000_000L;
     }
+
+    /// <summary>
+    /// System call like transaction that is to be executed by the node without including in the block.
+    /// </summary>
+    public sealed class SystemCall : Transaction;
 
     /// <summary>
     /// Used inside Transaction::GetSize to calculate encoded transaction size
@@ -345,17 +381,11 @@ namespace Nethermind.Core
     /// <summary>
     /// Holds network form fields for <see cref="TxType.Blob" /> transactions
     /// </summary>
-    public class ShardBlobNetworkWrapper
-    {
-        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs)
-        {
-            Blobs = blobs;
-            Commitments = commitments;
-            Proofs = proofs;
-        }
+    public record ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
 
-        public byte[][] Commitments { get; set; }
-        public byte[][] Blobs { get; set; }
-        public byte[][] Proofs { get; set; }
+    public enum ProofVersion : byte
+    {
+        V0 = 0x00,
+        V1 = 0x01,
     }
 }

@@ -16,6 +16,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class SignerTests
     {
         [Test, MaxTime(Timeout.MaxTestTime)]

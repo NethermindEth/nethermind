@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.Rewards;
@@ -19,7 +20,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Evm;
 
 namespace Nethermind.AuRa.Test.Reward
 {
@@ -194,11 +194,9 @@ namespace Nethermind.AuRa.Test.Reward
             result.Should().BeEquivalentTo(expected);
         }
 
-        private void SetupBlockRewards(IDictionary<Address, BlockReward[]> rewards)
-        {
+        private void SetupBlockRewards(IDictionary<Address, BlockReward[]> rewards) =>
             _transactionProcessor.When(x => x.Execute(
                     Arg.Is<Transaction>(t => CheckTransaction(t, rewards.Keys, _rewardData)),
-                    Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                 {
@@ -209,7 +207,6 @@ namespace Nethermind.AuRa.Test.Reward
                         SetupAbiAddresses(rewards[recipient]),
                         []);
                 });
-        }
 
         private bool CheckTransaction(Transaction t, ICollection<Address> addresses, byte[] transactionData) =>
             t.SenderAddress == Address.SystemUser
@@ -218,7 +215,7 @@ namespace Nethermind.AuRa.Test.Reward
 
         private byte[] SetupAbiAddresses(params BlockReward[] rewards)
         {
-            byte[] data = rewards.Select(static r => r.Address).SelectMany(static a => a.Bytes).ToArray();
+            byte[] data = rewards.Select(static r => r.Address).SelectMany(static a => a.Bytes.ToArray()).ToArray();
 
             _abiEncoder.Decode(
                 AbiEncodingStyle.None,

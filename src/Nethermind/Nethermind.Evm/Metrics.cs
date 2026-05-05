@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Attributes;
+using System.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 
@@ -12,41 +13,64 @@ namespace Nethermind.Evm;
 
 public class Metrics
 {
+    private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
+
+    [CounterMetric]
+    [Description("Number of Code DB cache reads.")]
+    public static long CodeDbCache => _mainCodeDbCache + _otherCodeDbCache;
+    private static long _mainCodeDbCache;
+    private static long _otherCodeDbCache;
+    [Description("Number of Code DB cache reads on main processing thread.")]
+    public static long MainThreadCodeDbCache => _mainCodeDbCache;
+    internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache : ref _otherCodeDbCache);
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
     public static long EvmExceptions { get; set; }
 
     [CounterMetric]
+    [Description("Number of opcodes executed.")]
+    public static long OpCodes => _mainOpCodes + _otherOpCodes;
+    private static long _mainOpCodes;
+    private static long _otherOpCodes;
+    [Description("Number of opcodes executed on main processing thread.")]
+    public static long MainThreadOpCodes => _mainOpCodes;
+    public static void IncrementOpCodes(int count) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainOpCodes : ref _otherOpCodes, count);
+
+    [CounterMetric]
     [Description("Number of SELFDESTRUCT calls.")]
-    public static long SelfDestructs => _selfDestructs.GetTotalValue();
-    private static readonly ZeroContentionCounter _selfDestructs = new();
-    [Description("Number of calls to other contracts on thread.")]
-    public static long ThreadLocalSelfDestructs => _selfDestructs.ThreadLocalValue;
-    public static void IncrementSelfDestructs() => _selfDestructs.Increment();
+    public static long SelfDestructs => _mainSelfDestructs + _otherSelfDestructs;
+    private static long _mainSelfDestructs;
+    private static long _otherSelfDestructs;
+    [Description("Number of SELFDESTRUCT calls on main processing thread.")]
+    public static long MainThreadSelfDestructs => _mainSelfDestructs;
+    public static void IncrementSelfDestructs() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSelfDestructs : ref _otherSelfDestructs);
 
     [CounterMetric]
     [Description("Number of calls to other contracts.")]
-    public static long Calls => _calls.GetTotalValue();
-    private static readonly ZeroContentionCounter _calls = new();
-    [Description("Number of calls to other contracts on thread.")]
-    public static long ThreadLocalCalls => _calls.ThreadLocalValue;
-    public static void IncrementCalls() => _calls.Increment();
+    public static long Calls => _mainCalls + _otherCalls;
+    private static long _mainCalls;
+    private static long _otherCalls;
+    [Description("Number of calls to other contracts on main processing thread.")]
+    public static long MainThreadCalls => _mainCalls;
+    public static void IncrementCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCalls : ref _otherCalls);
 
     [CounterMetric]
     [Description("Number of SLOAD opcodes executed.")]
-    public static long SloadOpcode => _sLoadOpcode.GetTotalValue();
-    private static readonly ZeroContentionCounter _sLoadOpcode = new();
-    [Description("Number of SLOAD opcodes executed on thread.")]
-    public static long ThreadLocalSLoadOpcode => _sLoadOpcode.ThreadLocalValue;
-    public static void IncrementSLoadOpcode() => _sLoadOpcode.Increment();
+    public static long SloadOpcode => _mainSLoadOpcode + _otherSLoadOpcode;
+    private static long _mainSLoadOpcode;
+    private static long _otherSLoadOpcode;
+    [Description("Number of SLOAD opcodes executed on main processing thread.")]
+    public static long MainThreadSLoadOpcode => _mainSLoadOpcode;
+    public static void IncrementSLoadOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSLoadOpcode : ref _otherSLoadOpcode);
 
     [CounterMetric]
     [Description("Number of SSTORE opcodes executed.")]
-    public static long SstoreOpcode => _sStoreOpcode.GetTotalValue();
-    private static readonly ZeroContentionCounter _sStoreOpcode = new();
-    [Description("Number of SSTORE opcodes executed on thread.")]
-    public static long ThreadLocalSStoreOpcode => _sStoreOpcode.ThreadLocalValue;
-    public static void IncrementSStoreOpcode() => _sStoreOpcode.Increment();
+    public static long SstoreOpcode => _mainSStoreOpcode + _otherSStoreOpcode;
+    private static long _mainSStoreOpcode;
+    private static long _otherSStoreOpcode;
+    [Description("Number of SSTORE opcodes executed on main processing thread.")]
+    public static long MainThreadSStoreOpcode => _mainSStoreOpcode;
+    public static void IncrementSStoreOpcode() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainSStoreOpcode : ref _otherSStoreOpcode);
 
     [Description("Number of TLOAD opcodes executed.")]
     public static long TloadOpcode { get; set; }
@@ -60,90 +84,53 @@ public class Metrics
     [Description("Number of EXP opcodes executed.")]
     public static long ExpOpcode { get; set; }
 
-    [Description("Number of BLOCKHASH opcodes executed.")]
-    public static long BlockhashOpcode { get; set; }
-
-    [Description("Number of BN254_MUL precompile calls.")]
-    public static long Bn254MulPrecompile { get; set; }
-
-    [Description("Number of BN254_ADD precompile calls.")]
-    public static long Bn254AddPrecompile { get; set; }
-
-    [Description("Number of BN254_PAIRING precompile calls.")]
-    public static long Bn254PairingPrecompile { get; set; }
-
-    [Description("Number of BLS12_G1ADD precompile calls.")]
-    public static long BlsG1AddPrecompile { get; set; }
-
-    [Description("Number of BLS12_G1MUL precompile calls.")]
-    public static long BlsG1MulPrecompile { get; set; }
-
-    [Description("Number of BLS12_G1MSM precompile calls.")]
-    public static long BlsG1MSMPrecompile { get; set; }
-
-    [Description("Number of BLS12_G2ADD precompile calls.")]
-    public static long BlsG2AddPrecompile { get; set; }
-
-    [Description("Number of BLS12_G2MUL precompile calls.")]
-    public static long BlsG2MulPrecompile { get; set; }
-
-    [Description("Number of BLS12_G2MSM precompile calls.")]
-    public static long BlsG2MSMPrecompile { get; set; }
-
-    [Description("Number of BLS12_PAIRING_CHECK precompile calls.")]
-    public static long BlsPairingCheckPrecompile { get; set; }
-
-    [Description("Number of BLS12_MAP_FP_TO_G1 precompile calls.")]
-    public static long BlsMapFpToG1Precompile { get; set; }
-
-    [Description("Number of BLS12_MAP_FP2_TO_G2 precompile calls.")]
-    public static long BlsMapFp2ToG2Precompile { get; set; }
-
-    [Description("Number of EC_RECOVERY precompile calls.")]
-    public static long EcRecoverPrecompile { get; set; }
-
-    [Description("Number of MODEXP precompile calls.")]
-    public static long ModExpPrecompile { get; set; }
-
-    [Description("Number of RIPEMD160 precompile calls.")]
-    public static long Ripemd160Precompile { get; set; }
-
-    [Description("Number of SHA256 precompile calls.")]
-    public static long Sha256Precompile { get; set; }
-
-    [Description("Number of Secp256r1 precompile calls.")]
-    public static long Secp256r1Precompile { get; set; }
-
-    [Description("Number of Point Evaluation precompile calls.")]
-    public static long PointEvaluationPrecompile { get; set; }
-
     [CounterMetric]
     [Description("Number of calls made to addresses without code.")]
-    public static long EmptyCalls => _emptyCalls.GetTotalValue();
-    private static readonly ZeroContentionCounter _emptyCalls = new();
-    [Description("Number of calls made to addresses without code on thread.")]
-    public static long ThreadLocalEmptyCalls => _emptyCalls.ThreadLocalValue;
-    public static void IncrementEmptyCalls() => _emptyCalls.Increment();
+    public static long EmptyCalls => _mainEmptyCalls + _otherEmptyCalls;
+    private static long _mainEmptyCalls;
+    private static long _otherEmptyCalls;
+    [Description("Number of calls made to addresses without code on main processing thread.")]
+    public static long MainThreadEmptyCalls => _mainEmptyCalls;
+    public static void IncrementEmptyCalls() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEmptyCalls : ref _otherEmptyCalls);
 
     [CounterMetric]
     [Description("Number of contract create calls.")]
-    public static long Creates => _creates.GetTotalValue();
-
-    private static readonly ZeroContentionCounter _creates = new();
-    [Description("Number of contract create calls on thread.")]
-    public static long ThreadLocalCreates => _creates.ThreadLocalValue;
-    public static void IncrementCreates() => _creates.Increment();
+    public static long Creates => _mainCreates + _otherCreates;
+    private static long _mainCreates;
+    private static long _otherCreates;
+    [Description("Number of contract create calls on main processing thread.")]
+    public static long MainThreadCreates => _mainCreates;
+    public static void IncrementCreates() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCreates : ref _otherCreates);
 
     [Description("Number of contracts' code analysed for jump destinations.")]
-    public static long ContractsAnalysed => _contractsAnalysed.GetTotalValue();
-    private static readonly ZeroContentionCounter _contractsAnalysed = new();
-    [Description("Number of contracts' code analysed for jump destinations on thread.")]
-    public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
-    public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
+    public static long ContractsAnalysed => _mainContractsAnalysed + _otherContractsAnalysed;
+    private static long _mainContractsAnalysed;
+    private static long _otherContractsAnalysed;
+    [Description("Number of contracts' code analysed for jump destinations on main processing thread.")]
+    public static long MainThreadContractsAnalysed => _mainContractsAnalysed;
+    public static void IncrementContractsAnalysed() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainContractsAnalysed : ref _otherContractsAnalysed);
 
     [GaugeMetric]
-    [Description("The number of tasks scheduled in the background.")]
+    [Description("The number of tasks currently scheduled in the background.")]
     public static long NumberOfBackgroundTasksScheduled { get; set; }
+
+    private static long _totalBackgroundTasksQueued;
+    [GaugeMetric]
+    [Description("Total number of tasks queued for background execution.")]
+    public static long TotalBackgroundTasksQueued => _totalBackgroundTasksQueued;
+    public static void IncrementTotalBackgroundTasksQueued() => Interlocked.Increment(ref _totalBackgroundTasksQueued);
+
+    private static long _totalBackgroundTasksDropped;
+    [GaugeMetric]
+    [Description("Total number of background tasks dropped because queue was full.")]
+    public static long TotalBackgroundTasksDropped => _totalBackgroundTasksDropped;
+    public static void IncrementTotalBackgroundTasksDropped() => Interlocked.Increment(ref _totalBackgroundTasksDropped);
+
+    private static long _totalBackgroundTasksExecuted;
+    [GaugeMetric]
+    [Description("Total number of background tasks executed.")]
+    public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted;
+    public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted);
 
     internal static long BlockTransactions { get; set; }
 
@@ -201,6 +188,18 @@ public class Metrics
                 GasPriceMedian = value;
             }
         }
+    }
+
+    /// <summary>
+    /// Gets block gas price data for external access. Returns (min, estMedian, ave, max).
+    /// Returns null if no gas data available (min is float.MaxValue).
+    /// </summary>
+    public static (float Min, float EstMedian, float Ave, float Max)? GetBlockGasPrices()
+    {
+        if (_blockMinGasPrice == float.MaxValue)
+            return null;
+
+        return (_blockMinGasPrice, _blockEstMedianGasPrice, _blockAveGasPrice, _blockMaxGasPrice);
     }
 
     [GaugeMetric]

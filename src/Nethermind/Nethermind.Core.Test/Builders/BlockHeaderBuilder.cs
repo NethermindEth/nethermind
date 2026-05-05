@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 
@@ -21,29 +22,34 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         base.BeforeReturn();
     }
 
-    public BlockHeaderBuilder()
-    {
-        TestObjectInternal = new BlockHeader(
+    public BlockHeaderBuilder() => TestObjectInternal = new BlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
             DefaultDifficulty, 0,
             4_000_000,
             1_000_000,
-            new byte[] { 1, 2, 3 });
-        TestObjectInternal.Bloom = Bloom.Empty;
-        TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
-        TestObjectInternal.Nonce = 1000;
-        TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
-        TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
-        TestObjectInternal.TxRoot = Keccak.EmptyTreeHash;
-    }
+            [1, 2, 3])
+    {
+        Bloom = Bloom.Empty,
+        MixHash = Keccak.Compute("mix_hash"),
+        Nonce = 1000,
+        ReceiptsRoot = Keccak.EmptyTreeHash,
+        StateRoot = Keccak.EmptyTreeHash,
+        TxRoot = Keccak.EmptyTreeHash
+    };
 
     public BlockHeaderBuilder WithParent(BlockHeader parentHeader)
     {
         TestObjectInternal.ParentHash = parentHeader.Hash;
         TestObjectInternal.Number = parentHeader.Number + 1;
         TestObjectInternal.GasLimit = parentHeader.GasLimit;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithParentOptional(BlockHeader? parentHeader)
+    {
+        if (parentHeader is not null) WithParent(parentHeader);
         return this;
     }
 
@@ -152,6 +158,8 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithExtraDataHex(string extraDataHex) => WithExtraData(Bytes.FromHexString(extraDataHex));
+
     public BlockHeaderBuilder WithMixHash(Hash256 mixHash)
     {
         TestObjectInternal.MixHash = mixHash;
@@ -199,6 +207,17 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     public BlockHeaderBuilder WithRequestsHash(Hash256? requestsHash)
     {
         TestObjectInternal.RequestsHash = requestsHash;
+        return this;
+    }
+    public BlockHeaderBuilder WithBlockAccessListHash(Hash256? balHash)
+    {
+        TestObjectInternal.BlockAccessListHash = balHash;
+        return this;
+    }
+
+    public BlockHeaderBuilder WithSlotNumber(ulong? slotNumber)
+    {
+        TestObjectInternal.SlotNumber = slotNumber;
         return this;
     }
 }

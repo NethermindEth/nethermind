@@ -3,6 +3,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TieredPGO>true</TieredPGO>
+    <IsTestingPlatformApplication>false</IsTestingPlatformApplication>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

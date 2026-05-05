@@ -5,12 +5,8 @@ using Nethermind.Api;
 
 namespace Nethermind.Optimism;
 
-public class OptimismNethermindApi : NethermindApi
+public class OptimismNethermindApi(NethermindApi.Dependencies dependencies, IOptimismSpecHelper helper, ICostHelper costHelper) : NethermindApi(dependencies)
 {
-    public OptimismNethermindApi(Dependencies dependencies) : base(dependencies)
-    {
-    }
-
-    public OPL1CostHelper? L1CostHelper { get; set; }
-    public OptimismSpecHelper? SpecHelper { get; set; }
+    public ICostHelper L1CostHelper { get; } = costHelper;
+    public IOptimismSpecHelper SpecHelper { get; } = helper;
 }

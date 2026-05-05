@@ -11,7 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -41,10 +41,9 @@ public class TraceStoreRpcModuleTests
     {
         TestContext test = new();
 
-        TransactionForRpcWithTraceTypes[] calls = [
-            new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) }
-        ];
-        test.Module.trace_callMany(calls, BlockParameter.Latest)
+        test.Module.trace_callMany(
+                new(new(1) { new() { TraceTypes = [nameof(ParityTraceTypes.Trace)], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) } }),
+                BlockParameter.Latest)
             .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
 
@@ -146,7 +145,7 @@ public class TraceStoreRpcModuleTests
             InnerModule.trace_call(Arg.Any<TransactionForRpc>(), Arg.Any<string[]>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplayWrapper);
 
-            InnerModule.trace_callMany(Arg.Any<TransactionForRpcWithTraceTypes[]>(), Arg.Any<BlockParameter>())
+            InnerModule.trace_callMany(Arg.Any<TraceCallManyRequest>(), Arg.Any<BlockParameter>())
                 .Returns(nonDbReplaysWrapper);
 
             InnerModule.trace_rawTransaction(Arg.Any<byte[]>(), Arg.Any<string[]>())

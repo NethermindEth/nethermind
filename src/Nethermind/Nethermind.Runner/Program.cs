@@ -8,54 +8,57 @@ using System.CommandLine.Help;
 using System.CommandLine.Invocation;
 using System.CommandLine.Parsing;
 using System.IO;
-using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-#if !DEBUG
-using DotNetty.Common;
-#endif
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.Clique;
-using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
-using Nethermind.Hive;
 using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Network.Discovery;
 using Nethermind.Runner;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
+using Nethermind.Runner.Monitoring;
 using Nethermind.Seq.Config;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.UPnP.Plugin;
 using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 using NullLogger = Nethermind.Logging.NullLogger;
+using DotNettyLoggerFactory = DotNetty.Common.Internal.Logging.InternalLoggerFactory;
+using Testably.Abstractions;
+#if !DEBUG
+using DotNettyLeakDetector = DotNetty.Common.ResourceLeakDetector;
+#endif
 
+DataFeed.StartTime = Environment.TickCount64;
 Console.Title = ProductInfo.Name;
 // Increase regex cache size as more added in log coloring matches
 Regex.CacheSize = 128;
-#if !DEBUG
-ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
-#endif
+BlocksConfig.SetDefaultExtraDataWithVersion();
 
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
-var unhandledError = "A critical error has occurred";
+string unhandledError = "A critical error has occurred";
+Option<string>[] deprecatedOptions =
+[
+    BasicOptions.ConfigurationDirectory,
+    BasicOptions.DatabasePath,
+    BasicOptions.LoggerConfigurationSource,
+    BasicOptions.PluginsDirectory
+];
 
 AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 {
@@ -88,8 +91,9 @@ finally
 
 async Task<int> ConfigureAsync(string[] args)
 {
-    CliConfiguration cli = ConfigureCli();
-    ParseResult parseResult = cli.Parse(args);
+    RootCommand rootCommand = CreateRootCommand();
+    ParseResult parseResult = rootCommand.Parse(args);
+
     // Suppress logs if run with `--help` or `--version`
     bool silent = parseResult.CommandResult.Children
         .Any(c => c is OptionResult { Option: HelpOption or VersionOption });
@@ -113,14 +117,9 @@ async Task<int> ConfigureAsync(string[] args)
 
     PluginLoader pluginLoader = new(
         parseResult.GetValue(BasicOptions.PluginsDirectory) ?? "plugins",
-        new FileSystem(),
+        new RealFileSystem(),
         silent ? NullLogger.Instance : logger,
-        typeof(AuRaPlugin),
-        typeof(CliquePlugin),
-        typeof(EthashPlugin),
-        typeof(NethDevPlugin),
-        typeof(HivePlugin),
-        typeof(UPnPPlugin)
+        NethermindPlugins.EmbeddedPlugins
     );
     pluginLoader.Load();
 
@@ -132,13 +131,17 @@ async Task<int> ConfigureAsync(string[] args)
 
     TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
-    AddConfigurationOptions(cli.RootCommand);
+    AddConfigurationOptions(rootCommand);
 
-    cli.RootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+    rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+
+    parseResult = rootCommand.Parse(args);
+    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
+    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
 
     try
     {
-        return await cli.InvokeAsync(args);
+        return await parseResult.InvokeAsync();
     }
     finally
     {
@@ -148,7 +151,6 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
@@ -161,11 +163,24 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         initConfig, keyStoreConfig, snapshotConfig);
 
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
+    DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
+#if !DEBUG
+    DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
+#endif
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
+
+    if (parseResult.GetValue(BasicOptions.PurgeDb))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath);
+    }
+    else if (parseResult.GetValue(BasicOptions.ForceResync))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
+    }
 
     logger.Info("Configuration complete");
 
@@ -214,12 +229,15 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     return processExitSource.ExitCode;
 }
 
-void AddConfigurationOptions(CliCommand command)
+void AddConfigurationOptions(Command command)
 {
-    static CliOption CreateOption<T>(string name, Type configType) =>
-        new CliOption<T>(
-            $"--{ConfigExtensions.GetCategoryName(configType)}.{name}",
-            $"--{ConfigExtensions.GetCategoryName(configType)}-{name}".ToLowerInvariant());
+    static Option CreateOption<T>(Type configType, string name, string? alias)
+    {
+        string category = ConfigExtensions.GetCategoryName(configType);
+        alias = string.IsNullOrWhiteSpace(alias) ? name : alias;
+
+        return new Option<T>($"--{category}.{name}", $"--{category}-{alias}".ToLowerInvariant());
+    }
 
     IEnumerable<Type> configTypes = TypeDiscovery
         .FindNethermindBasedTypes(typeof(IConfig))
@@ -228,9 +246,6 @@ void AddConfigurationOptions(CliCommand command)
     foreach (Type configType in
         configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
     {
-        if (configType is null)
-            continue;
-
         ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
 
         if (typeLevel is not null && typeLevel.DisabledForCli)
@@ -241,21 +256,33 @@ void AddConfigurationOptions(CliCommand command)
         foreach (PropertyInfo prop in
             configType.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
         {
-            ConfigItemAttribute? configItemAttribute = prop.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? configItemAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
 
-            if (configItemAttribute?.DisabledForCli != true)
+            if (configItemAttr?.DisabledForCli != true)
             {
-                CliOption option = prop.PropertyType == typeof(bool)
-                    ? CreateOption<bool>(prop.Name, configType)
-                    : CreateOption<string>(prop.Name, configType);
-                option.Description = configItemAttribute?.Description;
+                Option option = prop.PropertyType == typeof(bool)
+                    ? CreateOption<bool>(configType, prop.Name, configItemAttr?.CliOptionAlias)
+                    : CreateOption<string>(configType, prop.Name, configItemAttr?.CliOptionAlias);
+
+                string? description = configItemAttr?.Description;
+
+                if (!string.IsNullOrEmpty(configItemAttr?.DefaultValue))
+                {
+                    string defaultValue = $"Defaults to `{configItemAttr.DefaultValue}`.";
+
+                    description = string.IsNullOrEmpty(description)
+                        ? defaultValue
+                        : $"{description} {defaultValue}";
+                }
+
+                option.Description = description;
                 option.HelpName = "value";
-                option.Hidden = categoryHidden || configItemAttribute?.HiddenFromDocs == true;
+                option.Hidden = categoryHidden || configItemAttr?.HiddenFromDocs == true;
 
                 command.Add(option);
             }
 
-            if (configItemAttribute?.IsPortOption == true)
+            if (configItemAttr?.IsPortOption == true)
                 ConfigExtensions.AddPortOptionName(configType, prop.Name);
         }
     }
@@ -263,60 +290,14 @@ void AddConfigurationOptions(CliCommand command)
 
 void CheckForDeprecatedOptions(ParseResult parseResult)
 {
-    CliOption<string>[] deprecatedOptions =
-    [
-        BasicOptions.ConfigurationDirectory,
-        BasicOptions.DatabasePath,
-        BasicOptions.LoggerConfigurationSource,
-        BasicOptions.PluginsDirectory
-    ];
-
-    foreach (CliToken token in parseResult.Tokens)
+    foreach (Token token in parseResult.Tokens)
     {
-        foreach (CliOption option in deprecatedOptions)
+        foreach (Option option in deprecatedOptions)
         {
             if (option.Aliases.Contains(token.Value, StringComparison.Ordinal))
                 logger.Warn($"{token} option is deprecated. Use {option.Name} instead.");
         }
     }
-}
-
-CliConfiguration ConfigureCli()
-{
-    CliRootCommand rootCommand =
-    [
-        BasicOptions.Configuration,
-        BasicOptions.ConfigurationDirectory,
-        BasicOptions.DatabasePath,
-        BasicOptions.DataDirectory,
-        BasicOptions.LoggerConfigurationSource,
-        BasicOptions.LogLevel,
-        BasicOptions.PluginsDirectory
-    ];
-
-    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
-
-    if (versionOption is not null)
-    {
-        versionOption.Action = new AnonymousCliAction(parseResult =>
-        {
-            parseResult.Configuration.Output.WriteLine($"""
-                Version:    {ProductInfo.Version}
-                Commit:     {ProductInfo.Commit}
-                Build date: {ProductInfo.BuildTimestamp:u}
-                Runtime:    {ProductInfo.Runtime}
-                Platform:   {ProductInfo.OS} {ProductInfo.OSArchitecture}
-                """);
-
-            return ExitCodes.Ok;
-        });
-    }
-
-    return new(rootCommand)
-    {
-        EnableDefaultExceptionHandler = false,
-        ProcessTerminationTimeout = Timeout.InfiniteTimeSpan
-    };
 }
 
 void ConfigureLogger(ParseResult parseResult)
@@ -337,7 +318,7 @@ void ConfigureLogger(ParseResult parseResult)
 
     using NLogManager logManager = new();
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
@@ -369,12 +350,12 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
 
-    foreach (SymbolResult child in parseResult.RootCommandResult.Children)
+    foreach (SymbolResult child in parseResult.CommandResult.Children)
     {
-        if (child is OptionResult result)
+        if (child is OptionResult result && !result.Implicit)
         {
-            var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
-            var value = isBoolean
+            bool isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
+            string value = isBoolean
                 ? result.GetValueOrDefault<bool>().ToString().ToLowerInvariant()
                 : result.GetValueOrDefault<string>();
 
@@ -404,7 +385,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         {
             string? fallback;
 
-            foreach (var ext in new[] { ".json", ".cfg" })
+            foreach (string ext in new[] { ".json", ".cfg" })
             {
                 fallback = $"{configFile}{ext}";
 
@@ -418,7 +399,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         // For backward compatibility. To be removed in the future.
         else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
         {
-            var name = Path.GetFileNameWithoutExtension(configFile)!;
+            string name = Path.GetFileNameWithoutExtension(configFile)!;
 
             configFile = $"{configFile[..^4]}.json";
 
@@ -437,7 +418,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
 
-    var (ErrorMsg, Errors) = configProvider.FindIncorrectSettings();
+    (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
@@ -445,11 +426,49 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     return configProvider;
 }
 
+RootCommand CreateRootCommand()
+{
+    RootCommand rootCommand =
+    [
+        BasicOptions.Configuration,
+        BasicOptions.ConfigurationDirectory,
+        BasicOptions.DatabasePath,
+        BasicOptions.DataDirectory,
+        BasicOptions.ForceResync,
+        BasicOptions.LoggerConfigurationSource,
+        BasicOptions.LogLevel,
+        BasicOptions.PluginsDirectory,
+        BasicOptions.PurgeDb
+    ];
+
+    rootCommand.Description = "Nethermind Ethereum execution client";
+
+    VersionOption versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
+
+    if (versionOption is not null)
+    {
+        versionOption.Action = new AsynchronousCommandLineAction(parseResult =>
+        {
+            parseResult.InvocationConfiguration.Output.WriteLine($"""
+                Version:     {ProductInfo.Version}
+                Commit:      {ProductInfo.Commit}
+                Source date: {ProductInfo.SourceDate:u}
+                Runtime:     {ProductInfo.Runtime}
+                Platform:    {ProductInfo.OS} {ProductInfo.OSArchitecture}
+                """);
+
+            return ExitCodes.Ok;
+        });
+    }
+
+    return rootCommand;
+}
+
 ILogger GetCriticalLogger()
 {
     try
     {
-        return new NLogManager("nethermind.log").GetClassLogger();
+        return new NLogManager("nethermind.log").GetClassLogger<Program>();
     }
     catch
     {
@@ -475,88 +494,117 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
     }
 }
 
+void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false) =>
+    DatabasePurger.Purge(basePath, preserveNetwork, logger);
+
 void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig, ISnapshotConfig snapshotConfig)
 {
     if (string.IsNullOrWhiteSpace(path))
     {
-        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
-        initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
+        initConfig.BaseDbPath ??= "db".GetApplicationResourcePath();
+        initConfig.LogDirectory ??= "logs".GetApplicationResourcePath();
+        keyStoreConfig.KeyStoreDirectory ??= "keystore".GetApplicationResourcePath();
     }
     else
     {
         string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
-        string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
         string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(path);
+        string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(path);
         string newSnapshotPath = snapshotConfig.SnapshotDirectory.GetApplicationResourcePath(path);
 
         if (logger.IsInfo)
         {
             logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath)}");
-            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
             logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
+            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
 
             if (snapshotConfig.Enabled)
                 logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
         }
 
         initConfig.BaseDbPath = newDbPath;
-        keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
+        initConfig.DataDir = path;
         initConfig.LogDirectory = newLogDirectory;
+        keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
         snapshotConfig.SnapshotDirectory = newSnapshotPath;
     }
 }
 
 static class BasicOptions
 {
-    public static CliOption<string> Configuration { get; } =
+    public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {
             Description = "The path to the configuration file or the file name (also without extension) of any of the configuration files in the configuration files directory.",
             HelpName = "network or file name"
         };
 
-    public static CliOption<string> ConfigurationDirectory { get; } =
+    public static Option<string> ConfigurationDirectory { get; } =
         new("--configs-dir", "--configsDirectory", "-cd")
         {
             Description = "The path to the configuration files directory.",
             HelpName = "path"
         };
 
-    public static CliOption<string> DatabasePath { get; } = new("--db-dir", "--baseDbPath", "-d")
+    public static Option<string> DatabasePath { get; } = new("--db-dir", "--baseDbPath", "-d")
     {
         Description = "The path to the Nethermind database directory.",
         HelpName = "path"
     };
 
-    public static CliOption<string> DataDirectory { get; } = new("--data-dir", "--datadir", "-dd")
+    public static Option<string> DataDirectory { get; } = new("--data-dir", "--datadir", "-dd")
     {
         Description = "The path to the Nethermind data directory.",
         HelpName = "path"
     };
 
-    public static CliOption<string> LoggerConfigurationSource { get; } =
+    public static Option<string> LoggerConfigurationSource { get; } =
         new("--logger-config", "--loggerConfigSource", "-lcs")
         {
             Description = "The path to the logging configuration file.",
             HelpName = "path"
         };
 
-    public static CliOption<string> LogLevel { get; } = new("--log", "-l")
+    public static Option<string> LogLevel { get; } = new("--log", "-l")
     {
         Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
         HelpName = "level"
     };
 
-    public static CliOption<string> PluginsDirectory { get; } =
+    public static Option<bool> ForceResync { get; } = CreateForceResyncOption();
+
+    private static Option<bool> CreateForceResyncOption()
+    {
+        Option<bool> option = new("--force-resync")
+        {
+            Description = "Deletes all database files except peer and discovery data, forcing a full resync on startup.",
+            DefaultValueFactory = _ => false
+        };
+
+        option.Validators.Add(result =>
+        {
+            if (result.GetValueOrDefault<bool>() && result.Parent?.GetValue(PurgeDb) == true)
+                result.AddError("Cannot use --force-resync and --purge-db together. Choose one.");
+        });
+
+        return option;
+    }
+
+    public static Option<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")
         {
             Description = "The path to the Nethermind plugins directory.",
             HelpName = "path"
         };
+
+    public static Option<bool> PurgeDb { get; } = new("--purge-db")
+    {
+        Description = "Deletes the entire database directory, including peer and discovery data.",
+        DefaultValueFactory = _ => false
+    };
 }
 
-class AnonymousCliAction(Func<ParseResult, int> action) : SynchronousCliAction
+class AsynchronousCommandLineAction(Func<ParseResult, int> action) : SynchronousCommandLineAction
 {
     private readonly Func<ParseResult, int> _action = action ?? throw new ArgumentNullException(nameof(action));
 

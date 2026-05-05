@@ -8,11 +8,13 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -37,11 +39,20 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
 
         builder
             .AddSingleton<ILogManager>(new TestLogManager(LogLevel.Error)) // Limbologs actually have IsTrace set to true, so actually slow.
-            .AddSingleton<IDbProvider>(TestMemDbProvider.Init())
-            .AddSingleton<IFileStoreFactory>(new InMemoryDictionaryFileStoreFactory())
+            .AddSingleton<IDbFactory>((_) => new MemDbFactory())
+            // These two don't use the DB provider
+            .AddKeyedSingleton<IFullDb>(DbNames.PeersDb, (_) => new MemDb())
+            .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryNodes, (_) => new MemDb())
+            .AddKeyedSingleton<IFullDb>(DbNames.DiscoveryV5Nodes, (_) => new MemDb())
             .AddSingleton<IChannelFactory, INetworkConfig>(networkConfig => new LocalChannelFactory(networkGroup ?? nameof(TestEnvironmentModule), networkConfig))
+            .AddSingleton(NodeFilter.AcceptAll) // Disable inbound rate limiting for in-memory channels
 
             .AddSingleton<PseudoNethermindRunner>()
+            .AddSingleton<TestBlockchainUtil>()
+                .AddSingleton<TestBlockchainUtil.Config>()
+                .AddSingleton<InvalidBlockDetector>()
+                .AddDecorator<IBlockProcessor, InvalidBlockDetector.BlockProcessorInterceptor>()
+
             .AddSingleton<ISealer>(new NethDevSealEngine(nodeKey.Address))
             .AddSingleton<ITimestamper, ManualTimestamper>()
             .AddSingleton<IIPResolver, FixedIpResolver>()
@@ -53,14 +64,14 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 return new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
             })
             .AddKeyedSingleton(NodeKey, nodeKey)
+            .AddKeyedSingleton<IFileStoreFactory>(nameof(BloomStorage), (_) => new InMemoryDictionaryFileStoreFactory())
 
             .AddSingleton<IChainHeadInfoProvider, IComponentContext>((ctx) =>
             {
-                ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                IChainHeadSpecProvider specProvider = ctx.Resolve<IChainHeadSpecProvider>();
                 IBlockTree blockTree = ctx.Resolve<IBlockTree>();
                 IStateReader stateReader = ctx.Resolve<IStateReader>();
-                ICodeInfoRepository codeInfoRepository = ctx.ResolveNamed<ICodeInfoRepository>(nameof(IWorldStateManager.GlobalWorldState));
-                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader, codeInfoRepository)
+                return new ChainHeadInfoProvider(specProvider, blockTree, stateReader)
                 {
                     // It just need to override this.
                     HasSynced = true
@@ -113,6 +124,8 @@ public class TestEnvironmentModule(PrivateKey nodeKey, string? networkGroup) : M
                 pruningConfig.DirtyNodeShardBit = 1;
                 return pruningConfig;
             })
+
+            .AddSingleton<IHardwareInfo>(new TestHardwareInfo(1.GiB))
             ;
     }
 }

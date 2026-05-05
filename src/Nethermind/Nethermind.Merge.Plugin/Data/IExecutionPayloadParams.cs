@@ -2,13 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -24,7 +20,7 @@ public enum ValidationResult : byte { Success, Fail, Invalid };
 public class ExecutionPayloadParams(byte[][]? executionRequests = null)
 {
     /// <summary>
-    /// Gets or sets <see cref="ExecutionRequets"/> as defined in
+    /// Gets or sets <see cref="ExecutionRequests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7685">EIP-7685</see>.
     /// </summary>
     public byte[][]? ExecutionRequests { get; set; } = executionRequests;
@@ -86,23 +82,14 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
-        Transaction[]? transactions;
-        try
+        TransactionDecodingResult transactionDecodingResult = executionPayload.TryGetTransactions();
+        if (transactionDecodingResult.Error is not null)
         {
-            transactions = executionPayload.GetTransactions();
-        }
-        catch (RlpException rlpException)
-        {
-            error = rlpException.Message;
+            error = transactionDecodingResult.Error;
             return ValidationResult.Invalid;
         }
 
-        static IEnumerable<byte[]?> FlattenHashesFromTransactions(Transaction[] transactions) =>
-            transactions
-                .Where(t => t.BlobVersionedHashes is not null)
-                .SelectMany(t => t.BlobVersionedHashes!);
-
-        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer))
+        if (!FlattenedHashesEqual(transactionDecodingResult.Transactions, blobVersionedHashes))
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;
@@ -114,9 +101,31 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return ValidationResult.Fail;
         }
 
-        executionPayload.ParentBeaconBlockRoot = new Hash256(parentBeaconBlockRoot);
+        executionPayload.ParentBeaconBlockRoot = parentBeaconBlockRoot;
 
         error = null;
         return ValidationResult.Success;
+    }
+
+    private static bool FlattenedHashesEqual(Transaction[] transactions, ReadOnlySpan<byte[]?> expected)
+    {
+        int expectedIndex = 0;
+        for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
+        {
+            byte[]?[]? hashes = transactions[txIndex].BlobVersionedHashes;
+            if (hashes is null || hashes.Length == 0) continue;
+
+            for (int hashIndex = 0; hashIndex < hashes.Length; hashIndex++)
+            {
+                if (expectedIndex >= expected.Length) return false;
+                if (!hashes[hashIndex].AsSpan().SequenceEqual(expected[expectedIndex]))
+                {
+                    return false;
+                }
+                expectedIndex++;
+            }
+        }
+
+        return expectedIndex == expected.Length;
     }
 }

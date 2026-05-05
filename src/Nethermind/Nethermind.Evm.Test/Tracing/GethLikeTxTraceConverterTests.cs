@@ -4,8 +4,8 @@
 using System.Collections.Generic;
 using System.Text.Json;
 using FluentAssertions;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -18,7 +18,7 @@ public class GethLikeTxTraceConverterTests
     [Test]
     public void Write_null()
     {
-        var result = _serializer.Serialize((GethLikeTxTrace?)null);
+        string result = _serializer.Serialize((GethLikeTxTrace?)null);
 
         Assert.That(result, Is.EqualTo("null"));
     }
@@ -26,7 +26,7 @@ public class GethLikeTxTraceConverterTests
     [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Write_traces(GethLikeTxTrace trace, string json)
     {
-        var result = _serializer.Serialize(trace);
+        string result = _serializer.Serialize(trace);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
@@ -37,12 +37,12 @@ public class GethLikeTxTraceConverterTests
     [TestCaseSource(nameof(CustomValueTracerResults))]
     public void Write_custom_tracer_result(object value, string expected)
     {
-        var trace = new GethLikeTxTrace
+        GethLikeTxTrace trace = new()
         {
             CustomTracerResult = new GethLikeCustomTrace { Value = value }
         };
 
-        var result = _serializer.Serialize(trace);
+        string result = _serializer.Serialize(trace);
 
         Assert.That(JsonElement.DeepEquals(
             JsonDocument.Parse(result).RootElement,
@@ -53,7 +53,7 @@ public class GethLikeTxTraceConverterTests
     [Test]
     public void Read_null()
     {
-        var result = _serializer.Deserialize<GethLikeTxTrace>("null");
+        GethLikeTxTrace result = _serializer.Deserialize<GethLikeTxTrace>("null");
 
         Assert.That(result, Is.Null);
     }
@@ -61,24 +61,22 @@ public class GethLikeTxTraceConverterTests
     [TestCaseSource(nameof(TraceAndJsonSource))]
     public void Read_traces(GethLikeTxTrace expectedTrace, string json)
     {
-        var result = _serializer.Deserialize<GethLikeTxTrace>(json);
+        GethLikeTxTrace result = _serializer.Deserialize<GethLikeTxTrace>(json);
 
         result.Should().BeEquivalentTo(expectedTrace);
     }
 
 
     [TestCaseSource(nameof(CustomValueTracerResults))]
-    public void Read_custom_tracer_result_throws(object expectedValue, string json)
-    {
-        Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
-    }
+    public void Read_custom_tracer_result_throws(object expectedValue, string json) => Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
 
-    private static IEnumerable<object[]> TraceAndJsonSource()
+    private static IEnumerable<TestCaseData> TraceAndJsonSource()
     {
-        yield return [
+        yield return new TestCaseData(
             new GethLikeTxTrace { Gas = 1, ReturnValue = [0x01] },
-            """{ "gas": 1, "failed": false, "returnValue": "0x01", "structLogs": [] }"""];
-        yield return [
+            """{ "gas": 1, "failed": false, "returnValue": "0x01", "structLogs": [] }""")
+            .SetName("Gas1_NoEntries");
+        yield return new TestCaseData(
             new GethLikeTxTrace
             {
                 Gas = 100,
@@ -130,15 +128,15 @@ public class GethLikeTxTraceConverterTests
                 }
               } ]
             }
-            """
-        ];
+            """)
+            .SetName("Gas100_1Entry");
     }
 
-    private static IEnumerable<object[]> CustomValueTracerResults()
+    private static IEnumerable<TestCaseData> CustomValueTracerResults()
     {
-        yield return [1, "1"];
-        yield return ["1", "\"1\""];
-        yield return [new[] { 1, 2 }, "[1, 2]"];
-        yield return [new { a = 1, b = 2 }, "{ \"a\": 1, \"b\": 2 }"];
+        yield return new TestCaseData(1, "1").SetName("Custom_Int");
+        yield return new TestCaseData("1", "\"1\"").SetName("Custom_String");
+        yield return new TestCaseData(new[] { 1, 2 }, "[1, 2]").SetName("Custom_Array");
+        yield return new TestCaseData(new { a = 1, b = 2 }, "{ \"a\": 1, \"b\": 2 }").SetName("Custom_Object");
     }
 }

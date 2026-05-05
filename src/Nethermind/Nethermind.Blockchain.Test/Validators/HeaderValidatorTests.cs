@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -14,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -22,6 +26,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class HeaderValidatorTests
 {
     private IHeaderValidator _validator = null!;
@@ -58,8 +64,7 @@ public class HeaderValidatorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Valid_when_valid()
     {
-        _block.Header.SealEngineType = SealEngineType.None;
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         if (!result)
         {
             foreach (string error in _testLogger.LogList)
@@ -71,114 +76,115 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_too_high()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, false, TestName = "When_gas_limit_too_high")]
+    [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
+    public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-        _block.Header.SealEngineType = SealEngineType.None;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(1, true, TestName = "When_gas_limit_just_correct_low")]
+    [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
+    public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
+    {
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+        Assert.That(result, Is.EqualTo(expectedResult));
+    }
+
+    private static IEnumerable<TestCaseData> InvalidFieldCases()
+    {
+        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.GasUsed = parent.Header.GasLimit + 1))
+            .SetName("When_gas_used_above_gas_limit");
+        yield return new TestCaseData(new Action<Block, Block>((block, _) => block.Header.ParentHash = Keccak.Zero))
+            .SetName("When_no_parent_invalid");
+        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.Timestamp = parent.Header.Timestamp))
+            .SetName("When_timestamp_same_as_parent");
+    }
+
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(InvalidFieldCases))]
+    public void Header_field_invalidation_returns_false(Action<Block, Block> corrupt)
+    {
+        corrupt(_block, _parentBlock);
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_just_correct_high()
+    public void When_slot_number_same_as_parent()
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
-        _block.Header.SealEngineType = SealEngineType.None;
+        // Arrange: Same setup as above
+        TestSpecProvider specProvider = new(Amsterdam.Instance);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        BlockAccessList emptyBal = new();
+        byte[] emptyEncodedBal = Rlp.Encode(emptyBal).Bytes;
+        _parentBlock = Build.A.Block
+            .WithNumber(5)
+            .WithSlotNumber(10)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessList(emptyBal)
+            .WithEncodedBlockAccessList(emptyEncodedBal)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .TestObject;
+
+        _block = Build.A.Block
+            .WithParent(_parentBlock)
+            .WithNumber(_parentBlock.Number + 1)
+            .WithSlotNumber(10)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessList(emptyBal)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithEncodedBlockAccessList(emptyEncodedBal)
+            .TestObject;
+
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.True);
+        // Act
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header, false, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Assert
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo("InvalidSlotNumber: Slot number in header must exceed parent."));
+        }
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_just_correct_low()
+    private static IEnumerable<TestCaseData> CorruptedFieldCases()
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
-        _block.Header.SealEngineType = SealEngineType.None;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.True);
+        yield return new TestCaseData(new Action<Block>(b => b.Header.ExtraData = new byte[33]))
+            .SetName("When_extra_data_too_long");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Difficulty = 1))
+            .SetName("When_incorrect_difficulty_then_invalid");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number += 1))
+            .SetName("When_incorrect_number_then_invalid");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_just_too_low()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(CorruptedFieldCases))]
+    public void Header_field_corruption_returns_false(Action<Block> corrupt)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-        _block.Header.SealEngineType = SealEngineType.None;
+        corrupt(_block);
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_used_above_gas_limit()
-    {
-        _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
-        _block.Header.SealEngineType = SealEngineType.None;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_no_parent_invalid()
-    {
-        _block.Header.ParentHash = Keccak.Zero;
-        _block.Header.SealEngineType = SealEngineType.None;
-        _block.Header.Hash = _block.CalculateHash();
-        _block.Header.MaybeParent = null;
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_timestamp_same_as_parent()
-    {
-        _block.Header.Timestamp = _parentBlock.Header.Timestamp;
-        _block.Header.SealEngineType = SealEngineType.None;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_extra_data_too_long()
-    {
-        _block.Header.ExtraData = new byte[33];
-        _block.Header.SealEngineType = SealEngineType.None;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_incorrect_difficulty_then_invalid()
-    {
-        _block.Header.Difficulty = 1;
-        _block.Header.SealEngineType = SealEngineType.None;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_incorrect_number_then_invalid()
-    {
-        _block.Header.Number += 1;
-        _block.Header.SealEngineType = SealEngineType.None;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -216,7 +222,6 @@ public class HeaderValidatorTests
             .WithNumber(_parentBlock.Number + 1)
             .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
             .WithNonce(0).TestObject;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -237,7 +242,6 @@ public class HeaderValidatorTests
             .WithGasLimit(long.MaxValue)
             .WithNumber(_parentBlock.Number + 1)
             .WithNonce(0).TestObject;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -245,23 +249,24 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_block_number_is_negative()
+    private static IEnumerable<TestCaseData> NegativeFieldCases()
     {
-        _block.Header.Number = -1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
+            .SetName("When_block_number_is_negative");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = -1))
+            .SetName("When_gas_used_is_negative");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = -1))
+            .SetName("When_gas_limit_is_negative");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_used_is_negative()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(NegativeFieldCases))]
+    public void When_header_field_is_negative(Action<Block> corrupt)
     {
-        _block.Header.GasUsed = -1;
+        corrupt(_block);
         _block.Header.Hash = _block.CalculateHash();
 
-        bool result = _validator.Validate(_block.Header);
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.False);
     }
 
@@ -270,11 +275,10 @@ public class HeaderValidatorTests
     {
         _block.Header.Difficulty = 1;
         _block.Header.TotalDifficulty = null;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
-        HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
-        bool result = validator.Validate(_block.Header);
+        HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
+        bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.True);
     }
 
@@ -290,7 +294,6 @@ public class HeaderValidatorTests
     {
         _block.Header.Difficulty = 1;
         _block.Header.TotalDifficulty = 0;
-        _block.Header.SealEngineType = SealEngineType.None;
         _block.Header.Hash = _block.CalculateHash();
 
         {
@@ -306,28 +309,141 @@ public class HeaderValidatorTests
         _specProvider.UpdateMergeTransitionInfo(null, (UInt256?)ttd);
 
         HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
-        bool result = validator.Validate(_block.Header);
+        bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.EqualTo(expectedResult));
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_negative()
-    {
-        _block.Header.GasLimit = -1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header);
-        Assert.That(result, Is.False);
     }
 
     [Test]
     public void Validate_HashIsWrong_ErrorMessageIsSet()
     {
-        HeaderValidator sut = new HeaderValidator(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
+        HeaderValidator sut = new(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
         _block.Header.Hash = Keccak.Zero;
-        string? error;
-        sut.Validate(_block.Header, false, out error);
+        sut.Validate(_block.Header, _parentBlock.Header, false, out string? error);
 
         Assert.That(error, Does.StartWith("InvalidHeaderHash"));
+    }
+
+    [Test]
+    public void When_given_parent_is_wrong()
+    {
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.Validate(_block.Header, Build.A.BlockHeader.WithNonce(999).TestObject, false, out string? error);
+
+        Assert.That(result, Is.False);
+        Assert.That(error, Does.StartWith("Mismatched parent"));
+    }
+
+    [Test]
+    public void BaseFee_validation_must_not_be_bypassed_for_NoProof_seal_engine()
+    {
+        // Arrange: Create London fork with EIP-1559
+        OverridableReleaseSpec spec = new(London.Instance)
+        {
+            Eip1559TransitionBlock = 0
+        };
+        TestSpecProvider specProvider = new(spec);
+
+        // Create validator with no-op seal validator (simulates NoProof)
+        _validator = new HeaderValidator(
+            _blockTree,
+            Always.Valid,  // No seal validation (NoProof behavior)
+            specProvider,
+            new OneLoggerLogManager(new(_testLogger))
+        );
+
+        // Parent block: baseFee=10, gasUsed=0, gasLimit=300000000
+        _parentBlock = Build.A.Block
+            .WithDifficulty(0)  // Post-merge
+            .WithBaseFeePerGas(10)
+            .WithGasUsed(0)
+            .WithGasLimit(300000000)
+            .WithNumber(5)
+            .TestObject;
+
+        // Calculate expected baseFee for child block
+        // parentGasTarget = 300000000 / 2 = 150000000
+        // gasDelta = 150000000 - 0 = 150000000
+        // feeDelta = 10 * 150000000 / 150000000 / 8 = 1
+        // expectedBaseFee = 10 - 1 = 9
+        UInt256 expectedBaseFee = BaseFeeCalculator.Calculate(
+            _parentBlock.Header,
+            specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))
+        );
+        Assert.That(expectedBaseFee, Is.EqualTo((UInt256)9), "Test setup: expected baseFee should be 9");
+
+        // Create block with INCORRECT baseFee (10 instead of 9)
+        _block = Build.A.Block
+            .WithParent(_parentBlock)
+            .WithDifficulty(0)
+            .WithBaseFeePerGas(10)  // WRONG! Should be 9
+            .WithGasUsed(0)
+            .WithGasLimit(300000000)
+            .WithNumber(_parentBlock.Number + 1)
+            .TestObject;
+
+        _block.Header.Hash = _block.CalculateHash();
+
+        // Act: Validate the block
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+
+        // Assert: Block MUST be rejected due to invalid baseFee
+        // Even though seal engine is NoProof, consensus rules must be enforced
+        Assert.That(result, Is.False,
+            "Block with invalid baseFee must be rejected even with NoProof seal engine. " +
+            $"Expected baseFee=9, actual baseFee=10");
+
+        // Verify the error message mentions baseFee
+        bool baseFeeErrorLogged = _testLogger.LogList.Any(log =>
+            log.Contains("base fee", StringComparison.OrdinalIgnoreCase) ||
+            log.Contains("baseFee", StringComparison.OrdinalIgnoreCase));
+        Assert.That(baseFeeErrorLogged, Is.True,
+            "Validation should log baseFee mismatch error");
+    }
+
+    [Test]
+    public void Valid_baseFee_with_NoProof_seal_engine_should_pass()
+    {
+        // Arrange: Same setup as above
+        OverridableReleaseSpec spec = new(London.Instance)
+        {
+            Eip1559TransitionBlock = 0
+        };
+        TestSpecProvider specProvider = new(spec);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        _parentBlock = Build.A.Block
+            .WithDifficulty(0)
+            .WithBaseFeePerGas(10)
+            .WithGasUsed(0)
+            .WithGasLimit(300000000)
+            .WithNumber(5)
+            .TestObject;
+
+        // Calculate CORRECT baseFee
+        UInt256 correctBaseFee = BaseFeeCalculator.Calculate(
+            _parentBlock.Header,
+            specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))
+        );
+
+        // Create block with CORRECT baseFee (9)
+        _block = Build.A.Block
+            .WithParent(_parentBlock)
+            .WithDifficulty(0)
+            .WithBaseFeePerGas(correctBaseFee)  // CORRECT: 9
+            .WithGasUsed(0)
+            .WithGasLimit(300000000)
+            .WithNumber(_parentBlock.Number + 1)
+            .TestObject;
+
+        _block.Header.Hash = _block.CalculateHash();
+
+        // Act
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
+
+        // Assert: Valid block should pass
+        Assert.That(result, Is.True,
+            "Block with correct baseFee should be accepted with NoProof seal engine");
     }
 }

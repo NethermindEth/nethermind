@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -14,10 +12,9 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Hash256 GetHash()
-        {
-            return new Hash256(_keccakHash.Hash);
-        }
+        public Hash256 GetHash() => new(_keccakHash.GenerateValueHash());
+
+        public ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
 
         public KeccakRlpStream()
         {
@@ -25,15 +22,9 @@ namespace Nethermind.Crypto
             _keccakHash = keccakHash;
         }
 
-        public override void Write(ReadOnlySpan<byte> bytesToWrite)
-        {
-            _keccakHash.Update(bytesToWrite);
-        }
+        public override void Write(ReadOnlySpan<byte> bytesToWrite) => _keccakHash.Update(bytesToWrite);
 
-        public override void WriteByte(byte byteToWrite)
-        {
-            _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));
-        }
+        public override void WriteByte(byte byteToWrite) => _keccakHash.Update(MemoryMarshal.CreateSpan(ref byteToWrite, 1));
 
         protected override void WriteZero(int length)
         {
@@ -41,39 +32,14 @@ namespace Nethermind.Crypto
             Write(zeros);
         }
 
-        public override byte ReadByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override Span<byte> Read(int length)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override byte PeekByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override byte PeekByte(int offset)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override void SkipBytes(int length)
-        {
-            WriteZero(length);
-        }
-
         public override int Position
         {
-            get => throw new NotSupportedException("Cannot read form Keccak");
-            set => throw new NotSupportedException("Cannot read form Keccak");
+            get => throw new NotSupportedException("Cannot read from Keccak");
+            set => throw new NotSupportedException("Cannot read from Keccak");
         }
 
-        public override int Length => throw new NotSupportedException("Cannot read form Keccak");
+        public override int Length => throw new NotSupportedException("Cannot read from Keccak");
 
-        protected override string Description => "|KeccakRlpSTream|description missing|";
+        protected override string Description => "|KeccakRlpStream|description missing|";
     }
 }

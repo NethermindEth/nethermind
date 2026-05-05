@@ -10,7 +10,7 @@ using Nethermind.Synchronization;
 namespace Nethermind.Optimism;
 
 /// <remarks>
-/// In Optimism Mainnet, the <see cref="BlockHeader.TotalDifficulty"/> gets resetted to <c>0</c> in the Bedrock block unlike other chains that went through The Merge fork.
+/// In Optimism Mainnet, the <see cref="BlockHeader.TotalDifficulty"/> gets reset to <c>0</c> in the Bedrock block unlike other chains that went through The Merge fork.
 /// Calculation is still the same: the current block's <see cref="BlockHeader.TotalDifficulty"/> is the parent's <see cref="BlockHeader.TotalDifficulty"/> plus the current block's <see cref="BlockHeader.Difficulty"/>.
 /// <seealso href="https://github.com/NethermindEth/nethermind/issues/7626"/>
 /// </remarks>
