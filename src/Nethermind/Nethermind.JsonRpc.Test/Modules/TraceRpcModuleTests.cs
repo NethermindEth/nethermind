@@ -1348,4 +1348,28 @@ public class TraceRpcModuleTests
         secondIstanbulGas.Should().Be(firstIstanbulGas,
             "the Berlin override from the intervening call must not leak into subsequent calls");
     }
+
+    [Test]
+    public async Task trace_block_pre_1559_fork_override_on_london_block_zeroes_base_fee()
+    {
+        // EIP-1559 activates at block 1, so block 1 gets BaseFeePerGas = ForkBaseFee (1 Gwei).
+        OverridableReleaseSpec londonSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
+        ForkAwareTestSpecProvider specProvider = new(londonSpec, MainnetSpecProvider.Instance);
+
+        Context context = new();
+        await context.Build(specProvider);
+
+        BlockHeader? block1 = context.Blockchain.BlockTree.FindHeader(1, BlockTreeLookupOptions.None);
+        block1.Should().NotBeNull();
+        block1!.BaseFeePerGas.Should().BeGreaterThan(UInt256.Zero,
+            "the London fork-activation block must carry a non-zero base fee so the test is meaningful");
+
+        // Re-executing this London block with a Berlin (pre-EIP-1559) fork override must succeed:
+        // AdjustHeaderForSpec must zero BaseFeePerGas for pre-1559 specs.
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(new BlockParameter(1L), new ForkActivationParameter { ForkName = "Berlin" });
+
+        result.Result.ResultType.Should().Be(ResultType.Success,
+            "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");
+    }
 }
