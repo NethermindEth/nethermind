@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.IO.Abstractions.TestingHelpers;
 using System.Threading;
 using Nethermind.Core.Resettables;
 using Nethermind.Evm;
@@ -13,6 +12,7 @@ using Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 using Nethermind.StatsAnalyzer.Plugin.Types;
 using Nethermind.Specs;
 using NUnit.Framework;
+using Testably.Abstractions.Testing;
 using PatternAnalyzerFileTracer = Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern.PatternAnalyzerFileTracer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Test;
@@ -35,13 +35,13 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
     {
         base.Setup();
         _fileSystem = new MockFileSystem();
+        _fileSystem.Initialize();
         ILogManager logManager = LimboLogs.Instance;
-        var mockFileData = new MockFileData("File content");
         _testFileName = _fileSystem.Path.Combine(".", "test_opcode_stats.json");
         _testIgnoreFileName = _fileSystem.Path.Combine(".", "test_opcode_stats_ignore.json");
-        _fileSystem.AddDirectory(_fileSystem.Path.GetTempPath());
-        _fileSystem.AddFile(_testFileName, mockFileData);
-        _fileSystem.AddFile(_testIgnoreFileName, mockFileData);
+        _fileSystem.Directory.CreateDirectory(_fileSystem.Path.GetTempPath());
+        _fileSystem.File.WriteAllText(_testFileName, "File content");
+        _fileSystem.File.WriteAllText(_testIgnoreFileName, "File content");
         _logger = logManager.GetClassLogger();
 
         var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
