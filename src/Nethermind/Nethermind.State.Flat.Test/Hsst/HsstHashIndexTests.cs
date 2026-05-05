@@ -152,9 +152,10 @@ public class HsstHashIndexTests
     }
 
     [Test]
-    public void HashIndex_TableSizeLog2_MatchesTargetUtilization()
+    public void HashIndex_TableSize_MatchesTargetUtilization()
     {
-        // 100 entries at 0.75 utilization -> ceil(100/0.75)=134 -> next pow2 = 256 -> log2 = 8.
+        // 100 entries at 0.75 utilization -> ceil(100/0.75) = 134. With Lemire's reduction
+        // the bucket count is no longer rounded up to a power of two.
         const int count = 100;
         (byte[][] keys, byte[][] values) = MakeSortedKeys(count);
 
@@ -164,7 +165,9 @@ public class HsstHashIndexTests
         }, useHashIndex: true, hashIndexTargetUtilization: 0.75);
 
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTreeHashIndex));
-        Assert.That(data[^2], Is.EqualTo((byte)8));
+        // TableSize is the 4-byte little-endian field immediately before IndexType.
+        uint tableSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(data.Length - 5, 4));
+        Assert.That(tableSize, Is.EqualTo(134u));
     }
 
     [Test]

@@ -40,11 +40,8 @@ A compact, immutable binary format for sorted key/value tables.
 |---|---|
 | **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
 | **BTreeInlineValue** | `[Index Region][IndexType: u8 = 0x02]` |
-| **BTreeHashIndex** | `[Data Region][Index Region][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x03]` |
-| **BTreeNodeHashIndex** | `[Data Region][Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x04]` |
-| **BTreeNodeHashIndexInlineValue** | `[Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x05]` |
-| **FlatEntries** | `[Data][BinaryIndex][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]` |
-| **FlatEntriesSplitIndex** | `[Data][CheckpointKeys][CheckpointEntryIndices][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][Metadata][MetadataLength: u8][IndexType: u8 = 0x07]` |
+| **BTreeHashIndex** | `[Data Region][Index Region][HashTable: 4·N bytes][TableSize: u32 LE][IndexType: u8 = 0x03]` |
+| **FlatEntries** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -54,10 +51,7 @@ the variant by enumerated value (not a bitfield):
 | `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
 | `0x02` | `BTreeInlineValue` | No data region; leaves hold values inline. |
 | `0x03` | `BTreeHashIndex` | `BTree` plus a trailing open-address hash table of metaStart pointers. |
-| `0x04` | `BTreeNodeHashIndex` | `BTree` plus a trailing hash table of leaf-node pointers. |
-| `0x05` | `BTreeNodeHashIndexInlineValue` | `BTreeInlineValue` plus a trailing hash table of leaf-node pointers. |
-| `0x06` | `FlatEntries` | Fixed-size key/value array with a sparse "checkpoint" binary index and an always-present hash table. |
-| `0x07` | `FlatEntriesSplitIndex` | Same as `FlatEntries` but the binary index is split into two parallel arrays: all checkpoint keys then all checkpoint entry indices. |
+| `0x06` | `FlatEntries` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
 
 Other values are reserved for future index strategies. The root B-tree
 node lives just before the index type byte (or just before the hash table,
@@ -121,12 +115,13 @@ A `BTree` with an extra open-address hash table appended after the root.
 Layout, reading backward from the index type byte:
 
 ```
-... B-tree root ... [HashTable][TableSizeLog2: u8 = L][IndexType: u8 = 0x03]
+... B-tree root ... [HashTable][TableSize: u32 LE = N][IndexType: u8 = 0x03]
 ```
 
-- `TableSizeLog2` (`L`) is a single byte; the table holds exactly `2^L`
-  slots. `L` is in `[0, 31]`.
-- `HashTable` is `2^L` slots of `u32` little-endian, each one of:
+- `TableSize` (`N`) is a 4-byte little-endian unsigned integer; the table
+  holds exactly `N` slots. With Lemire's multiply-shift reduction `N` need
+  not be a power of two.
+- `HashTable` is `N` slots of `u32` little-endian, each one of:
   - `0x00000000` — **empty**: no entry hashes to this slot.
   - `0xFFFFFFFF` — **collision sentinel**: two or more entries hashed here;
     the reader must consult the B-tree.
@@ -137,11 +132,14 @@ Layout, reading backward from the index type byte:
 Slot index for a key:
 
 ```
-slot = HashKey(key) & ((1 << L) - 1)
+slot = (uint)(((ulong)HashKey(key) * (ulong)N) >> 32)
 ```
 
 Where `HashKey` is the low 32 bits of `XxHash3` over the full key bytes
 (no prefix stripping); writer and reader must compute it identically.
+This is Daniel Lemire's multiply-shift reduction — uniform on `[0, N)`
+without requiring `N` to be a power of two
+(<https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/>).
 
 The empty sentinel is unambiguous because in a valid `BTreeHashIndex` HSST
 the data region is non-empty (an empty HSST is encoded as plain `BTree`),
@@ -161,66 +159,23 @@ B-tree pointer encoding, ≈2 GiB).
    (the candidate's hash collides with the input's hash), exact lookup
    returns "not found" and floor must consult the B-tree.
 
-**Sizing.** Builders pick the smallest `2^L` such that
-`N / 2^L ≤ targetUtilization` (default target `0.75`); the target is a
-build-time knob, never recorded in the file.
+**Sizing.** Builders pick `N = max(1, ceil(entries / targetUtilization))`
+(default target `0.75`); the target is a build-time knob, never recorded
+in the file.
 
 The B-tree under the hash table is identical to a `BTree` HSST and remains
 authoritative — readers that only know `BTree` could parse this variant by
-peeling off the trailing `2 + 4·2^L` bytes and reading the rest as a
+peeling off the trailing `5 + 4·N` bytes and reading the rest as a
 `BTree` HSST. The hash table is purely a fast path.
-
-### BTreeNodeHashIndex / BTreeNodeHashIndexInlineValue variants
-
-Same shape as `BTreeHashIndex` (table of `2^L` little-endian `u32` slots
-followed by `TableSizeLog2` then the discriminator byte), but the slot's
-non-sentinel value is the **inclusive last-byte offset of a leaf node**
-within the HSST — the same encoding used by intermediate B-tree
-child-pointers. `BTreeNodeHashIndex` (0x04) sits over a non-inline B-tree;
-`BTreeNodeHashIndexInlineValue` (0x05) sits over a `BTreeInlineValue`
-B-tree.
-
-Slot semantics:
-
-- `0x00000000` — empty: no key in the HSST hashes to this slot.
-- `0xFFFFFFFF` — collision: two or more **distinct** leaf nodes share this
-  slot; the reader must consult the B-tree.
-- otherwise — leaf-node end offset. Multiple keys that share a leaf
-  collapse onto the same slot value (this is not a collision); only
-  distinct leaves on the same slot trigger the sentinel.
-
-Slot index is computed identically to `BTreeHashIndex`
-(`slot = HashKey(key) & ((1 << L) - 1)`). The empty sentinel is
-unambiguous because a leaf node's last-byte offset is never 0 (an empty
-HSST is encoded as plain `BTree`).
-
-**Lookup procedure.** Compute `slot`; read the slot value:
-
-1. **Empty.** Exact-match returns "not found"; floor must consult the
-   B-tree.
-2. **Collision.** Consult the B-tree.
-3. **Leaf pointer.** Load the indicated leaf node and run the in-leaf
-   binary search exactly as the B-tree walk would for that leaf. On exact
-   match, decode the value (from the data region for `0x04`, from the
-   leaf's value section for `0x05`); on miss, exact-match returns "not
-   found" (the slot is authoritative — the key would have been built into
-   the same slot value or marked collision). Floor must consult the
-   B-tree because a floor inside the hashed leaf is not necessarily the
-   global floor.
-
-**Sizing.** Builders pick the smallest `2^L` such that
-`leafCount / 2^L ≤ targetUtilization` — the table population is bounded
-by the number of distinct leaves, not the entry count, so the table is
-typically much smaller than a `BTreeHashIndex` over the same data.
 
 ### FlatEntries variant
 
 A specialised layout for fixed-size keys and values. The b-tree is replaced
-by a packed entry array with a small sparse top-level binary index plus an
-always-present hash table.
+by a packed entry array with a recursive "summary" index and an optional
+hash table.
 
 ```
-[Data][BinaryIndex][HashTable][TableSizeLog2: u8][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]
+[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]
 ```
 
 - **`Data`** — `EntryCount * (KeySize + ValueSize)` bytes, packed. Each entry
@@ -228,46 +183,54 @@ always-present hash table.
   strictly ascending key order; random access by entry index is just a
   multiply (`offset = i * (KeySize + ValueSize)`). Both `KeySize` and
   `ValueSize` are immutable per HSST and read from `Metadata`.
-- **`BinaryIndex`** — `IndexCount` fixed-size entries of
-  `[CheckpointKey: KeySize bytes][LastEntryIndex: u32 LE]`. The builder
-  emits one checkpoint each time the cumulative `(key+value)` bytes written
-  cross the configurable stride threshold (default 1 KiB), and always emits
-  a final checkpoint covering the last entry. `CheckpointKey` is the key of
-  the last entry in its range; `LastEntryIndex` is that entry's absolute
-  index in `Data`. Checkpoints are sorted (because entries are).
-- **`HashTable`** — `2^L` `u32` LE slots; `0x00000000` = empty,
-  `0xFFFFFFFF` = collision sentinel, otherwise the slot stores
-  `entryIndex + 1` (1-based, so `0` stays unambiguous as empty). Hash
-  function is the same `HashKey` (low 32 bits of `XxHash3`) as
-  `BTreeHashIndex`. `L` is in `[0, 31]`. Always present, even when
-  `EntryCount == 0` (a single 4-byte slot is emitted), so readers never
-  need a presence flag.
-- **`Metadata`** — fixed sequence of LEB128 varints, read forward from
+- **`Summary L0..L(D-1)`** — `Depth` levels of summary, each a contiguous
+  array of `Count_k` records of
+  `[CheckpointKey: KeySize bytes][LastEntryIndex: u32 LE]`.
+  - **Level 0** indexes into `Data`: the builder emits one checkpoint each
+    time the cumulative `(key+value)` bytes written cross the configurable
+    stride threshold (default 1 KiB), plus a final checkpoint covering the
+    last entry. `LastEntryIndex` is the entry's absolute index in `Data`.
+  - **Level k+1** indexes into level k: the builder walks level k's records
+    `(KeySize+4)` bytes at a time and emits one summary record per stride,
+    plus a final tail record. `LastEntryIndex` at level k+1 is the index of
+    the last record in level k that this checkpoint covers.
+  - Levels are stored in order on disk (Level 0 closest to `Data`, Level
+    `Depth-1` closest to `HashTable`/`Metadata`). The builder stops adding
+    levels once a level produces ≤ 1 record.
+  - `Depth = 0` is legal — for tiny HSSTs the data range is searched
+    directly.
+- **`HashTable`** — Optional. When `TableSize == 0` the section is omitted
+  entirely (no on-disk bytes). When present, `TableSize` `u32` LE slots;
+  `0x00000000` = empty, `0xFFFFFFFF` = collision sentinel, otherwise the
+  slot stores `entryIndex + 1` (1-based). Hash function is the same
+  `HashKey` (low 32 bits of `XxHash3`) as `BTreeHashIndex`; the slot is
+  derived via Lemire's multiply-shift reduction
+  `(uint)(((ulong)hash * (ulong)TableSize) >> 32)` so `TableSize` need not
+  be a power of two.
+- **`Metadata`** — sequence of LEB128 varints, read forward from
   `metaAbsStart = hsstEnd - 2 - MetadataLength`:
   ```
-  [KeySize: LEB128][ValueSize: LEB128][EntryCount: LEB128][IndexCount: LEB128]
+  [KeySize: LEB128][ValueSize: LEB128][EntryCount: LEB128][TableSize: LEB128][Depth: LEB128][Count_0: LEB128]…[Count_{Depth-1}: LEB128]
   ```
-  No flags byte: section presence and shape are fully determined by the
-  discriminator `0x06` and `TableSizeLog2`.
+  `TableSize == 0` signals "no hash table"; `Depth` is capped at 8.
 
 **Lookup procedure** (exact and floor):
 
-1. Compute `slot = HashKey(key) & ((1 << L) - 1)`. If the slot stores
-   `entryIdx + 1` for some `entryIdx`, read the candidate's key from
-   `Data` and compare. Match ⇒ return its value. Mismatch on exact ⇒
-   "not found"; mismatch on floor ⇒ fall through. Empty slot on exact ⇒
-   "not found"; on floor ⇒ fall through. Collision ⇒ fall through.
-2. Binary-search `BinaryIndex` for the smallest checkpoint whose
-   `CheckpointKey` is `≥ target`. This narrows the candidate range to a
-   single stride-sized window in `Data` (range
-   `[checkpoints[c-1].LastEntryIndex + 1, checkpoints[c].LastEntryIndex]`,
-   or `[0, checkpoints[0].LastEntryIndex]` when `c == 0`). If `c ==
-   IndexCount` the target exceeds every stored key — exact lookup returns
-   "not found"; floor returns the last entry overall.
-3. Binary-search `Data` within that range for the smallest entry whose
-   key is `≥ target`. If the entry's key equals the target, return its
-   value. For floor on a miss, return the entry at `insertionPoint − 1`
-   (in absolute entry-index space; the array is globally sorted).
+1. **Hash fast path.** When `TableSize > 0` and `key.Length == KeySize`,
+   compute `slot = (uint)(((ulong)HashKey(key) * (ulong)TableSize) >> 32)`.
+   On `entryIdx+1`, read the candidate from `Data` and compare; on match
+   return; on mismatch + exact → not found; otherwise fall through. Empty
+   slot on exact → not found; on floor fall through. Collision → fall
+   through.
+2. **Recursive summary descent.** Starting at the top level (Depth-1), find
+   the smallest checkpoint whose key is `≥ target` within the active slab.
+   That checkpoint's `LastEntryIndex` plus the previous checkpoint's
+   `LastEntryIndex+1` (or 0 at the slab start) define the slab at the next
+   level down. Repeat until level 0 yields a slab in `Data`.
+3. **Data binary search.** Binary-search the level-0 slab for the smallest
+   entry whose key is `≥ target`. If equal, return; for floor on a miss
+   return entry at `insertionPoint − 1` (the data array is globally sorted,
+   so going outside the slab is safe).
 
 **Restrictions and trade-offs.**
 
@@ -277,45 +240,11 @@ always-present hash table.
   binds in practice.
 - Per-entry overhead is zero (no LEB128 length prefixes, no per-entry
   metadata pointer); checkpoint overhead is `(KeySize + 4) bytes` per
-  ~`stride` bytes of data plus the small hash table.
+  ~`stride` bytes of data, plus a geometrically smaller cost from the
+  higher summary levels, plus the optional hash table.
 - Random access by entry index is `O(1)`; lookups are
-  `O(log IndexCount + log entriesPerStride)` reads, each of which is
-  `KeySize` bytes — vs. b-tree variants that walk a sequence of pinned
-  nodes.
-
-### FlatEntriesSplitIndex variant
-
-Identical to `FlatEntries` except that the binary index is laid out as two
-parallel arrays. All checkpoint keys are stored contiguously, followed by all
-checkpoint entry indices contiguously:
-
-```
-[Data][CheckpointKeys][CheckpointEntryIndices][HashTable][TableSizeLog2: u8][Metadata][MetadataLength: u8][IndexType: u8 = 0x07]
-```
-
-- **`Data`** — same as `FlatEntries`: `EntryCount * (KeySize + ValueSize)`
-  packed `[Key][Value]` records, ascending key order.
-- **`CheckpointKeys`** — `IndexCount * KeySize` bytes, one checkpoint key per
-  slot in the same order checkpoints were emitted (which is itself ascending,
-  because `Data` is sorted).
-- **`CheckpointEntryIndices`** — `IndexCount * 4` bytes; entry `i` is the
-  absolute `Data` index of the last entry in the `i`-th stride window, written
-  as `u32 LE`.
-- **`HashTable`**, **`TableSizeLog2`**, **`Metadata`**, **`MetadataLength`** —
-  unchanged from `FlatEntries`. Metadata schema is byte-for-byte identical
-  (`[KeySize][ValueSize][EntryCount][IndexCount]` LEB128).
-
-The lookup procedure is the same two-level binary search as `FlatEntries`. The
-top-level binary search reads `KeySize` bytes from
-`CheckpointKeys + mid * KeySize` instead of from a `(KeySize + 4)`-stride
-array, giving a denser key slab for the b-search hot path. Once the
-checkpoint index `c` is chosen, `CheckpointEntryIndices` is consulted at
-`c - 1` and `c` to derive the in-`Data` entry-index range.
-
-This variant exists for direct comparison against `FlatEntries`; build-time
-output (entry count, hash table size, total bytes ignoring section order) is
-identical, so any performance delta is attributable to the binary-index
-layout alone.
+  `O(Depth · log(stride/(KeySize+4)) + log entriesPerStride)` reads, each
+  of which is `KeySize` bytes.
 
 ## B-tree index node layout
 
@@ -427,9 +356,7 @@ Writers / encoders:
   encodings (Variable / Uniform / UniformWithLen) and section sizes.
 - `Hsst/IndexType.cs` — enum of valid index-type byte values.
 - `Hsst/HsstFlatBuilder.cs` / `Hsst/HsstFlatReader.cs` — `FlatEntries`
-  writer / reader (interleaved binary index).
-- `Hsst/HsstFlatSplitIndexBuilder.cs` / `Hsst/HsstFlatSplitIndexReader.cs` —
-  `FlatEntriesSplitIndex` writer / reader (split binary index).
+  writer / reader (recursive summary index, optional hash table).
 
 Readers / decoders:
 - `Hsst/HsstReader.cs` — point-query reader; reads the trailing

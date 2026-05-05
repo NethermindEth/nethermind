@@ -49,8 +49,10 @@ public sealed class HsstMergeEnumerator : IDisposable
         int rootEnd = hsstData.Length - 1;
         if (tag == IndexType.BTreeHashIndex)
         {
-            int log2 = hsstData[hsstData.Length - 2];
-            rootEnd = hsstData.Length - 2 - (1 << log2) * 4;
+            // [HashTable: N * 4 bytes][TableSize: u32 LE][IndexType: u8]
+            uint tableSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
+                hsstData[(hsstData.Length - 5)..(hsstData.Length - 1)]);
+            rootEnd = hsstData.Length - 5 - (int)tableSize * 4;
         }
 
         HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
@@ -23,11 +22,14 @@ namespace Nethermind.State.Flat.Hsst;
 ///   No data section. Leaf values are stored directly in the B-tree index.
 ///
 /// Binary layout (BTreeHashIndex):
-///   [Data Region][Index Region][HashTable: 4*2^L bytes][TableSizeLog2: u8][IndexType: u8 = 0x03]
+///   [Data Region][Index Region][HashTable: 4*N bytes][TableSize: u32 LE][IndexType: u8 = 0x03]
 ///   Same as BTree, with an open-addressed hash table of 4-byte LE pointers
 ///   appended after the root. Each non-zero, non-0xFFFFFFFF entry points at
 ///   the same MetadataStart that the B-tree would yield. 0 = empty slot;
-///   0xFFFFFFFF = collision sentinel — reader must consult the B-tree.
+///   0xFFFFFFFF = collision sentinel — reader must consult the B-tree. The slot
+///   for a key is computed via Lemire's multiply-shift reduction so the table
+///   need not be a power of two; <see cref="HsstHash.BucketCount"/> sizes it
+///   directly to ceil(N / target).
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
 ///   [Value][ValueLength: LEB128][KeyLength: u8][FullKey]
@@ -288,8 +290,6 @@ public ref struct HsstBuilder<TWriter>
         int n = entries.Length;
 
         int tableSize = HsstHash.BucketCount(n, _options.HashIndexTargetUtilization);
-        int log2 = BitOperations.TrailingZeroCount(tableSize);
-        uint mask = (uint)(tableSize - 1);
 
         // Build the table in a scratch buffer first, then blit. Avoids interleaving
         // GetSpan/Advance calls and simplifies grow-aware writers.
@@ -302,7 +302,7 @@ public ref struct HsstBuilder<TWriter>
 
         for (int i = 0; i < n; i++)
         {
-            uint slot = hashes[i] & mask;
+            uint slot = HsstHash.Slot(hashes[i], tableSize);
             if (slots[(int)slot] == Empty)
             {
                 slots[(int)slot] = (uint)entries[i].MetadataStart;
@@ -321,10 +321,11 @@ public ref struct HsstBuilder<TWriter>
             _writer.Advance(4);
         }
 
-        // Emit TableSizeLog2 byte.
-        Span<byte> log2Span = _writer.GetSpan(1);
-        log2Span[0] = (byte)log2;
-        _writer.Advance(1);
+        // Emit TableSize as 4-byte little-endian (replaces TableSizeLog2 byte; Lemire
+        // sizing produces non-power-of-two values so a single log2 byte no longer fits).
+        Span<byte> sizeSpan = _writer.GetSpan(4);
+        BinaryPrimitives.WriteUInt32LittleEndian(sizeSpan, (uint)tableSize);
+        _writer.Advance(4);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

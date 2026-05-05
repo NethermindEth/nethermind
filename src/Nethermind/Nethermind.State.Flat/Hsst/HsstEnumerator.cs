@@ -102,20 +102,20 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                 break;
             case IndexType.BTreeHashIndex:
                 _isInline = false;
-                Span<byte> log2Buf = stackalloc byte[1];
-                if (!_reader.TryRead(_hsstEnd - 2, log2Buf))
+                Span<byte> sizeBuf = stackalloc byte[4];
+                if (!_reader.TryRead(_hsstEnd - 5, sizeBuf))
                 {
                     _empty = true;
                     return;
                 }
-                int log2 = log2Buf[0];
-                if (log2 > 31)
+                uint tableSizeU = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(sizeBuf);
+                if (tableSizeU == 0 || tableSizeU > int.MaxValue)
                 {
                     _empty = true;
                     return;
                 }
-                long tableBytes = (1L << log2) * 4;
-                _rootAbsEnd = _hsstEnd - 2 - tableBytes;
+                long tableBytes = (long)tableSizeU * 4;
+                _rootAbsEnd = _hsstEnd - 5 - tableBytes;
                 if (_rootAbsEnd < _hsstStart)
                 {
                     _empty = true;
@@ -136,25 +136,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                 _flatDataStart = flatLayout.DataStart;
                 _flatIdx = -1;
                 if (flatLayout.EntryCount == 0)
-                {
-                    _empty = true;
-                    return;
-                }
-                break;
-            case IndexType.FlatEntriesSplitIndex:
-                _isInline = false;
-                if (!HsstFlatSplitIndexReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstFlatSplitIndexReader.Layout flatSplitLayout))
-                {
-                    _empty = true;
-                    return;
-                }
-                _isFlat = true;
-                _flatKeySize = flatSplitLayout.KeySize;
-                _flatValueSize = flatSplitLayout.ValueSize;
-                _flatEntryCount = flatSplitLayout.EntryCount;
-                _flatDataStart = flatSplitLayout.DataStart;
-                _flatIdx = -1;
-                if (flatSplitLayout.EntryCount == 0)
                 {
                     _empty = true;
                     return;

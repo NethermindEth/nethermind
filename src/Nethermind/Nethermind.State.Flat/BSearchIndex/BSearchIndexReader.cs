@@ -266,8 +266,7 @@ public readonly ref struct BSearchIndexReader
         HashProbeMode mode = _metadata.HashProbeMode;
         int slotWidth = mode == HashProbeMode.OneByte ? 1 : 2;
         int bucketCount = _hashProbe.Length / slotWidth;
-        uint mask = (uint)(bucketCount - 1);
-        uint slot = HsstHash.HashKey(key) & mask;
+        uint slot = HsstHash.Slot(HsstHash.HashKey(key), bucketCount);
 
         if (mode == HashProbeMode.OneByte)
         {

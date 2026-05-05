@@ -19,11 +19,4 @@ public enum IndexType : byte
     /// same size.
     /// </summary>
     FlatEntries = 0x06,
-    /// <summary>
-    /// Same as <see cref="FlatEntries"/> but with the binary index laid out as two parallel
-    /// arrays: all checkpoint keys contiguous, followed by all checkpoint entry indices
-    /// contiguous. Built for comparison against the interleaved layout — checkpoint-key
-    /// binary search reads tighter, contiguous slabs of key bytes.
-    /// </summary>
-    FlatEntriesSplitIndex = 0x07,
 }

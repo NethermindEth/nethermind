@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Hashing;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -18,18 +17,26 @@ internal static class HsstHash
         (uint)XxHash3.HashToUInt64(key);
 
     /// <summary>
-    /// Smallest power-of-two bucket count satisfying load factor ≤
-    /// <paramref name="targetUtilization"/> for <paramref name="entryCount"/> entries.
-    /// Equivalent to <c>2^ceil(log2(ceil(N / target)))</c>, with a floor of 1.
-    /// Shared by the file-level hash index and the in-leaf hash probe so writer and
-    /// reader agree byte-for-byte.
+    /// Bucket count for a hash table holding <paramref name="entryCount"/> entries at the
+    /// given target load factor. With Lemire's multiply-shift reduction the table is no
+    /// longer constrained to a power of two, so we size it directly to
+    /// <c>max(1, ceil(n / target))</c>. Shared by every site that builds or reads a hash
+    /// section so writer and reader agree.
     /// </summary>
     public static int BucketCount(int entryCount, double targetUtilization = 0.75)
     {
         long required = (long)Math.Ceiling(entryCount / targetUtilization);
         if (required < 1) required = 1;
-        int log2 = required <= 1 ? 0 : (32 - BitOperations.LeadingZeroCount((uint)(required - 1)));
-        if (log2 > 31) throw new InvalidOperationException("Hash index table size too large.");
-        return 1 << log2;
+        if (required > int.MaxValue) throw new InvalidOperationException("Hash index table size too large.");
+        return (int)required;
     }
+
+    /// <summary>
+    /// Lemire's fast reduction: maps a 32-bit hash uniformly into <c>[0, tableSize)</c>
+    /// without requiring <paramref name="tableSize"/> to be a power of two. See
+    /// <see href="https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static uint Slot(uint hash, int tableSize) =>
+        (uint)(((ulong)hash * (ulong)(uint)tableSize) >> 32);
 }

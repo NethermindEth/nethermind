@@ -85,13 +85,6 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     return true;
                 }
                 return false;
-            case IndexType.FlatEntriesSplitIndex:
-                if (HsstFlatSplitIndexReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatSplitBound))
-                {
-                    _bound = flatSplitBound;
-                    return true;
-                }
-                return false;
             default: return false;
         }
 
@@ -101,14 +94,14 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         if (hasHashIndex)
         {
             // Hash table layout (read backward from IndexType byte):
-            //   [HashTable: 2^log2 * 4 bytes][TableSizeLog2: u8][IndexType: u8]
-            Span<byte> log2Buf = stackalloc byte[1];
-            if (!_reader.TryRead(_bound.Offset + _bound.Length - 2, log2Buf)) return false;
-            int log2 = log2Buf[0];
-            if (log2 > 31) return false;
-            long tableSize = 1L << log2;
-            long tableBytes = tableSize * 4;
-            long tableStart = _bound.Offset + _bound.Length - 2 - tableBytes;
+            //   [HashTable: N * 4 bytes][TableSize: u32 LE][IndexType: u8]
+            Span<byte> sizeBuf = stackalloc byte[4];
+            if (!_reader.TryRead(_bound.Offset + _bound.Length - 5, sizeBuf)) return false;
+            uint tableSizeU = BinaryPrimitives.ReadUInt32LittleEndian(sizeBuf);
+            if (tableSizeU == 0 || tableSizeU > int.MaxValue) return false;
+            int tableSize = (int)tableSizeU;
+            long tableBytes = (long)tableSize * 4;
+            long tableStart = _bound.Offset + _bound.Length - 5 - tableBytes;
             if (tableStart < _bound.Offset) return false;
 
             // Root b-tree node ends right before the hash table.
@@ -118,8 +111,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
             // because the slot only narrows down to a single candidate; if the key
             // doesn't match, we fall through to the b-tree.
             uint h = HsstHash.HashKey(key);
-            uint mask = (uint)(tableSize - 1);
-            uint slot = h & mask;
+            uint slot = HsstHash.Slot(h, tableSize);
             Span<byte> slotBuf = stackalloc byte[4];
             if (!_reader.TryRead(tableStart + slot * 4, slotBuf)) return false;
             uint slotValue = BinaryPrimitives.ReadUInt32LittleEndian(slotBuf);

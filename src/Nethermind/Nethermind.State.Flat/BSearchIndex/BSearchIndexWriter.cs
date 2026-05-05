@@ -229,7 +229,6 @@ internal ref struct BSearchIndexWriter<TWriter>
     {
         int slotWidth = mode == HashProbeMode.OneByte ? 1 : 2;
         int bucketCount = HsstHash.BucketCount(_count);
-        uint mask = (uint)(bucketCount - 1);
         int sectionSize = bucketCount * slotWidth;
 
         Span<byte> dst = _writer.GetSpan(sectionSize);
@@ -240,7 +239,7 @@ internal ref struct BSearchIndexWriter<TWriter>
             section.Fill(0xFF);
             for (int i = 0; i < _count; i++)
             {
-                int slot = (int)(_entryHashes[i] & mask);
+                int slot = (int)HsstHash.Slot(_entryHashes[i], bucketCount);
                 byte cur = section[slot];
                 if (cur == 0xFF) section[slot] = (byte)i;
                 else if (cur != 0xFE) section[slot] = 0xFE;
@@ -251,7 +250,7 @@ internal ref struct BSearchIndexWriter<TWriter>
             section.Fill(0xFF);
             for (int i = 0; i < _count; i++)
             {
-                int slot = (int)(_entryHashes[i] & mask);
+                int slot = (int)HsstHash.Slot(_entryHashes[i], bucketCount);
                 ushort cur = BinaryPrimitives.ReadUInt16LittleEndian(section[(slot * 2)..]);
                 if (cur == 0xFFFF)
                     BinaryPrimitives.WriteUInt16LittleEndian(section[(slot * 2)..], (ushort)i);
