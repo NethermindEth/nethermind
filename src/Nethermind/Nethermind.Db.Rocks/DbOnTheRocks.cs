@@ -505,9 +505,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
 
         BlockBasedTableOptions? tableOptions = new();
-        // Per-call cache pressure to add to the GC. Cache memory owned by a HyperClockCacheWrapper
-        // (whether passed via dbConfig.BlockCache or as the shared cache) is already reported by
-        // that wrapper, so don't double-count here.
         ulong perCallCachePressure = 0;
         if (dbConfig.BlockCache is not null)
         {
@@ -567,8 +564,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000} MB");
         }
 
-        // Accumulate one full write buffer plus this column's own block cache (if any).
-        // BuildOptions is called once per column family for ColumnsDb, so accumulate to capture all columns.
         _addedMemoryPressure += (long)_writeBufferSize + (long)perCallCachePressure;
 
         #endregion
