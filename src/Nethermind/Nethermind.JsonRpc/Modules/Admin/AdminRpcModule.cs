@@ -59,10 +59,10 @@ public class AdminRpcModule : IAdminRpcModule
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
         _trustedNodesManager = trustedNodesManager ?? throw new ArgumentNullException(nameof(trustedNodesManager));
+        _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
 
         BuildNodeInfo();
-        _subscriptionManager = subscriptionManager;
     }
 
     public async Task<ResultWrapper<bool>> admin_addPeer(string enode, bool persistent = false)

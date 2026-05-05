@@ -82,7 +82,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
 
     public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        NetworkNode networkNode = new(enode.ToString());
+        NetworkNode networkNode = new(enode);
         if (!_nodes.TryRemove(networkNode.NodeId, out _))
         {
             if (_logger.IsInfo)
