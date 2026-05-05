@@ -71,15 +71,100 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         Span<byte> idxType = stackalloc byte[1];
         if (!_reader.TryRead(_bound.Offset + _bound.Length - 1, idxType)) return false;
         bool isInline;
+        bool hasHashIndex;
         switch ((IndexType)idxType[0])
         {
-            case IndexType.BTree: isInline = false; break;
-            case IndexType.BTreeInlineValue: isInline = true; break;
+            case IndexType.BTree: isInline = false; hasHashIndex = false; break;
+            case IndexType.BTreeInlineValue: isInline = true; hasHashIndex = false; break;
+            case IndexType.BTreeHashIndex: isInline = false; hasHashIndex = true; break;
             default: return false;
         }
 
-        // Root node ends just before the IndexType byte.
+        // Root node ends just before the IndexType byte (or before the hash index region).
         long currentAbsEnd = _bound.Offset + _bound.Length - 1;
+
+        if (hasHashIndex)
+        {
+            // Hash table layout (read backward from IndexType byte):
+            //   [HashTable: 2^log2 * 4 bytes][TableSizeLog2: u8][IndexType: u8]
+            Span<byte> log2Buf = stackalloc byte[1];
+            if (!_reader.TryRead(_bound.Offset + _bound.Length - 2, log2Buf)) return false;
+            int log2 = log2Buf[0];
+            if (log2 > 31) return false;
+            long tableSize = 1L << log2;
+            long tableBytes = tableSize * 4;
+            long tableStart = _bound.Offset + _bound.Length - 2 - tableBytes;
+            if (tableStart < _bound.Offset) return false;
+
+            // Root b-tree node ends right before the hash table.
+            currentAbsEnd = tableStart;
+
+            // Probe the slot. We always need an exact key compare even for floor,
+            // because the slot only narrows down to a single candidate; if the key
+            // doesn't match, we fall through to the b-tree.
+            uint h = HsstHash.HashKey(key);
+            uint mask = (uint)(tableSize - 1);
+            uint slot = h & mask;
+            Span<byte> slotBuf = stackalloc byte[4];
+            if (!_reader.TryRead(tableStart + slot * 4, slotBuf)) return false;
+            uint slotValue = BinaryPrimitives.ReadUInt32LittleEndian(slotBuf);
+
+            const uint Empty = 0u;
+            const uint Collision = 0xFFFFFFFFu;
+
+            if (slotValue == Empty)
+            {
+                // Definitively no entry hashes here. Exact match cannot succeed.
+                // Floor still needs the b-tree (to find the largest key < input).
+                if (exactMatch) return false;
+                // Fall through to b-tree walk for floor.
+            }
+            else if (slotValue == Collision)
+            {
+                // Multiple entries collided at this slot. Fall through to b-tree.
+            }
+            else
+            {
+                int metaStart = (int)slotValue;
+                long absMetaStart = _bound.Offset + metaStart;
+
+                long available = _bound.Offset + _bound.Length - absMetaStart;
+                if (available <= 0) return false;
+                Span<byte> lebBuf = stackalloc byte[6];
+                int lebRead = (int)Math.Min(6, available);
+                if (!_reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
+                int pos = 0;
+                int valueLength = Leb128.Read(lebBuf, ref pos);
+
+                // The hash slot only resolves to one candidate entry; we must verify
+                // the key matches before accepting (false-positive collisions are
+                // impossible given the empty-slot semantics, but a different key with
+                // the same hash slot is rejected here too).
+                if (pos >= lebRead) return false;
+                int keyLength = lebBuf[pos++];
+                if (keyLength != key.Length)
+                {
+                    if (exactMatch) return false;
+                    // Floor: fall through to b-tree.
+                }
+                else
+                {
+                    Span<byte> stored = stackalloc byte[255];
+                    Span<byte> storedSlice = stored[..keyLength];
+                    if (!_reader.TryRead(absMetaStart + pos, storedSlice)) return false;
+                    if (!storedSlice.SequenceEqual(key))
+                    {
+                        if (exactMatch) return false;
+                        // Floor: fall through to b-tree.
+                    }
+                    else
+                    {
+                        _bound = new Bound(absMetaStart - valueLength, valueLength);
+                        return true;
+                    }
+                }
+            }
+        }
 
         while (true)
         {

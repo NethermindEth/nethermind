@@ -40,6 +40,7 @@ A compact, immutable binary format for sorted key/value tables.
 |---|---|
 | **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
 | **BTreeInlineValue** | `[Index Region][IndexType: u8 = 0x02]` |
+| **BTreeHashIndex** | `[Data Region][Index Region][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x03]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -48,10 +49,12 @@ the variant by enumerated value (not a bitfield):
 |---|---|---|
 | `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
 | `0x02` | `BTreeInlineValue` | No data region; leaves hold values inline. |
+| `0x03` | `BTreeHashIndex` | `BTree` plus a trailing open-address hash table of metaStart pointers. |
 
 Other values are reserved for future index strategies. The root B-tree
-node lives just before the index type byte and is read backward via its
-trailing `MetadataLength` byte; there is no header.
+node lives just before the index type byte (or just before the hash table,
+for `BTreeHashIndex`) and is read backward via its trailing `MetadataLength`
+byte; there is no header.
 
 ### BTree variant
 
@@ -103,6 +106,61 @@ There is no data region. Leaf B-tree nodes hold the values directly inside
 the keys section's value slots. Separators in inline-mode leaves **are** the
 full keys (no key reconstruction). Used for small fixed-width values where
 the index-vs-data split would waste space — e.g. storage slot suffixes.
+
+### BTreeHashIndex variant
+
+A `BTree` with an extra open-address hash table appended after the root.
+Layout, reading backward from the index type byte:
+
+```
+... B-tree root ... [HashTable][TableSizeLog2: u8 = L][IndexType: u8 = 0x03]
+```
+
+- `TableSizeLog2` (`L`) is a single byte; the table holds exactly `2^L`
+  slots. `L` is in `[0, 31]`.
+- `HashTable` is `2^L` slots of `u32` little-endian, each one of:
+  - `0x00000000` — **empty**: no entry hashes to this slot.
+  - `0xFFFFFFFF` — **collision sentinel**: two or more entries hashed here;
+    the reader must consult the B-tree.
+  - any other value — a `MetadataStart` pointer with the same encoding as a
+    non-inline B-tree leaf value (see "BTree variant"): byte offset relative
+    to byte 0 of the HSST.
+
+Slot index for a key:
+
+```
+slot = HashKey(key) & ((1 << L) - 1)
+```
+
+Where `HashKey` is the low 32 bits of `XxHash3` over the full key bytes
+(no prefix stripping); writer and reader must compute it identically.
+
+The empty sentinel is unambiguous because in a valid `BTreeHashIndex` HSST
+the data region is non-empty (an empty HSST is encoded as plain `BTree`),
+so a real `MetadataStart` is always nonzero. The collision sentinel
+`0xFFFFFFFF` is unambiguous because `MetadataStart` for a single HSST
+cannot reach `2^32 - 1` (the HSST is bounded by the surrounding 4-byte
+B-tree pointer encoding, ≈2 GiB).
+
+**Lookup procedure.** Compute `slot`. Read the slot value:
+
+1. **Empty.** No entry could match; exact lookup returns "not found". A
+   floor lookup must still consult the B-tree.
+2. **Collision.** Multiple keys hashed to this slot; consult the B-tree.
+3. **Pointer.** Resolve the candidate exactly as for a non-inline B-tree
+   leaf hit: decode `ValueLength`/`KeyLength` at the `MetadataStart` cursor
+   and compare the stored key to the input. On match, return; on mismatch
+   (the candidate's hash collides with the input's hash), exact lookup
+   returns "not found" and floor must consult the B-tree.
+
+**Sizing.** Builders pick the smallest `2^L` such that
+`N / 2^L ≤ targetUtilization` (default target `0.75`); the target is a
+build-time knob, never recorded in the file.
+
+The B-tree under the hash table is identical to a `BTree` HSST and remains
+authoritative — readers that only know `BTree` could parse this variant by
+peeling off the trailing `2 + 4·2^L` bytes and reading the rest as a
+`BTree` HSST. The hash table is purely a fast path.
 
 ## B-tree index node layout
 

@@ -41,6 +41,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private TReader _reader;
     private readonly long _hsstStart;
     private readonly long _hsstEnd;
+    private readonly long _rootAbsEnd;
     private readonly bool _isInline;
     private readonly bool _empty;
 
@@ -82,8 +83,36 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         }
         switch ((IndexType)idxType[0])
         {
-            case IndexType.BTree: _isInline = false; break;
-            case IndexType.BTreeInlineValue: _isInline = true; break;
+            case IndexType.BTree:
+                _isInline = false;
+                _rootAbsEnd = _hsstEnd - 1;
+                break;
+            case IndexType.BTreeInlineValue:
+                _isInline = true;
+                _rootAbsEnd = _hsstEnd - 1;
+                break;
+            case IndexType.BTreeHashIndex:
+                _isInline = false;
+                Span<byte> log2Buf = stackalloc byte[1];
+                if (!_reader.TryRead(_hsstEnd - 2, log2Buf))
+                {
+                    _empty = true;
+                    return;
+                }
+                int log2 = log2Buf[0];
+                if (log2 > 31)
+                {
+                    _empty = true;
+                    return;
+                }
+                long tableBytes = (1L << log2) * 4;
+                _rootAbsEnd = _hsstEnd - 2 - tableBytes;
+                if (_rootAbsEnd < _hsstStart)
+                {
+                    _empty = true;
+                    return;
+                }
+                break;
             default:
                 _empty = true;
                 _isInline = false;
@@ -98,8 +127,9 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 
         if (_depth < 0)
         {
-            // Root node ends just before the trailing IndexType byte.
-            return DescendToLeaf(_hsstEnd - 1);
+            // Root node ends just before the trailing IndexType byte (BTree/Inline)
+            // or just before the appended hash table (BTreeHashIndex).
+            return DescendToLeaf(_rootAbsEnd);
         }
 
         _leafIdx++;

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
@@ -18,6 +20,13 @@ namespace Nethermind.State.Flat.Hsst;
 /// Binary layout (BTreeInlineValue):
 ///   [Index Region: B-tree nodes...][IndexType: u8 = 0x02]
 ///   No data section. Leaf values are stored directly in the B-tree index.
+///
+/// Binary layout (BTreeHashIndex):
+///   [Data Region][Index Region][HashTable: 4*2^L bytes][TableSizeLog2: u8][IndexType: u8 = 0x03]
+///   Same as BTree, with an open-addressed hash table of 4-byte LE pointers
+///   appended after the root. Each non-zero, non-0xFFFFFFFF entry points at
+///   the same MetadataStart that the B-tree would yield. 0 = empty slot;
+///   0xFFFFFFFF = collision sentinel — reader must consult the B-tree.
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
 ///   [Value][ValueLength: LEB128][KeyLength: u8][FullKey]
@@ -44,6 +53,8 @@ public ref struct HsstBuilder<TWriter>
 
     private readonly int _minSeparatorLength;
     private readonly bool _inlineValues;
+    private readonly bool _useHashIndex;
+    private readonly double _hashIndexTargetUtilization;
 
     // Working buffers allocated from NativeMemory
     private NativeMemoryListRef<byte> _separatorBuffer;
@@ -53,6 +64,9 @@ public ref struct HsstBuilder<TWriter>
     // Inline value buffers (only allocated when _inlineValues is true)
     private NativeMemoryListRef<byte> _inlineValueBuffer;
     private NativeMemoryListRef<int> _inlineValueLengths;
+
+    // Hash index entry hashes (only allocated when _useHashIndex is true)
+    private NativeMemoryListRef<uint> _entryHashes;
 
     public readonly struct HsstEntry(int sepOffset, int sepLen, int metadataStart)
     {
@@ -72,12 +86,19 @@ public ref struct HsstBuilder<TWriter>
     /// <paramref name="expectedKeyCount"/> sizes the entry/separator working buffers up front;
     /// pass an estimate when known to avoid resize allocations. The buffers still grow on demand.
     /// </summary>
-    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false, int expectedKeyCount = 16)
+    public HsstBuilder(ref TWriter writer, int minSeparatorLength = 0, bool inlineValues = false, int expectedKeyCount = 16, bool useHashIndex = false, double hashIndexTargetUtilization = 0.75)
     {
+        if (useHashIndex && inlineValues)
+            throw new NotSupportedException("Hash index is not supported with inline values.");
+        if (useHashIndex && !(hashIndexTargetUtilization > 0.1 && hashIndexTargetUtilization <= 1.0))
+            throw new ArgumentOutOfRangeException(nameof(hashIndexTargetUtilization), "Must be in (0.1, 1.0].");
+
         _writer = ref writer;
         _baseOffset = _writer.Written;
         _minSeparatorLength = minSeparatorLength;
         _inlineValues = inlineValues;
+        _useHashIndex = useHashIndex;
+        _hashIndexTargetUtilization = hashIndexTargetUtilization;
 
         // Heuristic: ~32 bytes per separator/value. The buffers grow as needed.
         int byteCap = Math.Max(64, expectedKeyCount * 32);
@@ -89,6 +110,11 @@ public ref struct HsstBuilder<TWriter>
         {
             _inlineValueBuffer = new NativeMemoryListRef<byte>(byteCap);
             _inlineValueLengths = new NativeMemoryListRef<int>(expectedKeyCount);
+        }
+
+        if (useHashIndex)
+        {
+            _entryHashes = new NativeMemoryListRef<uint>(expectedKeyCount);
         }
     }
 
@@ -104,6 +130,10 @@ public ref struct HsstBuilder<TWriter>
         {
             _inlineValueBuffer.Dispose();
             _inlineValueLengths.Dispose();
+        }
+        if (_useHashIndex)
+        {
+            _entryHashes.Dispose();
         }
     }
 
@@ -158,6 +188,11 @@ public ref struct HsstBuilder<TWriter>
         }
 
         _entriesBuffer.Add(new HsstEntry(sepOffset, sepLen, metadataStart));
+
+        if (_useHashIndex)
+        {
+            _entryHashes.Add(HsstHash.HashKey(key));
+        }
 
         _prevKeyBuffer.Clear();
         _prevKeyBuffer.AddRange(key);
@@ -223,11 +258,75 @@ public ref struct HsstBuilder<TWriter>
             indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
         }
 
+        // Optional hash index section (BTreeHashIndex only). Empty HSSTs fall back
+        // to plain BTree because a 0-entry table has no benefit and an empty data
+        // region would make the 0 sentinel ambiguous.
+        bool emitHashIndex = _useHashIndex && _entriesBuffer.Count > 0;
+        if (emitHashIndex)
+        {
+            EmitHashTable();
+        }
+
         // Trailing IndexType byte (last byte of the HSST).
+        IndexType tag = emitHashIndex
+            ? IndexType.BTreeHashIndex
+            : (_inlineValues ? IndexType.BTreeInlineValue : IndexType.BTree);
         Span<byte> tail = _writer.GetSpan(1);
-        tail[0] = (byte)(_inlineValues ? IndexType.BTreeInlineValue : IndexType.BTree);
+        tail[0] = (byte)tag;
         _writer.Advance(1);
     }
+
+    private void EmitHashTable()
+    {
+        ReadOnlySpan<HsstEntry> entries = _entriesBuffer.AsSpan();
+        ReadOnlySpan<uint> hashes = _entryHashes.AsSpan();
+        int n = entries.Length;
+
+        // Smallest power-of-two table size satisfying load factor ≤ targetUtilization.
+        // Equivalent to: tableSize = 2^ceil(log2(ceil(N / target))).
+        long required = (long)Math.Ceiling(n / _hashIndexTargetUtilization);
+        if (required < 1) required = 1;
+        int log2 = required <= 1 ? 0 : (32 - BitOperations.LeadingZeroCount((uint)(required - 1)));
+        if (log2 > 31) throw new InvalidOperationException("Hash index table size too large.");
+        int tableSize = 1 << log2;
+        uint mask = (uint)(tableSize - 1);
+
+        // Build the table in a scratch buffer first, then blit. Avoids interleaving
+        // GetSpan/Advance calls and simplifies grow-aware writers.
+        // The (capacity, startingCount) ctor zero-initializes the first startingCount slots.
+        using NativeMemoryListRef<uint> table = new(tableSize, tableSize);
+        Span<uint> slots = table.AsSpan();
+
+        const uint Empty = 0u;
+        const uint Collision = 0xFFFFFFFFu;
+
+        for (int i = 0; i < n; i++)
+        {
+            uint slot = hashes[i] & mask;
+            if (slots[(int)slot] == Empty)
+            {
+                slots[(int)slot] = (uint)entries[i].MetadataStart;
+            }
+            else
+            {
+                slots[(int)slot] = Collision;
+            }
+        }
+
+        // Emit table in 4-byte little-endian slots.
+        for (int i = 0; i < tableSize; i++)
+        {
+            Span<byte> dst = _writer.GetSpan(4);
+            BinaryPrimitives.WriteUInt32LittleEndian(dst, slots[i]);
+            _writer.Advance(4);
+        }
+
+        // Emit TableSizeLog2 byte.
+        Span<byte> log2Span = _writer.GetSpan(1);
+        log2Span[0] = (byte)log2;
+        _writer.Advance(1);
+    }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ComputeSeparatorLength(ReadOnlySpan<byte> prevKey, ReadOnlySpan<byte> currKey, ReadOnlySpan<byte> nextKey, int minSeparatorLength = 0)

@@ -25,6 +25,10 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly double _trieBloomBitsPerKey = config.PersistedSnapshotTrieBloomBitsPerKey;
+    private readonly HsstHashIndexOptions _hashIndexOptions = new(
+        config.PersistedSnapshotHashIndexAddress,
+        config.PersistedSnapshotHashIndexTries,
+        config.PersistedSnapshotHashIndexTargetUtilization);
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _persistableCompactedSnapshots = new();
@@ -157,7 +161,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         string writeTag = isPersistable ? ArenaReservationTags.FullPersistable : ArenaReservationTags.FullBase;
         using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot), writeTag))
         {
-            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), bloom, trieBloom);
+            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), bloom, trieBloom, _hashIndexOptions);
             if (isPersistable)
                 _persistedSnapshotSize.WithLabels("is_persistable").Observe(arenaWriter.GetWriter().Written);
             else

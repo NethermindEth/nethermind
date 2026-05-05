@@ -92,7 +92,7 @@ public static class PersistedSnapshotBuilder
         return true;
     }
 
-    public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BloomFilter? bloom = null, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriter
+    public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BloomFilter? bloom = null, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         // Declare mutable locals populated by the parallel jobs below.
         ArrayPoolList<(TreePath Path, TrieNode Node)> stateTop = null!, stateCompact = null!, stateFallback = null!;
@@ -183,22 +183,22 @@ public static class PersistedSnapshotBuilder
             WriteMetadataColumn(ref outer, snapshot);
 
             // Column 0x01: Unified account column (accounts, self-destruct, storage)
-            WriteAccountColumn(ref outer, snapshot, sortedStorages, uniqueAddresses, bloom);
+            WriteAccountColumn(ref outer, snapshot, sortedStorages, uniqueAddresses, bloom, hashIndex);
 
             // Column 0x03: State nodes (compact, path length 6-15)
-            WriteStateNodesColumnCompact(ref outer, stateCompact, trieBloom);
+            WriteStateNodesColumnCompact(ref outer, stateCompact, trieBloom, hashIndex);
 
             // Column 0x05: State top nodes (path length 0-5)
-            WriteStateTopNodesColumn(ref outer, stateTop, trieBloom);
+            WriteStateTopNodesColumn(ref outer, stateTop, trieBloom, hashIndex);
 
             // Column 0x06: State nodes fallback (path length 16+)
-            WriteStateNodesColumnFallback(ref outer, stateFallback, trieBloom);
+            WriteStateNodesColumnFallback(ref outer, stateFallback, trieBloom, hashIndex);
 
             // Column 0x07: Storage nodes (compact, path length 6-15)
-            WriteStorageNodesColumnCompact(ref outer, storCompact, trieBloom);
+            WriteStorageNodesColumnCompact(ref outer, storCompact, trieBloom, hashIndex);
 
             // Column 0x08: Storage nodes fallback (path length 16+)
-            WriteStorageNodesColumnFallback(ref outer, storFallback, trieBloom);
+            WriteStorageNodesColumnFallback(ref outer, storFallback, trieBloom, hashIndex);
 
             outer.Build();
         }
@@ -249,14 +249,17 @@ public static class PersistedSnapshotBuilder
         ref HsstBuilder<TWriter> outer, Snapshot snapshot,
         ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
         ArrayPoolList<Address> uniqueAddresses,
-        BloomFilter? bloom = null) where TWriter : IByteBufferWriter
+        BloomFilter? bloom = null,
+        HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         const int slotPrefixLength = 30;
         const int slotSuffixLength = 2;
 
         // Address-level HSST
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> addressLevel = new(ref addressWriter, minSeparatorLength: 2, expectedKeyCount: uniqueAddresses.Count);
+        using HsstBuilder<TWriter> addressLevel = new(ref addressWriter, minSeparatorLength: 2, expectedKeyCount: uniqueAddresses.Count,
+            useHashIndex: hashIndex.ForAddressIndex,
+            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
         byte[] rlpBuffer = new byte[256];
         RlpStream rlpStream = new(rlpBuffer);
         Span<byte> slotKey = stackalloc byte[32];
@@ -361,10 +364,12 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
     }
 
-    private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriter
+    private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 3, expectedKeyCount: stateNodes.Count);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 3, expectedKeyCount: stateNodes.Count,
+            useHashIndex: hashIndex.ForTriesIndex,
+            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
         Span<byte> keyBuffer = stackalloc byte[3];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
@@ -377,10 +382,12 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
     }
 
-    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8, expectedKeyCount: stateNodes.Count);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8, expectedKeyCount: stateNodes.Count,
+            useHashIndex: hashIndex.ForTriesIndex,
+            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
         Span<byte> keyBuffer = stackalloc byte[8];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
@@ -393,10 +400,12 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateNodeTag);
     }
 
-    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> inner = new(ref innerWriter, expectedKeyCount: stateNodes.Count);
+        using HsstBuilder<TWriter> inner = new(ref innerWriter, expectedKeyCount: stateNodes.Count,
+            useHashIndex: hashIndex.ForTriesIndex,
+            hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
         Span<byte> keyBuffer = stackalloc byte[33];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
@@ -410,7 +419,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
     }
 
-    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
@@ -422,7 +431,9 @@ public static class PersistedSnapshotBuilder
             Hash256 currentHash = storageNodes[i].Key.Addr;
 
             ref TWriter innerWriter = ref hashLevel.BeginValueWrite();
-            using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8);
+            using HsstBuilder<TWriter> inner = new(ref innerWriter, minSeparatorLength: 8,
+                useHashIndex: hashIndex.ForTriesIndex,
+                hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
 
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {
@@ -441,7 +452,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StorageNodeTag);
     }
 
-    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
@@ -453,7 +464,9 @@ public static class PersistedSnapshotBuilder
             Hash256 currentHash = storageNodes[i].Key.Addr;
 
             ref TWriter innerWriter = ref hashLevel.BeginValueWrite();
-            using HsstBuilder<TWriter> inner = new(ref innerWriter);
+            using HsstBuilder<TWriter> inner = new(ref innerWriter,
+                useHashIndex: hashIndex.ForTriesIndex,
+                hashIndexTargetUtilization: hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75);
 
             while (i < storageNodes.Count && storageNodes[i].Key.Addr.Equals(currentHash))
             {

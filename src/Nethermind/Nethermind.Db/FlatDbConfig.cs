@@ -30,4 +30,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool ValidatePersistedSnapshot { get; set; } = false;
     public double PersistedSnapshotBloomBitsPerKey { get; set; } = 10.0;
     public double PersistedSnapshotTrieBloomBitsPerKey { get; set; } = 10.0;
+    public bool PersistedSnapshotHashIndexAddress { get; set; } = true;
+    public bool PersistedSnapshotHashIndexTries { get; set; } = true;
+    public double PersistedSnapshotHashIndexTargetUtilization { get; set; } = 0.75;
 }

@@ -42,8 +42,18 @@ public sealed class HsstMergeEnumerator : IDisposable
             return;
         }
 
-        // Last byte of the HSST is the IndexType byte; the root index ends just before it.
-        HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, hsstData.Length - 1);
+        // Last byte of the HSST is the IndexType byte. For BTreeHashIndex the
+        // appended hash table sits between the root and the IndexType byte; skip
+        // past it to find where the root ends.
+        IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
+        int rootEnd = hsstData.Length - 1;
+        if (tag == IndexType.BTreeHashIndex)
+        {
+            int log2 = hsstData[hsstData.Length - 2];
+            rootEnd = hsstData.Length - 2 - (1 << log2) * 4;
+        }
+
+        HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);
         _entries = new NativeMemoryList<(int, int, int, int)>(16);
         CollectLeafOffsets(hsstData, rootIndex, _entries, _isInline);
     }
