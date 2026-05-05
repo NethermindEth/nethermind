@@ -530,22 +530,22 @@ public static class PersistedSnapshotBuilder
                 case 0x00 or 0x01:
                     CopyColumn(column, ref valueWriter);
                     break;
-                // Flat trie columns: convert values to NodeRefs
+                // Flat trie columns: convert values to NodeRefs (PackedArray, key sizes match column build sites)
                 case 0x03:
-                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, minSeparatorLength: 8);
+                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, keySize: 8);
                     break;
                 case 0x05:
-                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, minSeparatorLength: 3);
+                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, keySize: 3);
                     break;
                 case 0x06:
-                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset);
+                    ConvertFlatColumnToNodeRefs(column, ref valueWriter, snapshotId, columnOffset, keySize: 33);
                     break;
-                // Nested trie columns: convert inner values to NodeRefs
+                // Nested trie columns: convert inner values to NodeRefs (outer stays BTree, inner is PackedArray)
                 case 0x07:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2, innerMinSep: 8);
+                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2, innerKeySize: 8);
                     break;
                 case 0x08:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2);
+                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2, innerKeySize: 33);
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
@@ -567,10 +567,10 @@ public static class PersistedSnapshotBuilder
     private static void ConvertFlatColumnToNodeRefs<TWriter>(
         ReadOnlySpan<byte> column, ref TWriter writer,
         int snapshotId, int columnOffset,
-        int minSeparatorLength = 0) where TWriter : IByteBufferWriter
+        int keySize) where TWriter : IByteBufferWriter
     {
         SpanByteReader reader = new(column);
-        HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength, InlineValues = true });
+        HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
         using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, column.Length));
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
@@ -594,7 +594,7 @@ public static class PersistedSnapshotBuilder
     private static void ConvertNestedColumnToNodeRefs<TWriter>(
         ReadOnlySpan<byte> column, ReadOnlySpan<byte> snapshotData, ref TWriter writer,
         int snapshotId,
-        int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriter
+        int outerMinSep = 0, int innerKeySize = 0) where TWriter : IByteBufferWriter
     {
         int columnOffsetInSnapshot = SpanOffset(snapshotData, column);
         SpanByteReader reader = new(column);
@@ -607,7 +607,7 @@ public static class PersistedSnapshotBuilder
             Bound innerScope = outerEnum.Current.ValueBound;
 
             ref TWriter innerWriter = ref builder.BeginValueWrite();
-            HsstBuilder<TWriter> innerBuilder = new(ref innerWriter, new HsstBTreeOptions { MinSeparatorLength = innerMinSep, InlineValues = true });
+            HsstPackedArrayBuilder<TWriter> innerBuilder = new(ref innerWriter, innerKeySize, NodeRef.Size);
             using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerScope);
 
             while (innerEnum.MoveNext())
@@ -680,24 +680,21 @@ public static class PersistedSnapshotBuilder
                         NWayMergeAccountColumn(mergeSnapshots, tag, ref valueWriter, bloom);
                         break;
                     case 0x03:
-                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            minSeparatorLength: 8, inlineValues: true);
+                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter, keySize: 8);
                         break;
                     case 0x05:
-                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            minSeparatorLength: 3, inlineValues: true);
+                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter, keySize: 3);
                         break;
                     case 0x06:
-                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            inlineValues: true);
+                        NWayStreamingMerge(mergeSnapshots, tag, ref valueWriter, keySize: 33);
                         break;
                     case 0x07:
-                        NWayNestedStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            outerMinSep: 2, innerMinSep: 8, innerInline: true);
+                        NWayNestedStreamingMergeTrie(mergeSnapshots, tag, ref valueWriter,
+                            outerMinSep: 2, innerKeySize: 8);
                         break;
                     case 0x08:
-                        NWayNestedStreamingMerge(mergeSnapshots, tag, ref valueWriter,
-                            outerMinSep: 2, innerInline: true);
+                        NWayNestedStreamingMergeTrie(mergeSnapshots, tag, ref valueWriter,
+                            outerMinSep: 2, innerKeySize: 33);
                         break;
                     default:
                         throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
@@ -727,7 +724,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     internal static void NWayStreamingMerge<TWriter>(
         PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
-        int minSeparatorLength = 0, bool inlineValues = false) where TWriter : IByteBufferWriter
+        int keySize) where TWriter : IByteBufferWriter
     {
         int n = snapshots.Count;
         using ArrayPoolList<HsstMergeEnumerator> enums = new(n, n);
@@ -743,11 +740,11 @@ public static class PersistedSnapshotBuilder
                 ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
                 columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                enums[i] = new HsstMergeEnumerator(column, isInline: inlineValues);
+                enums[i] = new HsstMergeEnumerator(column, isInline: true);
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
-            using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength, InlineValues = inlineValues });
+            using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
 
             while (true)
             {
@@ -980,6 +977,162 @@ public static class PersistedSnapshotBuilder
         {
             for (int i = 0; i < n; i++) enums[i]?.Dispose();
             for (int i = 0; i < n; i++) sessions[i]?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Trie-specific nested streaming merge for storage trie columns (0x07/0x08). Outer
+    /// (storage hash prefix) keeps the BTree layout; inner (TreePath -> NodeRef) is built
+    /// as a fixed-size PackedArray since both inner key and value (NodeRef) are fixed.
+    /// </summary>
+    internal static void NWayNestedStreamingMergeTrie<TWriter>(
+        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
+        int outerMinSep, int innerKeySize) where TWriter : IByteBufferWriter
+    {
+        int n = snapshots.Count;
+        using ArrayPoolList<HsstMergeEnumerator> enumsList = new(n, n);
+        using ArrayPoolList<bool> hasMoreList = new(n, n);
+        using ArrayPoolList<(int Offset, int Length)> columnBoundsList = new(n, n);
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        using ArrayPoolList<int> matchingSourcesList = new(n, n);
+        HsstMergeEnumerator[] enums = enumsList.UnsafeGetInternalArray();
+        bool[] hasMore = hasMoreList.UnsafeGetInternalArray();
+        (int Offset, int Length)[] columnBounds = columnBoundsList.UnsafeGetInternalArray();
+        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
+        int[] matchingSources = matchingSourcesList.UnsafeGetInternalArray();
+
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                sessions[i] = snapshots[i].BeginWholeReadSession();
+                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
+                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
+                ReadOnlySpan<byte> column = snapshotData.Slice(columnBounds[i].Offset, columnBounds[i].Length);
+                enums[i] = new HsstMergeEnumerator(column, isInline: false);
+                hasMore[i] = enums[i].MoveNext(column);
+            }
+
+            Func<int, ReadOnlySpan<byte>> getColumnSpan =
+                i => sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
+
+            using HsstBuilder<TWriter> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
+
+            while (true)
+            {
+                int minIdx = -1;
+                for (int i = 0; i < n; i++)
+                {
+                    if (!hasMore[i]) continue;
+                    if (minIdx < 0) { minIdx = i; continue; }
+                    int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                    if (cmp < 0) minIdx = i;
+                }
+                if (minIdx < 0) break;
+
+                ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
+
+                int matchCount = 0;
+                for (int i = 0; i < n; i++)
+                {
+                    if (hasMore[i] && enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
+                        matchingSources[matchCount++] = i;
+                }
+
+                if (matchCount == 1)
+                {
+                    int srcIdx = matchingSources[0];
+                    ReadOnlySpan<byte> cs = getColumnSpan(srcIdx);
+                    (int valOff, int valLen) = enums[srcIdx].GetCurrentValueBound(cs);
+                    outerBuilder.Add(minKey, cs.Slice(valOff, valLen));
+                }
+                else
+                {
+                    ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
+                    NWayInnerMergeTrie(enums, matchingSources, matchCount, getColumnSpan,
+                        ref innerWriter, innerKeySize);
+                    outerBuilder.FinishValueWrite(minKey);
+                }
+
+                for (int j = 0; j < matchCount; j++)
+                {
+                    int i = matchingSources[j];
+                    hasMore[i] = enums[i].MoveNext(getColumnSpan(i));
+                }
+            }
+
+            outerBuilder.Build();
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Trie-specific inner merge: M sources share an outer key; merge their inner trie HSSTs
+    /// (TreePath -> NodeRef, fixed-size both sides) into a single PackedArray.
+    /// </summary>
+    private static void NWayInnerMergeTrie<TWriter>(
+        HsstMergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
+        Func<int, ReadOnlySpan<byte>> getColumnSpan,
+        ref TWriter writer,
+        int keySize) where TWriter : IByteBufferWriter
+    {
+        using ArrayPoolList<HsstMergeEnumerator> innerEnums = new(matchCount, matchCount);
+        using ArrayPoolList<bool> innerHasMore = new(matchCount, matchCount);
+        using ArrayPoolList<(int Offset, int Length)> innerBounds = new(matchCount, matchCount);
+
+        try
+        {
+            for (int j = 0; j < matchCount; j++)
+            {
+                int srcIdx = matchingSources[j];
+                ReadOnlySpan<byte> cs = getColumnSpan(srcIdx);
+                innerBounds[j] = outerEnums[srcIdx].GetCurrentValueBound(cs);
+                ReadOnlySpan<byte> innerSpan = cs.Slice(innerBounds[j].Offset, innerBounds[j].Length);
+                innerEnums[j] = new HsstMergeEnumerator(innerSpan, isInline: true);
+                innerHasMore[j] = innerEnums[j].MoveNext(innerSpan);
+            }
+
+            using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
+
+            while (true)
+            {
+                int minIdx = -1;
+                for (int j = 0; j < matchCount; j++)
+                {
+                    if (!innerHasMore[j]) continue;
+                    if (minIdx < 0) { minIdx = j; continue; }
+                    int cmp = innerEnums[j].CurrentKey.SequenceCompareTo(innerEnums[minIdx].CurrentKey);
+                    if (cmp < 0) minIdx = j;
+                    else if (cmp == 0) minIdx = j; // newer wins
+                }
+                if (minIdx < 0) break;
+
+                ReadOnlySpan<byte> minKey = innerEnums[minIdx].CurrentKey;
+                ReadOnlySpan<byte> innerSpan = getColumnSpan(matchingSources[minIdx])
+                    .Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length);
+                (int valOff, int valLen) = innerEnums[minIdx].GetCurrentValueBound(innerSpan);
+                builder.Add(minKey, innerSpan.Slice(valOff, valLen));
+
+                for (int j = 0; j < matchCount; j++)
+                {
+                    if (j == minIdx || !innerHasMore[j]) continue;
+                    if (innerEnums[j].CurrentKey.SequenceCompareTo(minKey) == 0)
+                        innerHasMore[j] = innerEnums[j].MoveNext(getColumnSpan(matchingSources[j])
+                            .Slice(innerBounds[j].Offset, innerBounds[j].Length));
+                }
+                innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(getColumnSpan(matchingSources[minIdx])
+                    .Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length));
+            }
+
+            builder.Build();
+        }
+        finally
+        {
+            for (int j = 0; j < matchCount; j++) innerEnums[j]?.Dispose();
         }
     }
 

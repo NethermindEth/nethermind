@@ -57,6 +57,32 @@ public sealed class HsstMergeEnumerator : IDisposable
             return;
         }
 
+        if (tag == IndexType.PackedArray)
+        {
+            // PackedArray's data section is a packed [key|value][key|value]... array. Both
+            // key and value are inline at fixed offsets, so force inline mode regardless of
+            // the caller's hint.
+            _isInline = true;
+            SpanByteReader spanReader = new(hsstData);
+            if (HsstPackedArrayReader.TryReadLayout<SpanByteReader, NoOpPin>(
+                    in spanReader, new Bound(0, hsstData.Length), out HsstPackedArrayReader.Layout layout))
+            {
+                _entries = new NativeMemoryList<(int, int, int, int)>(Math.Max(layout.EntryCount, 1));
+                int dataStart = (int)layout.DataStart;
+                int stride = layout.KeySize + layout.ValueSize;
+                for (int i = 0; i < layout.EntryCount; i++)
+                {
+                    int entryStart = dataStart + i * stride;
+                    _entries.Add((entryStart, layout.KeySize, entryStart + layout.KeySize, layout.ValueSize));
+                }
+            }
+            else
+            {
+                _entries = new NativeMemoryList<(int, int, int, int)>(0);
+            }
+            return;
+        }
+
         int rootEnd = hsstData.Length - 1;
         if (tag == IndexType.BTreeHashIndex)
         {
