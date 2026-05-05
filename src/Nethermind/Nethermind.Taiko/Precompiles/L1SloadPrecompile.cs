@@ -80,7 +80,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
 
         // Range validation: only when an L1 origin is available. null = preconf block / eth_call /
         // tooling path with no origin → permissive (the proving layer enforces correctness instead).
-        if (extras.L1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
+        if (extras.L1Origin is { } origin && !L1PrecompileConstants.IsBlockInRange(blockNumber, origin))
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: block {blockNumber} outside [{origin}-{L1PrecompileConstants.MaxBlockLookback}, {origin}]");
             return Result<(byte[] returnValue, long gasConsumed)>.Fail(BlockOutOfRange);
@@ -102,9 +102,6 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>, IContextAwarePr
 
         return (output, 0L);
     }
-
-    private static bool IsBlockInRange(UInt256 blockNumber, UInt256 l1Origin) =>
-        blockNumber <= l1Origin && l1Origin - blockNumber <= (UInt256)L1PrecompileConstants.MaxBlockLookback;
 
     private UInt256? GetL1StorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
     {

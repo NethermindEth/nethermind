@@ -93,7 +93,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, ICont
 
         // Range validation: only when an L1 origin is available. null = preconf block / eth_call /
         // tooling path with no origin → permissive (the proving layer enforces correctness instead).
-        if (extras.L1Origin is { } origin && !IsBlockInRange(blockNumber, origin))
+        if (extras.L1Origin is { } origin && !L1PrecompileConstants.IsBlockInRange(blockNumber, origin))
         {
             if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: block {blockNumber} outside [{origin}-{L1PrecompileConstants.MaxBlockLookback}, {origin}]");
             return Result<(byte[] returnValue, long gasConsumed)>.Fail(BlockOutOfRange);
@@ -133,9 +133,6 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, ICont
 
         return (result.ReturnData, result.GasUsed);
     }
-
-    private static bool IsBlockInRange(UInt256 blockNumber, UInt256 l1Origin) =>
-        blockNumber <= l1Origin && l1Origin - blockNumber <= (UInt256)L1PrecompileConstants.MaxBlockLookback;
 
     /// <summary>
     /// Non-context-aware fallback. Used by callers outside the Taiko VM (caching layer, tooling)
