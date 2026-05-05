@@ -1182,4 +1182,135 @@ public class TraceRpcModuleTests
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>());
     }
+
+    /// <summary>
+    /// A <see cref="TestSpecProvider"/> subclass that also implements <see cref="IForkAwareSpecProvider"/>,
+    /// delegating fork name lookups to an inner <see cref="IForkAwareSpecProvider"/>.
+    /// Setting <see cref="TestSpecProvider.AllowTestChainOverride"/> to false prevents
+    /// <see cref="Nethermind.Core.Test.Blockchain.TestBlockchain"/> from wrapping this instance,
+    /// which ensures the <see cref="IForkAwareSpecProvider"/> interface is preserved for tracing tests.
+    /// </summary>
+    private sealed class ForkAwareTestSpecProvider : TestSpecProvider, IForkAwareSpecProvider
+    {
+        private readonly IForkAwareSpecProvider _forkAware;
+
+        public ForkAwareTestSpecProvider(IReleaseSpec blockchainSpec, IForkAwareSpecProvider forkAware) : base(blockchainSpec)
+        {
+            _forkAware = forkAware;
+            AllowTestChainOverride = false;
+        }
+
+        public IEnumerable<string> AvailableForks => _forkAware.AvailableForks;
+        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forkAware.TryGetForkSpec(forkName, out spec);
+    }
+
+    [Test]
+    public async Task trace_block_with_unknown_fork_name_returns_error_listing_available_forks()
+    {
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(BlockParameter.Latest, new ForkActivationParameter { ForkName = "NonExistentFork" });
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+        result.Result.Error.Should().Contain("Berlin", "error message should list known fork names so callers can correct the request");
+    }
+
+    [Test]
+    public async Task trace_block_when_spec_provider_is_not_fork_aware_returns_error()
+    {
+        Context context = new();
+        await context.Build(new TestSpecProvider(Berlin.Instance));
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(BlockParameter.Latest, new ForkActivationParameter { ForkName = "Berlin" });
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+        result.Result.Error.Should().Contain("does not support fork overrides");
+    }
+
+    [Test]
+    public async Task trace_block_fork_override_changes_modexp_gas_cost()
+    {
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Byzantium.Instance, MainnetSpecProvider.Instance));
+
+        // ModExp input: 2^(2^255) mod 3 with 32-byte base, exp, and mod fields.
+        // Pre-EIP-2565 (Istanbul) gas = max(200, 32^2 * 255 / 20) = 13056.
+        // Post-EIP-2565 (Berlin) gas  = max(200, ceil(32/8)^2 * 255 / 8) = 510.
+        byte[] modExpInput = new byte[96 + 32 + 32 + 32];
+        modExpInput[31] = 32;        // base_length = 32
+        modExpInput[63] = 32;        // exp_length  = 32
+        modExpInput[95] = 32;        // mod_length  = 32
+        modExpInput[96 + 31] = 2;    // base = 2
+        modExpInput[96 + 32] = 0x80; // exp = 2^255 (highest bit)
+        modExpInput[96 + 64 + 31] = 3; // mod = 3
+
+        UInt256 nonce = context.Blockchain.StateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction tx = Build.A.Transaction
+            .WithTo(Address.FromNumber(5))
+            .WithData(modExpInput)
+            .WithGasLimit(50_000)
+            .WithNonce(nonce)
+            .SignedAndResolved(context.Blockchain.EthereumEcdsa, TestItem.PrivateKeyB)
+            .TestObject;
+        await context.Blockchain.AddBlock(tx);
+
+        BlockParameter lastBlock = new(context.Blockchain.BlockTree.Head!.Number);
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> istanbulTraces =
+            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Istanbul" });
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> berlinTraces =
+            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Berlin" });
+
+        long istanbulGas = istanbulTraces.Data.First(t => t.Type == "call").Result!.GasUsed;
+        long berlinGas = berlinTraces.Data.First(t => t.Type == "call").Result!.GasUsed;
+
+        berlinGas.Should().BeLessThan(istanbulGas,
+            "EIP-2565 (Berlin) reduces ModExp gas cost relative to the pre-EIP-2565 formula used in Istanbul");
+    }
+
+    [Test]
+    public async Task trace_block_fork_override_does_not_persist_between_calls()
+    {
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Byzantium.Instance, MainnetSpecProvider.Instance));
+
+        byte[] modExpInput = new byte[96 + 32 + 32 + 32];
+        modExpInput[31] = 32;
+        modExpInput[63] = 32;
+        modExpInput[95] = 32;
+        modExpInput[96 + 31] = 2;
+        modExpInput[96 + 32] = 0x80;
+        modExpInput[96 + 64 + 31] = 3;
+
+        UInt256 nonce = context.Blockchain.StateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction tx = Build.A.Transaction
+            .WithTo(Address.FromNumber(5))
+            .WithData(modExpInput)
+            .WithGasLimit(50_000)
+            .WithNonce(nonce)
+            .SignedAndResolved(context.Blockchain.EthereumEcdsa, TestItem.PrivateKeyB)
+            .TestObject;
+        await context.Blockchain.AddBlock(tx);
+
+        BlockParameter lastBlock = new(context.Blockchain.BlockTree.Head!.Number);
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> firstCall =
+            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Istanbul" });
+
+        context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Berlin" });
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> secondCall =
+            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Istanbul" });
+
+        long firstGas = firstCall.Data.First(t => t.Type == "call").Result!.GasUsed;
+        long secondGas = secondCall.Data.First(t => t.Type == "call").Result!.GasUsed;
+
+        firstGas.Should().Be(secondGas,
+            "the Berlin fork override from the intervening call must not leak into subsequent calls using a different fork");
+    }
 }

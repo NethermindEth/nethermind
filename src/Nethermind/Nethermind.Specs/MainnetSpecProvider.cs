@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class MainnetSpecProvider : ISpecProvider
+public class MainnetSpecProvider : IForkAwareSpecProvider
 {
     public const long HomesteadBlockNumber = 1_150_000;
     public const long DaoBlockNumberConst = 1_920_000;
@@ -92,6 +95,33 @@ public class MainnetSpecProvider : ISpecProvider
     public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
     public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
     public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
+    private static readonly FrozenDictionary<string, IReleaseSpec> _forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
+    {
+        [nameof(Frontier)] = Frontier.Instance,
+        [nameof(Homestead)] = Homestead.Instance,
+        [nameof(Dao)] = Dao.Instance,
+        [nameof(TangerineWhistle)] = TangerineWhistle.Instance,
+        [nameof(SpuriousDragon)] = SpuriousDragon.Instance,
+        [nameof(Byzantium)] = Byzantium.Instance,
+        [nameof(Constantinople)] = Constantinople.Instance,
+        [nameof(ConstantinopleFix)] = ConstantinopleFix.Instance,
+        [nameof(Istanbul)] = Istanbul.Instance,
+        [nameof(MuirGlacier)] = MuirGlacier.Instance,
+        [nameof(Berlin)] = Berlin.Instance,
+        [nameof(London)] = London.Instance,
+        [nameof(ArrowGlacier)] = ArrowGlacier.Instance,
+        [nameof(GrayGlacier)] = GrayGlacier.Instance,
+        [nameof(Paris)] = Paris.Instance,
+        [nameof(Shanghai)] = Shanghai.Instance,
+        [nameof(Cancun)] = Cancun.Instance,
+        [nameof(Prague)] = Prague.Instance,
+        [nameof(Osaka)] = Osaka.Instance,
+        [nameof(Amsterdam)] = Amsterdam.Instance,
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    public IEnumerable<string> AvailableForks => _forks.Keys;
+    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forks.TryGetValue(forkName, out spec);
+
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,
