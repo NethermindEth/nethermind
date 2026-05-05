@@ -153,7 +153,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IncrementBytesSentMetric(allResponsesSize);
     }
 
-    private void IncrementBytesReceivedMetric(int size)
+    private void IncrementBytesReceivedMetric(long size)
     {
         if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
         {
