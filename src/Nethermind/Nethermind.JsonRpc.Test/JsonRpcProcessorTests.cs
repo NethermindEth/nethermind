@@ -526,4 +526,49 @@ public class JsonRpcProcessorTests(bool returnErrors)
         sb.Append("]}");
         return sb.ToString();
     }
+
+    [Test]
+    public async Task Method_not_found_response_is_reported_with_unknown_method_label()
+    {
+        // Regression: keep the per-method metric label cardinality bounded by replacing the raw
+        // caller-supplied method name with RpcReport.UnknownMethod when the method does not resolve.
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(ci => new JsonRpcErrorResponse
+            {
+                Id = ci.Arg<JsonRpcRequest>().Id,
+                Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "Method not found" }
+            });
+
+        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        IList<JsonRpcResult> result = await processor
+            .ProcessAsync("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"foo_unregistered\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http))
+            .ToListAsync();
+
+        result.Should().HaveCount(1);
+        result[0].Report.Should().NotBeNull();
+        result[0].Report!.Value.Method.Should().Be(RpcReport.UnknownMethod);
+        result[0].Report!.Value.Success.Should().BeFalse();
+        result.DisposeItems();
+    }
+
+    [Test]
+    public async Task Resolved_method_response_keeps_original_method_name_in_report()
+    {
+        // Sanity check: only MethodNotFound triggers the cardinality guard — every other code path
+        // must preserve the caller-supplied method name so dashboards can break out per real method.
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
+
+        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        IList<JsonRpcResult> result = await processor
+            .ProcessAsync("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http))
+            .ToListAsync();
+
+        result.Should().HaveCount(1);
+        result[0].Report!.Value.Method.Should().Be("eth_getTransactionCount");
+        result[0].Report!.Value.Success.Should().BeTrue();
+        result.DisposeItems();
+    }
 }

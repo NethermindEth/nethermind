@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -151,6 +153,44 @@ namespace Nethermind.JsonRpc.Test
             await localStats.ReportCall("A", 300, true);
             _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal));
             _testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal));
+        }
+
+        [Test]
+        public async Task Records_metric_when_per_method_enabled_even_without_info_logging()
+        {
+            // Regression: per-method metric observation must not be suppressed when Info logging is
+            // disabled. Only the textual report depends on Info; the Prometheus metric is gated solely
+            // on EnablePerMethodMetrics. The ILogger wrapper struct snapshots IsInfo at construction,
+            // so the silent logger has to be built before the log manager.
+            RecordingMetricObserver observer = new();
+            IMetricObserver previous = Metrics.JsonRpcCallLatencyMicros;
+            Metrics.JsonRpcCallLatencyMicros = observer;
+            try
+            {
+                TestLogger silentLogger = new() { IsInfo = false };
+                OneLoggerLogManager silentLogManager = new(new(silentLogger));
+                JsonRpcConfig config = new() { EnablePerMethodMetrics = true };
+                JsonRpcLocalStats localStats = new(_manualTimestamper, config, silentLogManager);
+
+                await localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
+
+                silentLogger.LogList.Should().BeEmpty();
+                observer.Observations.Should().HaveCount(1);
+                observer.Observations[0].Value.Should().Be(123);
+                observer.Observations[0].Labels.Should().Equal("eth_call", "success");
+            }
+            finally
+            {
+                Metrics.JsonRpcCallLatencyMicros = previous;
+            }
+        }
+
+        private sealed class RecordingMetricObserver : IMetricObserver
+        {
+            public List<(double Value, string[] Labels)> Observations { get; } = new();
+
+            public void Observe(double value, IMetricLabels? labels = null) =>
+                Observations.Add((value, labels?.Labels ?? Array.Empty<string>()));
         }
 
         private void MakeTimePass(int seconds) => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(seconds);

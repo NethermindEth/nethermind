@@ -40,6 +40,11 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             return Task.CompletedTask;
         }
 
+        if (!_enablePerMethodMetrics && !_logger.IsInfo)
+        {
+            return Task.CompletedTask;
+        }
+
         return ReportCallInternal(report, elapsedMicroseconds, size);
     }
 
