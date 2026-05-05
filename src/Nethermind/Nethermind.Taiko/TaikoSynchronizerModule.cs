@@ -2,8 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Taiko;
 
@@ -17,6 +22,10 @@ namespace Nethermind.Taiko;
 /// </remarks>
 public sealed class TaikoSynchronizerModule : Module
 {
-    protected override void Load(ContainerBuilder builder) =>
-        builder.AddSingleton<ITotalDifficultyStrategy, ZeroTotalDifficultyStrategy>();
+    protected override void Load(ContainerBuilder builder) => builder
+        .AddSingleton<ITotalDifficultyStrategy, ZeroTotalDifficultyStrategy>()
+        .AddDecorator<ISyncProgressResolver>((ctx, inner) =>
+            new TaikoSyncProgressResolver(ctx.Resolve<IBlockTree>(), inner))
+        .AddSingleton<TaikoBeaconHeadAdvancer>()
+        .OnBuild(ctx => ctx.Resolve<TaikoBeaconHeadAdvancer>());
 }

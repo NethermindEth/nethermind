@@ -155,6 +155,53 @@ public sealed class ZkGasTxTracer : TxTracer
     }
 
     /// <summary>
+    /// Adjusts ZK gas for opcodes that fail the static-context check. REVM (used by alethia-reth)
+    /// charges the opcode's static gas cost in its main interpreter loop BEFORE dispatching to the
+    /// instruction handler — so a failed TSTORE/SSTORE/LOG/CREATE/SELFDESTRUCT in a static frame
+    /// has its constant gas cost burned. Nethermind's handlers check static first and return
+    /// without consuming the constant gas, so the measured gas delta in
+    /// <see cref="ReportOperationRemainingGas"/> is 0.
+    ///
+    /// For mainnet semantics this is invisible (the entire failed call frame's gas is consumed
+    /// regardless), but for Taiko ZK gas accounting the per-opcode gas delta drives the
+    /// consensus-relevant block.Header.Difficulty value, so we must match REVM's behaviour
+    /// exactly. Charge the missing constant gas here so the resulting zk gas equals what
+    /// alethia-reth produces.
+    /// </summary>
+    public override void ReportOperationError(EvmExceptionType error)
+    {
+        if (error == EvmExceptionType.StaticCallViolation)
+        {
+            ulong staticGas = GetRevmStaticGasForOpcode(_currentOpcode);
+            if (staticGas > 0)
+            {
+                _meter.ChargeOpcode(_currentOpcode, staticGas);
+            }
+        }
+    }
+
+    /// <summary>
+    /// REVM's per-opcode constant gas cost charged in the interpreter loop before dispatch.
+    /// Source: revm-interpreter <c>instructions.rs</c> instruction-table entries.
+    /// Only opcodes that can fail the static-context check are listed; other opcodes never
+    /// reach <see cref="EvmExceptionType.StaticCallViolation"/>.
+    /// </summary>
+    private static ulong GetRevmStaticGasForOpcode(byte opcode) => opcode switch
+    {
+        0x5d => 100,    // TSTORE — WarmStorageReadCostEIP2929 (EIP-1153)
+        0x55 => 0,      // SSTORE — entirely dynamic, no constant
+        0xa0 => 375,    // LOG0 — base only; topics/data dynamic
+        0xa1 => 375,    // LOG1
+        0xa2 => 375,    // LOG2
+        0xa3 => 375,    // LOG3
+        0xa4 => 375,    // LOG4
+        0xf0 => 0,      // CREATE — REVM dispatches with 0 static gas; revm-interpreter::contract::create handles internally
+        0xf5 => 0,      // CREATE2
+        0xff => 5000,   // SELFDESTRUCT — base before refund logic
+        _ => 0,
+    };
+
+    /// <summary>
     /// Charges precompile ZK gas on revert.
     /// Also flushes the deferred spawn step.
     /// </summary>
