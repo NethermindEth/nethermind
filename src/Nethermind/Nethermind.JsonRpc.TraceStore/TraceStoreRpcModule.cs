@@ -138,8 +138,12 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         }
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter)
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, ForkActivationParameter? fork = null)
     {
+        // Fork overrides require live re-execution; bypass the store and delegate directly.
+        if (fork is not null)
+            return _traceModule.trace_block(blockParameter, fork);
+
         SearchResult<BlockHeader> blockSearch = _blockFinder.SearchForHeader(blockParameter);
         if (blockSearch.IsError)
         {
