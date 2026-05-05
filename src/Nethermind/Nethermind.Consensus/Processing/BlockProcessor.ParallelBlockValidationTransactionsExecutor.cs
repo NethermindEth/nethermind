@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
