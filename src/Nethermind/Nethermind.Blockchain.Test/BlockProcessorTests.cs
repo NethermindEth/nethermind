@@ -371,7 +371,44 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void IncrementalValidation_rejects_eip8037_tx_when_worst_case_exceeds_ordered_remaining_gas()
+    public void IncrementalValidation_accepts_eip8037_tx_when_gas_limit_exceeds_ordered_remaining_gas_but_actual_gas_fits()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(90_000)
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithGasLimit(50_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((65_000, 0, null));
+        gasResults[1].SetResult((21_000, 0, null));
+
+        Assert.DoesNotThrow(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(86_000));
+    }
+
+    [Test]
+    public void IncrementalValidation_rejects_eip8037_tx_when_actual_cumulative_gas_exceeds_limit()
     {
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
@@ -402,24 +439,61 @@ public class BlockProcessorTests
         gasResults[0].SetResult((80_000, 0, null));
         gasResults[1].SetResult((21_000, 0, null));
 
-        InvalidTransactionException? exception = Assert.Throws<InvalidTransactionException>(() =>
+        InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
 
-        Assert.That(exception!.Reason, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
+        Assert.That(exception!.Message, Does.Contain("Block gas limit exceeded"));
     }
 
     [Test]
-    public void IncrementalValidation_surfaces_worker_exception_before_admission_rule()
+    public void IncrementalValidation_eip8037_block_gas_check_uses_actual_state_dimension()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(21_000)
+            .TestObject;
+        Transaction createTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithCode([])
+            .WithGasLimit(200_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(200_000)
+            .WithTransactions(firstTx, createTx)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((0, 60_000, null));
+        gasResults[1].SetResult((50_000, GasCostOf.CreateState, null));
+
+        Assert.DoesNotThrow(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(60_000 + GasCostOf.CreateState));
+    }
+
+    [Test]
+    public void IncrementalValidation_surfaces_worker_exception_before_gas_accounting()
     {
         // tx0's worker rejected the tx (e.g. signature/nonce/balance check inside ProcessTransaction
-        // produced an InvalidBlockException). Even if tx0's worst-case gas would also trip the
-        // admission rule in ValidateTransactionGasAllowance, the validator must surface the worker's
-        // original cause — not the downstream admission rejection — so parallel mode reports the
-        // same root cause as sequential.
+        // produced an InvalidBlockException). Even if tx0's reported gas would also trip downstream
+        // gas accounting, the validator must surface the worker's original cause so parallel mode
+        // reports the same root cause as sequential.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction onlyTx = Build.A.Transaction
             .WithHash(TestItem.KeccakA)
-            .WithGasLimit(100_001) // exceeds block gas limit — would also fail admission
+            .WithGasLimit(100_001) // exceeds block gas limit
             .TestObject;
         Block block = Build.A.Block
             .WithNumber(1)

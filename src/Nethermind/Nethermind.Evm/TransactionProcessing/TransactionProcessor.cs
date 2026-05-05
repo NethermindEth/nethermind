@@ -71,8 +71,6 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
         private readonly bool _parallel;
-        private long _blockCumulativeRegularGas;
-        private long _blockCumulativeStateGas;
         private long _blockCumulativeReceiptGas;
 
         protected TransactionProcessorBase(
@@ -105,8 +103,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
-            _blockCumulativeRegularGas = 0;
-            _blockCumulativeStateGas = 0;
             _blockCumulativeReceiptGas = 0;
             VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
         }
@@ -233,8 +229,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
-                _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
-                _blockCumulativeStateGas += spentGas.BlockStateGas;
                 _blockCumulativeReceiptGas += spentGas.SpentGas;
             }
 
@@ -489,18 +483,9 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (spec.IsEip8037Enabled)
                 {
-                    long intrinsicRegularGas = TGasPolicy.GetRemainingGas(in intrinsicGas);
-                    long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGas);
-                    long regularGasAvailable = header.GasLimit - _blockCumulativeRegularGas;
-                    long stateGasAvailable = header.GasLimit - _blockCumulativeStateGas;
-                    long worstCaseRegularContribution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, tx.GasLimit - intrinsicStateGas);
-                    long worstCaseStateContribution = tx.GasLimit - intrinsicRegularGas;
-
-                    if (worstCaseRegularContribution > regularGasAvailable
-                        || worstCaseStateContribution > stateGasAvailable)
+                    if (tx.GasLimit > header.GasLimit)
                     {
-                        TraceLogInvalidTx(tx,
-                            $"BLOCK_GAS_LIMIT_EXCEEDED regular {worstCaseRegularContribution}/{regularGasAvailable}, state {worstCaseStateContribution}/{stateGasAvailable}");
+                        TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit}");
                         return TransactionResult.BlockGasLimitExceeded;
                     }
 

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -50,6 +51,8 @@ public partial class BlockProcessor
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
+            bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+
             balManager.NextTransaction();
             balManager.ValidateBlockAccessList(block, 0);
 
@@ -57,6 +60,11 @@ public partial class BlockProcessor
             {
                 Transaction currentTx = block.Transactions[i];
                 ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+
+                if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
+                {
+                    throw new InvalidBlockException(block, BlockErrorMessages.ExceededGasLimit);
+                }
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);

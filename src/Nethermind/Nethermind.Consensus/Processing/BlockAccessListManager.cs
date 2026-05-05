@@ -190,14 +190,10 @@ public class BlockAccessListManager(
                 (long blockGasUsed, long blockStateGasUsed, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
 
                 // Surface the worker's original tx-rejection reason before running any
-                // downstream gas accounting. Otherwise CheckGasUsed (or the admission rule)
-                // can throw a follow-on "block gas limit exceeded" that masks the true cause
-                // and diverges from the sequential path, which never reaches accounting on
-                // a rejected tx.
+                // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
+                // unlike the sequential path, which never reaches accounting on a rejected tx.
                 if (ex is not null)
                     throw new ParallelExecutionException(ex);
-
-                ValidateTransactionGasAllowance(block, j, totalRegularGas, totalStateGas);
 
                 totalRegularGas += blockGasUsed;
                 totalStateGas += blockStateGasUsed;
@@ -228,40 +224,6 @@ public class BlockAccessListManager(
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");
             }
-        }
-    }
-
-    private void ValidateTransactionGasAllowance(Block block, int index, long totalRegularGas, long totalStateGas)
-    {
-        IReleaseSpec spec = _blockExecutionContext!.Value.Spec;
-        if (!spec.IsEip8037Enabled)
-        {
-            return;
-        }
-
-        Transaction tx = block.Transactions[index];
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
-        EthereumGasPolicy standard = intrinsicGas.Standard;
-        EthereumGasPolicy floorGas = intrinsicGas.FloorGas;
-
-        long intrinsicRegularGas = EthereumGasPolicy.GetRemainingGas(in standard);
-        long intrinsicStateGas = EthereumGasPolicy.GetStateReservoir(in standard);
-        long minGasRequired = Math.Max(intrinsicRegularGas + intrinsicStateGas, EthereumGasPolicy.GetRemainingGas(in floorGas));
-        if (tx.GasLimit < minGasRequired)
-        {
-            return;
-        }
-
-        long regularGasAvailable = block.Header.GasLimit - totalRegularGas;
-        long stateGasAvailable = block.Header.GasLimit - totalStateGas;
-        long worstCaseRegularContribution = Math.Min(Eip7825Constants.DefaultTxGasLimitCap, tx.GasLimit - intrinsicStateGas);
-        long worstCaseStateContribution = tx.GasLimit - intrinsicRegularGas;
-
-        if (worstCaseRegularContribution > regularGasAvailable || worstCaseStateContribution > stateGasAvailable)
-        {
-            throw new InvalidTransactionException(block.Header,
-                $"Transaction {tx.Hash} at index {index} failed with error {TransactionResult.BlockGasLimitExceeded.ErrorDescription}",
-                TransactionResult.BlockGasLimitExceeded);
         }
     }
 
