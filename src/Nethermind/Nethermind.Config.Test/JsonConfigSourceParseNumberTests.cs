@@ -16,7 +16,7 @@ public class JsonConfigSourceParseNumberTests
         // the Int64 'result' (always 0 because TryGetInt64 had failed) instead
         // of the parsed double. Sketch double config values such as
         // SketchMaxError and SketchMinConfidence were being read as "0".
-        var path = Path.GetTempFileName();
+        string path = Path.GetTempFileName();
         try
         {
             File.WriteAllText(path,
@@ -30,7 +30,7 @@ public class JsonConfigSourceParseNumberTests
                 }
                 """);
 
-            var source = new JsonConfigSource(path);
+            JsonConfigSource source = new(path);
 
             (bool isSetTiny, string? tiny) = source.GetRawValue("Sample", "Tiny");
             Assert.That(isSetTiny, Is.True);
