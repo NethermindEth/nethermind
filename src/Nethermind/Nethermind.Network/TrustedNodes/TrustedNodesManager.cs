@@ -52,7 +52,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         }
     }
 
-    public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
+    public async Task<bool> AddAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         NetworkNode networkNode = new(enode);
         if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
@@ -71,18 +71,18 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
 
         // Publish the newly added node to the channel so DiscoverNodes will yield it.
         Node newNode = new(networkNode) { IsTrusted = true };
-        await _nodeChannel.Writer.WriteAsync(newNode);
+        await _nodeChannel.Writer.WriteAsync(newNode, cancellationToken);
 
         if (updateFile)
         {
-            await SaveFileAsync();
+            await SaveFileAsync(cancellationToken);
         }
         return true;
     }
 
-    public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true)
+    public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
-        NetworkNode networkNode = new(enode.ToString());
+        NetworkNode networkNode = new(enode);
         if (!_nodes.TryRemove(networkNode.NodeId, out _))
         {
             if (_logger.IsInfo)
@@ -97,29 +97,20 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
             _logger.Info($"Trusted node was removed: {enode}");
         }
 
+        // Fire NodeRemoved (drives PeerPool disconnect via the event chain) BEFORE the file write,
+        // so a cancelled SaveFileAsync cannot leave the peer untrusted-in-memory yet still connected.
+        // Mirrors StaticNodesManager.RemoveAsync ordering.
+        OnNodeRemoved(networkNode);
+
         if (updateFile)
         {
-            await SaveFileAsync();
+            await SaveFileAsync(cancellationToken);
         }
-
-        OnNodeRemoved(networkNode);
 
         return true;
     }
 
-    public bool IsTrusted(Enode enode)
-    {
-        if (enode.PublicKey is null)
-        {
-            return false;
-        }
-        if (_nodes.TryGetValue(enode.PublicKey, out NetworkNode storedNode))
-        {
-            // Compare not only the public key, but also the host and port.
-            return storedNode.Host == enode.HostIp?.ToString() && storedNode.Port == enode.Port;
-        }
-        return false;
-    }
+    public bool IsTrusted(Enode enode) => _nodes.ContainsKey(enode.PublicKey);
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 

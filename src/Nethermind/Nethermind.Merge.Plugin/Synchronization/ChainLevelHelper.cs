@@ -32,11 +32,25 @@ public class ChainLevelHelper(
     {
         if (_beaconPivot.ProcessDestination?.Number > blockNumber)
         {
-            // For some reason, this block number is missing when it should not.
-            // anyway, lets just restart the whole sync.
             if (_beaconPivot.ShouldForceStartNewSync) return;
 
-            if (_logger.IsWarn) _logger.Warn($"Unable to find beacon header at height {blockNumber}. This is unexpected, forcing a new beacon sync.");
+            // A gap is expected when forward sync hasn't reached `blockNumber` yet (best beacon header
+            // still below it) or when backward beacon sync hasn't reached it yet (lowest beacon header
+            // still above it). Trigger a new beacon sync to close the gap, but skip the misleading
+            // "this is unexpected" warning when it's just a normal mid-sync state.
+            bool aboveBeaconCoverage = (_blockTree.BestSuggestedBeaconHeader?.Number ?? -1) < blockNumber;
+            bool belowBeaconCoverage = (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) > blockNumber;
+            bool expectedDuringSync = aboveBeaconCoverage || belowBeaconCoverage;
+
+            if (!expectedDuringSync)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Unable to find beacon header at height {blockNumber}. This is unexpected, forcing a new beacon sync.");
+            }
+            else if (_logger.IsDebug)
+            {
+                _logger.Debug($"Beacon header at height {blockNumber} not yet downloaded, requesting a new beacon sync.");
+            }
+
             _beaconPivot.ShouldForceStartNewSync = true;
         }
     }

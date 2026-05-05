@@ -79,10 +79,10 @@ public class PreimageRecordingPersistenceTests
 
         // Verify address preimages
         ValueHash256 addressAPath = addressA.ToAccountPath;
-        _preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressA.Bytes);
+        _preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressA.Bytes.ToArray());
 
         ValueHash256 addressBPath = addressB.ToAccountPath;
-        _preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressB.Bytes);
+        _preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressB.Bytes.ToArray());
 
         // Verify slot preimage
         ValueHash256 slotHash = ValueKeccak.Zero;
@@ -135,7 +135,7 @@ public class PreimageRecordingPersistenceTests
 
         // Pre-populate preimage database with address and slot preimages
         ValueHash256 addrHash = address.ToAccountPath;
-        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes);
+        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes.ToArray());
 
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
@@ -170,7 +170,7 @@ public class PreimageRecordingPersistenceTests
 
         // Pre-populate only address preimage (missing slot preimage)
         ValueHash256 addrHash = address.ToAccountPath;
-        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes);
+        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes.ToArray());
 
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);

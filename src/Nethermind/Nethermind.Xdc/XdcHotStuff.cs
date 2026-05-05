@@ -203,11 +203,8 @@ namespace Nethermind.Xdc
         {
             ulong currentRound = _xdcContext.CurrentRound;
 
-            XdcBlockHeader? roundParent = GetParentForRound();
-            if (roundParent == null)
-            {
-                throw new InvalidOperationException($"Head is null or not XdcBlockHeader.");
-            }
+            XdcBlockHeader roundParent = GetParentForRound()
+                ?? throw new InvalidOperationException($"Head is null or not XdcBlockHeader.");
 
             // Get XDC spec for this round
             IXdcReleaseSpec spec = _specProvider.GetXdcSpec(roundParent, currentRound);
@@ -250,7 +247,7 @@ namespace Nethermind.Xdc
             _writeRoundInfo = false;
         }
 
-        private XdcBlockHeader GetParentForRound() => _blockTree.Head.Header as XdcBlockHeader;
+        private XdcBlockHeader? GetParentForRound() => _blockTree.Head?.Header as XdcBlockHeader;
 
         /// <summary>
         /// Build block with parentQC.

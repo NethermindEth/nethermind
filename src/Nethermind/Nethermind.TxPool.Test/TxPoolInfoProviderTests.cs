@@ -65,26 +65,32 @@ public class TxPoolInfoProviderTests
     }
 
     [Test]
-    public void GetInfo_WhenSenderHasStandardAndBlobTransactions_MergesByNonce()
+    public void GetInfo_WhenSenderHasStandardAndBlobTransactions_OmitsBlobs()
     {
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         Transaction[] standard = BuildTransactions([0, 2]);
         Transaction[] blobs = BuildTransactions([1, 3]);
         _txPool.GetPendingTransactionsBySender()
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, standard } });
+        // Blob bucket is populated to make the exclusion semantics explicit; GetInfo does not
+        // consult the blob pool, so these nonces must not appear in the output.
         _txPool.GetPendingLightBlobTransactionsBySender()
             .Returns(new Dictionary<AddressAsKey, Transaction[]> { { _address, blobs } });
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0, 1, 2, 3 },
-            "blob and standard txs share one nonce sequence per sender");
-        info.Queued.Should().NotContainKey(_address, "the merged sequence has no gap");
+        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0 });
+        info.Queued[_address].Keys.Should().BeEquivalentTo(new ulong[] { 2 });
     }
 
     [Test]
-    public void GetInfo_WhenSenderHasOnlyBlobTransactions_AppearsInResult()
+    public void GetInfo_WhenSenderHasOnlyBlobTransactions_DoesNotAppearInResult()
     {
+        // Regression guard: if anyone re-introduces a blob lookup in GetInfo, the blob mock
+        // here becomes live and the address would appear in Pending/Queued, failing the
+        // NotContainKey assertions. Today the blob mock is unconsulted (matches geth's
+        // BlobPool.Content() empty-stub behaviour), so the address is absent because the
+        // standard-pool dictionary has no entry for it.
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         Transaction[] blobs = BuildTransactions([0, 1]);
         _txPool.GetPendingLightBlobTransactionsBySender()
@@ -92,8 +98,8 @@ public class TxPoolInfoProviderTests
 
         TxPoolInfo info = _infoProvider.GetInfo();
 
-        info.Pending[_address].Keys.Should().BeEquivalentTo(new ulong[] { 0, 1 },
-            "blob-only senders must still be reported by GetInfo");
+        info.Pending.Should().NotContainKey(_address);
+        info.Queued.Should().NotContainKey(_address);
     }
 
     // Inputs are always nonce-sorted: TxDistinctSortedPool's group comparer puts
@@ -141,17 +147,33 @@ public class TxPoolInfoProviderTests
     }
 
     [Test]
-    public void GetSenderInfo_WhenSenderHasStandardAndBlobTransactions_MergesByNonce()
+    public void GetSenderInfo_WhenSenderHasStandardAndBlobTransactions_OmitsBlobs()
     {
         _stateReader.GetNonce(_address).Returns((UInt256)0);
         _txPool.GetPendingTransactionsBySender(_address).Returns(BuildTransactions([0, 2]));
+        // Blob bucket is populated to make the exclusion semantics explicit; GetSenderInfo
+        // does not consult the blob pool, so these nonces must not appear in the output.
         _txPool.GetPendingLightBlobTransactionsBySender(_address).Returns(BuildTransactions([1, 3]));
 
         TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
 
-        senderInfo.Pending.Keys.Should().BeEquivalentTo(new ulong[] { 0, 1, 2, 3 },
-            "blob and standard txs share one nonce sequence per sender");
-        senderInfo.Queued.Should().BeEmpty();
+        senderInfo.Pending.Keys.Should().BeEquivalentTo(new ulong[] { 0 });
+        senderInfo.Queued.Keys.Should().BeEquivalentTo(new ulong[] { 2 });
+    }
+
+    [Test]
+    public void GetSenderInfo_WhenSenderHasOnlyBlobTransactions_ReturnsEmpty()
+    {
+        // Regression guard: if anyone re-introduces a blob lookup in GetSenderInfo, the blob
+        // mock here becomes live and the result stops being TxPoolSenderInfo.Empty, failing
+        // the assertion. Today the blob mock is unconsulted (matches geth's BlobPool.Content()
+        // empty-stub behaviour), so the empty result comes from the standard pool being empty.
+        _stateReader.GetNonce(_address).Returns((UInt256)0);
+        _txPool.GetPendingLightBlobTransactionsBySender(_address).Returns(BuildTransactions([0, 1]));
+
+        TxPoolSenderInfo senderInfo = _infoProvider.GetSenderInfo(_address);
+
+        senderInfo.Should().BeSameAs(TxPoolSenderInfo.Empty);
     }
 
     [Test]
