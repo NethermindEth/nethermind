@@ -65,5 +65,20 @@ public class FlatStateReader(
         patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
     }
 
+    public ProofDiagnostics RunTreeVisitorMetered<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+    {
+        StateId stateId = new(baseBlock);
+
+        using ReadOnlySnapshotBundle reader = flatDbManager.GatherReadOnlySnapshotBundle(stateId)
+            ?? throw new InvalidOperationException($"State at {baseBlock} not found");
+
+        ReadOnlyStateTrieStoreAdapter trieStoreAdapter = new(reader);
+
+        PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
+        ProofDiagnostics diagnostics = new();
+        patriciaTree.AcceptMetered(treeVisitor, stateId.StateRoot.ToCommitment(), diagnostics, visitingOptions);
+        return diagnostics;
+    }
+
     public bool HasStateForBlock(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 }

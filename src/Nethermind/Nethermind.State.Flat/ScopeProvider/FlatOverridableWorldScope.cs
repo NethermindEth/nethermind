@@ -186,6 +186,20 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
         }
 
+        public ProofDiagnostics RunTreeVisitorMetered<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+        {
+            StateId stateId = new(baseBlock);
+            using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
+
+            ConcurrencyController concurrency = new(1);
+            StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);
+
+            PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
+            ProofDiagnostics diagnostics = new();
+            patriciaTree.AcceptMetered(treeVisitor, stateId.StateRoot.ToCommitment(), diagnostics, visitingOptions);
+            return diagnostics;
+        }
+
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);
     }
 }

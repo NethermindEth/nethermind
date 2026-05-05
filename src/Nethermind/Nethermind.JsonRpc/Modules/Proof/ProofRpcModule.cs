@@ -11,15 +11,18 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 
 namespace Nethermind.JsonRpc.Modules.Proof
 {
@@ -31,9 +34,11 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
         ISpecProvider specProvider,
-        IJsonRpcConfig jsonRpcConfig)
+        IJsonRpcConfig jsonRpcConfig,
+        IBlockchainBridge blockchainBridge)
         : IProofRpcModule
     {
+        private const int GetProofWithMetaStorageKeyLimit = 1000;
         private readonly HeaderDecoder _headerDecoder = new();
         private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
 
@@ -173,6 +178,45 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
+        }
+
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter)
+        {
+            if (storageKeys.Count > GetProofWithMetaStorageKeyLimit)
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"storageKeys: {storageKeys.Count} is over the query limit {GetProofWithMetaStorageKeyLimit}.",
+                    ErrorCodes.InvalidParams);
+            }
+
+            SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
+            if (searchResult.IsError)
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(searchResult);
+            }
+
+            BlockHeader header = searchResult.Object;
+
+            if (!blockchainBridge.HasStateForBlock(header!))
+            {
+                return ResultWrapper<AccountProofWithMeta>.Fail(
+                    $"No state available for block {header!.ToString(BlockHeader.Format.Short)}",
+                    ErrorCodes.ResourceUnavailable);
+            }
+
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+            ProofDiagnostics diagnostics = blockchainBridge.RunTreeVisitorMetered(accountProofCollector, header!);
+
+            return ResultWrapper<AccountProofWithMeta>.Success(new AccountProofWithMeta
+            {
+                Proof = accountProofCollector.BuildResult(),
+                Meta = new ProofMeta
+                {
+                    NodeLookups = diagnostics.NodeLookups,
+                    CacheHits = diagnostics.CacheHits,
+                    MaxDepth = diagnostics.MaxDepth,
+                },
+            });
         }
 
         private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)

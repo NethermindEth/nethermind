@@ -16,6 +16,7 @@ namespace Nethermind.State
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
+        ProofDiagnostics RunTreeVisitorMetered<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
         bool HasStateForBlock(BlockHeader? baseBlock);
     }
 }

@@ -459,6 +459,8 @@ namespace Nethermind.Facade
 
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx> => stateReader.RunTreeVisitor(treeVisitor, baseBlock);
 
+        public ProofDiagnostics RunTreeVisitorMetered<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx> => stateReader.RunTreeVisitorMetered(treeVisitor, baseBlock);
+
         public bool HasStateForBlock(BlockHeader? baseBlock) => stateReader.HasStateForBlock(baseBlock);
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) => logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
