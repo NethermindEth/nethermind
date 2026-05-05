@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -198,7 +199,7 @@ public class AdminRpcModule : IAdminRpcModule
             node = new NetworkNode(enode);
             return null;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException)
         {
             node = null;
             return ResultWrapper<bool>.Fail($"invalid enode: {ex.Message}", ErrorCodes.InvalidParams);
@@ -212,7 +213,7 @@ public class AdminRpcModule : IAdminRpcModule
             parsed = new Enode(enode);
             return null;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException)
         {
             parsed = null;
             return ResultWrapper<bool>.Fail($"invalid enode: {ex.Message}", ErrorCodes.InvalidParams);
