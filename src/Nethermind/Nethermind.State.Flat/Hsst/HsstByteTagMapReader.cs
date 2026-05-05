@@ -41,7 +41,6 @@ internal static class HsstByteTagMapReader
         Span<byte> oneByte = stackalloc byte[1];
         if (!reader.TryRead(bound.Offset + bound.Length - 2, oneByte)) return false;
         int count = oneByte[0];
-        if (count > HsstByteTagMapBuilder<SpanBufferWriter>.MaxEntries) return false;
 
         long trailerLen = 2L + count + (long)count * 4;
         if (trailerLen > bound.Length) return false;

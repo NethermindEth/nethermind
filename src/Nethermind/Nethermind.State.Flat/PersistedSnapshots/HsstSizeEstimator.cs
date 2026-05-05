@@ -42,7 +42,7 @@ internal static class HsstSizeEstimator
 
     /// <summary>
     /// Estimates the serialized size of the storage column (3-level nested).
-    /// Address(20) → prefix HSST(SlotPrefix(30) → suffix HSST(SlotSuffix(2) → SlotValue))
+    /// Address(20) → prefix HSST(SlotPrefix(31) → suffix ByteTagMap(SlotSuffix(1) → SlotValue))
     /// </summary>
     public static int EstimateStorageColumnSize(Snapshot snapshot)
     {
@@ -62,14 +62,13 @@ internal static class HsstSizeEstimator
 
         int slotsPerAddress = storageCount / distinctAddresses;
 
-        // Estimate suffix HSST sizes (SlotSuffix(2) → SlotValue, ~32 bytes avg value)
-        // Each distinct prefix group averages ~1 suffix entry; 2-byte keys have ~1-byte separators
-        int avgSuffixSeparatorLen = 1;
-        int avgSuffixHsstSize = EstimateSimpleHsstSize(slotsPerAddress, avgSuffixSeparatorLen, avgSuffixSeparatorLen, 32);
+        // Estimate suffix ByteTagMap sizes (SlotSuffix(1) → SlotValue, ~32 bytes avg value).
+        // Each distinct prefix group averages ~1 suffix entry; ByteTagMap trailer is 5·N + 2.
+        int avgSuffixHsstSize = EstimateByteTagMapSize(slotsPerAddress, slotsPerAddress * 32);
 
-        // Estimate prefix HSST sizes (SlotPrefix(30) → suffix HSST)
-        // Most slots share the same 30-byte prefix per address; estimate ~1 prefix group per address
-        int avgPrefixSeparatorLen = 15; // 30-byte prefix keys have ~15-byte separators
+        // Estimate prefix HSST sizes (SlotPrefix(31) → suffix ByteTagMap)
+        // Most slots share the same 31-byte prefix per address; estimate ~1 prefix group per address
+        int avgPrefixSeparatorLen = 15; // 31-byte prefix keys have ~15-byte separators
         int prefixGroupsPerAddress = Math.Max(1, slotsPerAddress / 4); // conservative estimate
         int avgPrefixHsstSize = EstimateSimpleHsstSize(prefixGroupsPerAddress, avgPrefixSeparatorLen, avgPrefixSeparatorLen, avgSuffixHsstSize);
 

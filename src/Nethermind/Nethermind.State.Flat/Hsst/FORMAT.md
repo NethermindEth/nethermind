@@ -53,7 +53,7 @@ the variant by enumerated value (not a bitfield):
 | `0x02` | `BTreeInlineValue` | No data region; leaves hold values inline. |
 | `0x03` | `BTreeHashIndex` | `BTree` plus a trailing open-address hash table of metaStart pointers. |
 | `0x06` | `FlatEntries` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
-| `0x08` | `ByteTagMap` | Tiny single-byte-keyed map (≤ 32 entries) — flat tag/end-offset trailer over a concatenated value region. |
+| `0x08` | `ByteTagMap` | Tiny single-byte-keyed map (≤ 255 entries) — flat tag/end-offset trailer over a concatenated value region. |
 
 Other values are reserved for future index strategies. The root B-tree
 node lives just before the index type byte (or just before the hash table,
@@ -261,7 +261,9 @@ hash table.
 A specialised layout for tiny single-byte-keyed maps where the b-tree's fixed
 parse cost (LEB128 metadata, separator/full-key duplication, leaf binary
 search) dominates payload work. Targets the persisted-snapshot column
-container (≤7 entries) and per-address sub-tag map (≤3 entries).
+container (≤7 entries), per-address sub-tag map (≤3 entries), and the
+slot-suffix bucket under a 31-byte slot prefix (≤256 distinct suffix bytes,
+encoded up to the u8 `Count` cap of 255).
 
 ```
 [Value_0][Value_1]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x08]
@@ -285,9 +287,10 @@ same cache line as the trailer bytes the reader fetches first.
   is capped at ≈4 GiB — same effective limit as the b-tree variants.
 - **`Tags`** — `N` bytes, strictly ascending. Used for lookup; uniqueness
   is a build-time invariant.
-- **`Count`** — single byte, holds `N`. Capped at **32**; beyond that,
-  callers should use `BTree` instead. The empty case (`N = 0`) encodes
-  as the 2-byte sequence `[0x00][0x08]`.
+- **`Count`** — single byte, holds `N`. Capped at **255** (the u8 limit;
+  `0` is reserved for the empty case). Beyond that, callers should use
+  `BTree` instead. The empty case (`N = 0`) encodes as the 2-byte sequence
+  `[0x00][0x08]`.
 
 **Lookup procedure** (exact and floor):
 

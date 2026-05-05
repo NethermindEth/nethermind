@@ -155,11 +155,12 @@ public class HsstByteTagMapTests
         Assert.That(ooo, Is.True, "out-of-order tag must throw");
 
         bool over = false;
-        using (PooledByteBufferWriter p3 = new(1024))
+        using (PooledByteBufferWriter p3 = new(64 * 1024))
         {
             using HsstByteTagMapBuilder<PooledByteBufferWriter.Writer> b3 = new(ref p3.GetWriter());
-            for (int i = 0; i < 32; i++) b3.Add((byte)i, [(byte)i]);
-            try { b3.Add(33, [33]); } catch (InvalidOperationException) { over = true; }
+            for (int i = 0; i < HsstByteTagMapBuilder<PooledByteBufferWriter.Writer>.MaxEntries; i++)
+                b3.Add((byte)i, [(byte)i]);
+            try { b3.Add(0xFF, [0xFF]); } catch (InvalidOperationException) { over = true; }
         }
         Assert.That(over, Is.True, "exceeding MaxEntries must throw");
 

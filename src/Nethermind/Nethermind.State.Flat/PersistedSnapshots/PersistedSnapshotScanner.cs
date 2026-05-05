@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 public sealed class PersistedSnapshotScanner(WholeReadSession session, PersistedSnapshot snapshot)
 {
-    private const int SlotPrefixLength = 30;
+    private const int SlotPrefixLength = 31;
 
     private readonly WholeReadSession _session = session;
     private readonly PersistedSnapshot _snapshot = snapshot;

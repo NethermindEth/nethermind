@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Inner HSST keys are the entity keys without the tag prefix:
 ///   Column 0x00: Metadata — String key → version, block range, state root values
 ///   Column 0x01: Address (20 bytes) → per-address HSST {
-///       0x01 (SlotSubTag):         nested HSST (SlotPrefix(30) → nested(SlotSuffix(2) → SlotValue))
+///       0x01 (SlotSubTag):         nested HSST (SlotPrefix(31) → nested ByteTagMap(SlotSuffix(1 byte) → SlotValue))
 ///       0x02 (SelfDestructSubTag): raw SD flag bytes (empty = destructed, 0x01 = new account)
 ///       0x03 (AccountSubTag):      raw account slim RLP bytes (empty = deleted account)
 ///   }

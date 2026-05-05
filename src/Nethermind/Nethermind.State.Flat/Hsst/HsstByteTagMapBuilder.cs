@@ -2,38 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Builds a tiny single-byte-keyed HSST. The output is concatenated values followed by a
 /// flat trailer: <c>[Ends: N×u32 LE][Tags: N×u8][Count: u8 = N][IndexType: u8 = 0x08]</c>.
-/// Designed for the persisted-snapshot column container (≤7 entries) and per-address
-/// sub-tag map (≤3 entries) where the b-tree's fixed parse cost dominates.
+/// Designed for the persisted-snapshot column container (≤7 entries), per-address
+/// sub-tag map (≤3 entries), and the slot-suffix bucket (≤256 entries) where the
+/// b-tree's fixed parse cost dominates.
 ///
-/// Tags must be added in strictly ascending order. <c>N</c> is capped at <see cref="MaxEntries"/>
-/// (32) — beyond that the b-tree variant should be used instead.
+/// Tags must be added in strictly ascending order. <c>N</c> is capped at
+/// <see cref="MaxEntries"/> (255) — the on-disk <c>Count</c> field is a single byte.
 /// </summary>
 public ref struct HsstByteTagMapBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
-    /// <summary>Maximum entries per ByteTagMap HSST.</summary>
-    public const int MaxEntries = 32;
+    /// <summary>
+    /// Maximum entries per ByteTagMap HSST — the on-disk <c>Count</c> field is a
+    /// single byte, and <c>0</c> is reserved for the empty case.
+    /// </summary>
+    public const int MaxEntries = 255;
 
-    [InlineArray(MaxEntries)]
-    private struct TagArray { private byte _e0; }
-
-    [InlineArray(MaxEntries)]
-    private struct EndArray { private uint _e0; }
+    private const int InitialCapacity = 16;
 
     private ref TWriter _writer;
     private readonly int _baseOffset;
     private int _writtenBeforeValue;
     private int _count;
-    private TagArray _tags;
-    private EndArray _ends;
+    private byte[]? _tags;
+    private uint[]? _ends;
 
     /// <summary>
     /// Create a builder writing via <paramref name="writer"/>. The trailing
@@ -46,8 +46,12 @@ public ref struct HsstByteTagMapBuilder<TWriter>
         _count = 0;
     }
 
-    /// <summary>No working buffers; method exists for API symmetry with <see cref="HsstBuilder{TWriter}"/>.</summary>
-    public readonly void Dispose() { }
+    /// <summary>Returns rented working buffers (if any) to the shared array pool.</summary>
+    public void Dispose()
+    {
+        if (_tags is not null) { ArrayPool<byte>.Shared.Return(_tags); _tags = null; }
+        if (_ends is not null) { ArrayPool<uint>.Shared.Return(_ends); _ends = null; }
+    }
 
     /// <summary>
     /// Begin writing a value. Returns a ref to the shared writer and snapshots the current
@@ -66,15 +70,37 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     /// </summary>
     public void FinishValueWrite(byte tag)
     {
-        if (_count > 0 && tag <= _tags[_count - 1])
+        if (_count > 0 && tag <= _tags![_count - 1])
             throw new ArgumentException($"Tags must be strictly ascending; got 0x{tag:X2} after 0x{_tags[_count - 1]:X2}", nameof(tag));
         if (_count >= MaxEntries)
-            throw new InvalidOperationException($"ByteTagMap supports at most {MaxEntries} entries");
+            throw new InvalidOperationException($"ByteTagMap supports at most {MaxEntries} entries (Count is u8)");
 
+        EnsureCapacity(_count + 1);
         uint end = (uint)(_writer.Written - _baseOffset);
-        _tags[_count] = tag;
-        _ends[_count] = end;
+        _tags![_count] = tag;
+        _ends![_count] = end;
         _count++;
+    }
+
+    private void EnsureCapacity(int needed)
+    {
+        int current = _tags?.Length ?? 0;
+        if (needed <= current) return;
+
+        int newCap = current == 0 ? InitialCapacity : current * 2;
+        if (newCap < needed) newCap = needed;
+
+        byte[] newTags = ArrayPool<byte>.Shared.Rent(newCap);
+        uint[] newEnds = ArrayPool<uint>.Shared.Rent(newCap);
+        if (_tags is not null)
+        {
+            Array.Copy(_tags, newTags, _count);
+            Array.Copy(_ends!, newEnds, _count);
+            ArrayPool<byte>.Shared.Return(_tags);
+            ArrayPool<uint>.Shared.Return(_ends!);
+        }
+        _tags = newTags;
+        _ends = newEnds;
     }
 
     /// <summary>Convenience: write a tag/value pair in one call.</summary>
@@ -116,12 +142,12 @@ public ref struct HsstByteTagMapBuilder<TWriter>
             // Ends section.
             Span<byte> endsSpan = _writer.GetSpan(n * 4);
             for (int i = 0; i < n; i++)
-                BinaryPrimitives.WriteUInt32LittleEndian(endsSpan[(i * 4)..], _ends[i]);
+                BinaryPrimitives.WriteUInt32LittleEndian(endsSpan[(i * 4)..], _ends![i]);
             _writer.Advance(n * 4);
 
             // Tags section (adjacent to Count so reader hits it on the same cache line).
             Span<byte> tagsSpan = _writer.GetSpan(n);
-            for (int i = 0; i < n; i++) tagsSpan[i] = _tags[i];
+            for (int i = 0; i < n; i++) tagsSpan[i] = _tags![i];
             _writer.Advance(n);
         }
 

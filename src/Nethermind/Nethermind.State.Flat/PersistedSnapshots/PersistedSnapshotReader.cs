@@ -20,7 +20,7 @@ public static class PersistedSnapshotReader
     private const int TopPathThreshold = 5;
     private const int CompactPathThreshold = 15;
     private const int StorageHashPrefixLength = 20;
-    private const int SlotPrefixLength = 30;
+    private const int SlotPrefixLength = 31;
 
     /// <summary>
     /// Seek the per-address inner-HSST bound: AccountColumnTag → address.Bytes.

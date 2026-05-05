@@ -374,7 +374,7 @@ internal static class PersistedSnapshotUtils
                                 ReadOnlySpan<byte> slotValue = SliceFromBound(compactedData, suffixEnum.Current.ValueBound);
 
                                 prefixKey.CopyTo(slotBytes);
-                                suffixKey.CopyTo(slotBytes[30..]);
+                                suffixKey.CopyTo(slotBytes[31..]);
                                 UInt256 slot = new(slotBytes, true);
 
                                 byte[]? bundleSlot = bundle.GetSlot(address, slot, -1);
