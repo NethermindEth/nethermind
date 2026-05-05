@@ -100,21 +100,30 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
 
     private async Task TryAdvanceOnceAsync(CancellationToken ct)
     {
-        // 1. Pick the target the driver/peers told us is the live tip.
-        Hash256? targetHash = _blockCacheService.HeadBlockHash;
+        // Take the higher of cached driver target and BestSuggestedBeaconHeader so
+        // Head keeps climbing on headers that arrive between driver FCUs.
         Block? target = null;
-        if (targetHash is not null && targetHash != Keccak.Zero)
+        long bestNumber = -1L;
+
+        Hash256? cachedHash = _blockCacheService.HeadBlockHash;
+        if (cachedHash is not null && cachedHash != Keccak.Zero)
         {
-            target = _blockTree.FindBlock(targetHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            Block? cached = _blockTree.FindBlock(cachedHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (cached is not null)
+            {
+                target = cached;
+                bestNumber = cached.Number;
+            }
         }
 
-        // Fall back to BestSuggestedBeaconHeader if cache hash isn't present (post-restart, etc.)
-        if (target is null)
+        BlockHeader? beaconHead = _blockTree.BestSuggestedBeaconHeader;
+        if (beaconHead is not null && beaconHead.Hash is not null && beaconHead.Number > bestNumber)
         {
-            BlockHeader? beaconHead = _blockTree.BestSuggestedBeaconHeader;
-            if (beaconHead is not null && beaconHead.Hash is not null)
+            Block? beaconBlock = _blockTree.FindBlock(beaconHead.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+            if (beaconBlock is not null)
             {
-                target = _blockTree.FindBlock(beaconHead.Hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+                target = beaconBlock;
+                bestNumber = beaconBlock.Number;
             }
         }
 
