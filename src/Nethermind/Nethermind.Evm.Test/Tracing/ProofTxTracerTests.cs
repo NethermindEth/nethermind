@@ -65,7 +65,7 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
     {
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(TestItem.AddressC.Bytes)
+            .PushData(TestItem.AddressC)
             .Op(Instruction.BALANCE)
             .Done;
 
@@ -82,7 +82,7 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
 
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(TestItem.AddressC.Bytes)
+            .PushData(TestItem.AddressC)
             .Op(Instruction.BALANCE)
             .Done;
 
@@ -96,7 +96,7 @@ public class ProofTxTracerTests(bool treatSystemAccountDifferently) : VirtualMac
     {
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1)
-            .PushData(SenderRecipientAndMiner.Default.Miner.Bytes)
+            .PushData(SenderRecipientAndMiner.Default.Miner)
             .Op(Instruction.BALANCE)
             .Done;
 

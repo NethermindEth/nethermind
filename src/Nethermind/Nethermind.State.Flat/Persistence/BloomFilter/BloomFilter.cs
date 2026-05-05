@@ -78,8 +78,10 @@ public sealed unsafe class BloomFilter : IDisposable
             useHugePages = true;
         }
 
+#pragma warning disable IDE0270 // can not be applied to pointer
         _data = (byte*)NativeMemory.AlignedAlloc(_dataSize, alignment);
         if (_data == null) throw new OutOfMemoryException();
+#pragma warning restore IDE0270
 
         // Hint the kernel to use huge pages BEFORE we touch the memory (Clear).
         // This ensures that when Clear() triggers page faults, the kernel allocates 2MB physical pages immediately.

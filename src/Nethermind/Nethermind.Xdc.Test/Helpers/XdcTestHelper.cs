@@ -98,7 +98,7 @@ internal static class XdcTestHelper
     {
         byte[] extraData = new byte[XdcConstants.ExtraVanity + addresses.Length * Address.Size + XdcConstants.ExtraSeal];
         for (int i = 0; i < addresses.Length; i++)
-            Array.Copy(addresses[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
+            addresses[i].Bytes.CopyTo(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
         return extraData;
     }
 }
