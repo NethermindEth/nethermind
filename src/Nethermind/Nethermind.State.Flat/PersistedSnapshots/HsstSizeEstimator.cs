@@ -298,4 +298,16 @@ internal static class HsstSizeEstimator
         int avgLeafNodeSize = 6 + 64 * (avgSeparatorLen + 5);
         return (int)((long)leafNodeCount * avgLeafNodeSize);
     }
+
+    /// <summary>
+    /// Exact size of a <c>ByteTagMap</c> HSST: trailer is <c>5·N + 2</c> bytes
+    /// (1 byte per tag + 4 bytes per end-offset + 1-byte Count + 1-byte IndexType),
+    /// plus the concatenated value bytes. No safety margin — the format has no
+    /// hidden per-entry overhead.
+    /// </summary>
+    internal static int EstimateByteTagMapSize(int entryCount, int sumValueBytes)
+    {
+        if (entryCount <= 0) return 2;
+        return 5 * entryCount + 2 + sumValueBytes;
+    }
 }

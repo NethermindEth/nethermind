@@ -23,7 +23,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length.
     // Backed by NativeMemoryList so the per-merge enumerator allocations sit off the managed heap.
     private readonly NativeMemoryList<(int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)> _entries;
-    private readonly bool _isInline;
+    private bool _isInline;
     private int _index = -1;
 
     // Single reusable key buffer (NativeMemoryList, disposed in Dispose()).
@@ -46,6 +46,17 @@ public sealed class HsstMergeEnumerator : IDisposable
         // appended hash table sits between the root and the IndexType byte; skip
         // past it to find where the root ends.
         IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
+        if (tag == IndexType.ByteTagMap)
+        {
+            // Treat ByteTagMap entries as inline regardless of caller's hint: the key (1
+            // byte) lives in the tags section and the value at a known absolute offset, so
+            // GetCurrentValue / MoveNext should follow the inline-mode branches.
+            _isInline = true;
+            _entries = new NativeMemoryList<(int, int, int, int)>(8);
+            CollectByteTagMap(hsstData, _entries);
+            return;
+        }
+
         int rootEnd = hsstData.Length - 1;
         if (tag == IndexType.BTreeHashIndex)
         {
@@ -90,6 +101,34 @@ public sealed class HsstMergeEnumerator : IDisposable
                 HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
                 CollectLeafOffsets(data, child, entries, isInline);
             }
+        }
+    }
+
+    /// <summary>
+    /// Materialise (sepOffset, sepLength=1, valOffset, valLength) tuples for a ByteTagMap
+    /// HSST. Each tag byte's offset within the data span becomes the "separator" (it IS
+    /// the key); each value's start/length are derived from the trailing Ends array.
+    /// </summary>
+    private static void CollectByteTagMap(ReadOnlySpan<byte> data,
+        NativeMemoryList<(int, int, int, int)> entries)
+    {
+        // Trailer layout: [Ends: N×u32 LE][Tags: N×u8][Count: u8][IndexType: u8 = 0x08]
+        if (data.Length < 2) return;
+        int n = data[data.Length - 2];
+        if (n == 0) return;
+        int trailerLen = 2 + n + n * 4;
+        if (trailerLen > data.Length) return;
+        int tagsStart = data.Length - 2 - n;
+        int endsStart = tagsStart - n * 4;
+
+        uint prev = 0;
+        for (int i = 0; i < n; i++)
+        {
+            uint thisEnd = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
+                data.Slice(endsStart + i * 4, 4));
+            int valLen = (int)(thisEnd - prev);
+            entries.Add((tagsStart + i, 1, (int)prev, valLen));
+            prev = thisEnd;
         }
     }
 

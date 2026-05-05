@@ -19,4 +19,11 @@ public enum IndexType : byte
     /// same size.
     /// </summary>
     PackedArray = 0x06,
+    /// <summary>
+    /// Tiny single-byte-keyed map (≤ 32 entries). Replaces the b-tree with a flat
+    /// trailer of `[Ends: N×u32 LE][Tags: N×u8][Count: u8][IndexType: u8]` over a
+    /// concatenated value region. Lookup is a linear/SIMD scan of the tag bytes
+    /// followed by an index into `Ends` — no LEB128 / b-tree machinery.
+    /// </summary>
+    ByteTagMap = 0x08,
 }

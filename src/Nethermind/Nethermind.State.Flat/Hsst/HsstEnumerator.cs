@@ -54,6 +54,15 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly long _flatDataStart;
     private int _flatIdx;
 
+    // ByteTagMap state: tiny single-byte-keyed map; no b-tree walk. _tagIdx tracks next entry.
+    private readonly bool _isTagMap;
+    private readonly int _tagMapCount;
+    private readonly long _tagMapDataStart;
+    private readonly long _tagMapEndsStart;
+    private readonly long _tagMapTagsStart;
+    private int _tagIdx;
+    private uint _tagPrevEnd;
+
     private AncestorStack _ancestors;
     /// <summary>Depth of the current leaf in the tree (0 = root). −1 = not yet started.</summary>
     private int _depth;
@@ -141,6 +150,26 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                     return;
                 }
                 break;
+            case IndexType.ByteTagMap:
+                _isInline = false;
+                if (!HsstByteTagMapReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstByteTagMapReader.Layout tagLayout))
+                {
+                    _empty = true;
+                    return;
+                }
+                _isTagMap = true;
+                _tagMapCount = tagLayout.Count;
+                _tagMapDataStart = tagLayout.DataStart;
+                _tagMapEndsStart = tagLayout.EndsStart;
+                _tagMapTagsStart = tagLayout.TagsStart;
+                _tagIdx = -1;
+                _tagPrevEnd = 0;
+                if (tagLayout.Count == 0)
+                {
+                    _empty = true;
+                    return;
+                }
+                break;
             default:
                 _empty = true;
                 _isInline = false;
@@ -162,6 +191,22 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
             long entryAbsStart = _flatDataStart + (long)next * stride;
             _currentKeyBound = new Bound(entryAbsStart, _flatKeySize);
             _currentValueBound = new Bound(entryAbsStart + _flatKeySize, _flatValueSize);
+            return true;
+        }
+
+        if (_isTagMap)
+        {
+            int next = _tagIdx + 1;
+            if ((uint)next >= (uint)_tagMapCount) return false;
+            Span<byte> endBuf = stackalloc byte[4];
+            if (!_reader.TryRead(_tagMapEndsStart + (long)next * 4, endBuf)) return false;
+            uint thisEnd = BinaryPrimitives.ReadUInt32LittleEndian(endBuf);
+            uint prev = next == 0 ? 0u : _tagPrevEnd;
+            if (thisEnd < prev) return false;
+            _tagIdx = next;
+            _currentKeyBound = new Bound(_tagMapTagsStart + next, 1);
+            _currentValueBound = new Bound(_tagMapDataStart + prev, (int)(thisEnd - prev));
+            _tagPrevEnd = thisEnd;
             return true;
         }
 

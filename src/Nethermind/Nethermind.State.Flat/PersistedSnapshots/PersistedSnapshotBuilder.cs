@@ -176,7 +176,7 @@ public static class PersistedSnapshotBuilder
                 uniqueAddresses = addrs;
             });
 
-        HsstBuilder<TWriter> outer = new(ref writer);
+        HsstByteTagMapBuilder<TWriter> outer = new(ref writer);
         try
         {
             // Column 0x00: Metadata
@@ -221,7 +221,7 @@ public static class PersistedSnapshotBuilder
         // and all arithmetic is done in long to avoid int overflow for large snapshots.
         (int)Math.Min(1.GiB, snapshot.EstimateMemory() + 1.KiB);
 
-    private static void WriteMetadataColumn<TWriter>(ref HsstBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteMetadataColumn<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
     {
         // Metadata keys must be in sorted order (ASCII): "from_block" < "from_hash" < "to_block" < "to_hash" < "version"
         ref TWriter innerWriter = ref outer.BeginValueWrite();
@@ -246,7 +246,7 @@ public static class PersistedSnapshotBuilder
     }
 
     private static void WriteAccountColumn<TWriter>(
-        ref HsstBuilder<TWriter> outer, Snapshot snapshot,
+        ref HsstByteTagMapBuilder<TWriter> outer, Snapshot snapshot,
         ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
         ArrayPoolList<Address> uniqueAddresses,
         BloomFilter? bloom = null,
@@ -280,8 +280,9 @@ public static class PersistedSnapshotBuilder
 
             // Begin per-address HSST
             ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
-            // Per-address column has at most 3 sub-tags (slots, self-destruct, account).
-            using HsstBuilder<TWriter> perAddr = new(ref perAddrWriter, expectedKeyCount: 3);
+            // Per-address column has at most 3 sub-tags (slots, self-destruct, account) keyed
+            // by single bytes, so a flat ByteTagMap beats a b-tree on both bytes and parse cost.
+            using HsstByteTagMapBuilder<TWriter> perAddr = new(ref perAddrWriter);
 
             // Sub-tag 0x01: Slots
             bool hasStorage = storageIdx < sortedStorages.Count &&
@@ -367,7 +368,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
     }
 
-    private static void WriteStateTopNodesColumn<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStateTopNodesColumn<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
@@ -388,7 +389,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
     }
 
-    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
@@ -409,7 +410,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateNodeTag);
     }
 
-    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
@@ -430,7 +431,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
     }
 
-    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
@@ -466,7 +467,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StorageNodeTag);
     }
 
-    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
@@ -512,7 +513,7 @@ public static class PersistedSnapshotBuilder
     {
         using WholeReadSession session = fullSnapshot.BeginWholeReadSession();
         ReadOnlySpan<byte> snapshotData = session.GetSpan();
-        using HsstBuilder<TWriter> outerBuilder = new(ref writer);
+        using HsstByteTagMapBuilder<TWriter> outerBuilder = new(ref writer);
 
         int snapshotId = fullSnapshot.Id;
 
@@ -663,7 +664,7 @@ public static class PersistedSnapshotBuilder
                 }
             }
 
-            using HsstBuilder<TWriter> outerBuilder = new(ref writer);
+            using HsstByteTagMapBuilder<TWriter> outerBuilder = new(ref writer);
 
             foreach (byte[] tag in s_columnTags)
             {
@@ -1112,7 +1113,7 @@ public static class PersistedSnapshotBuilder
             perAddrBounds[j] = (columnBounds[srcIdx].Offset + valOff, valLen);
         }
 
-        using HsstBuilder<TWriter> perAddrBuilder = new(ref writer);
+        using HsstByteTagMapBuilder<TWriter> perAddrBuilder = new(ref writer);
 
         // Find newest destruct barrier: newest j where SelfDestructSubTag value is empty (destructed)
         int destructBarrier = -1;
