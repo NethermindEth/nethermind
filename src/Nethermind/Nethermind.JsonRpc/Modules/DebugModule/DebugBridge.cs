@@ -208,20 +208,20 @@ public class DebugBridge : IDebugBridge
 
     public Hash256? GetTransactionBlockHash(Hash256 transactionHash) => _receiptStorage.FindBlockHash(transactionHash);
 
-    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
+    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
         foreach (TransactionBundle bundle in bundles)
         {
-            yield return GetBundleTrace(bundle, blockParameter, cancellationToken, gethTraceOptions);
+            yield return GetBundleTrace(bundle, blockParameter, gasCap, cancellationToken, gethTraceOptions);
         }
     }
 
-    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
     {
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
-            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true, gasCap: gasCap);
             if (txResult.IsError)
             {
                 trace = CreateFailTrace(txForRpc.Gas);

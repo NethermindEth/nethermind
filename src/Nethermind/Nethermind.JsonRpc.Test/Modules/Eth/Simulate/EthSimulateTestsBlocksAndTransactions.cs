@@ -702,4 +702,141 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(result.Result!.Error, Is.EqualTo(SimulateErrorMessages.IntrinsicGas));
     }
 
+    /// <summary>
+    /// Regression test: eth_simulateV1 with validation:true and a nonce below the account's current
+    /// nonce must return -38010 (NonceTooLow).
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_nonce_too_low_returns_spec_error_code()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // Set the account's nonce to 10, then send a tx with nonce 0 (below current).
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether, Nonce = 10 } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Nonce = 0,
+                            GasPrice = UInt256.Zero,
+                            Gas = 21_000
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.NonceTooLow));
+    }
+
+    /// <summary>
+    /// Regression test: eth_simulateV1 with validation:true and a nonce above the account's current
+    /// nonce must return -38011 (NonceTooHigh).
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_nonce_too_high_returns_spec_error_code()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        // Account nonce is 0; send a tx with nonce 100 (way above current).
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 1.Ether } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            Nonce = 100,
+                            GasPrice = UInt256.Zero,
+                            Gas = 21_000
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.NonceTooHigh));
+    }
+
+    /// <summary>
+    /// Regression test: eth_simulateV1 with validation:true and a sender address that has deployed
+    /// code (EIP-3607) must return -38024 (SenderIsNotEoa).
+    /// </summary>
+    [Test]
+    public async Task eth_simulateV1_sender_is_not_eoa_returns_spec_error_code()
+    {
+        OverridableReleaseSpec spec = new(London.Instance) { IsEip3607Enabled = true };
+        TestSpecProvider specProvider = new(spec) { AllowTestChainOverride = false };
+        TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+
+        // Override TestItem.AddressC with contract code — makes it a non-EOA sender.
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        {
+                            TestItem.AddressC,
+                            new AccountOverride
+                            {
+                                Balance = 1.Ether,
+                                Code = Bytes.FromHexString("0x60006000")
+                            }
+                        }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressC,
+                            To = TestItem.AddressB,
+                            Value = UInt256.Zero,
+                            GasPrice = UInt256.Zero,
+                            Gas = 21_000
+                        }
+                    ]
+                }
+            ],
+            Validation = true
+        };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.SenderIsNotEoa));
+    }
+
 }

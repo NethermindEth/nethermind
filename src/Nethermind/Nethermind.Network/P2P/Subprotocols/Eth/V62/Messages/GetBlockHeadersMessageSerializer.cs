@@ -26,8 +26,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 message.StartBlockNumber = (long)new UInt256(startingBytes, true);
             }
 
-            message.MaxHeaders = ctx.DecodeInt();
-            message.Skip = ctx.DecodeInt();
+            message.MaxHeaders = ctx.DecodeUInt();
+            message.Skip = ctx.DecodeUInt();
             message.Reverse = ctx.DecodeByte();
             return message;
         }
