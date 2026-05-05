@@ -45,11 +45,13 @@ public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address, C
     }
 
 
+    private static bool IsTrackedCallType(ExecutionType t) =>
+        t is ExecutionType.CALL or ExecutionType.STATICCALL
+          or ExecutionType.CALLCODE or ExecutionType.DELEGATECALL;
+
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
-        if (!isPrecompileCall && new[]
-                    { ExecutionType.CALL, ExecutionType.STATICCALL, ExecutionType.CALLCODE, ExecutionType.DELEGATECALL }
-                .Contains(callType)) Queue?.Enqueue(to);
+        if (!isPrecompileCall && IsTrackedCallType(callType)) Queue?.Enqueue(to);
     }
 }
