@@ -79,7 +79,7 @@
     <ProjectReference Include="..\Nethermind.UPnP.Plugin\Nethermind.UPnP.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Xdc\Nethermind.Xdc.csproj" />
     <ProjectReference Include="..\Nethermind.StateComposition\Nethermind.StateComposition.csproj" />
-    <ProjectReference Include="..\..\..\tools\PatternAnalyzer\Nethermind.PatternAnalyzer.Plugin\Nethermind.PatternAnalyzer.Plugin.csproj" />
+    <ProjectReference Include="..\..\..\tools\StatsAnalyzer\Nethermind.StatsAnalyzer.Plugin\Nethermind.StatsAnalyzer.Plugin.csproj" />
   </ItemGroup>
 
   <ItemGroup>
