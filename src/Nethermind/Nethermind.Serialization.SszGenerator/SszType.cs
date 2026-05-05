@@ -120,16 +120,9 @@ class SszType
             CustomDecodeTemplate = "{1} = new Bloom({0});",
         });
 
-        KnownTypes.Add(new SszType
-        {
-            Namespace = "Nethermind.Merge.Plugin.SszRest",
-            Name = "SszBytes8",
-            Kind = Kind.Basic,
-            StaticLength = 8,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.AsSpan().CopyTo({0});",
-            CustomDecodeTemplate = "{1} = SszBytes8.FromSpan({0});",
-        });
+        // SszBytes8 is no longer registered here.
+        // Any type annotated with [SszBasicType] is discovered at generation time
+        // via DiscoverKnownTypes(Compilation). See that method below.
     }
 
     public static List<SszType> BasicTypes { get; set; } = [];
@@ -167,6 +160,55 @@ class SszType
     public bool IsSszListItself { get; private set; }
 
     public const int PointerLength = 4;
+
+    internal static void DiscoverKnownTypes(Compilation compilation)
+    {
+        INamedTypeSymbol? attrSymbol = compilation.GetTypeByMetadataName(
+            "Nethermind.Serialization.Ssz.SszBasicTypeAttribute");
+        if (attrSymbol is null) return;
+
+        foreach (INamedTypeSymbol type in GetAllTypes(compilation.GlobalNamespace))
+        {
+            AttributeData? attr = type.GetAttributes()
+                .FirstOrDefault(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, attrSymbol));
+            if (attr is null) continue;
+
+            int staticLength = attr.ConstructorArguments.Length > 0
+                ? (int)attr.ConstructorArguments[0].Value! : 0;
+
+            bool isRefType = attr.NamedArguments
+                .FirstOrDefault(kv => kv.Key == "IsRefType").Value.Value is true;
+            string? encodeTemplate = attr.NamedArguments
+                .FirstOrDefault(kv => kv.Key == "EncodeTemplate").Value.Value as string;
+            string? decodeTemplate = attr.NamedArguments
+                .FirstOrDefault(kv => kv.Key == "DecodeTemplate").Value.Value as string;
+
+            string? ns = type.ContainingNamespace?.ToString();
+
+            if (KnownTypes.Any(t => t.Name == type.Name && t.Namespace == ns))
+                continue;
+
+            KnownTypes.Add(new SszType
+            {
+                Namespace = ns,
+                Name = type.Name,
+                Kind = Kind.Basic,
+                StaticLength = staticLength,
+                IsRefType = isRefType,
+                CustomEncodeTemplate = encodeTemplate,
+                CustomDecodeTemplate = decodeTemplate,
+            });
+        }
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns)
+    {
+        foreach (INamedTypeSymbol type in ns.GetTypeMembers())
+            yield return type;
+        foreach (INamespaceSymbol nested in ns.GetNamespaceMembers())
+            foreach (INamedTypeSymbol type in GetAllTypes(nested))
+                yield return type;
+    }
 
     internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type)
     {

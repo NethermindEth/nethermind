@@ -331,7 +331,7 @@ public class SszCodecTests
             .BeEquivalentTo(ep.ParentHash!.Bytes.ToArray(), "parent_hash @ offset 0");
 
         buf.Slice(32, 20).ToArray().Should()
-            .BeEquivalentTo(ep.FeeRecipient!.Bytes, "fee_recipient @ offset 32");
+            .BeEquivalentTo(ep.FeeRecipient!.Bytes.ToArray(), "fee_recipient @ offset 32");
 
         buf.Slice(52, 32).ToArray().Should()
             .BeEquivalentTo(ep.StateRoot!.Bytes.ToArray(), "state_root @ offset 52");
@@ -340,24 +340,24 @@ public class SszCodecTests
             .BeEquivalentTo(ep.ReceiptsRoot!.Bytes.ToArray(), "receipts_root @ offset 84");
 
         buf.Slice(116, 256).ToArray().Should()
-            .BeEquivalentTo(((Span<byte>)Bloom.Empty.Bytes).ToArray(), "logs_bloom @ offset 116");
+            .BeEquivalentTo(Bloom.Empty.Bytes.ToArray(), "logs_bloom @ offset 116");
 
         buf.Slice(372, 32).ToArray().Should()
             .BeEquivalentTo(ep.PrevRandao!.Bytes.ToArray(), "prev_randao @ offset 372");
 
-        System.BitConverter.ToUInt64(buf.Slice(404, 8)).Should()
+        BitConverter.ToUInt64(buf.Slice(404, 8)).Should()
             .Be((ulong)ep.BlockNumber, "block_number @ offset 404");
 
-        System.BitConverter.ToUInt64(buf.Slice(412, 8)).Should()
+        BitConverter.ToUInt64(buf.Slice(412, 8)).Should()
             .Be((ulong)ep.GasLimit, "gas_limit @ offset 412");
 
-        System.BitConverter.ToUInt64(buf.Slice(420, 8)).Should()
+        BitConverter.ToUInt64(buf.Slice(420, 8)).Should()
             .Be((ulong)ep.GasUsed, "gas_used @ offset 420");
 
-        System.BitConverter.ToUInt64(buf.Slice(428, 8)).Should()
-            .Be((ulong)ep.Timestamp, "timestamp @ offset 428");
+        BitConverter.ToUInt64(buf.Slice(428, 8)).Should()
+            .Be(ep.Timestamp, "timestamp @ offset 428");
 
-        uint extraDataOffset = System.BitConverter.ToUInt32(buf.Slice(436, 4));
+        uint extraDataOffset = BitConverter.ToUInt32(buf.Slice(436, 4));
         extraDataOffset.Should().BeGreaterThanOrEqualTo(508u,
             "extra_data variable-length offset @ offset 436 must point past the fixed section");
 
@@ -367,7 +367,7 @@ public class SszCodecTests
         buf.Slice(472, 32).ToArray().Should()
             .BeEquivalentTo(ep.BlockHash!.Bytes.ToArray(), "block_hash @ offset 472");
 
-        uint txOffset = System.BitConverter.ToUInt32(buf.Slice(504, 4));
+        uint txOffset = BitConverter.ToUInt32(buf.Slice(504, 4));
         txOffset.Should().BeGreaterThanOrEqualTo(508u,
             "transactions variable-length offset @ offset 504 must point past the fixed section");
     }

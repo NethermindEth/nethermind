@@ -15,6 +15,10 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// requires a fixed-length 8-byte field (e.g. PayloadId).
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Size = 8)]
+[SszBasicType(8,
+    IsRefType = true,
+    EncodeTemplate = "{1}.AsSpan().CopyTo({0});",
+    DecodeTemplate = "{1} = SszBytes8.FromSpan({0});")]
 public struct SszBytes8
 {
     private ulong _value;

@@ -149,7 +149,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     {
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "text/plain";
-        await ctx.Response.WriteAsync(message);
+        await ctx.Response.WriteAsync(message, ctx.RequestAborted);
     }
 
     internal static IReadOnlyList<T?> AsReadOnlyList<T>(IEnumerable<T?> source)

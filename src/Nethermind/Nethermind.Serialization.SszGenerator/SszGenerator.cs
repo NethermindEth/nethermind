@@ -78,8 +78,10 @@ public class SszGenerator : IIncrementalGenerator
                 IMethodSymbol? methodSymbol = context.SemanticModel.GetSymbolInfo(attribute).Symbol as IMethodSymbol;
                 if (methodSymbol is not null && IsSszRootAttribute(methodSymbol.ContainingType))
                 {
+                    SszType.DiscoverKnownTypes(context.SemanticModel.Compilation);
+
                     INamedTypeSymbol typeSymbol = (INamedTypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!;
-                    List<SszType> foundTypes = new(SszType.BasicTypes);
+                    List<SszType> foundTypes = [.. SszType.BasicTypes];
                     return (
                         SszType.From(context.SemanticModel, foundTypes, typeSymbol),
                         foundTypes,
