@@ -44,6 +44,7 @@ A compact, immutable binary format for sorted key/value tables.
 | **BTreeNodeHashIndex** | `[Data Region][Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x04]` |
 | **BTreeNodeHashIndexInlineValue** | `[Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x05]` |
 | **FlatEntries** | `[Data][BinaryIndex][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]` |
+| **FlatEntriesSplitIndex** | `[Data][CheckpointKeys][CheckpointEntryIndices][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][Metadata][MetadataLength: u8][IndexType: u8 = 0x07]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -56,6 +57,7 @@ the variant by enumerated value (not a bitfield):
 | `0x04` | `BTreeNodeHashIndex` | `BTree` plus a trailing hash table of leaf-node pointers. |
 | `0x05` | `BTreeNodeHashIndexInlineValue` | `BTreeInlineValue` plus a trailing hash table of leaf-node pointers. |
 | `0x06` | `FlatEntries` | Fixed-size key/value array with a sparse "checkpoint" binary index and an always-present hash table. |
+| `0x07` | `FlatEntriesSplitIndex` | Same as `FlatEntries` but the binary index is split into two parallel arrays: all checkpoint keys then all checkpoint entry indices. |
 
 Other values are reserved for future index strategies. The root B-tree
 node lives just before the index type byte (or just before the hash table,
@@ -281,6 +283,40 @@ always-present hash table.
   `KeySize` bytes — vs. b-tree variants that walk a sequence of pinned
   nodes.
 
+### FlatEntriesSplitIndex variant
+
+Identical to `FlatEntries` except that the binary index is laid out as two
+parallel arrays. All checkpoint keys are stored contiguously, followed by all
+checkpoint entry indices contiguously:
+
+```
+[Data][CheckpointKeys][CheckpointEntryIndices][HashTable][TableSizeLog2: u8][Metadata][MetadataLength: u8][IndexType: u8 = 0x07]
+```
+
+- **`Data`** — same as `FlatEntries`: `EntryCount * (KeySize + ValueSize)`
+  packed `[Key][Value]` records, ascending key order.
+- **`CheckpointKeys`** — `IndexCount * KeySize` bytes, one checkpoint key per
+  slot in the same order checkpoints were emitted (which is itself ascending,
+  because `Data` is sorted).
+- **`CheckpointEntryIndices`** — `IndexCount * 4` bytes; entry `i` is the
+  absolute `Data` index of the last entry in the `i`-th stride window, written
+  as `u32 LE`.
+- **`HashTable`**, **`TableSizeLog2`**, **`Metadata`**, **`MetadataLength`** —
+  unchanged from `FlatEntries`. Metadata schema is byte-for-byte identical
+  (`[KeySize][ValueSize][EntryCount][IndexCount]` LEB128).
+
+The lookup procedure is the same two-level binary search as `FlatEntries`. The
+top-level binary search reads `KeySize` bytes from
+`CheckpointKeys + mid * KeySize` instead of from a `(KeySize + 4)`-stride
+array, giving a denser key slab for the b-search hot path. Once the
+checkpoint index `c` is chosen, `CheckpointEntryIndices` is consulted at
+`c - 1` and `c` to derive the in-`Data` entry-index range.
+
+This variant exists for direct comparison against `FlatEntries`; build-time
+output (entry count, hash table size, total bytes ignoring section order) is
+identical, so any performance delta is attributable to the binary-index
+layout alone.
+
 ## B-tree index node layout
 
 Each node (root, intermediate, or leaf) ends with a trailing `MetadataLength`
@@ -390,6 +426,10 @@ Writers / encoders:
 - `BSearchIndex/BSearchIndexLayoutPlanner.cs` — picks key/value section
   encodings (Variable / Uniform / UniformWithLen) and section sizes.
 - `Hsst/IndexType.cs` — enum of valid index-type byte values.
+- `Hsst/HsstFlatBuilder.cs` / `Hsst/HsstFlatReader.cs` — `FlatEntries`
+  writer / reader (interleaved binary index).
+- `Hsst/HsstFlatSplitIndexBuilder.cs` / `Hsst/HsstFlatSplitIndexReader.cs` —
+  `FlatEntriesSplitIndex` writer / reader (split binary index).
 
 Readers / decoders:
 - `Hsst/HsstReader.cs` — point-query reader; reads the trailing

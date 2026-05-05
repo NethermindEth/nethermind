@@ -84,6 +84,13 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     return true;
                 }
                 return false;
+            case IndexType.FlatEntriesSplitIndex:
+                if (HsstFlatSplitIndexReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatSplitBound))
+                {
+                    _bound = flatSplitBound;
+                    return true;
+                }
+                return false;
             default: return false;
         }
 

@@ -141,6 +141,25 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                     return;
                 }
                 break;
+            case IndexType.FlatEntriesSplitIndex:
+                _isInline = false;
+                if (!HsstFlatSplitIndexReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstFlatSplitIndexReader.Layout flatSplitLayout))
+                {
+                    _empty = true;
+                    return;
+                }
+                _isFlat = true;
+                _flatKeySize = flatSplitLayout.KeySize;
+                _flatValueSize = flatSplitLayout.ValueSize;
+                _flatEntryCount = flatSplitLayout.EntryCount;
+                _flatDataStart = flatSplitLayout.DataStart;
+                _flatIdx = -1;
+                if (flatSplitLayout.EntryCount == 0)
+                {
+                    _empty = true;
+                    return;
+                }
+                break;
             default:
                 _empty = true;
                 _isInline = false;
