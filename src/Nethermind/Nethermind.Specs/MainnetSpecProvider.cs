@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -116,10 +117,15 @@ public class MainnetSpecProvider : IForkAwareSpecProvider
         [nameof(Cancun)] = Cancun.Instance,
         [nameof(Prague)] = Prague.Instance,
         [nameof(Osaka)] = Osaka.Instance,
+        [nameof(BPO1)] = BPO1.Instance,
+        [nameof(BPO2)] = BPO2.Instance,
+        [nameof(BPO3)] = BPO3.Instance,
+        [nameof(BPO4)] = BPO4.Instance,
+        [nameof(BPO5)] = BPO5.Instance,
         [nameof(Amsterdam)] = Amsterdam.Instance,
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-    public IEnumerable<string> AvailableForks => _forks.Keys;
+    public IEnumerable<string> AvailableForks => _forks.Keys.OrderBy(static fork => fork);
     public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forks.TryGetValue(forkName, out spec);
 
     public ForkActivation[] TransitionActivations { get; } =

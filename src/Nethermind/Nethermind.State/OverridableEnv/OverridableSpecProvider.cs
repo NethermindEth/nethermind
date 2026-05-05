@@ -16,8 +16,8 @@ public class OverridableSpecProvider(ISpecProvider inner) : ISpecProvider
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) => _override ?? inner.GetSpec(forkActivation);
 
-    public void SetOverride(IReleaseSpec spec) => _override = spec;
-    public void ResetOverride() => _override = null;
+    internal void SetOverride(IReleaseSpec spec) => _override = spec;
+    internal void ResetOverride() => _override = null;
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         => inner.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);

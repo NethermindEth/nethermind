@@ -281,6 +281,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 if (specProvider is not IForkAwareSpecProvider forkAwareProvider)
                     return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Spec provider does not support fork overrides", ErrorCodes.InvalidParams);
 
+                if (string.IsNullOrEmpty(fork.ForkName))
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Fork name must not be null or empty", ErrorCodes.InvalidParams);
+
                 if (!forkAwareProvider.TryGetForkSpec(fork.ForkName, out forkSpec))
                     return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail($"Unknown fork: '{fork.ForkName}'. Available: {string.Join(", ", forkAwareProvider.AvailableForks)}", ErrorCodes.InvalidParams);
             }
