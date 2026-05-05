@@ -181,10 +181,10 @@ public class AccountChangesDecoder :
     private static void ValidateSortedByIndex<T>(T[] items, string changeName)
         where T : struct, IIndexedChange
     {
-        int? lastIndex = null;
+        uint? lastIndex = null;
         foreach (T item in items)
         {
-            int index = item.Index;
+            uint index = item.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"{changeName} changes were in incorrect order.");

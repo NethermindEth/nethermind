@@ -21,7 +21,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 {
     private const int InitialChangeCapacity = 64;
 
-    public int Index { get; set; }
+    public uint Index { get; set; }
 
     private readonly SortedDictionary<Address, AccountChangesAtIndex> _accountChanges
         = new(GenericComparer.GetOptimized<Address>());

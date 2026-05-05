@@ -27,10 +27,10 @@ public class SlotChangesDecoder :
         UInt256 slot = ctx.DecodeUInt256();
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
-        int? lastIndex = null;
+        uint? lastIndex = null;
         foreach (StorageChange s in changes)
         {
-            int index = s.Index;
+            uint index = s.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");

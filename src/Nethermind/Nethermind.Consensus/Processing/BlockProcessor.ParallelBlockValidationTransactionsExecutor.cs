@@ -51,16 +51,16 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             balManager.NextTransaction();
-            balManager.ValidateBlockAccessList(block, 0);
+            balManager.ValidateBlockAccessList(block, 0u);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
-                balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
+                balManager.ValidateBlockAccessList(block, (uint)(i + 1));
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -109,7 +109,7 @@ public partial class BlockProcessor
                             // recycles the pool slot via Dispose BEFORE we signal the gas result,
                             // so the validator finds _perTxBal[i] populated when it awaits
                             // gasResults[i-1] — even if ProcessTransaction throws.
-                            using (TxProcessorLease lease = state.balManager.RentTxProcessor(i))
+                            using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)i))
                             {
                                 ProcessTransaction(
                                     lease.Adapter,

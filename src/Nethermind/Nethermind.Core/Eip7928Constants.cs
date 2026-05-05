@@ -23,4 +23,12 @@ public static class Eip7928Constants
     /// Gas cost per BAL item for size limit. bal_items <= block_gas_limit / ItemCost.
     /// </summary>
     public const int ItemCost = 2000;
+
+    /// <summary>
+    /// Sentinel index used internally for prestate (pre-block) entries in the
+    /// suggested BAL after <c>LoadPreStateToSuggestedBlockAccessList</c>. Never
+    /// appears on the wire; replaces the legacy <c>-1</c> sentinel used before
+    /// BlockAccessIndex was widened to <see cref="uint"/>.
+    /// </summary>
+    public const uint PrestateIndex = uint.MaxValue;
 }

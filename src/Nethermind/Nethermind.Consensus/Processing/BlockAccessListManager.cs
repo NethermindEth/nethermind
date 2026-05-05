@@ -121,7 +121,7 @@ public class BlockAccessListManager(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => _blockExecutionContext = blockExecutionContext;
 
-    public ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null)
+    public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null)
     {
         CheckInitialized();
         return _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
@@ -146,7 +146,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void ReturnTxProcessor(int balIndex)
+    public void ReturnTxProcessor(uint balIndex)
     {
         if (Enabled && ParallelExecutionEnabled)
         {
@@ -166,8 +166,8 @@ public class BlockAccessListManager(
 
         // Pre is held by main-thread system contract handlers — never went through Return,
         // so MergeAndReturnBal will detach it before merging.
-        _parallelTxProcessorWithWorldStateManager.MergeAndReturnBal(0, GeneratedBlockAccessList);
-        ValidateBlockAccessList(block, 0);
+        _parallelTxProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList);
+        ValidateBlockAccessList(block, 0u);
 
         long totalRegularGas = 0;
         long totalStateGas = 0;
@@ -198,8 +198,8 @@ public class BlockAccessListManager(
                 // the target now, in order, so incremental validation sees only data from
                 // txs 0..(j+1).
                 bool validateStorageReads = j == chunkEnd - 1;
-                _parallelTxProcessorWithWorldStateManager.MergeAndReturnBal(j + 1, GeneratedBlockAccessList);
-                ValidateBlockAccessList(block, (ushort)(j + 1), validateStorageReads);
+                _parallelTxProcessorWithWorldStateManager.MergeAndReturnBal((uint)(j + 1), GeneratedBlockAccessList);
+                ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
             }
         }
 
@@ -221,7 +221,7 @@ public class BlockAccessListManager(
     {
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Length > 0 && accountChanges.BalanceChanges[^1].Index != -1)
+            if (accountChanges.BalanceChanges.Length > 0 && accountChanges.BalanceChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
@@ -236,13 +236,13 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Length > 0 && accountChanges.NonceChanges[^1].Index != -1)
+            if (accountChanges.NonceChanges.Length > 0 && accountChanges.NonceChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
             }
 
-            if (accountChanges.CodeChanges.Length > 0 && accountChanges.CodeChanges[^1].Index != -1)
+            if (accountChanges.CodeChanges.Length > 0 && accountChanges.CodeChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
                 stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
             }
@@ -252,7 +252,7 @@ public class BlockAccessListManager(
                 StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
                 // could be empty since prestate loaded
                 int slotCount = slotChange.Changes.Length;
-                if (slotCount > 0 && slotChange.Changes[^1].Index != -1)
+                if (slotCount > 0 && slotChange.Changes[^1].Index != Eip7928Constants.PrestateIndex)
                 {
                     stateProvider.Set(storageCell, [.. slotChange.Changes[^1].Value.ToBigEndian().WithoutLeadingZeros()]);
                 }
@@ -292,14 +292,14 @@ public class BlockAccessListManager(
         {
             CheckInitialized();
 
-            _txProcessorWithWorldStateManager.MergeAndReturnBal(int.MaxValue, GeneratedBlockAccessList);
+            _txProcessorWithWorldStateManager.MergeAndReturnBal(uint.MaxValue, GeneratedBlockAccessList);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
         }
     }
 
-    public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
+    public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
     {
         if (block.BlockAccessList is null)
         {
@@ -451,12 +451,12 @@ public class BlockAccessListManager(
     private interface ITxProcessorWithWorldStateManager
     {
         void Setup(Block block, BlockExecutionContext blockExecutionContext);
-        TxProcessorWithWorldState Get(int? balIndex = null);
-        TxProcessorWithWorldState GetPreExecution() => Get(0);
-        TxProcessorWithWorldState GetPostExecution() => Get(int.MaxValue);
+        TxProcessorWithWorldState Get(uint? balIndex = null);
+        TxProcessorWithWorldState GetPreExecution() => Get(0u);
+        TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
         void NextTransaction();
         void Rollback();
-        void MergeAndReturnBal(int balIndex, GeneratedBlockAccessList target);
+        void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target);
     }
 
     private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -529,55 +529,55 @@ public class BlockAccessListManager(
         //   strictly after the worker's gasResults[i-1].SetResult, whose pairing with
         //   GetResult() establishes the publication barrier. Plain reads/writes are
         //   therefore sufficient — Volatile/Interlocked would be redundant fencing.
-        public TxProcessorWithWorldState Get(int? balIndex = null)
+        public TxProcessorWithWorldState Get(uint? balIndex = null)
         {
             if (_currentBlock is null) ThrowNotInitialized(nameof(_currentBlock));
 
-            balIndex = ClampBalIndex(balIndex ?? 0);
+            int idx = ClampBalIndex(balIndex ?? 0u);
 
             // Re-entrant Get for the same balIndex returns the already-acquired processor
             // (lets pre/post callers share state across calls — main thread only).
-            TxProcessorWithWorldState? existing = _inUse[balIndex.Value];
+            TxProcessorWithWorldState? existing = _inUse[idx];
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
 
             // Install a fresh BAL before Setup so the worker has somewhere to record changes.
             processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessListAtIndex>.Rent());
-            processor.Setup(_currentBlock, _currentCtx, balIndex.Value);
-            _inUse[balIndex.Value] = processor;
+            processor.Setup(_currentBlock, _currentCtx, (uint)idx);
+            _inUse[idx] = processor;
             return processor;
         }
 
         /// <summary>Detaches the worker's populated BAL into the per-tx slot and recycles
         /// the processor immediately, so workers never block on the validator.</summary>
-        public void Return(int balIndex)
+        public void Return(uint balIndex)
         {
-            balIndex = ClampBalIndex(balIndex);
+            int idx = ClampBalIndex(balIndex);
 
-            TxProcessorWithWorldState? processor = _inUse[balIndex];
+            TxProcessorWithWorldState? processor = _inUse[idx];
             if (processor is null) return;
 
-            _perTxBal[balIndex] = processor.WorldState.GetGeneratingBlockAccessList();
+            _perTxBal[idx] = processor.WorldState.GetGeneratingBlockAccessList();
             processor.WorldState.SetGeneratingBlockAccessList(null);
-            _inUse[balIndex] = null;
+            _inUse[idx] = null;
             ReturnProcessor(processor);
         }
 
         /// <summary>Merges the per-tx BAL into <paramref name="target"/> in caller-controlled
         /// order, then returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also
         /// detaches the BAL for pre/post callers that never went through Return.</summary>
-        public void MergeAndReturnBal(int balIndex, GeneratedBlockAccessList target)
+        public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target)
         {
-            balIndex = ClampBalIndex(balIndex);
+            int idx = ClampBalIndex(balIndex);
 
-            Return(balIndex);
+            Return((uint)idx);
 
-            BlockAccessListAtIndex? source = _perTxBal[balIndex];
+            BlockAccessListAtIndex? source = _perTxBal[idx];
             if (source is null) return;
 
             target.Merge(source);
-            _perTxBal[balIndex] = null;
+            _perTxBal[idx] = null;
             StaticPool<BlockAccessListAtIndex>.Return(source);
         }
 
@@ -585,8 +585,8 @@ public class BlockAccessListManager(
 
         public void Rollback() { }
 
-        private int ClampBalIndex(int balIndex)
-            => int.Min(int.Max(balIndex, 0), _lastBalIndex);
+        private int ClampBalIndex(uint balIndex)
+            => (int)uint.Min(balIndex, (uint)_lastBalIndex);
 
         private TxProcessorWithWorldState NewProcessor()
             => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager);
@@ -614,7 +614,7 @@ public class BlockAccessListManager(
         private void ReclaimAndResize(int size, int previousSize)
         {
             for (int i = 0; i < previousSize; i++)
-                if (_inUse[i] is not null) Return(i);
+                if (_inUse[i] is not null) Return((uint)i);
 
             for (int i = 0; i < previousSize; i++)
             {
@@ -648,9 +648,9 @@ public class BlockAccessListManager(
         }
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext)
-            => _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0);
+            => _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0u);
 
-        public TxProcessorWithWorldState Get(int? _)
+        public TxProcessorWithWorldState Get(uint? _)
             => _txProcessorWithWorldState;
 
         public void NextTransaction()
@@ -661,7 +661,7 @@ public class BlockAccessListManager(
 
         public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
 
-        public void MergeAndReturnBal(int _, GeneratedBlockAccessList target)
+        public void MergeAndReturnBal(uint _, GeneratedBlockAccessList target)
             => _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
     }
 
@@ -693,7 +693,7 @@ public class BlockAccessListManager(
             TxProcessorAdapter = new(TxProcessor);
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, int balIndex)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex)
         {
             WorldState.Clear();
             WorldState.SetIndex(balIndex);

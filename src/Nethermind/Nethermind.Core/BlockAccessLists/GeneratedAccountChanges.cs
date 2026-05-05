@@ -48,11 +48,11 @@ public class GeneratedAccountChanges(Address address)
     /// <summary>Per-family change lists are appended in monotonically increasing <c>Index</c>
     /// order during <see cref="Merge"/>, so we binary-search via <see cref="IndexKey{T}"/>
     /// rather than scanning. Mirrors <see cref="ReadOnlyAccountChanges"/>.</summary>
-    public BalanceChange? BalanceChangeAtIndex(int index) => GetExact(BalanceChanges, index);
-    public NonceChange? NonceChangeAtIndex(int index) => GetExact(NonceChanges, index);
-    public CodeChange? CodeChangeAtIndex(int index) => GetExact(CodeChanges, index);
+    public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(BalanceChanges, index);
+    public NonceChange? NonceChangeAtIndex(uint index) => GetExact(NonceChanges, index);
+    public CodeChange? CodeChangeAtIndex(uint index) => GetExact(CodeChanges, index);
 
-    public bool HasSlotChangesAtIndex(int index)
+    public bool HasSlotChangesAtIndex(uint index)
     {
         foreach (GeneratedSlotChanges slot in _storageChanges.Values)
         {
@@ -63,7 +63,7 @@ public class GeneratedAccountChanges(Address address)
 
     /// <summary>True iff this account has no balance/nonce/code/slot change at <paramref name="index"/>.
     /// Storage reads are not changes; this only inspects mutating entries.</summary>
-    public bool HasNoChangesAtIndex(ushort index)
+    public bool HasNoChangesAtIndex(uint index)
         => BalanceChangeAtIndex(index) is null
         && NonceChangeAtIndex(index) is null
         && CodeChangeAtIndex(index) is null
@@ -74,7 +74,7 @@ public class GeneratedAccountChanges(Address address)
     /// sides without allocating: per-slot lookup is an O(log n) binary search via
     /// <see cref="IndexKey{T}"/>; both storage maps iterate in sorted-by-slot-key order so
     /// account-level slot pairing is a single linear merge-walk.</summary>
-    public bool ChangesAtIndexEqual(ReadOnlyAccountChanges other, ushort index)
+    public bool ChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
         if (BalanceChangeAtIndex(index) != other.BalanceChangeAtIndex(index)) return false;
         if (NonceChangeAtIndex(index) != other.NonceChangeAtIndex(index)) return false;
@@ -87,7 +87,7 @@ public class GeneratedAccountChanges(Address address)
         return SlotChangesAtIndexEqual(other, index);
     }
 
-    private bool SlotChangesAtIndexEqual(ReadOnlyAccountChanges other, ushort index)
+    private bool SlotChangesAtIndexEqual(ReadOnlyAccountChanges other, uint index)
     {
         // Both sides iterate slots in sorted-by-key order:
         //   - this:  SortedDictionary<UInt256, GeneratedSlotChanges>.Values
@@ -131,7 +131,7 @@ public class GeneratedAccountChanges(Address address)
         }
     }
 
-    private static bool TryGetSlotChangeAtIndex(GeneratedSlotChanges slot, int index, out StorageChange change)
+    private static bool TryGetSlotChangeAtIndex(GeneratedSlotChanges slot, uint index, out StorageChange change)
     {
         ReadOnlySpan<StorageChange> span = CollectionsMarshal.AsSpan(slot.Changes);
         int idx = span.BinarySearch(new IndexKey<StorageChange>(index));
@@ -144,7 +144,7 @@ public class GeneratedAccountChanges(Address address)
         return false;
     }
 
-    private static bool TryGetSlotChangeAtIndex(ReadOnlySlotChanges slot, int index, out StorageChange change)
+    private static bool TryGetSlotChangeAtIndex(ReadOnlySlotChanges slot, uint index, out StorageChange change)
     {
         ReadOnlySpan<StorageChange> span = slot.Changes;
         int idx = span.BinarySearch(new IndexKey<StorageChange>(index));
@@ -159,7 +159,7 @@ public class GeneratedAccountChanges(Address address)
 
     /// <summary>O(log n) lookup of the entry with <c>Index == index</c> over a list kept sorted
     /// by index (the merge contract on <see cref="GeneratedAccountChanges"/> guarantees that).</summary>
-    private static T? GetExact<T>(List<T> changes, int index) where T : struct, IIndexedChange
+    private static T? GetExact<T>(List<T> changes, uint index) where T : struct, IIndexedChange
     {
         ReadOnlySpan<T> span = CollectionsMarshal.AsSpan(changes);
         int idx = span.BinarySearch(new IndexKey<T>(index));

@@ -23,12 +23,12 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     protected IWorldState _innerWorldState = innerWorldState;
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
-    private int _blockAccessIndex = 0;
+    private uint _blockAccessIndex = 0;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
 
-    public void SetBlockAccessIndex(int index) => _blockAccessIndex = index;
+    public void SetBlockAccessIndex(uint index) => _blockAccessIndex = index;
 
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;

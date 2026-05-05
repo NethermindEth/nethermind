@@ -31,7 +31,7 @@ public class BlockAccessListBasedWorldStateTests
     private static readonly ILogManager Logger = LimboLogs.Instance;
 
     private static (BlockAccessListBasedWorldState bws, IDisposable scope) CreateBlockAccessListState(
-        int blockAccessIndex,
+        uint blockAccessIndex,
         ReadOnlyBlockAccessList suggestedBal,
         Action<IWorldState>? genesisSetup = null)
     {
@@ -61,7 +61,7 @@ public class BlockAccessListBasedWorldStateTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(-1, 100))
+                .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 100))
                 .TestObject)
             .TestObject;
 
@@ -81,7 +81,7 @@ public class BlockAccessListBasedWorldStateTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(-1, 100), new BalanceChange(0, 200))
+                .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 100), new BalanceChange(0, 200))
                 .TestObject)
             .TestObject;
 
@@ -101,7 +101,7 @@ public class BlockAccessListBasedWorldStateTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithNonceChanges(new NonceChange(-1, 0), new NonceChange(0, 3))
+                .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0), new NonceChange(0, 3))
                 .TestObject)
             .TestObject;
 
@@ -163,8 +163,8 @@ public class BlockAccessListBasedWorldStateTests
     {
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithNonceChanges(new NonceChange(-1, 0))
-            .WithBalanceChanges(new BalanceChange(-1, 1))
+            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
+            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 1))
             .TestObject;
         ac.SetExistedBeforeBlock(true);
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
@@ -183,11 +183,11 @@ public class BlockAccessListBasedWorldStateTests
     public void AccountExists_CreatedAtLaterTx_ReturnsFalseForEarlierIndex()
     {
         // Account is first touched at tx 2 (balance change at index 2). For tx 1's world state,
-        // calling AccountExists(1) must return false even though prestate is loaded at index -1.
+        // calling AccountExists(1) must return false even though prestate is loaded at PrestateIndex.
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithBalanceChanges(new BalanceChange(-1, 0), new BalanceChange(2, 100))
-            .WithNonceChanges(new NonceChange(-1, 0))
+            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0), new BalanceChange(2, 100))
+            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
             .TestObject;
         // ExistedBeforeBlock = false (default) — account did not exist at start of block.
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;

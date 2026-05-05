@@ -94,11 +94,11 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
         => _storageChanges.TryGetValue(key, out slotChanges);
 
-    public BalanceChange? BalanceChangeAtIndex(int index) => GetExact(_balanceChanges, index);
-    public NonceChange? NonceChangeAtIndex(int index) => GetExact(_nonceChanges, index);
-    public CodeChange? CodeChangeAtIndex(int index) => GetExact(_codeChanges, index);
+    public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(_balanceChanges, index);
+    public NonceChange? NonceChangeAtIndex(uint index) => GetExact(_nonceChanges, index);
+    public CodeChange? CodeChangeAtIndex(uint index) => GetExact(_codeChanges, index);
 
-    public bool HasSlotChangesAtIndex(int index)
+    public bool HasSlotChangesAtIndex(uint index)
     {
         foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
         {
@@ -107,7 +107,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         return false;
     }
 
-    public IEnumerable<SlotChangeAtIndex> SlotChangesAtIndex(int index)
+    public IEnumerable<SlotChangeAtIndex> SlotChangesAtIndex(uint index)
     {
         foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
         {
@@ -121,43 +121,44 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     /// <summary>True iff this account has no balance/nonce/code/slot change at <paramref name="index"/>.
     /// Storage reads are not changes; this only inspects mutating entries.</summary>
-    public bool HasNoChangesAtIndex(ushort index)
+    public bool HasNoChangesAtIndex(uint index)
         => BalanceChangeAtIndex(index) is null
         && NonceChangeAtIndex(index) is null
         && CodeChangeAtIndex(index) is null
         && !HasSlotChangesAtIndex(index);
 
     /// <summary>Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.</summary>
-    public UInt256? GetBalance(int blockAccessIndex) => TryGetLastBefore(_balanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
+    public UInt256? GetBalance(uint blockAccessIndex) => TryGetLastBefore(_balanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
 
-    public UInt256? GetNonce(int blockAccessIndex) => TryGetLastBefore(_nonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
+    public UInt256? GetNonce(uint blockAccessIndex) => TryGetLastBefore(_nonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
 
-    public byte[] GetCode(int blockAccessIndex)
+    public byte[] GetCode(uint blockAccessIndex)
         => TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.Code : [];
 
-    public ValueHash256 GetCodeHash(int blockAccessIndex)
+    public ValueHash256 GetCodeHash(uint blockAccessIndex)
         => TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
 
-    public bool AccountExists(int blockAccessIndex)
+    public bool AccountExists(uint blockAccessIndex)
     {
         if (ExistedBeforeBlock)
         {
             return true;
         }
 
-        // Skip the prestate entry at index -1 (added by LoadPreStateBalance / LoadPreStateNonce
+        // Skip the prestate entry at PrestateIndex (added by LoadPreStateBalance / LoadPreStateNonce
         // for every account in the BAL, including accounts that did not yet exist). Existence
         // by `blockAccessIndex` requires a real tx-level balance or nonce change at index in
         // [0, blockAccessIndex) — only that proves the account was created in a prior tx.
+        // Prestate is sorted first via PrestateAwareIndexComparer, so it appears before all real entries.
         foreach (NonceChange change in _nonceChanges)
         {
-            if (change.Index < 0) continue;
+            if (change.Index == Eip7928Constants.PrestateIndex) continue;
             return change.Index < blockAccessIndex;
         }
 
         foreach (BalanceChange change in _balanceChanges)
         {
-            if (change.Index < 0) continue;
+            if (change.Index == Eip7928Constants.PrestateIndex) continue;
             return change.Index < blockAccessIndex;
         }
 
@@ -200,9 +201,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     // Prestate is keyed at index -1, smaller than every real change, so we prepend (one realloc)
     // to preserve the sorted-by-index invariant.
 
-    public void LoadPreStateBalance(UInt256 balance) => _balanceChanges = [new BalanceChange(-1, balance), .. _balanceChanges];
-    public void LoadPreStateNonce(ulong nonce) => _nonceChanges = [new NonceChange(-1, nonce), .. _nonceChanges];
-    public void LoadPreStateCode(byte[] code) => _codeChanges = [new CodeChange(-1, code), .. _codeChanges];
+    public void LoadPreStateBalance(UInt256 balance) => _balanceChanges = [new BalanceChange(Eip7928Constants.PrestateIndex, balance), .. _balanceChanges];
+    public void LoadPreStateNonce(ulong nonce) => _nonceChanges = [new NonceChange(Eip7928Constants.PrestateIndex, nonce), .. _nonceChanges];
+    public void LoadPreStateCode(byte[] code) => _codeChanges = [new CodeChange(Eip7928Constants.PrestateIndex, code), .. _codeChanges];
 
     public void LoadPreStateStorage(UInt256 slot, UInt256 value)
     {
@@ -212,7 +213,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             _storageChanges.Add(slot, slotChanges);
             InsertSorted(slot, slotChanges);
         }
-        slotChanges.LoadPreStateChange(new StorageChange(-1, value));
+        slotChanges.LoadPreStateChange(new StorageChange(Eip7928Constants.PrestateIndex, value));
     }
 
     public IEnumerable<UInt256> GetSlotsForPreStateLoad()
@@ -248,21 +249,21 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     }
 
     /// <summary>Returns the change with <c>Index == index</c> if any; otherwise null.</summary>
-    private static T? GetExact<T>(T[] changes, int index) where T : struct, IIndexedChange
+    private static T? GetExact<T>(T[] changes, uint index) where T : struct, IIndexedChange
     {
         ReadOnlySpan<T> span = changes;
         int idx = span.BinarySearch(new IndexKey<T>(index));
         return idx >= 0 ? span[idx] : null;
     }
 
-    private static bool HasExactIndex<T>(T[] changes, int index) where T : struct, IIndexedChange
+    private static bool HasExactIndex<T>(T[] changes, uint index) where T : struct, IIndexedChange
     {
         ReadOnlySpan<T> span = changes;
         return span.BinarySearch(new IndexKey<T>(index)) >= 0;
     }
 
     /// <summary>Returns the entry with the largest Index strictly less than <paramref name="blockAccessIndex"/>, or false if none.</summary>
-    private static bool TryGetLastBefore<T>(T[] changes, int blockAccessIndex, out T last) where T : struct, IIndexedChange
+    private static bool TryGetLastBefore<T>(T[] changes, uint blockAccessIndex, out T last) where T : struct, IIndexedChange
     {
         ReadOnlySpan<T> span = changes;
         int idx = span.BinarySearch(new IndexKey<T>(blockAccessIndex));

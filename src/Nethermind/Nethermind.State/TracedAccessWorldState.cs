@@ -200,7 +200,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         }
     }
 
-    public void SetIndex(int index)
+    public void SetIndex(uint index)
         => _generatingBlockAccessList.Index = index;
 
     public void IncrementIndex()

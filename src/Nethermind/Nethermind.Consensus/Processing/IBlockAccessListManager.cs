@@ -23,10 +23,10 @@ public interface IBlockAccessListManager
     void Setup(Block block);
     void SpendGas(long gas);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
-    ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null);
+    ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null);
     void NextTransaction();
     void Rollback();
-    void ReturnTxProcessor(int balIndex);
+    void ReturnTxProcessor(uint balIndex);
 
     /// <summary>
     /// Acquires a tx processor for <paramref name="balIndex"/> and returns a stack-only lease
@@ -34,12 +34,12 @@ public interface IBlockAccessListManager
     /// block so the pool slot is recycled (and the worker's BAL captured into <c>_perTxBal</c>)
     /// even on exception, without an explicit try/finally.
     /// </summary>
-    TxProcessorLease RentTxProcessor(int balIndex)
+    TxProcessorLease RentTxProcessor(uint balIndex)
         => new(GetTxProcessor(balIndex), this, balIndex);
 
     void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
     void SetBlockAccessList(Block block);
-    void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true);
+    void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
@@ -56,9 +56,9 @@ public readonly ref struct TxProcessorLease
 {
     public readonly ITransactionProcessorAdapter Adapter;
     private readonly IBlockAccessListManager _manager;
-    private readonly int _balIndex;
+    private readonly uint _balIndex;
 
-    internal TxProcessorLease(ITransactionProcessorAdapter adapter, IBlockAccessListManager manager, int balIndex)
+    internal TxProcessorLease(ITransactionProcessorAdapter adapter, IBlockAccessListManager manager, uint balIndex)
     {
         Adapter = adapter;
         _manager = manager;

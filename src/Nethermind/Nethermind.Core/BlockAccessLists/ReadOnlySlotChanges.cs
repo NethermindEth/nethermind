@@ -33,7 +33,7 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     public ReadOnlySlotChanges(UInt256 key) : this(key, []) { }
 
     /// <summary>Storage value as visible at the start of <paramref name="blockAccessIndex"/> (i.e. last change strictly before the index).</summary>
-    public byte[] Get(int blockAccessIndex)
+    public byte[] Get(uint blockAccessIndex)
     {
         Span<byte> tmp = stackalloc byte[32];
         UInt256 lastValue = 0;
@@ -52,7 +52,9 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
         return [.. tmp.WithoutLeadingZeros()];
     }
 
-    /// <summary>Adds a prestate change at index -1 — only used during prestate loading.
-    /// Prepended (one realloc) to preserve the sorted-by-index invariant.</summary>
+    /// <summary>Adds a prestate change at <see cref="Eip7928Constants.PrestateIndex"/> — only used
+    /// during prestate loading. Prepended (one realloc); sort order is preserved because the
+    /// prestate-aware comparer (see <see cref="PrestateAwareIndexComparer"/>) places the
+    /// sentinel ahead of every real index.</summary>
     public void LoadPreStateChange(StorageChange storageChange) => Changes = [storageChange, .. Changes];
 }
