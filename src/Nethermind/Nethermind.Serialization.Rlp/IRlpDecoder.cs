@@ -131,13 +131,6 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public T DecodeComplete(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            T result = Decode(ref decoderContext, rlpBehaviors);
-            decoderContext.CheckEnd();
-            return result;
-        }
-
         protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 }
