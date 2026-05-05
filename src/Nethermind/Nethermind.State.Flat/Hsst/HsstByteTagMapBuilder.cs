@@ -9,22 +9,24 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Builds a tiny single-byte-keyed HSST. The output is concatenated values followed by a
-/// flat trailer: <c>[Ends: N×u32 LE][Tags: N×u8][Count: u8 = N][IndexType: u8 = 0x08]</c>.
+/// flat trailer: <c>[Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8 = 0x08]</c>.
 /// Designed for the persisted-snapshot column container (≤7 entries), per-address
 /// sub-tag map (≤3 entries), and the slot-suffix bucket (≤256 entries) where the
 /// b-tree's fixed parse cost dominates.
 ///
 /// Tags must be added in strictly ascending order. <c>N</c> is capped at
-/// <see cref="MaxEntries"/> (255) — the on-disk <c>Count</c> field is a single byte.
+/// <see cref="MaxEntries"/> (256). The on-disk <c>Count</c> byte stores <c>N - 1</c>,
+/// so 0..255 cover all 256 possible entry counts; the empty map cannot be represented
+/// — callers must skip <see cref="Build"/> for empty maps.
 /// </summary>
 public ref struct HsstByteTagMapBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
     /// <summary>
-    /// Maximum entries per ByteTagMap HSST — the on-disk <c>Count</c> field is a
-    /// single byte, and <c>0</c> is reserved for the empty case.
+    /// Maximum entries per ByteTagMap HSST. The on-disk <c>Count</c> byte stores
+    /// <c>N - 1</c>, so a single byte covers entry counts 1..256.
     /// </summary>
-    public const int MaxEntries = 255;
+    public const int MaxEntries = 256;
 
     private const int InitialCapacity = 16;
 
@@ -70,10 +72,10 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     /// </summary>
     public void FinishValueWrite(byte tag)
     {
+        if (_count >= MaxEntries)
+            throw new InvalidOperationException($"ByteTagMap supports at most {MaxEntries} entries (Count byte stores N-1)");
         if (_count > 0 && tag <= _tags![_count - 1])
             throw new ArgumentException($"Tags must be strictly ascending; got 0x{tag:X2} after 0x{_tags[_count - 1]:X2}", nameof(tag));
-        if (_count >= MaxEntries)
-            throw new InvalidOperationException($"ByteTagMap supports at most {MaxEntries} entries (Count is u8)");
 
         EnsureCapacity(_count + 1);
         uint end = (uint)(_writer.Written - _baseOffset);
@@ -137,22 +139,23 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     public void Build()
     {
         int n = _count;
-        if (n > 0)
-        {
-            // Ends section.
-            Span<byte> endsSpan = _writer.GetSpan(n * 4);
-            for (int i = 0; i < n; i++)
-                BinaryPrimitives.WriteUInt32LittleEndian(endsSpan[(i * 4)..], _ends![i]);
-            _writer.Advance(n * 4);
+        if (n == 0)
+            throw new InvalidOperationException("ByteTagMap cannot encode an empty map; the caller must omit Build for zero-entry maps");
 
-            // Tags section (adjacent to Count so reader hits it on the same cache line).
-            Span<byte> tagsSpan = _writer.GetSpan(n);
-            for (int i = 0; i < n; i++) tagsSpan[i] = _tags![i];
-            _writer.Advance(n);
-        }
+        // Ends section.
+        Span<byte> endsSpan = _writer.GetSpan(n * 4);
+        for (int i = 0; i < n; i++)
+            BinaryPrimitives.WriteUInt32LittleEndian(endsSpan[(i * 4)..], _ends![i]);
+        _writer.Advance(n * 4);
 
+        // Tags section (adjacent to Count so reader hits it on the same cache line).
+        Span<byte> tagsSpan = _writer.GetSpan(n);
+        for (int i = 0; i < n; i++) tagsSpan[i] = _tags![i];
+        _writer.Advance(n);
+
+        // Count byte stores N - 1 so a single byte covers 1..256.
         Span<byte> trailer = _writer.GetSpan(2);
-        trailer[0] = (byte)n;
+        trailer[0] = (byte)(n - 1);
         trailer[1] = (byte)IndexType.ByteTagMap;
         _writer.Advance(2);
     }

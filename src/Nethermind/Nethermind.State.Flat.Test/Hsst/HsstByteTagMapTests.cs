@@ -60,19 +60,21 @@ public class HsstByteTagMapTests
         return entries;
     }
 
-    [TestCase(0)]
     [TestCase(1)]
     [TestCase(3)]
     [TestCase(7)]
     [TestCase(32)]
+    [TestCase(256)]
     public void RoundTrip_HitsMissesAndIteration(int n)
     {
         // Tags strictly ascending; mix small + larger values; include an empty value.
+        // For n=256 the byte space is exhausted so use sequential 0..255; for smaller
+        // n keep the i*7+3 stride pattern (still ascending and distinct under 256).
         byte[] tags = new byte[n];
         byte[][] vals = new byte[n][];
         for (int i = 0; i < n; i++)
         {
-            tags[i] = (byte)(i * 7 + 3); // ascending, distinct
+            tags[i] = n == 256 ? (byte)i : (byte)(i * 7 + 3);
             int len = (i % 5 == 0) ? 0 : (i + 1) * 11;
             vals[i] = new byte[len];
             for (int k = 0; k < len; k++) vals[i][k] = (byte)((i * 17 + k * 13) & 0xff);
@@ -80,7 +82,7 @@ public class HsstByteTagMapTests
 
         byte[] data = Build(tags, vals);
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.ByteTagMap));
-        Assert.That(data[^2], Is.EqualTo((byte)n));
+        Assert.That(data[^2], Is.EqualTo((byte)(n - 1)));
 
         // Hits.
         for (int i = 0; i < n; i++)
@@ -160,6 +162,8 @@ public class HsstByteTagMapTests
             using HsstByteTagMapBuilder<PooledByteBufferWriter.Writer> b3 = new(ref p3.GetWriter());
             for (int i = 0; i < HsstByteTagMapBuilder<PooledByteBufferWriter.Writer>.MaxEntries; i++)
                 b3.Add((byte)i, [(byte)i]);
+            // 256 distinct byte tags exhaust the keyspace; the next Add must throw on the count cap
+            // before the ascending check rejects the duplicate.
             try { b3.Add(0xFF, [0xFF]); } catch (InvalidOperationException) { over = true; }
         }
         Assert.That(over, Is.True, "exceeding MaxEntries must throw");
@@ -174,15 +178,17 @@ public class HsstByteTagMapTests
     }
 
     [Test]
-    public void Empty_EncodesAsTwoBytesAndYieldsNoEntries()
+    public void Empty_BuildThrows()
     {
-        byte[] data = Build([], []);
-        Assert.That(data.Length, Is.EqualTo(2));
-        Assert.That(data[0], Is.EqualTo((byte)0));
-        Assert.That(data[1], Is.EqualTo((byte)IndexType.ByteTagMap));
-
-        Assert.That(TryGet(data, [0x00], out _), Is.False);
-        Assert.That(Materialize(data), Is.Empty);
+        // The Count byte stores N - 1 so the empty map cannot be represented; callers
+        // must skip Build() for zero-entry maps.
+        bool threw = false;
+        using (PooledByteBufferWriter p = new(64))
+        {
+            using HsstByteTagMapBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+            try { b.Build(); } catch (InvalidOperationException) { threw = true; }
+        }
+        Assert.That(threw, Is.True, "Build on an empty ByteTagMap must throw");
     }
 
     [Test]
@@ -192,10 +198,10 @@ public class HsstByteTagMapTests
         byte[] data = Build([0x01, 0x02, 0x03], ["AB"u8.ToArray(), [], "Z"u8.ToArray()]);
 
         // Expected layout: [Value_0=2][Value_1=0][Value_2=1][Ends:3*4][Tags:3][Count:1][IndexType:1]
-        // Ends: [2, 2, 3] (cumulative end offsets from byte 0 of HSST).
+        // Ends: [2, 2, 3] (cumulative end offsets from byte 0 of HSST). Count stores N-1 = 2.
         Assert.That(data.Length, Is.EqualTo(2 + 0 + 1 + 12 + 3 + 1 + 1));
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.ByteTagMap));
-        Assert.That(data[^2], Is.EqualTo((byte)3));
+        Assert.That(data[^2], Is.EqualTo((byte)2));
         // Tags adjacent to count.
         Assert.That(data[^5..^2], Is.EqualTo(new byte[] { 0x01, 0x02, 0x03 }));
         // Ends right before tags: 3 little-endian u32.

@@ -129,10 +129,9 @@ public sealed class HsstMergeEnumerator : IDisposable
     private static void CollectByteTagMap(ReadOnlySpan<byte> data,
         NativeMemoryList<(int, int, int, int)> entries)
     {
-        // Trailer layout: [Ends: N×u32 LE][Tags: N×u8][Count: u8][IndexType: u8 = 0x08]
+        // Trailer layout: [Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8 = 0x08]
         if (data.Length < 2) return;
-        int n = data[data.Length - 2];
-        if (n == 0) return;
+        int n = data[data.Length - 2] + 1;
         int trailerLen = 2 + n + n * 4;
         if (trailerLen > data.Length) return;
         int tagsStart = data.Length - 2 - n;

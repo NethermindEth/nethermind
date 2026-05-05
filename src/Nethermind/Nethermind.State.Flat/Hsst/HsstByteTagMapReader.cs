@@ -40,7 +40,8 @@ internal static class HsstByteTagMapReader
 
         Span<byte> oneByte = stackalloc byte[1];
         if (!reader.TryRead(bound.Offset + bound.Length - 2, oneByte)) return false;
-        int count = oneByte[0];
+        // Count byte stores N - 1; the empty map cannot be represented by this format.
+        int count = oneByte[0] + 1;
 
         long trailerLen = 2L + count + (long)count * 4;
         if (trailerLen > bound.Length) return false;
@@ -66,7 +67,6 @@ internal static class HsstByteTagMapReader
     {
         resultBound = default;
         if (!TryReadLayout<TReader, TPin>(in reader, bound, out Layout L)) return false;
-        if (L.Count == 0) return false;
 
         // Exact-match against this format requires a single-byte key.
         if (exactMatch && key.Length != 1) return false;
