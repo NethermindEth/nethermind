@@ -1205,7 +1205,33 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task trace_block_with_unknown_fork_name_returns_error_listing_available_forks()
+    public async Task trace_block_with_valid_fork_name_returns_traces()
+    {
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
+            context.TraceRpcModule.trace_block(BlockParameter.Latest, new ForkActivationParameter { ForkName = "Berlin" });
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+    }
+
+    [Test]
+    public async Task trace_block_fork_parameter_is_deserialized_from_json()
+    {
+        // Verifies the full JSON-RPC wire path: {"forkName":"Berlin"} → ForkActivationParameter.ForkName
+        Context context = new();
+        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
+
+        string serialized = await RpcTest.TestSerializedRequest(
+            context.TraceRpcModule, "trace_block", "latest", "{\"forkName\":\"Berlin\"}");
+
+        serialized.Should().NotContain("\"error\"",
+            "a valid forkName in JSON must deserialize correctly and not produce an error");
+    }
+
+    [Test]
+    public async Task trace_block_unknown_fork_returns_invalid_params_failure_listing_known_forks()
     {
         Context context = new();
         await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
@@ -1215,11 +1241,12 @@ public class TraceRpcModuleTests
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
-        result.Result.Error.Should().Contain("Berlin", "error message should list known fork names so callers can correct the request");
+        result.Result.Error.Should().Contain("Berlin",
+            "the error message must list known fork names so callers can correct the request");
     }
 
     [Test]
-    public async Task trace_block_when_spec_provider_is_not_fork_aware_returns_error()
+    public async Task trace_block_non_fork_aware_provider_returns_invalid_params_failure_mentioning_not_supported()
     {
         Context context = new();
         await context.Build(new TestSpecProvider(Berlin.Instance));
@@ -1232,85 +1259,90 @@ public class TraceRpcModuleTests
         result.Result.Error.Should().Contain("does not support fork overrides");
     }
 
-    [Test]
-    public async Task trace_block_fork_override_changes_modexp_gas_cost()
+    // ── ModExp gas under fork override ────────────────────────────────────────
+    //
+    // Input: base=2, exp=2^255, mod=3, all fields 32 bytes.
+    //
+    // Istanbul (pre-EIP-2565, EIP-198 formula):
+    //   complexity  = max(base_len, mod_len)^2            = 32^2   = 1024
+    //   adjusted    = index-of-highest-bit(exp)           = 255
+    //   gas         = complexity * adjusted / 20          = 13056
+    //
+    // Berlin (EIP-2565):
+    //   complexity  = ceil(max(base_len, mod_len) / 8)^2  = 4^2    = 16
+    //   iterations  = bit_length(exp) - 1                 = 255
+    //   gas         = complexity * iterations / 3         = 1360
+
+    private static byte[] BuildModExpInput()
+    {
+        byte[] input = new byte[96 + 32 + 32 + 32];
+        input[31] = 32;          // base_length = 32
+        input[63] = 32;          // exp_length  = 32
+        input[95] = 32;          // mod_length  = 32
+        input[96 + 31] = 2;      // base = 2
+        input[96 + 32] = 0x80;   // exp = 2^255 (MSB set)
+        input[96 + 64 + 31] = 3; // mod = 3
+        return input;
+    }
+
+    private static async Task<(Context context, BlockParameter block)> BuildModExpBlockAsync()
     {
         Context context = new();
         await context.Build(new ForkAwareTestSpecProvider(Byzantium.Instance, MainnetSpecProvider.Instance));
 
-        // ModExp input: 2^(2^255) mod 3 with 32-byte base, exp, and mod fields.
-        // Pre-EIP-2565 (Istanbul) gas = max(200, 32^2 * 255 / 20) = 13056.
-        // Post-EIP-2565 (Berlin) gas  = max(200, ceil(32/8)^2 * 255 / 8) = 510.
-        byte[] modExpInput = new byte[96 + 32 + 32 + 32];
-        modExpInput[31] = 32;        // base_length = 32
-        modExpInput[63] = 32;        // exp_length  = 32
-        modExpInput[95] = 32;        // mod_length  = 32
-        modExpInput[96 + 31] = 2;    // base = 2
-        modExpInput[96 + 32] = 0x80; // exp = 2^255 (highest bit)
-        modExpInput[96 + 64 + 31] = 3; // mod = 3
+        UInt256 nonce = context.Blockchain.StateReader.GetNonce(
+            context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
 
-        UInt256 nonce = context.Blockchain.StateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
         Transaction tx = Build.A.Transaction
             .WithTo(Address.FromNumber(5))
-            .WithData(modExpInput)
+            .WithData(BuildModExpInput())
             .WithGasLimit(50_000)
             .WithNonce(nonce)
             .SignedAndResolved(context.Blockchain.EthereumEcdsa, TestItem.PrivateKeyB)
             .TestObject;
+
         await context.Blockchain.AddBlock(tx);
+        return (context, new BlockParameter(context.Blockchain.BlockTree.Head!.Number));
+    }
 
-        BlockParameter lastBlock = new(context.Blockchain.BlockTree.Head!.Number);
+    private static long ModExpGasUsed(
+        Context context, BlockParameter block, string forkName) =>
+        context.TraceRpcModule
+            .trace_block(block, new ForkActivationParameter { ForkName = forkName })
+            .Data.First(t => t.Type == "call").Result!.GasUsed;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> istanbulTraces =
-            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Istanbul" });
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> berlinTraces =
-            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Berlin" });
+    [Test]
+    public async Task trace_block_istanbul_modexp_gas_cost_is_13056()
+    {
+        (Context context, BlockParameter block) = await BuildModExpBlockAsync();
 
-        long istanbulGas = istanbulTraces.Data.First(t => t.Type == "call").Result!.GasUsed;
-        long berlinGas = berlinTraces.Data.First(t => t.Type == "call").Result!.GasUsed;
+        long gasUsed = ModExpGasUsed(context, block, "Istanbul");
 
-        berlinGas.Should().BeLessThan(istanbulGas,
-            "EIP-2565 (Berlin) reduces ModExp gas cost relative to the pre-EIP-2565 formula used in Istanbul");
+        gasUsed.Should().Be(13056,
+            "pre-EIP-2565 formula: 32^2 * 255 / 20 = 13056");
+    }
+
+    [Test]
+    public async Task trace_block_berlin_modexp_gas_cost_is_1360()
+    {
+        (Context context, BlockParameter block) = await BuildModExpBlockAsync();
+
+        long gasUsed = ModExpGasUsed(context, block, "Berlin");
+
+        gasUsed.Should().Be(1360,
+            "EIP-2565 formula: ceil(32/8)^2 * 255 / 3 = 16 * 255 / 3 = 1360");
     }
 
     [Test]
     public async Task trace_block_fork_override_does_not_persist_between_calls()
     {
-        Context context = new();
-        await context.Build(new ForkAwareTestSpecProvider(Byzantium.Instance, MainnetSpecProvider.Instance));
+        (Context context, BlockParameter block) = await BuildModExpBlockAsync();
 
-        byte[] modExpInput = new byte[96 + 32 + 32 + 32];
-        modExpInput[31] = 32;
-        modExpInput[63] = 32;
-        modExpInput[95] = 32;
-        modExpInput[96 + 31] = 2;
-        modExpInput[96 + 32] = 0x80;
-        modExpInput[96 + 64 + 31] = 3;
+        long firstIstanbulGas = ModExpGasUsed(context, block, "Istanbul");
+        ModExpGasUsed(context, block, "Berlin");
+        long secondIstanbulGas = ModExpGasUsed(context, block, "Istanbul");
 
-        UInt256 nonce = context.Blockchain.StateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
-        Transaction tx = Build.A.Transaction
-            .WithTo(Address.FromNumber(5))
-            .WithData(modExpInput)
-            .WithGasLimit(50_000)
-            .WithNonce(nonce)
-            .SignedAndResolved(context.Blockchain.EthereumEcdsa, TestItem.PrivateKeyB)
-            .TestObject;
-        await context.Blockchain.AddBlock(tx);
-
-        BlockParameter lastBlock = new(context.Blockchain.BlockTree.Head!.Number);
-
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> firstCall =
-            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Istanbul" });
-
-        context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Berlin" });
-
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> secondCall =
-            context.TraceRpcModule.trace_block(lastBlock, new ForkActivationParameter { ForkName = "Istanbul" });
-
-        long firstGas = firstCall.Data.First(t => t.Type == "call").Result!.GasUsed;
-        long secondGas = secondCall.Data.First(t => t.Type == "call").Result!.GasUsed;
-
-        firstGas.Should().Be(secondGas,
-            "the Berlin fork override from the intervening call must not leak into subsequent calls using a different fork");
+        secondIstanbulGas.Should().Be(firstIstanbulGas,
+            "the Berlin override from the intervening call must not leak into subsequent calls");
     }
 }
