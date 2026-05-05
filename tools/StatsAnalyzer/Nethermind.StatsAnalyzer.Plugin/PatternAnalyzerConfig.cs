@@ -51,6 +51,9 @@ public class PatternAnalyzerConfig : IPatternAnalyzerConfig
 
     public HashSet<Instruction> GetIgnoreSet()
     {
-        return Ignore.Split(',').Select(item => (Instruction)Enum.Parse(typeof(Instruction), item)).ToHashSet();
+        if (string.IsNullOrWhiteSpace(Ignore)) return [];
+        return Ignore.Split(',')
+                     .Select(item => (Instruction)Enum.Parse(typeof(Instruction), item.Trim()))
+                     .ToHashSet();
     }
 }
