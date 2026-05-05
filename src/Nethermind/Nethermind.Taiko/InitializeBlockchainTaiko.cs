@@ -8,8 +8,14 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Taiko;
 
-public class InitializeBlockchainTaiko(TaikoNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+public class InitializeBlockchainTaiko(
+    TaikoNethermindApi api,
+    IChainHeadInfoProvider chainHeadInfoProvider,
+    ITxGossipPolicy txGossipPolicy,
+    TaikoBeaconHeadAdvancer headAdvancer) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
+    private readonly TaikoBeaconHeadAdvancer _headAdvancer = headAdvancer;
+
     protected override IBlockProductionPolicy CreateBlockProductionPolicy() => NeverStartBlockProductionPolicy.Instance;
 
     /// <summary>
