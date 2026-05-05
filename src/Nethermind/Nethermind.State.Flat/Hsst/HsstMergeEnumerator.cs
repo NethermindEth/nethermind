@@ -23,7 +23,11 @@ public sealed class HsstMergeEnumerator : IDisposable
     // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length.
     // Backed by NativeMemoryList so the per-merge enumerator allocations sit off the managed heap.
     private readonly NativeMemoryList<(int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)> _entries;
-    private bool _isInline;
+    // True when each tuple's slots point directly at (keyOffset, keyLen, valueOffset, valueLen)
+    // — no further data-region decoding needed (ByteTagMap, PackedArray).
+    // False when the second pair is a metaStart pointer that needs LEB128 decoding to recover
+    // the full key and value (BTree, BTreeHashIndex).
+    private bool _directEntries;
     private int _index = -1;
 
     // Single reusable key buffer (NativeMemoryList, disposed in Dispose()).
@@ -47,9 +51,8 @@ public sealed class HsstMergeEnumerator : IDisposable
         IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
         if (tag == IndexType.ByteTagMap)
         {
-            // ByteTagMap: key (1 byte) lives in the tags section, value at a known absolute
-            // offset; GetCurrentValue / MoveNext follow the inline-style branches.
-            _isInline = true;
+            // ByteTagMap: key (1 byte) lives in the tags section, value at a known absolute offset.
+            _directEntries = true;
             _entries = new NativeMemoryList<(int, int, int, int)>(8);
             CollectByteTagMap(hsstData, _entries);
             return;
@@ -58,8 +61,8 @@ public sealed class HsstMergeEnumerator : IDisposable
         if (tag == IndexType.PackedArray)
         {
             // PackedArray's data section is a packed [key|value][key|value]... array. Both
-            // key and value are inline at fixed offsets.
-            _isInline = true;
+            // key and value sit at fixed offsets.
+            _directEntries = true;
             SpanByteReader spanReader = new(hsstData);
             if (HsstPackedArrayReader.TryReadLayout<SpanByteReader, NoOpPin>(
                     in spanReader, new Bound(0, hsstData.Length), out HsstPackedArrayReader.Layout layout))
@@ -175,15 +178,15 @@ public sealed class HsstMergeEnumerator : IDisposable
     {
         if (++_index >= _entries.Count) return false;
         (int sepOff, int sepLen, int metaOrValOff, _) = _entries[_index];
-        if (_isInline)
+        if (_directEntries)
         {
-            // Inline mode: separator IS the full key; copy from the leaf section.
+            // First pair IS the full-key bound; copy directly.
             data.Slice(sepOff, sepLen).CopyTo(_keyBufferList.AsSpan());
             _keyLength = sepLen;
         }
         else
         {
-            // Non-inline: data-region entry carries the full key — copy it directly.
+            // metaStart points into a data-region entry that carries the full key.
             ReadEntry(data, metaOrValOff, out ReadOnlySpan<byte> fullKey, out _);
             fullKey.CopyTo(_keyBufferList.AsSpan());
             _keyLength = fullKey.Length;
@@ -196,7 +199,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     public ReadOnlySpan<byte> GetCurrentValue(ReadOnlySpan<byte> data)
     {
         (_, _, int metaOrValOff, int valLen) = _entries[_index];
-        if (_isInline) return valLen == 0 ? [] : data.Slice(metaOrValOff, valLen);
+        if (_directEntries) return valLen == 0 ? [] : data.Slice(metaOrValOff, valLen);
         ReadEntry(data, metaOrValOff, out _, out ReadOnlySpan<byte> value);
         return value;
     }
@@ -204,7 +207,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     public (int Offset, int Length) GetCurrentValueBound(ReadOnlySpan<byte> data)
     {
         (_, _, int metaOrValOff, int valLen) = _entries[_index];
-        if (_isInline) return (metaOrValOff, valLen);
+        if (_directEntries) return (metaOrValOff, valLen);
         int pos = metaOrValOff;
         int valueLength = Leb128.Read(data, ref pos);
         return (metaOrValOff - valueLength, valueLength);
