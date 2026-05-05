@@ -2,27 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>
-/// Microbenchmark targeting the HSST seek hot path
-/// (<see cref="HsstReader{TReader, TPin}.TrySeek"/> +
-/// <see cref="Nethermind.State.Flat.BSearchIndex.BSearchIndexReader"/> binary search).
-///
-/// Uses 32-byte uniformly-random keys with <c>minSeparatorLength=4</c> to mirror the
-/// production state-tree shape (UnL-4 dominant). Sweeps over leaf size and
-/// SIMD-on/off so we can compare scalar binary search against the SIMD floor scan.
-///
-/// Recommended invocation: <c>--filter '*HsstReaderBenchmark*' --launchCount 1
-/// --warmupCount 3 --iterationCount 5</c>.
+/// Microbenchmark targeting the HSST seek hot path. Workload: 8M unique 4-byte
+/// random keys, 8-byte values. Sweeps Flat / FlatSplitIndex / inline b-tree
+/// (with three leaf-fanout sizes × {None, OneByte, TwoBytes} in-leaf hash probe).
+/// Sizes are logged to /tmp/hsst-bench-sizes.csv during setup.
 /// </summary>
 [MemoryDiagnoser]
 public class HsstReaderBenchmark
 {
+    public enum Scenario
+    {
+        Flat,
+        Flat_NoHashTable,
+        BTree,
+        BTree_HashIndex,
+    }
+
     private byte[] _hsst = null!;
     private byte[][] _hitKeys = null!;
     private byte[][] _missKeys = null!;
@@ -30,67 +34,74 @@ public class HsstReaderBenchmark
     [Params(8_000_000)]
     public int EntryCount { get; set; }
 
-    [Params(64, 128, 256, 512, 1024)]
-    public int MaxLeafEntries { get; set; }
-
-    [Params(false, true)]
+    [Params(false)]
     public bool SimdEnabled { get; set; }
 
-    [Params(false, true)]
-    public bool BranchlessSearch { get; set; }
+    [Params(Scenario.Flat, Scenario.Flat_NoHashTable, Scenario.BTree, Scenario.BTree_HashIndex)]
+    public Scenario Variant { get; set; }
 
-    private const int KeyLen = 32;
-    private const int MinSep = 4;
+    [Params(1024)]
+    public int StrideBytes { get; set; }
+
+    [Params(1024)]
+    public int SummaryStrideBytes { get; set; }
+
+    private const int KeyLen = 4;
+    private const int ValLen = 8;
     private const int LookupBatch = 10_000;
+    private const string SizeLogPath = "/tmp/hsst-bench-sizes.csv";
 
     [GlobalSetup]
     public void Setup()
     {
         BSearchIndexReaderSimd.Enabled = SimdEnabled;
-        BSearchIndexReader.BranchlessSearch = BranchlessSearch;
 
+        // Oversample to dedupe 4-byte random keys (~5K collisions in 8M draws on 32-bit space).
         Random rng = new(42);
-        byte[][] keys = new byte[EntryCount][];
-        for (int i = 0; i < EntryCount; i++)
+        int sample = EntryCount + EntryCount / 64 + 1024;
+        byte[][] raw = new byte[sample][];
+        for (int i = 0; i < sample; i++)
         {
             byte[] k = new byte[KeyLen];
             rng.NextBytes(k);
-            keys[i] = k;
+            raw[i] = k;
         }
-        Array.Sort(keys, static (a, b) => a.AsSpan().SequenceCompareTo(b));
+        Array.Sort(raw, static (a, b) => a.AsSpan().SequenceCompareTo(b));
+        byte[][] keys = new byte[EntryCount][];
+        int kept = 0;
+        for (int i = 0; i < sample && kept < EntryCount; i++)
+        {
+            if (kept == 0 || !raw[i].AsSpan().SequenceEqual(keys[kept - 1]))
+                keys[kept++] = raw[i];
+        }
+        if (kept < EntryCount)
+            throw new InvalidOperationException($"Only {kept} unique keys after dedupe; raise sample size.");
 
         using PooledByteBufferWriter pooled = new(1024 * 1024 * 1024);
-        HsstBuilder<PooledByteBufferWriter.Writer> builder = new(
-            ref pooled.GetWriter(), new HsstBTreeOptions
-            {
-                MinSeparatorLength = MinSep,
-                MaxLeafEntries = MaxLeafEntries,
-            });
-        try
+        switch (Variant)
         {
-            Span<byte> value = stackalloc byte[8];
-            for (int i = 0; i < EntryCount; i++)
-            {
-                for (int b = 0; b < 8; b++)
-                    value[7 - b] = (byte)((ulong)i >> (b * 8));
-                builder.Add(keys[i], value);
-            }
-            builder.Build();
-            _hsst = pooled.WrittenSpan.ToArray();
+            case Scenario.Flat:
+                BuildFlat(ref pooled.GetWriter(), keys, useHashIndex: true, StrideBytes, SummaryStrideBytes);
+                break;
+            case Scenario.Flat_NoHashTable:
+                BuildFlat(ref pooled.GetWriter(), keys, useHashIndex: false, StrideBytes, SummaryStrideBytes);
+                break;
+            case Scenario.BTree:
+                BuildBTree(ref pooled.GetWriter(), keys, useHashIndex: false);
+                break;
+            case Scenario.BTree_HashIndex:
+                BuildBTree(ref pooled.GetWriter(), keys, useHashIndex: true);
+                break;
         }
-        finally
-        {
-            builder.Dispose();
-        }
+        _hsst = pooled.WrittenSpan.ToArray();
+        AppendSizeLog(Variant, StrideBytes, SummaryStrideBytes, _hsst.Length, EntryCount);
+        DumpFlatLayout(Variant, StrideBytes, SummaryStrideBytes, _hsst);
 
-        // Hit keys: shuffled subset of stored keys (so seeks land on existing entries).
         Random hitRng = new(0xC0FFEE);
         _hitKeys = new byte[LookupBatch][];
         for (int i = 0; i < LookupBatch; i++)
             _hitKeys[i] = keys[hitRng.Next(EntryCount)];
 
-        // Miss keys: independently-drawn random 32-byte values; collision with stored keys
-        // has probability ≈ EntryCount / 2^256, i.e. effectively zero.
         _missKeys = new byte[LookupBatch][];
         for (int i = 0; i < LookupBatch; i++)
         {
@@ -98,6 +109,85 @@ public class HsstReaderBenchmark
             hitRng.NextBytes(k);
             _missKeys[i] = k;
         }
+    }
+
+    private static void BuildFlat(ref PooledByteBufferWriter.Writer writer, byte[][] keys, bool useHashIndex, int strideBytes, int summaryStrideBytes)
+    {
+        // summaryStrideBytes ignored (HsstPackedArrayBuilder uses one stride for both levels).
+        _ = summaryStrideBytes;
+        HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> b = new(ref writer, KeyLen, ValLen,
+            binaryIndexStrideBytes: strideBytes,
+            useHashIndex: useHashIndex);
+        try
+        {
+            Span<byte> v = stackalloc byte[ValLen];
+            for (int i = 0; i < keys.Length; i++) { Encode(v, i); b.Add(keys[i], v); }
+            b.Build();
+        }
+        finally { b.Dispose(); }
+    }
+
+    private static void BuildBTree(ref PooledByteBufferWriter.Writer writer, byte[][] keys, bool useHashIndex)
+    {
+        HsstBuilder<PooledByteBufferWriter.Writer> b = new(ref writer, new HsstBTreeOptions
+        {
+            UseHashIndex = useHashIndex,
+            MaxLeafEntries = 256,
+            MaxIntermediateEntries = 256,
+        });
+        try
+        {
+            Span<byte> v = stackalloc byte[ValLen];
+            for (int i = 0; i < keys.Length; i++) { Encode(v, i); b.Add(keys[i], v); }
+            b.Build();
+        }
+        finally { b.Dispose(); }
+    }
+
+    private static void Encode(Span<byte> v, int i)
+    {
+        for (int b = 0; b < ValLen; b++)
+            v[ValLen - 1 - b] = (byte)((ulong)i >> (b * 8));
+    }
+
+    private static void AppendSizeLog(Scenario s, int stride, int summaryStride, int bytes, int entryCount)
+    {
+        try
+        {
+            File.AppendAllText(SizeLogPath,
+                $"{s},stride={stride},summary={summaryStride},{bytes},{(double)bytes / entryCount:F3}\n");
+        }
+        catch { /* best-effort */ }
+    }
+
+    private static void DumpFlatLayout(Scenario s, int stride, int summaryStride, byte[] hsst)
+    {
+        try
+        {
+            // Footer layout (HsstFlatReader.TryReadLayout):
+            //   ...[Metadata: keySize, valueSize, entryCount, tableSize,
+            //       entriesPerCk0Log2, recordsPerCkHigherLog2, depth,
+            //       counts[0..depth)][MetadataLength: u8][IndexType: u8]
+            int hsstEnd = hsst.Length;
+            int metaLen = hsst[hsstEnd - 2];
+            int metaStart = hsstEnd - 2 - metaLen;
+            ReadOnlySpan<byte> meta = hsst.AsSpan(metaStart, metaLen);
+            int p = 0;
+            int keySize = Leb128.Read(meta, ref p);
+            int valueSize = Leb128.Read(meta, ref p);
+            int entryCount = Leb128.Read(meta, ref p);
+            int tableSize = Leb128.Read(meta, ref p);
+            int e0log2 = Leb128.Read(meta, ref p);
+            int rhlog2 = Leb128.Read(meta, ref p);
+            int depth = Leb128.Read(meta, ref p);
+            int[] counts = new int[depth];
+            for (int i = 0; i < depth; i++) counts[i] = Leb128.Read(meta, ref p);
+
+            string line = $"{s},stride={stride},summary={summaryStride},keySize={keySize},entries={entryCount},tableSize={tableSize}," +
+                          $"entriesPerCk0={1 << e0log2},recordsPerCkHigher={1 << rhlog2},depth={depth},counts=[{string.Join(",", counts)}]";
+            File.AppendAllText("/tmp/hsst-bench-layouts.csv", line + "\n");
+        }
+        catch { /* best-effort */ }
     }
 
     [Benchmark]
