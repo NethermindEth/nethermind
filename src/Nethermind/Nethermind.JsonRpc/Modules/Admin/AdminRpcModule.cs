@@ -80,11 +80,6 @@ public class AdminRpcModule : IAdminRpcModule
         if (TryParseAsNetworkNode(enode, out NetworkNode? networkNode) is { } error) return error;
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
-        // Static-set removal triggers session disconnect via the NodeRemoved event chain
-        // (CompositeNodeSource -> PeerPool.NodeSourceOnNodeRemoved -> TryRemove -> MarkDisconnected).
-        // The direct TryRemove in finally is the idempotent fallback for non-static (discovered) peers,
-        // matching geth's Server.RemovePeer which works on any connected peer regardless of static membership.
-        // The finally guarantees the fallback runs even if SaveFileAsync is cancelled (persistent=true + RPC timeout).
         try
         {
             await _staticNodesManager.RemoveAsync(networkNode!, updateFile: persistent, timeout.Token);
@@ -107,10 +102,6 @@ public class AdminRpcModule : IAdminRpcModule
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
-        // GetOrAdd in finally guarantees the synchronous-pool-insertion contract holds even if
-        // AddAsync is cancelled (persistent=true + RPC timeout, or channel-write cancellation):
-        // without this, a peer could be added to the trusted in-memory dict but never reach the pool
-        // because the channel feed it depends on was aborted.
         try
         {
             await _trustedNodesManager.AddAsync(enodeObj!, updateFile: persistent, timeout.Token);
