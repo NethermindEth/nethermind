@@ -22,11 +22,8 @@ public ref struct HsstIndexBuilder<TWriter>
     private readonly bool _isInline;
     private readonly ReadOnlySpan<byte> _inlineValueBuffer;
     private readonly ReadOnlySpan<int> _inlineValueLengths;
-    private readonly ReadOnlySpan<uint> _entryHashes;
-    private readonly HashProbeMode _leafHashProbeMode;
 
-    public HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries, ReadOnlySpan<byte> separatorBuffer,
-        ReadOnlySpan<uint> entryHashes = default, HashProbeMode leafHashProbeMode = HashProbeMode.None)
+    public HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries, ReadOnlySpan<byte> separatorBuffer)
     {
         _writer = ref writer;
         _entries = entries;
@@ -34,13 +31,10 @@ public ref struct HsstIndexBuilder<TWriter>
         _isInline = false;
         _inlineValueBuffer = default;
         _inlineValueLengths = default;
-        _entryHashes = entryHashes;
-        _leafHashProbeMode = leafHashProbeMode;
     }
 
     public HsstIndexBuilder(ref TWriter writer, ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries, ReadOnlySpan<byte> separatorBuffer,
-        ReadOnlySpan<byte> inlineValueBuffer, ReadOnlySpan<int> inlineValueLengths,
-        ReadOnlySpan<uint> entryHashes = default, HashProbeMode leafHashProbeMode = HashProbeMode.None)
+        ReadOnlySpan<byte> inlineValueBuffer, ReadOnlySpan<int> inlineValueLengths)
     {
         _writer = ref writer;
         _entries = entries;
@@ -48,8 +42,6 @@ public ref struct HsstIndexBuilder<TWriter>
         _isInline = true;
         _inlineValueBuffer = inlineValueBuffer;
         _inlineValueLengths = inlineValueLengths;
-        _entryHashes = entryHashes;
-        _leafHashProbeMode = leafHashProbeMode;
     }
 
     /// <summary>
@@ -203,18 +195,13 @@ public ref struct HsstIndexBuilder<TWriter>
             keyBufSize += 2 + (entries[i].SepLen - prefixLen);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
-        ReadOnlySpan<uint> leafHashes = _leafHashProbeMode != HashProbeMode.None && _entryHashes.Length >= globalStartIndex + entries.Length
-            ? _entryHashes.Slice(globalStartIndex, entries.Length)
-            : default;
-
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = false,
             KeyType = keyType,
             BaseOffset = baseOffset,
             KeySlotSize = keySlotSize,
-            HashProbeMode = leafHashes.IsEmpty ? HashProbeMode.None : _leafHashProbeMode,
-        }, keyBuf, commonPrefix, leafHashes);
+        }, keyBuf, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[4];
         for (int i = 0; i < entries.Length; i++)
@@ -300,10 +287,6 @@ public ref struct HsstIndexBuilder<TWriter>
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
         Span<byte> valueBuf = stackalloc byte[valueBufSize];
 
-        ReadOnlySpan<uint> leafHashes = _leafHashProbeMode != HashProbeMode.None && _entryHashes.Length >= globalStartIndex + entries.Length
-            ? _entryHashes.Slice(globalStartIndex, entries.Length)
-            : default;
-
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = false,
@@ -312,8 +295,7 @@ public ref struct HsstIndexBuilder<TWriter>
             BaseOffset = 0,
             ValueType = valueType,
             ValueSlotSize = valueSlotSize,
-            HashProbeMode = leafHashes.IsEmpty ? HashProbeMode.None : _leafHashProbeMode,
-        }, keyBuf, valueBuf, commonPrefix, leafHashes);
+        }, keyBuf, valueBuf, commonPrefix);
 
         for (int i = 0; i < entries.Length; i++)
         {

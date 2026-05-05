@@ -5,7 +5,6 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -58,7 +57,7 @@ public ref struct HsstBuilder<TWriter>
     private NativeMemoryListRef<byte> _inlineValueBuffer;
     private NativeMemoryListRef<int> _inlineValueLengths;
 
-    // Hash index entry hashes (only allocated when UseHashIndex or LeafHashProbeMode != None)
+    // Hash index entry hashes (only allocated when UseHashIndex)
     private NativeMemoryListRef<uint> _entryHashes;
 
     public readonly struct HsstEntry(int sepOffset, int sepLen, int metadataStart)
@@ -103,13 +102,13 @@ public ref struct HsstBuilder<TWriter>
             _inlineValueLengths = new NativeMemoryListRef<int>(expectedKeyCount);
         }
 
-        if (opts.UseHashIndex || opts.LeafHashProbeMode != HashProbeMode.None)
+        if (opts.UseHashIndex)
         {
             _entryHashes = new NativeMemoryListRef<uint>(expectedKeyCount);
         }
     }
 
-    private bool NeedsEntryHashes => _options.UseHashIndex || _options.LeafHashProbeMode != HashProbeMode.None;
+    private bool NeedsEntryHashes => _options.UseHashIndex;
 
     /// <summary>
     /// Free working NativeMemory buffers.
@@ -232,7 +231,6 @@ public ref struct HsstBuilder<TWriter>
     /// </summary>
     public void Build()
     {
-        ReadOnlySpan<uint> entryHashes = NeedsEntryHashes ? _entryHashes.AsSpan() : default;
         int maxLeafEntries = _options.MaxLeafEntries;
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
 
@@ -245,9 +243,7 @@ public ref struct HsstBuilder<TWriter>
                 ref _writer, _entriesBuffer.AsSpan(),
                 _separatorBuffer.AsSpan(),
                 _inlineValueBuffer.AsSpan(),
-                _inlineValueLengths.AsSpan(),
-                entryHashes,
-                _options.LeafHashProbeMode);
+                _inlineValueLengths.AsSpan());
 
             indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries);
         }
@@ -257,9 +253,7 @@ public ref struct HsstBuilder<TWriter>
 
             HsstIndexBuilder<TWriter> indexBuilder = new(
                 ref _writer, _entriesBuffer.AsSpan(),
-                _separatorBuffer.AsSpan(),
-                entryHashes,
-                _options.LeafHashProbeMode);
+                _separatorBuffer.AsSpan());
 
             indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries);
         }

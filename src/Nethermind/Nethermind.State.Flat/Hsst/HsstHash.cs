@@ -9,8 +9,8 @@ namespace Nethermind.State.Flat.Hsst;
 internal static class HsstHash
 {
     /// <summary>
-    /// 32-bit hash used by <see cref="IndexType.BTreeHashIndex"/> and the in-leaf hash
-    /// probe for slot computation. Builder and reader must agree byte-for-byte.
+    /// 32-bit hash used by <see cref="IndexType.BTreeHashIndex"/> for slot computation.
+    /// Builder and reader must agree byte-for-byte.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static uint HashKey(scoped ReadOnlySpan<byte> key) =>

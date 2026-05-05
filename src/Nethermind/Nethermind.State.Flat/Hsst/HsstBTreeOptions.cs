@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.State.Flat.BSearchIndex;
-
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
@@ -30,9 +28,6 @@ public sealed record HsstBTreeOptions
 
     /// <summary>Target load factor for the file-level hash index. Must be in (0.1, 1.0].</summary>
     public double HashIndexTargetUtilization { get; init; } = 0.75;
-
-    /// <summary>Optional in-leaf hash probe section. Leaf-only; mutually exclusive widths.</summary>
-    public HashProbeMode LeafHashProbeMode { get; init; } = HashProbeMode.None;
 
     /// <summary>Maximum entries per leaf node before the builder splits.</summary>
     public int MaxLeafEntries { get; init; } = DefaultMaxLeafEntries;

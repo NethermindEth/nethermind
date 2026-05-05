@@ -33,8 +33,6 @@ public readonly ref struct HsstIndex
     public int GetIntValue(int index) => _inner.GetIntValue(index);
     public int FindFloorIndex(ReadOnlySpan<byte> key) => _inner.FindFloorIndex(key);
     public int GetFullKey(int index, Span<byte> dest) => _inner.GetFullKey(index, dest);
-    public ProbeResult ProbeSlot(ReadOnlySpan<byte> key, out int index) => _inner.ProbeSlot(key, out index);
-    public HashProbeMode HashProbeMode => _inner.HashProbeMode;
 
     public bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue) =>
         _inner.TryGetFloor(key, out floorKey, out floorValue);

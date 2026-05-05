@@ -6,7 +6,6 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -195,60 +194,6 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     // Exclusive end in reader-absolute terms = _bound.Offset + childOffset + 1.
                     currentAbsEnd = _bound.Offset + childOffset + 1;
                     continue;
-                }
-
-                // Leaf node — exact-match probe shortcut. Floor lookups skip the
-                // probe because the slot only resolves to one candidate; the b-tree
-                // walk is needed regardless to find the largest key strictly less
-                // than the input on misses.
-                if (exactMatch && node.HashProbeMode != HashProbeMode.None)
-                {
-                    ProbeResult pr = node.ProbeSlot(key, out int probedIdx);
-                    if (pr == ProbeResult.Empty) return false;
-                    if (pr == ProbeResult.Found)
-                    {
-                        if (isInline)
-                        {
-                            ReadOnlySpan<byte> pPrefix = node.CommonKeyPrefix;
-                            if (!key.StartsWith(pPrefix) || !key[pPrefix.Length..].SequenceEqual(node.GetKey(probedIdx)))
-                                return false;
-                            ReadOnlySpan<byte> probedVal = node.GetValue(probedIdx);
-                            if (probedVal.IsEmpty) { _bound = new Bound(0, 0); return true; }
-                            ReadOnlySpan<byte> nodeBytesP = pin.Buffer;
-                            int offsetInNodeP = (int)Unsafe.ByteOffset(
-                                ref Unsafe.AsRef(in MemoryMarshal.GetReference(nodeBytesP)),
-                                ref Unsafe.AsRef(in MemoryMarshal.GetReference(probedVal)));
-                            _bound = new Bound(nodeAbsStart + offsetInNodeP, probedVal.Length);
-                            return true;
-                        }
-                        else
-                        {
-                            // Non-inline: separator only. Verify by reading the full
-                            // key + value lengths from the data region at the entry's
-                            // metadata offset (same compare path as the b-tree leaf
-                            // branch below).
-                            ReadOnlySpan<byte> rawValue = node.GetValue(probedIdx);
-                            int metaStartP = BinaryPrimitives.ReadInt32LittleEndian(rawValue) + node.Metadata.BaseOffset;
-                            long absMetaStartP = _bound.Offset + metaStartP;
-                            long availableP = _bound.Offset + _bound.Length - absMetaStartP;
-                            if (availableP <= 0) return false;
-                            Span<byte> lebBufP = stackalloc byte[6];
-                            int lebReadP = (int)Math.Min(6, availableP);
-                            if (!_reader.TryRead(absMetaStartP, lebBufP[..lebReadP])) return false;
-                            int posP = 0;
-                            int valueLengthP = Leb128.Read(lebBufP, ref posP);
-                            if (posP >= lebReadP) return false;
-                            int keyLengthP = lebBufP[posP++];
-                            if (keyLengthP != key.Length) return false;
-                            Span<byte> storedP = stackalloc byte[255];
-                            Span<byte> storedSliceP = storedP[..keyLengthP];
-                            if (!_reader.TryRead(absMetaStartP + posP, storedSliceP)) return false;
-                            if (!storedSliceP.SequenceEqual(key)) return false;
-                            _bound = new Bound(absMetaStartP - valueLengthP, valueLengthP);
-                            return true;
-                        }
-                    }
-                    // Collision → fall through to binary search below.
                 }
 
                 if (isInline)
