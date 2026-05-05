@@ -14,4 +14,11 @@ public enum IndexType : byte
     BTreeHashIndex = 0x03,
     BTreeNodeHashIndex = 0x04,
     BTreeNodeHashIndexInlineValue = 0x05,
+    /// <summary>
+    /// Fixed-size key/value layout. Replaces the b-tree with a packed entry array, a sparse
+    /// "checkpoint" binary index (every ~1 KiB by default) for two-level binary search, and an
+    /// always-present open-addressed hash index. Requires every key and every value to be the
+    /// same size.
+    /// </summary>
+    FlatEntries = 0x06,
 }

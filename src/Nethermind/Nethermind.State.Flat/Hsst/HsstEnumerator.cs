@@ -45,6 +45,15 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly bool _isInline;
     private readonly bool _empty;
 
+    // FlatEntries state: a packed entry array, no b-tree walk. _flatIdx is the next entry to
+    // yield; -1 means not yet started; >= _flatEntryCount means exhausted.
+    private readonly bool _isFlat;
+    private readonly int _flatKeySize;
+    private readonly int _flatValueSize;
+    private readonly int _flatEntryCount;
+    private readonly long _flatDataStart;
+    private int _flatIdx;
+
     private AncestorStack _ancestors;
     /// <summary>Depth of the current leaf in the tree (0 = root). −1 = not yet started.</summary>
     private int _depth;
@@ -115,6 +124,25 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                     return;
                 }
                 break;
+            case IndexType.FlatEntries:
+                _isInline = false;
+                if (!HsstFlatReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstFlatReader.Layout flatLayout))
+                {
+                    _empty = true;
+                    return;
+                }
+                _isFlat = true;
+                _flatKeySize = flatLayout.KeySize;
+                _flatValueSize = flatLayout.ValueSize;
+                _flatEntryCount = flatLayout.EntryCount;
+                _flatDataStart = flatLayout.DataStart;
+                _flatIdx = -1;
+                if (flatLayout.EntryCount == 0)
+                {
+                    _empty = true;
+                    return;
+                }
+                break;
             default:
                 _empty = true;
                 _isInline = false;
@@ -126,6 +154,18 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     public bool MoveNext()
     {
         if (_empty) return false;
+
+        if (_isFlat)
+        {
+            int next = _flatIdx + 1;
+            if ((uint)next >= (uint)_flatEntryCount) return false;
+            _flatIdx = next;
+            int stride = _flatKeySize + _flatValueSize;
+            long entryAbsStart = _flatDataStart + (long)next * stride;
+            _currentKeyBound = new Bound(entryAbsStart, _flatKeySize);
+            _currentValueBound = new Bound(entryAbsStart + _flatKeySize, _flatValueSize);
+            return true;
+        }
 
         if (_depth < 0)
         {

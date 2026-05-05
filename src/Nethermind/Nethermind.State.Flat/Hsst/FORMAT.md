@@ -43,6 +43,7 @@ A compact, immutable binary format for sorted key/value tables.
 | **BTreeHashIndex** | `[Data Region][Index Region][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x03]` |
 | **BTreeNodeHashIndex** | `[Data Region][Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x04]` |
 | **BTreeNodeHashIndexInlineValue** | `[Index Region][NodeHashTable: 4·2^L bytes][TableSizeLog2: u8 = L][IndexType: u8 = 0x05]` |
+| **FlatEntries** | `[Data][BinaryIndex][HashTable: 4·2^L bytes][TableSizeLog2: u8 = L][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -54,6 +55,7 @@ the variant by enumerated value (not a bitfield):
 | `0x03` | `BTreeHashIndex` | `BTree` plus a trailing open-address hash table of metaStart pointers. |
 | `0x04` | `BTreeNodeHashIndex` | `BTree` plus a trailing hash table of leaf-node pointers. |
 | `0x05` | `BTreeNodeHashIndexInlineValue` | `BTreeInlineValue` plus a trailing hash table of leaf-node pointers. |
+| `0x06` | `FlatEntries` | Fixed-size key/value array with a sparse "checkpoint" binary index and an always-present hash table. |
 
 Other values are reserved for future index strategies. The root B-tree
 node lives just before the index type byte (or just before the hash table,
@@ -208,6 +210,76 @@ HSST is encoded as plain `BTree`).
 `leafCount / 2^L ≤ targetUtilization` — the table population is bounded
 by the number of distinct leaves, not the entry count, so the table is
 typically much smaller than a `BTreeHashIndex` over the same data.
+
+### FlatEntries variant
+
+A specialised layout for fixed-size keys and values. The b-tree is replaced
+by a packed entry array with a small sparse top-level binary index plus an
+always-present hash table.
+
+```
+[Data][BinaryIndex][HashTable][TableSizeLog2: u8][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]
+```
+
+- **`Data`** — `EntryCount * (KeySize + ValueSize)` bytes, packed. Each entry
+  is `[Key: KeySize bytes][Value: ValueSize bytes]`. Entries are stored in
+  strictly ascending key order; random access by entry index is just a
+  multiply (`offset = i * (KeySize + ValueSize)`). Both `KeySize` and
+  `ValueSize` are immutable per HSST and read from `Metadata`.
+- **`BinaryIndex`** — `IndexCount` fixed-size entries of
+  `[CheckpointKey: KeySize bytes][LastEntryIndex: u32 LE]`. The builder
+  emits one checkpoint each time the cumulative `(key+value)` bytes written
+  cross the configurable stride threshold (default 1 KiB), and always emits
+  a final checkpoint covering the last entry. `CheckpointKey` is the key of
+  the last entry in its range; `LastEntryIndex` is that entry's absolute
+  index in `Data`. Checkpoints are sorted (because entries are).
+- **`HashTable`** — `2^L` `u32` LE slots; `0x00000000` = empty,
+  `0xFFFFFFFF` = collision sentinel, otherwise the slot stores
+  `entryIndex + 1` (1-based, so `0` stays unambiguous as empty). Hash
+  function is the same `HashKey` (low 32 bits of `XxHash3`) as
+  `BTreeHashIndex`. `L` is in `[0, 31]`. Always present, even when
+  `EntryCount == 0` (a single 4-byte slot is emitted), so readers never
+  need a presence flag.
+- **`Metadata`** — fixed sequence of LEB128 varints, read forward from
+  `metaAbsStart = hsstEnd - 2 - MetadataLength`:
+  ```
+  [KeySize: LEB128][ValueSize: LEB128][EntryCount: LEB128][IndexCount: LEB128]
+  ```
+  No flags byte: section presence and shape are fully determined by the
+  discriminator `0x06` and `TableSizeLog2`.
+
+**Lookup procedure** (exact and floor):
+
+1. Compute `slot = HashKey(key) & ((1 << L) - 1)`. If the slot stores
+   `entryIdx + 1` for some `entryIdx`, read the candidate's key from
+   `Data` and compare. Match ⇒ return its value. Mismatch on exact ⇒
+   "not found"; mismatch on floor ⇒ fall through. Empty slot on exact ⇒
+   "not found"; on floor ⇒ fall through. Collision ⇒ fall through.
+2. Binary-search `BinaryIndex` for the smallest checkpoint whose
+   `CheckpointKey` is `≥ target`. This narrows the candidate range to a
+   single stride-sized window in `Data` (range
+   `[checkpoints[c-1].LastEntryIndex + 1, checkpoints[c].LastEntryIndex]`,
+   or `[0, checkpoints[0].LastEntryIndex]` when `c == 0`). If `c ==
+   IndexCount` the target exceeds every stored key — exact lookup returns
+   "not found"; floor returns the last entry overall.
+3. Binary-search `Data` within that range for the smallest entry whose
+   key is `≥ target`. If the entry's key equals the target, return its
+   value. For floor on a miss, return the entry at `insertionPoint − 1`
+   (in absolute entry-index space; the array is globally sorted).
+
+**Restrictions and trade-offs.**
+
+- Every key must be exactly `KeySize` bytes; every value exactly
+  `ValueSize` bytes. The format rejects mismatches at build time.
+- `MetadataLength` is a single byte — metadata is small, so this never
+  binds in practice.
+- Per-entry overhead is zero (no LEB128 length prefixes, no per-entry
+  metadata pointer); checkpoint overhead is `(KeySize + 4) bytes` per
+  ~`stride` bytes of data plus the small hash table.
+- Random access by entry index is `O(1)`; lookups are
+  `O(log IndexCount + log entriesPerStride)` reads, each of which is
+  `KeySize` bytes — vs. b-tree variants that walk a sequence of pinned
+  nodes.
 
 ## B-tree index node layout
 

@@ -80,6 +80,13 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
             case IndexType.BTreeHashIndex: isInline = false; hasHashIndex = true; hasNodeHashIndex = false; break;
             case IndexType.BTreeNodeHashIndex: isInline = false; hasHashIndex = false; hasNodeHashIndex = true; break;
             case IndexType.BTreeNodeHashIndexInlineValue: isInline = true; hasHashIndex = false; hasNodeHashIndex = true; break;
+            case IndexType.FlatEntries:
+                if (HsstFlatReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatBound))
+                {
+                    _bound = flatBound;
+                    return true;
+                }
+                return false;
             default: return false;
         }
 
