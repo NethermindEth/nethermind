@@ -12,15 +12,15 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 [TestFixture]
-public class HsstFlatTests
+public class HsstPackedArrayTests
 {
     private const int KeySize = 16;
     private const int ValueSize = 8;
 
-    private static byte[] BuildFlat(byte[][] keys, byte[][] values, int strideBytes = HsstFlatBuilder<PooledByteBufferWriter.Writer>.DefaultBinaryIndexStrideBytes, bool useHashIndex = true)
+    private static byte[] BuildFlat(byte[][] keys, byte[][] values, int strideBytes = HsstPackedArrayBuilder<PooledByteBufferWriter.Writer>.DefaultBinaryIndexStrideBytes, bool useHashIndex = true)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
-        HsstFlatBuilder<PooledByteBufferWriter.Writer> builder = new(
+        HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> builder = new(
             ref pooled.GetWriter(),
             keySize: KeySize,
             valueSize: ValueSize,
@@ -105,7 +105,7 @@ public class HsstFlatTests
         (byte[][] keys, byte[][] values) = MakeSortedKeys(count);
         byte[] data = BuildFlat(keys, values);
 
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.FlatEntries));
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PackedArray));
 
         for (int i = 0; i < count; i++)
         {
@@ -181,7 +181,7 @@ public class HsstFlatTests
     {
         // Ref-struct builders can't be captured in lambdas, so we manually try/catch.
         using PooledByteBufferWriter pooled = new(1024);
-        HsstFlatBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), KeySize, ValueSize);
+        HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), KeySize, ValueSize);
         try
         {
             byte[] shortKey = new byte[KeySize - 1];
@@ -206,7 +206,7 @@ public class HsstFlatTests
     public void Add_RejectsOutOfOrderKeys()
     {
         using PooledByteBufferWriter pooled = new(1024);
-        HsstFlatBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), KeySize, ValueSize);
+        HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), KeySize, ValueSize);
         try
         {
             byte[] k1 = new byte[KeySize]; k1[0] = 1;
@@ -232,7 +232,7 @@ public class HsstFlatTests
         (byte[][] keys, byte[][] values) = MakeSortedKeys(count, seed: 23);
         byte[] data = BuildFlat(keys, values, useHashIndex: false);
 
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.FlatEntries));
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PackedArray));
 
         // Exact-match hits.
         for (int i = 0; i < count; i++)
@@ -299,7 +299,7 @@ public class HsstFlatTests
         }
     }
 
-    // Drives the SIMD floor-scan path in HsstFlatReader.SearchSummaryLevel for the two
+    // Drives the SIMD floor-scan path in HsstPackedArrayReader.SearchSummaryLevel for the two
     // supported key sizes (4 and 8). With a small stride we force multiple summary
     // levels so the recursive descent goes through SearchSummaryLevel repeatedly. We
     // run with the SIMD flag both off and on to ensure parity with the scalar path.
@@ -333,7 +333,7 @@ public class HsstFlatTests
         byte[] data;
         using (PooledByteBufferWriter pooled = new(2 * 1024 * 1024))
         {
-            HsstFlatBuilder<PooledByteBufferWriter.Writer> builder = new(
+            HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> builder = new(
                 ref pooled.GetWriter(),
                 keySize: keySize,
                 valueSize: valueSize,

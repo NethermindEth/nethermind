@@ -3,10 +3,10 @@
 
 namespace Nethermind.State.Flat.Hsst;
 
-internal static class HsstFlatLayout
+internal static class HsstPackedArrayLayout
 {
     /// <summary>
-    /// Hard ceiling on the number of summary levels in a FlatEntries HSST. Each level
+    /// Hard ceiling on the number of summary levels in a PackedArray HSST. Each level
     /// shrinks by roughly stride/(KeySize+4); 8 levels covers astronomical inputs.
     /// </summary>
     internal const int MaxSummaryDepth = 8;

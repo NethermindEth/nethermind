@@ -18,5 +18,5 @@ public enum IndexType : byte
     /// always-present open-addressed hash index. Requires every key and every value to be the
     /// same size.
     /// </summary>
-    FlatEntries = 0x06,
+    PackedArray = 0x06,
 }

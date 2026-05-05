@@ -78,8 +78,8 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
             case IndexType.BTree: isInline = false; hasHashIndex = false; break;
             case IndexType.BTreeInlineValue: isInline = true; hasHashIndex = false; break;
             case IndexType.BTreeHashIndex: isInline = false; hasHashIndex = true; break;
-            case IndexType.FlatEntries:
-                if (HsstFlatReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatBound))
+            case IndexType.PackedArray:
+                if (HsstPackedArrayReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatBound))
                 {
                     _bound = flatBound;
                     return true;

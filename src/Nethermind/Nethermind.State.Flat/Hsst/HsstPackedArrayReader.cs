@@ -8,14 +8,14 @@ using Nethermind.State.Flat.BSearchIndex;
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Read-side helpers for the <see cref="IndexType.FlatEntries"/> layout. Stateless static
+/// Read-side helpers for the <see cref="IndexType.PackedArray"/> layout. Stateless static
 /// methods so <see cref="HsstReader{TReader,TPin}"/> can dispatch into them without copying
 /// its ref-struct state.
 /// </summary>
-internal static class HsstFlatReader
+internal static class HsstPackedArrayReader
 {
     /// <summary>
-    /// Parsed footer of a FlatEntries HSST: section starts and per-level summary geometry.
+    /// Parsed footer of a PackedArray HSST: section starts and per-level summary geometry.
     /// </summary>
     internal ref struct Layout
     {
@@ -37,14 +37,14 @@ internal static class HsstFlatReader
         public long ValueAbsStart(int entryIdx) => EntryAbsStart(entryIdx) + KeySize;
     }
 
-    [System.Runtime.CompilerServices.InlineArray(HsstFlatLayout.MaxSummaryDepth)]
+    [System.Runtime.CompilerServices.InlineArray(HsstPackedArrayLayout.MaxSummaryDepth)]
     internal struct InlineLevelArray
     {
         private long _e0;
     }
 
     /// <summary>
-    /// Parse the FlatEntries footer. Returns false on truncation or self-inconsistency.
+    /// Parse the PackedArray footer. Returns false on truncation or self-inconsistency.
     /// </summary>
     public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
         where TPin : struct, IBufferPin, allows ref struct
@@ -75,7 +75,7 @@ internal static class HsstFlatReader
         if (keySize < 0 || valueSize < 0 || entryCount < 0 || tableSize < 0 ||
             entriesPerCk0Log2 < 0 || recordsPerCkHigherLog2 < 0 || depth < 0) return false;
         if (keySize > 255) return false;
-        if (depth > HsstFlatLayout.MaxSummaryDepth) return false;
+        if (depth > HsstPackedArrayLayout.MaxSummaryDepth) return false;
         // Clamp shifts to a safe range — bigger than 30 would overflow int slab arithmetic.
         if (entriesPerCk0Log2 > 30 || recordsPerCkHigherLog2 > 30) return false;
         if (depth >= 2 && recordsPerCkHigherLog2 < 1) return false;
@@ -88,7 +88,7 @@ internal static class HsstFlatReader
         layout.EntriesPerCkLevel0Log2 = entriesPerCk0Log2;
         layout.RecordsPerCkHigherLog2 = recordsPerCkHigherLog2;
 
-        Span<int> counts = stackalloc int[HsstFlatLayout.MaxSummaryDepth];
+        Span<int> counts = stackalloc int[HsstPackedArrayLayout.MaxSummaryDepth];
         for (int i = 0; i < depth; i++)
         {
             int c = Leb128.Read(metaBuf, ref p);
@@ -122,7 +122,7 @@ internal static class HsstFlatReader
     }
 
     /// <summary>
-    /// Exact-match or floor lookup over a FlatEntries HSST. On success sets
+    /// Exact-match or floor lookup over a PackedArray HSST. On success sets
     /// <paramref name="resultBound"/> to the value region of the matched entry.
     /// </summary>
     public static bool TrySeek<TReader, TPin>(

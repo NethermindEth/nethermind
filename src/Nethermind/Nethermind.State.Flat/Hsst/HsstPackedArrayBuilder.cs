@@ -9,7 +9,7 @@ using Nethermind.Core.Utils;
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Builds an HSST in the <see cref="IndexType.FlatEntries"/> layout from key-value entries.
+/// Builds an HSST in the <see cref="IndexType.PackedArray"/> layout from key-value entries.
 /// Every key must be exactly <c>keySize</c> bytes and every value exactly <c>valueSize</c>
 /// bytes. Entries MUST be added in strictly ascending key order.
 ///
@@ -33,7 +33,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// the <c>useHashIndex</c> ctor flag); when enabled, the slot for a key is computed via
 /// Lemire's multiply-shift reduction so the table need not be a power of two.
 /// </summary>
-public ref struct HsstFlatBuilder<TWriter>
+public ref struct HsstPackedArrayBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
     /// <summary>Default checkpoint stride: emit a binary-index entry every ~1 KiB of (key+value).</summary>
@@ -67,7 +67,7 @@ public ref struct HsstFlatBuilder<TWriter>
     /// <see cref="Add"/> calls validate against them. Allocates working buffers from
     /// NativeMemory — call <see cref="Dispose"/> to free.
     /// </summary>
-    public HsstFlatBuilder(ref TWriter writer, int keySize, int valueSize,
+    public HsstPackedArrayBuilder(ref TWriter writer, int keySize, int valueSize,
         int binaryIndexStrideBytes = DefaultBinaryIndexStrideBytes,
         int expectedKeyCount = 16,
         bool useHashIndex = true)
@@ -173,13 +173,13 @@ public ref struct HsstFlatBuilder<TWriter>
         }
 
         // Build all summary levels in memory first, then flush them in order to the writer.
-        using NativeMemoryListRef<int> levelCounts = new(HsstFlatLayout.MaxSummaryDepth);
+        using NativeMemoryListRef<int> levelCounts = new(HsstPackedArrayLayout.MaxSummaryDepth);
 
         if (_level0Count > 0) levelCounts.Add(_level0Count);
 
         // Higher levels staged into a single buffer + per-level (startRec) pointers.
         using NativeMemoryListRef<byte> higherLevelsKeys = new(64);
-        using NativeMemoryListRef<int> higherLevelStartRec = new(HsstFlatLayout.MaxSummaryDepth);
+        using NativeMemoryListRef<int> higherLevelStartRec = new(HsstPackedArrayLayout.MaxSummaryDepth);
 
         // Track the previous level by (startRec, count, fromLevel0) so we re-fetch its span
         // each iteration — adding to higherLevelsKeys may move the underlying NativeMemory.
@@ -220,8 +220,8 @@ public ref struct HsstFlatBuilder<TWriter>
                     break;
                 }
 
-                if (levelCounts.Count >= HsstFlatLayout.MaxSummaryDepth)
-                    throw new InvalidOperationException($"FlatEntries summary depth exceeded {HsstFlatLayout.MaxSummaryDepth}.");
+                if (levelCounts.Count >= HsstPackedArrayLayout.MaxSummaryDepth)
+                    throw new InvalidOperationException($"PackedArray summary depth exceeded {HsstPackedArrayLayout.MaxSummaryDepth}.");
 
                 higherLevelStartRec.Add(newLevelStartRec);
                 levelCounts.Add(newCount);
@@ -280,11 +280,11 @@ public ref struct HsstFlatBuilder<TWriter>
         for (int i = 0; i < depth; i++) WriteLeb128(levelCounts[i]);
         int metaLen = _writer.Written - metaStart;
         if (metaLen > 255)
-            throw new InvalidOperationException("FlatEntries metadata exceeds 255 bytes.");
+            throw new InvalidOperationException("PackedArray metadata exceeds 255 bytes.");
 
         Span<byte> trail = _writer.GetSpan(2);
         trail[0] = (byte)metaLen;
-        trail[1] = (byte)IndexType.FlatEntries;
+        trail[1] = (byte)IndexType.PackedArray;
         _writer.Advance(2);
     }
 

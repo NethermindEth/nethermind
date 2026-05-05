@@ -45,7 +45,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly bool _isInline;
     private readonly bool _empty;
 
-    // FlatEntries state: a packed entry array, no b-tree walk. _flatIdx is the next entry to
+    // PackedArray state: a packed entry array, no b-tree walk. _flatIdx is the next entry to
     // yield; -1 means not yet started; >= _flatEntryCount means exhausted.
     private readonly bool _isFlat;
     private readonly int _flatKeySize;
@@ -122,9 +122,9 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                     return;
                 }
                 break;
-            case IndexType.FlatEntries:
+            case IndexType.PackedArray:
                 _isInline = false;
-                if (!HsstFlatReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstFlatReader.Layout flatLayout))
+                if (!HsstPackedArrayReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstPackedArrayReader.Layout flatLayout))
                 {
                     _empty = true;
                     return;
