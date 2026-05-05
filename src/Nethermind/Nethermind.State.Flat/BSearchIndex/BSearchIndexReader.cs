@@ -192,6 +192,14 @@ public readonly ref struct BSearchIndexReader
     }
 
     /// <summary>
+    /// Runtime toggle: when true, FindFloorIndex uses branchless binary search variants
+    /// (cmov-style updates on lo/n) instead of the default branchful while-loop. The
+    /// benchmark flips this for A/B comparison; default is the branchful path because
+    /// the JIT-emitted cmov has not yet been spot-checked across all architectures.
+    /// </summary>
+    public static bool BranchlessSearch = false;
+
+    /// <summary>
     /// Find the index of the largest entry whose key is &lt;= searchKey.
     /// Returns -1 if key is less than all entries.
     /// </summary>
@@ -204,11 +212,19 @@ public readonly ref struct BSearchIndexReader
         int count = _metadata.KeyCount;
         if (count == 0) return -1;
 
-        // Specialise on KeyType once at entry so the per-iteration switch in GetKey
-        // is hoisted out of the binary-search loop. The JIT can then constant-fold
-        // the slice arithmetic when keySize is known and inline the comparison.
         // q is the search key with CommonKeyPrefix stripped; _keys holds the matching
         // stripped separators, so the lexicographic compare is consistent.
+        if (BranchlessSearch)
+        {
+            return _metadata.KeyType switch
+            {
+                1 => FindFloorIndexUniformBranchless(q, _keys, count, _metadata.KeySize),
+                2 => FindFloorIndexUniformWithLenBranchless(q, _keys, count, _metadata.KeySize),
+                0 => FindFloorIndexVariableBranchless(q, _keys, count),
+                _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
+            };
+        }
+
         return _metadata.KeyType switch
         {
             1 => FindFloorIndexUniform(q, _keys, count, _metadata.KeySize),
@@ -298,6 +314,67 @@ public readonly ref struct BSearchIndexReader
             else { hi = mid - 1; }
         }
         return result;
+    }
+
+    // -------- Branchless variants (cmov-style; loop iterates exactly ceil(log2(count))) --------
+    //
+    // lower_bound style: find the smallest position `lo` where keys[lo] > searchKey, then
+    // floor index = lo - 1. The pair of conditional updates on lo and n compile to
+    // `cmov` on x86 / `csel` on ARM (verified empirically; if the JIT regresses, force
+    // with a sign-bit mask: `int mask = -(uint)(cmp >> 31) >> 31;` and bitwise-select).
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexUniformBranchless(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int keySize)
+    {
+        int lo = 0;
+        int n = count;
+        while (n > 0)
+        {
+            int half = n >> 1;
+            int probe = lo + half;
+            ReadOnlySpan<byte> probeKey = keys.Slice(probe * keySize, keySize);
+            // probeKey <= key (cmp >= 0) → advance lo past probe
+            bool advance = key.SequenceCompareTo(probeKey) >= 0;
+            lo = advance ? probe + 1 : lo;
+            n  = advance ? n - half - 1 : half;
+        }
+        return lo - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexUniformWithLenBranchless(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int slotSize)
+    {
+        int lo = 0;
+        int n = count;
+        while (n > 0)
+        {
+            int half = n >> 1;
+            int probe = lo + half;
+            int slotStart = probe * slotSize;
+            int actualLen = keys[slotStart + slotSize - 1];
+            ReadOnlySpan<byte> probeKey = keys.Slice(slotStart, actualLen);
+            bool advance = key.SequenceCompareTo(probeKey) >= 0;
+            lo = advance ? probe + 1 : lo;
+            n  = advance ? n - half - 1 : half;
+        }
+        return lo - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexVariableBranchless(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    {
+        int lo = 0;
+        int n = count;
+        while (n > 0)
+        {
+            int half = n >> 1;
+            int probe = lo + half;
+            ReadOnlySpan<byte> probeKey = GetVariableEntry(keys, probe, count);
+            bool advance = key.SequenceCompareTo(probeKey) >= 0;
+            lo = advance ? probe + 1 : lo;
+            n  = advance ? n - half - 1 : half;
+        }
+        return lo - 1;
     }
 
     /// <summary>

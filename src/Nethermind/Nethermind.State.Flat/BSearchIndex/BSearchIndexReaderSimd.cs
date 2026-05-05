@@ -22,8 +22,16 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///
 /// Three vector widths supported with runtime dispatch (Vector512 → Vector256 → Vector128).
 /// </summary>
-internal static class BSearchIndexReaderSimd
+public static class BSearchIndexReaderSimd
 {
+    /// <summary>
+    /// Runtime toggle for the SIMD floor-scan fast path. Default <c>false</c>: scalar
+    /// binary search wins at cache-resident scales on AMD EPYC 9575F (BDN bench at
+    /// 100k entries, minSep=4); the SIMD code is preserved for re-enable under future
+    /// workloads / dispatch tuning. The benchmark uses [Params] to flip this for A/B.
+    /// </summary>
+    public static bool Enabled = false;
+
     // Cap: scan up to this many keys with the linear SIMD path. Beyond this, scalar
     // binary search wins despite mispredict cost. The benchmark sweep informs this
     // value — current setting covers all probed leaf sizes (64–1024).
@@ -96,13 +104,23 @@ internal static class BSearchIndexReaderSimd
         int keySize,
         out int result)
     {
-        // SIMD disabled: at 100k cache-resident scale (BDN bench, AMD EPYC 9575F)
-        // the dispatch + setup overhead pessimizes seeks by 4–16% vs scalar binary
-        // search. The vector code below is preserved for future re-enable once
-        // tuned (or under a workload where it actually pays).
         result = 0;
-        _ = key; _ = keys; _ = count; _ = keySize;
-        return false;
+        if (!Enabled) return false;
+        if (count < 2 || count > LinearScanMaxCount) return false;
+        if (key.Length != keySize) return false;
+        if (!Vector128.IsHardwareAccelerated) return false;
+
+        switch (keySize)
+        {
+            case 4:
+                result = FloorScan32(key, keys, count);
+                return true;
+            case 8:
+                result = FloorScan64(key, keys, count);
+                return true;
+            default:
+                return false;
+        }
     }
 
     /// <summary>
@@ -124,13 +142,24 @@ internal static class BSearchIndexReaderSimd
         int slotSize,
         out int result)
     {
-        // SIMD disabled: at 100k cache-resident scale (BDN bench, AMD EPYC 9575F)
-        // the dispatch + setup overhead pessimizes seeks by 4–16% vs scalar binary
-        // search. The vector code below is preserved for future re-enable once
-        // tuned (or under a workload where it actually pays).
         result = 0;
-        _ = key; _ = keys; _ = count; _ = slotSize;
-        return false;
+        if (!Enabled) return false;
+        if (slotSize != 4) return false;
+        if (count < 2 || count > LinearScanMaxCount) return false;
+        if (!Vector128.IsHardwareAccelerated) return false;
+
+        // Encode the search key into the storage slot format: first min(3, keyLen) bytes
+        // of payload (zero-padded), then a length byte = min(keyLen, 255). The writer
+        // stores actualLen ∈ [0, 3] in the length byte; using 255 for over-long search
+        // keys is safe because uint32 BE compare on the length byte runs last and the
+        // cap stays > any stored length.
+        Span<byte> encoded = stackalloc byte[4];
+        int payloadLen = Math.Min(key.Length, 3);
+        if (payloadLen > 0) key[..payloadLen].CopyTo(encoded);
+        encoded[3] = (byte)Math.Min(key.Length, 255);
+
+        result = FloorScan32(encoded, keys, count);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

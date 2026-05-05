@@ -570,4 +570,73 @@ public class BSearchIndexTests
         Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.False);
         Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
     }
+
+    /// <summary>
+    /// Branchless variant of FindFloorIndex must agree with the branchful one across
+    /// all three KeyTypes and at every probe position (interior, boundary, miss).
+    /// </summary>
+    [TestCase(0, TestName = "Branchless_Variable")]
+    [TestCase(1, TestName = "Branchless_Uniform")]
+    [TestCase(2, TestName = "Branchless_UniformWithLen")]
+    public void BranchlessSearch_AgreesWithBranchful(int keyType)
+    {
+        const int count = 64;
+        int slotSize = keyType == 1 ? 4 : keyType == 2 ? 5 : 0;
+
+        // Sorted, non-trivial 4-byte keys (Variable also gets 4-byte entries; LCP
+        // detection in the writer is bypassed since we hand-construct here).
+        byte[][] keys = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] k = [(byte)(i * 3 + 1), (byte)(i * 5 + 7), (byte)(i * 7 + 11), (byte)(i * 11 + 13)];
+            keys[i] = k;
+        }
+
+        byte[] keyBuf = new byte[count * (2 + 4)];
+        byte[] output = new byte[8 * 1024];
+        SpanBufferWriter w = new(output);
+        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
+        {
+            KeyType = keyType,
+            KeySlotSize = slotSize,
+        }, keyBuf);
+        Span<byte> valBuf = stackalloc byte[4];
+        for (int i = 0; i < count; i++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i);
+            writer.AddKey(keys[i], valBuf);
+        }
+        writer.FinalizeNode();
+
+        BSearchIndexReader reader = BSearchIndexReader.ReadFromEnd(output, w.Written);
+
+        // For each stored key plus a synthetic "between" probe, the two paths must agree.
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                byte[] probe = keys[i];
+                BSearchIndexReader.BranchlessSearch = false;
+                int branchful = reader.FindFloorIndex(probe);
+                BSearchIndexReader.BranchlessSearch = true;
+                int branchless = reader.FindFloorIndex(probe);
+                Assert.That(branchless, Is.EqualTo(branchful), $"Hit i={i}");
+            }
+            // Below-first miss.
+            byte[] below = [0, 0, 0, 0];
+            BSearchIndexReader.BranchlessSearch = false;
+            int b1 = reader.FindFloorIndex(below);
+            BSearchIndexReader.BranchlessSearch = true;
+            int b2 = reader.FindFloorIndex(below);
+            Assert.That(b2, Is.EqualTo(b1), "Below-first miss");
+            // Above-last miss.
+            byte[] above = [0xFF, 0xFF, 0xFF, 0xFF];
+            BSearchIndexReader.BranchlessSearch = false;
+            b1 = reader.FindFloorIndex(above);
+            BSearchIndexReader.BranchlessSearch = true;
+            b2 = reader.FindFloorIndex(above);
+            Assert.That(b2, Is.EqualTo(b1), "Above-last miss");
+        }
+        finally { BSearchIndexReader.BranchlessSearch = false; }
+    }
 }
