@@ -33,6 +33,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void ReturnTxProcessor(uint balIndex) { }
     public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token) { }
     public void SetBlockAccessList(Block block) { }
+    public void LoadPreStateToSuggestedBlockAccessList(Block suggestedBlock) { }
     public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true) { }
     public void StoreBeaconRoot(Block block, IReleaseSpec spec) { }
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }

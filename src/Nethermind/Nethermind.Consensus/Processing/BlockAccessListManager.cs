@@ -63,7 +63,7 @@ public class BlockAccessListManager(
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
     // Cache key guarding LoadPreStateToSuggestedBlockAccessList against double-mutation of the
-    // suggested block's BAL: that method appends -1 (pre-state) entries in place, so calling it
+    // suggested block's BAL: that method appends prestate entries in place, so calling it
     // twice for the same Block instance corrupts the BAL. PrepareForProcessing can be invoked
     // more than once per block within the same DI scope (the manager is scoped to the main
     // processing context, not per block) — e.g. on retry — so we skip the load when the hash
@@ -94,10 +94,16 @@ public class BlockAccessListManager(
             _gasRemaining = suggestedBlock.GasUsed;
 
             // See _lastLoadedBal field comment — skip when the same block is re-prepared.
+            // Prestate loading itself is now deferred to slot 0 of the parallel For loop so
+            // worker threads can start executing transactions while the loader proceeds. Here
+            // we only flip the per-account gates so any worker that races ahead of the loader
+            // blocks until prestate for its account has been loaded.
             if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
             {
-                _lastLoadedBal = suggestedBlock.Hash;
-                LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
+                foreach (ReadOnlyAccountChanges accountChanges in suggestedBlock.BlockAccessList.AccountChanges)
+                {
+                    accountChanges.EnablePrestateGate();
+                }
             }
         }
     }
@@ -410,30 +416,60 @@ public class BlockAccessListManager(
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
-    private void LoadPreStateToSuggestedBlockAccessList(ReadOnlyBlockAccessList bal)
+    public void LoadPreStateToSuggestedBlockAccessList(Block suggestedBlock)
     {
-        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        if (!ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null) return;
+
+        // Skip if this exact BAL was already loaded — see _lastLoadedBal field comment. The
+        // workers' gates were also skipped in PrepareForProcessing in that case, so nothing
+        // to signal here either.
+        if (suggestedBlock.Hash == _lastLoadedBal) return;
+        _lastLoadedBal = suggestedBlock.Hash;
+
+        ReadOnlyBlockAccessList bal = suggestedBlock.BlockAccessList;
+        try
         {
-            // record whether the account was modified before any prestate is added
-            accountChanges.RecordWasChanged();
-
-            bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
-            accountChanges.SetExistedBeforeBlock(exists);
-            accountChanges.SetEmptyBeforeBlock(!account.HasStorage);
-
-            accountChanges.LoadPreStateBalance(account.Balance);
-            accountChanges.LoadPreStateNonce((ulong)account.Nonce);
-            accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
-
-            // snapshot keys to avoid modifying the slot collection during iteration
-            // (LoadPreStateStorage can insert a new ReadOnlySlotChanges for a previously read-only slot)
-            UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
-            foreach (UInt256 slot in slotsToLoad)
+            foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, slot);
-                UInt256 value = new(stateProvider.Get(storageCell), true);
-                accountChanges.LoadPreStateStorage(slot, value);
+                // record whether the account was modified before any prestate is added
+                accountChanges.RecordWasChanged();
+
+                bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
+                accountChanges.SetExistedBeforeBlock(exists);
+                accountChanges.SetEmptyBeforeBlock(!account.HasStorage);
+
+                accountChanges.LoadPreStateBalance(account.Balance);
+                accountChanges.LoadPreStateNonce((ulong)account.Nonce);
+                accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
+
+                // snapshot keys to avoid modifying the slot collection during iteration
+                // (LoadPreStateStorage can insert a new ReadOnlySlotChanges for a previously read-only slot)
+                UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
+                foreach (UInt256 slot in slotsToLoad)
+                {
+                    StorageCell storageCell = new(accountChanges.Address, slot);
+                    UInt256 value = new(stateProvider.Get(storageCell), true);
+                    accountChanges.LoadPreStateStorage(slot, value);
+                }
+
+                // Signal as soon as this account is fully loaded — workers blocked on it via
+                // ReadOnlyAccountChanges.WaitForPrestate can proceed without waiting for the
+                // remaining accounts to finish.
+                accountChanges.SignalPrestateLoaded();
             }
+        }
+        catch
+        {
+            // If the loader throws partway, release every remaining gate so workers and the
+            // incremental validator don't hang. Already-signaled gates are no-ops; not-yet-
+            // loaded accounts will return their pre-load (empty / default) state, which will
+            // surface as an InvalidBlockLevelAccessListException on the worker — preferable
+            // to a deadlock. The original exception still propagates from slot 0.
+            foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+            {
+                accountChanges.SignalPrestateLoaded();
+            }
+            throw;
         }
     }
 

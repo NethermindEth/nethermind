@@ -94,6 +94,13 @@ public partial class BlockProcessor
                     {
                         if (i == 0)
                         {
+                            // Prestate loading was deferred from PrepareForProcessing to here so
+                            // tx workers (slots 1..N) can start executing while we fan out the
+                            // load account-by-account. Each account's prestate gate is signaled
+                            // as soon as its load completes, freeing any worker blocked on it
+                            // (see ReadOnlyAccountChanges.WaitForPrestate).
+                            state.balManager.LoadPreStateToSuggestedBlockAccessList(state.block);
+
                             // ApplyStateChanges mutates the shared stateProvider so runs inside
                             // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
                             // workers read from BAL-backed world states, not stateProvider.

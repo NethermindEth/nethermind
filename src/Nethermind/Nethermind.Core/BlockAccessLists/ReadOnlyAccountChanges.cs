@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -65,6 +67,18 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     private NonceChange[] _nonceChanges;
     private CodeChange[] _codeChanges;
 
+    /// <summary>
+    /// Per-account gate that lets parallel transaction workers wait for prestate loading to
+    /// complete before reading prestate-dependent state (balance/nonce/code/storage arrays plus
+    /// the <see cref="ExistedBeforeBlock"/>/<see cref="EmptyBeforeBlock"/>/<see cref="AccountChanged"/>
+    /// flags). Enabled by <see cref="EnablePrestateGate"/> in
+    /// <c>BlockAccessListManager.PrepareForProcessing</c> when parallel execution is on, and
+    /// signaled by <see cref="SignalPrestateLoaded"/> after the loader has finished mutating
+    /// this account in <c>LoadPreStateToSuggestedBlockAccessList</c>. Null when no parallel
+    /// loading is expected — read methods then short-circuit without waiting.
+    /// </summary>
+    private ManualResetEventSlim? _prestateGate;
+
     public ReadOnlyAccountChanges(
         Address address,
         ReadOnlySlotChanges[] storageChanges,
@@ -92,14 +106,32 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-        => _storageChanges.TryGetValue(key, out slotChanges);
+    {
+        WaitForPrestate();
+        return _storageChanges.TryGetValue(key, out slotChanges);
+    }
 
-    public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(_balanceChanges, index);
-    public NonceChange? NonceChangeAtIndex(uint index) => GetExact(_nonceChanges, index);
-    public CodeChange? CodeChangeAtIndex(uint index) => GetExact(_codeChanges, index);
+    public BalanceChange? BalanceChangeAtIndex(uint index)
+    {
+        WaitForPrestate();
+        return GetExact(_balanceChanges, index);
+    }
+
+    public NonceChange? NonceChangeAtIndex(uint index)
+    {
+        WaitForPrestate();
+        return GetExact(_nonceChanges, index);
+    }
+
+    public CodeChange? CodeChangeAtIndex(uint index)
+    {
+        WaitForPrestate();
+        return GetExact(_codeChanges, index);
+    }
 
     public bool HasSlotChangesAtIndex(uint index)
     {
+        WaitForPrestate();
         foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
         {
             if (HasExactIndex(slotChanges.Changes, index)) return true;
@@ -109,6 +141,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     public IEnumerable<SlotChangeAtIndex> SlotChangesAtIndex(uint index)
     {
+        WaitForPrestate();
         foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
         {
             StorageChange? change = GetExact(slotChanges.Changes, index);
@@ -128,18 +161,33 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         && !HasSlotChangesAtIndex(index);
 
     /// <summary>Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.</summary>
-    public UInt256? GetBalance(uint blockAccessIndex) => TryGetLastBefore(_balanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
+    public UInt256? GetBalance(uint blockAccessIndex)
+    {
+        WaitForPrestate();
+        return TryGetLastBefore(_balanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
+    }
 
-    public UInt256? GetNonce(uint blockAccessIndex) => TryGetLastBefore(_nonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
+    public UInt256? GetNonce(uint blockAccessIndex)
+    {
+        WaitForPrestate();
+        return TryGetLastBefore(_nonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
+    }
 
     public byte[] GetCode(uint blockAccessIndex)
-        => TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.Code : [];
+    {
+        WaitForPrestate();
+        return TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.Code : [];
+    }
 
     public ValueHash256 GetCodeHash(uint blockAccessIndex)
-        => TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
+    {
+        WaitForPrestate();
+        return TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
+    }
 
     public bool AccountExists(uint blockAccessIndex)
     {
+        WaitForPrestate();
         if (ExistedBeforeBlock)
         {
             return true;
@@ -226,6 +274,27 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public void SetEmptyBeforeBlock(bool value) => EmptyBeforeBlock = value;
     public void RecordWasChanged()
         => AccountChanged = _balanceChanges.Length > 0 || _nonceChanges.Length > 0 || _codeChanges.Length > 0 || _storageChanges.Count > 0;
+
+    // === Prestate gate ===
+    // Decoupling parallel tx execution from prestate loading: instead of blocking the whole
+    // block on a serial pre-pass, PrepareForProcessing flips the gate on each account, slot 0
+    // of the parallel loop loads prestate per-account and signals as soon as the account is
+    // done, and worker reads above wait per-account. Idempotent: an already-set gate stays set
+    // so a re-prepared block (already loaded) doesn't block workers.
+
+    public void EnablePrestateGate() => _prestateGate ??= new ManualResetEventSlim(false);
+
+    public void SignalPrestateLoaded() => _prestateGate?.Set();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void WaitForPrestate()
+    {
+        ManualResetEventSlim? gate = _prestateGate;
+        if (gate is { IsSet: false })
+        {
+            gate.Wait();
+        }
+    }
 
     /// <summary>Inserts a newly-added slot into the parallel sorted arrays at its correct position.</summary>
     private void InsertSorted(UInt256 slot, ReadOnlySlotChanges slotChanges)
