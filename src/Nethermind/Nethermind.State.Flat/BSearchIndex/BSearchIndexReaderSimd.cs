@@ -32,10 +32,12 @@ public static class BSearchIndexReaderSimd
     /// </summary>
     public static bool Enabled = false;
 
-    // Cap: scan up to this many keys with the linear SIMD path. Beyond this, scalar
-    // binary search wins despite mispredict cost. The benchmark sweep informs this
-    // value — current setting covers all probed leaf sizes (64–1024).
-    private const int LinearScanMaxCount = 1024;
+    /// <summary>
+    /// Cap: scan up to this many keys with the linear SIMD path. Beyond this, scalar
+    /// binary search wins despite mispredict cost. Tunable at runtime alongside
+    /// <see cref="Enabled"/> so benchmarks can sweep it via <c>[Params]</c>.
+    /// </summary>
+    public static int LinearScanMaxCount = 1024;
 
     private static readonly Vector128<byte> ByteSwap32Mask128 = Vector128.Create(
         (byte)3, 2, 1, 0,

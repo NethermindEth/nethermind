@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 
@@ -295,6 +296,128 @@ public class HsstFlatTests
                 Assert.That(ok, Is.True);
                 Assert.That(got, Is.EqualTo(values[floorIdx]));
             }
+        }
+    }
+
+    // Drives the SIMD floor-scan path in HsstFlatReader.SearchSummaryLevel for the two
+    // supported key sizes (4 and 8). With a small stride we force multiple summary
+    // levels so the recursive descent goes through SearchSummaryLevel repeatedly. We
+    // run with the SIMD flag both off and on to ensure parity with the scalar path.
+    [TestCase(4, true)]
+    [TestCase(4, false)]
+    [TestCase(8, true)]
+    [TestCase(8, false)]
+    public void SmallKey_SimdToggle_MatchesScalar(int keySize, bool simdEnabled)
+    {
+        const int count = 5000;
+        const int valueSize = 4;
+
+        Random rng = new(keySize * 7 + (simdEnabled ? 1 : 0));
+        HashSet<string> seen = new();
+        List<byte[]> ks = new(count);
+        while (ks.Count < count)
+        {
+            byte[] k = new byte[keySize];
+            rng.NextBytes(k);
+            if (seen.Add(Convert.ToHexString(k))) ks.Add(k);
+        }
+        ks.Sort((a, b) => a.AsSpan().SequenceCompareTo(b));
+        byte[][] keys = ks.ToArray();
+        byte[][] values = new byte[count][];
+        for (int i = 0; i < count; i++)
+        {
+            values[i] = new byte[valueSize];
+            BinaryPrimitives.WriteInt32LittleEndian(values[i], i);
+        }
+
+        byte[] data;
+        using (PooledByteBufferWriter pooled = new(2 * 1024 * 1024))
+        {
+            HsstFlatBuilder<PooledByteBufferWriter.Writer> builder = new(
+                ref pooled.GetWriter(),
+                keySize: keySize,
+                valueSize: valueSize,
+                binaryIndexStrideBytes: 128,
+                expectedKeyCount: count,
+                useHashIndex: false);
+            try
+            {
+                for (int i = 0; i < count; i++) builder.Add(keys[i], values[i]);
+                builder.Build();
+                data = pooled.WrittenSpan.ToArray();
+            }
+            finally { builder.Dispose(); }
+        }
+
+        bool prev = BSearchIndexReaderSimd.Enabled;
+        BSearchIndexReaderSimd.Enabled = simdEnabled;
+        try
+        {
+            // Exact-match hits: covers the floor + SequenceEqual branch in the SIMD path.
+            for (int i = 0; i < count; i++)
+            {
+                SpanByteReader reader = new(data);
+                using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                Assert.That(r.TrySeek(keys[i], out _), Is.True, $"missing key {i} (simd={simdEnabled})");
+                Bound b = r.GetBound();
+                Assert.That(data.AsSpan((int)b.Offset, b.Length).ToArray(), Is.EqualTo(values[i]));
+            }
+
+            // Floor probes: covers floor < 0, exact-equal, and floor + 1 conversion.
+            Random probeRng = new(keySize * 13 + 1);
+            for (int t = 0; t < 64; t++)
+            {
+                byte[] probe = new byte[keySize];
+                probeRng.NextBytes(probe);
+                int floorIdx = -1;
+                for (int i = 0; i < count; i++)
+                {
+                    if (keys[i].AsSpan().SequenceCompareTo(probe) <= 0) floorIdx = i; else break;
+                }
+
+                SpanByteReader reader = new(data);
+                using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                bool ok = r.TrySeekFloor(probe, out _);
+                if (floorIdx < 0)
+                {
+                    Assert.That(ok, Is.False);
+                }
+                else
+                {
+                    Assert.That(ok, Is.True);
+                    Bound b = r.GetBound();
+                    Assert.That(data.AsSpan((int)b.Offset, b.Length).ToArray(), Is.EqualTo(values[floorIdx]));
+                }
+            }
+
+            // Edge cases: probes equal to the very first and last key (drive the
+            // floor==-1-equivalent ceiling and floor==n-1 branches).
+            byte[] beforeAll = new byte[keySize]; // all-zero, smaller than any present key by construction (very likely)
+            byte[] afterAll = new byte[keySize];
+            for (int i = 0; i < keySize; i++) afterAll[i] = 0xFF;
+            {
+                SpanByteReader reader = new(data);
+                using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                // Seek for first key: must hit.
+                Assert.That(r.TrySeek(keys[0], out _), Is.True);
+            }
+            {
+                SpanByteReader reader = new(data);
+                using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                Assert.That(r.TrySeek(keys[count - 1], out _), Is.True);
+            }
+            {
+                SpanByteReader reader = new(data);
+                using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+                // Floor of all-FF must be the last key.
+                Assert.That(r.TrySeekFloor(afterAll, out _), Is.True);
+                Bound b = r.GetBound();
+                Assert.That(data.AsSpan((int)b.Offset, b.Length).ToArray(), Is.EqualTo(values[count - 1]));
+            }
+        }
+        finally
+        {
+            BSearchIndexReaderSimd.Enabled = prev;
         }
     }
 
