@@ -25,7 +25,7 @@ public class BSearchIndexTests
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) => { });
 
-        BSearchIndexReader index = BSearchIndexReader.ReadFromEnd(data, data.Length);
+        BSearchIndexReader index = BSearchIndexReader.ReadFromEnd(data, data.Length - 1);
         Assert.That(index.EntryCount, Is.EqualTo(0));
         Assert.That(index.IsIntermediate, Is.False);
         Assert.That(index.Metadata.KeyCount, Is.EqualTo(0));
@@ -44,7 +44,7 @@ public class BSearchIndexTests
             }
         });
 
-        BSearchIndexReader rootIndex = BSearchIndexReader.ReadFromEnd(data, data.Length);
+        BSearchIndexReader rootIndex = BSearchIndexReader.ReadFromEnd(data, data.Length - 1);
         Assert.That(rootIndex.EntryCount, Is.EqualTo(10));
         Assert.That(rootIndex.IsIntermediate, Is.False);
     }
@@ -54,7 +54,7 @@ public class BSearchIndexTests
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) => { });
 
-        BSearchIndexReader index = BSearchIndexReader.ReadFromEnd(data, data.Length);
+        BSearchIndexReader index = BSearchIndexReader.ReadFromEnd(data, data.Length - 1);
         Assert.That(index.EntryCount, Is.EqualTo(0));
         Assert.That(index.IsIntermediate, Is.False);
         Assert.That(index.TryGetFloor("abc"u8, out _, out _), Is.False);
@@ -68,7 +68,7 @@ public class BSearchIndexTests
             builder.Add([0x41, 0x42], [0x01, 0x02, 0x03]);
         });
 
-        BSearchIndexReader rootIndex = BSearchIndexReader.ReadFromEnd(data, data.Length);
+        BSearchIndexReader rootIndex = BSearchIndexReader.ReadFromEnd(data, data.Length - 1);
         Assert.That(rootIndex.EntryCount, Is.EqualTo(1));
         Assert.That(rootIndex.IsIntermediate, Is.False);
     }
@@ -383,7 +383,7 @@ public class BSearchIndexTests
             }
         }, maxLeafEntries: 4);
 
-        BSearchIndexReader rootIndex = BSearchIndexReader.ReadFromEnd(data, data.Length);
+        BSearchIndexReader rootIndex = BSearchIndexReader.ReadFromEnd(data, data.Length - 1);
         Assert.That(rootIndex.IsIntermediate, Is.True);
     }
 

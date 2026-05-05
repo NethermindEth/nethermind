@@ -38,14 +38,22 @@ A compact, immutable binary format for sorted key/value tables.
 
 | Variant | Bytes |
 |---|---|
-| **Normal** | `[Version: u8 = 0x01][Data Region][Index Region]` |
-| **Inline** | `[Version: u8 = 0x81][Index Region]` |
+| **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
+| **BTreeInlineValue** | `[Index Region][IndexType: u8 = 0x02]` |
 
-The high bit of the version byte selects the variant. The root B-tree node
-lives at the *end* of the buffer and is read backward via the trailing
-`MetadataLength` byte; there is no header trailer.
+The trailing **index type byte** is the last byte of the HSST and selects
+the variant by enumerated value (not a bitfield):
 
-### Normal variant
+| Value | Name | Meaning |
+|---|---|---|
+| `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
+| `0x02` | `BTreeInlineValue` | No data region; leaves hold values inline. |
+
+Other values are reserved for future index strategies. The root B-tree
+node lives just before the index type byte and is read backward via its
+trailing `MetadataLength` byte; there is no header.
+
+### BTree variant
 
 The data region is a packed sequence of variable-length, **self-describing**
 entries laid out value-first so that decoding is forward-readable from a
@@ -57,10 +65,10 @@ known `MetadataStart` cursor:
                 MetadataStart  (= the index pointer's target byte)
 ```
 
-`MetadataStart` is the byte offset (within the HSST buffer, *after* the
-version byte) of the `ValueLength` LEB128. The leaf B-tree node stores this
-offset for every entry; readers seek into the leaf, take the metaStart
-pointer, then:
+`MetadataStart` is the byte offset (within the HSST buffer, measured from
+byte 0 — the first byte of the data region) of the `ValueLength` LEB128.
+The leaf B-tree node stores this offset for every entry; readers seek into
+the leaf, take the metaStart pointer, then:
 
 1. Decode `ValueLength` (LEB128) — the value bytes live at
    `[MetadataStart - ValueLength, MetadataStart)`.
@@ -89,7 +97,7 @@ no per-entry key reconstruction during iteration, and entries that can be
 recovered from just `(buffer, MetadataStart)` without consulting any
 index.
 
-### Inline variant
+### BTreeInlineValue variant
 
 There is no data region. Leaf B-tree nodes hold the values directly inside
 the keys section's value slots. Separators in inline-mode leaves **are** the
@@ -160,20 +168,20 @@ deltas off it.
 For an intermediate node, each value is a 4-byte little-endian `int`
 (Uniform, 4) interpreted (after `+ BaseOffset`) as the **inclusive last
 byte** of the referenced child node within the HSST buffer (0-indexed from
-the version byte). The child's exclusive end = `childOffset + 1`; the
-reader then loads the child from the end the same way it loaded the root.
+the first byte of the HSST). The child's exclusive end = `childOffset + 1`;
+the reader then loads the child from the end the same way it loaded the root.
 
 ### Metadata-start pointers (non-inline leaves)
 
 For a non-inline leaf node, each value is a 4-byte little-endian `int`
 (after `+ BaseOffset`) giving the entry's `MetadataStart`, *relative to the
-start of the data region* (i.e. the offset within the HSST data region,
-with index 0 being the byte right after the version byte).
+start of the data region* (i.e. byte 0 of the HSST is the first byte of the
+data region).
 
-### Inline values (inline leaves)
+### Inline values (`BTreeInlineValue` leaves)
 
-For inline-mode leaves, each value-section slot holds the full value bytes
-directly — there's no metaStart indirection.
+For `BTreeInlineValue` leaves, each value-section slot holds the full value
+bytes directly — there's no metaStart indirection.
 
 ## Constraints
 
@@ -186,3 +194,55 @@ directly — there's no metaStart indirection.
 - All offsets *within* a node are encoded as 4-byte little-endian
   integers, so a single HSST is capped at ≈2 GiB. There is no in-format
   cap on a containing host file holding many HSSTs.
+
+## Affected files
+
+When changing this format, every file below has byte-level knowledge of
+the layout and must be reviewed in lockstep with this document. If you
+add a new file that encodes or decodes HSST bytes, append it here.
+
+Writers / encoders:
+- `Hsst/HsstBuilder.cs` — top-level HSST builder; writes the data region,
+  drives the index builder, appends the trailing `IndexType` byte.
+- `Hsst/HsstIndexBuilder.cs` — drives B-tree shape (leaf splitting,
+  intermediate-node promotion).
+- `Hsst/HsstIndexNodeWriter.cs` — writes a single index node's bytes
+  (`Values | Keys | Metadata | MetadataLength`).
+- `BSearchIndex/BSearchIndexWriter.cs` — alternate node writer used by
+  the merge path; must stay byte-compatible with `HsstIndexNodeWriter`.
+- `BSearchIndex/BSearchIndexLayoutPlanner.cs` — picks key/value section
+  encodings (Variable / Uniform / UniformWithLen) and section sizes.
+- `Hsst/IndexType.cs` — enum of valid index-type byte values.
+
+Readers / decoders:
+- `Hsst/HsstReader.cs` — point-query reader; reads the trailing
+  `IndexType` byte and walks the B-tree from the tail.
+- `Hsst/HsstIndex.cs` — parses a single index node from its tail.
+- `BSearchIndex/BSearchIndexReader.cs` — alternate index-node decoder
+  used by the merge path; mirrors `HsstIndex` parsing.
+- `BSearchIndex/BSearchIndexReaderSimd.cs` — SIMD fast paths over
+  fixed-width key/value sections; tied to the section encodings the
+  layout planner can choose.
+
+Iterators:
+- `Hsst/HsstEnumerator.cs` — forward iterator over a whole HSST scope;
+  reads the trailing `IndexType` byte, descends to the leftmost leaf,
+  and walks key-sorted entries via end-anchored ancestor frames.
+- `Hsst/HsstMergeEnumerator.cs` — N-way-merge cursor; collects every
+  leaf entry's `(separator, metaStart-or-inline-value)` up-front so a
+  sort-merge can round-robin many cursors without per-step allocations.
+
+Size / capacity math:
+- `PersistedSnapshots/HsstSizeEstimator.cs` — every constant here
+  (minimum HSST size, per-entry overhead, per-leaf overhead) tracks the
+  bytes the builder actually emits. Update whenever the wire layout
+  gains or loses bytes.
+
+Tests that pin the wire format (rename / re-anchor when bytes move):
+- `Nethermind.State.Flat.Test/Hsst/HsstTests.cs` —
+  `IndexType_Byte_Is_BTree_At_Tail` and round-trip tests.
+- `Nethermind.State.Flat.Test/Hsst/HsstReaderTests.cs` —
+  `IndexType_Byte_Is_BTree_ReaderWorks`.
+- `Nethermind.State.Flat.Test/BSearchIndex/BSearchIndexTests.cs` — hex
+  fixture tests for individual index nodes; `ReadFromEnd(data, …)` call
+  sites are sensitive to where the trailing byte sits.

@@ -72,14 +72,23 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
             return;
         }
 
-        Span<byte> vb = stackalloc byte[1];
-        if (!_reader.TryRead(_hsstStart, vb))
+        // IndexType byte is the last byte of the HSST.
+        Span<byte> idxType = stackalloc byte[1];
+        if (!_reader.TryRead(_hsstEnd - 1, idxType))
         {
             _empty = true;
             _isInline = false;
             return;
         }
-        _isInline = (vb[0] & 0x80) != 0;
+        switch ((IndexType)idxType[0])
+        {
+            case IndexType.BTree: _isInline = false; break;
+            case IndexType.BTreeInlineValue: _isInline = true; break;
+            default:
+                _empty = true;
+                _isInline = false;
+                return;
+        }
         _empty = false;
     }
 
@@ -89,7 +98,8 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 
         if (_depth < 0)
         {
-            return DescendToLeaf(_hsstEnd);
+            // Root node ends just before the trailing IndexType byte.
+            return DescendToLeaf(_hsstEnd - 1);
         }
 
         _leafIdx++;
@@ -229,7 +239,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         // Non-inline: leaf value is a metaStart pointer into the data region.
         ReadOnlySpan<byte> metaBytes = _leafNode.GetValue(_leafIdx);
         int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + _leafNode.Metadata.BaseOffset;
-        long absMetaStart = _hsstStart + 1 + metaStart;
+        long absMetaStart = _hsstStart + metaStart;
 
         // Read ValueLength (LEB128, ≤5 bytes) + KeyLength (u8, 1 byte). This is the leading
         // sequential read for each entry during enumeration, so use the readahead variant —

@@ -264,7 +264,7 @@ internal static class HsstSizeEstimator
         int avgValueSize)
     {
         if (entryCount == 0)
-            return 2; // Minimal HSST (version byte + empty index)
+            return 2; // Minimal HSST (empty index + IndexType byte)
 
         // Data region: entries with separators and values
         // Each entry has: key(remaining), separator, value length(LEB128), value

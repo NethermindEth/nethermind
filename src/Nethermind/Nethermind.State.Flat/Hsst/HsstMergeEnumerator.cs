@@ -42,7 +42,8 @@ public sealed class HsstMergeEnumerator : IDisposable
             return;
         }
 
-        HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, hsstData.Length);
+        // Last byte of the HSST is the IndexType byte; the root index ends just before it.
+        HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, hsstData.Length - 1);
         _entries = new NativeMemoryList<(int, int, int, int)>(16);
         CollectLeafOffsets(hsstData, rootIndex, _entries, _isInline);
     }
@@ -118,7 +119,7 @@ public sealed class HsstMergeEnumerator : IDisposable
         else
         {
             // Non-inline: data-region entry carries the full key — copy it directly.
-            ReadEntry(data, 1 + metaOrValOff, out ReadOnlySpan<byte> fullKey, out _);
+            ReadEntry(data, metaOrValOff, out ReadOnlySpan<byte> fullKey, out _);
             fullKey.CopyTo(_keyBufferList.AsSpan());
             _keyLength = fullKey.Length;
         }
@@ -131,7 +132,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     {
         (_, _, int metaOrValOff, int valLen) = _entries[_index];
         if (_isInline) return valLen == 0 ? [] : data.Slice(metaOrValOff, valLen);
-        ReadEntry(data, 1 + metaOrValOff, out _, out ReadOnlySpan<byte> value);
+        ReadEntry(data, metaOrValOff, out _, out ReadOnlySpan<byte> value);
         return value;
     }
 
@@ -139,12 +140,12 @@ public sealed class HsstMergeEnumerator : IDisposable
     {
         (_, _, int metaOrValOff, int valLen) = _entries[_index];
         if (_isInline) return (metaOrValOff, valLen);
-        int pos = 1 + metaOrValOff;
+        int pos = metaOrValOff;
         int valueLength = Leb128.Read(data, ref pos);
-        return (1 + metaOrValOff - valueLength, valueLength);
+        return (metaOrValOff - valueLength, valueLength);
     }
 
-    public int CurrentMetadataStart => 1 + _entries[_index].MetaOrValOffset;
+    public int CurrentMetadataStart => _entries[_index].MetaOrValOffset;
 
     public void Dispose()
     {

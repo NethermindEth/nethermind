@@ -67,11 +67,19 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
 
         if (_bound.Length < 2) return false;
 
-        Span<byte> vb = stackalloc byte[1];
-        if (!_reader.TryRead(_bound.Offset, vb)) return false;
-        bool isInline = (vb[0] & 0x80) != 0;
+        // IndexType byte is the last byte of the HSST.
+        Span<byte> idxType = stackalloc byte[1];
+        if (!_reader.TryRead(_bound.Offset + _bound.Length - 1, idxType)) return false;
+        bool isInline;
+        switch ((IndexType)idxType[0])
+        {
+            case IndexType.BTree: isInline = false; break;
+            case IndexType.BTreeInlineValue: isInline = true; break;
+            default: return false;
+        }
 
-        long currentAbsEnd = _bound.Offset + _bound.Length;
+        // Root node ends just before the IndexType byte.
+        long currentAbsEnd = _bound.Offset + _bound.Length - 1;
 
         while (true)
         {
@@ -129,7 +137,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     }
 
                     int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
-                    long absMetaStart = _bound.Offset + 1 + metaStart;
+                    long absMetaStart = _bound.Offset + metaStart;
 
                     // Read up to 6 bytes from absMetaStart: enough for ValueLength (≤5)
                     // LEB128 + KeyLength (1 byte). KeyLength only consumed when exact-matching.

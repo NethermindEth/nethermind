@@ -11,12 +11,12 @@ namespace Nethermind.State.Flat.Hsst;
 /// Builds an HSST (Hierarchical Static Sorted Table) from key-value entries.
 /// Entries MUST be added in sorted key order. No internal sorting is performed.
 ///
-/// Binary layout (normal):
-///   [Version: u8 = 0x01][Data Region: entries...][Index Region: B-tree nodes...]
+/// Binary layout (BTree):
+///   [Data Region: entries...][Index Region: B-tree nodes...][IndexType: u8 = 0x01]
 ///   Root index is readable from the end via MetadataLength byte (no trailer).
 ///
-/// Binary layout (inline):
-///   [Version: u8 = 0x81][Index Region: B-tree nodes...]
+/// Binary layout (BTreeInlineValue):
+///   [Index Region: B-tree nodes...][IndexType: u8 = 0x02]
 ///   No data section. Leaf values are stored directly in the B-tree index.
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
@@ -59,15 +59,15 @@ public ref struct HsstBuilder<TWriter>
         public readonly int SepOffset = sepOffset;
         public readonly int SepLen = sepLen;
         /// <summary>
-        /// Normal: offset relative to position 1 (after version byte) where value metadata starts.
-        /// Inline: offset into the inline value buffer.
+        /// BTree: offset within the HSST (relative to byte 0) where value metadata starts.
+        /// BTreeInlineValue: offset into the inline value buffer.
         /// </summary>
         public readonly int MetadataStart = metadataStart;
     }
 
     /// <summary>
     /// Create builder writing via the given writer.
-    /// Writes version byte (0x01 normal, 0x81 inline).
+    /// The trailing IndexType byte is appended in <see cref="Build"/>.
     /// Allocates working buffers from NativeMemory — call Dispose() to free them.
     /// <paramref name="expectedKeyCount"/> sizes the entry/separator working buffers up front;
     /// pass an estimate when known to avoid resize allocations. The buffers still grow on demand.
@@ -90,11 +90,6 @@ public ref struct HsstBuilder<TWriter>
             _inlineValueBuffer = new NativeMemoryListRef<byte>(byteCap);
             _inlineValueLengths = new NativeMemoryListRef<int>(expectedKeyCount);
         }
-
-        // Write version byte
-        Span<byte> span = _writer.GetSpan(1);
-        span[0] = inlineValues ? (byte)0x81 : (byte)0x01;
-        _writer.Advance(1);
     }
 
     /// <summary>
@@ -133,8 +128,8 @@ public ref struct HsstBuilder<TWriter>
         ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
 
         int actualLen = _writer.Written - _writtenBeforeValue;
-        // metadataStart stored in index is relative to position 1 (after this builder's version byte)
-        int metadataStart = _writer.Written - _baseOffset - 1;
+        // metadataStart stored in index is relative to byte 0 of this HSST.
+        int metadataStart = _writer.Written - _baseOffset;
 
         // Compute separator eagerly
         int sepLen = ComputeSeparatorLength(
@@ -198,15 +193,16 @@ public ref struct HsstBuilder<TWriter>
     }
 
     /// <summary>
-    /// Build index. The ref writer is already advanced.
-    /// No trailer is written — the root index is readable from the end.
+    /// Build index, then append the trailing IndexType byte. The ref writer is already advanced.
+    /// The root index node is readable from the end via its MetadataLength byte; the IndexType
+    /// byte sits one byte further out, at the very end of the HSST.
     /// </summary>
     public void Build(int maxLeafEntries = MaxLeafEntries)
     {
         if (_inlineValues)
         {
-            // Inline: no data section, index starts right after version byte
-            int absoluteIndexStart = 1;
+            // Inline: no data section, index starts at byte 0 of the HSST.
+            int absoluteIndexStart = 0;
 
             HsstIndexBuilder<TWriter> indexBuilder = new(
                 ref _writer, _entriesBuffer.AsSpan(),
@@ -226,6 +222,11 @@ public ref struct HsstBuilder<TWriter>
 
             indexBuilder.Build(absoluteIndexStart, maxLeafEntries);
         }
+
+        // Trailing IndexType byte (last byte of the HSST).
+        Span<byte> tail = _writer.GetSpan(1);
+        tail[0] = (byte)(_inlineValues ? IndexType.BTreeInlineValue : IndexType.BTree);
+        _writer.Advance(1);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -227,11 +227,11 @@ public class HsstReaderTests
     }
 
     [Test]
-    public void Version_Byte_Is_One_ReaderWorks()
+    public void IndexType_Byte_Is_BTree_ReaderWorks()
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
             builder.Add("key"u8, "value"u8));
-        Assert.That(data[0], Is.EqualTo(0x01));
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTree));
         SpanByteReader reader = new(data);
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         Assert.That(r.TrySeek("key"u8, out _), Is.True);

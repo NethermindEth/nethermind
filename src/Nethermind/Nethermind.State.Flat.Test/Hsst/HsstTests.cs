@@ -78,14 +78,14 @@ public class HsstTests
     }
 
     [Test]
-    public void Version_Byte_Is_One()
+    public void IndexType_Byte_Is_BTree_At_Tail()
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
         {
             builder.Add("key"u8, "value"u8);
         });
 
-        Assert.That(data[0], Is.EqualTo(0x01));
+        Assert.That(data[^1], Is.EqualTo((byte)IndexType.BTree));
     }
 
     [Test]
