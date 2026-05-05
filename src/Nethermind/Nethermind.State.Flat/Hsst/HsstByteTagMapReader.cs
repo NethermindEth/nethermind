@@ -13,6 +13,11 @@ namespace Nethermind.State.Flat.Hsst;
 /// </summary>
 internal static class HsstByteTagMapReader
 {
+    // Crossover where binary search beats vectorized IndexOf / backward floor scan on
+    // sorted single-byte tag arrays. The ≤7 and ≤3 ByteTagMap call sites stay on the
+    // linear path; the ≤256 slot-suffix bucket takes the binary-search path.
+    private const int BinarySearchThreshold = 16;
+
     /// <summary>Parsed footer of a ByteTagMap HSST.</summary>
     internal struct Layout
     {
@@ -78,8 +83,25 @@ internal static class HsstByteTagMapReader
 
             if (exactMatch)
             {
-                idx = tags.IndexOf(key[0]);
-                if (idx < 0) return false;
+                if (tags.Length >= BinarySearchThreshold)
+                {
+                    byte needle = key[0];
+                    int lo = 0, hi = tags.Length - 1;
+                    idx = -1;
+                    while (lo <= hi)
+                    {
+                        int mid = (lo + hi) >>> 1;
+                        byte t = tags[mid];
+                        if (t == needle) { idx = mid; break; }
+                        if (t < needle) lo = mid + 1; else hi = mid - 1;
+                    }
+                    if (idx < 0) return false;
+                }
+                else
+                {
+                    idx = tags.IndexOf(key[0]);
+                    if (idx < 0) return false;
+                }
             }
             else
             {
@@ -90,9 +112,24 @@ internal static class HsstByteTagMapReader
                 // An empty target matches nothing.
                 if (key.Length == 0) return false;
                 byte target = key[0];
-                idx = tags.Length - 1;
-                while (idx >= 0 && tags[idx] > target) idx--;
-                if (idx < 0) return false;
+                if (tags.Length >= BinarySearchThreshold)
+                {
+                    // Upper bound: first index i with tags[i] > target; floor is i - 1.
+                    int lo = 0, hi = tags.Length;
+                    while (lo < hi)
+                    {
+                        int mid = (lo + hi) >>> 1;
+                        if (tags[mid] <= target) lo = mid + 1; else hi = mid;
+                    }
+                    idx = lo - 1;
+                    if (idx < 0) return false;
+                }
+                else
+                {
+                    idx = tags.Length - 1;
+                    while (idx >= 0 && tags[idx] > target) idx--;
+                    if (idx < 0) return false;
+                }
             }
         }
 

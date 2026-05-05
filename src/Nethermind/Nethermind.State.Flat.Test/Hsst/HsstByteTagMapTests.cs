@@ -133,6 +133,55 @@ public class HsstByteTagMapTests
         Assert.That(vff, Is.EqualTo("c"u8.ToArray()));
     }
 
+    [TestCase(32)]
+    [TestCase(256)]
+    public void Floor_LargeN_BinarySearchPath(int n)
+    {
+        // Exercise the binary-search floor path (threshold is 16 entries). Tags are
+        // strictly ascending with gaps so we can probe between-tag, equal-to-tag,
+        // below-min, and above-max targets.
+        byte[] tags = new byte[n];
+        byte[][] vals = new byte[n][];
+        for (int i = 0; i < n; i++)
+        {
+            // n=256 fills the keyspace; n=32 uses stride 7 with offset 3 → 3..220.
+            tags[i] = n == 256 ? (byte)i : (byte)(i * 7 + 3);
+            vals[i] = [(byte)i];
+        }
+        byte[] data = Build(tags, vals);
+
+        // Equal-to-tag: every tag floors to itself.
+        for (int i = 0; i < n; i++)
+        {
+            Assert.That(TryGetFloor(data, [tags[i]], out _, out byte[] v), Is.True);
+            Assert.That(v, Is.EqualTo(new[] { (byte)i }));
+        }
+
+        // Between-tag (only meaningful when there are gaps, i.e. n != 256).
+        if (n != 256)
+        {
+            for (int i = 1; i < n; i++)
+            {
+                byte between = (byte)(tags[i] - 1); // strictly between tags[i-1] and tags[i]
+                Assert.That(TryGetFloor(data, [between], out _, out byte[] v), Is.True);
+                Assert.That(v, Is.EqualTo(new[] { (byte)(i - 1) }), $"between-tag floor for 0x{between:X2}");
+            }
+        }
+
+        // Below smallest: no floor.
+        if (tags[0] > 0)
+        {
+            Assert.That(TryGetFloor(data, [(byte)(tags[0] - 1)], out _, out _), Is.False);
+        }
+
+        // Above largest: floors to the last tag.
+        if (tags[^1] < 0xFF)
+        {
+            Assert.That(TryGetFloor(data, [0xFF], out _, out byte[] vMax), Is.True);
+            Assert.That(vMax, Is.EqualTo(new[] { (byte)(n - 1) }));
+        }
+    }
+
     [Test]
     public void RejectsUnsortedDuplicateOversizeAndMultiByteTags()
     {
