@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using System.IO.Abstractions;
 using System.Text.Json;
 using Nethermind.Core;
@@ -176,8 +177,9 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
 
         ct.ThrowIfCancellationRequested();
 
-        File.WriteAllText(fileName, string.Empty);
-        using (var file = fileSystem.File.OpenWrite(fileName))
+        // FileMode.Create truncates the file in a single open via the injected
+        // IFileSystem, so MockFileSystem-backed tests see the truncation.
+        using (var file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write))
         using (var jsonWriter = new Utf8JsonWriter(file))
         {
             JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
