@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
@@ -465,6 +466,122 @@ public class SszCodecTests
 
         buf[40].Should().Be(1,
             "should_override_builder=true must encode as 0x01 at offset 40");
+    }
+
+    [Test]
+    public void DecodeFcuV3Request_spec_layout_roundtrips_parent_beacon_block_root()
+    {
+        ForkchoiceUpdatedV3RequestWire wire = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = TestItem.KeccakC,
+            },
+            PayloadAttributes =
+            [
+                new PayloadAttributesV3Wire
+                {
+                    Timestamp = 0x1122334455667788UL,
+                    PrevRandao = TestItem.KeccakD,
+                    SuggestedFeeRecipient = TestItem.AddressA,
+                    Withdrawals = [],
+                    ParentBeaconBlockRoot = TestItem.KeccakE,
+                }
+            ]
+        };
+
+        byte[] encoded = ForkchoiceUpdatedV3RequestWire.Encode(wire);
+
+        (ForkchoiceStateV1 state, PayloadAttributes? attrs) =
+            SszCodec.DecodeForkchoiceUpdatedRequest(encoded, version: 3);
+
+        state.HeadBlockHash.Should().Be(TestItem.KeccakA);
+        state.SafeBlockHash.Should().Be(TestItem.KeccakB);
+        state.FinalizedBlockHash.Should().Be(TestItem.KeccakC);
+
+        attrs.Should().NotBeNull();
+        attrs!.Timestamp.Should().Be(0x1122334455667788UL);
+        attrs.PrevRandao.Should().Be(TestItem.KeccakD);
+        attrs.SuggestedFeeRecipient.Should().Be(TestItem.AddressA);
+        attrs.Withdrawals.Should().BeEmpty();
+
+        attrs.ParentBeaconBlockRoot.Should().NotBeNull(
+            "parent_beacon_block_root must be decoded from the fixed-position Bytes32, not a list offset");
+        attrs.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakE,
+            "parent_beacon_block_root must round-trip exactly");
+    }
+
+    [Test]
+    public void DecodeFcuV4Request_spec_layout_roundtrips_parent_beacon_block_root_and_slot_number()
+    {
+        ulong expectedSlot = 0xAABBCCDD_11223344UL;
+
+        ForkchoiceUpdatedRequestWire wire = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = TestItem.KeccakC,
+            },
+            PayloadAttributes =
+            [
+                new PayloadAttributesWire
+                {
+                    Timestamp = 0x0102030405060708UL,
+                    PrevRandao = TestItem.KeccakD,
+                    SuggestedFeeRecipient = TestItem.AddressB,
+                    Withdrawals = [],
+                    ParentBeaconBlockRoot = TestItem.KeccakE,
+                    SlotNumber = expectedSlot,
+                }
+            ]
+        };
+
+        byte[] encoded = ForkchoiceUpdatedRequestWire.Encode(wire);
+
+        (ForkchoiceStateV1 state, PayloadAttributes? attrs) =
+            SszCodec.DecodeForkchoiceUpdatedRequest(encoded, version: 4);
+
+        state.HeadBlockHash.Should().Be(TestItem.KeccakA);
+        attrs.Should().NotBeNull();
+        attrs!.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakE,
+            "parent_beacon_block_root must round-trip in V4 as a fixed Bytes32");
+        attrs.SlotNumber.Should().Be(expectedSlot,
+            "slot_number must be decoded from the fixed uint64 that follows parent_beacon_block_root");
+        attrs.SuggestedFeeRecipient.Should().Be(TestItem.AddressB);
+    }
+
+    [Test]
+    public void DecodeFcuV3Request_parent_beacon_block_root_is_at_fixed_byte_offset_64_inside_payload_attributes()
+    {
+        Hash256 expectedRoot = TestItem.KeccakE;
+
+        PayloadAttributesV3Wire attrsWire = new()
+        {
+            Timestamp = 42UL,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = TestItem.AddressA,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = expectedRoot,
+        };
+
+        byte[] attrsEncoded = PayloadAttributesV3Wire.Encode(attrsWire);
+
+        attrsEncoded.Length.Should().BeGreaterThanOrEqualTo(96,
+            "PayloadAttributesV3 fixed section is 96 bytes (64 fixed + 32 for parent_beacon_block_root)");
+
+        byte[] rootBytes = attrsEncoded[64..96];
+        rootBytes.Should().BeEquivalentTo(expectedRoot.Bytes.ToArray(),
+            "parent_beacon_block_root must be encoded as a plain Bytes32 at offset 64, " +
+            "not as a variable-length list offset (the H1 regression would place a uint32 here instead)");
+
+        uint withdrawalsOffset = BitConverter.ToUInt32(attrsEncoded, 60);
+        withdrawalsOffset.Should().BeGreaterThanOrEqualTo(96u,
+            "withdrawals list-offset must point past the 96-byte fixed+root section, " +
+            "confirming parent_beacon_block_root occupies [64..96) as a fixed field");
     }
 
     [Test]

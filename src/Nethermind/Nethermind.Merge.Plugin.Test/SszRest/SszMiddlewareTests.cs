@@ -497,7 +497,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Malformed_ssz_body_returns_422_without_propagating_exception()
+    public async Task Malformed_ssz_body_returns_400_without_propagating_exception()
     {
         byte[] garbage = new byte[64];
         new Random(42).NextBytes(garbage);
@@ -507,9 +507,7 @@ public class SszMiddlewareTests
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
         await act.Should().NotThrowAsync();
-        // Per execution-apis spec a body that cannot be decoded is 422 Unprocessable Entity,
-        // not 500 Internal Server Error.
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status422UnprocessableEntity);
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
     }
 
     [Test]
