@@ -23,27 +23,19 @@ public class StatsAnalyzerBuilder : Builder
 
     public PatternStatsAnalyzer Build()
     {
+        // Check.ThrowIfNull throws on null/missing — the explicit !.HasValue
+        // ladder that used to follow was dead code (and contained a copy-paste
+        // error that reused 'Buffer size for sketches must be set.' for the
+        // _minSupport branch).
         Check.ThrowIfNull(_bufferSizeForSketches, nameof(_bufferSizeForSketches));
         Check.ThrowIfNull(_minSupport, nameof(_minSupport));
         Check.ThrowIfNull(_capacity, nameof(_capacity));
         Check.ThrowIfNull(_sketchResetOrReuseThreshold, nameof(_sketchResetOrReuseThreshold));
         Check.ThrowIfNull(_topN, nameof(_topN));
         Check.ThrowIfNull(_sketch, nameof(_sketch));
-        if (!_bufferSizeForSketches.HasValue)
-            throw new InvalidOperationException("Buffer size for sketches must be set.");
-        if (!_minSupport.HasValue)
-            throw new InvalidOperationException("Buffer size for sketches must be set.");
-        if (!_capacity.HasValue)
-            throw new InvalidOperationException("Capacity must be set.");
-        if (!_sketchResetOrReuseThreshold.HasValue)
-            throw new InvalidOperationException("Sketch reset or reuse threshold must be set.");
-        if (!_topN.HasValue)
-            throw new InvalidOperationException("Top N must be set.");
-        if (_sketch == null)
-            throw new InvalidOperationException("Sketch must be set.");
 
-        return new PatternStatsAnalyzer(_topN.Value, _sketch, _capacity.Value, _minSupport.Value,
-            _bufferSizeForSketches.Value, _sketchResetOrReuseThreshold.Value);
+        return new PatternStatsAnalyzer(_topN!.Value, _sketch!, _capacity!.Value, _minSupport!.Value,
+            _bufferSizeForSketches!.Value, _sketchResetOrReuseThreshold!.Value);
     }
 
     public Builder SetBufferSizeForSketches(int size)
