@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.ParallelSync
     ///     - Beacon modes have higher priority than conflicting modes.
     ///     - Their are enabled based on <see cref="IBeaconSyncStrategy.ShouldBeInBeaconHeaders"/> and <see cref="IBeaconSyncStrategy.ShouldBeInBeaconModeControl"/>.
     /// * When <see cref="ISyncConfig.FastSync"/> is enabled:
-    ///     - Beacon modes are exclusive with <see cref="SyncMode.FastSync"/>, <see cref="SyncMode.Full"/>, <see cref="SyncMode.StateNodes"/> and <see cref="SyncMode.SnapSync"/>.
+    ///     - Beacon modes are exclusive with <see cref="SyncMode.FastSync"/>, <see cref="SyncMode.Full"/> and <see cref="SyncMode.StateNodes"/>.
     ///     - Beacon modes can run parallel with syncing old state (<see cref="SyncMode.FastHeaders"/>, <see cref="SyncMode.FastBlocks"/> (the default and always on) and <see cref="SyncMode.FastReceipts"/>).
     /// * When <see cref="ISyncConfig.FastSync"/> is disabled:
     ///     - Beacon modes are allied directly.
@@ -48,10 +48,8 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly bool _needToWaitForHeaders;
         private readonly ILogger _logger;
-        private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
 
         private bool FastSyncEnabled => _syncConfig.FastSync;
-        private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBodiesEnabled => FastSyncEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastSyncEnabled && _syncConfig.DownloadReceiptsInFastSync;
         private bool FastBlockAccessListsEnabled => FastSyncEnabled && _syncConfig.DownloadBlockAccessListsInFastSync;
@@ -85,8 +83,6 @@ namespace Nethermind.Synchronization.ParallelSync
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
-
-            _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
             _ = StartAsync(_cancellation?.Token ?? CancellationToken.None);
         }
@@ -186,7 +182,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInFastSync = ShouldBeInFastSyncMode(best);
                             best.IsInStateSync = ShouldBeInStateSyncMode(best);
                             best.IsInStateNodes = ShouldBeInStateNodesMode(best);
-                            best.IsInSnapRanges = ShouldBeInSnapRangesPhase(best);
                             best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
                             best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
                             best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
@@ -206,7 +201,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
                             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
                             CheckAddFlag(best.IsInStateNodes, SyncMode.StateNodes, ref newModes);
-                            CheckAddFlag(best.IsInSnapRanges, SyncMode.SnapSync, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
                             SyncMode current = Current;
@@ -605,44 +599,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
-        private bool ShouldBeInStateNodesMode(Snapshot best)
-        {
-            bool isInStateSync = best.IsInStateSync;
-            bool snapSyncDisabled = !SnapSyncEnabled;
-            bool snapRangesFinished = _syncProgressResolver.IsSnapGetRangesFinished();
-
-            bool result = isInStateSync && (snapSyncDisabled || snapRangesFinished);
-
-            if (_logger.IsTrace)
-            {
-                LogDetailedSyncModeChecks("STATE_NODES",
-                    (nameof(isInStateSync), isInStateSync),
-                    ($"{nameof(snapSyncDisabled)} || {nameof(snapRangesFinished)}", snapSyncDisabled || snapRangesFinished));
-            }
-
-            return result;
-        }
-
-        private bool ShouldBeInSnapRangesPhase(Snapshot best)
-        {
-            bool isInStateSync = best.IsInStateSync;
-            bool isCloseToHead = best.TargetBlock >= best.Header && (best.TargetBlock - best.Header) <= TotalSyncLag;
-            bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
-
-            if (_logger.IsTrace)
-            {
-                LogDetailedSyncModeChecks("SNAP_RANGES",
-                    (nameof(SnapSyncEnabled), SnapSyncEnabled),
-                    (nameof(isInStateSync), isInStateSync),
-                    (nameof(isCloseToHead), isCloseToHead),
-                    (nameof(snapNotFinished), snapNotFinished));
-            }
-
-            return SnapSyncEnabled
-                && isInStateSync
-                && isCloseToHead
-                && snapNotFinished;
-        }
+        private static bool ShouldBeInStateNodesMode(Snapshot best) => best.IsInStateSync;
 
         private bool AnyDesiredPeerKnown(Snapshot best) => _betterPeerStrategy.IsDesiredPeer(best.Peer, (best.ChainDifficulty, best.Header));
 
@@ -787,7 +744,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 PivotNumber = pivotNumber;
 
                 IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBlockAccessLists = IsInFastBodies = IsInFastHeaders
-                    = IsInFastSync = IsInFullSync = IsInStateSync = IsInStateNodes = IsInSnapRanges = IsInBeaconHeaders = IsInUpdatingPivot = false;
+                    = IsInFastSync = IsInFullSync = IsInStateSync = IsInStateNodes = IsInBeaconHeaders = IsInUpdatingPivot = false;
             }
 
             public bool IsInUpdatingPivot { get; set; }
@@ -798,7 +755,6 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInFastSync { get; set; }
             public bool IsInStateSync { get; set; }
             public bool IsInStateNodes { get; set; }
-            public bool IsInSnapRanges { get; set; }
             public bool IsInFullSync { get; set; }
             public bool IsInDisconnected { get; set; }
             public bool IsInWaitingForBlock { get; set; }

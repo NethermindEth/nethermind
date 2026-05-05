@@ -5,16 +5,13 @@
 
 using System;
 using System.Diagnostics;
-using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Toolchains.InProcess.NoEmit;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -28,7 +25,6 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -86,7 +82,7 @@ public class BlockProcessingBenchmark
         public BlockProcessingConfig()
         {
             AddJob(Job.Default
-                .WithToolchain(InProcessNoEmitToolchain.Default)
+                .WithToolchain(InProcessNoEmitToolchain.Instance)
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
                 .WithLaunchCount(2)

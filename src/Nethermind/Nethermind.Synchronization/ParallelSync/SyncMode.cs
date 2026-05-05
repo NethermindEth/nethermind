@@ -55,20 +55,16 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastBlockAccessLists = FastBlocks | 2048,
         /// <summary>
-        /// Stage of snap sync that state is being downloaded (accounts, storages, code, proofs)
-        /// </summary>
-        SnapSync = 4096,
-        /// <summary>
         /// Reverse download of headers from beacon pivot to genesis
         /// </summary>
-        BeaconHeaders = 8192,
+        BeaconHeaders = 4096,
         /// <summary>
         /// Waiting for Forkchoice message from Consensus Layer to update pivot block
         /// </summary>
-        UpdatingPivot = 16384,
+        UpdatingPivot = 8192,
 
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | Full | DbLoad |
-              FastHeaders | FastBodies | FastReceipts | FastBlockAccessLists | SnapSync | BeaconHeaders | UpdatingPivot
+              FastHeaders | FastBodies | FastReceipts | FastBlockAccessLists | BeaconHeaders | UpdatingPivot
     }
 
     public static class SyncModeExtensions
@@ -80,7 +76,6 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.FastBodies) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
-            syncMode.HasFlag(SyncMode.SnapSync) ||
             syncMode.HasFlag(SyncMode.BeaconHeaders) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
@@ -90,7 +85,6 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.FastReceipts) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
-            syncMode.HasFlag(SyncMode.SnapSync) ||
             syncMode.HasFlag(SyncMode.BeaconHeaders) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
@@ -99,7 +93,6 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.FastBlockAccessLists) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
-            syncMode.HasFlag(SyncMode.SnapSync) ||
             syncMode.HasFlag(SyncMode.BeaconHeaders) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
@@ -111,7 +104,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public static bool HaveNotSyncedStateYet(this SyncMode syncMode) =>
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
-            syncMode.HasFlag(SyncMode.SnapSync) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
     }
 }

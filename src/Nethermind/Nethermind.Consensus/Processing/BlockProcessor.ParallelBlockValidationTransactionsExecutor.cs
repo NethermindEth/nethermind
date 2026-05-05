@@ -102,22 +102,29 @@ public partial class BlockProcessor
                         }
 
                         int txIndex = i - 1;
+                        Transaction tx = state.txs[txIndex];
                         try
                         {
-                            Transaction tx = state.txs[txIndex];
-                            ProcessTransaction(
-                                state.balManager.GetTxProcessor(i),
-                                state.stateProvider,
-                                state.block,
-                                tx,
-                                txIndex,
-                                state.receiptsTracers[txIndex],
-                                state.processingOptions);
+                            // The using block detaches the worker's BAL into _perTxBal[i] and
+                            // recycles the pool slot via Dispose BEFORE we signal the gas result,
+                            // so the validator finds _perTxBal[i] populated when it awaits
+                            // gasResults[i-1] — even if ProcessTransaction throws.
+                            using (TxProcessorLease lease = state.balManager.RentTxProcessor(i))
+                            {
+                                ProcessTransaction(
+                                    lease.Adapter,
+                                    state.stateProvider,
+                                    state.block,
+                                    tx,
+                                    txIndex,
+                                    state.receiptsTracers[txIndex],
+                                    state.processingOptions);
+                            }
                             state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                         }
                         catch (InvalidBlockException ex)
                         {
-                            state.gasResults[txIndex].SetResult((state.txs[txIndex].GasLimit, 0, ex));
+                            state.gasResults[txIndex].SetResult((tx.GasLimit, 0, ex));
                         }
                         catch
                         {

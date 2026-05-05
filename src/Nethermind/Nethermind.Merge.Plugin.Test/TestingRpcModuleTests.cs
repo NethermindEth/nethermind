@@ -3,11 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -33,17 +36,26 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class TestingRpcModuleTests
 {
+    private readonly List<IDisposable> _disposables = [];
+
+    [TearDown]
+    public void TearDown()
+    {
+        foreach (IDisposable disposable in _disposables) disposable.Dispose();
+        _disposables.Clear();
+    }
+
     [Test]
     public async Task Sets_excess_blob_gas_and_withdrawals_root()
     {
         Hash256? suggestedWithdrawalsRoot = null;
-        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(
             onProcess: block => suggestedWithdrawalsRoot = block.Header.WithdrawalsRoot);
 
         PayloadAttributes payloadAttributes = CreateDefaultPayloadAttributes(parentHeader,
             withdrawals: [new Withdrawal { Index = 0, ValidatorIndex = 0, Address = Address.Zero, AmountInGwei = 1 }]);
 
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+        ResultWrapper<object> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, [], []);
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         result.Data.Should().BeOfType<GetPayloadV5Result>();
@@ -56,14 +68,14 @@ public class TestingRpcModuleTests
     [Test]
     public async Task Json_rpc_accepts_omitted_extraData()
     {
-        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule();
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule();
 
         JsonRpcResponse response = await RpcTest.TestRequest<ITestingRpcModule>(
             module,
             nameof(ITestingRpcModule.testing_buildBlockV1),
             parentHash,
             CreateDefaultPayloadAttributes(parentHeader),
-            Array.Empty<byte[]>());
+            (byte[][])[]);
 
         response.Should().BeOfType<JsonRpcSuccessResponse>();
     }
@@ -75,7 +87,7 @@ public class TestingRpcModuleTests
         bool expectsSlotNumber)
     {
         ulong? parentSlot = expectsSlotNumber ? 1UL : null;
-        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(
             spec: spec, slotNumber: parentSlot);
 
         Transaction[] transactions = BuildSignedTransactions(2);
@@ -90,7 +102,7 @@ public class TestingRpcModuleTests
             parentHash,
             payloadAttributes,
             txRlps,
-            Array.Empty<byte>());
+            (byte[])[]);
 
         using JsonDocument doc = JsonDocument.Parse(json);
         JsonElement root = doc.RootElement;
@@ -143,11 +155,11 @@ public class TestingRpcModuleTests
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns(new[] { mempoolTx });
 
-        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(txSource: txSource);
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(txSource: txSource);
 
-        byte[][]? txRlps = useNull ? null : Array.Empty<byte[]>();
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(
-            parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, Array.Empty<byte>());
+        byte[][]? txRlps = useNull ? null : [];
+        ResultWrapper<object> result = await module.testing_buildBlockV1(
+            parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
         result.Result.ResultType.Should().Be(ResultType.Success);
         ((GetPayloadV5Result)result.Data!).ExecutionPayload.Transactions.Should().HaveCount(expectedTxCount);
@@ -161,10 +173,10 @@ public class TestingRpcModuleTests
     [Test]
     public async Task Fails_when_transaction_is_invalid()
     {
-        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateDefaultTestingModule(
+        (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) = CreateBuildTestingModule(
             processOverride: block =>
             {
-                Block processedBlock = new(block.Header, [block.Transactions[0]], Array.Empty<BlockHeader>(), block.Withdrawals);
+                Block processedBlock = new(block.Header, [block.Transactions[0]], [], block.Withdrawals);
                 processedBlock.Header.StateRoot ??= Keccak.EmptyTreeHash;
                 processedBlock.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
                 processedBlock.Header.Bloom ??= Bloom.Empty;
@@ -175,8 +187,8 @@ public class TestingRpcModuleTests
 
         byte[][] txRlps = EncodeTransactions(BuildSignedTransactions(2), out _);
 
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(
-            parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, Array.Empty<byte>());
+        ResultWrapper<object> result = await module.testing_buildBlockV1(
+            parentHash, CreateDefaultPayloadAttributes(parentHeader), txRlps, []);
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("expected 2 transactions but only 1 were included");
@@ -185,55 +197,96 @@ public class TestingRpcModuleTests
     [Test]
     public async Task Returns_error_for_unknown_parent()
     {
-        (TestingRpcModule module, _, BlockHeader parentHeader) = CreateDefaultTestingModule();
+        (TestingRpcModule module, _, BlockHeader parentHeader) = CreateBuildTestingModule();
 
         Hash256 unknownHash = Keccak.Compute("unknown");
-        ResultWrapper<object?> result = await module.testing_buildBlockV1(
+        ResultWrapper<object> result = await module.testing_buildBlockV1(
             unknownHash, CreateDefaultPayloadAttributes(parentHeader), null);
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.Result.Error.Should().Contain("unknown parent block");
     }
 
-    private static (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) CreateDefaultTestingModule(
+    [Test]
+    public async Task Testing_commitBlockV1_commits_block_to_chain_head()
+    {
+        (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.Added);
+
+        ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
+            CreateDefaultPayloadAttributes(chainHeadHeader),
+            [],
+            []);
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+
+        Block suggested = (Block)blockTree.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlockAsync))
+            .GetArguments()[0]!;
+        suggested.Header.Number.Should().Be(chainHeadHeader.Number + 1);
+        suggested.Hash.Should().NotBeNull();
+        result.Data.Should().Be(suggested.Hash!);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_fails_when_chain_head_not_found()
+    {
+        (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(nullChainHead: true);
+
+        ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
+            CreateDefaultPayloadAttributes(chainHeadHeader),
+            [],
+            null);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_fails_when_block_commit_fails()
+    {
+        (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.InvalidBlock, fireNewHeadEvent: false);
+
+        ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
+            CreateDefaultPayloadAttributes(chainHeadHeader),
+            [],
+            null);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_fails_on_invalid_transaction_rlp()
+    {
+        (TestingRpcModule module, _, BlockHeader chainHeadHeader) = CreateCommitTestingModule();
+
+        ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
+            CreateDefaultPayloadAttributes(chainHeadHeader),
+            new[] { new byte[] { 0xff, 0xff, 0xff } },
+            null);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.Result.Error.Should().Contain("invalid transaction RLP");
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+    }
+
+    private (TestingRpcModule module, IBlockTree blockTree, IBlockFinder blockFinder, BlockHeader parentHeader) CreateModuleWithMocks(
         IReleaseSpec? spec = null,
         ulong? slotNumber = null,
         Action<Block>? onProcess = null,
         Func<Block, Block?>? processOverride = null,
         ITxSource? txSource = null)
     {
-        Hash256 parentHash = Keccak.Compute("parent");
-        BlockHeader parentHeader = new(
-            Keccak.Compute("grandparent"),
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            1,
-            30_000_000,
-            1,
-            [])
-        {
-            Hash = parentHash,
-            TotalDifficulty = UInt256.Zero,
-            BaseFeePerGas = UInt256.One,
-            GasUsed = 0,
-            StateRoot = Keccak.EmptyTreeHash,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            Bloom = Bloom.Empty,
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
-            SlotNumber = slotNumber
-        };
-        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+        BlockHeader parentHeader = CreateDefaultParentHeader(slotNumber);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec ?? Osaka.Instance);
 
         IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
         gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
-
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(parentHash).Returns(parentBlock);
 
         IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess);
 
@@ -245,9 +298,84 @@ public class TestingRpcModuleTests
         IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
         blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
 
-        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, LimboLogs.Instance);
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+
+        TestingRpcModule module = new(blockProducerEnvFactory, gasLimitCalculator, specProvider, blockFinder, blockTree, Substitute.For<IProcessExitSource>(), LimboLogs.Instance);
+        _disposables.Add(module);
+        return (module, blockTree, blockFinder, parentHeader);
+    }
+
+    private (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) CreateBuildTestingModule(
+        IReleaseSpec? spec = null,
+        ulong? slotNumber = null,
+        Action<Block>? onProcess = null,
+        Func<Block, Block?>? processOverride = null,
+        ITxSource? txSource = null)
+    {
+        (TestingRpcModule module, _, IBlockFinder blockFinder, BlockHeader parentHeader) =
+            CreateModuleWithMocks(spec, slotNumber, onProcess, processOverride, txSource);
+
+        Hash256 parentHash = parentHeader.Hash!;
+        Block parentBlock = new(parentHeader, [], [], []);
+        blockFinder.FindBlock(parentHash).Returns(parentBlock);
+
         return (module, parentHash, parentHeader);
     }
+
+    private (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) CreateCommitTestingModule(
+        AddBlockResult suggestResult = AddBlockResult.Added,
+        bool fireNewHeadEvent = true,
+        bool nullChainHead = false)
+    {
+        (TestingRpcModule module, IBlockTree blockTree, _, BlockHeader chainHeadHeader) = CreateModuleWithMocks();
+        Block chainHeadBlock = new(chainHeadHeader, [], [], []);
+
+        blockTree.Head.Returns(nullChainHead ? null : chainHeadBlock);
+
+        // Raise NewHeadBlock inside Returns() so the event fires before SuggestBlockAsync
+        // returns — matches the production subscribe-then-suggest ordering the endpoint relies on.
+        if (fireNewHeadEvent && suggestResult == AddBlockResult.Added)
+        {
+            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(callInfo =>
+                {
+                    Block block = callInfo.Arg<Block>();
+                    blockTree.NewHeadBlock += Raise.EventWith(blockTree, new BlockEventArgs(block));
+                    return suggestResult;
+                });
+        }
+        else
+        {
+            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(suggestResult);
+        }
+
+        return (module, blockTree, chainHeadHeader);
+    }
+
+    private static BlockHeader CreateDefaultParentHeader(ulong? slotNumber = null) =>
+        new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = Keccak.Compute("parent"),
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = slotNumber
+        };
 
     private static IBlockchainProcessor CreateBlockProcessor(
         Func<Block, Block?>? processOverride = null,

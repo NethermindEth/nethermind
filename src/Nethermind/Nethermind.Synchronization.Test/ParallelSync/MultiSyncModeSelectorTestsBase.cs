@@ -23,7 +23,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             if (_needToWaitForHeaders && (expectedSyncModes & SyncMode.FastHeaders) == SyncMode.FastHeaders)
             {
                 expectedSyncModes &= ~SyncMode.StateNodes;
-                expectedSyncModes &= ~SyncMode.SnapSync;
                 expectedSyncModes &= ~SyncMode.Full;
                 expectedSyncModes &= ~SyncMode.FastSync;
             }

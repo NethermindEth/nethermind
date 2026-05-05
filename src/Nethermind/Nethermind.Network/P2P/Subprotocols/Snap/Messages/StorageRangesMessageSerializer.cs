@@ -16,7 +16,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
-            (int contentLength, int allSlotsLength, int[] accountSlotsLengths) = CalculateLengths(message);
+            (int contentLength, int allSlotsLength, ArrayPoolSpan<int> accountSlotsLengths) = CalculateLengths(message);
+            using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
 
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
             NettyRlpStream stream = new(byteBuffer);
@@ -49,7 +50,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                         stream.Encode(slot.Path);
                         stream.Encode(slot.SlotRlpValue);
                     }
-
                 }
             }
 
@@ -72,9 +72,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref Rlp.ValueDecoderContext outerCtx) =>
                     outerCtx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext innerCtx) =>
                     {
-                        innerCtx.ReadSequenceLength();
+                        int length = innerCtx.ReadSequenceLength();
+                        int checkPosition = innerCtx.Position + length;
                         Hash256 path = innerCtx.DecodeKeccak();
                         byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
+                        innerCtx.Check(checkPosition);
                         return new PathWithStorageSlot(in path.ValueHash256, value);
                     }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
@@ -92,39 +94,44 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             }
         }
 
-        private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths) CalculateLengths(StorageRangeMessage message)
+        private static (int contentLength, int allSlotsLength, ArrayPoolSpan<int> accountSlotsLengths) CalculateLengths(StorageRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
-
+            IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? slots = message.Slots;
+            int slotsCount = slots?.Count ?? 0;
+            ArrayPoolSpan<int> accountSlotsLengths = new(slotsCount);
             int allSlotsLength = 0;
-            int[] accountSlotsLengths = new int[message.Slots.Count];
 
-            if (message.Slots is null || message.Slots.Count == 0)
+            try
             {
-                allSlotsLength = 1;
-            }
-            else
-            {
-                for (int i = 0; i < message.Slots.Count; i++)
+                if (slots is not null && slotsCount != 0)
                 {
-                    int accountSlotsLength = 0;
-
-                    IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = message.Slots[i];
-                    foreach (ref readonly PathWithStorageSlot slot in accountSlots.AsSpan())
+                    for (int i = 0; i < slotsCount; i++)
                     {
-                        int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
-                        accountSlotsLength += Rlp.LengthOfSequence(slotLength);
+                        int accountSlotsLength = 0;
+
+                        IOwnedReadOnlyList<PathWithStorageSlot> accountSlots = slots[i];
+                        foreach (ref readonly PathWithStorageSlot slot in accountSlots.AsSpan())
+                        {
+                            int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+                            accountSlotsLength += Rlp.LengthOfSequence(slotLength);
+                        }
+
+                        accountSlotsLengths[i] = accountSlotsLength;
+                        allSlotsLength += Rlp.LengthOfSequence(accountSlotsLength);
                     }
-
-                    accountSlotsLengths[i] = accountSlotsLength;
-                    allSlotsLength += Rlp.LengthOfSequence(accountSlotsLength);
                 }
+
+                contentLength += Rlp.LengthOfSequence(allSlotsLength);
+                contentLength += Rlp.LengthOfByteArrayList(message.Proofs);
+
+                return (contentLength, allSlotsLength, accountSlotsLengths);
             }
-
-            contentLength += Rlp.LengthOfSequence(allSlotsLength);
-            contentLength += Rlp.LengthOfByteArrayList(message.Proofs);
-
-            return (contentLength, allSlotsLength, accountSlotsLengths);
+            catch
+            {
+                accountSlotsLengths.Dispose();
+                throw;
+            }
         }
     }
 }

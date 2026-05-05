@@ -412,7 +412,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState fastBlocksState = FastBlocksState.FinishedBlockAccessLists, bool snapRangesFinished = false, long? bestHeader = null)
+                public ScenarioBuilder IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState fastBlocksState = FastBlocksState.FinishedBlockAccessLists, bool stateFinished = false, long? bestHeader = null)
                 {
                     _syncProgressSetups.Add(
                         () =>
@@ -421,11 +421,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestHeader().Returns(bestHeader.Value);
 
                             SyncProgressResolver.FindBestFullBlock().Returns(0);
-                            SyncProgressResolver.FindBestFullState().Returns(0);
+                            SyncProgressResolver.FindBestFullState().Returns(stateFinished ? bestHeader.Value : 0);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
-                            SyncProgressResolver.IsSnapGetRangesFinished().Returns(snapRangesFinished);
                             return "just after fast blocks and fast sync";
                         }
                     );
@@ -462,7 +461,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)currentBlock);
-                            SyncProgressResolver.IsSnapGetRangesFinished().Returns(true);
                             return "just started full sync";
                         }
                     );

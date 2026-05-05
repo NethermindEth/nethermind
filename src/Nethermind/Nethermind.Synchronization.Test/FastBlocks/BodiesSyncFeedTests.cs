@@ -232,6 +232,18 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public async Task When_AncientBodiesBarrier_exceeds_SyncPivot_then_finishes_immediately()
+    {
+        _syncConfig.PivotNumber = 0;
+        _syncConfig.AncientBodiesBarrier = 4_367_322;
+
+        _feed.InitializeFeed();
+        using BodiesSyncBatch? _ = await _feed.PrepareRequest();
+
+        _feed.IsFinished.Should().BeTrue();
+    }
+
+    [Test]
     public async Task ShouldLimitBatchSizeToPeerEstimate()
     {
         _feed.InitializeFeed();

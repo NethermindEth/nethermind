@@ -92,7 +92,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
         {
-            keys.Add(kvp.Key.Bytes);
+            keys.Add(kvp.Key.Bytes.ToArray());
             foreach (UInt256 slot in kvp.Value)
                 keys.Add(slot.ToBigEndian());
         }

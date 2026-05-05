@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
-    public class ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
+    public class ProgressLogger
     {
         public const int QueuePaddingLength = 8;
         public const int SkippedPaddingLength = 7;
@@ -16,11 +16,30 @@ namespace Nethermind.Core
         public const int BlockPaddingLength = 10;
         public const int PrefixAlignment = -13;
 
-        private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
-        private readonly ILogger _logger = logManager.GetClassLogger<ProgressLogger>();
-        private string _prefix = prefix;
+        private readonly ITimestamper _timestamper;
+        private readonly ILogger _logger;
+        private readonly Action<string>? _logAction;
+        private string _prefix;
         private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
         private Func<ProgressLogger, string>? _formatter;
+
+        public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null, LogLevel logLevel = LogLevel.Info)
+        {
+            _prefix = prefix;
+            _timestamper = timestamper ?? Timestamper.Default;
+            _logger = logManager.GetClassLogger<ProgressLogger>();
+            ILogger logger = _logger;
+            InterfaceLogger underlying = logger.UnderlyingLogger;
+            _logAction = logLevel switch
+            {
+                LogLevel.Info when logger.IsInfo => underlying.Info,
+                LogLevel.Debug when logger.IsDebug => underlying.Debug,
+                LogLevel.Warn when logger.IsWarn => underlying.Warn,
+                LogLevel.Error when logger.IsError => s => underlying.Error(s),
+                LogLevel.Trace when logger.IsTrace => underlying.Trace,
+                _ => null,
+            };
+        }
 
         public void Update(long value)
         {
@@ -152,9 +171,8 @@ namespace Nethermind.Core
             (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
             if (reportState != _lastReportState)
             {
-                string reportString = _formatter is not null ? _formatter(this) : DefaultFormatter();
                 _lastReportState = reportState;
-                _logger.Info(reportString);
+                _logAction?.Invoke(_formatter is not null ? _formatter(this) : DefaultFormatter());
             }
             SetMeasuringPoint(resetCompletion: false);
         }

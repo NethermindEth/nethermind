@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeJustFinishedFastBlocksAndFastSync()
                 .AndGoodPeersAreKnown()
                 .WhenSnapSyncIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.SnapSync);
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
 
         [Test]
         public void Finished_fast_sync_but_not_snap_ranges_IsFarFromHead() => Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
         [Test]
         public void Finished_fast_sync_and_snap_ranges() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-                .IfThisNodeJustFinishedFastBlocksAndFastSync(snapRangesFinished: true)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync()
                 .AndGoodPeersAreKnown()
                 .WhenSnapSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
@@ -195,7 +195,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThisNodeFinishedFastSyncButNotFastBlocks()
                 .AndGoodPeersAreKnown()
                 .WhenSnapSyncIsConfigured()
-                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.SnapSync | SyncMode.FastHeaders));
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.StateNodes | SyncMode.FastHeaders));
 
         [Test]
         public void Finished_state_node_but_not_fast_blocks() => Scenario.GoesLikeThis(_needToWaitForHeaders)
@@ -209,7 +209,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThisNodeFinishedFastSyncButNotFastBlocks()
                 .WhenSnapSyncIsConfigured()
                 .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.SnapSync | SyncMode.FastHeaders));
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.StateNodes | SyncMode.FastHeaders));
 
         [Test]
         public void Finished_any_sync_far_time_ago() => Scenario.GoesLikeThis(_needToWaitForHeaders)
