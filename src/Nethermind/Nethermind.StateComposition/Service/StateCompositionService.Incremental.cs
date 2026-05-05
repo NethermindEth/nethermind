@@ -55,6 +55,7 @@ internal sealed partial class StateCompositionService
             if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
             using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
+            using IDisposable scope = readOnlyStore.BeginScope(head.Header);
             IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
 
             TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, resolver);
