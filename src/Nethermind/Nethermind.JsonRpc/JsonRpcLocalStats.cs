@@ -40,11 +40,6 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
             return Task.CompletedTask;
         }
 
-        if (!_logger.IsInfo)
-        {
-            return Task.CompletedTask;
-        }
-
         return ReportCallInternal(report, elapsedMicroseconds, size);
     }
 
@@ -61,6 +56,11 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         if (_enablePerMethodMetrics)
         {
             Metrics.JsonRpcCallLatencyMicros.Observe(elapsedMicroseconds, new MetricLabel(report.Method, report.Success));
+        }
+
+        if (!_logger.IsInfo)
+        {
+            return;
         }
 
         BuildReport();
