@@ -17,6 +17,7 @@ using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
 using Nethermind.StateComposition.Test.Helpers;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -194,6 +195,63 @@ public class StateCompositionServiceIncrementalRecoveryTests
                 "After the deferred bootstrap, the baseline must be seeded from the header root.");
         }
     }
+
+    [Test]
+    public void RunIncrementalDiff_OpensScopeOnHeadBeforeAcquiringResolver()
+    {
+        // Regression: FlatDb-backed read-only trie stores require BeginScope before
+        // any node lookup; without it FlatReadOnlyTrieStore.GetTrieStore returns an
+        // adapter whose first Resolve throws InvalidOperationException("BeginScope
+        // has not been called"). The diff handler must scope on head.Header first.
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        bool scopeOpened = false;
+        BlockHeader? scopedHeader = null;
+        IReadOnlyTrieStore readOnlyStore = Substitute.For<IReadOnlyTrieStore>();
+        readOnlyStore.BeginScope(Arg.Any<BlockHeader?>())
+            .Returns(call =>
+            {
+                scopeOpened = true;
+                scopedHeader = (BlockHeader?)call[0];
+                return Substitute.For<IDisposable>();
+            });
+        readOnlyStore.GetTrieStore(Arg.Any<Hash256?>())
+            .Returns(_ =>
+            {
+                if (!scopeOpened)
+                    throw new InvalidOperationException("BeginScope has not been called");
+                // Stop the walker before it tries to resolve real trie nodes.
+                throw new BeginScopeSentinel();
+            });
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CreateReadOnlyTrieStore().Returns(readOnlyStore);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+
+        Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scopeOpened, Is.True,
+                "BeginScope must run before GetTrieStore — this is the FlatDb prerequisite.");
+            Assert.That(scopedHeader, Is.SameAs(headBlock.Header),
+                "BeginScope must be invoked with the head block header so the snapshot bundle covers the right state.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore + 1),
+                "BeginScopeSentinel propagates as a generic diff error — confirms the call site executed end-to-end.");
+        }
+    }
+
+    private sealed class BeginScopeSentinel : Exception;
 
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout, string message)
     {

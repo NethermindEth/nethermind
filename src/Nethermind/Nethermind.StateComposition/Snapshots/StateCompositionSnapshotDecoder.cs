@@ -43,8 +43,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     /// </summary>
     private const byte SchemaVersion = 1;
 
-    private delegate TValue DecodeValueDelegate<TValue>(ref Rlp.ValueDecoderContext ctx);
-
     public override void Encode(RlpStream stream, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(EncodeOrLength(null, item));
@@ -111,13 +109,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         for (int i = 0; i < CumulativeTrieStats.SlotHistogramLength; i++)
             length += EncodeLong(stream, hist.IsDefault ? 0L : hist[i]);
 
-        length += EncodeOrLengthMap(stream, item.SlotCountByAddress,
-            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
-        length += EncodeOrLengthMap(stream, item.CodeHashRefcounts,
-            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
-        length += EncodeOrLengthMap(stream, item.CodeHashSizes,
-            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
-
         return length;
     }
 
@@ -131,39 +122,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     {
         stream?.Encode(value);
         return Rlp.LengthOf(value);
-    }
-
-    private static int EncodeOrLengthMap<TValue>(
-        RlpStream? stream,
-        IReadOnlyDictionary<ValueHash256, TValue> map,
-        System.Action<RlpStream, TValue> encodeValue,
-        System.Func<TValue, int> lengthOfValue)
-    {
-        int total = EncodeInt(stream, map.Count);
-        foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
-        {
-            if (stream is not null)
-            {
-                stream.Encode(new Hash256(kvp.Key));
-                encodeValue(stream, kvp.Value);
-            }
-            total += Rlp.LengthOfKeccakRlp + lengthOfValue(kvp.Value);
-        }
-        return total;
-    }
-
-    private static Dictionary<ValueHash256, TValue> DecodeMap<TValue>(
-        ref Rlp.ValueDecoderContext ctx,
-        DecodeValueDelegate<TValue> decodeValue)
-    {
-        int count = ctx.DecodePositiveInt();
-        Dictionary<ValueHash256, TValue> map = new(count);
-        for (int i = 0; i < count; i++)
-        {
-            ValueHash256 key = ctx.DecodeKeccak();
-            map[key] = decodeValue(ref ctx);
-        }
-        return map;
     }
 
     public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(EncodeOrLength(null, item));
@@ -224,12 +182,10 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             SlotCountHistogram = ImmutableArray.Create(hist),
         };
 
-        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap(ref ctx, static (ref c) => c.DecodeLong());
-        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
-        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap(ref ctx, static (ref c) => c.DecodeInt());
-
         return new StateCompositionSnapshot(
             stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
-            slotCountByAddress, codeHashRefcounts, codeHashSizes);
+            new Dictionary<ValueHash256, long>(),
+            new Dictionary<ValueHash256, int>(),
+            new Dictionary<ValueHash256, int>());
     }
 }
