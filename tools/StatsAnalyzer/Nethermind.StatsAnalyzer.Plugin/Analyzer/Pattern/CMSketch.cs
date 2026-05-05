@@ -93,13 +93,14 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     }
 
 
-    private CmSketch(ulong[] sketch, long[] seeds, int hashFunctions, int buckets) : this(hashFunctions, buckets)
+    private CmSketch(ulong[] sketch, long[] seeds, ulong seen, int hashFunctions, int buckets) : this(hashFunctions, buckets)
     {
         if (sketch.Length != buckets * hashFunctions)
             throw new ArgumentException(
                 $"Invalid sketch array length, expected {buckets * hashFunctions} found: {sketch.Length}.");
         _sketch = sketch;
         _seeds = seeds;
+        _seen = seen;
     }
 
     public double ErrorPerItem => Error * _seen;
@@ -149,9 +150,14 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
 
     public CmSketch Reset()
     {
-        var cms = new CmSketch((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), numberOfhashFunctions, numberOfBuckets);
+        // Snapshot the current state so callers can keep querying historical data.
+        // Seeds MUST NOT be regenerated: QueryAllSketches sums counts across the
+        // sketch buffer, which only makes sense when every sketch hashes 'item'
+        // to the same cell — i.e. shares the same seeds.
+        var cms = new CmSketch((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), _seen,
+                               numberOfhashFunctions, numberOfBuckets);
         _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
-        _seeds = GenerateSeed(numberOfhashFunctions);
+        _seen = 0;
         return cms;
     }
 
