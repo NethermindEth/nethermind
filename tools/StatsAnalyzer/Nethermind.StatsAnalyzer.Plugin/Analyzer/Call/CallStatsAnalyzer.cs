@@ -46,9 +46,9 @@ public class CallStatsAnalyzer(int topN) : TopNAnalyzer<Address, Address, CallSt
                 break;
             case SortOrder.Ascending:
                 var queue = new PriorityQueue<Address, ulong>(TopN);
-                while (queue.Count > 0)
-                    if (queue.TryDequeue(out var address, out var count))
-                        yield return new CallStat(address, count);
+                foreach (var (address, count) in TopNQueue.UnorderedItems) queue.Enqueue(address, count);
+                while (queue.TryDequeue(out var addressAsc, out var countAsc))
+                    yield return new CallStat(addressAsc, countAsc);
                 break;
             case SortOrder.Descending:
                 var queueDecending =
