@@ -260,8 +260,8 @@ encoded up to the u8 `Count` cap of 255).
 [Value_0][Value_1]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x08]
 ```
 
-Section ordering rationale: `Tags` is touched on every lookup (linear /
-SIMD scan); `Ends` is only consulted *after* a tag hit. Placing `Tags`
+Section ordering rationale: `Tags` is touched on every lookup (linear
+scan); `Ends` is only consulted *after* a tag hit. Placing `Tags`
 adjacent to `[Count][IndexType]` keeps the lookup-critical bytes on the
 same cache line as the trailer bytes the reader fetches first.
 
@@ -290,8 +290,7 @@ same cache line as the trailer bytes the reader fetches first.
 3. `Tags` lives at `[end - 2 - N, end - 2)` — directly adjacent to
    `Count`, no further offset math. `Ends` lives at
    `[end - 2 - N - 4·N, end - 2 - N)` and is only consulted after a hit.
-4. Linear scan `Tags` for the requested byte (one `Vector128<byte>`
-   compare-equal covers `N ≤ 16`; two for `N ≤ 32`). For floor, take the
+4. Linear scan `Tags` for the requested byte. For floor, take the
    largest tag whose 1-byte key is `≤` the input's first byte (a
    multi-byte input compares strictly greater than the matching 1-byte
    tag, so the floor is still the largest tag `≤ input[0]`). Miss →
@@ -427,9 +426,6 @@ Readers / decoders:
 - `Hsst/HsstIndex.cs` — parses a single index node from its tail.
 - `BSearchIndex/BSearchIndexReader.cs` — alternate index-node decoder
   used by the merge path; mirrors `HsstIndex` parsing.
-- `BSearchIndex/BSearchIndexReaderSimd.cs` — SIMD fast paths over
-  fixed-width key/value sections; tied to the section encodings the
-  layout planner can choose.
 - `Hsst/HsstByteTagMapReader.cs` — `ByteTagMap` lookup helper (linear
   tag scan + Ends-derived value bound); dispatched into from
   `HsstReader`/`HsstEnumerator`/`HsstMergeEnumerator`.

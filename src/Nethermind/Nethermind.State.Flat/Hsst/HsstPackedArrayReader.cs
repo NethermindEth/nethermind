@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core.Utils;
-using Nethermind.State.Flat.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -263,31 +262,6 @@ internal static class HsstPackedArrayReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         readOk = true;
-
-        // SIMD fast path: packed fixed-width 4- or 8-byte keys, slab small enough to
-        // scan linearly. Reuses BSearchIndexReaderSimd's enable flag and stripe cap so
-        // this path tunes together with the b-tree intermediate-node path.
-        if (BSearchIndexReaderSimd.Enabled && (keySize == 4 || keySize == 8) && key.Length == keySize)
-        {
-            int n = hi - lo;
-            if (n >= 2 && n <= BSearchIndexReaderSimd.LinearScanMaxCount)
-            {
-                long slabAbsStart = levelStart + (long)lo * keySize;
-                int slabBytes = n * keySize;
-                using TPin slabPin = reader.PinBuffer(slabAbsStart, slabBytes);
-                ReadOnlySpan<byte> slab = slabPin.Buffer;
-                if (BSearchIndexReaderSimd.TryFindFloorIndexUniformSimd(
-                        key, slab, n, keySize, out int floor))
-                {
-                    if (floor < 0) return lo;
-                    ReadOnlySpan<byte> floorKey = slab.Slice(floor * keySize, keySize);
-                    if (floorKey.SequenceEqual(key)) return lo + floor;
-                    // SIMD floor invariant: slab[floor] < key (strict). Ceiling is
-                    // floor + 1, which equals hi when floor == n - 1 (no key >= target).
-                    return lo + floor + 1;
-                }
-            }
-        }
 
         Span<byte> ckBuf = stackalloc byte[255];
         Span<byte> ckSlice = ckBuf[..keySize];
