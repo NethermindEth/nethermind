@@ -79,7 +79,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Append a hash-index section to the address-level HSST (BTreeHashIndex format). Direct hash lookup with b-tree fallback on collision.", DefaultValue = "true")]
     bool PersistedSnapshotHashIndexAddress { get; set; }
 
-    [ConfigItem(Description = "Append a hash-index section to the trie-node HSSTs (state + storage, compact/top/fallback). BTreeHashIndex format with b-tree fallback on collision.", DefaultValue = "true")]
+    [ConfigItem(Description = "Append a hash-index section to the trie-node HSSTs (state + storage, compact/top/fallback). BTreeHashIndex format with b-tree fallback on collision.", DefaultValue = "false")]
     bool PersistedSnapshotHashIndexTries { get; set; }
 
     [ConfigItem(Description = "Target load factor for BTreeHashIndex hash tables. Table sized as the smallest power of two ≥ ceil(N / this). Lower = fewer collisions, more bytes.", DefaultValue = "0.75")]
