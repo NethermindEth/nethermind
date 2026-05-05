@@ -16,7 +16,15 @@ namespace Nethermind.State
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
+
+        /// <summary>
+        /// Same as <see cref="RunTreeVisitor{TCtx}"/> but accumulates per-call lookup, cache-miss,
+        /// and depth counters into a fresh <see cref="ProofDiagnostics"/> and returns it.
+        /// Used by <c>proof_getProofWithMeta</c> to expose a client-agnostic measure of the work
+        /// the EL did to serve a single proof.
+        /// </summary>
         ProofDiagnostics RunTreeVisitorMetered<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
+
         bool HasStateForBlock(BlockHeader? baseBlock);
     }
 }

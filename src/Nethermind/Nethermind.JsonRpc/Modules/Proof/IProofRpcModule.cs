@@ -33,8 +33,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
         ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt([JsonRpcParameter(ExampleValue = "[\"0xfff473e0d10e9dcc18bb4585fb2ba17f682949996f5dfda41c20c425a53b4e71\", \"true\"]")] Hash256 txHash, bool includeHeader);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Returns the same payload as `eth_getProof` plus per-call diagnostics: `nodeLookups` (total trie-node fetches), `cacheHits` (of those, served from the in-process trie store cache), and `maxDepth` (deepest level reached in the account or any storage trie, in nibbles). Useful as a client-agnostic proxy for the work an EL does to serve a proof.",
-            IsSharable = false)]
-        ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, HashSet<UInt256> storageKeys, BlockParameter? blockParameter);
+            Description = "Returns the same payload as `eth_getProof` plus per-call diagnostics: `nodeLookups` (total trie-node fetches), `cacheHits` (of those, served from the in-process trie store cache), and `maxDepth` (deepest level reached in the account or any storage trie, in nibbles). Useful as a client-agnostic proxy for the work an EL does to serve a proof. The `proof` field has the same shape and content as `eth_getProof`'s result; duplicate `storageKeys` are deduplicated, matching the existing `eth_getProof` behaviour.",
+            IsSharable = false,
+            ExampleResponse = "{\"proof\":{\"address\":\"0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2\",\"balance\":\"0x18232098799834c9a9e2b\",\"codeHash\":\"0xd0a06b12ac47863b5c7be4185c2deaad1c61557033f56c7d4ea74429cbb25e23\",\"nonce\":\"0x1\",\"storageHash\":\"0x...\",\"accountProof\":[\"0x...\"],\"storageProof\":[]},\"meta\":{\"nodeLookups\":\"0x6e\",\"cacheHits\":\"0x6e\",\"maxDepth\":8}}")]
+        ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(
+            [JsonRpcParameter(ExampleValue = "\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\"")] Address accountAddress,
+            [JsonRpcParameter(ExampleValue = "[]", Description = "Storage keys to include in the proof; duplicates are deduplicated.")] HashSet<UInt256> storageKeys,
+            [JsonRpcParameter(ExampleValue = "\"latest\"")] BlockParameter? blockParameter);
     }
 }

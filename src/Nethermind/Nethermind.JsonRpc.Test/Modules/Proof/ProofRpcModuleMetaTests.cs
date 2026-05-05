@@ -20,7 +20,6 @@ using Nethermind.Core.Test.Db;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
