@@ -1217,17 +1217,20 @@ public class TraceRpcModuleTests
     }
 
     [Test]
-    public async Task trace_block_fork_parameter_is_deserialized_from_json()
+    public async Task trace_block_fork_parameter_json_applies_berlin_gas_rules()
     {
-        // Verifies the full JSON-RPC wire path: {"forkName":"Berlin"} → ForkActivationParameter.ForkName
-        Context context = new();
-        await context.Build(new ForkAwareTestSpecProvider(Berlin.Instance, MainnetSpecProvider.Instance));
+        // Sends {"forkName":"berlin"} (lowercase) over the full JSON-RPC wire path and checks
+        // that the ModExp gasUsed in the response equals 0x550 (= 1360), the EIP-2565 Berlin value.
+        // This verifies both JSON deserialization (forkName camelCase) and case-insensitive lookup.
+        (Context context, BlockParameter block) = await BuildModExpBlockAsync();
 
+        string blockHex = "0x" + context.Blockchain.BlockTree.Head!.Number.ToString("x");
         string serialized = await RpcTest.TestSerializedRequest(
-            context.TraceRpcModule, "trace_block", "latest", "{\"forkName\":\"Berlin\"}");
+            context.TraceRpcModule, "trace_block", blockHex, "{\"forkName\":\"berlin\"}");
 
-        serialized.Should().NotContain("\"error\"",
-            "a valid forkName in JSON must deserialize correctly and not produce an error");
+        // Berlin EIP-2565: ceil(32/8)^2 * 255 / 3 = 1360 = 0x550
+        serialized.Should().Contain("\"gasUsed\":\"0x550\"",
+            "Berlin fork (EIP-2565) ModExp gas for 32-byte inputs must be 1360 (0x550)");
     }
 
     [Test]
