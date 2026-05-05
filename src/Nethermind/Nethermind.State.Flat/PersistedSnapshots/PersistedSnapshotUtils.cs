@@ -165,9 +165,11 @@ internal static class PersistedSnapshotUtils
         return content;
     }
 
-    internal static void ValidatePersistedSnapshot(Snapshot snapshot, PersistedSnapshot persisted, bool dumpWhenFailed = true)
+    internal static void ValidatePersistedSnapshot(Snapshot snapshot, PersistedSnapshot persisted, PersistedSnapshotBloomFilterManager bloomManager, bool dumpWhenFailed = true)
     {
         string filename = $"broken.{snapshot.From.BlockNumber}.{snapshot.To.BlockNumber}.json";
+
+        using PersistedSnapshotBloom bloom = bloomManager.LeaseOrSentinel(persisted.To);
 
         try
         {
@@ -175,7 +177,7 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
                 Address address = kv.Key;
-                if (!persisted.TryGetAccount(address, out Account? acc))
+                if (!persisted.TryGetAccount(bloom, address, out Account? acc))
                     throw new InvalidOperationException($"Account {address} not found in persisted snapshot");
 
                 if (kv.Value is null)
@@ -198,7 +200,7 @@ internal static class PersistedSnapshotUtils
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
                 SlotValue slotValue = default;
-                if (!persisted.TryGetSlot(addr, slot, ref slotValue))
+                if (!persisted.TryGetSlot(bloom, addr, slot, ref slotValue))
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
                 SlotValue expected = kv.Value ?? default;
@@ -210,7 +212,7 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
             {
                 Address address = kv.Key;
-                bool? flag = persisted.TryGetSelfDestructFlag(address) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
+                bool? flag = persisted.TryGetSelfDestructFlag(bloom, address) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
                 if (flag.Value != kv.Value)
                     throw new InvalidOperationException($"SelfDestruct {address} mismatch: expected {kv.Value}, got {flag.Value}");
             }
@@ -220,7 +222,7 @@ internal static class PersistedSnapshotUtils
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 TreePath path = kv.Key;
-                if (!persisted.TryLoadStateNodeRlp(path, out byte[]? nodeRlp))
+                if (!persisted.TryLoadStateNodeRlp(bloom, path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} not found in persisted snapshot");
                 if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} RLP mismatch");
@@ -231,7 +233,7 @@ internal static class PersistedSnapshotUtils
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 (Hash256 hash, TreePath path) = kv.Key.Key;
-                if (!persisted.TryLoadStorageNodeRlp(hash, path, out byte[]? nodeRlp))
+                if (!persisted.TryLoadStorageNodeRlp(bloom, hash, path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} not found in persisted snapshot");
                 if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} RLP mismatch");
@@ -255,18 +257,21 @@ internal static class PersistedSnapshotUtils
 
         // Build a new PersistedSnapshotList with leases for the bundle
         PersistedSnapshotList bundleSnapshots = new(snapshots.Count);
+        ArrayPoolList<PersistedSnapshotBloom> bundleBlooms = new(snapshots.Count);
         for (int i = 0; i < snapshots.Count; i++)
         {
             if (!snapshots[i].TryAcquire())
                 throw new InvalidOperationException($"Cannot acquire lease for source snapshot {i}");
             bundleSnapshots.Add(snapshots[i]);
+            bundleBlooms.Add(PersistedSnapshotBloom.AlwaysTrue);
         }
 
         using ReadOnlySnapshotBundle bundle = new(
             SnapshotPooledList.Empty(),
             new ThrowingPersistenceReader(),
             false,
-            bundleSnapshots);
+            bundleSnapshots,
+            bundleBlooms);
 
         try
         {
@@ -336,7 +341,7 @@ internal static class PersistedSnapshotUtils
                         bool? expected = null;
                         for (int i = 0; i < snapshots.Count; i++)
                         {
-                            bool? flag = snapshots[i].TryGetSelfDestructFlag(address);
+                            bool? flag = snapshots[i].TryGetSelfDestructFlag(PersistedSnapshotBloom.AlwaysTrue, address);
                             if (flag is null) continue;
                             if (expected is null)
                                 expected = flag;
@@ -396,7 +401,7 @@ internal static class PersistedSnapshotUtils
                                     for (int i = 0; i < snapshots.Count; i++)
                                     {
                                         SlotValue sv = default;
-                                        bool tryGetOk = snapshots[i].TryGetSlot(address, slot, ref sv);
+                                        bool tryGetOk = snapshots[i].TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, address, slot, ref sv);
                                         sb.Append($"src[{i}](id={snapshots[i].Id} {snapshots[i].From.BlockNumber}->{snapshots[i].To.BlockNumber}): ");
                                         sb.Append($"TryGetSlot={tryGetOk}");
                                         if (tryGetOk) sb.Append($"={sv.AsReadOnlySpan.ToHexString()}");

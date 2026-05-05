@@ -16,6 +16,7 @@ public interface IPersistedSnapshotRepository : IDisposable
     long TrieBloomMemory { get; }
     int ArenaFileCount { get; }
     long ArenaMappedBytes { get; }
+    PersistedSnapshotBloomFilterManager BloomManager { get; }
     void LoadFromCatalog();
 
     // Two-layer storage

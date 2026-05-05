@@ -28,16 +28,19 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _persistableCompactedSnapshots = new();
+    private readonly PersistedSnapshotBloomFilterManager _bloomManager = new();
     private readonly Lock _catalogLock = new();
     private int _nextId;
+
+    private bool BloomEnabled => _bloomBitsPerKey > 0 && _trieBloomBitsPerKey > 0;
+
+    public PersistedSnapshotBloomFilterManager BloomManager => _bloomManager;
 
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count + _persistableCompactedSnapshots.Count;
     public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
     public long CompactedSnapshotMemory => SumMemory(_compactedSnapshots) + SumMemory(_persistableCompactedSnapshots);
-    public long KeyBloomMemory =>
-        SumKeyBloomBytes(_baseSnapshots) + SumKeyBloomBytes(_compactedSnapshots) + SumKeyBloomBytes(_persistableCompactedSnapshots);
-    public long TrieBloomMemory =>
-        SumTrieBloomBytes(_baseSnapshots) + SumTrieBloomBytes(_compactedSnapshots) + SumTrieBloomBytes(_persistableCompactedSnapshots);
+    public long KeyBloomMemory => _bloomManager.TotalKeyBloomBytes;
+    public long TrieBloomMemory => _bloomManager.TotalTrieBloomBytes;
     public int ArenaFileCount => _baseArenaManager.ArenaFileCount + _compactedArenaManager.ArenaFileCount;
     public long ArenaMappedBytes => _baseArenaManager.ArenaMappedBytes + _compactedArenaManager.ArenaMappedBytes;
 
@@ -113,8 +116,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         }
 
         PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, entry.Type, reservation, referencedSnapshots);
-        AttachKeyBloom(snapshot);
-        AttachTrieBloom(snapshot);
+        RegisterBlooms(snapshot);
 
         bool isPersistableSize = IsPersistableSize(entry);
         if (entry.Type == PersistedSnapshotType.Full && !isPersistableSize)
@@ -173,12 +175,9 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _catalog.Save();
 
             PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, PersistedSnapshotType.Full, reservation);
-            if (bloom is not null)
-                persisted.AttachKeyBloom(bloom);
-            if (trieBloom is not null)
-                persisted.AttachTrieBloom(trieBloom);
+            RegisterBlooms(persisted, bloom, trieBloom);
             if (_validatePersistedSnapshot)
-                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted);
+                PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
             if (isPersistable)
                 _persistableCompactedSnapshots[snapshot.To] = persisted;
             else
@@ -209,13 +208,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
 
             PersistedSnapshot[]? referencedSnapshots = ResolveReferencedSnapshots(referencedSnapshotIds);
             PersistedSnapshot snapshot = new(id, from, to, PersistedSnapshotType.Linked, reservation, referencedSnapshots);
-            if (bloom is not null)
-                snapshot.AttachKeyBloom(bloom);
-            else
-                AttachKeyBloom(snapshot);
-            // Trie bloom is never passed in by the compactor (the merger doesn't populate it);
-            // always rebuild from the just-written disk image via the scanner.
-            AttachTrieBloom(snapshot);
+            RegisterBlooms(snapshot, bloom, trieBloom: null);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;
             else
@@ -424,6 +417,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
                 }
             }
 
+            _bloomManager.PruneBefore(stateId);
+
             if (pruned > 0) _catalog.Save();
             return pruned;
         }
@@ -446,16 +441,26 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         return result.Count > 0 ? [.. result] : null;
     }
 
-    private void AttachKeyBloom(PersistedSnapshot snapshot)
+    /// <summary>
+    /// Build any missing blooms (key/trie) for <paramref name="snapshot"/> and register
+    /// the resulting <see cref="PersistedSnapshotBloom"/> wrapper with the bloom manager.
+    /// Pre-built blooms (e.g. populated inline by the writer or compactor) can be passed
+    /// in via <paramref name="keyBloom"/> / <paramref name="trieBloom"/>; nulls are
+    /// rebuilt from the on-disk image via <see cref="PersistedSnapshotBloomBuilder"/>.
+    /// No-op when the bloom feature is disabled in config.
+    /// </summary>
+    private void RegisterBlooms(PersistedSnapshot snapshot, BloomFilter? keyBloom = null, BloomFilter? trieBloom = null)
     {
-        if (_bloomBitsPerKey > 0)
-            snapshot.AttachKeyBloom(PersistedSnapshotBloomBuilder.Build(snapshot, _bloomBitsPerKey));
-    }
+        if (!BloomEnabled)
+        {
+            keyBloom?.Dispose();
+            trieBloom?.Dispose();
+            return;
+        }
 
-    private void AttachTrieBloom(PersistedSnapshot snapshot)
-    {
-        if (_trieBloomBitsPerKey > 0)
-            snapshot.AttachTrieBloom(PersistedSnapshotBloomBuilder.BuildTrieBloom(snapshot, _trieBloomBitsPerKey));
+        keyBloom ??= PersistedSnapshotBloomBuilder.Build(snapshot, _bloomBitsPerKey);
+        trieBloom ??= PersistedSnapshotBloomBuilder.BuildTrieBloom(snapshot, _trieBloomBitsPerKey);
+        _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, keyBloom, trieBloom));
     }
 
     private bool IsPersistableSize(SnapshotCatalog.CatalogEntry entry) =>
@@ -480,22 +485,6 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         return total;
     }
 
-    private static long SumKeyBloomBytes(ConcurrentDictionary<StateId, PersistedSnapshot> dict)
-    {
-        long total = 0;
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in dict)
-            total += kv.Value.KeyBloomBytes;
-        return total;
-    }
-
-    private static long SumTrieBloomBytes(ConcurrentDictionary<StateId, PersistedSnapshot> dict)
-    {
-        long total = 0;
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in dict)
-            total += kv.Value.TrieBloomBytes;
-        return total;
-    }
-
     public void Dispose()
     {
         lock (_catalogLock)
@@ -515,6 +504,7 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
             _persistableCompactedSnapshots.Clear();
+            _bloomManager.Dispose();
         }
     }
 }

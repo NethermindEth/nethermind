@@ -110,14 +110,14 @@ public class PersistedSnapshotCompactorTests
             // Verify compacted snapshot exists spanning 0→8 and contains all accounts
             Assert.That(repo.TryLeaseCompactedSnapshotTo(s8, out PersistedSnapshot? compacted), Is.True);
             Assert.That(compacted!.From, Is.EqualTo(s0));
-            Assert.That(compacted.TryGetAccount(TestItem.AddressA, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(TestItem.AddressB, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(TestItem.AddressC, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(TestItem.AddressD, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(TestItem.AddressE, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(TestItem.AddressF, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(TestItem.Addresses[6], out _), Is.True);
-            Assert.That(compacted.TryGetAccount(TestItem.Addresses[7], out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressA, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressB, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressC, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressD, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressE, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressF, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.Addresses[6], out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.Addresses[7], out _), Is.True);
             compacted.Dispose();
         }
         finally
@@ -435,16 +435,16 @@ public class PersistedSnapshotCompactorTests
         // With referenced snapshots: NodeRefs resolve to actual RLP
         PersistedSnapshot compactedWithRefs = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged,
             [baseSnap0, baseSnap1]);
-        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(path1, out byte[]? resolved1), Is.True);
+        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, path1, out byte[]? resolved1), Is.True);
         Assert.That(resolved1, Is.EqualTo(rlp1));
-        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(path2, out byte[]? resolved2), Is.True);
+        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, path2, out byte[]? resolved2), Is.True);
         Assert.That(resolved2, Is.EqualTo(rlp2));
 
         // Without referenced snapshots: returns raw NodeRef bytes (8 bytes)
         PersistedSnapshot compactedWithoutRefs = CreatePersistedSnapshot(3, s0, s2, PersistedSnapshotType.Linked, merged);
-        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(path1, out byte[]? raw1), Is.True);
+        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, path1, out byte[]? raw1), Is.True);
         Assert.That(raw1!.Length, Is.EqualTo(NodeRef.Size));
-        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(path2, out byte[]? raw2), Is.True);
+        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, path2, out byte[]? raw2), Is.True);
         Assert.That(raw2!.Length, Is.EqualTo(NodeRef.Size));
     }
 }

@@ -25,7 +25,8 @@ public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
-    PersistedSnapshotList persistedSnapshots)
+    PersistedSnapshotList persistedSnapshots,
+    ArrayPoolList<PersistedSnapshotBloom> persistedBlooms)
     : RefCountingDisposable
 {
     public int SnapshotCount => persistedSnapshots.Count + snapshots.Count;
@@ -73,7 +74,7 @@ public sealed class ReadOnlySnapshotBundle(
         long psw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            if (persistedSnapshots[i].TryGetAccount(address, out Account? acc))
+            if (persistedSnapshots[i].TryGetAccount(persistedBlooms[i], address, out Account? acc))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - psw, _readAccountPersistedLabel);
                 return acc;
@@ -106,7 +107,7 @@ public sealed class ReadOnlySnapshotBundle(
 
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(address);
+            bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(persistedBlooms[i], address);
             if (flag.HasValue)
                 return i;
         }
@@ -143,7 +144,7 @@ public sealed class ReadOnlySnapshotBundle(
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
             SlotValue slotValue = default;
-            if (persistedSnapshots[i].TryGetSlot(address, index, ref slotValue))
+            if (persistedSnapshots[i].TryGetSlot(persistedBlooms[i], address, index, ref slotValue))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistedLabel);
                 return slotValue.ToEvmBytes();
@@ -230,7 +231,7 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            if (persistedSnapshots[i].TryLoadStateNodeRlp(path, out byte[]? rlp))
+            if (persistedSnapshots[i].TryLoadStateNodeRlp(persistedBlooms[i], path, out byte[]? rlp))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpPersistedLabel);
                 return rlp;
@@ -253,7 +254,7 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            if (persistedSnapshots[i].TryLoadStorageNodeRlp(address, path, out byte[]? rlp))
+            if (persistedSnapshots[i].TryLoadStorageNodeRlp(persistedBlooms[i], address, path, out byte[]? rlp))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpPersistedLabel);
                 return rlp;
@@ -282,6 +283,9 @@ public sealed class ReadOnlySnapshotBundle(
 
         snapshots.Dispose();
         persistedSnapshots.Dispose();
+        for (int i = 0; i < persistedBlooms.Count; i++)
+            persistedBlooms[i].Dispose();
+        persistedBlooms.Dispose();
 
         // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();

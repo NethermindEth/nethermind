@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -9,7 +8,6 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Hsst;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Nethermind.Trie;
 
@@ -60,8 +58,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
     private readonly ClockCache<AddressAsKey, Bound> _addressBoundCache = new(AddressBoundCacheCapacity);
     private readonly ClockCache<Hash256AsKey, Bound> _storageBoundCache = new(StorageBoundCacheCapacity);
-    private BloomFilter? _keyBloom;
-    private BloomFilter? _trieBloom;
 
     internal ICollection<PersistedSnapshot>? ReferencedSnapshots => _referencedSnapshots?.Values;
     internal Dictionary<int, PersistedSnapshot>? ReferencedSnapshotsLookup => _referencedSnapshots;
@@ -170,9 +166,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool TryGetAccount(Address address, out Account? account)
+    public bool TryGetAccount(PersistedSnapshotBloom bloom, Address address, out Account? account)
     {
-        if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
+        if (!bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
         {
             account = null;
             return false;
@@ -197,14 +193,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, ref SlotValue slotValue)
+    public bool TryGetSlot(PersistedSnapshotBloom bloom, Address address, in UInt256 index, ref SlotValue slotValue)
     {
-        if (_keyBloom is not null)
-        {
-            ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(address);
-            if (!_keyBloom.MightContain(addrKey) || !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, in index)))
-                return false;
-        }
+        ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(address);
+        if (!bloom.KeyBloom.MightContain(addrKey) || !bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, in index)))
+            return false;
         ArenaByteReader reader = CreateReader();
         if (!TryGetAddressBound(in reader, address, out Bound addrBound) ||
             !PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, addrBound, in index, out Bound b))
@@ -216,9 +209,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool IsSelfDestructed(Address address)
+    public bool IsSelfDestructed(PersistedSnapshotBloom bloom, Address address)
     {
-        if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
+        if (!bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return false;
         ArenaByteReader reader = CreateReader();
         return TryGetAddressBound(in reader, address, out Bound addrBound)
@@ -230,9 +223,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// Returns null if no self-destruct entry exists for this address.
     /// Returns true if this is a new account (value = 0x01), false if destructed (value = empty).
     /// </summary>
-    public bool? TryGetSelfDestructFlag(Address address)
+    public bool? TryGetSelfDestructFlag(PersistedSnapshotBloom bloom, Address address)
     {
-        if (_keyBloom is not null && !_keyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
+        if (!bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(address)))
             return null;
         ArenaByteReader reader = CreateReader();
         if (!TryGetAddressBound(in reader, address, out Bound addrBound))
@@ -240,9 +233,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return PersistedSnapshotReader.TryGetSelfDestructFlag<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
 
-    public bool TryLoadStateNodeRlp(scoped in TreePath path, out byte[]? nodeRlp)
+    public bool TryLoadStateNodeRlp(PersistedSnapshotBloom bloom, scoped in TreePath path, out byte[]? nodeRlp)
     {
-        if (_trieBloom is not null && !_trieBloom.MightContain(PersistedSnapshotBloomBuilder.StatePathKey(in path)))
+        if (!bloom.TrieBloom.MightContain(PersistedSnapshotBloomBuilder.StatePathKey(in path)))
         {
             nodeRlp = null;
             return false;
@@ -257,9 +250,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool TryLoadStorageNodeRlp(Hash256 address, in TreePath path, out byte[]? nodeRlp)
+    public bool TryLoadStorageNodeRlp(PersistedSnapshotBloom bloom, Hash256 address, in TreePath path, out byte[]? nodeRlp)
     {
-        if (_trieBloom is not null && !_trieBloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(address, in path)))
+        if (!bloom.TrieBloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(address, in path)))
         {
             nodeRlp = null;
             return false;
@@ -321,22 +314,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return result;
     }
 
-    internal long KeyBloomCount => _keyBloom?.Count ?? 0;
-    internal long TrieBloomCount => _trieBloom?.Count ?? 0;
-    internal long KeyBloomBytes => _keyBloom?.DataBytes ?? 0;
-    internal long TrieBloomBytes => _trieBloom?.DataBytes ?? 0;
-
-    internal void AttachKeyBloom(BloomFilter bloom) => _keyBloom = bloom;
-    internal void AttachTrieBloom(BloomFilter bloom) => _trieBloom = bloom;
-
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
 
     public bool TryAcquire() => TryAcquireLease();
 
     protected override void CleanUp()
     {
-        _keyBloom?.Dispose();
-        _trieBloom?.Dispose();
         _reservation.Dispose();
         if (_referencedSnapshots is not null)
         {

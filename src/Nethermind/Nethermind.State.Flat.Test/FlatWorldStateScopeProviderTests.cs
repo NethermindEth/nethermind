@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -88,6 +89,7 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(false)) // recordDetailedMetrics
                 .WithParameter(TypedParameter.From(ReadOnlySnapshots))
                 .WithParameter(TypedParameter.From(PersistedSnapshotList.Empty()))
+                .WithParameter(TypedParameter.From(new ArrayPoolList<PersistedSnapshotBloom>(0)))
                 .ExternallyOwned();
 
             ConfigureSnapshotBundle();

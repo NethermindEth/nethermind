@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -257,7 +258,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (baseBlock == StateId.PreGenesis)
         {
             // Special case for pregenesis. Note: nethermind always tries to generate genesis.
-            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotList.Empty());
+            return new ReadOnlySnapshotBundle(new SnapshotPooledList(0), new NoopPersistenceReader(), _enableDetailedMetrics, PersistedSnapshotList.Empty(), new ArrayPoolList<PersistedSnapshotBloom>(0));
         }
 
         long sw = 0;
@@ -314,7 +315,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _snapshotBundleBlockNumberDepth.WithLabels("in_memory").Observe(inMemoryDepth);
             _snapshotBundleBlockNumberDepth.WithLabels("persisted").Observe(persistedDepth);
 
-            ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted);
+            // Lease blooms parallel to assembled.Persisted; fall back to AlwaysTrue on miss.
+            PersistedSnapshotBloomFilterManager bloomManager = _persistedSnapshotRepository.BloomManager;
+            ArrayPoolList<PersistedSnapshotBloom> persistedBlooms = new(assembled.Persisted.Count);
+            for (int i = 0; i < assembled.Persisted.Count; i++)
+                persistedBlooms.Add(bloomManager.LeaseOrSentinel(assembled.Persisted[i].To));
+
+            ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted, persistedBlooms);
 
             res.TryLease();
             if (!_readonlySnapshotBundleCache.TryAdd(baseBlock, res))

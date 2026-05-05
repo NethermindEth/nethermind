@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
@@ -52,11 +53,14 @@ public class ReadOnlySnapshotBundlePersistedTests
         // Mock persistence reader that should NOT be called for this path
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
 
+        ArrayPoolList<PersistedSnapshotBloom> blooms = new(list.Count);
+        for (int i = 0; i < list.Count; i++) blooms.Add(PersistedSnapshotBloom.AlwaysTrue);
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
             reader,
             recordDetailedMetrics: false,
-            persistedSnapshots: list);
+            persistedSnapshots: list,
+            persistedBlooms: blooms);
 
         byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 
@@ -86,11 +90,14 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
 
+        ArrayPoolList<PersistedSnapshotBloom> blooms = new(list.Count);
+        for (int i = 0; i < list.Count; i++) blooms.Add(PersistedSnapshotBloom.AlwaysTrue);
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
             reader,
             recordDetailedMetrics: false,
-            persistedSnapshots: list);
+            persistedSnapshots: list,
+            persistedBlooms: blooms);
 
         byte[]? result = bundle.TryLoadStorageRlp(address, path, Keccak.Compute("hash"), ReadFlags.None);
 
@@ -123,11 +130,14 @@ public class ReadOnlySnapshotBundlePersistedTests
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
+        ArrayPoolList<PersistedSnapshotBloom> blooms = new(list.Count);
+        for (int i = 0; i < list.Count; i++) blooms.Add(PersistedSnapshotBloom.AlwaysTrue);
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
             reader,
             recordDetailedMetrics: false,
-            persistedSnapshots: list);
+            persistedSnapshots: list,
+            persistedBlooms: blooms);
 
         byte[]? result = bundle.TryLoadStateRlp(missingPath, Keccak.Compute("hash"), ReadFlags.None);
 
@@ -149,7 +159,8 @@ public class ReadOnlySnapshotBundlePersistedTests
             new SnapshotPooledList(0),
             reader,
             recordDetailedMetrics: false,
-            persistedSnapshots: PersistedSnapshotList.Empty());
+            persistedSnapshots: PersistedSnapshotList.Empty(),
+            persistedBlooms: new ArrayPoolList<PersistedSnapshotBloom>(0));
 
         byte[]? result = bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 

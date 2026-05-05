@@ -104,9 +104,9 @@ public class LongFinalityIntegrationTests
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
 
         // Query all types through the individual persisted snapshot
-        Assert.That(persisted!.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
+        Assert.That(persisted!.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, statePath, out byte[]? stateResult), Is.True);
         Assert.That(stateResult, Is.EqualTo(stateRlp));
-        Assert.That(persisted.TryLoadStorageNodeRlp(storageAddr, storagePath, out byte[]? storageResult), Is.True);
+        Assert.That(persisted.TryLoadStorageNodeRlp(PersistedSnapshotBloom.AlwaysTrue, storageAddr, storagePath, out byte[]? storageResult), Is.True);
         Assert.That(storageResult, Is.EqualTo(storageRlp));
         persisted.Dispose();
     }
@@ -154,11 +154,11 @@ public class LongFinalityIntegrationTests
 
             // path1 is in s0→s1, path2 is in s1→s2 — query each snapshot directly
             Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? snap1), Is.True);
-            Assert.That(snap1!.TryLoadStateNodeRlp(path1, out byte[]? r1), Is.True);
+            Assert.That(snap1!.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, path1, out byte[]? r1), Is.True);
             snap1.Dispose();
 
             Assert.That(repo.TryLeaseSnapshotTo(s2, out PersistedSnapshot? snap2), Is.True);
-            Assert.That(snap2!.TryLoadStateNodeRlp(path2, out byte[]? r2), Is.True);
+            Assert.That(snap2!.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, path2, out byte[]? r2), Is.True);
             snap2.Dispose();
 
             Assert.That(r1, Is.EqualTo(rlp1));
@@ -204,16 +204,16 @@ public class LongFinalityIntegrationTests
             [baseSnap1, baseSnap2]);
 
         // State node should have newer value
-        Assert.That(mergedSnap.TryLoadStateNodeRlp(statePath, out byte[]? stateRlpResult), Is.True);
+        Assert.That(mergedSnap.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, statePath, out byte[]? stateRlpResult), Is.True);
         Assert.That(stateRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80, 0x80 }));
 
         // Storage node from older should be preserved
-        Assert.That(mergedSnap.TryLoadStorageNodeRlp(storageAddr, storagePath, out byte[]? storageRlpResult), Is.True);
+        Assert.That(mergedSnap.TryLoadStorageNodeRlp(PersistedSnapshotBloom.AlwaysTrue, storageAddr, storagePath, out byte[]? storageRlpResult), Is.True);
         Assert.That(storageRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
 
         // Both accounts should be present
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressA, out _), Is.True);
-        Assert.That(mergedSnap.TryGetAccount(TestItem.AddressB, out _), Is.True);
+        Assert.That(mergedSnap.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressA, out _), Is.True);
+        Assert.That(mergedSnap.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressB, out _), Is.True);
     }
 
     [TestCase(10)]
@@ -349,8 +349,8 @@ public class LongFinalityIntegrationTests
         repo.ConvertSnapshotToPersistedSnapshot(empty);
 
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
-        Assert.That(persisted!.TryGetAccount(TestItem.AddressA, out _), Is.False);
-        Assert.That(persisted.TryLoadStateNodeRlp(new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
+        Assert.That(persisted!.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressA, out _), Is.False);
+        Assert.That(persisted.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, new TreePath(Keccak.Compute("any"), 4), out _), Is.False);
         persisted.Dispose();
     }
 

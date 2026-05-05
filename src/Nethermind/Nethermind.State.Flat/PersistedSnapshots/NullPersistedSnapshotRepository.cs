@@ -20,6 +20,7 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public long TrieBloomMemory => 0;
     public int ArenaFileCount => 0;
     public long ArenaMappedBytes => 0;
+    public PersistedSnapshotBloomFilterManager BloomManager { get; } = new();
     public void LoadFromCatalog() { }
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false) { }
     public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable, BloomFilter? bloom = null) { }
