@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
@@ -56,7 +57,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             ctx.DecodeUInt256(),
             ctx.DecodeUInt256(),
             ctx.DecodeUInt256(),
-            ctx.DecodeByteArrays(),
+            ctx.DecodeByteArrays(innerSize: Hash256.Size),
             ctx.DecodeULong(),
             ctx.DecodePositiveInt(),
             ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
