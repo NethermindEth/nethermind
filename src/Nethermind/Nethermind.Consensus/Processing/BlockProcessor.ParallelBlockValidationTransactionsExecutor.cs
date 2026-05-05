@@ -63,7 +63,13 @@ public partial class BlockProcessor
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
-                    throw new InvalidBlockException(block, BlockErrorMessages.ExceededGasLimit);
+                    // Match BlockAccessListManager.IncrementalValidation's error format so
+                    // both sequential and parallel paths map to the same EEST exception
+                    // (TransactionException.GAS_ALLOWANCE_EXCEEDED). The sequential path
+                    // previously threw ExceededGasLimit which mapped only to
+                    // INVALID_GAS_USED_ABOVE_LIMIT, diverging from what fixtures expect.
+                    throw new InvalidBlockException(block,
+                        $"Block gas limit exceeded: cumulative gas {block.Header.GasUsed} > block gas limit {block.Header.GasLimit} after transaction index {i}.");
                 }
 
                 balManager.NextTransaction();
