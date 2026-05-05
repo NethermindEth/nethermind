@@ -203,6 +203,8 @@ public static class SszCodec
 
     public static ArrayPoolSpan<byte> EncodeGetBlobsV1Response(IReadOnlyList<BlobAndProofV1?> blobs)
     {
+        // V1 SSZ has no nullable wrapper, nulls (unknown hashes) are dropped and the CL
+        // infers misses by comparing response length to request length.
         int count = blobs.Count;
         BlobAndProofV1Wire[] arr = new BlobAndProofV1Wire[count];
         int filled = 0;
@@ -216,6 +218,7 @@ public static class SszCodec
 
     public static ArrayPoolSpan<byte> EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs)
     {
+        // Same null-drop as V1.
         int count = blobs.Count;
         BlobAndProofV2Wire[] arr = new BlobAndProofV2Wire[count];
         int filled = 0;
@@ -297,7 +300,7 @@ public static class SszCodec
 
     public static TransitionConfigurationV1 DecodeTransitionConfigurationRequest(ReadOnlySpan<byte> buf)
     {
-        ExchangeTransitionConfigurationRequestWire.Decode(buf, out ExchangeTransitionConfigurationRequestWire wire);
+        ExchangeTransitionConfigurationWire.Decode(buf, out ExchangeTransitionConfigurationWire wire);
         TransitionConfigurationV1Wire tc = wire.TransitionConfiguration;
         return new TransitionConfigurationV1
         {
@@ -308,7 +311,7 @@ public static class SszCodec
     }
 
     public static ArrayPoolSpan<byte> EncodeTransitionConfigurationResponse(TransitionConfigurationV1 tc)
-        => EncodePooled(new ExchangeTransitionConfigurationRequestWire
+        => EncodePooled(new ExchangeTransitionConfigurationWire
         {
             TransitionConfiguration = new()
             {
@@ -369,16 +372,26 @@ public static class SszCodec
         PayloadStatus.Invalid => SszStatusInvalid,
         PayloadStatus.Syncing => SszStatusSyncing,
         PayloadStatus.Accepted => SszStatusAccepted,
-        "INVALID_BLOCK_HASH" => SszStatusInvalidBlockHash,
-        _ => SszStatusInvalid
+        PayloadStatus.InvalidBlockHash => SszStatusInvalidBlockHash,
+        _ => throw new InvalidOperationException($"Unknown payload status '{status}': cannot map to SSZ wire byte")
     };
 
-    private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps) => new()
+    private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
-        Status = EngineStatusToSsz(ps.Status),
-        LatestValidHash = ps.LatestValidHash is not null ? [ps.LatestValidHash] : [],
-        ValidationError = ps.ValidationError is not null ? Encoding.UTF8.GetBytes(ps.ValidationError) : []
-    };
+        const int MaxErrorBytes = 1024;
+        byte[] errorBytes = ps.ValidationError is not null
+            ? Encoding.UTF8.GetBytes(ps.ValidationError)
+            : [];
+        if (errorBytes.Length > MaxErrorBytes)
+            errorBytes = errorBytes[..MaxErrorBytes];
+
+        return new()
+        {
+            Status = EngineStatusToSsz(ps.Status),
+            LatestValidHash = ps.LatestValidHash is not null ? [ps.LatestValidHash] : [],
+            ValidationError = errorBytes
+        };
+    }
 
     private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV1Wire pa) =>
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient);
@@ -390,12 +403,12 @@ public static class SszCodec
     private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV3Wire pa) =>
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
             withdrawals: WithdrawalsFromWire(pa.Withdrawals),
-            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null);
+            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot);
 
     private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) =>
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
             withdrawals: WithdrawalsFromWire(pa.Withdrawals),
-            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot is { Length: 1 } ? pa.ParentBeaconBlockRoot[0] : null,
+            parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
             slotNumber: pa.SlotNumber);
 
     private static PayloadAttributes BuildPayloadAttributes(

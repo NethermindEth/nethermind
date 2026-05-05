@@ -139,8 +139,9 @@ public sealed class SszMiddleware
         string extra = extraSpan.IsEmpty ? string.Empty : extraSpan.ToString();
 
         if (_logger.IsTrace)
-            _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}" +
-                          (extra.Length > 0 ? "/" + extra : ""));
+            // L5: single interpolated string avoids the redundant secondary allocation
+            // from the unconditional `+ "/" + extra` concatenation in the original.
+            _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}{(extra.Length > 0 ? "/" + extra : "")}");
 
         byte[]? rentedBuffer = null;
         int bodyLength = 0;
@@ -160,7 +161,7 @@ public sealed class SszMiddleware
         catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException)
         {
             if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status422UnprocessableEntity, "Malformed SSZ body");
+            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body");
         }
         catch (Exception ex)
         {

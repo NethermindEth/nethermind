@@ -24,5 +24,12 @@ namespace Nethermind.Merge.Plugin.Data
         /// Payload was accepted but not executed yet. It can be executed in <see cref="ForkchoiceStateV1"/> call.
         /// </summary>
         public const string Accepted = "ACCEPTED";
+
+        /// <summary>
+        /// Payload block hash does not match the computed block hash.
+        /// L1: Named constant added so that SSZ codec and any other callers can reference
+        /// this status symbolically rather than using an inline magic string.
+        /// </summary>
+        public const string InvalidBlockHash = "INVALID_BLOCK_HASH";
     }
 }

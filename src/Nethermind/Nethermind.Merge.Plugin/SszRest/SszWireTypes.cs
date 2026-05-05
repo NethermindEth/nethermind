@@ -100,7 +100,7 @@ public partial struct PayloadAttributesV3Wire
     public Hash256 PrevRandao { get; set; }
     public Address SuggestedFeeRecipient { get; set; }
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
-    [SszList(1)] public Hash256[]? ParentBeaconBlockRoot { get; set; }
+    public Hash256 ParentBeaconBlockRoot { get; set; }
 }
 
 [SszContainer]
@@ -110,7 +110,7 @@ public partial struct PayloadAttributesWire
     public Hash256 PrevRandao { get; set; }
     public Address SuggestedFeeRecipient { get; set; }
     [SszList(16)] public SszWithdrawal[]? Withdrawals { get; set; }
-    [SszList(1)] public Hash256[]? ParentBeaconBlockRoot { get; set; }
+    public Hash256 ParentBeaconBlockRoot { get; set; }
     public ulong SlotNumber { get; set; }
 }
 
@@ -283,7 +283,7 @@ public partial struct GetBlobsV1ResponseWire
 [SszContainer]
 public partial struct SszCapabilityName
 {
-    [SszList(128)] public byte[]? Name { get; set; }
+    [SszList(64)] public byte[]? Name { get; set; }
 }
 
 [SszContainer]
@@ -416,7 +416,7 @@ public partial struct TransitionConfigurationV1Wire
 }
 
 [SszContainer]
-public partial struct ExchangeTransitionConfigurationRequestWire
+public partial struct ExchangeTransitionConfigurationWire
 {
     public TransitionConfigurationV1Wire TransitionConfiguration { get; set; }
 }
