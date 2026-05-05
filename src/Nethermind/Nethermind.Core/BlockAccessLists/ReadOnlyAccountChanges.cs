@@ -8,7 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
-using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -76,8 +76,10 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// signaled by <see cref="SignalPrestateLoaded"/> after the loader has finished mutating
     /// this account in <c>LoadPreStateToSuggestedBlockAccessList</c>. Null when no parallel
     /// loading is expected — read methods then short-circuit without waiting.
+    /// <see cref="TaskCreationOptions.RunContinuationsAsynchronously"/> ensures the loader's
+    /// thread isn't hijacked to run any future <c>await</c> continuations attached by callers.
     /// </summary>
-    private ManualResetEventSlim? _prestateGate;
+    private TaskCompletionSource? _prestateGate;
 
     public ReadOnlyAccountChanges(
         Address address,
@@ -282,17 +284,19 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     // done, and worker reads above wait per-account. Idempotent: an already-set gate stays set
     // so a re-prepared block (already loaded) doesn't block workers.
 
-    public void EnablePrestateGate() => _prestateGate ??= new ManualResetEventSlim(false);
+    public void EnablePrestateGate()
+        => _prestateGate ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public void SignalPrestateLoaded() => _prestateGate?.Set();
+    public void SignalPrestateLoaded() => _prestateGate?.TrySetResult();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void WaitForPrestate()
     {
-        ManualResetEventSlim? gate = _prestateGate;
-        if (gate is { IsSet: false })
+        TaskCompletionSource? gate = _prestateGate;
+        if (gate is not null && !gate.Task.IsCompleted)
         {
-            gate.Wait();
+            // GetResult (vs .Wait) so any future SetException surfaces unwrapped.
+            gate.Task.GetAwaiter().GetResult();
         }
     }
 
