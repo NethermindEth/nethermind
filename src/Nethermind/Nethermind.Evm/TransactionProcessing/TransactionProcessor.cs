@@ -1203,8 +1203,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 TGasPolicy.GetStateGasSpill(in gas) -
                 TGasPolicy.GetStateReservoir(in gas) -
                 TGasPolicy.GetStateGasSpillBurned(in gas);
+            long refundedSpill = TGasPolicy.GetStateGasSpillRefunded(in gas);
+            long refundedSpillNotInReservoir = Math.Min(returnedSpillNotInReservoir, refundedSpill);
             long createStateGas = TGasPolicy.GetCreateStateCost(in gas);
-            return Math.Max(0, returnedSpillNotInReservoir / createStateGas * createStateGas);
+            return Math.Max(0, (refundedSpillNotInReservoir / createStateGas) * createStateGas);
         }
 
         private static (long blockGas, long blockStateGas) CalculateBlockGas(

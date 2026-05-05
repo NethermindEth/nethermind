@@ -284,6 +284,41 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_top_level_halt_must_not_treat_successful_inner_create_spill_as_refunded()
+    {
+        byte[] childInitCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        byte[] initCode = Prepare.EvmCode
+            .Create(childInitCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Create([], UInt256.Zero)
+            .Op(Instruction.POP)
+            .Done;
+
+        const long gasLimit = 300_000;
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            initCode,
+            value: 0,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState),
+            "The successful inner CREATE spill is reverted only by the top-level halt, not by a nested state refund.");
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+    }
+
+    [Test]
     public void Eip8037_create_memory_oog_must_not_charge_create_state_gas()
     {
         byte[] code = Prepare.EvmCode
