@@ -49,7 +49,7 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     /// <summary>
     /// Construct an <see cref="ArenaByteReader"/> over this reservation's bytes. The reader
-    /// reports each read/pin to the arena's <see cref="PageClockCache"/> so least-recently-used
+    /// reports each read/pin to the arena's <see cref="PageSlotCache"/> so collision-displaced
     /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction.
     /// </summary>
     public ArenaByteReader CreateReader() => new(GetSpanInternal(), _arenaManager.PageCache, ArenaId, Offset);

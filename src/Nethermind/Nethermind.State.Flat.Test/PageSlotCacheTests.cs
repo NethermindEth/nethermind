@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
-public class PageClockCacheTests
+public class PageSlotCacheTests
 {
     private sealed class RecordingHandler : IPageEvictionHandler
     {
@@ -28,68 +28,78 @@ public class PageClockCacheTests
     public void Touch_RepeatedSamePage_NeverEvicts()
     {
         RecordingHandler handler = new();
-        PageClockCache cache = new(maxCapacity: 4, handler);
-        List<(int arena, int page)> evictions = handler.Evictions;
+        PageSlotCache cache = new(maxCapacity: 4, handler);
 
         for (int i = 0; i < 1000; i++)
             cache.Touch(7, 42);
 
-        evictions.Should().BeEmpty();
+        handler.Evictions.Should().BeEmpty();
         cache.Count.Should().Be(1);
         cache.ContainsPage(7, 42).Should().BeTrue();
     }
 
     [Test]
-    public void Touch_BeyondCapacity_EvictsLruPage()
+    public void Touch_SingleSlot_CollisionEvictsOccupant()
     {
+        // maxCapacity=1 → every distinct key collides on the only slot.
         RecordingHandler handler = new();
-        PageClockCache cache = new(maxCapacity: 3, shardCount: 1, handler);
-        List<(int arena, int page)> evictions = handler.Evictions;
+        PageSlotCache cache = new(maxCapacity: 1, handler);
 
         cache.Touch(0, 0);
+        handler.Evictions.Should().BeEmpty();
+        cache.ContainsPage(0, 0).Should().BeTrue();
+
         cache.Touch(0, 1);
-        cache.Touch(0, 2);
-        evictions.Should().BeEmpty();
-
-        cache.Touch(0, 3);
-        evictions.Should().ContainSingle().Which.Should().Be((0, 0));
+        handler.Evictions.Should().ContainSingle().Which.Should().Be((0, 0));
         cache.ContainsPage(0, 0).Should().BeFalse();
-        cache.ContainsPage(0, 3).Should().BeTrue();
-    }
+        cache.ContainsPage(0, 1).Should().BeTrue();
 
-    [Test]
-    public void Touch_AccessedPage_SurvivesEvictionScan()
-    {
-        RecordingHandler handler = new();
-        PageClockCache cache = new(maxCapacity: 2, shardCount: 1, handler);
-        List<(int arena, int page)> evictions = handler.Evictions;
-
-        cache.Touch(0, 100); // slot 0
-        cache.Touch(0, 200); // slot 1
-        cache.Touch(0, 100); // marks slot 0 accessed
-
-        cache.Touch(0, 300); // forces eviction; slot 0 spared (accessed=true), slot 1 evicted
-        evictions.Should().ContainSingle().Which.Should().Be((0, 200));
-        cache.ContainsPage(0, 100).Should().BeTrue();
-        cache.ContainsPage(0, 200).Should().BeFalse();
-        cache.ContainsPage(0, 300).Should().BeTrue();
+        cache.Touch(0, 2);
+        handler.Evictions.Should().HaveCount(2);
+        handler.Evictions[1].Should().Be((0, 1));
     }
 
     [Test]
     public void MaxCapacityZero_TouchIsNoOp()
     {
         RecordingHandler handler = new();
-        PageClockCache cache = new(maxCapacity: 0, handler);
+        PageSlotCache cache = new(maxCapacity: 0, handler);
         cache.Touch(1, 1);
         cache.Touch(2, 2);
         handler.Evictions.Should().BeEmpty();
         cache.Count.Should().Be(0);
+        cache.ContainsPage(1, 1).Should().BeFalse();
+    }
+
+    [Test]
+    public void MaxCapacity_RoundsUpToPowerOfTwo()
+    {
+        PageSlotCache cache = new(maxCapacity: 3, NoopHandler.Instance);
+        cache.MaxCapacity.Should().Be(4);
+    }
+
+    [Test]
+    public void Clear_RemovesAllEntries()
+    {
+        RecordingHandler handler = new();
+        PageSlotCache cache = new(maxCapacity: 8, handler);
+        cache.Touch(0, 0);
+        cache.Touch(0, 1);
+        cache.Touch(0, 2);
+
+        cache.Clear();
+        cache.Count.Should().Be(0);
+        cache.ContainsPage(0, 0).Should().BeFalse();
+        cache.ContainsPage(0, 1).Should().BeFalse();
+        cache.ContainsPage(0, 2).Should().BeFalse();
+        // Clear must not invoke the eviction handler — pages dropped wholesale, not displaced.
+        handler.Evictions.Should().BeEmpty();
     }
 
     [Test]
     public void ArenaByteReader_TryRead_TouchesAllSpannedPages()
     {
-        PageClockCache cache = new(maxCapacity: 1024, NoopHandler.Instance);
+        PageSlotCache cache = new(maxCapacity: 1024, NoopHandler.Instance);
         int pageSize = Environment.SystemPageSize;
         long baseOffset = pageSize - 8;
         byte[] data = new byte[pageSize * 2];
@@ -108,7 +118,7 @@ public class PageClockCacheTests
     [Test]
     public void ArenaByteReader_PinBuffer_TouchesAllSpannedPages()
     {
-        PageClockCache cache = new(maxCapacity: 1024, NoopHandler.Instance);
+        PageSlotCache cache = new(maxCapacity: 1024, NoopHandler.Instance);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 3];
         ArenaByteReader reader = new(data, cache, arenaId: 1, baseOffset: 0);
@@ -123,7 +133,7 @@ public class PageClockCacheTests
     [Test]
     public void ArenaByteReader_RepeatedSamePageReads_OnlyTouchOnce()
     {
-        PageClockCache cache = new(maxCapacity: 16, NoopHandler.Instance);
+        PageSlotCache cache = new(maxCapacity: 16, NoopHandler.Instance);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 2];
         ArenaByteReader reader = new(data, cache, arenaId: 0, baseOffset: 0);

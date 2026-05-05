@@ -33,11 +33,11 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     private readonly HashSet<int> _standaloneFiles = [];
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
-    private readonly PageClockCache? _pageCache;
+    private readonly PageSlotCache? _pageCache;
     private int _nextArenaId;
     private bool _disposed;
 
-    public PageClockCache? PageCache => _pageCache;
+    public PageSlotCache? PageCache => _pageCache;
 
     public int ArenaFileCount
     {
@@ -66,7 +66,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             ? (int)Math.Min(int.MaxValue, pageCacheBytes / Environment.SystemPageSize)
             : 0;
         _pageCache = pageCacheCapacity > 0
-            ? new PageClockCache(pageCacheCapacity, shardCount: 1, this)
+            ? new PageSlotCache(pageCacheCapacity, this)
             : null;
     }
 

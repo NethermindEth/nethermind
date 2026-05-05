@@ -9,13 +9,13 @@ namespace Nethermind.State.Flat.Hsst;
 /// <summary>
 /// Span-backed <see cref="IHsstByteReader{TPin}"/> that, on every read or pin, computes which OS
 /// page(s) the access spans (in arena-absolute terms) and reports them to a
-/// <see cref="PageClockCache"/>. Page math: <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
+/// <see cref="PageSlotCache"/>. Page math: <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
 /// Otherwise identical to <see cref="SpanByteReader"/> — zero-copy slice, <see cref="NoOpPin"/>.
 /// </summary>
 public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 {
     private readonly ReadOnlySpan<byte> _data;
-    private readonly PageClockCache? _cache;
+    private readonly PageSlotCache? _cache;
     private readonly int _arenaId;
     private readonly long _baseOffset;
     // OS page size is a power of two — use shift for division and mask for modulo.
@@ -27,7 +27,7 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
     // bytes within one node.
     private long _lastPageBase;
 
-    public ArenaByteReader(ReadOnlySpan<byte> data, PageClockCache? cache, int arenaId, long baseOffset)
+    public ArenaByteReader(ReadOnlySpan<byte> data, PageSlotCache? cache, int arenaId, long baseOffset)
     {
         _data = data;
         _cache = cache;
