@@ -277,7 +277,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.NetworkConfig.MaxActivePeers = 1;
-            ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
+            ctx.StaticNodesManager.IsStatic(Arg.Is<NetworkNode>(n => n.Enode!.Info == enode2String)).Returns(true);
 
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();

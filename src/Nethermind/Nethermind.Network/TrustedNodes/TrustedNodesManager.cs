@@ -52,7 +52,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         }
     }
 
-    public async Task<bool> AddAsync(Enode enode, bool updateFile = true)
+    public async Task<bool> AddAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         NetworkNode networkNode = new(enode);
         if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
@@ -71,16 +71,16 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
 
         // Publish the newly added node to the channel so DiscoverNodes will yield it.
         Node newNode = new(networkNode) { IsTrusted = true };
-        await _nodeChannel.Writer.WriteAsync(newNode);
+        await _nodeChannel.Writer.WriteAsync(newNode, cancellationToken);
 
         if (updateFile)
         {
-            await SaveFileAsync();
+            await SaveFileAsync(cancellationToken);
         }
         return true;
     }
 
-    public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true)
+    public async Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         NetworkNode networkNode = new(enode.ToString());
         if (!_nodes.TryRemove(networkNode.NodeId, out _))
@@ -99,7 +99,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
 
         if (updateFile)
         {
-            await SaveFileAsync();
+            await SaveFileAsync(cancellationToken);
         }
 
         OnNodeRemoved(networkNode);

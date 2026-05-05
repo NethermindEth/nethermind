@@ -102,7 +102,8 @@ public class AdminModuleTests
             _exampleDataDir,
             new ChainSpec { Parameters = new ChainParameters() }.Parameters,
             Substitute.For<ITrustedNodesManager>(),
-            _subscriptionManager);
+            _subscriptionManager,
+            new JsonRpcConfig());
         _adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
         _serializer = new EthereumJsonSerializer();
@@ -182,7 +183,7 @@ public class AdminModuleTests
     public async Task AdminAddTrustedPeer_WithValidEnode_AddsAsTrustedPeerAndReturnsTrue(bool persistent, bool expectedUpdateFile)
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(true));
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(peerPool: peerPool, trustedNodesManager: trustedNodesManager);
 
@@ -191,7 +192,7 @@ public class AdminModuleTests
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         result.Should().BeTrue(because: "a valid enode is added to the trusted peer set and the call must report success as a boolean");
-        await trustedNodesManager.Received(1).AddAsync(Arg.Any<Enode>(), expectedUpdateFile);
+        await trustedNodesManager.Received(1).AddAsync(Arg.Any<Enode>(), expectedUpdateFile, Arg.Any<CancellationToken>());
         peerPool.Received(1).GetOrAdd(Arg.Any<NetworkNode>());
     }
 
@@ -199,7 +200,7 @@ public class AdminModuleTests
     public async Task AdminAddTrustedPeer_WhenAlreadyTrusted_StillReturnsTrue()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(false));
+        trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(trustedNodesManager: trustedNodesManager);
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString);
@@ -209,12 +210,19 @@ public class AdminModuleTests
         result.Should().BeTrue(because: "addTrustedPeer is idempotent: trusting an already-trusted peer is success, matching geth's Server.AddTrustedPeer semantics");
     }
 
-    [Test]
-    public async Task AdminAddTrustedPeer_WhenEnodeMalformed_ReturnsInvalidParamsError()
+    [TestCase("admin_addPeer", "not-an-enode", TestName = "AdminAddPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_addPeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminAddPeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_removePeer", "not-an-enode", TestName = "AdminRemovePeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_removePeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminRemovePeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_addTrustedPeer", "not-an-enode", TestName = "AdminAddTrustedPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_addTrustedPeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminAddTrustedPeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_removeTrustedPeer", "not-an-enode", TestName = "AdminRemoveTrustedPeer_WhenEnodeSchemeInvalid_ReturnsInvalidParamsError")]
+    [TestCase("admin_removeTrustedPeer", "enode://badhex@127.0.0.1:30303", TestName = "AdminRemoveTrustedPeer_WhenEnodePublicKeyInvalid_ReturnsInvalidParamsError")]
+    public async Task AdminPeerMethods_WithInvalidEnode_ReturnsInvalidParamsError(string method, string badEnode)
     {
-        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addTrustedPeer", "not-an-enode");
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, method, badEnode);
 
-        serialized.Should().Contain("\"code\":-32602", because: "malformed enode is a JSON-RPC InvalidParams error");
+        serialized.Should().Contain("\"code\":-32602", because: "all four peer-management methods must return InvalidParams whether parsing fails at scheme or content level");
         serialized.Should().Contain("invalid enode", because: "the error message must identify the failing parameter");
     }
 
@@ -223,7 +231,7 @@ public class AdminModuleTests
     public async Task AdminRemoveTrustedPeer_WithValidEnode_RemovesFromTrustedAndReturnsTrue(bool persistent, bool expectedUpdateFile)
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(true));
+        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(trustedNodesManager: trustedNodesManager);
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_removeTrustedPeer", _enodeString, persistent);
@@ -231,14 +239,14 @@ public class AdminModuleTests
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         result.Should().BeTrue(because: "a valid enode is removed from the trusted set, reported as a boolean");
-        await trustedNodesManager.Received(1).RemoveAsync(Arg.Any<Enode>(), expectedUpdateFile);
+        await trustedNodesManager.Received(1).RemoveAsync(Arg.Any<Enode>(), expectedUpdateFile, Arg.Any<CancellationToken>());
     }
 
     [Test]
     public async Task AdminRemoveTrustedPeer_WhenPeerNotTrusted_StillReturnsTrue()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(false));
+        trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(trustedNodesManager: trustedNodesManager);
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_removeTrustedPeer", _enodeString);
@@ -249,34 +257,15 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task AdminRemoveTrustedPeer_WhenEnodeMalformed_ReturnsInvalidParamsError()
-    {
-        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removeTrustedPeer", "not-an-enode");
-
-        serialized.Should().Contain("\"code\":-32602", because: "malformed enode is a JSON-RPC InvalidParams error");
-        serialized.Should().Contain("invalid enode", because: "the error message must identify the failing parameter");
-    }
-
-    [Test]
     public async Task AdminSetSolc_WhenInvoked_DoesNotThrow() =>
         _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
-
-    [Test]
-    public async Task AdminPeerLifecycle_AddRemoveListBothArities_DoesNotThrow()
-    {
-        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString);
-        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString);
-        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", _enodeString, true);
-        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", _enodeString, true);
-        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_peers");
-    }
 
     [TestCase(false, false, TestName = "AdminAddPeer_WhenPersistentFalse_KeepsAsInMemoryStaticPeer")]
     [TestCase(true, true, TestName = "AdminAddPeer_WhenPersistentTrue_AlsoWritesToStaticNodesFile")]
     public async Task AdminAddPeer_WithValidEnode_AddsAsStaticPeerAndReturnsTrue(bool persistent, bool expectedUpdateFile)
     {
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
-        staticNodesManager.AddAsync(Arg.Any<string>(), Arg.Any<bool>()).Returns(Task.FromResult(true));
+        staticNodesManager.AddAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(staticNodesManager: staticNodesManager);
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addPeer", _enodeString, persistent);
@@ -284,16 +273,7 @@ public class AdminModuleTests
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         result.Should().BeTrue(because: "a valid enode is added to the static peer set and the call must report success as a boolean");
-        await staticNodesManager.Received(1).AddAsync(_enodeString, updateFile: expectedUpdateFile);
-    }
-
-    [Test]
-    public async Task AdminAddPeer_WhenEnodeMalformed_ReturnsInvalidParamsError()
-    {
-        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_addPeer", "not-an-enode");
-
-        serialized.Should().Contain("\"code\":-32602", because: "malformed enode is a JSON-RPC InvalidParams error");
-        serialized.Should().Contain("invalid enode", because: "the error message must identify the failing parameter");
+        await staticNodesManager.Received(1).AddAsync(Arg.Is<NetworkNode>(n => n.Enode!.Info == _enodeString), expectedUpdateFile, Arg.Any<CancellationToken>());
     }
 
     [TestCase(false, false, TestName = "AdminRemovePeer_WhenPersistentFalse_DropsInMemoryStaticEntry")]
@@ -301,7 +281,7 @@ public class AdminModuleTests
     public async Task AdminRemovePeer_WithValidEnode_RemovesFromStaticAndPoolAndReturnsTrue(bool persistent, bool expectedUpdateFile)
     {
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
-        staticNodesManager.RemoveAsync(Arg.Any<string>(), Arg.Any<bool>()).Returns(Task.FromResult(true));
+        staticNodesManager.RemoveAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(staticNodesManager: staticNodesManager, peerPool: peerPool);
 
@@ -310,7 +290,7 @@ public class AdminModuleTests
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         result.Should().BeTrue(because: "a valid enode is removed from the static peer set and active session, reported as a boolean");
-        await staticNodesManager.Received(1).RemoveAsync(_enodeString, updateFile: expectedUpdateFile);
+        await staticNodesManager.Received(1).RemoveAsync(Arg.Is<NetworkNode>(n => n.Enode!.Info == _enodeString), expectedUpdateFile, Arg.Any<CancellationToken>());
         peerPool.Received(1).TryRemove(Arg.Any<PublicKey>(), out Arg.Any<Peer>());
     }
 
@@ -318,7 +298,7 @@ public class AdminModuleTests
     public async Task AdminRemovePeer_WhenPeerNotFound_StillReturnsTrue()
     {
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
-        staticNodesManager.RemoveAsync(Arg.Any<string>(), Arg.Any<bool>()).Returns(Task.FromResult(false));
+        staticNodesManager.RemoveAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(false));
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         peerPool.TryRemove(Arg.Any<PublicKey>(), out Arg.Any<Peer>()).Returns(false);
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(staticNodesManager: staticNodesManager, peerPool: peerPool);
@@ -328,15 +308,6 @@ public class AdminModuleTests
         JsonRpcSuccessResponse response = _serializer.Deserialize<JsonRpcSuccessResponse>(serialized);
         bool result = ((JsonElement)response.Result!).Deserialize<bool>(EthereumJsonSerializer.JsonOptions);
         result.Should().BeTrue(because: "removePeer is idempotent: removing an unknown peer is success, matching geth's Server.RemovePeer semantics");
-    }
-
-    [Test]
-    public async Task AdminRemovePeer_WhenEnodeMalformed_ReturnsInvalidParamsError()
-    {
-        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_removePeer", "not-an-enode");
-
-        serialized.Should().Contain("\"code\":-32602", because: "malformed enode is a JSON-RPC InvalidParams error");
-        serialized.Should().Contain("invalid enode", because: "the error message must identify the failing parameter");
     }
 
     [Test]
@@ -620,7 +591,8 @@ public class AdminModuleTests
             _exampleDataDir,
             chainSpec.Parameters,
             trustedNodesManager ?? Substitute.For<ITrustedNodesManager>(),
-            _subscriptionManager);
+            _subscriptionManager,
+            new JsonRpcConfig());
     }
 
     private JsonRpcResult RaisePeerEventAndCapture(Action raiseEvent, out string subscriptionId, bool disposeSubscription = false, bool shouldReceive = true)
@@ -681,7 +653,8 @@ public class AdminModuleTests
             "/test/data",
             new ChainParameters(),
             Substitute.For<ITrustedNodesManager>(),
-            subscriptionManager);
+            subscriptionManager,
+            new JsonRpcConfig());
     }
 
     private static IPeerPool CreatePeerPool(Peer peer)
