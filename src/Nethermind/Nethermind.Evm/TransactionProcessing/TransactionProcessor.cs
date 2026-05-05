@@ -769,6 +769,13 @@ namespace Nethermind.Evm.TransactionProcessing
             byte statusCode = StatusCode.Failure;
             long selfDestructStateRefund = 0;
 
+            // EIP-7702 + EIP-8037: capture the tx-start state reservoir (post-Apply8037DelegationRefunds).
+            // The halt path needs this to correctly initialize the reservoir in ResetForHalt; the
+            // intrinsicGasStandard-based formula misses the auth refund and would charge the sender
+            // for unconsumed reservoir gas (1x AccountCreationCost = 131,488 per valid auth on
+            // existing account).
+            long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
+
             Snapshot snapshot = WorldState.TakeSnapshot();
             long floorGasLong = TGasPolicy.GetRemainingGas(gas.FloorGas);
 
@@ -867,7 +874,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, selfDestructStateRefund, gas.FloorGas, gas.Standard);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, selfDestructStateRefund, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
@@ -880,8 +887,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled)
             {
                 long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-                long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
-                TGasPolicy.ResetForHalt(ref gasAvailable, initialReservoir, intrinsicStateGas);
+                // Use postIntrinsicStateReservoir captured before EVM execution so any
+                // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
+                // (otherwise the sender pays AccountCreationCost per refunded auth even
+                // though no account was created).
+                TGasPolicy.ResetForHalt(ref gasAvailable, postIntrinsicStateReservoir, intrinsicStateGas);
                 gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong, burnRemainingRegularGas: true, burnRemainingRegularGasForBlock: true);
             }
             else
@@ -1110,7 +1120,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long selfDestructStateRefund, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard)
+            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long selfDestructStateRefund, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir)
         {
             TGasPolicy gasAfterExecution = unspentGas;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
@@ -1127,8 +1137,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 RefundRevertedExecutionStateGas(spec, in intrinsicGasStandard, ref gasAfterExecution);
 
                 long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-                long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
-                TGasPolicy.ResetForHalt(ref gasAfterExecution, initialReservoir, intrinsicStateGas);
+                // Use postIntrinsicStateReservoir captured before EVM execution so any
+                // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
+                // through the halt-reset; otherwise we'd charge the sender for unconsumed
+                // auth-refund reservoir gas (1x AccountCreationCost = 131,488 per refund).
+                TGasPolicy.ResetForHalt(ref gasAfterExecution, postIntrinsicStateReservoir, intrinsicStateGas);
 
                 return RefundOnFail(tx, spec, opts, in gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, burnRemainingRegularGas: true, burnRemainingRegularGasForBlock: true);
             }
