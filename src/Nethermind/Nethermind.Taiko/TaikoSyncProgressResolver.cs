@@ -53,7 +53,10 @@ public sealed class TaikoSyncProgressResolver(
     public bool IsLoadingBlocksFromDb() => inner.IsLoadingBlocksFromDb();
     public long FindBestProcessedBlock() => inner.FindBestProcessedBlock();
     public UInt256 ChainDifficulty => inner.ChainDifficulty;
-    public UInt256? GetTotalDifficulty(Hash256 blockHash) => inner.GetTotalDifficulty(blockHash);
+    // On Taiko TotalDifficulty is always 0; the default resolver does
+    // best.TotalDifficulty - best.Difficulty which underflows UInt256
+    // when Difficulty carries the per-block zk-gas value.
+    public UInt256? GetTotalDifficulty(Hash256 blockHash) => UInt256.Zero;
     public void RecalculateProgressPointers() => inner.RecalculateProgressPointers();
     public (long BlockNumber, Hash256 BlockHash) SyncPivot => inner.SyncPivot;
 }
