@@ -19,6 +19,7 @@ public sealed class CapabilitiesSszHandler(IHandler<IEnumerable<string>, IEnumer
 
     public override string HttpMethod => "POST";
     public override string Resource => "capabilities";
+    public override int? Version => 1;
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {

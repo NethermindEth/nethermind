@@ -1725,7 +1725,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
 
-        result.Data.Should().BeEquivalentTo(expected);
+        result.Data.Where(static s => !s.Contains(' ')).Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -1737,7 +1737,9 @@ public partial class EngineModuleTests
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
-        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();
+        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data
+            .Where(static s => !s.Contains(' '))
+            .ToArray();
         string[] expectedMethods = new string[]
         {
             nameof(IEngineRpcModule.engine_getClientVersionV1),

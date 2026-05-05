@@ -116,21 +116,26 @@ public sealed class SszMiddleware
             return;
         }
 
+        Metrics.SszRestRequestsTotal++;
+
         string? authHeader = ctx.Request.Headers.Authorization;
         if (authHeader is null || !await _auth.Authenticate(authHeader))
         {
+            Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status401Unauthorized, "Authentication error");
             return;
         }
 
         if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlySpan<char> pathSegment))
         {
+            Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound, "Unknown SSZ endpoint");
             return;
         }
 
         if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlySpan<char> extraSpan))
         {
+            Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
                 $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment}");
             return;
@@ -139,8 +144,6 @@ public sealed class SszMiddleware
         string extra = extraSpan.IsEmpty ? string.Empty : extraSpan.ToString();
 
         if (_logger.IsTrace)
-            // L5: single interpolated string avoids the redundant secondary allocation
-            // from the unconditional `+ "/" + extra` concatenation in the original.
             _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}{(extra.Length > 0 ? "/" + extra : "")}");
 
         byte[]? rentedBuffer = null;
@@ -152,19 +155,33 @@ public sealed class SszMiddleware
                 ? ReadOnlyMemory<byte>.Empty
                 : rentedBuffer.AsMemory(0, bodyLength);
 
+            Metrics.SszRestRequestBytesTotal += bodyLength;
+
             await handler!.HandleAsync(ctx, version, extra, bodyMemory);
+
+            int status = ctx.Response.StatusCode;
+            if (status is >= 200 and < 300)
+                Metrics.SszRestRequestsSuccessTotal++;
+            else if (status is >= 400 and < 500)
+                Metrics.SszRestRequestsClientErrorTotal++;
+            else if (status >= 500)
+                Metrics.SszRestRequestsServerErrorTotal++;
         }
         catch (InvalidOperationException ex) when (rentedBuffer is null)
         {
+            Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
         }
-        catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException)
+        catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
         {
+            Metrics.SszRestDecodeFailuresTotal++;
+            Metrics.SszRestRequestsClientErrorTotal++;
             if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, "Malformed SSZ body");
         }
         catch (Exception ex)
         {
+            Metrics.SszRestRequestsServerErrorTotal++;
             if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
         }

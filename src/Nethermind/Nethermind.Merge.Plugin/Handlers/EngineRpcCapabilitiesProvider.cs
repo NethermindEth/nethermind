@@ -56,6 +56,43 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.IsEip7843Enabled, spec.IsEip7843Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2)] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+
+
+            // Always-on SSZ-REST paths (The Merge baseline)
+            _capabilities["POST /engine/v1/payloads"] = (true, false);
+            _capabilities["POST /engine/v1/forkchoice"] = (true, false);
+            _capabilities["POST /engine/v1/capabilities"] = (true, false);
+            _capabilities["POST /engine/v1/client/version"] = (true, false);
+            _capabilities["POST /engine/v1/transition-configuration"] = (true, false);
+
+            // Shanghai SSZ-REST paths
+            _capabilities["POST /engine/v2/payloads"] = (spec.WithdrawalsEnabled, false);
+            _capabilities["POST /engine/v2/forkchoice"] = (spec.WithdrawalsEnabled, false);
+            _capabilities["GET /engine/v2/payloads/{payload_id}"] = (spec.WithdrawalsEnabled, false);
+            _capabilities["POST /engine/v2/payload-bodies/hashes"] = (spec.WithdrawalsEnabled, false);
+            _capabilities["GET /engine/v2/payload-bodies/by-range/{start}/{count}"] = (spec.WithdrawalsEnabled, false);
+
+            // Cancun SSZ-REST paths
+            _capabilities["POST /engine/v3/payloads"] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities["POST /engine/v3/forkchoice"] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities["GET /engine/v3/payloads/{payload_id}"] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities["POST /engine/v1/blobs"] = (spec.IsEip4844Enabled, false);
+
+            // Prague SSZ-REST paths
+            _capabilities["POST /engine/v4/payloads"] = (v4, v4);
+            _capabilities["GET /engine/v4/payloads/{payload_id}"] = (v4, v4);
+
+            // Osaka SSZ-REST paths
+            _capabilities["GET /engine/v5/payloads/{payload_id}"] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
+            _capabilities["POST /engine/v2/blobs"] = (spec.IsEip7594Enabled, false);
+            _capabilities["POST /engine/v3/blobs"] = (spec.IsEip7594Enabled, false);
+
+            // Amsterdam SSZ-REST paths
+            _capabilities["POST /engine/v5/payloads"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities["GET /engine/v6/payloads/{payload_id}"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities["POST /engine/v4/forkchoice"] = (spec.IsEip7843Enabled, spec.IsEip7843Enabled);
+            _capabilities["POST /engine/v2/payload-bodies/hashes"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities["GET /engine/v2/payload-bodies/by-range/{start}/{count}"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
         }
 
         return _capabilities;
