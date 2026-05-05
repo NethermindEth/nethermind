@@ -66,7 +66,10 @@ public class MergePluginTests
     }
 
     private IContainer BuildContainer(IConfigProvider? configProvider = null) =>
+        // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
+        // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
         new ContainerBuilder()
+            .AddModule(new HealthCheckPluginModule())
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
@@ -75,7 +78,6 @@ public class MergePluginTests
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
-            .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
             .OnBuild(ctx =>
             {
@@ -85,6 +87,14 @@ public class MergePluginTests
                 api.BlockProcessingQueue.IsEmpty.Returns(true);
             })
             .Build();
+
+    [Test]
+    public void EngineRequestsTracker_resolves_to_ClHealthRequestsTracker_when_HealthChecks_loaded_first()
+    {
+        using IContainer container = BuildContainer();
+
+        container.Resolve<IEngineRequestsTracker>().Should().BeOfType<ClHealthRequestsTracker>();
+    }
 
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()

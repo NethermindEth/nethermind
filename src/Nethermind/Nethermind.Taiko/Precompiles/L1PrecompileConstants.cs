@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Taiko.Precompiles;
 
@@ -14,6 +15,12 @@ public static class L1PrecompileConstants
     // --- Shared constants ---
 
     public const int BlockNumberBytes = 32;
+
+    /// <summary>
+    /// Maximum number of blocks behind <c>l1_origin</c> that an L1 precompile request may target.
+    /// Matches the EVM <c>BLOCKHASH</c> opcode window and bounds the state roots the prover must verify.
+    /// </summary>
+    public const long MaxBlockLookback = 256;
 
     /// <summary>
     /// Timeout for L1 RPC calls (eth_call, eth_getStorageAt).
@@ -49,4 +56,10 @@ public static class L1PrecompileConstants
     /// The actual limit is min(remainingL2Gas, this cap).
     /// </summary>
     public const long L1CallMaxGasCap = 30_000_000L;
+
+    /// <summary>
+    /// Inclusive 256-block lookback check: <c>blockNumber ∈ [l1Origin − 256, l1Origin]</c>.
+    /// </summary>
+    public static bool IsBlockInRange(UInt256 blockNumber, UInt256 l1Origin) =>
+        blockNumber <= l1Origin && l1Origin - blockNumber <= (UInt256)MaxBlockLookback;
 }
