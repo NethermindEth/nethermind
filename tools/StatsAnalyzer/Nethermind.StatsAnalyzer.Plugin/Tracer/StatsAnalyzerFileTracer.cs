@@ -136,6 +136,11 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
     {
         base.StartNewBlockTrace(block);
         var number = block.Header.Number;
+        // _initialBlock == 0 means "unset" rather than "genesis"; on a
+        // fresh node this means the genesis block itself does not anchor
+        // _initialBlock — the first non-genesis block the tracer sees does.
+        // Acceptable for the analyzer's accounting (the first traced block
+        // is the start of the trace), but document the off-by-one.
         if (_initialBlock == 0)
             _initialBlock = number;
         _currentBlock = number;

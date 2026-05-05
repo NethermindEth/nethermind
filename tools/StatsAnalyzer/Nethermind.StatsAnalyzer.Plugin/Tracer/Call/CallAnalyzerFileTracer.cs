@@ -41,7 +41,7 @@ public class CallAnalyzerFileTracer : StatsAnalyzerFileTracer<CallAnalyzerTxTrac
         _buffer = buffer;
         if (Logger.IsInfo)
             Logger.Info(
-                $"Call Analyzer file tracer  will write to stats to file: {FileName} ");
+                $"Call Analyzer file tracer will write stats to file: {FileName} ");
     }
 
 
