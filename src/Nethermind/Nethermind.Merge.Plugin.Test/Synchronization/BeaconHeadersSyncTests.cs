@@ -305,10 +305,8 @@ public class BeaconHeadersSyncTests
     [Test]
     public async Task Does_not_request_headers_when_destination_advances_past_lowest_requested()
     {
-        // Regression: BeaconPivot.PivotDestinationNumber tracks Head.Number - MaxDepth + 1, so it
-        // can rise above _lowestRequestedHeaderNumber while a sync is in flight. The previous `==`
-        // check in ShouldBuildANewBatch missed this case, producing a batch with a negative
-        // RequestSize and crashing HeaderStore.FindReversedHeaders with ArgumentOutOfRangeException.
+        // PivotDestinationNumber rising above _lowestRequestedHeaderNumber mid-sync must not produce
+        // a batch with negative RequestSize.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.SyncPivot.Returns((1000, Keccak.Zero));
         blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
