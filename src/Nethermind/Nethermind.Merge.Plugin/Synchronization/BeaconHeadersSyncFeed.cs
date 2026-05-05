@@ -97,8 +97,9 @@ public sealed class BeaconHeadersSyncFeed(
         // the base class with starts with _lowestRequestedHeaderNumber - 1, so we offset it here.
         _lowestRequestedHeaderNumber = startNumber + 1;
 
-        _logger.Info($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
-                     $"lowestInsertedBlockHeader: {lowestInserted?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
+        if (_logger.IsDebug)
+            _logger.Debug($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
+                          $"lowestInsertedBlockHeader: {lowestInserted?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
     }
 
     protected override void FinishAndCleanUp()
