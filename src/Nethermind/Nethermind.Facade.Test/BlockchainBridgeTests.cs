@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -742,12 +741,17 @@ public class BlockchainBridgeTests
             Marker = "custom-chain-header"
         };
 
-        BlockHeader callHeader = InvokeGetCallHeader(helper, specProvider, parent);
+        (BlockHeader callHeader, _) = helper.GetCallHeader(
+            specProvider,
+            new BlockStateCall<TransactionWithSourceDetails>(),
+            parent,
+            validate: true);
 
         callHeader.Should().BeOfType<DerivedBlockHeader>();
         ((DerivedBlockHeader)callHeader).Marker.Should().Be(parent.Marker);
         callHeader.ParentHash.Should().Be(parent.Hash);
         callHeader.Number.Should().Be(parent.Number + 1);
+        callHeader.ExtraData.Should().BeEmpty();
         callHeader.Hash.Should().BeNull();
     }
 
@@ -800,15 +804,6 @@ public class BlockchainBridgeTests
 
         simulateRequestState.TotalGasLeft.Should().Be(50_000);
         simulateRequestState.BlockGasLeft.Should().Be(30_000);
-    }
-
-    private static BlockHeader InvokeGetCallHeader(SimulateBridgeHelper helper, ISpecProvider specProvider, BlockHeader parent)
-    {
-        MethodInfo method = typeof(SimulateBridgeHelper).GetMethod("GetCallHeader", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        ValueTuple<BlockHeader, IReleaseSpec> result = (ValueTuple<BlockHeader, IReleaseSpec>)method.Invoke(
-            helper,
-            [specProvider, new BlockStateCall<TransactionWithSourceDetails>(), parent, true])!;
-        return result.Item1;
     }
 
     private class DerivedBlockHeader : BlockHeader
