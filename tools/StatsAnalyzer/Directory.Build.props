@@ -1,13 +1,9 @@
 <Project>
 
+  <Import Project="../../Directory.Build.props" />
+
   <PropertyGroup>
-    <InvariantGlobalization>true</InvariantGlobalization>
-    <LangVersion>14.0</LangVersion>
     <NuGetAuditMode>direct</NuGetAuditMode>
-    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <TargetFramework>net10.0</TargetFramework>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <UseArtifactsOutput>true</UseArtifactsOutput>
   </PropertyGroup>
 
 </Project>
