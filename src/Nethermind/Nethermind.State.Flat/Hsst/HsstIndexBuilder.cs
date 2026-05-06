@@ -31,19 +31,23 @@ public ref struct HsstIndexBuilder<TWriter>
     /// Build B-tree index via writer.
     /// The absolute data region start offset (= 1 + dataLen) is needed to compute child offsets.
     /// </summary>
-    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries)
+    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries, int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries)
     {
         int startWritten = _writer.Written;
 
         if (_entries.Length == 0)
         {
             // Empty index: write a single empty leaf node
-            WriteLeafIndexNode([], 0, 0);
+            WriteLeafIndexNode([], 0, 0, naturalMax: 1);
             return;
         }
 
-        // Build leaf nodes
-        int maxNodes = (_entries.Length + maxLeafEntries - 1) / maxLeafEntries;
+        if (minLeafEntries > maxLeafEntries) minLeafEntries = maxLeafEntries;
+        if (minLeafEntries < 1) minLeafEntries = 1;
+
+        // Build leaf nodes. minLeafEntries=maxLeafEntries reduces ChooseLeafCount to a fixed cap.
+        // maxNodes is sized for the worst case: every leaf at minimum size.
+        int maxNodes = (_entries.Length + minLeafEntries - 1) / minLeafEntries;
         const int StackThreshold = 1024;
         NativeMemoryListRef<NodeInfo> currentNative = default;
         NativeMemoryListRef<NodeInfo> nextNative = default;
@@ -70,12 +74,13 @@ public ref struct HsstIndexBuilder<TWriter>
 
             while (entryIdx < _entries.Length)
             {
-                int count = Math.Min(maxLeafEntries, _entries.Length - entryIdx);
+                LeafLayout layout = ChooseLeafLayout(entryIdx, minLeafEntries, maxLeafEntries);
+                int count = layout.Count;
                 ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> leafEntries = _entries.Slice(entryIdx, count);
 
                 int nodeStart = _writer.Written;
                 int relativeStart = nodeStart - startWritten;
-                WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx);
+                WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx, layout.NaturalMax);
                 int nodeLen = _writer.Written - nodeStart;
 
                 HsstBuilder<TWriter>.HsstEntry first = leafEntries[0];
@@ -132,10 +137,105 @@ public ref struct HsstIndexBuilder<TWriter>
         }
     }
 
+    /// <summary>
+    /// Per-leaf layout decided by <see cref="ChooseLeafLayout"/>: how many entries
+    /// to include and the natural max separator length used by the retry-truncate
+    /// step inside <see cref="WriteLeafIndexNode"/>.
+    /// </summary>
+    private readonly struct LeafLayout(int count, int naturalMax)
+    {
+        public readonly int Count = count;
+        public readonly int NaturalMax = naturalMax;
+    }
+
+    /// <summary>
+    /// Pick the number of entries to pack into the next leaf and, in the same
+    /// pass, compute the leaf's natural-disambiguation budget (max over consecutive
+    /// pairs of <c>commonPrefix(sep[i-1], sep[i]) + 1</c>) used to retry-truncate
+    /// stored separators.
+    ///
+    /// Inclusion rules:
+    ///  - The first <paramref name="minLeafEntries"/> entries are unconditional
+    ///    (or fewer if input is exhausted).
+    ///  - Past that watermark, split early when:
+    ///     - the next entry's separator length would push the running max
+    ///       separator length up (a longer-than-current separator forces every
+    ///       entry into a larger Uniform slot post-truncate), or
+    ///     - the next entry's separator would shrink the running common-prefix
+    ///       (the planner's prefix-strip would expose more bytes per entry).
+    ///  - Capped at <paramref name="maxLeafEntries"/>.
+    ///
+    /// <c>NaturalMax</c> covers exactly the included pairs; it equals the
+    /// per-leaf max disambiguation needed to keep in-leaf sort order intact when
+    /// the planner picks a uniform slot.
+    /// </summary>
+    private LeafLayout ChooseLeafLayout(int entryIdx, int minLeafEntries, int maxLeafEntries)
+    {
+        int remaining = _entries.Length - entryIdx;
+        int hardMax = Math.Min(maxLeafEntries, remaining);
+        if (hardMax <= 0) return new LeafLayout(0, 1);
+
+        // Seed running state from the first entry alone.
+        HsstBuilder<TWriter>.HsstEntry firstEntry = _entries[entryIdx];
+        int maxSepLen = firstEntry.SepLen;
+        int naturalMax = 1;
+        ReadOnlySpan<byte> commonPrefix = _separatorBuffer.Slice(firstEntry.SepOffset, firstEntry.SepLen);
+        int commonLen = commonPrefix.Length;
+
+        int count = 1;
+        while (count < hardMax)
+        {
+            HsstBuilder<TWriter>.HsstEntry prev = _entries[entryIdx + count - 1];
+            HsstBuilder<TWriter>.HsstEntry curr = _entries[entryIdx + count];
+            int la = prev.SepLen;
+            int lb = curr.SepLen;
+            ReadOnlySpan<byte> currSep = _separatorBuffer.Slice(curr.SepOffset, lb);
+
+            // Pair-level natural disambiguation. When stored lengths differ,
+            // the shorter side may hide divergence past its end — fall back to
+            // max(la, lb) to be safe (mirrors the retry-truncate logic).
+            int pairNeeded;
+            if (la == lb)
+            {
+                ReadOnlySpan<byte> prevSep = _separatorBuffer.Slice(prev.SepOffset, la);
+                int common = prevSep.CommonPrefixLength(currSep);
+                pairNeeded = common + 1;
+                if (pairNeeded > la) pairNeeded = la;
+            }
+            else
+            {
+                pairNeeded = Math.Max(la, lb);
+            }
+            int newNaturalMax = Math.Max(naturalMax, pairNeeded);
+
+            // Running max separator length and common-prefix length after
+            // hypothetically including curr.
+            int newMaxSepLen = Math.Max(maxSepLen, lb);
+            int boundary = Math.Min(commonLen, lb);
+            int newCommonLen = commonLen == 0
+                ? 0
+                : commonPrefix[..boundary].CommonPrefixLength(currSep[..boundary]);
+
+            // Past min watermark, split if either metric would worsen.
+            if (count >= minLeafEntries && (newMaxSepLen > maxSepLen || newCommonLen < commonLen))
+                break;
+
+            // Commit.
+            maxSepLen = newMaxSepLen;
+            commonLen = newCommonLen;
+            commonPrefix = commonPrefix[..commonLen];
+            naturalMax = newNaturalMax;
+            count++;
+        }
+
+        return new LeafLayout(count, naturalMax);
+    }
+
     private void WriteLeafIndexNode(
         ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries,
         int absoluteNodeStart,
-        int globalStartIndex)
+        int globalStartIndex,
+        int naturalMax)
     {
         // Compute BaseOffset from values, then pick the smallest 1..8 byte slot
         // width that can encode (max - baseOffset).
@@ -163,16 +263,26 @@ public ref struct HsstIndexBuilder<TWriter>
             sepOffsets[i] = entries[i].SepOffset;
             sepLengths[i] = entries[i].SepLen;
         }
+
+        // Retry-truncate: <paramref name="naturalMax"/> was computed up-front by
+        // ChooseLeafLayout (single pass over the same entries). Truncating each
+        // stored separator down to it lets the planner pick a tighter Uniform
+        // slot while keeping in-leaf sort order intact.
+        for (int i = 0; i < entries.Length; i++)
+        {
+            if (sepLengths[i] > naturalMax) sepLengths[i] = naturalMax;
+        }
+
         BSearchIndexLayoutPlanner.Plan(_separatorBuffer, sepOffsets, sepLengths,
             out int prefixLen, out int keyType, out int keySlotSize);
         ReadOnlySpan<byte> commonPrefix = prefixLen > 0
-            ? _separatorBuffer.Slice(entries[0].SepOffset, prefixLen)
+            ? _separatorBuffer.Slice(sepOffsets[0], prefixLen)
             : default;
 
         // Key buffer: 2 bytes (u16 length) + post-strip suffix bytes per entry.
         int keyBufSize = 0;
         for (int i = 0; i < entries.Length; i++)
-            keyBufSize += 2 + (entries[i].SepLen - prefixLen);
+            keyBufSize += 2 + (sepLengths[i] - prefixLen);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
@@ -188,7 +298,7 @@ public ref struct HsstIndexBuilder<TWriter>
         Span<byte> valueBuf = stackalloc byte[8];
         for (int i = 0; i < entries.Length; i++)
         {
-            ReadOnlySpan<byte> sep = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
+            ReadOnlySpan<byte> sep = _separatorBuffer.Slice(sepOffsets[i], sepLengths[i]);
             WriteUInt64LE(valueBuf, entries[i].MetadataStart - baseOffset, valueSlotSize);
             indexWriter.AddKey(sep[prefixLen..], valueBuf[..valueSlotSize]);
         }
