@@ -115,7 +115,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     public bool HasSlotChangesAtIndex(int index)
     {
-        foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
+        foreach (ReadOnlySlotChanges slotChanges in StorageChanges)
         {
             if (HasExactIndex(slotChanges.Changes, index)) return true;
         }
@@ -124,7 +124,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     public IEnumerable<SlotChangeAtIndex> SlotChangesAtIndex(int index)
     {
-        foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
+        foreach (ReadOnlySlotChanges slotChanges in StorageChanges)
         {
             StorageChange? change = GetExact(slotChanges.Changes, index);
             if (change is not null)
@@ -221,13 +221,16 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     public void LoadPreStateStorage(UInt256 slot, UInt256 value)
     {
-        if (!_storageChanges.TryGetValue(slot, out ReadOnlySlotChanges? slotChanges))
+        lock (_storageChanges)
         {
-            slotChanges = new ReadOnlySlotChanges(slot);
-            _storageChanges.Add(slot, slotChanges);
-            _sortedDirty = true;
+            if (!_storageChanges.TryGetValue(slot, out ReadOnlySlotChanges? slotChanges))
+            {
+                slotChanges = new ReadOnlySlotChanges(slot);
+                _storageChanges.Add(slot, slotChanges);
+                _sortedDirty = true;
+            }
+            slotChanges.LoadPreStateChange(new StorageChange(-1, value));
         }
-        slotChanges.LoadPreStateChange(new StorageChange(-1, value));
     }
 
     public IEnumerable<UInt256> GetSlotsForPreStateLoad()
@@ -243,7 +246,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     private void RebuildSortedArrays()
     {
-        _sortedDirty = false;
         int count = _storageChanges.Count;
         UInt256[] keys = new UInt256[count];
         ReadOnlySlotChanges[] ordered = new ReadOnlySlotChanges[count];
@@ -257,6 +259,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         Array.Sort(keys, ordered);
         _changedSlots = keys;
         _orderedStorageChanges = ordered;
+        _sortedDirty = false;
     }
 
     /// <summary>Returns the change with <c>Index == index</c> if any; otherwise null.</summary>

@@ -860,6 +860,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockProcessor blockProcessor,
             BlockProcessorExceptionDetector blockProcessorExceptionDetector) : IBlockProcessor
         {
+            public IBlockAccessListManager BalManager => blockProcessor.BalManager;
+
             public event Action? TransactionsExecuted
             {
                 add => blockProcessor.TransactionsExecuted += value;

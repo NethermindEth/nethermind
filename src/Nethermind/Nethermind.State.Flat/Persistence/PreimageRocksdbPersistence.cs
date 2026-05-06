@@ -212,6 +212,11 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
             return TryGetSlotRaw(fakeHash, fakeSlotHash, ref outValue);
         }
 
+        public void GetSlotBatch(Address address, UInt256[] slots, SlotValue[] outValues)
+        {
+            for (int i = 0; i < slots.Length; i++) TryGetSlot(address, slots[i], ref outValues[i]);
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             throw new InvalidOperationException("Raw operation not available in preimage mode");
 

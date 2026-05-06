@@ -105,6 +105,12 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _persistentStorageProvider.Get(storageCell);
         }
+
+        public void GetStorageBatch(Address address, ReadOnlySpan<UInt256> slots, Span<byte[]> results) =>
+            _persistentStorageProvider.GetBatch(address, slots, results);
+
+        public void GetStorageBatchValues(Address address, UInt256[] slots, UInt256[] results) =>
+            _persistentStorageProvider.GetBatchValues(address, slots, results);
         public void Set(in StorageCell storageCell, byte[] newValue)
         {
             DebugGuardInScope();

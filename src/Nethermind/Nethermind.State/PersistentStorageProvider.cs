@@ -271,6 +271,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell) => GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
 
+    public void GetBatch(Address address, ReadOnlySpan<UInt256> slots, Span<byte[]> results)
+    {
+        PerContractState storage = GetOrCreateStorage(address);
+        storage.GetBatch(slots, results);
+    }
+
+    public void GetBatchValues(Address address, UInt256[] slots, UInt256[] results)
+    {
+        PerContractState storage = GetOrCreateStorage(address);
+        storage.GetBatchValues(slots, results);
+    }
+
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
     {
         StackList<int> stack = SetupRegistry(cell);
@@ -482,6 +494,28 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return !storageCell.IsHash
                 ? _backend.Get(storageCell.Index)
                 : _backend.Get(storageCell.Hash);
+        }
+
+        public void GetBatch(ReadOnlySpan<UInt256> slots, Span<byte[]> results)
+        {
+            EnsureStorageTree();
+            UInt256[] slotsArr = slots.ToArray();
+            byte[][] resultsArr = new byte[slots.Length][];
+            _backend.GetBatch(slotsArr, resultsArr);
+            for (int i = 0; i < slots.Length; i++)
+            {
+                results[i] = resultsArr[i];
+            }
+        }
+
+        public void GetBatchValues(UInt256[] slots, UInt256[] results)
+        {
+            EnsureStorageTree();
+            for (int i = 0; i < slots.Length; i++)
+            {
+                byte[] raw = _backend.Get(slots[i]);
+                results[i] = raw is not null && raw.Length > 0 ? new UInt256(raw, true) : UInt256.Zero;
+            }
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)

@@ -394,7 +394,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 if (Bal is not null && Bal.AccountChanges.Count > 0)
                 {
-                    WarmupFromBal(parallelOptions, envPool);
+                    // Storage slot pre-loading is handled by LoadPreState via
+                    // GetStorageBatchValues (MultiGet). Skip WarmupFromBal to avoid
+                    // redundant sequential reads that take 15+ seconds.
+                    // Trie warming still occurs via HintGet during execution.
                 }
                 else
                 {
@@ -451,33 +454,41 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 Address address = ac.Address;
                 worldState.WarmUp(address);
 
-                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
-                // ascending pass for better trie path locality
+                // Collect all slots (changes + reads) for batch reading
                 IList<UInt256> changed = ac.ChangedSlots;
-                int slotIndex = 0;
                 ReadOnlySpan<UInt256> reads = ac.StorageReads;
-                int readIndex = 0;
+                int totalSlots = changed.Count + reads.Length;
+                if (totalSlots == 0) return;
 
+                // Build merged sorted slot array
+                UInt256[] slots = new UInt256[totalSlots];
+                int slotIndex = 0, readIndex = 0, outIndex = 0;
                 while (slotIndex < changed.Count || readIndex < reads.Length)
                 {
-                    UInt256 slot;
                     if (readIndex >= reads.Length)
                     {
-                        slot = changed[slotIndex++];
+                        slots[outIndex++] = changed[slotIndex++];
+                    }
+                    else if (slotIndex >= changed.Count)
+                    {
+                        slots[outIndex++] = reads[readIndex++];
+                    }
+                    else if (changed[slotIndex].CompareTo(reads[readIndex]) <= 0)
+                    {
+                        slots[outIndex++] = changed[slotIndex++];
                     }
                     else
                     {
-                        slot = reads[readIndex];
-                        if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
-                        {
-                            slot = changed[slotIndex++];
-                        }
-                        else
-                        {
-                            readIndex++;
-                        }
+                        slots[outIndex++] = reads[readIndex++];
                     }
-                    worldState.Get(new StorageCell(address, slot));
+                }
+
+                // Batch read all slots and populate BAL pre-state entries
+                byte[][] results = new byte[totalSlots][];
+                worldState.GetStorageBatch(address, slots, results);
+                for (int i = 0; i < totalSlots; i++)
+                {
+                    ac.LoadPreStateStorage(slots[i], new UInt256(results[i] ?? [], true));
                 }
             }
             catch (MissingTrieNodeException)

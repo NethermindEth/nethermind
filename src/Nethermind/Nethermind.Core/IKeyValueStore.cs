@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 
@@ -67,6 +68,16 @@ namespace Nethermind.Core
         }
 
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+
+        KeyValuePair<byte[], byte[]?>[] GetMany(byte[][] keys)
+        {
+            KeyValuePair<byte[], byte[]?>[] results = new KeyValuePair<byte[], byte[]?>[keys.Length];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                results[i] = new(keys[i], Get(keys[i]));
+            }
+            return results;
+        }
 
         /// <summary>
         /// Returns a MemoryManager wrapping the value for the given key.

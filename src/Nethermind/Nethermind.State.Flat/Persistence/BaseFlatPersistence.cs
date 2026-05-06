@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -112,6 +114,38 @@ public static class BaseFlatPersistence
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
+
+        public void GetStorageBatch(in ValueHash256 address, ValueHash256[] slotHashes, SlotValue[] outValues)
+        {
+            byte[][] keys = new byte[slotHashes.Length][];
+            for (int i = 0; i < slotHashes.Length; i++)
+            {
+                byte[] key = new byte[StorageKeyLength];
+                EncodeStorageKeyHashedWithShortPrefix(key, address, slotHashes[i]);
+                keys[i] = key;
+            }
+
+            KeyValuePair<byte[], byte[]?>[] results = storage.GetMany(keys);
+            for (int i = 0; i < results.Length; i++)
+            {
+                byte[]? value = results[i].Value;
+                if (value is not null && value.Length > 0)
+                {
+                    int len = value.Length;
+                    if (len == SlotValue.ByteCount)
+                    {
+                        outValues[i] = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetReference(value.AsSpan()));
+                    }
+                    else
+                    {
+                        ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref outValues[i]);
+                        Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
+                        ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+                        Unsafe.CopyBlockUnaligned(ref destPtr, ref value[0], (uint)len);
+                    }
+                }
+            }
+        }
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
         {

@@ -4,7 +4,7 @@
 
   <PropertyGroup>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile</NoWarn>
+    <NoWarn>$(NoWarn);EnableGenerateDocumentationFile;NU1903</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">

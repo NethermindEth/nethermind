@@ -27,6 +27,8 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event Action? TransactionsExecuted;
 
+        IBlockAccessListManager BalManager { get; }
+
         public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,

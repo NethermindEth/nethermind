@@ -19,6 +19,7 @@ public interface IBlockAccessListManager
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
 
+    void SetParentHeader(BlockHeader? parentHeader) { }
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
     void Setup(Block block);
     void SpendGas(long gas);

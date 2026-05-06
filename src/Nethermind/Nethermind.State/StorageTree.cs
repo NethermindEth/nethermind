@@ -138,6 +138,11 @@ namespace Nethermind.State
 
         public byte[] Get(in UInt256 index) => Get(index, null);
 
+        public void GetBatch(UInt256[] slots, byte[][] results)
+        {
+            for (int i = 0; i < slots.Length; i++) results[i] = Get(slots[i]);
+        }
+
         public void HintGet(in UInt256 index, byte[]? value)
         {
         }

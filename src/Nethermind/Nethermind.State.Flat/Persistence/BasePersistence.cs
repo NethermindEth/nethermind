@@ -174,6 +174,7 @@ public static class BasePersistence
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
+        void GetStorageBatch(in ValueHash256 address, ValueHash256[] slotHashes, SlotValue[] outValues);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -198,6 +199,7 @@ public static class BasePersistence
     {
         public Account? GetAccount(Address address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
+        void GetSlotBatch(Address address, UInt256[] slots, SlotValue[] outValues);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
@@ -324,6 +326,18 @@ public static class BasePersistence
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
+        public void GetSlotBatch(Address address, UInt256[] slots, SlotValue[] outValues)
+        {
+            ValueHash256 addrHash = address.ToAccountPath;
+            ValueHash256[] slotHashes = new ValueHash256[slots.Length];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                slotHashes[i] = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(slots[i], ref slotHashes[i]);
+            }
+            _flatReader.GetStorageBatch(addrHash, slotHashes, outValues);
+        }
+
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
             _flatReader.CreateAccountIterator(startKey, endKey);
 
@@ -354,6 +368,9 @@ public static class BasePersistence
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
+
+        public void GetSlotBatch(Address address, UInt256[] slots, SlotValue[] outValues) =>
+            _flatReader.GetSlotBatch(address, slots, outValues);
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);

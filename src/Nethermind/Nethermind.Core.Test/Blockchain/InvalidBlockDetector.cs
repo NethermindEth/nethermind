@@ -20,6 +20,8 @@ public class InvalidBlockDetector
 
     internal class BlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, InvalidBlockDetector invalidBlockDetector) : IBlockProcessor
     {
+        public IBlockAccessListManager BalManager => baseBlockProcessor.BalManager;
+
         public event Action? TransactionsExecuted
         {
             add => baseBlockProcessor.TransactionsExecuted += value;

@@ -81,6 +81,8 @@ public interface IWorldStateScopeProvider
 
         byte[] Get(in UInt256 index);
 
+        void GetBatch(UInt256[] slots, byte[][] results);
+
         void HintGet(in UInt256 index, byte[]? value);
 
         /// <summary>

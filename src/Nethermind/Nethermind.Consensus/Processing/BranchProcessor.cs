@@ -130,6 +130,7 @@ public class BranchProcessor(
                     }
                 }
 
+                blockProcessor.BalManager.SetParentHeader(preBlockBaseBlock);
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)

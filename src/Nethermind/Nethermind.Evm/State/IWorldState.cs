@@ -44,6 +44,30 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     ReadOnlySpan<byte> Get(in StorageCell storageCell);
 
     /// <summary>
+    /// Batch read multiple storage slots for the same address.
+    /// Default implementation falls back to sequential reads.
+    /// Implementations may override with RocksDB MultiGet for better performance.
+    /// </summary>
+    void GetStorageBatch(Address address, ReadOnlySpan<UInt256> slots, Span<byte[]> results)
+    {
+        for (int i = 0; i < slots.Length; i++)
+        {
+            StorageCell cell = new(address, slots[i]);
+            ReadOnlySpan<byte> value = Get(cell);
+            results[i] = value.ToArray();
+        }
+    }
+
+    void GetStorageBatchValues(Address address, UInt256[] slots, UInt256[] results)
+    {
+        for (int i = 0; i < slots.Length; i++)
+        {
+            StorageCell cell = new(address, slots[i]);
+            results[i] = new UInt256(Get(cell), true);
+        }
+    }
+
+    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>

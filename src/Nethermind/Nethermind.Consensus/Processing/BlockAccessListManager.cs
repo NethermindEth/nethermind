@@ -69,6 +69,9 @@ public class BlockAccessListManager(
     // processing context, not per block) — e.g. on retry — so we skip the load when the hash
     // matches the most recently loaded one.
     private Hash256 _lastLoadedBal = Hash256.Zero;
+    private BlockHeader? _parentHeader;
+
+    public void SetParentHeader(BlockHeader? parentHeader) => _parentHeader = parentHeader;
 
     private void Reset()
     {
@@ -97,7 +100,7 @@ public class BlockAccessListManager(
             if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
             {
                 _lastLoadedBal = suggestedBlock.Hash;
-                LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
+                LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.Header);
             }
         }
     }
@@ -410,11 +413,10 @@ public class BlockAccessListManager(
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
-    private void LoadPreStateToSuggestedBlockAccessList(ReadOnlyBlockAccessList bal)
+    private void LoadPreStateToSuggestedBlockAccessList(ReadOnlyBlockAccessList bal, BlockHeader blockHeader)
     {
         foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
-            // record whether the account was modified before any prestate is added
             accountChanges.RecordWasChanged();
 
             bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
@@ -425,14 +427,16 @@ public class BlockAccessListManager(
             accountChanges.LoadPreStateNonce((ulong)account.Nonce);
             accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
 
-            // snapshot keys to avoid modifying the slot collection during iteration
-            // (LoadPreStateStorage can insert a new ReadOnlySlotChanges for a previously read-only slot)
+            // Batch read all storage slots via GetStorageBatch (uses RocksDB MultiGet)
             UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
-            foreach (UInt256 slot in slotsToLoad)
+            if (slotsToLoad.Length > 0)
             {
-                StorageCell storageCell = new(accountChanges.Address, slot);
-                UInt256 value = new(stateProvider.Get(storageCell), true);
-                accountChanges.LoadPreStateStorage(slot, value);
+                UInt256[] values = new UInt256[slotsToLoad.Length];
+                stateProvider.GetStorageBatchValues(accountChanges.Address, slotsToLoad, values);
+                for (int i = 0; i < slotsToLoad.Length; i++)
+                {
+                    accountChanges.LoadPreStateStorage(slotsToLoad[i], values[i]);
+                }
             }
         }
     }
