@@ -277,9 +277,9 @@ public class DiscoveryManager : IDiscoveryManager
 
     public event EventHandler<NodeEventArgs>? NodeDiscovered;
 
-    public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers() => _nodeLifecycleManagers.Values.ToArray();
+    public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers() => _nodeLifecycleManagers.Select(static kvp => kvp.Value).ToArray();
 
-    public IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query) => _nodeLifecycleManagers.Values.Where(query.Invoke).ToArray();
+    public IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query) => _nodeLifecycleManagers.Select(static kvp => kvp.Value).Where(query.Invoke).ToArray();
 
     private bool ValidatePingAddress(PingMsg msg)
     {

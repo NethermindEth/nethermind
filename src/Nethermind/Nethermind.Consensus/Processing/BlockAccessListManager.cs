@@ -44,20 +44,12 @@ public class BlockAccessListManager(
     IWithdrawalProcessorFactory withdrawalProcessorFactory)
     : IBlockAccessListManager
 {
-    public class ParallelExecutionException(InvalidBlockException innerException)
-        : InvalidTransactionException(
-            innerException.InvalidBlock,
-            innerException.Message,
-            (innerException as InvalidTransactionException)?.Reason
-                ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail($"Parallel execution failure: {innerException.Message}"),
-            innerException);
-    public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
-    public bool Enabled { get; private set; }
-    public bool ParallelExecutionEnabled { get; private set; }
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
-    private readonly ParallelTxProcessorWithWorldStateManager _parallelTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
-    private readonly SequentialTxProcessorWithWorldStateManager _sequentialTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
+    private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+    private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
@@ -70,13 +62,16 @@ public class BlockAccessListManager(
     // matches the most recently loaded one.
     private Hash256 _lastLoadedBal = Hash256.Zero;
 
-    private void Reset()
-    {
-        _txProcessorWithWorldStateManager = null;
-        _blockExecutionContext = null;
-        _gasRemaining = null;
-        GeneratedBlockAccessList.Reset();
-    }
+    public class ParallelExecutionException(InvalidBlockException innerException)
+        : InvalidTransactionException(
+            innerException.InvalidBlock,
+            innerException.Message,
+            (innerException as InvalidTransactionException)?.Reason
+                ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail($"Parallel execution failure: {innerException.Message}"),
+            innerException);
+    public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public bool Enabled { get; private set; }
+    public bool ParallelExecutionEnabled { get; private set; }
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
@@ -112,7 +107,7 @@ public class BlockAccessListManager(
     {
         if (Enabled)
         {
-            _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager : _sequentialTxProcessorWithWorldStateManager;
+            _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager.Value : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
             _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
         }
@@ -160,7 +155,7 @@ public class BlockAccessListManager(
             // pool slot. Workers therefore never block on the validator — but the validator
             // still merges per-tx slots into the target in order, preserving incremental
             // validation semantics.
-            _parallelTxProcessorWithWorldStateManager.Return(balIndex);
+            _parallelTxProcessorWithWorldStateManager.Value.Return(balIndex);
         }
     }
 
@@ -170,12 +165,10 @@ public class BlockAccessListManager(
 
         int len = block.Transactions.Length;
 
-        // Pre-execution (StoreBeaconRoot + ApplyBlockhashStateChanges) now runs concurrently on
-        // its own Task, so wait for it before merging/validating index 0 — its writes to the
-        // balIndex=0 generating BAL are needed for the validator's index-0 comparison and for
-        // MergeAndReturnBal to release the pre-exec processor without a race.
+        // Pre is held by main-thread system contract handlers — never went through Return,
+        // so MergeAndReturnBal will detach it before merging.
         preExecutionTask.GetAwaiter().GetResult();
-        _parallelTxProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList);
+        _txProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList);
         ValidateBlockAccessList(block, 0u);
 
         long totalRegularGas = 0;
@@ -207,7 +200,7 @@ public class BlockAccessListManager(
                 // the target now, in order, so incremental validation sees only data from
                 // txs 0..(j+1).
                 bool validateStorageReads = j == chunkEnd - 1;
-                _parallelTxProcessorWithWorldStateManager.MergeAndReturnBal((uint)(j + 1), GeneratedBlockAccessList);
+                _txProcessorWithWorldStateManager.MergeAndReturnBal((uint)(j + 1), GeneratedBlockAccessList);
                 ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
             }
         }
@@ -481,6 +474,14 @@ public class BlockAccessListManager(
         if (_txProcessorWithWorldStateManager is null) ThrowNotInitialized(nameof(_txProcessorWithWorldStateManager));
         if (_gasRemaining is null) ThrowNotInitialized(nameof(_gasRemaining));
         if (_blockExecutionContext is null) ThrowNotInitialized(nameof(_blockExecutionContext));
+    }
+
+    private void Reset()
+    {
+        _txProcessorWithWorldStateManager = null;
+        _blockExecutionContext = null;
+        _gasRemaining = null;
+        GeneratedBlockAccessList.Reset();
     }
 
     [DoesNotReturn]
