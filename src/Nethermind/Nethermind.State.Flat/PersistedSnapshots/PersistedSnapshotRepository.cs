@@ -327,14 +327,16 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     /// </summary>
     public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState)
     {
-        foreach (PersistedSnapshot snapshot in _compactedSnapshots.Values)
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
         {
+            PersistedSnapshot snapshot = kv.Value;
             if (snapshot.From == fromState && snapshot.TryAcquire())
                 return snapshot;
         }
 
-        foreach (PersistedSnapshot snapshot in _baseSnapshots.Values)
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
         {
+            PersistedSnapshot snapshot = kv.Value;
             if (snapshot.From == fromState && snapshot.TryAcquire())
                 return snapshot;
         }
@@ -497,12 +499,12 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
             // files, wiping the catalog's data before the next session can reload it.
             _baseArenaManager.Dispose();
             _compactedArenaManager.Dispose();
-            foreach (PersistedSnapshot snapshot in _baseSnapshots.Values)
-                snapshot.Dispose();
-            foreach (PersistedSnapshot snapshot in _compactedSnapshots.Values)
-                snapshot.Dispose();
-            foreach (PersistedSnapshot snapshot in _persistableCompactedSnapshots.Values)
-                snapshot.Dispose();
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
+                kv.Value.Dispose();
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
+                kv.Value.Dispose();
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _persistableCompactedSnapshots)
+                kv.Value.Dispose();
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
             _persistableCompactedSnapshots.Clear();
