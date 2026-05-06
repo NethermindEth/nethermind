@@ -32,21 +32,21 @@ namespace Nethermind.Xdc
         ISigner signer,
         ITimeoutTimer timeoutTimer,
         IProcessExitSource processExit,
-        ISignTransactionManager signTransactionManager,
         ILogManager logManager) : IBlockProducerRunner
     {
-        private readonly IBlockTree _blockTree;
-        private readonly IXdcConsensusContext _xdcContext;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockProducer _blockBuilder;
-        private readonly IEpochSwitchManager _epochSwitchManager;
-        private readonly IMasternodesCalculator _masternodesCalculator;
-        private readonly IQuorumCertificateManager _quorumCertificateManager;
-        private readonly IVotesManager _votesManager;
-        private readonly ISigner _signer;
-        private readonly ITimeoutTimer _timeoutTimer;
-        private readonly IProcessExitSource _processExit;
-        private readonly ILogger _logger;
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly IXdcConsensusContext _xdcContext = xdcContext;
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly IBlockProducer _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
+        private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
+        private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
+        private readonly IMasternodesCalculator _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
+        private readonly IQuorumCertificateManager _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
+        private readonly IVotesManager _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
+        private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+        private readonly ITimeoutTimer _timeoutTimer = timeoutTimer;
+        private readonly IProcessExitSource _processExit = processExit;
+        private readonly ILogger _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _runTask;

@@ -2,22 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
-using Nethermind.Core.Specs;
-using Nethermind.Logging;
-using System.Threading.Tasks;
 using Nethermind.Xdc.Types;
 using System;
-using Nethermind.Blockchain;
-using Lantern.Discv5.WireProtocol.Session;
-using Nethermind.Core.Caching;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
@@ -27,17 +25,17 @@ internal class SignTransactionManager : ISignTransactionManager
     private readonly ITxPool _txPool;
     private readonly ILogger _logger;
     private readonly IBlockTree _blockTree;
-    private readonly IEpochSwitchManager _epochSwitchManager;
+    private readonly ISnapshotManager _snapshotManager;
     private readonly ISpecProvider _specProvider;
-    private ClockKeyCache<ValueHash256> _alreadySigned = new (128);
+    private AssociativeKeyCache<ValueHash256> _alreadySigned = new (128);
 
-    public SignTransactionManager(ISigner signer, ITxPool txPool, ILogger logger, IBlockTree blockTree, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider)
+    public SignTransactionManager(ISigner signer, ITxPool txPool, ILogger logger, IBlockTree blockTree, ISnapshotManager snapshotManager, ISpecProvider specProvider)
     {
         _signer = signer;
         _txPool = txPool;
         _logger = logger;
         _blockTree = blockTree;
-        _epochSwitchManager = epochSwitchManager;
+        _snapshotManager = snapshotManager;
         _specProvider = specProvider;
         _blockTree.BlockAddedToMain += OnBlockAddedToMain;
     }
@@ -67,25 +65,27 @@ internal class SignTransactionManager : ISignTransactionManager
         if (_alreadySigned.Contains(xdcHeader.Hash))
             return;
         
-        EpochSwitchInfo? epochInfo = _epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
-        if (epochInfo?.Masternodes == null || epochInfo.Masternodes.Length == 0)
-            return;
-
         ulong round = xdcHeader.ExtraConsensusData.BlockRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
         if (spec == null)
             return;
 
-        if (IsMasternode(epochInfo, _signer.Address)
-            && (xdcHeader.Number % spec.MergeSignRange == 0))
+        if (xdcHeader.Number % spec.MergeSignRange == 0)
+            return;
+
+        Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(xdcHeader.Number, spec);
+        if (snapshot is null)
+            return;
+
+        if (IsMasternode(snapshot, _signer.Address))
         {
             _alreadySigned.Set(xdcHeader.Hash);
             _ = SubmitTransactionSign(xdcHeader, spec);
         }
     }
 
-    private static bool IsMasternode(EpochSwitchInfo epochInfo, Address node) =>
-        epochInfo.Masternodes.AsSpan().IndexOf(node) != -1;
+    private static bool IsMasternode(Snapshot snapshot, Address signerAddress) =>
+        snapshot.NextEpochCandidates.AsSpan().IndexOf(signerAddress) != -1;
 
     internal static Transaction CreateTxSign(UInt256 number, Hash256 hash, UInt256 nonce, Address blockSignersAddress, Address sender)
     {
