@@ -31,12 +31,16 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
+using Nethermind.Core.Threading;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -587,6 +591,91 @@ public class BlockProcessorTests
         Assert.That(thrown!.InnerException, Is.SameAs(workerException));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Parallel_validation_preserves_processing_thread_metric_scope_for_worker_transactions(bool isBlockProcessingThread)
+    {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
+
+        const int txCount = 64;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Transaction[] transactions = CreateParallelValidationTransactions(txCount);
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(txCount * 21_000)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        using RecordingTransactionProcessorAdapter transactionProcessor = new();
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = CreateParallelValidationExecutor(stateProvider, transactionProcessor);
+
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = isBlockProcessingThread;
+        try
+        {
+            TxReceipt[] receipts = executor.ProcessTransactions(
+                block,
+                ProcessingOptions.None,
+                new BlockReceiptsTracer(),
+                CancellationToken.None);
+            Assert.That(receipts, Has.Length.EqualTo(txCount));
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        Assert.That(transactionProcessor.ThreadIds.Count, Is.GreaterThan(1));
+        Assert.That(transactionProcessor.ObservedProcessingThreadFlags.Count, Is.EqualTo(txCount));
+        foreach (bool observedProcessingThreadFlag in transactionProcessor.ObservedProcessingThreadFlags)
+        {
+            Assert.That(observedProcessingThreadFlag, Is.EqualTo(isBlockProcessingThread));
+        }
+    }
+
+    [Test]
+    public void Parallel_validation_forwards_parallel_safe_block_tracer_to_worker_transactions()
+    {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
+
+        const int txCount = 64;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Transaction[] transactions = CreateParallelValidationTransactions(txCount);
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(txCount * 21_000)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        using RecordingTransactionProcessorAdapter transactionProcessor = new(traceOperation: true);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = CreateParallelValidationExecutor(stateProvider, transactionProcessor);
+        RecordingParallelSafeBlockTracer blockTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(blockTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+
+        TxReceipt[] receipts = executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            receiptsTracer,
+            CancellationToken.None);
+        receiptsTracer.EndBlockTrace();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(receipts, Has.Length.EqualTo(txCount));
+            Assert.That(blockTracer.StartedTransactions, Is.EqualTo(txCount));
+            Assert.That(blockTracer.EndedTransactions, Is.EqualTo(txCount));
+            Assert.That(blockTracer.OpcodeCount, Is.EqualTo(txCount));
+        });
+    }
+
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
@@ -602,4 +691,185 @@ public class BlockProcessorTests
     private static (long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)
         GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
         => (blockGasUsed, blockStateGasUsed, EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit), exception);
+
+    private static Transaction[] CreateParallelValidationTransactions(int txCount)
+    {
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithNonce((UInt256)i)
+                .WithGasLimit(21_000)
+                .TestObject;
+        }
+
+        return transactions;
+    }
+
+    private static BlockProcessor.ParallelBlockValidationTransactionsExecutor CreateParallelValidationExecutor(
+        IWorldState stateProvider,
+        ITransactionProcessorAdapter transactionProcessor)
+    {
+        IBlockProcessor.IBlockTransactionsExecutor inner = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        return new(
+            inner,
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(transactionProcessor),
+            LimboLogs.Instance);
+    }
+
+    private sealed class ParallelTestBlockAccessListManager(ITransactionProcessorAdapter transactionProcessor) : IBlockAccessListManager
+    {
+        public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+        public bool Enabled => true;
+        public bool ParallelExecutionEnabled => true;
+
+        public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
+        {
+        }
+
+        public void Setup(Block block)
+        {
+        }
+
+        public void SpendGas(long gas)
+        {
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
+
+        public ITransactionProcessorAdapter GetTxProcessor(uint? balIndex = null) => transactionProcessor;
+
+        public void NextTransaction()
+        {
+        }
+
+        public void Rollback()
+        {
+        }
+
+        public void ReturnTxProcessor(uint balIndex)
+        {
+        }
+
+        public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+        {
+        }
+
+        public void SetBlockAccessList(Block block)
+        {
+        }
+
+        public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
+        {
+        }
+
+        public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+        {
+        }
+
+        public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+        {
+        }
+
+        public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+        {
+        }
+
+        public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
+        {
+        }
+
+        public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
+        {
+        }
+    }
+
+    private sealed class RecordingTransactionProcessorAdapter(bool traceOperation = false) : ITransactionProcessorAdapter, IDisposable
+    {
+        private readonly ManualResetEventSlim _parallelExecutionStarted = new();
+        private int _executedCount;
+
+        public ConcurrentBag<bool> ObservedProcessingThreadFlags { get; } = new();
+        public ConcurrentDictionary<int, byte> ThreadIds { get; } = new();
+
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            ThreadIds.TryAdd(Environment.CurrentManagedThreadId, 0);
+            if (Interlocked.Increment(ref _executedCount) >= 2)
+            {
+                _parallelExecutionStarted.Set();
+            }
+
+            _parallelExecutionStarted.Wait(TimeSpan.FromSeconds(5));
+            ObservedProcessingThreadFlags.Add(ProcessingThread.IsBlockProcessingThread);
+            if (traceOperation && txTracer.IsTracingInstructions)
+            {
+                txTracer.StartOperation(0, Instruction.ADD, 0, null!);
+            }
+
+            transaction.BlockGasUsed = 21_000;
+            txTracer.MarkAsSuccess(Address.Zero, 21_000, [], []);
+
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        {
+        }
+
+        public void Dispose() => _parallelExecutionStarted.Dispose();
+    }
+
+    private sealed class RecordingParallelSafeBlockTracer : IParallelSafeBlockTracer
+    {
+        private int _startedTransactions;
+        private int _endedTransactions;
+        private int _opcodeCount;
+
+        public int StartedTransactions => _startedTransactions;
+        public int EndedTransactions => _endedTransactions;
+        public int OpcodeCount => _opcodeCount;
+        public bool IsTracingRewards => false;
+
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
+        {
+        }
+
+        public void StartNewBlockTrace(Block block)
+        {
+        }
+
+        public ITxTracer StartNewTxTrace(Transaction? tx)
+        {
+            if (tx is null)
+            {
+                return NullTxTracer.Instance;
+            }
+
+            Interlocked.Increment(ref _startedTransactions);
+            return new RecordingInstructionTxTracer(this);
+        }
+
+        public void EndTxTrace() =>
+            Interlocked.Increment(ref _endedTransactions);
+
+        public void EndBlockTrace()
+        {
+        }
+
+        private void RecordOpcode() =>
+            Interlocked.Increment(ref _opcodeCount);
+
+        private sealed class RecordingInstructionTxTracer(RecordingParallelSafeBlockTracer blockTracer) : TxTracer
+        {
+            public override bool IsTracingInstructions => true;
+
+            public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+                blockTracer.RecordOpcode();
+        }
+    }
 }
