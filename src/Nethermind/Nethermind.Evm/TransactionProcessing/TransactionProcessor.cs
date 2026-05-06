@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -27,8 +28,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        ILogManager? logManager,
+        bool parallel = false)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
 
     /// <summary>
@@ -64,47 +66,9 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
+        private readonly bool _parallel;
         private long _blockCumulativeRegularGas;
         private long _blockCumulativeReceiptGas;
-
-        [Flags]
-        protected enum ExecutionOptions
-        {
-            /// <summary>
-            /// Just accumulate the state
-            /// </summary>
-            None = 0,
-
-            /// <summary>
-            /// Commit the state after execution
-            /// </summary>
-            Commit = 1,
-
-            /// <summary>
-            /// Restore state after execution
-            /// </summary>
-            Restore = 2,
-
-            /// <summary>
-            /// Skip potential fail checks
-            /// </summary>
-            SkipValidation = 4,
-
-            /// <summary>
-            /// Marker option used by state pre-warmer
-            /// </summary>
-            Warmup = 8,
-
-            /// <summary>
-            /// Skip potential fail checks and commit state after execution
-            /// </summary>
-            SkipValidationAndCommit = Commit | SkipValidation,
-
-            /// <summary>
-            /// Commit and later restore state also skip validation, use for CallAndRestore
-            /// </summary>
-            CommitAndRestore = Commit | Restore | SkipValidation
-        }
 
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
@@ -112,7 +76,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IWorldState? worldState,
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool parallel = false)
         {
             ArgumentNullException.ThrowIfNull(logManager);
             ArgumentNullException.ThrowIfNull(specProvider);
@@ -130,6 +95,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
+            _parallel = parallel;
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -146,32 +112,29 @@ namespace Nethermind.Evm.TransactionProcessing
             SetBlockExecutionContext(in blockExecutionContext);
         }
 
-        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
-
-        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer)
+        public TransactionResult Process(
+            Transaction transaction,
+            ITxTracer txTracer,
+            ExecutionOptions options)
         {
-            // we need to treat the result of previous transaction as the original value of next transaction
-            // when we do not commit
-            WorldState.TakeSnapshot(true);
-            return ExecuteCore(transaction, txTracer, ExecutionOptions.None);
+            if (options == ExecutionOptions.BuildUp)
+            {
+                WorldState.TakeSnapshot(true);
+            }
+
+            return ExecuteCore(transaction, txTracer, options);
         }
-
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
-
-        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
-
-        public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
-
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                if (_systemTransactionProcessor is null)
+                {
+                    Interlocked.CompareExchange(ref _systemTransactionProcessor,
+                        new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager),
+                        null);
+                }
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
@@ -249,7 +212,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            }
+
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
                 _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
@@ -427,7 +394,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
 
@@ -499,12 +466,13 @@ namespace Nethermind.Evm.TransactionProcessing
             if (tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return TransactionResult.GasLimitBelowIntrinsicGas;
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
+                    $"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
             }
 
             if (validate)
             {
-                long gasUsedForAllowance = spec switch
+                long gasUsedForAllowance = _parallel ? 0 : spec switch
                 {
                     { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
                     { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
@@ -514,7 +482,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
                 if (tx.GasLimit > maxTransactionGasLimit)
                 {
-                    string limitDescription = $"{header.GasLimit} - {gasUsedForAllowance}";
+                    string limitDescription = _parallel
+                        ? $"{header.GasLimit}"
+                        : $"{header.GasLimit} - {gasUsedForAllowance}";
                     TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
                     return TransactionResult.BlockGasLimitExceeded;
                 }
@@ -603,15 +573,15 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
                 TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                string errorDetail = $"err: max fee per gas less than block base fee: address {tx.SenderAddress?.ToString() ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas} (supplied gas {tx.GasLimit})";
-                return TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, errorDetail);
+                string errorDetail = $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}";
+                return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
             }
 
             UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
             if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return TransactionResult.InsufficientSenderBalance;
+                return InsufficientFundsForTransfer(tx, senderBalance);
             }
 
             bool overflows;
@@ -621,7 +591,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (overflows || balanceLeft < maxGasFee)
                 {
                     TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                    return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
+                    return InsufficientFundsForGas(tx, senderBalance, tx.MaxFeePerGas);
                 }
 
                 if (tx.SupportsBlobs)
@@ -630,7 +600,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
                     {
                         TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                        return TransactionResult.InsufficientSenderBalance;
+                        return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
                     }
                 }
             }
@@ -648,12 +618,24 @@ namespace Nethermind.Evm.TransactionProcessing
             if (overflows || senderReservedGasPayment > balanceLeft)
             {
                 TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                return TransactionResult.InsufficientSenderBalance;
+                return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
             }
 
             if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
+        }
+
+        private static TransactionResult InsufficientFundsForTransfer(Transaction tx, UInt256 senderBalance) =>
+            TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
+                $"insufficient funds for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
+
+        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
+        {
+            UInt256.MultiplyOverflow((UInt256)tx.GasLimit, gasPrice, out UInt256 gasCost);
+            UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
+            return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+                $"insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
         }
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
@@ -663,7 +645,13 @@ namespace Nethermind.Evm.TransactionProcessing
             if (validate && tx.Nonce != nonce)
             {
                 TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {nonce})");
-                return tx.Nonce > nonce ? TransactionResult.TransactionNonceTooHigh : TransactionResult.TransactionNonceTooLow;
+                // Geth core/state_transition.go ErrNonceTooHigh / ErrNonceTooLow.
+                string sender = tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown";
+                return tx.Nonce > nonce
+                    ? TransactionResult.ErrorType.TransactionNonceTooHigh.WithDetail(
+                        $"nonce too high: address {sender}, tx: {tx.Nonce} state: {nonce}")
+                    : TransactionResult.ErrorType.TransactionNonceTooLow.WithDetail(
+                        $"nonce too low: address {sender}, tx: {tx.Nonce} state: {nonce}");
             }
 
             UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
@@ -846,7 +834,7 @@ namespace Nethermind.Evm.TransactionProcessing
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, static (s, st) => s - st);
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
             {
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
             }
@@ -1102,17 +1090,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public static readonly TransactionResult Ok = new();
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
-        public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "gas limit below intrinsic gas");
-        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient MaxFeePerGas for sender balance");
-        public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient sender balance");
+        public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "intrinsic gas too low");
+        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient funds for gas * price + value");
+        public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient funds for transfer");
         public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
         public static readonly TransactionResult MinerPremiumNegative = new(ErrorType.MinerPremiumNegative, errorDescription: "miner premium is negative");
         public static readonly TransactionResult NonceOverflow = new(ErrorType.NonceOverflow, errorDescription: "nonce overflow");
         public static readonly TransactionResult SenderHasDeployedCode = new(ErrorType.SenderHasDeployedCode, errorDescription: "sender has deployed code");
         public static readonly TransactionResult SenderNotSpecified = new(ErrorType.SenderNotSpecified, errorDescription: "sender not specified");
         public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = new(ErrorType.TransactionSizeOverMaxInitCodeSize, errorDescription: "EIP-3860 - transaction size over max init code size");
-        public static readonly TransactionResult TransactionNonceTooHigh = new(ErrorType.TransactionNonceTooHigh, errorDescription: "transaction nonce is too high");
-        public static readonly TransactionResult TransactionNonceTooLow = new(ErrorType.TransactionNonceTooLow, errorDescription: "transaction nonce is too low");
+        public static readonly TransactionResult TransactionNonceTooHigh = new(ErrorType.TransactionNonceTooHigh, errorDescription: "nonce too high");
+        public static readonly TransactionResult TransactionNonceTooLow = new(ErrorType.TransactionNonceTooLow, errorDescription: "nonce too low");
 
         public enum ErrorType
         {
@@ -1131,5 +1119,11 @@ namespace Nethermind.Evm.TransactionProcessing
             TransactionNonceTooHigh,
             TransactionNonceTooLow,
         }
+    }
+
+    public static class TransactionResultExtensions
+    {
+        public static TransactionResult WithDetail(this TransactionResult.ErrorType errorType, string detail) =>
+            TransactionResult.WithDetail(errorType, detail);
     }
 }

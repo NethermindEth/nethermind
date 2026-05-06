@@ -36,6 +36,7 @@ using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
@@ -149,9 +150,10 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
@@ -175,10 +177,11 @@ namespace Nethermind.Facade
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
+            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
             // Cap tx.GasLimit to the sender's affordable allowance before the initial probe,
             // mirroring Geth's hi = min(hi, (balance - value) / gasFeeCap). This ensures BuyGas
@@ -216,30 +219,80 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken, bool optimize)
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            AccessTxTracer accessTxTracer = optimize
-                ? new(tx.SenderAddress,
-                    tx.GetRecipient(tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : 0), header.GasBeneficiary)
-                : new(header.GasBeneficiary);
-
-            CallOutputTracer callOutputTracer = new();
-
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
+            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
-            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+            AccessList? originalAccessList = tx.AccessList;
+            try
+            {
+                return ConvergeAccessList(components, header, tx, optimize, cancellationToken);
+            }
+            finally
+            {
+                tx.AccessList = originalAccessList;
+            }
+        }
+
+        // Convergence loop: mirrors Geth's AccessList() — run with the current AL, discover touched
+        // slots, repeat until the AL stabilizes. Gas and error come from the final (warm) run, so
+        // cold-read overcounting is eliminated and OOG due to AL intrinsic cost is surfaced.
+        // Starts from the caller-supplied AL so user-provided entries are preserved and counted.
+        private CallOutput ConvergeAccessList(BlockProcessingComponents components, BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
+        {
+            // Loop-invariant: the addresses to filter from the discovered AL depend only on header
+            // and tx, neither of which change between iterations. Compute once and reuse.
+            Address[] addressesToOptimize = BuildAddressesToOptimize(header, tx, optimize);
+            AccessList? previousAccessList = tx.AccessList;
+            AccessTxTracer accessTracer = new(addressesToOptimize);
+            CallOutputTracer outputTracer = new();
+            CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken);
+            TransactionResult result;
+            bool stop;
+            do
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                accessTracer.Reset();
+                outputTracer.Reset();
+                tx.AccessList = previousAccessList;
+                result = TryCallAndRestore(components, header, tx, false, tracer);
+                stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
+                previousAccessList = accessTracer.AccessList;
+            } while (!stop);
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                GasSpent = accessTxTracer.GasSpent,
-                OperationGas = callOutputTracer.OperationGas,
-                OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted,
-                AccessList = accessTxTracer.AccessList,
+                Error = ConstructError(result, outputTracer.Error),
+                GasSpent = outputTracer.GasSpent,
+                OperationGas = outputTracer.OperationGas,
+                OutputData = outputTracer.ReturnValue,
+                InputError = !result.TransactionExecuted,
+                AccessList = accessTracer.AccessList,
             };
+        }
+
+        private Address[] BuildAddressesToOptimize(BlockHeader header, Transaction tx, bool optimize)
+        {
+            if (!optimize)
+                return [header.GasBeneficiary];
+
+            // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
+            // so excluding them keeps the returned access list minimal.
+            UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
+            Address recipient = tx.GetRecipient(senderNonce);
+            return [tx.SenderAddress, recipient, header.GasBeneficiary];
+        }
+
+        private static bool HasConverged(AccessList? previous, AccessList? discovered)
+        {
+            // Count comparison is sufficient because WarmUp(tx.AccessList) pre-populates the warm-address
+            // set with all of `previous`'s entries before execution, making `discovered` monotonically
+            // non-decreasing (discovered ⊇ previous). Equal counts therefore imply equal content.
+            (int addrs, int keys) previousCount = previous?.Count ?? (0, 0);
+            (int addrs, int keys) discoveredCount = discovered?.Count ?? (0, 0);
+            return previousCount == discoveredCount;
         }
 
         private TransactionResult TryCallAndRestore(
@@ -287,6 +340,7 @@ namespace Nethermind.Facade
                 : blockHeader.BaseFeePerGas;
 
             UInt256 blobBaseFee = UInt256.Zero;
+            UInt256? blobBaseFeeOverride = components.RequestState.BlobBaseFeeOverride;
 
             if (releaseSpec.IsEip4844Enabled)
             {
@@ -296,6 +350,9 @@ namespace Nethermind.Facade
                     : blockHeader.ExcessBlobGas;
 
                 BlobGasCalculator.TryCalculateFeePerBlobGas(callHeader, releaseSpec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+
+                if (blobBaseFeeOverride.HasValue)
+                    blobBaseFee = blobBaseFeeOverride.Value;
 
                 if (transaction.Type is TxType.Blob && transaction.MaxFeePerBlobGas is null)
                 {
@@ -446,7 +503,8 @@ namespace Nethermind.Facade
         public record BlockProcessingComponents(
             IStateReader StateReader,
             ITransactionProcessor TransactionProcessor,
-            IWorldState WorldState
+            IWorldState WorldState,
+            SingleCallRequestState RequestState
         );
     }
 
@@ -467,6 +525,9 @@ namespace Nethermind.Facade
 
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddModule(env)
+                .AddScoped<SingleCallRequestState>()
+                .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
+                .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
             // Split it out to isolate the world state and processing components

@@ -3,7 +3,7 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc-testnet.json",
     "BaseDbPath": "nethermind_db/xdc-testnet",
-    "LogFileName": "xdc.log"
+    "LogFileName": "xdc-testnet.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"

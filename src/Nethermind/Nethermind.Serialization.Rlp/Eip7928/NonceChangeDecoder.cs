@@ -14,8 +14,8 @@ public class NonceChangeDecoder : IndexedChangeDecoder<NonceChange>
         => new(ctx.DecodeUShort(), ctx.DecodeULong());
 
     protected override void EncodeValue(RlpStream stream, NonceChange item)
-        => stream.Encode(item.NewNonce);
+        => stream.Encode(item.Value);
 
     protected override int GetValueLength(NonceChange item)
-        => Rlp.LengthOf(item.NewNonce);
+        => Rlp.LengthOf(item.Value);
 }

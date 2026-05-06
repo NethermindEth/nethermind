@@ -642,7 +642,7 @@ public class ContractBasedValidatorTests
 
     private byte[] SetupAbiAddresses(Address[] addresses)
     {
-        byte[] data = addresses.SelectMany(static a => a.Bytes).ToArray();
+        byte[] data = addresses.SelectMany(static a => a.Bytes.ToArray()).ToArray();
 
         _abiEncoder.Decode(
             AbiEncodingStyle.None,

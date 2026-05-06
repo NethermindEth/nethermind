@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -100,7 +100,7 @@ public class TraceRpcModuleTests
             context.TraceRpcModule,
             "trace_filter", request);
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"block not found: 0x154\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"header not found\"},\"id\":67}"), serialized.Replace("\"", "\\\""));
     }
 
     [Test]
@@ -754,6 +754,18 @@ public class TraceRpcModuleTests
 
         ParityAccountStateChange? stateChanges = traces.Data.StateChanges?.GetValueOrDefault(address);
         stateChanges?.Balance?.Should().BeEquivalentTo(new ParityStateChange<UInt256>(balance, balance - send));
+    }
+
+    [Test]
+    public async Task Trace_rawTransaction_returns_invalid_rlp_for_empty_list()
+    {
+        Context context = new();
+        await context.Build();
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_rawTransaction([0xC0], ["trace"]);
+
+        Assert.That(traces.ErrorCode, Is.EqualTo(ErrorCodes.TransactionRejected));
+        Assert.That(traces.Result.Error, Is.EqualTo("Invalid RLP."));
     }
 
     [Test]

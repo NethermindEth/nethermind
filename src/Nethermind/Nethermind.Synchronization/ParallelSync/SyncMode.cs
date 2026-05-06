@@ -51,10 +51,6 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastReceipts = FastBlocks | 1024,
         /// <summary>
-        /// Stage of snap sync that state is being downloaded (accounts, storages, code, proofs)
-        /// </summary>
-        SnapSync = 2048,
-        /// <summary>
         /// Reverse download of headers from beacon pivot to genesis
         /// </summary>
         BeaconHeaders = 4096,
@@ -64,7 +60,7 @@ namespace Nethermind.Synchronization.ParallelSync
         UpdatingPivot = 8192,
 
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | Full | DbLoad |
-              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot
+              FastHeaders | FastBodies | FastReceipts | BeaconHeaders | UpdatingPivot
     }
 
     public static class SyncModeExtensions
@@ -76,7 +72,6 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.FastBodies) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
-            syncMode.HasFlag(SyncMode.SnapSync) ||
             syncMode.HasFlag(SyncMode.BeaconHeaders) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
@@ -84,7 +79,6 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.FastBlocks) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
-            syncMode.HasFlag(SyncMode.SnapSync) ||
             syncMode.HasFlag(SyncMode.BeaconHeaders) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
@@ -96,7 +90,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public static bool HaveNotSyncedStateYet(this SyncMode syncMode) =>
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||
-            syncMode.HasFlag(SyncMode.SnapSync) ||
             syncMode.HasFlag(SyncMode.UpdatingPivot);
     }
 }

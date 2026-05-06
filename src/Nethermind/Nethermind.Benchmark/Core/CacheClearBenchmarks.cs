@@ -4,10 +4,6 @@
 #nullable enable
 
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 
 namespace Nethermind.Benchmarks.Core;
 

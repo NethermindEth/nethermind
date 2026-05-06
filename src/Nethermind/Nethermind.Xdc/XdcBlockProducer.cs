@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -17,6 +17,7 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -63,16 +64,7 @@ internal class XdcBlockProducer(
 
         Address blockAuthor = sealer.Address;
         long gasLimit = GasLimitCalculator.GetGasLimit(parent);
-        XdcBlockHeader xdcBlockHeader = new(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            blockAuthor,
-            UInt256.Zero,
-            parent.Number + 1,
-            gasLimit,
-            0,
-            extra,
-            isSelfMined: true);
+        XdcBlockHeader xdcBlockHeader = CreateHeader(parent, extra, blockAuthor, gasLimit);
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcBlockHeader, currentRound);
 
@@ -93,16 +85,38 @@ internal class XdcBlockProducer(
 
             for (int i = 0; i < masternodes.Length; i++)
             {
-                Array.Copy(masternodes[i].Bytes, 0, xdcBlockHeader.Validators, i * Address.Size, Address.Size);
+                masternodes[i].Bytes.CopyTo(xdcBlockHeader.Validators.AsSpan(i * Address.Size, Address.Size));
             }
 
             xdcBlockHeader.Penalties = new byte[penalties.Length * Address.Size];
 
             for (int i = 0; i < penalties.Length; i++)
             {
-                Array.Copy(penalties[i].Bytes, 0, xdcBlockHeader.Penalties, i * Address.Size, Address.Size);
+                penalties[i].Bytes.CopyTo(xdcBlockHeader.Penalties.AsSpan(i * Address.Size, Address.Size));
             }
         }
         return xdcBlockHeader;
     }
+
+    protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
+    {
+        BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
+
+        IEnumerable<Transaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
+            Array.Empty<Transaction>() :
+            TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: false);
+
+        return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+    }
+
+    protected virtual XdcBlockHeader CreateHeader(BlockHeader parent, byte[] extra, Address blockAuthor, long gasLimit) => new(
+                parent.Hash!,
+                Keccak.OfAnEmptySequenceRlp,
+                blockAuthor,
+                UInt256.Zero,
+                parent.Number + 1,
+                gasLimit,
+                0,
+                extra,
+                isSelfMined: true);
 }

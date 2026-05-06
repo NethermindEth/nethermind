@@ -69,6 +69,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int SnapServingMaxDepth { get; set; } = 128;
         public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
+        public int AllocationSlots { get; set; } = 2;
         public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;
         public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
         public bool NeedToWaitForHeader { get; set; }
