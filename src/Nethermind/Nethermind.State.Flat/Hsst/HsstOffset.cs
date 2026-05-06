@@ -8,9 +8,9 @@ namespace Nethermind.State.Flat.Hsst;
 /// <summary>
 /// Shared offset-encoding policy used by the packed-array-style HSST formats
 /// (<see cref="IndexType.PackedArray"/> uses a fixed value size and does not
-/// participate; <see cref="IndexType.VarPackedArray"/>, <see cref="IndexType.ByteTagMap"/>
-/// and <see cref="IndexType.DenseByteIndex"/> all pick their on-disk end-offset width
-/// from the running <c>valuesTotal</c> via <see cref="ChooseOffsetSize"/>).
+/// participate; <see cref="IndexType.ByteTagMap"/> and <see cref="IndexType.DenseByteIndex"/>
+/// pick their on-disk end-offset width from the running <c>valuesTotal</c>
+/// via <see cref="ChooseOffsetSize"/>).
 /// </summary>
 internal static class HsstOffset
 {

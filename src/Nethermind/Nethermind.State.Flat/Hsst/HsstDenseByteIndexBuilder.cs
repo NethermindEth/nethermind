@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// Output: concatenated values followed by
 /// <c>[Ends: N·OffsetSize LE][Count: u8 = N − 1][OffsetSize: u8][IndexType: u8 = 0x04]</c>.
 /// <c>OffsetSize</c> is chosen at <see cref="Build"/> time from the running values total
-/// (1, 2, 4, or 6 bytes — the same policy as <see cref="IndexType.VarPackedArray"/>).
+/// (1, 2, 4, or 6 bytes — the same policy as <see cref="HsstOffset.ChooseOffsetSize"/>).
 /// <c>N</c> equals <c>(highestTag + 1)</c> and is capped at <see cref="MaxEntries"/> (256).
 /// </summary>
 public ref struct HsstDenseByteIndexBuilder<TWriter>

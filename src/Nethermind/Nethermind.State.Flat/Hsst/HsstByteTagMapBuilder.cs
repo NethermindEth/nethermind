@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// Builds a tiny single-byte-keyed HSST. The output is concatenated values followed by a
 /// flat trailer: <c>[Ends: N×OffsetSize LE][Tags: N×u8][Count: u8 = N - 1][OffsetSize: u8][IndexType: u8 = 0x03]</c>.
 /// <c>OffsetSize</c> is chosen at <see cref="Build"/> time from the running values total
-/// (1, 2, 4, or 6 bytes — the same policy as <see cref="IndexType.VarPackedArray"/>),
+/// (1, 2, 4, or 6 bytes — the same policy as <see cref="HsstOffset.ChooseOffsetSize"/>),
 /// so small maps pay 1 byte per cumulative end instead of a fixed 4.
 ///
 /// Designed for the persisted-snapshot column container (≤7 entries), per-address
@@ -151,7 +151,7 @@ public ref struct HsstByteTagMapBuilder<TWriter>
         int offsetSize = HsstOffset.ChooseOffsetSize(valuesTotal);
 
         // Ends section, written at the chosen stride. Use an 8-byte scratch and slice
-        // off the low offsetSize bytes (LE), matching the VarPackedArray pattern.
+        // off the low offsetSize bytes (LE).
         Span<byte> endsSpan = _writer.GetSpan(n * offsetSize);
         Span<byte> scratch = stackalloc byte[8];
         for (int i = 0; i < n; i++)
