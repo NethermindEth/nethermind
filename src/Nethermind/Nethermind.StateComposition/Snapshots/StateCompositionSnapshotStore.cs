@@ -26,11 +26,11 @@ internal sealed class StateCompositionSnapshotStore
     // lands ~3.5 trillion years out at 12s blocks, so no schema migration needed.
     private static readonly byte[] LatestKey = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
 
-    // The three tracker maps each scale with the contract count and would overflow
-    // the int-bounded RLP buffer on mainnet (134M+ entries → ~5 GB encoded). They
-    // are persisted as a sequence of fixed-width chunks under composite keys
-    // <blockNumber:8> + <kind:1> + <chunkIdx:4> = 13 bytes, distinguished from the
-    // 8-byte main-snapshot key.
+    // The three tracker maps scale with the contract count (134M+ on mainnet,
+    // ~5 GB encoded) and would overflow the int-bounded RLP buffer if written as
+    // a single blob. They are written as fixed-width chunks under
+    // <blockNumber:8> || <kind:1> || <chunkIdx:4> = 13-byte composite keys,
+    // distinguished from the 8-byte main-snapshot key.
     private const byte SlotCountKind = 0x01;
     private const byte CodeRefcountKind = 0x02;
     private const byte CodeSizeKind = 0x03;
@@ -64,7 +64,7 @@ internal sealed class StateCompositionSnapshotStore
         // reconcile orphaned partial chunks.
         long prevBlock = long.MinValue;
         byte[]? prevBytes = _db.Get(LatestKey);
-        if (prevBytes is not null && prevBytes.Length >= 8)
+        if (prevBytes is not null && prevBytes.Length >= MainKeyLength)
             prevBlock = BinaryPrimitives.ReadInt64BigEndian(prevBytes);
 
         Span<byte> key = stackalloc byte[MainKeyLength];
@@ -87,7 +87,7 @@ internal sealed class StateCompositionSnapshotStore
         WriteIntMap(snapshot.BlockNumber, CodeRefcountKind, snapshot.CodeHashRefcounts);
         WriteIntMap(snapshot.BlockNumber, CodeSizeKind, snapshot.CodeHashSizes);
 
-        Span<byte> blockBytes = stackalloc byte[8];
+        Span<byte> blockBytes = stackalloc byte[MainKeyLength];
         BinaryPrimitives.WriteInt64BigEndian(blockBytes, snapshot.BlockNumber);
         _db.PutSpan(LatestKey, blockBytes);
 
@@ -132,7 +132,7 @@ internal sealed class StateCompositionSnapshotStore
     public StateCompositionSnapshot? ReadLatestSnapshot()
     {
         byte[]? latestBytes = _db.Get(LatestKey);
-        if (latestBytes is null || latestBytes.Length < 8) return null;
+        if (latestBytes is null || latestBytes.Length < MainKeyLength) return null;
 
         long latestBlock = BinaryPrimitives.ReadInt64BigEndian(latestBytes);
         return ReadSnapshot(latestBlock);
@@ -142,7 +142,7 @@ internal sealed class StateCompositionSnapshotStore
     {
         byte[]? latestBytes = _db.Get(LatestKey);
         long latestBlock = -1;
-        if (latestBytes is not null && latestBytes.Length >= 8)
+        if (latestBytes is not null && latestBytes.Length >= MainKeyLength)
             latestBlock = BinaryPrimitives.ReadInt64BigEndian(latestBytes);
 
         int removed = 0;
@@ -152,7 +152,7 @@ internal sealed class StateCompositionSnapshotStore
             if (span.SequenceEqual(LatestKey)) continue;
 
             long blockOfKey = (span.Length == MainKeyLength || span.Length == ChunkKeyLength)
-                ? BinaryPrimitives.ReadInt64BigEndian(span[..8])
+                ? BinaryPrimitives.ReadInt64BigEndian(span[..MainKeyLength])
                 : long.MinValue;
 
             if (latestBlock >= 0 && blockOfKey == latestBlock) continue;
@@ -172,7 +172,7 @@ internal sealed class StateCompositionSnapshotStore
         _db.Remove(mainKey);
 
         Span<byte> chunkKey = stackalloc byte[ChunkKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..8], blockNumber);
+        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..MainKeyLength], blockNumber);
         foreach (byte kind in (ReadOnlySpan<byte>)[SlotCountKind, CodeRefcountKind, CodeSizeKind])
         {
             chunkKey[8] = kind;
@@ -222,7 +222,7 @@ internal sealed class StateCompositionSnapshotStore
         EntryWriter<TValue> writeEntry)
     {
         Span<byte> chunkKey = stackalloc byte[ChunkKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..8], blockNumber);
+        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..MainKeyLength], blockNumber);
         chunkKey[8] = kind;
 
         int chunkIdx = 0;
@@ -287,7 +287,7 @@ internal sealed class StateCompositionSnapshotStore
         TDict dict)
     {
         Span<byte> chunkKey = stackalloc byte[ChunkKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..8], blockNumber);
+        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..MainKeyLength], blockNumber);
         chunkKey[8] = kind;
         int chunkIdx = 0;
         while (true)

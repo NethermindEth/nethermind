@@ -55,10 +55,9 @@ internal sealed partial class StateCompositionService
             head = _blockTree.Head;
             if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
-            // Diffing across two state roots needs each side resolved against
-            // its own scope: under FlatDb, `BeginScope` only materialises the
-            // bundle for one block, so a single resolver makes the other
-            // side's nodes look Unknown and silently zeroes the diff.
+            // FlatDb's BeginScope materialises the snapshot bundle for one block,
+            // so a diff across two roots needs one scope per side or the off-side
+            // nodes resolve as Unknown and the walker silently emits zero deltas.
             BlockHeader prevHeader = _blockTree.FindHeader(_stateHolder.IncrementalBlock, BlockTreeLookupOptions.RequireCanonical)
                 ?? throw new MissingTrieNodeException("prev block header is no longer canonical", null, TreePath.Empty, prevRoot);
 
@@ -91,11 +90,9 @@ internal sealed partial class StateCompositionService
         catch (Exception ex) when (ex is MissingTrieNodeException
             || (ex is InvalidOperationException && ex.Message.Contains("gather snapshots", StringComparison.Ordinal)))
         {
-            // prevRoot is no longer reachable: either the trie DB pruned it
-            // (MissingTrieNodeException) or FlatDb's bundle window has rolled
-            // past it (`Unable to gather snapshots for state ...`). Either way,
-            // invalidate the baseline so OnNewHeadBlock stops dispatching
-            // diffs against an unreachable root, then schedule a fresh rescan.
+            // prevRoot is no longer reachable — pruned out (MissingTrieNodeException)
+            // or rolled past FlatDb's bundle window ("Unable to gather snapshots for state ...").
+            // Drop the baseline so OnNewHeadBlock stops dispatching, then rescan.
             Metrics.StateCompBaselineInvalidations++;
             _stateHolder.InvalidateBaseline();
             if (_logger.IsWarn)

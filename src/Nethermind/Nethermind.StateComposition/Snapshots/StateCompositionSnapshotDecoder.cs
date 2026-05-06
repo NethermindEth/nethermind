@@ -13,7 +13,10 @@ using Nethermind.StateComposition.Diff;
 namespace Nethermind.StateComposition.Snapshots;
 
 /// <summary>
-/// RLP encoder/decoder for <see cref="StateCompositionSnapshot"/>.
+/// RLP encoder/decoder for the fixed-size portion of <see cref="StateCompositionSnapshot"/>.
+/// The three contract-keyed tracker maps are written separately as raw chunked
+/// records by <see cref="StateCompositionSnapshotStore"/>; the decoder hands back
+/// empty dictionaries and the store fills them on read.
 /// Field order:
 ///   0. schema version byte (current = 1)
 ///   1. 13 longs (CumulativeTrieStats)
@@ -24,9 +27,6 @@ namespace Nethermind.StateComposition.Snapshots;
 ///        + TotalBranchNodes + TotalBranchChildren
 ///   5. codeBytesTotal (long)
 ///   6. 16 longs of SlotCountHistogram
-///   7. slotCountByAddress: int count, then count × (keccak hash, long slot count)
-///   8. codeHashRefcounts: int count, then count × (keccak hash, int refcount)
-///   9. codeHashSizes: int count, then count × (keccak hash, int size)
 /// Legacy snapshots (wrong version or pre-version schema) fail to decode with
 /// <see cref="RlpException"/> and are discarded by the plugin, which then
 /// triggers a fresh scan to rebuild the baseline with the new schema.
@@ -184,8 +184,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 
         return new StateCompositionSnapshot(
             stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
-            new Dictionary<ValueHash256, long>(),
-            new Dictionary<ValueHash256, int>(),
-            new Dictionary<ValueHash256, int>());
+            SlotCountByAddress: [], CodeHashRefcounts: [], CodeHashSizes: []);
     }
 }

@@ -19,10 +19,8 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
     private readonly List<SlotCountChange> _slotCountChanges = [];
     private readonly List<CodeHashChange> _codeHashChanges = [];
 
-    // Old and new state share neither node hashes nor — under FlatDb — a single
-    // snapshot bundle. Each side resolves nodes through its own scoped store so a
-    // diff walker scoped on the new head can still descend the previous root's
-    // disjoint subtrees instead of treating them as Unknown.
+    // FlatDb scopes nodes per state, so old and new sides each need their own resolver;
+    // a single resolver on the new head makes the prev root's disjoint subtrees Unknown.
     private readonly record struct ResolverPair(ITrieNodeResolver Old, ITrieNodeResolver New)
     {
         public ITrieNodeResolver Pick(bool added) => added ? New : Old;
