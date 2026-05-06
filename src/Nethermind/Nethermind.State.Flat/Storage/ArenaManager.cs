@@ -203,6 +203,20 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     }
 
     /// <summary>
+    /// Mmap a fresh read view over the just-written range. The arena file is opened
+    /// <see cref="FileShare.ReadWrite"/> with a parallel mmap (<see cref="ArenaFile"/>),
+    /// so the bytes are visible to the read view as soon as the writer's stream has
+    /// been flushed (caller's responsibility).
+    /// </summary>
+    public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size)
+    {
+        lock (_lock)
+        {
+            return _arenas[arenaId].OpenWholeView(absoluteOffset, size);
+        }
+    }
+
+    /// <summary>
     /// Mark space as dead for compaction tracking.
     /// </summary>
     public void MarkDead(in SnapshotLocation location)

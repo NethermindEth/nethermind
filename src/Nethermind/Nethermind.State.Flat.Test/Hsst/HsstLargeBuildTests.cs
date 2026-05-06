@@ -127,15 +127,17 @@ public class HsstLargeBuildTests
 
     private static void WriteLargeHsst(IndexType indexType, string path, long baseKey, long count)
     {
-        using FileStream fs = new(path, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 1);
-        StreamBufferWriter writer = new(fs);
+        // Open a separate read-side mmap so the index builder can read back the
+        // freshly-flushed data section through the writer's OpenReader.
+        using FileStream fs = new(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
+        ArenaBufferWriter writer = new(fs, (relOffset, size) => OpenFileView(fs, relOffset, size));
         try
         {
             switch (indexType)
             {
                 case IndexType.BTree:
                 {
-                    using HsstBuilder<StreamBufferWriter> hsst = new(ref writer, expectedKeyCount: checked((int)count));
+                    using HsstBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> hsst = new(ref writer, expectedKeyCount: checked((int)count));
                     Span<byte> keyBuf = stackalloc byte[8];
                     Span<byte> valueBuf = stackalloc byte[1];
                     valueBuf[0] = BTreeValueByte;
@@ -149,7 +151,7 @@ public class HsstLargeBuildTests
                 }
                 case IndexType.PackedArray:
                 {
-                    using HsstPackedArrayBuilder<StreamBufferWriter> hsst = new(
+                    using HsstPackedArrayBuilder<ArenaBufferWriter> hsst = new(
                         ref writer, keySize: KeySize, valueSize: PackedValueSize,
                         expectedKeyCount: checked((int)count));
                     Span<byte> keyBuf = stackalloc byte[8];
@@ -176,8 +178,8 @@ public class HsstLargeBuildTests
 
     private static void WriteLargeValuesHsst(IndexType indexType, string path)
     {
-        using FileStream fs = new(path, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 1);
-        StreamBufferWriter writer = new(fs);
+        using FileStream fs = new(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
+        ArenaBufferWriter writer = new(fs, (relOffset, size) => OpenFileView(fs, relOffset, size));
         byte[] valueBuf = new byte[ByteKeyValueSize];
         try
         {
@@ -185,7 +187,7 @@ public class HsstLargeBuildTests
             {
                 case IndexType.ByteTagMap:
                 {
-                    using HsstByteTagMapBuilder<StreamBufferWriter> hsst = new(ref writer);
+                    using HsstByteTagMapBuilder<ArenaBufferWriter> hsst = new(ref writer);
                     for (int i = 0; i < ByteKeyEntryCount; i++)
                     {
                         FillLargeValuePattern((byte)i, valueBuf);
@@ -196,7 +198,7 @@ public class HsstLargeBuildTests
                 }
                 case IndexType.DenseByteIndex:
                 {
-                    using HsstDenseByteIndexBuilder<StreamBufferWriter> hsst = new(ref writer);
+                    using HsstDenseByteIndexBuilder<ArenaBufferWriter> hsst = new(ref writer);
                     for (int i = 0; i < ByteKeyEntryCount; i++)
                     {
                         FillLargeValuePattern((byte)i, valueBuf);
@@ -213,6 +215,35 @@ public class HsstLargeBuildTests
         finally
         {
             writer.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Per-test view source for <see cref="ArenaBufferWriter.OpenReader"/>. Mmaps
+    /// the same file the writer is appending to and returns a fresh accessor over
+    /// the requested range. Mirrors <see cref="ArenaFile.OpenWholeView"/>'s
+    /// disposal behaviour (release pointer + dispose accessor).
+    /// </summary>
+    private static unsafe IArenaWholeView OpenFileView(FileStream fs, long offset, long size)
+    {
+        MemoryMappedFile mmf = MemoryMappedFile.CreateFromFile(
+            fs, mapName: null, capacity: 0, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
+        MemoryMappedViewAccessor accessor = mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
+        byte* ptr = null;
+        accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
+        return new TestFileView(mmf, accessor, ptr + accessor.PointerOffset, size);
+    }
+
+    private sealed unsafe class TestFileView(MemoryMappedFile mmf, MemoryMappedViewAccessor accessor, byte* dataPtr, long size) : IArenaWholeView
+    {
+        public byte* DataPtr => dataPtr;
+        public long Size => size;
+        public ReadOnlySpan<byte> GetSpan() => new(dataPtr, checked((int)size));
+        public void Dispose()
+        {
+            accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+            accessor.Dispose();
+            mmf.Dispose();
         }
     }
 
@@ -366,8 +397,8 @@ public class HsstLargeBuildTests
             bool moreA = eA.MoveNext(in rA);
             bool moreB = eB.MoveNext(in rB);
 
-            using FileStream outFs = new(pathOut, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 1);
-            StreamBufferWriter writer = new(outFs);
+            using FileStream outFs = new(pathOut, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
+            ArenaBufferWriter writer = new(outFs, (relOffset, size) => OpenFileView(outFs, relOffset, size));
             try
             {
                 int merged = checked((int)(EntryCountPerHsst * 2));
@@ -375,7 +406,7 @@ public class HsstLargeBuildTests
                 {
                     case IndexType.BTree:
                     {
-                        using HsstBuilder<StreamBufferWriter> outHsst = new(ref writer, expectedKeyCount: merged);
+                        using HsstBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> outHsst = new(ref writer, expectedKeyCount: merged);
                         while (moreA || moreB)
                         {
                             int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);
@@ -404,7 +435,7 @@ public class HsstLargeBuildTests
                     }
                     case IndexType.PackedArray:
                     {
-                        using HsstPackedArrayBuilder<StreamBufferWriter> outHsst = new(
+                        using HsstPackedArrayBuilder<ArenaBufferWriter> outHsst = new(
                             ref writer, keySize: KeySize, valueSize: PackedValueSize, expectedKeyCount: merged);
                         while (moreA || moreB)
                         {

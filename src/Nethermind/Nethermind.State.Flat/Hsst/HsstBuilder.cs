@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
@@ -25,38 +24,34 @@ namespace Nethermind.State.Flat.Hsst;
 /// reader does not need to consult the leaf to recover it. (ValueLength uses LEB128
 /// because values are unbounded; the LEB128 terminator chain is forward-readable only,
 /// so the lengths sit after the value and the index aims at them.)
+///
+/// Memory: while the data section is being written, the only per-key state held in
+/// memory is one <c>long</c> per entry (the metadata position). Separators and the
+/// previous key are not buffered — at <see cref="Build"/> time the index builder is
+/// handed a reader over the just-written data section and recomputes separators
+/// on-demand from the flushed bytes.
 /// </summary>
-public ref struct HsstBuilder<TWriter>
-    where TWriter : IByteBufferWriter
+public ref struct HsstBuilder<TWriter, TReader, TPin>
+    where TWriter : IByteBufferWriterWithReader<TReader, TPin>
+    where TReader : IHsstByteReader<TPin>, allows ref struct
+    where TPin : struct, IBufferPin, allows ref struct
 {
     private ref TWriter _writer;
     private long _writtenBeforeValue;
     private readonly long _baseOffset;
     private readonly HsstBTreeOptions _options;
 
-    // Working buffers allocated from NativeMemory
-    private NativeMemoryListRef<byte> _separatorBuffer;
-    private NativeMemoryListRef<HsstEntry> _entriesBuffer;
-    private NativeMemoryListRef<byte> _prevKeyBuffer;
-
-    public readonly struct HsstEntry(int sepOffset, int sepLen, long metadataStart)
-    {
-        public readonly int SepOffset = sepOffset;
-        public readonly int SepLen = sepLen;
-        /// <summary>
-        /// Offset within the HSST (relative to byte 0) where value metadata starts.
-        /// The B-tree value section can address up to 2^48 bytes (limit is the 6-byte
-        /// BaseOffset footer field, not this type).
-        /// </summary>
-        public readonly long MetadataStart = metadataStart;
-    }
+    // Per-key metadata position relative to the data section start. Replaces the
+    // (separator buffer, HsstEntry triple, prev key buffer) state held by the
+    // pre-OpenReader builder.
+    private NativeMemoryListRef<long> _entryPositions;
 
     /// <summary>
     /// Create builder writing via the given writer.
     /// The trailing IndexType byte is appended in <see cref="Build"/>.
     /// Allocates working buffers from NativeMemory — call Dispose() to free them.
-    /// <paramref name="expectedKeyCount"/> sizes the entry/separator working buffers up front;
-    /// pass an estimate when known to avoid resize allocations. The buffers still grow on demand.
+    /// <paramref name="expectedKeyCount"/> sizes the entry-positions buffer up front;
+    /// pass an estimate when known to avoid resize allocations. The buffer still grows on demand.
     /// </summary>
     public HsstBuilder(ref TWriter writer, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
     {
@@ -66,23 +61,13 @@ public ref struct HsstBuilder<TWriter>
         _baseOffset = _writer.Written;
         _options = opts;
 
-        // Heuristic: ~32 bytes per separator/value. The buffers grow as needed.
-        // Clamp to avoid int overflow at large expectedKeyCount (>~67M).
-        int byteCap = (int)Math.Clamp((long)expectedKeyCount * 32, 64, 1L << 30);
-        _separatorBuffer = new NativeMemoryListRef<byte>(byteCap);
-        _entriesBuffer = new NativeMemoryListRef<HsstEntry>(expectedKeyCount);
-        _prevKeyBuffer = new NativeMemoryListRef<byte>(256);
+        _entryPositions = new NativeMemoryListRef<long>(expectedKeyCount);
     }
 
     /// <summary>
-    /// Free working NativeMemory buffers.
+    /// Free working NativeMemory buffer.
     /// </summary>
-    public void Dispose()
-    {
-        _separatorBuffer.Dispose();
-        _entriesBuffer.Dispose();
-        _prevKeyBuffer.Dispose();
-    }
+    public void Dispose() => _entryPositions.Dispose();
 
     /// <summary>
     /// Begin writing a value. Returns ref to the shared writer and snapshots Written.
@@ -103,22 +88,13 @@ public ref struct HsstBuilder<TWriter>
         ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
 
         int actualLen = checked((int)(_writer.Written - _writtenBeforeValue));
-        // metadataStart stored in index is relative to byte 0 of this HSST.
-        long metadataStart = _writer.Written - _baseOffset;
-
-        // Compute separator eagerly
-        int sepLen = ComputeSeparatorLength(
-            _prevKeyBuffer.AsSpan(),
-            key,
-            nextKey: default,
-            _options.MinSeparatorLength);
-
-        int sepOffset = _separatorBuffer.Count;
-        _separatorBuffer.AddRange(key[..sepLen]);
+        // metadataPos is relative to the data section start (== _baseOffset).
+        // The index builder reads keys back through OpenReader using these positions.
+        long metadataPos = _writer.Written - _baseOffset;
 
         // Write [ValueLength: LEB128][KeyLength: u8][FullKey]. The full key lives in
-        // the data region so the entry is self-describing; the leaf separator above is
-        // kept purely to drive in-leaf binary search.
+        // the data region so the entry is self-describing; the leaf separator stored
+        // in the B-tree node is recomputed at Build() time from the flushed bytes.
         Span<byte> leb = _writer.GetSpan(5);
         int lebLen = Leb128.Write(leb, 0, actualLen);
         _writer.Advance(lebLen);
@@ -132,10 +108,7 @@ public ref struct HsstBuilder<TWriter>
             IByteBufferWriter.Copy(ref _writer, key);
         }
 
-        _entriesBuffer.Add(new HsstEntry(sepOffset, sepLen, metadataStart));
-
-        _prevKeyBuffer.Clear();
-        _prevKeyBuffer.AddRange(key);
+        _entryPositions.Add(metadataPos);
     }
 
     /// <summary>
@@ -161,11 +134,12 @@ public ref struct HsstBuilder<TWriter>
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
         int maxIntermediateBytes = _options.MaxIntermediateBytes;
 
-        long absoluteIndexStart = _writer.Written - _baseOffset;
+        long dataSectionSize = _writer.Written - _baseOffset;
+        long absoluteIndexStart = dataSectionSize;
+        TReader reader = _writer.OpenReader(dataSectionSize);
 
-        HsstIndexBuilder<TWriter> indexBuilder = new(
-            ref _writer, _entriesBuffer.AsSpan(),
-            _separatorBuffer.AsSpan());
+        HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
+            ref _writer, reader, _entryPositions.AsSpan(), _options.MinSeparatorLength);
 
         indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
 
@@ -173,40 +147,5 @@ public ref struct HsstBuilder<TWriter>
         Span<byte> tail = _writer.GetSpan(1);
         tail[0] = (byte)IndexType.BTree;
         _writer.Advance(1);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ComputeSeparatorLength(ReadOnlySpan<byte> prevKey, ReadOnlySpan<byte> currKey, ReadOnlySpan<byte> nextKey, int minSeparatorLength = 0)
-    {
-        int minVsPrev = 0;
-        if (!prevKey.IsEmpty)
-        {
-            int common = CommonPrefixLength(prevKey, currKey);
-            minVsPrev = common + 1;
-        }
-
-        int minVsNext = 0;
-        if (!nextKey.IsEmpty)
-        {
-            int common = CommonPrefixLength(currKey, nextKey);
-            minVsNext = common + 1;
-        }
-
-        int len = Math.Max(minVsPrev, minVsNext);
-        len = Math.Min(len, currKey.Length);
-        if (len == 0) len = Math.Min(1, currKey.Length);
-
-        return Math.Min(Math.Max(len, minSeparatorLength), currKey.Length);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CommonPrefixLength(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-    {
-        int minLen = Math.Min(a.Length, b.Length);
-        for (int i = 0; i < minLen; i++)
-        {
-            if (a[i] != b[i]) return i;
-        }
-        return minLen;
     }
 }

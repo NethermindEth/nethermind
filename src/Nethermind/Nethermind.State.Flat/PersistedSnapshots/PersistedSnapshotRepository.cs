@@ -171,7 +171,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         string writeTag = isPersistable ? ArenaReservationTags.FullPersistable : ArenaReservationTags.FullBase;
         using (ArenaWriter arenaWriter = arena.CreateWriter(PersistedSnapshotBuilder.EstimateSize(snapshot), writeTag))
         {
-            PersistedSnapshotBuilder.Build(snapshot, ref arenaWriter.GetWriter(), bloom, trieBloom);
+            PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
+                snapshot, ref arenaWriter.GetWriter(), bloom, trieBloom);
             if (isPersistable)
                 _persistedSnapshotSize.WithLabels("is_persistable").Observe(arenaWriter.GetWriter().Written);
             else

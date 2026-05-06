@@ -19,7 +19,8 @@ internal static class PersistedSnapshotBuilderTestExtensions
     {
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
-        PersistedSnapshotBuilder.Build(snapshot, ref pooled.GetWriter());
+        PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+            snapshot, ref pooled.GetWriter());
         return pooled.WrittenSpan.ToArray();
     }
 
@@ -51,7 +52,8 @@ internal static class PersistedSnapshotBuilderTestExtensions
         totalSize += 4096;
 
         using PooledByteBufferWriter pooled = new(checked((int)totalSize));
-        PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref pooled.GetWriter(), referencedIds);
+        PersistedSnapshotBuilder.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+            snapshots, ref pooled.GetWriter(), referencedIds);
         return pooled.WrittenSpan.ToArray();
     }
 }

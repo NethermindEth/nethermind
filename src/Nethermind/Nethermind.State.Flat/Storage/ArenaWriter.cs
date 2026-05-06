@@ -5,7 +5,7 @@ namespace Nethermind.State.Flat.Storage;
 
 public sealed class ArenaWriter : IDisposable
 {
-    private StreamBufferWriter _writer;
+    private ArenaBufferWriter _writer;
     private readonly IArenaManager _manager;
     private readonly int _arenaId;
     private readonly long _startOffset;
@@ -17,11 +17,12 @@ public sealed class ArenaWriter : IDisposable
         _manager = manager;
         _arenaId = arenaId;
         _startOffset = startOffset;
-        _writer = new StreamBufferWriter(stream);
+        _writer = new ArenaBufferWriter(stream,
+            (relOffset, size) => manager.OpenPendingView(arenaId, startOffset + relOffset, size));
         _tag = tag;
     }
 
-    public ref StreamBufferWriter GetWriter() => ref _writer;
+    public ref ArenaBufferWriter GetWriter() => ref _writer;
 
     public (SnapshotLocation Location, ArenaReservation Reservation) Complete()
     {

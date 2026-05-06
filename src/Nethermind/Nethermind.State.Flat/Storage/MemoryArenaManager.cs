@@ -70,6 +70,28 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
     public IArenaWholeView OpenWholeView(ArenaReservation reservation) =>
         new MemoryWholeView(_arenas[reservation.ArenaId], checked((int)reservation.Offset), checked((int)reservation.Size));
 
+    /// <summary>
+    /// Find the still-pending writer for <paramref name="arenaId"/> whose key range
+    /// covers <paramref name="absoluteOffset"/> and return a view borrowing its
+    /// <see cref="MemoryStream.GetBuffer"/>. The pending stream remains owned by this
+    /// manager — view disposal only releases the GCHandle pin, not the buffer.
+    /// </summary>
+    public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size)
+    {
+        foreach (KeyValuePair<(int ArenaId, long Offset), MemoryStream> kv in _pendingStreams)
+        {
+            if (kv.Key.ArenaId != arenaId) continue;
+            long streamStart = kv.Key.Offset;
+            long streamEnd = streamStart + kv.Value.Length;
+            if (absoluteOffset < streamStart || absoluteOffset + size > streamEnd) continue;
+            byte[] buf = kv.Value.GetBuffer();
+            int relOffset = checked((int)(absoluteOffset - streamStart));
+            return new MemoryWholeView(buf, relOffset, checked((int)size));
+        }
+        throw new InvalidOperationException(
+            $"No pending writer for arena {arenaId} covers absolute range [{absoluteOffset}, {absoluteOffset + size}).");
+    }
+
     private sealed unsafe class MemoryWholeView : IArenaWholeView
     {
         private readonly byte[] _buffer;

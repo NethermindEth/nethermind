@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Prometheus;
@@ -120,7 +121,8 @@ public class PersistedSnapshotCompactor(
         using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, ArenaReservationTags.LinkedCompacted))
         {
             long sw = Stopwatch.GetTimestamp();
-            PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref arenaWriter.GetWriter(), referencedIds, mergedBloom);
+            PersistedSnapshotBuilder.NWayMergeSnapshots<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
+                snapshots, ref arenaWriter.GetWriter(), referencedIds, mergedBloom);
 
             for (int i = 0; i < snapshots.Count; i++)
             {

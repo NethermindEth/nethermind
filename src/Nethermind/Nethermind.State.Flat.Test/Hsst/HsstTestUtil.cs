@@ -8,7 +8,7 @@ namespace Nethermind.State.Flat.Test;
 
 internal static class HsstTestUtil
 {
-    public delegate void BuildAction(ref HsstBuilder<PooledByteBufferWriter.Writer> builder);
+    public delegate void BuildAction(ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder);
 
     /// <summary>
     /// Helper for tests: Create builder, execute action, dispose and return result.
@@ -16,7 +16,7 @@ internal static class HsstTestUtil
     public static byte[] BuildToArray(BuildAction buildAction, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int minSeparatorLength = 0)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
-        HsstBuilder<PooledByteBufferWriter.Writer> builder = new(ref pooled.GetWriter(), new HsstBTreeOptions
+        HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder = new(ref pooled.GetWriter(), new HsstBTreeOptions
         {
             MinSeparatorLength = minSeparatorLength,
             MaxLeafEntries = maxLeafEntries,

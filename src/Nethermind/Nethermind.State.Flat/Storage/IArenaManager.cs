@@ -14,6 +14,17 @@ public unsafe interface IArenaManager : IDisposable, IPageEvictionHandler
     IArenaWholeView OpenWholeView(ArenaReservation reservation);
 
     /// <summary>
+    /// Open a read-only view of bytes that have been written to <paramref name="arenaId"/>
+    /// at the absolute range <c>[absoluteOffset, absoluteOffset + size)</c> through a still-open
+    /// <see cref="ArenaWriter"/> (i.e. before <see cref="CompleteWrite"/> is called). The caller
+    /// is responsible for flushing the writer's buffer first; for file-backed managers the
+    /// returned view is a fresh mmap, for the in-memory test manager it borrows the pending
+    /// stream's backing buffer. Used by <see cref="ArenaBufferWriter.OpenReader"/> to let an
+    /// HSST index builder read back the data section it just emitted.
+    /// </summary>
+    IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size);
+
+    /// <summary>
     /// Raw pointer to the first byte of <paramref name="reservation"/> within the
     /// owning arena's mmap. Long-offset arithmetic on the returned pointer is valid
     /// for <paramref name="size"/> bytes. Pointer lifetime matches the reservation
