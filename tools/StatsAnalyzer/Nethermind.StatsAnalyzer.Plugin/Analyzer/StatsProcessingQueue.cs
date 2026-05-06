@@ -10,31 +10,20 @@ public sealed class StatsProcessingQueue<TData, TStat>(
 {
     private bool _disposed;
 
-    public void Dispose()
-    {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-    }
-
     public void Enqueue(TData item)
     {
         buffer.Add(item);
     }
 
-    private void Dispose(bool disposing)
+    public void Dispose()
     {
         if (_disposed) return;
-        if (disposing && !ct.IsCancellationRequested)
+        if (!ct.IsCancellationRequested)
         {
             statsAnalyzer.Add(buffer);
             buffer.Reset();
         }
 
         _disposed = true;
-    }
-
-    ~StatsProcessingQueue()
-    {
-        Dispose(false);
     }
 }
