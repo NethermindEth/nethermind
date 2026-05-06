@@ -737,11 +737,11 @@ public static class PersistedSnapshotBuilder
 
             using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
 
-            ReadOnlySpan<byte> KeyOf(int i) { Bound b = enums[i].CurrentKey; return sessions[i].GetSpan().Slice((int)b.Offset, b.Length); }
-
             while (true)
             {
-                // Find min key across all active enumerators, newest wins on tie
+                // Find min key across all active enumerators, newest wins on tie. Each
+                // comparison pins both keys via the source reader; for span-backed readers
+                // (NoOpPin) the pins are zero-cost.
                 int minIdx = -1;
                 for (int i = 0; i < n; i++)
                 {
@@ -751,26 +751,36 @@ public static class PersistedSnapshotBuilder
                         minIdx = i;
                         continue;
                     }
-                    int cmp = KeyOf(i).SequenceCompareTo(KeyOf(minIdx));
+                    Bound bI = enums[i].CurrentKey;
+                    Bound bM = enums[minIdx].CurrentKey;
+                    WholeReadSessionReader rI = sessions[i].GetReader();
+                    WholeReadSessionReader rM = sessions[minIdx].GetReader();
+                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
+                    using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
+                    int cmp = pinI.Buffer.SequenceCompareTo(pinM.Buffer);
                     if (cmp < 0) minIdx = i;
                     else if (cmp == 0) minIdx = i; // newer (higher index) wins
                 }
 
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> snap = sessions[minIdx].GetSpan();
                 Bound keyBound = enums[minIdx].CurrentKey;
                 Bound valBound = enums[minIdx].CurrentValue;
-                ReadOnlySpan<byte> minKey = snap.Slice((int)keyBound.Offset, keyBound.Length);
-                builder.Add(minKey, snap.Slice((int)valBound.Offset, valBound.Length));
+                WholeReadSessionReader minIdxReader = sessions[minIdx].GetReader();
+                using NoOpPin keyPin = minIdxReader.PinBuffer(keyBound.Offset, keyBound.Length);
+                using NoOpPin valPin = minIdxReader.PinBuffer(valBound.Offset, valBound.Length);
+                ReadOnlySpan<byte> minKey = keyPin.Buffer;
+                builder.Add(minKey, valPin.Buffer);
 
                 for (int i = 0; i < n; i++)
                 {
                     if (i == minIdx || !hasMore[i]) continue;
-                    if (KeyOf(i).SequenceCompareTo(minKey) == 0)
+                    Bound bI = enums[i].CurrentKey;
+                    WholeReadSessionReader rI = sessions[i].GetReader();
+                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
+                    if (pinI.Buffer.SequenceCompareTo(minKey) == 0)
                     {
-                        WholeReadSessionReader r = sessions[i].GetReader();
-                        hasMore[i] = enums[i].MoveNext(in r);
+                        hasMore[i] = enums[i].MoveNext(in rI);
                     }
                 }
                 {
@@ -1067,8 +1077,6 @@ public static class PersistedSnapshotBuilder
 
             using HsstBuilder<TWriter> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
-            ReadOnlySpan<byte> KeyOf(int i) { Bound b = enums[i].CurrentKey; return sessions[i].GetSpan().Slice((int)b.Offset, b.Length); }
-
             while (true)
             {
                 int minIdx = -1;
@@ -1076,28 +1084,40 @@ public static class PersistedSnapshotBuilder
                 {
                     if (!hasMore[i]) continue;
                     if (minIdx < 0) { minIdx = i; continue; }
-                    int cmp = KeyOf(i).SequenceCompareTo(KeyOf(minIdx));
+                    Bound bI = enums[i].CurrentKey;
+                    Bound bM = enums[minIdx].CurrentKey;
+                    WholeReadSessionReader rI = sessions[i].GetReader();
+                    WholeReadSessionReader rM = sessions[minIdx].GetReader();
+                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
+                    using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
+                    int cmp = pinI.Buffer.SequenceCompareTo(pinM.Buffer);
                     if (cmp < 0) minIdx = i;
                 }
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> minIdxSnap = sessions[minIdx].GetSpan();
                 Bound minKeyBound = enums[minIdx].CurrentKey;
-                ReadOnlySpan<byte> minKey = minIdxSnap.Slice((int)minKeyBound.Offset, minKeyBound.Length);
+                WholeReadSessionReader minIdxReader = sessions[minIdx].GetReader();
+                using NoOpPin minKeyPin = minIdxReader.PinBuffer(minKeyBound.Offset, minKeyBound.Length);
+                ReadOnlySpan<byte> minKey = minKeyPin.Buffer;
 
                 int matchCount = 0;
                 for (int i = 0; i < n; i++)
                 {
-                    if (hasMore[i] && KeyOf(i).SequenceCompareTo(minKey) == 0)
+                    if (!hasMore[i]) continue;
+                    Bound bI = enums[i].CurrentKey;
+                    WholeReadSessionReader rI = sessions[i].GetReader();
+                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
+                    if (pinI.Buffer.SequenceCompareTo(minKey) == 0)
                         matchingSources[matchCount++] = i;
                 }
 
                 if (matchCount == 1)
                 {
                     int srcIdx = matchingSources[0];
-                    ReadOnlySpan<byte> snap = sessions[srcIdx].GetSpan();
                     Bound vb = enums[srcIdx].CurrentValue;
-                    outerBuilder.Add(minKey, snap.Slice((int)vb.Offset, vb.Length));
+                    WholeReadSessionReader srcReader = sessions[srcIdx].GetReader();
+                    using NoOpPin valPin = srcReader.PinBuffer(vb.Offset, vb.Length);
+                    outerBuilder.Add(minKey, valPin.Buffer);
                 }
                 else
                 {
@@ -1233,8 +1253,6 @@ public static class PersistedSnapshotBuilder
 
             using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
-            ReadOnlySpan<byte> KeyOf(int i) { Bound b = enums[i].CurrentKey; return sessions[i].GetSpan().Slice((int)b.Offset, b.Length); }
-
             while (true)
             {
                 int minIdx = -1;
@@ -1246,34 +1264,46 @@ public static class PersistedSnapshotBuilder
                         minIdx = i;
                         continue;
                     }
-                    int cmp = KeyOf(i).SequenceCompareTo(KeyOf(minIdx));
+                    Bound bI = enums[i].CurrentKey;
+                    Bound bM = enums[minIdx].CurrentKey;
+                    WholeReadSessionReader rI = sessions[i].GetReader();
+                    WholeReadSessionReader rM = sessions[minIdx].GetReader();
+                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
+                    using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
+                    int cmp = pinI.Buffer.SequenceCompareTo(pinM.Buffer);
                     if (cmp < 0) minIdx = i;
                 }
 
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> minKey = KeyOf(minIdx);
+                Bound minKeyBound = enums[minIdx].CurrentKey;
+                WholeReadSessionReader minIdxReader = sessions[minIdx].GetReader();
+                using NoOpPin minKeyPin = minIdxReader.PinBuffer(minKeyBound.Offset, minKeyBound.Length);
+                ReadOnlySpan<byte> minKey = minKeyPin.Buffer;
 
                 int matchCount = 0;
                 for (int i = 0; i < n; i++)
                 {
-                    if (hasMore[i] && KeyOf(i).SequenceCompareTo(minKey) == 0)
+                    if (!hasMore[i]) continue;
+                    Bound bI = enums[i].CurrentKey;
+                    WholeReadSessionReader rI = sessions[i].GetReader();
+                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
+                    if (pinI.Buffer.SequenceCompareTo(minKey) == 0)
                         matchingSources[matchCount++] = i;
                 }
 
                 if (matchCount == 1)
                 {
                     int srcIdx = matchingSources[0];
-                    ReadOnlySpan<byte> snap = sessions[srcIdx].GetSpan();
                     Bound vb = enums[srcIdx].CurrentValue;
-                    int valOff = (int)vb.Offset;
-                    int valLen = vb.Length;
-                    builder.Add(minKey, snap.Slice(valOff, valLen));
+                    WholeReadSessionReader srcReader = sessions[srcIdx].GetReader();
+                    using NoOpPin perAddrPin = srcReader.PinBuffer(vb.Offset, vb.Length);
+                    ReadOnlySpan<byte> perAddrHsst = perAddrPin.Buffer;
+                    builder.Add(minKey, perAddrHsst);
                     if (bloom is not null)
                     {
                         ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
                         bloom.Add(addrKey);
-                        ReadOnlySpan<byte> perAddrHsst = snap.Slice(valOff, valLen);
                         if (TryGet(perAddrHsst, PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
                             AddSlotKeysToBloom(slotSection, addrKey, bloom);
                     }
@@ -1342,8 +1372,9 @@ public static class PersistedSnapshotBuilder
         int destructBarrier = -1;
         for (int j = 0; j < matchCount; j++)
         {
-            ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-            if (TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)
+            WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+            using NoOpPin perAddrPin = r.PinBuffer(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+            if (TryGet(perAddrPin.Buffer, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)
                 && sdVal.Length == 1 && sdVal[0] == 0x00)
                 destructBarrier = j;
         }
@@ -1356,9 +1387,9 @@ public static class PersistedSnapshotBuilder
         {
             for (int j = slotStart; j < matchCount; j++)
             {
-                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan()
-                    .Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                if (TryGet(perAddr, PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
+                WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+                using NoOpPin perAddrPin = r.PinBuffer(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                if (TryGet(perAddrPin.Buffer, PersistedSnapshot.SlotSubTag, out ReadOnlySpan<byte> slotSection))
                     AddSlotKeysToBloom(slotSection, addrBloomKey, bloom);
             }
         }
@@ -1372,8 +1403,9 @@ public static class PersistedSnapshotBuilder
             (int Offset, int Length)[] slotBounds = slotBoundsList.UnsafeGetInternalArray();
             for (int j = slotStart; j < matchCount; j++)
             {
-                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                if (TryGetBound(perAddr, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
+                WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+                using NoOpPin perAddrPin = r.PinBuffer(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                if (TryGetBound(perAddrPin.Buffer, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                 {
                     slotSources[slotSourceCount] = j;
                     slotBounds[slotSourceCount] = (perAddrBounds[j].Offset + slotOff, slotLen);
@@ -1383,7 +1415,9 @@ public static class PersistedSnapshotBuilder
 
             if (slotSourceCount == 1)
             {
-                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, sessions[matchingSources[slotSources[0]]].GetSpan().Slice(slotBounds[0].Offset, slotBounds[0].Length));
+                WholeReadSessionReader r = sessions[matchingSources[slotSources[0]]].GetReader();
+                using NoOpPin slotPin = r.PinBuffer(slotBounds[0].Offset, slotBounds[0].Length);
+                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, slotPin.Buffer);
             }
             else if (slotSourceCount > 1)
             {
@@ -1450,8 +1484,9 @@ public static class PersistedSnapshotBuilder
         {
             for (int j = matchCount - 1; j >= 0; j--)
             {
-                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                if (TryGet(perAddr, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account) && account.Length > 0)
+                WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+                using NoOpPin perAddrPin = r.PinBuffer(perAddrBounds[j].Offset, perAddrBounds[j].Length);
+                if (TryGet(perAddrPin.Buffer, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account) && account.Length > 0)
                 {
                     perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, account);
                     break;
