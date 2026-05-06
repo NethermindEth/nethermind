@@ -920,6 +920,7 @@
           "Nethermind.Crypto": "[1.38.0-unstable, )",
           "Nethermind.Evm": "[1.38.0-unstable, )",
           "Nethermind.Facade": "[1.38.0-unstable, )",
+          "Nethermind.History": "[1.38.0-unstable, )",
           "Nethermind.Network.Dns": "[1.38.0-unstable, )",
           "Nethermind.Sockets": "[1.38.0-unstable, )",
           "Nethermind.Synchronization": "[1.38.0-unstable, )",
