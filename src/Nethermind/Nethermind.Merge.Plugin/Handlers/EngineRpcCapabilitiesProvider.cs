@@ -60,6 +60,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
 
             // Always-on SSZ-REST paths (The Merge baseline)
             _capabilities["POST /engine/v1/payloads"] = (true, false);
+            _capabilities["GET /engine/v1/payloads/{payload_id}"] = (true, false);
             _capabilities["POST /engine/v1/forkchoice"] = (true, false);
             _capabilities["POST /engine/v1/capabilities"] = (true, false);
             _capabilities["POST /engine/v1/client/version"] = (true, false);
@@ -69,8 +70,8 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
             _capabilities["POST /engine/v2/payloads"] = (spec.WithdrawalsEnabled, false);
             _capabilities["POST /engine/v2/forkchoice"] = (spec.WithdrawalsEnabled, false);
             _capabilities["GET /engine/v2/payloads/{payload_id}"] = (spec.WithdrawalsEnabled, false);
-            _capabilities["POST /engine/v2/payload-bodies/hashes"] = (spec.WithdrawalsEnabled, false);
-            _capabilities["GET /engine/v2/payload-bodies/by-range/{start}/{count}"] = (spec.WithdrawalsEnabled, false);
+            _capabilities["POST /engine/v1/payloads/bodies/by-hash"] = (spec.WithdrawalsEnabled, false);
+            _capabilities["POST /engine/v1/payloads/bodies/by-range"] = (spec.WithdrawalsEnabled, false);
 
             // Cancun SSZ-REST paths
             _capabilities["POST /engine/v3/payloads"] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
@@ -91,8 +92,8 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
             _capabilities["POST /engine/v5/payloads"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
             _capabilities["GET /engine/v6/payloads/{payload_id}"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
             _capabilities["POST /engine/v4/forkchoice"] = (spec.IsEip7843Enabled, spec.IsEip7843Enabled);
-            _capabilities["POST /engine/v2/payload-bodies/hashes"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-            _capabilities["GET /engine/v2/payload-bodies/by-range/{start}/{count}"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities["POST /engine/v2/payloads/bodies/by-hash"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities["POST /engine/v2/payloads/bodies/by-range"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
         }
 
         return _capabilities;

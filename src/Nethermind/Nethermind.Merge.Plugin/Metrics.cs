@@ -82,7 +82,7 @@ namespace Nethermind.Merge.Plugin
         [DataMember(Name = "execution_engine_ssz_rest_decode_failures_total")]
         public static long SszRestDecodeFailuresTotal { get; set; }
 
-        [GaugeMetric]
+        [CounterMetric]
         [Description("Total bytes received in SSZ-REST engine API request bodies")]
         [DataMember(Name = "execution_engine_ssz_rest_request_bytes_total")]
         public static long SszRestRequestBytesTotal { get; set; }

@@ -1800,6 +1800,97 @@ public partial class EngineModuleTests
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
     }
 
+    [Test]
+    public void SszRestPathsAreAdvertised_for_Mainnet()
+    {
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
+        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
+
+        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data
+            .Where(static s => s.Contains(' '))
+            .ToArray();
+
+        // Assert every path that must be present for mainnet (foundation.json schedules up to Osaka).
+        // Amsterdam-gated paths (IsEip7928Enabled / IsEip7843Enabled) are intentionally excluded here
+        // because foundation.json does not yet schedule Amsterdam; they are covered by a separate test below.
+        result.Should().Contain(new[]
+        {
+            // Paris baseline
+            "POST /engine/v1/payloads",
+            "GET /engine/v1/payloads/{payload_id}",
+            "POST /engine/v1/forkchoice",
+            "POST /engine/v1/capabilities",
+            "POST /engine/v1/client/version",
+            "POST /engine/v1/transition-configuration",
+
+            // Shanghai bodies (v1)
+            "POST /engine/v1/payloads/bodies/by-hash",
+            "POST /engine/v1/payloads/bodies/by-range",
+
+            // Cancun blobs
+            "POST /engine/v1/blobs",
+
+            // Osaka blobs
+            "POST /engine/v3/blobs",
+        });
+
+        // Amsterdam-gated paths must NOT appear when foundation.json does not schedule Amsterdam.
+        result.Should().NotContain(new[]
+        {
+            "POST /engine/v2/payloads/bodies/by-hash",
+            "POST /engine/v2/payloads/bodies/by-range",
+            "POST /engine/v5/payloads",
+            "GET /engine/v6/payloads/{payload_id}",
+            "POST /engine/v4/forkchoice",
+        });
+    }
+
+    [Test]
+    public void SszRestPathsAreAdvertised_for_Amsterdam()
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Amsterdam.Instance);
+        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
+        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
+
+        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data
+            .Where(static s => s.Contains(' '))
+            .ToArray();
+
+        result.Should().Contain(new[]
+        {
+            // Paris baseline
+            "POST /engine/v1/payloads",
+            "GET /engine/v1/payloads/{payload_id}",
+            "POST /engine/v1/forkchoice",
+            "POST /engine/v1/capabilities",
+            "POST /engine/v1/client/version",
+            "POST /engine/v1/transition-configuration",
+
+            // Shanghai bodies (v1)
+            "POST /engine/v1/payloads/bodies/by-hash",
+            "POST /engine/v1/payloads/bodies/by-range",
+
+            // Amsterdam bodies (v2)
+            "POST /engine/v2/payloads/bodies/by-hash",
+            "POST /engine/v2/payloads/bodies/by-range",
+
+            // Cancun blobs
+            "POST /engine/v1/blobs",
+
+            // Osaka blobs
+            "POST /engine/v3/blobs",
+
+            // Amsterdam payloads / forkchoice
+            "POST /engine/v5/payloads",
+            "GET /engine/v6/payloads/{payload_id}",
+            "POST /engine/v4/forkchoice",
+        });
+    }
+
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(
         IEngineRpcModule rpc, MergeTestBlockchain chain, Hash256 headBlockHash, Hash256 finalizedBlockHash,
         Hash256 safeBlockHash,
