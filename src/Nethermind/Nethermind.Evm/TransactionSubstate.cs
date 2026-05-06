@@ -17,8 +17,7 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>(Address.EqualityComparer);
-    private static readonly JournalCollection<LogEntry> _emptyLogs = new();
+    private static readonly JournalSet<Address> _emptyDestroyList = new(Address.EqualityComparer);
 
     private const string SomeError = "error";
     public const string Revert = "revert";
@@ -44,8 +43,8 @@ public readonly ref struct TransactionSubstate
         { 0x51, "uninitialized function" },
     }.ToFrozenDictionary();
 
-    private readonly IHashSetEnumerableCollection<Address>? _destroyList;
-    private readonly JournalCollection<LogEntry>? _logs;
+    private readonly JournalSet<Address>? _destroyList;
+    private readonly JournalCollection<LogEntry> _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
@@ -54,8 +53,8 @@ public readonly ref struct TransactionSubstate
     public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
-    public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
+    public JournalCollection<LogEntry> Logs => _logs;
+    public JournalSet<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
     {
@@ -64,13 +63,13 @@ public readonly ref struct TransactionSubstate
         EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = _emptyDestroyList;
-        _logs = _emptyLogs;
+        _logs = [];
         ShouldRevert = false;
     }
 
     public TransactionSubstate(ReadOnlyMemory<byte> bytes,
         long refund,
-        IHashSetEnumerableCollection<Address> destroyList,
+        JournalSet<Address> destroyList,
         JournalCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,

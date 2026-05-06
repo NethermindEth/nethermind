@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -61,12 +62,13 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
+                IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
                 if (shouldValidate)
                 {
-                    BlockAccessListManager.CheckPerTxInclusion(block, i, currentTx, spec, totalRegularGas, totalStateGas);
+                    BlockAccessListManager.CheckPerTxInclusion(block, i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
                 }
 
-                ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions, in intrinsicGas);
                 totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -254,6 +256,20 @@ public partial class BlockProcessor
             ProcessingOptions processingOptions)
         {
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+            if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+        }
+
+        private static void ProcessTransaction(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider,
+            Block block,
+            Transaction currentTx,
+            int index,
+            BlockReceiptsTracer receiptsTracer,
+            ProcessingOptions processingOptions,
+            in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
+        {
+            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
     }

@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
@@ -35,7 +34,18 @@ namespace Nethermind.Evm.TransactionProcessing
         ILogManager? logManager,
         bool parallel = false)
         : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options, in IntrinsicGas<TGasPolicy> intrinsicGas)
+        {
+            if (options == ExecutionOptions.BuildUp)
+            {
+                WorldState.TakeSnapshot(true);
+            }
+
+            return ExecuteCore(transaction, txTracer, options, in intrinsicGas);
+        }
+    }
 
     /// <summary>
     /// Non-generic TransactionProcessor for backward compatibility with EthereumGasPolicy.
@@ -145,11 +155,42 @@ namespace Nethermind.Evm.TransactionProcessing
             return result;
         }
 
+        protected TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
+            {
+                if (_systemTransactionProcessor is null)
+                {
+                    Interlocked.CompareExchange(ref _systemTransactionProcessor,
+                        new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager),
+                        null);
+                }
+                return _systemTransactionProcessor.Execute(tx, tracer, opts);
+            }
+
+            TransactionResult result = Execute(tx, tracer, opts, in intrinsicGas);
+            if (Logger.IsTrace) Logger.Trace($"Tx {tx.Hash} was executed, {result}");
+            return result;
+        }
+
         protected virtual TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
             IReleaseSpec spec = GetSpec(header);
+            IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
+            return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
+        }
 
+        protected TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, in IntrinsicGas<TGasPolicy> intrinsicGas)
+        {
+            BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+            IReleaseSpec spec = GetSpec(header);
+            return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
+        }
+
+        private TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts, BlockHeader header, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas)
+        {
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
             // commit - is for standard execute, we will commit the state after execution
@@ -158,7 +199,6 @@ namespace Nethermind.Evm.TransactionProcessing
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
 
             TransactionResult result;
-            IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
@@ -203,9 +243,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // the priority fee in the destroyed account's balance.
             if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
-                if (substate.DestroyList.Count > 1)
+                JournalSet<Address> destroyList = substate.DestroyList;
+                if (destroyList.Count > 1)
                 {
-                    Address[] orderedDestroyList = [.. substate.DestroyList];
+                    Address[] orderedDestroyList = [.. destroyList];
                     Array.Sort(orderedDestroyList, GenericComparer.GetOptimized<Address>());
                     foreach (Address toBeDestroyed in orderedDestroyList)
                     {
@@ -214,7 +255,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    foreach (Address toBeDestroyed in destroyList)
                     {
                         FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed);
                     }
