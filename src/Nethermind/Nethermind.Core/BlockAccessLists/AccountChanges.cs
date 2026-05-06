@@ -200,16 +200,8 @@ public class AccountChanges : IEquatable<AccountChanges>
     public void AddBalanceChange(BalanceChange balanceChange)
         => _balanceChanges[balanceChange.Index] = balanceChange;
 
-    public bool PopBalanceChange(uint index, [NotNullWhen(true)] out BalanceChange? balanceChange)
-    {
-        balanceChange = null;
-        if (PopChange(_balanceChanges, index, out BalanceChange change))
-        {
-            balanceChange = change;
-            return true;
-        }
-        return false;
-    }
+    internal bool TryPopBalanceChange(uint index, out BalanceChange balanceChange)
+        => PopChange(_balanceChanges, index, out balanceChange);
 
     public BalanceChange? BalanceChangeAtIndex(uint index)
         => _balanceChanges.TryGetValue(index, out BalanceChange balanceChange) ? balanceChange : null;
@@ -217,16 +209,8 @@ public class AccountChanges : IEquatable<AccountChanges>
     public void AddNonceChange(NonceChange nonceChange)
         => _nonceChanges.Add(nonceChange.Index, nonceChange);
 
-    public bool PopNonceChange(uint index, [NotNullWhen(true)] out NonceChange? nonceChange)
-    {
-        nonceChange = null;
-        if (PopChange(_nonceChanges, index, out NonceChange change))
-        {
-            nonceChange = change;
-            return true;
-        }
-        return false;
-    }
+    internal bool TryPopNonceChange(uint index, out NonceChange nonceChange)
+        => PopChange(_nonceChanges, index, out nonceChange);
 
     public NonceChange? NonceChangeAtIndex(uint index)
         => _nonceChanges.TryGetValue(index, out NonceChange nonceChange) ? nonceChange : null;
@@ -234,16 +218,8 @@ public class AccountChanges : IEquatable<AccountChanges>
     public void AddCodeChange(CodeChange codeChange)
         => _codeChanges.Add(codeChange.Index, codeChange);
 
-    public bool PopCodeChange(uint index, [NotNullWhen(true)] out CodeChange? codeChange)
-    {
-        codeChange = null;
-        if (PopChange(_codeChanges, index, out CodeChange change))
-        {
-            codeChange = change;
-            return true;
-        }
-        return false;
-    }
+    internal bool TryPopCodeChange(uint index, out CodeChange codeChange)
+        => PopChange(_codeChanges, index, out codeChange);
 
     public CodeChange? CodeChangeAtIndex(uint index)
         => _codeChanges.TryGetValue(index, out CodeChange codeChange) ? codeChange : null;
@@ -493,23 +469,21 @@ public class AccountChanges : IEquatable<AccountChanges>
     private static bool SetEquals<T>(SortedSet<T> left, SortedSet<T> right)
         => left.Count == right.Count && left.SetEquals(right);
 
-    private static bool PopChange<T>(SortedList<uint, T> changes, uint index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
+    private static bool PopChange<T>(SortedList<uint, T> changes, uint index, out T change) where T : struct, IIndexedChange
     {
-        change = default;
-
-        if (changes.Count == 0)
-            return false;
-
-        int c = changes.Count;
-        KeyValuePair<uint, T> lastChange = new(changes.Keys[c - 1], changes.Values[c - 1]);
-
-        if (lastChange.Key == index)
+        int count = changes.Count;
+        if (count != 0)
         {
-            change = lastChange.Value;
-            changes.RemoveAt(c - 1);
-            return true;
+            count--;
+            IList<uint> keys = changes.Keys;
+            if (keys[count] == index)
+            {
+                change = changes.Values[count];
+                changes.RemoveAt(count);
+                return true;
+            }
         }
-
+        change = default;
         return false;
     }
 }

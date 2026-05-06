@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -47,22 +46,20 @@ public record SlotChanges(UInt256 Key, SortedList<uint, StorageChange> Changes)
     public void AddStorageChange(StorageChange storageChange)
         => Changes.Add(storageChange.Index, storageChange);
 
-    public bool TryPopStorageChange(uint index, [NotNullWhen(true)] out StorageChange? storageChange)
+    internal bool TryPopStorageChangeDirect(uint index, out StorageChange storageChange)
     {
-        storageChange = null;
-
-        if (Changes.Count == 0)
-            return false;
-
-        StorageChange lastChange = Changes.Values[Changes.Count - 1];
-
-        if (lastChange.Index == index)
+        int c = Changes.Count;
+        if (c != 0)
         {
-            Changes.RemoveAt(Changes.Count - 1);
-            storageChange = lastChange;
-            return true;
+            StorageChange last = Changes.Values[c - 1];
+            if (last.Index == index)
+            {
+                Changes.RemoveAt(c - 1);
+                storageChange = last;
+                return true;
+            }
         }
-
+        storageChange = default;
         return false;
     }
 
