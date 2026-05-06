@@ -33,6 +33,7 @@ internal class XdcTransactionProcessor(
         logManager)
 {
     private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
+    internal IWorldState RewardWorldState => WorldState;
 
     protected override void PayFees(
         Transaction tx,

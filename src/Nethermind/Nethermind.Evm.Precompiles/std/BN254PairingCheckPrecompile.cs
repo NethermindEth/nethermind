@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class BN254PairingPrecompile
+public partial class BN254PairingCheckPrecompile
 {
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {

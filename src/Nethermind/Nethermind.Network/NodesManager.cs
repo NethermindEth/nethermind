@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -131,7 +132,7 @@ public abstract class NodesManager(string path, ILogger logger)
         return nodes;
     }
 
-    protected virtual Task SaveFileAsync()
+    protected virtual Task SaveFileAsync(CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -140,6 +141,6 @@ public abstract class NodesManager(string path, ILogger logger)
             EthereumJsonSerializer.JsonOptionsIndented
             );
 
-        return File.WriteAllTextAsync(path, contents);
+        return File.WriteAllTextAsync(path, contents, cancellationToken);
     }
 }
