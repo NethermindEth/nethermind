@@ -47,6 +47,12 @@ public interface IStateCompositionConfig : IConfig
                               "the RPC worker is not pinned indefinitely. 0 or negative disables the timeout.",
         DefaultValue = "30")]
     int InspectContractTimeoutSeconds { get; set; }
+
+    [ConfigItem(Description = "Persist a snapshot every N successful incremental diffs (overwrites). " +
+                              "Bounds rescan loss to ≤ N blocks if the chain regresses past FlatDb's " +
+                              "bundle window before the next graceful shutdown.",
+        DefaultValue = "100")]
+    int SnapshotIntervalDiffs { get; set; }
 }
 
 public class StateCompositionConfig : IStateCompositionConfig
@@ -60,4 +66,5 @@ public class StateCompositionConfig : IStateCompositionConfig
     public bool PersistSnapshots { get; set; } = true;
     public bool TrackDepthIncrementally { get; set; } = true;
     public int InspectContractTimeoutSeconds { get; set; } = 30;
+    public int SnapshotIntervalDiffs { get; set; } = 100;
 }
