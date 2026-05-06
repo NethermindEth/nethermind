@@ -847,7 +847,7 @@ public class CliqueBlockProducerTests
     [Test, Retry(3)]
     public async Task Many_validators_can_process_blocks()
     {
-        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, AddressComparer.Instance).ToArray();
+        PrivateKey[] keys = new[] { TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC }.OrderBy(static pk => pk.Address, GenericComparer.GetOptimized<Address>()).ToArray();
 
         On goerli = On.FastGoerli;
         for (int i = 0; i < keys.Length; i++)

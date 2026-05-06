@@ -48,6 +48,21 @@ namespace Nethermind.AuRa.Test
             finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
         }
 
+        [Test]
+        public void repeated_SetMainBlockBranchProcessor_is_idempotent()
+        {
+            // The merge plugin can end up calling SetMainBlockBranchProcessor via the wrapper
+            // as well. Initialization must be safe to invoke more than once.
+            BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
+            FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _validatorStore, _logManager);
+            finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
+            finalizationManager.SetMainBlockBranchProcessor(_blockProcessor);
+
+            finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
+        }
+
         private void FinalizeToLevel(long upperLevel, IChainLevelInfoRepository chainLevelInfoRepository)
         {
             for (long i = 0; i <= upperLevel; i++)

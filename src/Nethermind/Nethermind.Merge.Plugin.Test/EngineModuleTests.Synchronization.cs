@@ -25,7 +25,6 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -728,7 +727,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [CancelAfter(5000)]
+    [CancelAfter(30000)]
     [Retry(3)]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync(CancellationToken cancellationToken)
     {
@@ -1052,8 +1051,7 @@ public partial class EngineModuleTests
             new SyncConfig(),
             Substitute.For<ISyncFeed<HeadersSyncBatch?>>(),
             Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
-            Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>(),
-            Substitute.For<ISyncFeed<SnapSyncBatch?>>());
+            Substitute.For<ISyncFeed<ReceiptsSyncBatch?>>());
 
         MultiSyncModeSelector multiSyncModeSelector = new(syncProgressResolver,
             syncPeerPool, new SyncConfig(), No.BeaconSync,

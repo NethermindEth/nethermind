@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -13,7 +14,7 @@ public partial class Sha256Precompile : IPrecompile<Sha256Precompile>
     {
         byte[] output = new byte[32];
 
-        ZiskBindings.Crypto.sha256_c(inputData.Span, (nuint)inputData.Length, output);
+        Accelerators.Sha256(inputData.Span, output);
 
         return output;
     }

@@ -14,6 +14,7 @@ using CkzgLib;
 using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -60,7 +61,7 @@ public partial class EngineModuleTests
             ParentBeaconBlockRoot = TestItem.KeccakB
         };
 
-        ResultWrapper<object?> buildResult = await testingRpcModule.testing_buildBlockV1(
+        ResultWrapper<object> buildResult = await testingRpcModule.testing_buildBlockV1(
             head.Hash!,
             payloadAttributes,
             [],
@@ -83,6 +84,32 @@ public partial class EngineModuleTests
 
         newPayloadResult.Result.Should().Be(Result.Success);
         newPayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_advances_chain_head()
+    {
+        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
+        ITestingRpcModule testingRpcModule = chain.Container.Resolve<ITestingRpcModule>();
+
+        Block head = chain.BlockTree.Head!;
+        long initialHeadNumber = head.Number;
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = head.Timestamp + 12,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakB
+        };
+
+        ResultWrapper<Hash256> result = await testingRpcModule.testing_commitBlockV1(payloadAttributes, [], []);
+
+        result.Result.Should().Be(Result.Success);
+        result.Data.Should().NotBeNull();
+        chain.BlockTree.Head!.Number.Should().Be(initialHeadNumber + 1);
+        chain.BlockTree.Head.Hash.Should().Be(result.Data);
     }
 
     [Test]

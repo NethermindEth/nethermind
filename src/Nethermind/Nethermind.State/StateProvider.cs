@@ -429,6 +429,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => _logger.Trace($"Creating account: {address} with balance {balance.ToHexString(skipLeadingZeros: true)} and nonce {nonce.ToHexString(skipLeadingZeros: true)}");
     }
 
+    // used by Arbitrum
     public void CreateEmptyAccountIfDeletedOrNew(Address address)
     {
         if (_intraTxCache.TryGetValue(address, out StackList<int> value))

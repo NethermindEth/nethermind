@@ -112,13 +112,11 @@ namespace Nethermind.Consensus.Clique
 
                     // If we're at an checkpoint block, make a snapshot if it's known
                     BlockHeader? previousHeader = header;
-                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    if (header is null)
-                    {
-                        throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
-                    }
+                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                        ?? throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
 
-                    if (header.Hash is null) throw new InvalidOperationException("Block tree block without hash set");
+                    if (header.Hash is null)
+                        throw new InvalidOperationException("Block tree block without hash set");
 
                     Hash256 parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
@@ -127,7 +125,7 @@ namespace Nethermind.Consensus.Clique
 
                         if (_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
-                        SortedList<Address, long> signers = new(signersCount, AddressComparer.Instance);
+                        SortedList<Address, long> signers = new(signersCount, GenericComparer.GetOptimized<Address>());
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
@@ -164,7 +162,7 @@ namespace Nethermind.Consensus.Clique
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + s.Key))}");
+                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, GenericComparer.GetOptimized<Address>()).Select(s => $"  Signer {signerIndex++}: " + s.Key))}");
                     }
                 }
 

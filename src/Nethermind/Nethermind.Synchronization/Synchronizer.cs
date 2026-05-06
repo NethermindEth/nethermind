@@ -6,10 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Network.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -40,8 +38,7 @@ namespace Nethermind.Synchronization
         INodeStatsManager nodeStatsManager,
         [KeyFilter(nameof(FullSyncFeed))] SyncFeedComponent<BlocksRequest> fullSyncComponent,
         [KeyFilter(nameof(FastSyncFeed))] SyncFeedComponent<BlocksRequest> fastSyncComponent,
-        SyncFeedComponent<StateSyncBatch> stateSyncComponent,
-        SyncFeedComponent<SnapSyncBatch> snapSyncComponent,
+        IStateSyncRunner stateSyncRunner,
         [KeyFilter(nameof(HeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> fastHeaderComponent,
         SyncFeedComponent<BodiesSyncBatch> oldBodiesComponent,
         SyncFeedComponent<ReceiptsSyncBatch> oldReceiptsComponent,
@@ -78,12 +75,7 @@ namespace Nethermind.Synchronization
 
                 StartFastSyncComponents();
 
-                if (syncConfig.SnapSync)
-                {
-                    StartSnapSyncComponents();
-                }
-
-                StartStateSyncComponents();
+                StartSnapAndStateSyncComponents();
             }
 
             if (syncConfig.ExitOnSynced)
@@ -144,25 +136,9 @@ namespace Nethermind.Synchronization
             });
         }
 
-        private void StartStateSyncComponents()
+        private void StartSnapAndStateSyncComponents()
         {
-            Task syncDispatcherTask = stateSyncComponent.Dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("State sync failed", t.Exception);
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info("State sync task completed.");
-                }
-            });
-        }
-
-
-        private void StartSnapSyncComponents()
-        {
-            Task _ = snapSyncComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
+            Task _ = stateSyncRunner.Run(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -247,8 +223,6 @@ namespace Nethermind.Synchronization
             Task feedsTask = Task.WhenAll(
                 fullSyncComponent.Feed.FeedTask,
                 fastSyncComponent.Feed.FeedTask,
-                stateSyncComponent.Feed.FeedTask,
-                snapSyncComponent.Feed.FeedTask,
                 fastHeaderComponent.Feed.FeedTask,
                 oldBodiesComponent.Feed.FeedTask,
                 oldReceiptsComponent.Feed.FeedTask);
@@ -270,8 +244,6 @@ namespace Nethermind.Synchronization
         {
             WireFeedWithModeSelector(fullSyncComponent.Feed);
             WireFeedWithModeSelector(fastSyncComponent.Feed);
-            WireFeedWithModeSelector(stateSyncComponent.Feed);
-            WireFeedWithModeSelector(snapSyncComponent.Feed);
             WireFeedWithModeSelector(fastHeaderComponent.Feed);
             WireFeedWithModeSelector(oldBodiesComponent.Feed);
             WireFeedWithModeSelector(oldReceiptsComponent.Feed);
@@ -349,9 +321,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed), ConfigureFastSync)
             .RegisterNamedComponentInItsOwnLifetime<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed), ConfigureFullSync)
 
-            .AddSingleton<SyncPeerPool, IBlockTree, INodeStatsManager, IBetterPeerStrategy, INetworkConfig, ILogManager>(
-                    (blockTree, stats, betterPeerStrategy, networkConfig, logManager) =>
-                        new SyncPeerPool(blockTree, stats, betterPeerStrategy, networkConfig, logManager))
+            .AddSingleton<SyncPeerPool>()
                 .Bind<ISyncPeerPool, SyncPeerPool>()
                 .Bind<IPeerDifficultyRefreshPool, SyncPeerPool>()
 
@@ -415,14 +385,22 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         serviceCollection
             .AddSingleton<ProgressTracker>()
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
-            .AddSingleton<ISnapProvider, SnapProvider>();
+            .AddSingleton<ISnapProvider, SnapProvider>()
+            .AddSingleton<ISimpleSyncFeed<SnapSyncBatch>, SnapSyncFeed>()
+            .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
+            .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>, SnapSyncAllocationStrategyFactory>()
+            .AddSingleton<ISnapSyncRunner, SnapSyncRunner>();
 
-        ConfigureSingletonSyncFeed<SnapSyncBatch, SnapSyncFeed, SnapSyncDownloader, SnapSyncAllocationStrategyFactory>(serviceCollection);
-
-        if (!syncConfig.FastSync || !syncConfig.SnapSync)
-        {
-            serviceCollection.AddSingleton<ISyncFeed<SnapSyncBatch>, NoopSyncFeed<SnapSyncBatch>>();
-        }
+        serviceCollection.Register(static ctx => new SimpleDispatcher<SnapSyncBatch>(
+            ctx.Resolve<ISimpleSyncFeed<SnapSyncBatch>>(),
+            ctx.Resolve<ISyncDownloader<SnapSyncBatch>>(),
+            ctx.Resolve<IPeerAllocationStrategyFactory<SnapSyncBatch>>(),
+            AllocationContexts.Snap,
+            ctx.Resolve<ISyncPeerPool>(),
+            ctx.Resolve<ISyncConfig>(),
+            ctx.Resolve<ILogManager>()))
+            .AsSelf()
+            .SingleInstance();
     }
 
     private void ConfigureReceiptSyncComponent(ContainerBuilder serviceCollection)
@@ -454,22 +432,22 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         serviceCollection
             .AddSingleton<IStateSyncPivot, StateSyncPivot>()
             .AddSingleton<ITreeSyncStore, PatriciaTreeSyncStore>()
-            .AddSingleton<ITreeSync, TreeSync>();
+            .AddSingleton<TreeSync>()
+            .AddSingleton<ISimpleSyncFeed<StateSyncBatch>, StateSyncFeed>()
+            .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
+            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, StateSyncAllocationStrategyFactory>()
+            .AddSingleton<IStateSyncRunner, StateSyncRunner>();
 
-        ConfigureSingletonSyncFeed<StateSyncBatch, StateSyncFeed, StateSyncDownloader, StateSyncAllocationStrategyFactory>(serviceCollection);
-
-        // Disable it by setting noop
-        if (!syncConfig.FastSync) serviceCollection.AddSingleton<ISyncFeed<StateSyncBatch>, NoopSyncFeed<StateSyncBatch>>();
-
-        if (syncConfig.FastSync && syncConfig.VerifyTrieOnStateSyncFinished)
-        {
-            serviceCollection
-                .AddSingleton<VerifyStateOnStateSyncFinished>()
-                .OnActivate<ISyncFeed<StateSyncBatch>>((_, ctx) =>
-                {
-                    ctx.Resolve<VerifyStateOnStateSyncFinished>();
-                });
-        }
+        serviceCollection.Register(static ctx => new SimpleDispatcher<StateSyncBatch>(
+            ctx.Resolve<ISimpleSyncFeed<StateSyncBatch>>(),
+            ctx.Resolve<ISyncDownloader<StateSyncBatch>>(),
+            ctx.Resolve<IPeerAllocationStrategyFactory<StateSyncBatch>>(),
+            AllocationContexts.State,
+            ctx.Resolve<ISyncPeerPool>(),
+            ctx.Resolve<ISyncConfig>(),
+            ctx.Resolve<ILogManager>()))
+            .AsSelf()
+            .SingleInstance();
     }
 
     private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch> => serviceCollection

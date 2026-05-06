@@ -553,7 +553,7 @@ public static partial class EvmInstructions
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
-        ref readonly UInt256 result = ref vm.WorldState.GetBalance(address);
+        UInt256 result = vm.WorldState.GetBalance(address);
         return stack.PushUInt256<TTracingInst>(in result);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
@@ -581,7 +581,7 @@ public static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.SelfBalance);
 
         // Get balance for currently executing account.
-        ref readonly UInt256 result = ref vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
+        UInt256 result = vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
         return stack.PushUInt256<TTracingInst>(in result);
     }
 
@@ -619,7 +619,7 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst>();
         }
         // Otherwise, push the account's code hash.
-        ref readonly ValueHash256 hash = ref state.GetCodeHash(address);
+        ValueHash256 hash = state.GetCodeHash(address);
         return stack.Push32Bytes<TTracingInst>(in hash);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:

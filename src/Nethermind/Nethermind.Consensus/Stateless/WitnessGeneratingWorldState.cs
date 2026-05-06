@@ -92,7 +92,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
         {
-            keys.Add(kvp.Key.Bytes);
+            keys.Add(kvp.Key.Bytes.ToArray());
             foreach (UInt256 slot in kvp.Value)
                 keys.Add(slot.ToBigEndian());
         }
@@ -155,16 +155,16 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return inner.IsDeadAccount(address);
     }
 
-    public ref readonly UInt256 GetBalance(Address address)
+    public UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetBalance(address);
+        return inner.GetBalance(address);
     }
 
-    public ref readonly ValueHash256 GetCodeHash(Address address)
+    public ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetCodeHash(address);
+        return inner.GetCodeHash(address);
     }
 
     public byte[] GetOriginal(in StorageCell storageCell)
