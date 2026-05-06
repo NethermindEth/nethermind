@@ -40,11 +40,12 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    private enum VariantKind : byte { Empty, PackedArray, ByteTagMap, BTree }
+    private enum VariantKind : byte { Empty, PackedArray, VarPackedArray, ByteTagMap, BTree }
 
     private readonly Bound _scope;
     private readonly VariantKind _kind;
     private readonly PackedArrayVariant? _packed;
+    private readonly VarPackedArrayVariant? _varPacked;
     private readonly ByteTagMapVariant? _byteTag;
     private readonly BTreeVariant? _btree;
     private bool _disposed;
@@ -72,6 +73,10 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
                 _packed = PackedArrayVariant.TryCreate(in reader, scope);
                 _kind = _packed is not null ? VariantKind.PackedArray : VariantKind.Empty;
                 break;
+            case IndexType.VarPackedArray:
+                _varPacked = VarPackedArrayVariant.TryCreate(in reader, scope);
+                _kind = _varPacked is not null ? VariantKind.VarPackedArray : VariantKind.Empty;
+                break;
             case IndexType.ByteTagMap:
                 _byteTag = ByteTagMapVariant.TryCreate(in reader, scope);
                 _kind = _byteTag is not null ? VariantKind.ByteTagMap : VariantKind.Empty;
@@ -94,6 +99,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
     public int Count => _kind switch
     {
         VariantKind.PackedArray => _packed!.Count,
+        VariantKind.VarPackedArray => _varPacked!.Count,
         VariantKind.ByteTagMap => _byteTag!.Count,
         VariantKind.BTree => _btree!.Count,
         _ => 0,
@@ -102,6 +108,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
     public bool MoveNext(scoped in TReader reader) => _kind switch
     {
         VariantKind.PackedArray => _packed!.MoveNext(),
+        VariantKind.VarPackedArray => _varPacked!.MoveNext(in reader),
         VariantKind.ByteTagMap => _byteTag!.MoveNext(in reader),
         VariantKind.BTree => _btree!.MoveNext(in reader),
         _ => false,
@@ -113,6 +120,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
     public Bound CurrentKey => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentKey,
+        VariantKind.VarPackedArray => _varPacked!.CurrentKey,
         VariantKind.ByteTagMap => _byteTag!.CurrentKey,
         VariantKind.BTree => _btree!.CurrentKey,
         _ => default,
@@ -135,6 +143,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
     public Bound CurrentValue => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentValue,
+        VariantKind.VarPackedArray => _varPacked!.CurrentValue,
         VariantKind.ByteTagMap => _byteTag!.CurrentValue,
         VariantKind.BTree => _btree!.CurrentValue,
         _ => default,
@@ -143,6 +152,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
     public long CurrentMetadataStart => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
+        VariantKind.VarPackedArray => _varPacked!.CurrentMetadataStart,
         VariantKind.ByteTagMap => _byteTag!.CurrentMetadataStart,
         VariantKind.BTree => _btree!.CurrentMetadataStart,
         _ => 0,
@@ -199,6 +209,74 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         public Bound CurrentKey => new(_currentEntryStart, _keySize);
         public Bound CurrentValue => new(_currentEntryStart + _keySize, _valueSize);
         public long CurrentMetadataStart => _currentEntryStart + _keySize;
+    }
+
+    // -----------------------------------------------------------------------
+    // VarPackedArray: fixed-stride key+offset table over a packed values section.
+    // Read each entry's end offset on MoveNext to derive the value bound.
+    // -----------------------------------------------------------------------
+
+    private sealed class VarPackedArrayVariant
+    {
+        private readonly long _keyOffsetsStart;
+        private readonly long _valuesStart;
+        private readonly int _keySize;
+        private readonly int _offsetSize;
+        private readonly int _stride;
+        private readonly int _count;
+        private int _index = -1;
+        private long _prevEnd;
+        private long _currentEntryStart;
+        private long _currentValStart;
+        private long _currentValLen;
+
+        public static VarPackedArrayVariant? TryCreate(scoped in TReader reader, Bound scope)
+        {
+            if (!HsstVarPackedArrayReader.TryReadLayout<TReader, TPin>(in reader, scope, out HsstVarPackedArrayReader.Layout layout))
+            {
+                return null;
+            }
+            return new VarPackedArrayVariant(layout);
+        }
+
+        private VarPackedArrayVariant(HsstVarPackedArrayReader.Layout layout)
+        {
+            _keyOffsetsStart = layout.KeyOffsetsStart;
+            _valuesStart = layout.ValuesStart;
+            _keySize = layout.KeySize;
+            _offsetSize = layout.OffsetSize;
+            _stride = layout.EntryStride;
+            _count = layout.EntryCount;
+        }
+
+        public int Count => _count;
+
+        public bool MoveNext(scoped in TReader reader)
+        {
+            int next = _index + 1;
+            if (next >= _count) return false;
+            _currentEntryStart = _keyOffsetsStart + (long)next * _stride;
+
+            Span<byte> endBuf = stackalloc byte[8];
+            endBuf.Clear();
+            using (TPin endPin = reader.PinBuffer(_currentEntryStart + _keySize, _offsetSize))
+            {
+                endPin.Buffer.CopyTo(endBuf);
+            }
+            long thisEnd = (long)BinaryPrimitives.ReadUInt64LittleEndian(endBuf);
+            long prev = next == 0 ? 0 : _prevEnd;
+            if (thisEnd < prev) return false;
+
+            _index = next;
+            _currentValStart = _valuesStart + prev;
+            _currentValLen = thisEnd - prev;
+            _prevEnd = thisEnd;
+            return true;
+        }
+
+        public Bound CurrentKey => new(_currentEntryStart, _keySize);
+        public Bound CurrentValue => new(_currentValStart, _currentValLen);
+        public long CurrentMetadataStart => _currentValStart;
     }
 
     // -----------------------------------------------------------------------

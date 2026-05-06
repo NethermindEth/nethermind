@@ -35,4 +35,19 @@ public enum IndexType : byte
     /// container, where the set of tag positions is fixed and known.
     /// </summary>
     DenseByteIndex = 0x04,
+    /// <summary>
+    /// Variable-size-value packed array. Like <see cref="PackedArray"/> but values
+    /// are variable-length and stored packed up front. The key+offset section after
+    /// the values keeps a fixed stride <c>KeySize + OffsetSize</c> so binary search
+    /// and recursive summary descent work unchanged. Each entry stores
+    /// <c>[Key: KeySize][EndOffset: OffsetSize, LE]</c>; value_i lives in
+    /// <c>Values[EndOffset_{i-1} .. EndOffset_i)</c> with <c>EndOffset_{-1} := 0</c>.
+    /// <c>OffsetSize</c> is chosen at build time to fit <c>ValuesTotalLength</c>
+    /// (1, 2, 4, or 6 bytes — 6-byte LE covers up to 256 TiB).
+    /// Build-time cost: keys and per-entry end offsets are buffered in memory
+    /// until finalize (the key+offset table is emitted AFTER values, and
+    /// <c>OffsetSize</c> can't be picked until the total values length is known).
+    /// Values themselves stream straight to the writer — no value buffering.
+    /// </summary>
+    VarPackedArray = 0x05,
 }

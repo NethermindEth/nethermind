@@ -52,6 +52,17 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly long _flatDataStart;
     private int _flatIdx;
 
+    // VarPackedArray state: fixed-stride key+offset table over a packed values section.
+    // _varIdx is the next entry to yield; -1 = not yet started; >= _varEntryCount = exhausted.
+    private readonly bool _isVar;
+    private readonly int _varKeySize;
+    private readonly int _varOffsetSize;
+    private readonly int _varEntryCount;
+    private readonly long _varKeyOffsetsStart;
+    private readonly long _varValuesStart;
+    private long _varPrevEnd;
+    private int _varIdx;
+
     // ByteTagMap state: tiny single-byte-keyed map; no b-tree walk. _tagIdx tracks next entry.
     private readonly bool _isTagMap;
     private readonly int _tagMapCount;
@@ -118,6 +129,26 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                     return;
                 }
                 break;
+            case IndexType.VarPackedArray:
+                if (!HsstVarPackedArrayReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstVarPackedArrayReader.Layout varLayout))
+                {
+                    _empty = true;
+                    return;
+                }
+                _isVar = true;
+                _varKeySize = varLayout.KeySize;
+                _varOffsetSize = varLayout.OffsetSize;
+                _varEntryCount = varLayout.EntryCount;
+                _varKeyOffsetsStart = varLayout.KeyOffsetsStart;
+                _varValuesStart = varLayout.ValuesStart;
+                _varPrevEnd = 0;
+                _varIdx = -1;
+                if (varLayout.EntryCount == 0)
+                {
+                    _empty = true;
+                    return;
+                }
+                break;
             case IndexType.ByteTagMap:
                 if (!HsstByteTagMapReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstByteTagMapReader.Layout tagLayout))
                 {
@@ -157,6 +188,25 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
             long entryAbsStart = _flatDataStart + (long)next * stride;
             _currentKeyBound = new Bound(entryAbsStart, _flatKeySize);
             _currentValueBound = new Bound(entryAbsStart + _flatKeySize, _flatValueSize);
+            return true;
+        }
+
+        if (_isVar)
+        {
+            int next = _varIdx + 1;
+            if ((uint)next >= (uint)_varEntryCount) return false;
+            int stride = _varKeySize + _varOffsetSize;
+            long entryAbsStart = _varKeyOffsetsStart + (long)next * stride;
+            Span<byte> endBuf = stackalloc byte[8];
+            endBuf.Clear();
+            if (!_reader.TryReadWithReadahead(entryAbsStart + _varKeySize, endBuf[.._varOffsetSize])) return false;
+            long thisEnd = (long)BinaryPrimitives.ReadUInt64LittleEndian(endBuf);
+            long prevEnd = next == 0 ? 0 : _varPrevEnd;
+            if (thisEnd < prevEnd) return false;
+            _varIdx = next;
+            _currentKeyBound = new Bound(entryAbsStart, _varKeySize);
+            _currentValueBound = new Bound(_varValuesStart + prevEnd, thisEnd - prevEnd);
+            _varPrevEnd = thisEnd;
             return true;
         }
 
