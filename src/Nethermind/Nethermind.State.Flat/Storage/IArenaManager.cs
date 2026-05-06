@@ -25,10 +25,11 @@ public interface IArenaManager : IDisposable, IPageEvictionHandler
 
     /// <summary>
     /// Direct-mapped page residency tracker used by readers to record recent OS-page touches
-    /// and trigger per-page <c>MADV_DONTNEED</c> on eviction. Null when the implementation has
-    /// nothing to advise (e.g. the in-memory test arena).
+    /// and trigger per-page <c>MADV_DONTNEED</c> on eviction. Implementations that have nothing
+    /// to advise (e.g. the in-memory test arena) return a 0-capacity tracker whose
+    /// <see cref="PageResidencyTracker.TryTouch"/> is a no-op.
     /// </summary>
-    PageResidencyTracker? PageTracker { get; }
+    PageResidencyTracker PageTracker { get; }
 
     /// <summary>
     /// Number of arena files currently held by this manager.

@@ -63,6 +63,17 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         }
     }
 
+    /// <summary>
+    /// Construct a tracker sized from a byte budget — divides by the OS page size to derive the
+    /// slot count. Non-positive budgets yield a 0-capacity (disabled) tracker.
+    /// </summary>
+    public static PageResidencyTracker FromByteBudget(long bytes)
+    {
+        if (bytes <= 0) return new PageResidencyTracker(0);
+        int capacity = (int)Math.Min(int.MaxValue, bytes / Environment.SystemPageSize);
+        return new PageResidencyTracker(capacity);
+    }
+
     public PageResidencyTracker(int maxCapacity)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);

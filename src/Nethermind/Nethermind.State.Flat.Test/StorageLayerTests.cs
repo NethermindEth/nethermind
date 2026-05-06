@@ -141,7 +141,7 @@ public class StorageLayerTests
     public void ArenaManager_CreateWriterAndComplete_WritesToArena()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
+        using ArenaManager manager = new(arenaDir, new PageResidencyTracker(0), maxArenaSize: 4096);
         manager.Initialize([]);
 
         byte[] data = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -165,7 +165,7 @@ public class StorageLayerTests
     public void ArenaManager_CancelWrite_AllowsReuse()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
+        using ArenaManager manager = new(arenaDir, new PageResidencyTracker(0), maxArenaSize: 4096);
         manager.Initialize([]);
 
         // First write some data to establish a baseline
@@ -202,7 +202,7 @@ public class StorageLayerTests
     public void ArenaManager_CreateWriter_FrontierAdvancesExactly()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 4096);
+        using ArenaManager manager = new(arenaDir, new PageResidencyTracker(0), maxArenaSize: 4096);
         manager.Initialize([]);
 
         // Write small data via ArenaWriter
@@ -235,7 +235,7 @@ public class StorageLayerTests
     public void ArenaManager_ConcurrentWriters_UseDifferentArenas()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
-        using ArenaManager manager = new(arenaDir, maxArenaSize: 200);
+        using ArenaManager manager = new(arenaDir, new PageResidencyTracker(0), maxArenaSize: 200);
         manager.Initialize([]);
 
         // Write some data

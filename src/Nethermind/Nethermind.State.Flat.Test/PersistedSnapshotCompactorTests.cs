@@ -51,8 +51,8 @@ public class PersistedSnapshotCompactorTests
         Directory.CreateDirectory(testDir);
         try
         {
-            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
-            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
             using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 
@@ -343,8 +343,8 @@ public class PersistedSnapshotCompactorTests
         Directory.CreateDirectory(testDir);
         try
         {
-            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), maxArenaSize: 64 * 1024);
-            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), maxArenaSize: 64 * 1024);
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
             using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 

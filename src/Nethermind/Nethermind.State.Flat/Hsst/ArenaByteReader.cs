@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.Hsst;
 public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 {
     private readonly ReadOnlySpan<byte> _data;
-    private readonly PageResidencyTracker? _tracker;
+    private readonly PageResidencyTracker _tracker;
     private readonly IPageEvictionHandler _evictionHandler;
     private readonly int _arenaId;
     private readonly long _baseOffset;
@@ -28,8 +28,9 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
     // bytes within one node.
     private long _lastPageBase;
 
-    public ArenaByteReader(ReadOnlySpan<byte> data, PageResidencyTracker? tracker, IPageEvictionHandler evictionHandler, int arenaId, long baseOffset)
+    public ArenaByteReader(ReadOnlySpan<byte> data, PageResidencyTracker tracker, IPageEvictionHandler evictionHandler, int arenaId, long baseOffset)
     {
+        ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(evictionHandler);
         _data = data;
         _tracker = tracker;
@@ -64,7 +65,7 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 
     private void TouchRange(long localOffset, long length)
     {
-        if (_tracker is null || length <= 0) return;
+        if (length <= 0) return;
         long absStart = _baseOffset + localOffset;
         long absEnd = absStart + length - 1;
         long startPageBase = absStart & ~_pageMask;

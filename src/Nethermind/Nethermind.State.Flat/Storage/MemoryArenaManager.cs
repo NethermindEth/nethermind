@@ -69,7 +69,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     void IPageEvictionHandler.OnPageEvicted(int arenaId, int pageIdx) { }
 
-    public PageResidencyTracker? PageTracker => null;
+    public PageResidencyTracker PageTracker { get; } = new(0);
 
     public int ArenaFileCount => _arenas.Count;
 
@@ -150,5 +150,6 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
         _deadBytes.Clear();
         _pendingStreams.Clear();
         _mutableArenas.Clear();
+        PageTracker.Dispose();
     }
 }

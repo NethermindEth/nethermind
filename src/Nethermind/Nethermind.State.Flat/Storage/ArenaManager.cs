@@ -17,12 +17,6 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     private const string ArenaFileExtension = ".bin";
     private const int DedicatedArenaThreshold = 512 * 1024 * 1024;
 
-    /// <summary>
-    /// Default page-cache budget in bytes (4 GiB). Converted to a page count at construction
-    /// time via <see cref="Environment.SystemPageSize"/> — 1,048,576 pages on a 4 KiB-page system.
-    /// </summary>
-    public const long DefaultPageCacheBytes = 4L * 1024 * 1024 * 1024;
-
     private readonly string _basePath;
     private readonly long _maxArenaSize;
     // Make it prefer earlier arena.
@@ -33,11 +27,11 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     private readonly HashSet<int> _standaloneFiles = [];
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
-    private readonly PageResidencyTracker? _pageTracker;
+    private readonly PageResidencyTracker _pageTracker;
     private int _nextArenaId;
     private bool _disposed;
 
-    public PageResidencyTracker? PageTracker => _pageTracker;
+    public PageResidencyTracker PageTracker => _pageTracker;
 
     public int ArenaFileCount
     {
@@ -57,17 +51,13 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
         }
     }
 
-    public ArenaManager(string basePath, long maxArenaSize = 1L * 1024 * 1024 * 1024, long pageCacheBytes = DefaultPageCacheBytes)
+    public ArenaManager(string basePath, PageResidencyTracker pageTracker, long maxArenaSize = 1L * 1024 * 1024 * 1024)
     {
+        ArgumentNullException.ThrowIfNull(pageTracker);
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
         Directory.CreateDirectory(basePath);
-        int pageCacheCapacity = pageCacheBytes > 0
-            ? (int)Math.Min(int.MaxValue, pageCacheBytes / Environment.SystemPageSize)
-            : 0;
-        _pageTracker = pageCacheCapacity > 0
-            ? new PageResidencyTracker(pageCacheCapacity)
-            : null;
+        _pageTracker = pageTracker;
     }
 
     /// <summary>
@@ -320,7 +310,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             foreach (ArenaFile arena in _arenas.Values)
                 arena.Dispose();
             _arenas.Clear();
-            _pageTracker?.Dispose();
+            // _pageTracker is injected — caller owns disposal.
         }
     }
 }

@@ -213,10 +213,12 @@ public class PageResidencyTrackerTests
     }
 
     [Test]
-    public void ArenaByteReader_NullTracker_DoesNotThrow()
+    public void ArenaByteReader_DisabledTracker_DoesNotThrow()
     {
+        // Capacity-0 tracker is the "disabled" form — TryTouch is a no-op, no allocation.
+        using PageResidencyTracker disabled = new(maxCapacity: 0);
         byte[] data = new byte[64];
-        ArenaByteReader reader = new(data, tracker: null, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
+        ArenaByteReader reader = new(data, disabled, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
         Span<byte> sink = stackalloc byte[8];
         reader.TryRead(4, sink).Should().BeTrue();
         using NoOpPin pin = reader.PinBuffer(0, 16);
