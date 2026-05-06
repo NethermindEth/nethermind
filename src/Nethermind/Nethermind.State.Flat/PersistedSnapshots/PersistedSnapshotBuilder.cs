@@ -524,15 +524,18 @@ public static class PersistedSnapshotBuilder
     internal static void ConvertFullToLinked<TWriter>(PersistedSnapshot fullSnapshot, ref TWriter writer) where TWriter : IByteBufferWriter
     {
         using WholeReadSession session = fullSnapshot.BeginWholeReadSession();
-        ReadOnlySpan<byte> snapshotData = session.GetSpan();
+        WholeReadSessionReader r = session.GetReader();
         using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
         int snapshotId = fullSnapshot.Id;
 
         foreach (byte[] tag in s_columnTags)
         {
-            if (!TryGet(snapshotData, tag, out ReadOnlySpan<byte> column)) continue;
-            int columnOffset = SpanOffset(snapshotData, column);
+            if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen))
+                continue;
+            int columnOffset = (int)colOff;
+            using NoOpPin colPin = r.PinBuffer(colOff, colLen);
+            ReadOnlySpan<byte> column = colPin.Buffer;
 
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
 
@@ -554,10 +557,10 @@ public static class PersistedSnapshotBuilder
                     break;
                 // Nested trie columns: convert inner values to NodeRefs (outer stays BTree, inner is PackedArray)
                 case 0x07:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 4, innerKeySize: 8);
+                    ConvertNestedColumnToNodeRefs(column, columnOffset, ref valueWriter, snapshotId, outerMinSep: 4, innerKeySize: 8);
                     break;
                 case 0x08:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 4, innerKeySize: 33);
+                    ConvertNestedColumnToNodeRefs(column, columnOffset, ref valueWriter, snapshotId, outerMinSep: 4, innerKeySize: 33);
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
@@ -604,11 +607,10 @@ public static class PersistedSnapshotBuilder
     /// Outer keys (address hash prefixes) are preserved. Inner values are replaced with NodeRefs.
     /// </summary>
     private static void ConvertNestedColumnToNodeRefs<TWriter>(
-        ReadOnlySpan<byte> column, ReadOnlySpan<byte> snapshotData, ref TWriter writer,
+        ReadOnlySpan<byte> column, int columnOffsetInSnapshot, ref TWriter writer,
         int snapshotId,
         int outerMinSep = 0, int innerKeySize = 0) where TWriter : IByteBufferWriter
     {
-        int columnOffsetInSnapshot = SpanOffset(snapshotData, column);
         SpanByteReader reader = new(column);
         HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
         using HsstEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, column.Length));
@@ -1488,32 +1490,45 @@ public static class PersistedSnapshotBuilder
 
         // Sub-tag 0x02: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
         // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
-        // filled length 0 under DenseByteIndex) are ignored.
+        // filled length 0 under DenseByteIndex) are ignored. Track the winning bound
+        // snapshot-absolute so we can re-pin at the end without holding a span across
+        // iterations.
         {
-            bool hasSd = false;
-            ReadOnlySpan<byte> sdResult = default;
+            int sdSrcJ = -1;
+            long sdValOff = 0;
+            int sdValLen = 0;
 
             for (int j = 0; j < matchCount; j++)
             {
-                ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice((int)perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                if (!TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) || sdVal.Length == 0)
+                WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+                if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length), PersistedSnapshot.SelfDestructSubTag, out long sdOff, out int sdLen) || sdLen == 0)
                     continue;
 
-                if (!hasSd)
+                if (sdSrcJ < 0)
                 {
-                    hasSd = true;
-                    sdResult = sdVal;
+                    sdSrcJ = j;
+                    sdValOff = sdOff;
+                    sdValLen = sdLen;
                 }
                 else
                 {
                     // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
-                    if (sdVal[0] == 0x00)
-                        sdResult = sdVal;
+                    using NoOpPin firstBytePin = r.PinBuffer(sdOff, 1);
+                    if (firstBytePin.Buffer[0] == 0x00)
+                    {
+                        sdSrcJ = j;
+                        sdValOff = sdOff;
+                        sdValLen = sdLen;
+                    }
                 }
             }
 
-            if (hasSd)
-                perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, sdResult);
+            if (sdSrcJ >= 0)
+            {
+                WholeReadSessionReader r = sessions[matchingSources[sdSrcJ]].GetReader();
+                using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
+                perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, sdPin.Buffer);
+            }
         }
 
         // Sub-tag 0x03: Account — newest wins (walk M-1..0, first present (length>0)).
@@ -1544,11 +1559,18 @@ public static class PersistedSnapshotBuilder
         int n = snapshots.Count;
         using WholeReadSession oldestSession = snapshots[0].BeginWholeReadSession();
         using WholeReadSession newestSession = snapshots[n - 1].BeginWholeReadSession();
-        ReadOnlySpan<byte> oldestData = oldestSession.GetSpan();
-        ReadOnlySpan<byte> newestData = newestSession.GetSpan();
+        WholeReadSessionReader oldestReader = oldestSession.GetReader();
+        WholeReadSessionReader newestReader = newestSession.GetReader();
 
-        TryGet(oldestData, PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> oldestMeta);
-        TryGet(newestData, PersistedSnapshot.MetadataTag, out ReadOnlySpan<byte> newestMeta);
+        // Pin the metadata blobs (small, ~100 B); span-based TryGet then walks them
+        // for individual fields without further reader plumbing.
+        TryGetBound<WholeReadSessionReader, NoOpPin>(in oldestReader, new Bound(0, (int)oldestReader.Length), PersistedSnapshot.MetadataTag, out long oldestMetaOff, out int oldestMetaLen);
+        TryGetBound<WholeReadSessionReader, NoOpPin>(in newestReader, new Bound(0, (int)newestReader.Length), PersistedSnapshot.MetadataTag, out long newestMetaOff, out int newestMetaLen);
+
+        using NoOpPin oldestMetaPin = oldestReader.PinBuffer(oldestMetaOff, oldestMetaLen);
+        using NoOpPin newestMetaPin = newestReader.PinBuffer(newestMetaOff, newestMetaLen);
+        ReadOnlySpan<byte> oldestMeta = oldestMetaPin.Buffer;
+        ReadOnlySpan<byte> newestMeta = newestMetaPin.Buffer;
 
         // Extract fields
         TryGet(oldestMeta, "from_block"u8, out ReadOnlySpan<byte> fromBlock);
