@@ -167,13 +167,22 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
 
-        // Retrieve code information and resolve delegation in a single lookup (avoids redundant GetCodeHash).
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec, out Address? delegated);
+        // Resolve delegation without following: reads codeSource's code (and registers it in the
+        // BAL via GetCodeHash), but does NOT touch the delegation target's code yet. The delegation
+        // target's BAL read must wait until its access cost is successfully paid below — otherwise
+        // an OOG at the delegation gas charge would leave the target in the BAL even though the
+        // EVM never actually accessed its state. EIP-7928 / EEST require BAL reads to be tied to
+        // a paid access.
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, spec, out Address? delegated);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
             if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                     vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
+
+            // Now that the access cost has been paid, fetch the delegated code (which records the
+            // BAL read) and replace the codeInfo with the delegation target's code.
+            codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(delegated, followDelegation: false, spec, out _);
         }
 
         // Charge additional gas if the target account is new or considered empty.
