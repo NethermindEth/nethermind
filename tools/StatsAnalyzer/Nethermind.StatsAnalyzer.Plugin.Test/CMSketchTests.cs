@@ -43,7 +43,7 @@ public class CmSketchTests
     [Test]
     public void test_error_single_bucket()
     {
-        var sketch = _oneBucketOneHashFunction;
+        CmSketch sketch = _oneBucketOneHashFunction;
         sketch.ErrorPerItem.Should().Be(0d);
         // error = 2 / buckets;
         sketch.Error.Should().Be(2d);
@@ -60,7 +60,7 @@ public class CmSketchTests
     [Test]
     public void test_error_two_buckets()
     {
-        var sketch = _twoBucketsSixHashFunctions;
+        CmSketch sketch = _twoBucketsSixHashFunctions;
         sketch.ErrorPerItem.Should().Be(0d);
         // error = 2 / buckets;
         sketch.Error.Should().Be(1d);
@@ -85,7 +85,7 @@ public class CmSketchTests
     [Test]
     public void test_error_sketch_with_01_error()
     {
-        var sketch = _error01Confidence99;
+        CmSketch sketch = _error01Confidence99;
         sketch.Error.Should().BeLessThanOrEqualTo(.01d);
         sketch.Update(Ulong0);
         make_n_updates(Ulong1, 40, sketch);
@@ -123,7 +123,7 @@ public class CmSketchTests
     public void test_buckets()
     {
         int buckets = 1000;
-        var sketch = _highAccuracyHighConfidence;
+        CmSketch sketch = _highAccuracyHighConfidence;
         for (ulong i = 0; i < (ulong)buckets; i++)
         {
             sketch.Query(i).Should().Be(0UL);
@@ -148,7 +148,7 @@ public class CmSketchTests
         ulong randomUlong;
 
 
-        var sketch = new CmSketchBuilder().SetHashFunctions(hashFunctions).SetBuckets(buckets).Build();
+        CmSketch sketch = new CmSketchBuilder().SetHashFunctions(hashFunctions).SetBuckets(buckets).Build();
         Dictionary<ulong, ulong> actualCounts;
 
         const double trials = 100;
@@ -191,7 +191,7 @@ public class CmSketchTests
         int countOfGreaterThanExpectedError = 0;
 
         // Iterate over every value and Qty added
-        foreach (var kvp in actualCounts)
+        foreach (KeyValuePair<ulong, ulong> kvp in actualCounts)
         {
             ulong trueCount = kvp.Value;
             ulong observedCount = sketch.Query(kvp.Key);

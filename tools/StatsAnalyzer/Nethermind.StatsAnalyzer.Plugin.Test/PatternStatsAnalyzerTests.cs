@@ -12,11 +12,11 @@ public class PatternStatsAnalyzerTests
     [SetUp]
     public void SetUp()
     {
-        var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        CmSketch sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _patternStatsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
-        var sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        CmSketch sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _patternStatsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100)
             .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
@@ -200,7 +200,7 @@ public class PatternStatsAnalyzerTests
 
         _patternStatsAnalyzer.Add(executionOpCodes);
 
-        foreach (var stat in _patternStatsAnalyzer.Stats(SortOrder.Unordered))
+        foreach (PatternStat stat in _patternStatsAnalyzer.Stats(SortOrder.Unordered))
         {
             ulong ulong0 = stat.Ngram.Ulong0;
             Assert.That(counts[ulong0] == stat.Count);

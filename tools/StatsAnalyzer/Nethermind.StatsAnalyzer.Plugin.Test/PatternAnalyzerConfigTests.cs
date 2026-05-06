@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Evm;
 using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 using NUnit.Framework;
@@ -30,7 +31,7 @@ public class PatternAnalyzerConfigTests
     public void GetIgnoreSet_ParsesAndTrimsCommaSeparatedInstructions()
     {
         PatternAnalyzerConfig config = new() { Ignore = "JUMPDEST , JUMP" };
-        var set = config.GetIgnoreSet();
+        HashSet<Instruction> set = config.GetIgnoreSet();
         Assert.That(set, Is.EquivalentTo(new[] { Instruction.JUMPDEST, Instruction.JUMP }));
     }
 }

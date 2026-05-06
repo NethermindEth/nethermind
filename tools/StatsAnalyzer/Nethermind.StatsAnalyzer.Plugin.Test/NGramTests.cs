@@ -137,7 +137,7 @@ public class NGramTests
     {
         NGram ngram = new(instructions);
         ngram = ngram.ShiftAdd(instruction);
-        var _instructions = ngram.ToInstructions();
+        Instruction[] _instructions = ngram.ToInstructions();
         if (instructions.Length < 7)
         {
             Assert.That(_instructions[0] == instructions[0]);
@@ -164,7 +164,7 @@ public class NGramTests
 
         int expectedSubsequence = 0;
 
-        foreach (var subSequence in ngram.GetSubsequences())
+        foreach (NGram subSequence in ngram.GetSubsequences())
         {
             NGram expected = new(expectedSubsequences[expectedSubsequence]);
             Assert.That(subSequence == expected,
@@ -200,7 +200,7 @@ public class NGramTests
         Assert.That(expectedSubsequences.Length == topNMap.Count,
             $"Expected: {expectedSubsequences.Length}, Found: {topNMap.Count}");
 
-        foreach (var expectedArray in expectedSubsequences)
+        foreach (Instruction[] expectedArray in expectedSubsequences)
         {
             NGram expectedNGram = new(expectedArray);
             ulong expectedHash = expectedNGram.Ulong0;

@@ -15,6 +15,7 @@ using Nethermind.Specs;
 using NUnit.Framework;
 using Testably.Abstractions.Testing;
 using PatternAnalyzerFileTracer = Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern.PatternAnalyzerFileTracer;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Test;
 
@@ -45,11 +46,11 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         _fileSystem.File.WriteAllText(_testIgnoreFileName, "File content");
         _logger = logManager.GetClassLogger<PatternAnalyzerFileTracerTests>();
 
-        var sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        CmSketch sketch = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _patternStatsAnalyzer = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100).SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch).Build();
 
-        var sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
+        CmSketch sketch2 = new CmSketchBuilder().SetBuckets(1000).SetHashFunctions(4).Build();
         _patternStatsAnalyzerIgnore = new StatsAnalyzerBuilder().SetBufferSizeForSketches(2).SetTopN(100)
             .SetCapacity(100000)
             .SetMinSupport(1).SetSketchResetOrReuseThreshold(0.001).SetSketch(sketch2).Build();
@@ -66,12 +67,12 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
 
     private void ExecuteTransactions(byte[][] codes, PatternAnalyzerFileTracer tracer)
     {
-        var forkActivation = MainnetSpecProvider.PragueActivation;
-        var (block, _) = PrepareTx(forkActivation, 100000, codes[0]);
+        ForkActivation forkActivation = MainnetSpecProvider.PragueActivation;
+        (Core.Block? block, Core.Transaction _) = PrepareTx(forkActivation, 100000, codes[0]);
         tracer.StartNewBlockTrace(block);
         foreach (byte[] code in codes)
         {
-            var (_, transaction) = PrepareTx(forkActivation, 100000, code);
+            (Core.Block _, Core.Transaction? transaction) = PrepareTx(forkActivation, 100000, code);
             ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), txTracer);
             tracer.EndTxTrace();
