@@ -18,17 +18,17 @@ public interface IArenaManager : IDisposable
 
     /// <summary>
     /// MADV_DONTNEED a single OS page within <paramref name="arenaId"/>. Used by
-    /// <see cref="PageSlotCache"/>'s eviction callback. <paramref name="pageIdx"/> is the
+    /// <see cref="PageResidencyTracker"/>'s eviction callback. <paramref name="pageIdx"/> is the
     /// arena-absolute page index (<c>offset / Environment.SystemPageSize</c>).
     /// </summary>
     void AdviseDontNeedPage(int arenaId, int pageIdx);
 
     /// <summary>
-    /// Direct-mapped page cache used by readers to track recent OS-page touches and trigger
-    /// per-page <c>MADV_DONTNEED</c> on eviction. Null when the implementation has nothing
-    /// to advise (e.g. the in-memory test arena).
+    /// Direct-mapped page residency tracker used by readers to record recent OS-page touches
+    /// and trigger per-page <c>MADV_DONTNEED</c> on eviction. Null when the implementation has
+    /// nothing to advise (e.g. the in-memory test arena).
     /// </summary>
-    PageSlotCache? PageCache { get; }
+    PageResidencyTracker? PageTracker { get; }
 
     /// <summary>
     /// Number of arena files currently held by this manager.

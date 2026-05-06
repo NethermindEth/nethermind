@@ -10,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
 
-public class PageSlotCacheTests
+public class PageResidencyTrackerTests
 {
     private sealed class RecordingHandler : IPageEvictionHandler
     {
@@ -28,7 +28,7 @@ public class PageSlotCacheTests
     public void Touch_RepeatedSamePage_NeverEvicts()
     {
         RecordingHandler handler = new();
-        PageSlotCache cache = new(maxCapacity: 4, handler);
+        PageResidencyTracker cache = new(maxCapacity: 4, handler);
 
         for (int i = 0; i < 1000; i++)
             cache.Touch(7, 42);
@@ -43,7 +43,7 @@ public class PageSlotCacheTests
     {
         // maxCapacity=1 → every distinct key collides on the only slot.
         RecordingHandler handler = new();
-        PageSlotCache cache = new(maxCapacity: 1, handler);
+        PageResidencyTracker cache = new(maxCapacity: 1, handler);
 
         cache.Touch(0, 0);
         handler.Evictions.Should().BeEmpty();
@@ -63,7 +63,7 @@ public class PageSlotCacheTests
     public void MaxCapacityZero_TouchIsNoOp()
     {
         RecordingHandler handler = new();
-        PageSlotCache cache = new(maxCapacity: 0, handler);
+        PageResidencyTracker cache = new(maxCapacity: 0, handler);
         cache.Touch(1, 1);
         cache.Touch(2, 2);
         handler.Evictions.Should().BeEmpty();
@@ -74,7 +74,7 @@ public class PageSlotCacheTests
     [Test]
     public void MaxCapacity_RoundsUpToPowerOfTwo()
     {
-        PageSlotCache cache = new(maxCapacity: 3, NoopHandler.Instance);
+        PageResidencyTracker cache = new(maxCapacity: 3, NoopHandler.Instance);
         cache.MaxCapacity.Should().Be(4);
     }
 
@@ -82,7 +82,7 @@ public class PageSlotCacheTests
     public void Clear_RemovesAllEntries()
     {
         RecordingHandler handler = new();
-        PageSlotCache cache = new(maxCapacity: 8, handler);
+        PageResidencyTracker cache = new(maxCapacity: 8, handler);
         cache.Touch(0, 0);
         cache.Touch(0, 1);
         cache.Touch(0, 2);
@@ -99,7 +99,7 @@ public class PageSlotCacheTests
     [Test]
     public void ArenaByteReader_TryRead_TouchesAllSpannedPages()
     {
-        PageSlotCache cache = new(maxCapacity: 1024, NoopHandler.Instance);
+        PageResidencyTracker cache = new(maxCapacity: 1024, NoopHandler.Instance);
         int pageSize = Environment.SystemPageSize;
         long baseOffset = pageSize - 8;
         byte[] data = new byte[pageSize * 2];
@@ -118,7 +118,7 @@ public class PageSlotCacheTests
     [Test]
     public void ArenaByteReader_PinBuffer_TouchesAllSpannedPages()
     {
-        PageSlotCache cache = new(maxCapacity: 1024, NoopHandler.Instance);
+        PageResidencyTracker cache = new(maxCapacity: 1024, NoopHandler.Instance);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 3];
         ArenaByteReader reader = new(data, cache, arenaId: 1, baseOffset: 0);
@@ -138,7 +138,7 @@ public class PageSlotCacheTests
         // whether the next read displaced it. If ArenaByteReader's memo is
         // working, repeated reads on the same page must NOT call Touch and the
         // sentinel must remain.
-        PageSlotCache cache = new(maxCapacity: 1, NoopHandler.Instance);
+        PageResidencyTracker cache = new(maxCapacity: 1, NoopHandler.Instance);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 2];
         ArenaByteReader reader = new(data, cache, arenaId: 0, baseOffset: 0);
@@ -171,10 +171,10 @@ public class PageSlotCacheTests
     }
 
     [Test]
-    public void ArenaByteReader_NullCache_DoesNotThrow()
+    public void ArenaByteReader_NullTracker_DoesNotThrow()
     {
         byte[] data = new byte[64];
-        ArenaByteReader reader = new(data, cache: null, arenaId: 0, baseOffset: 0);
+        ArenaByteReader reader = new(data, tracker: null, arenaId: 0, baseOffset: 0);
         Span<byte> sink = stackalloc byte[8];
         reader.TryRead(4, sink).Should().BeTrue();
         using NoOpPin pin = reader.PinBuffer(0, 16);

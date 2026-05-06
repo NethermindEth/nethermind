@@ -33,11 +33,11 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     private readonly HashSet<int> _standaloneFiles = [];
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
-    private readonly PageSlotCache? _pageCache;
+    private readonly PageResidencyTracker? _pageTracker;
     private int _nextArenaId;
     private bool _disposed;
 
-    public PageSlotCache? PageCache => _pageCache;
+    public PageResidencyTracker? PageTracker => _pageTracker;
 
     public int ArenaFileCount
     {
@@ -65,8 +65,8 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
         int pageCacheCapacity = pageCacheBytes > 0
             ? (int)Math.Min(int.MaxValue, pageCacheBytes / Environment.SystemPageSize)
             : 0;
-        _pageCache = pageCacheCapacity > 0
-            ? new PageSlotCache(pageCacheCapacity, this)
+        _pageTracker = pageCacheCapacity > 0
+            ? new PageResidencyTracker(pageCacheCapacity, this)
             : null;
     }
 
@@ -320,7 +320,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             foreach (ArenaFile arena in _arenas.Values)
                 arena.Dispose();
             _arenas.Clear();
-            _pageCache?.Dispose();
+            _pageTracker?.Dispose();
         }
     }
 }

@@ -9,7 +9,7 @@ using System.Threading;
 namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
-/// Receives eviction notifications from <see cref="PageSlotCache"/>. Implementations typically
+/// Receives eviction notifications from <see cref="PageResidencyTracker"/>. Implementations typically
 /// issue <c>madvise(MADV_DONTNEED)</c> on the evicted page so the kernel can drop it.
 /// </summary>
 public interface IPageEvictionHandler
@@ -18,7 +18,7 @@ public interface IPageEvictionHandler
 }
 
 /// <summary>
-/// Direct-mapped page-tracking cache for arena-backed mmap regions. Each slot occupies a full
+/// Direct-mapped page residency tracker for arena-backed mmap regions. Each slot occupies a full
 /// 64-byte cache line; the slot value packs <c>(arenaId &lt;&lt; 32) | pageIdx</c> with
 /// <c>-1L</c> as the empty sentinel. <see cref="Touch"/> hashes the key to a slot and
 /// unconditionally CAS-replaces the occupant via <see cref="Interlocked.Exchange(ref long, long)"/>;
@@ -37,7 +37,7 @@ public interface IPageEvictionHandler
 /// fire <see cref="IPageEvictionHandler.OnPageEvicted"/> for the page they displaced. Redundant
 /// <c>madvise(DONTNEED)</c> on the same page is wasted work but harmless.
 /// </remarks>
-public sealed unsafe class PageSlotCache : IDisposable
+public sealed unsafe class PageResidencyTracker : IDisposable
 {
     private const long EmptySlot = -1L;
     private const int CacheLineBytes = 64;
@@ -63,7 +63,7 @@ public sealed unsafe class PageSlotCache : IDisposable
         }
     }
 
-    public PageSlotCache(int maxCapacity, IPageEvictionHandler evictionHandler)
+    public PageResidencyTracker(int maxCapacity, IPageEvictionHandler evictionHandler)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
         ArgumentNullException.ThrowIfNull(evictionHandler);
@@ -126,7 +126,7 @@ public sealed unsafe class PageSlotCache : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    ~PageSlotCache() => Dispose();
+    ~PageResidencyTracker() => Dispose();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref long SlotRef(int slotIdx) =>

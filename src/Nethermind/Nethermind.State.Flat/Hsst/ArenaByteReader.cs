@@ -9,13 +9,13 @@ namespace Nethermind.State.Flat.Hsst;
 /// <summary>
 /// Span-backed <see cref="IHsstByteReader{TPin}"/> that, on every read or pin, computes which OS
 /// page(s) the access spans (in arena-absolute terms) and reports them to a
-/// <see cref="PageSlotCache"/>. Page math: <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
+/// <see cref="PageResidencyTracker"/>. Page math: <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
 /// Otherwise identical to <see cref="SpanByteReader"/> — zero-copy slice, <see cref="NoOpPin"/>.
 /// </summary>
 public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 {
     private readonly ReadOnlySpan<byte> _data;
-    private readonly PageSlotCache? _cache;
+    private readonly PageResidencyTracker? _tracker;
     private readonly int _arenaId;
     private readonly long _baseOffset;
     // OS page size is a power of two — use shift for division and mask for modulo.
@@ -27,10 +27,10 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
     // bytes within one node.
     private long _lastPageBase;
 
-    public ArenaByteReader(ReadOnlySpan<byte> data, PageSlotCache? cache, int arenaId, long baseOffset)
+    public ArenaByteReader(ReadOnlySpan<byte> data, PageResidencyTracker? tracker, int arenaId, long baseOffset)
     {
         _data = data;
-        _cache = cache;
+        _tracker = tracker;
         _arenaId = arenaId;
         _baseOffset = baseOffset;
         int pageSize = Environment.SystemPageSize;
@@ -61,19 +61,19 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 
     private void TouchRange(long localOffset, long length)
     {
-        if (_cache is null || length <= 0) return;
+        if (_tracker is null || length <= 0) return;
         long absStart = _baseOffset + localOffset;
         long absEnd = absStart + length - 1;
         long startPageBase = absStart & ~_pageMask;
         long endPageBase = absEnd & ~_pageMask;
         // Fast path: access stays within a single OS page, and that page is the same as the
-        // last touch — nothing new to report to the cache.
+        // last touch — nothing new to report to the tracker.
         if (startPageBase == endPageBase && startPageBase == _lastPageBase) return;
         _lastPageBase = endPageBase;
 
         int firstPage = (int)(absStart >> _pageShift);
         int lastPage = (int)(absEnd >> _pageShift);
         for (int p = firstPage; p <= lastPage; p++)
-            _cache.Touch(_arenaId, p);
+            _tracker.Touch(_arenaId, p);
     }
 }

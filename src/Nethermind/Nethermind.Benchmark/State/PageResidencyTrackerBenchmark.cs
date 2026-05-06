@@ -8,7 +8,7 @@ using Nethermind.State.Flat.Storage;
 namespace Nethermind.Benchmarks.State;
 
 /// <summary>
-/// Microbenchmark for <see cref="PageSlotCache"/>.<see cref="PageSlotCache.Touch"/> — the hot
+/// Microbenchmark for <see cref="PageResidencyTracker"/>.<see cref="PageResidencyTracker.Touch"/> — the hot
 /// path called on every arena read/pin. Sweeps three workloads against a fixed-capacity cache
 /// (64K slots, ~1 GiB of 16 KiB pages or 256 MiB of 4 KiB pages):
 ///   - HitOnly: working set fits in capacity, every touch is a no-op slot match.
@@ -17,7 +17,7 @@ namespace Nethermind.Benchmarks.State;
 /// The eviction handler is a no-op so we measure the cache itself, not <c>madvise</c>.
 /// </summary>
 [MemoryDiagnoser]
-public class PageSlotCacheBenchmark
+public class PageResidencyTrackerBenchmark
 {
     public enum Workload
     {
@@ -34,7 +34,7 @@ public class PageSlotCacheBenchmark
 
     private const int BatchSize = 16_384;
 
-    private PageSlotCache _cache = null!;
+    private PageResidencyTracker _cache = null!;
     private int[] _arenaIds = null!;
     private int[] _pageIdxs = null!;
 
@@ -47,7 +47,7 @@ public class PageSlotCacheBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        _cache = new PageSlotCache(Capacity, NoopHandler.Instance);
+        _cache = new PageResidencyTracker(Capacity, NoopHandler.Instance);
 
         int workingSet = Pattern switch
         {
@@ -78,7 +78,7 @@ public class PageSlotCacheBenchmark
     {
         int[] arenas = _arenaIds;
         int[] pages = _pageIdxs;
-        PageSlotCache cache = _cache;
+        PageResidencyTracker cache = _cache;
         for (int i = 0; i < BatchSize; i++)
             cache.Touch(arenas[i], pages[i]);
         return BatchSize;
