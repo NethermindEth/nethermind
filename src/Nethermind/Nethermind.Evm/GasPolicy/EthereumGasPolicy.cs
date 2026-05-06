@@ -44,13 +44,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         FromLong(0, GasCostOf.CalculateCostPerStateByte(blockGasLimit));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static EthereumGasPolicy CreateSystemTransactionGas(long gasLimit, in EthereumGasPolicy intrinsicGas) => new()
-    {
-        Value = gasLimit,
-        CostPerStateByte = GetCostPerStateByte(in intrinsicGas),
-    };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

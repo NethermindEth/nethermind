@@ -37,15 +37,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual TSelf CreateSystemTransactionIntrinsicGas(long blockGasLimit) => TSelf.FromLong(0);
 
     /// <summary>
-    /// Creates the execution gas state for unchecked system transactions.
-    /// EIP-8037 system calls execute with all gas as regular gas and no state reservoir.
-    /// </summary>
-    /// <param name="gasLimit">The system transaction gas limit.</param>
-    /// <param name="intrinsicGas">The system transaction intrinsic gas context.</param>
-    /// <returns>The available gas state for EVM execution.</returns>
-    static virtual TSelf CreateSystemTransactionGas(long gasLimit, in TSelf intrinsicGas) => TSelf.FromLong(gasLimit);
-
-    /// <summary>
     /// Get the remaining single-dimensional gas available for execution.
     /// This is what's checked against zero to detect out-of-gas conditions.
     /// </summary>

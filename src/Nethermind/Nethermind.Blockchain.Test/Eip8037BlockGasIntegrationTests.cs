@@ -162,7 +162,7 @@ public class Eip8037BlockGasIntegrationTests
 
         TaskCompletionSource<(long, long, InvalidBlockException?)>[] results = ResultsForCount(1);
         // Simulate execution finishing with modest actual gas (post-execution view).
-        // Spec inclusion check would have rejected; IncrementalValidation only sees this.
+        // Spec inclusion check rejects before execution even though post-execution gas would fit.
         results[0].SetResult((21_000, 0, null));
 
         Assert.Throws<InvalidBlockException>(() =>
@@ -173,8 +173,7 @@ public class Eip8037BlockGasIntegrationTests
     /// <summary>
     /// PR 2703 <c>test_creation_tx_state_check_exceeded</c>: creation tx whose state
     /// contribution exceeds remaining state budget. Spec rejects on state dimension.
-    /// Same harness-limitation as above; this test FAILS until pre-tx inclusion check
-    /// is wired in.
+    /// Same harness-limitation as above: post-execution gas is modest, but inclusion must reject.
     /// </summary>
     [Test]
     public void Spec_pr2703_creation_tx_state_check_exceeded_rejects()
