@@ -348,7 +348,7 @@ public class PersistedSnapshotBenchmark
 
     private static byte[] BuildSnapshot(FlatSnapshot snapshot)
     {
-        int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
+        int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using Nethermind.State.Flat.Hsst.PooledByteBufferWriter pooled = new(estimatedSize);
         PersistedSnapshotBuilder.Build(snapshot, ref pooled.GetWriter());
         return pooled.WrittenSpan.ToArray();

@@ -29,6 +29,15 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// - Linked: only trie columns (0x03, 0x05, 0x06, 0x07 inner, 0x08 inner) become
 ///   NodeRef(8 bytes, inline) pointing to the Full snapshot's data region.
 ///   Account (0x01), slot, and self-destruct values are copied as-is (not NodeRefs).
+///
+/// Size cap: a Full persisted snapshot cannot exceed 2 GiB.
+/// <see cref="NodeRef.ValueLengthOffset"/> is a 32-bit int that addresses bytes inside
+/// the referenced Full snapshot, so any byte past 2 GiB is unreachable from a Linked
+/// snapshot's NodeRef. <see cref="ConvertFullToLinked"/> enforces this with a
+/// <c>checked((int)colOff)</c> cast on each column offset.
+/// In practice a Full snapshot covers at most <c>compactSize</c> blocks (the granularity
+/// at which PersistenceManager produces base snapshots) — on mainnet that is around
+/// 40 MiB, so the 2 GiB ceiling is far above the working range.
 /// </summary>
 public static class PersistedSnapshotBuilder
 {
@@ -237,11 +246,16 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    public static int EstimateSize(Snapshot snapshot) =>
-        // Use a conservative multiplier on the snapshot memory estimate.
-        // Clamp to 1 GiB so the buffer stays within ArrayPool's poolable range,
-        // and all arithmetic is done in long to avoid int overflow for large snapshots.
-        (int)Math.Min(1.GiB, snapshot.EstimateMemory() + 1.KiB);
+    /// <summary>
+    /// Estimate of the serialized Full snapshot size, used to size the destination arena
+    /// reservation. Capped at 2 GiB — the hard ceiling on a Full snapshot (see the
+    /// <see cref="NodeRef.ValueLengthOffset"/> note on the class doc above). Returned as
+    /// <see cref="long"/> so callers feeding this into long-typed APIs (e.g. arena
+    /// reservations) don't truncate; the cap also keeps the value within
+    /// <see cref="int"/>.MaxValue for callers that need to allocate a contiguous buffer.
+    /// </summary>
+    public static long EstimateSize(Snapshot snapshot) =>
+        Math.Min(2.GiB, snapshot.EstimateMemory() + 1.KiB);
 
     private static void WriteMetadataColumn<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
     {

@@ -17,7 +17,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
 {
     public static byte[] Build(Snapshot snapshot)
     {
-        int estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
+        int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
         PersistedSnapshotBuilder.Build(snapshot, ref pooled.GetWriter());
         return pooled.WrittenSpan.ToArray();
