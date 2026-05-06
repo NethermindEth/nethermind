@@ -22,7 +22,6 @@ public class HsstReaderBenchmark
     public enum Scenario
     {
         Flat,
-        Flat_NoHashTable,
         BTree,
         BTree_HashIndex,
     }
@@ -37,7 +36,7 @@ public class HsstReaderBenchmark
     [Params(false)]
     public bool SimdEnabled { get; set; }
 
-    [Params(Scenario.Flat, Scenario.Flat_NoHashTable, Scenario.BTree, Scenario.BTree_HashIndex)]
+    [Params(Scenario.Flat, Scenario.BTree, Scenario.BTree_HashIndex)]
     public Scenario Variant { get; set; }
 
     [Params(1024)]
@@ -81,10 +80,7 @@ public class HsstReaderBenchmark
         switch (Variant)
         {
             case Scenario.Flat:
-                BuildFlat(ref pooled.GetWriter(), keys, useHashIndex: true, StrideBytes, SummaryStrideBytes);
-                break;
-            case Scenario.Flat_NoHashTable:
-                BuildFlat(ref pooled.GetWriter(), keys, useHashIndex: false, StrideBytes, SummaryStrideBytes);
+                BuildFlat(ref pooled.GetWriter(), keys, StrideBytes, SummaryStrideBytes);
                 break;
             case Scenario.BTree:
                 BuildBTree(ref pooled.GetWriter(), keys, useHashIndex: false);
@@ -111,13 +107,12 @@ public class HsstReaderBenchmark
         }
     }
 
-    private static void BuildFlat(ref PooledByteBufferWriter.Writer writer, byte[][] keys, bool useHashIndex, int strideBytes, int summaryStrideBytes)
+    private static void BuildFlat(ref PooledByteBufferWriter.Writer writer, byte[][] keys, int strideBytes, int summaryStrideBytes)
     {
         // summaryStrideBytes ignored (HsstPackedArrayBuilder uses one stride for both levels).
         _ = summaryStrideBytes;
         HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> b = new(ref writer, KeyLen, ValLen,
-            binaryIndexStrideBytes: strideBytes,
-            useHashIndex: useHashIndex);
+            binaryIndexStrideBytes: strideBytes);
         try
         {
             Span<byte> v = stackalloc byte[ValLen];
@@ -165,7 +160,7 @@ public class HsstReaderBenchmark
         try
         {
             // Footer layout (HsstFlatReader.TryReadLayout):
-            //   ...[Metadata: keySize, valueSize, entryCount, tableSize,
+            //   ...[Metadata: keySize, valueSize, entryCount,
             //       entriesPerCk0Log2, recordsPerCkHigherLog2, depth,
             //       counts[0..depth)][MetadataLength: u8][IndexType: u8]
             int hsstEnd = hsst.Length;
@@ -176,14 +171,13 @@ public class HsstReaderBenchmark
             int keySize = Leb128.Read(meta, ref p);
             int valueSize = Leb128.Read(meta, ref p);
             int entryCount = Leb128.Read(meta, ref p);
-            int tableSize = Leb128.Read(meta, ref p);
             int e0log2 = Leb128.Read(meta, ref p);
             int rhlog2 = Leb128.Read(meta, ref p);
             int depth = Leb128.Read(meta, ref p);
             int[] counts = new int[depth];
             for (int i = 0; i < depth; i++) counts[i] = Leb128.Read(meta, ref p);
 
-            string line = $"{s},stride={stride},summary={summaryStride},keySize={keySize},entries={entryCount},tableSize={tableSize}," +
+            string line = $"{s},stride={stride},summary={summaryStride},keySize={keySize},entries={entryCount}," +
                           $"entriesPerCk0={1 << e0log2},recordsPerCkHigher={1 << rhlog2},depth={depth},counts=[{string.Join(",", counts)}]";
             File.AppendAllText("/tmp/hsst-bench-layouts.csv", line + "\n");
         }

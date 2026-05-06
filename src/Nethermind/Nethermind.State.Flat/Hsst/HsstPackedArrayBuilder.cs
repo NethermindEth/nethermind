@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
@@ -19,8 +18,7 @@ namespace Nethermind.State.Flat.Hsst;
 ///   [Summary L1: Count_1 * KeySize]
 ///   ...
 ///   [Summary L(D-1): Count_{D-1} * KeySize]
-///   [HashTable: 4 * TableSize bytes]   (omitted when TableSize == 0)
-///   [Metadata: KeySize, ValueSize, EntryCount, TableSize, EntriesPerCkLevel0,
+///   [Metadata: KeySize, ValueSize, EntryCount, EntriesPerCkLevel0,
 ///              RecordsPerCkHigher, Depth, Count_0..Count_{D-1} as LEB128]
 ///   [MetadataLength: u8]
 ///   [IndexType: u8 = 0x06]
@@ -29,9 +27,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// are derived from the level's strides (<c>EntriesPerCkLevel0</c> for level 0, which spans
 /// data; <c>RecordsPerCkHigher</c> for level k+1, which spans level k). Level 0 ck i covers
 /// data entries [i*N, min((i+1)*N - 1, EntryCount - 1)]; higher-level ck i covers level-below
-/// records [i*M, min((i+1)*M - 1, prevCount - 1)]. The hash table is optional (controlled by
-/// the <c>useHashIndex</c> ctor flag); when enabled, the slot for a key is computed via
-/// Lemire's multiply-shift reduction so the table need not be a power of two.
+/// records [i*M, min((i+1)*M - 1, prevCount - 1)].
 /// </summary>
 public ref struct HsstPackedArrayBuilder<TWriter>
     where TWriter : IByteBufferWriter
@@ -39,24 +35,16 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     /// <summary>Default checkpoint stride: emit a binary-index entry every ~1 KiB of (key+value).</summary>
     public const int DefaultBinaryIndexStrideBytes = 1024;
 
-    /// <summary>Hash table is sized so its load factor stays at or below this value.</summary>
-    private const double HashTableTargetUtilization = 0.75;
-
-    private const uint HashEmpty = 0u;
-    private const uint HashCollision = 0xFFFFFFFFu;
-
     private ref TWriter _writer;
     private readonly int _baseOffset;
     private readonly int _keySize;
     private readonly int _valueSize;
     private readonly int _strideBytes;
-    private readonly bool _useHashIndex;
     private readonly int _entriesPerCkLevel0Log2;
     private readonly int _entriesPerCkLevel0;
 
     private NativeMemoryListRef<byte> _prevKeyBuffer;
     private NativeMemoryListRef<byte> _checkpointKeys;
-    private NativeMemoryListRef<uint> _entryHashes;
 
     private int _entryCount;
     private int _level0Count;
@@ -69,8 +57,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     /// </summary>
     public HsstPackedArrayBuilder(ref TWriter writer, int keySize, int valueSize,
         int binaryIndexStrideBytes = DefaultBinaryIndexStrideBytes,
-        int expectedKeyCount = 16,
-        bool useHashIndex = true)
+        int expectedKeyCount = 16)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(keySize);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keySize, 255);
@@ -82,7 +69,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         _keySize = keySize;
         _valueSize = valueSize;
         _strideBytes = binaryIndexStrideBytes;
-        _useHashIndex = useHashIndex;
         // Entries-per-ck at level 0: floor(stride / entry size), then rounded down to the
         // nearest power of two so the reader can use a mask + shift instead of div/mul.
         // With fixed-size entries this turns the byte-stride knob into an exact entry-count
@@ -97,7 +83,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         // One checkpoint per stride; size lower bound is keySize bytes.
         int checkpointSlots = Math.Max(8, expectedKeyCount / 8);
         _checkpointKeys = new NativeMemoryListRef<byte>(Math.Max(64, checkpointSlots * Math.Max(1, keySize)));
-        _entryHashes = useHashIndex ? new NativeMemoryListRef<uint>(expectedKeyCount) : default;
 
         _entryCount = 0;
         _level0Count = 0;
@@ -107,7 +92,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     {
         _prevKeyBuffer.Dispose();
         _checkpointKeys.Dispose();
-        if (_useHashIndex) _entryHashes.Dispose();
     }
 
     /// <summary>
@@ -128,8 +112,6 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         if (_keySize > 0) IByteBufferWriter.Copy(ref _writer, key);
         if (_valueSize > 0) IByteBufferWriter.Copy(ref _writer, value);
 
-        if (_useHashIndex) _entryHashes.Add(HsstHash.HashKey(key));
-
         _entryCount++;
 
         _prevKeyBuffer.Clear();
@@ -145,8 +127,8 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     }
 
     /// <summary>
-    /// Finalize the HSST: emits the recursive summary levels, optional HashTable, Metadata,
-    /// MetadataLength, and the trailing IndexType discriminator byte.
+    /// Finalize the HSST: emits the recursive summary levels, Metadata, MetadataLength,
+    /// and the trailing IndexType discriminator byte.
     /// </summary>
     public void Build()
     {
@@ -261,19 +243,10 @@ public ref struct HsstPackedArrayBuilder<TWriter>
             }
         }
 
-        // Optional hash table.
-        int tableSize = 0;
-        if (_useHashIndex && _entryCount > 0)
-        {
-            tableSize = HsstHash.BucketCount(_entryCount, HashTableTargetUtilization);
-            EmitHashTable(tableSize);
-        }
-
         int metaStart = _writer.Written;
         WriteLeb128(_keySize);
         WriteLeb128(_valueSize);
         WriteLeb128(_entryCount);
-        WriteLeb128(tableSize);
         WriteLeb128(_entriesPerCkLevel0Log2);
         WriteLeb128(recordsPerCkHigherLog2);
         WriteLeb128(depth);
@@ -293,27 +266,5 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         Span<byte> buf = _writer.GetSpan(5);
         int len = Leb128.Write(buf, 0, value);
         _writer.Advance(len);
-    }
-
-    private void EmitHashTable(int tableSize)
-    {
-        int n = _entryCount;
-        using NativeMemoryListRef<uint> table = new(tableSize, tableSize);
-        Span<uint> slots = table.AsSpan();
-        ReadOnlySpan<uint> hashes = _entryHashes.AsSpan();
-
-        for (int i = 0; i < n; i++)
-        {
-            uint slot = HsstHash.Slot(hashes[i], tableSize);
-            // Slot stores 1-based entry index so 0 stays the unambiguous empty sentinel.
-            slots[(int)slot] = slots[(int)slot] == HashEmpty ? (uint)(i + 1) : HashCollision;
-        }
-
-        for (int i = 0; i < tableSize; i++)
-        {
-            Span<byte> dst = _writer.GetSpan(4);
-            BinaryPrimitives.WriteUInt32LittleEndian(dst, slots[i]);
-            _writer.Advance(4);
-        }
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -24,8 +23,6 @@ internal static class HsstPackedArrayReader
         public int KeySize;
         public int ValueSize;
         public int EntryCount;
-        public long HashTableStart;
-        public int HashTableSize;
         public int Depth;
         public int EntriesPerCkLevel0Log2;
         public int RecordsPerCkHigherLog2;
@@ -108,11 +105,10 @@ internal static class HsstPackedArrayReader
         int keySize = Leb128.Read(metaBuf, ref p);
         int valueSize = Leb128.Read(metaBuf, ref p);
         int entryCount = Leb128.Read(metaBuf, ref p);
-        int tableSize = Leb128.Read(metaBuf, ref p);
         int entriesPerCk0Log2 = Leb128.Read(metaBuf, ref p);
         int recordsPerCkHigherLog2 = Leb128.Read(metaBuf, ref p);
         int depth = Leb128.Read(metaBuf, ref p);
-        if (keySize < 0 || valueSize < 0 || entryCount < 0 || tableSize < 0 ||
+        if (keySize < 0 || valueSize < 0 || entryCount < 0 ||
             entriesPerCk0Log2 < 0 || recordsPerCkHigherLog2 < 0 || depth < 0) return false;
         if (keySize > 255) return false;
         if (depth > HsstPackedArrayLayout.MaxSummaryDepth) return false;
@@ -123,7 +119,6 @@ internal static class HsstPackedArrayReader
         layout.KeySize = keySize;
         layout.ValueSize = valueSize;
         layout.EntryCount = entryCount;
-        layout.HashTableSize = tableSize;
         layout.Depth = depth;
         layout.EntriesPerCkLevel0Log2 = entriesPerCk0Log2;
         layout.RecordsPerCkHigherLog2 = recordsPerCkHigherLog2;
@@ -137,15 +132,9 @@ internal static class HsstPackedArrayReader
             layout.LevelCounts[i] = c;
         }
 
-        long hashTableEnd = metaAbsStart;
-        long hashTableBytes = (long)tableSize * 4;
-        long hashTableStart = hashTableEnd - hashTableBytes;
-        if (hashTableStart < hsstStart) return false;
-        layout.HashTableStart = hashTableStart;
-
-        // Summaries lie before the hash table. Each record is exactly KeySize bytes.
+        // Summaries lie immediately before the metadata. Each record is exactly KeySize bytes.
         // Stored as offsets from hsstStart so the inline array can be int-typed.
-        long cursor = hashTableStart;
+        long cursor = metaAbsStart;
         for (int lvl = depth - 1; lvl >= 0; lvl--)
         {
             long lvlBytes = (long)counts[lvl] * keySize;
@@ -178,42 +167,8 @@ internal static class HsstPackedArrayReader
 
         if (L.EntryCount == 0) return false;
 
-        // One key-compare buffer shared between the hash fast path and the descent
-        // binary search; they're mutually exclusive in execution but stackalloc lifts
-        // to the function frame, so collapsing two 255-B buffers into one halves the
-        // always-allocated stack overhead.
         Span<byte> keyCmp = stackalloc byte[255];
         Span<byte> keyCmpSlice = keyCmp[..L.KeySize];
-
-        // Hash fast path applies only to keys of the right length and when a table is present.
-        if (key.Length == L.KeySize && L.HashTableSize > 0)
-        {
-            uint h = HsstHash.HashKey(key);
-            uint slot = HsstHash.Slot(h, L.HashTableSize);
-            Span<byte> slotBuf = stackalloc byte[4];
-            if (!reader.TryRead(L.HashTableStart + slot * 4, slotBuf)) return false;
-            uint slotValue = BinaryPrimitives.ReadUInt32LittleEndian(slotBuf);
-
-            const uint Empty = 0u;
-            const uint Collision = 0xFFFFFFFFu;
-
-            if (slotValue == Empty)
-            {
-                if (exactMatch) return false;
-            }
-            else if (slotValue != Collision)
-            {
-                int entryIdx = (int)(slotValue - 1);
-                if ((uint)entryIdx >= (uint)L.EntryCount) return false;
-                if (!reader.TryRead(L.EntryAbsStart(entryIdx), keyCmpSlice)) return false;
-                if (keyCmpSlice.SequenceEqual(key))
-                {
-                    resultBound = new Bound(L.ValueAbsStart(entryIdx), L.ValueSize);
-                    return true;
-                }
-                if (exactMatch) return false;
-            }
-        }
 
         // Recursive summary descent. At each level k, the active slab is [levelLo, levelHi]
         // (closed). Find the smallest ck c with key >= target in that slab; if none, take
@@ -266,7 +221,7 @@ internal static class HsstPackedArrayReader
         }
 
         // Binary search [rangeStart, rangeEnd] in Data for the smallest entry whose key
-        // is >= target. Reuses keyCmpSlice from the hash fast path scope above.
+        // is >= target.
         int lo = rangeStart;
         int hi = rangeEnd + 1;
         while (lo < hi)

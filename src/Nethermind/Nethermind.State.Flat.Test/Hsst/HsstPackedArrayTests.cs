@@ -16,7 +16,7 @@ public class HsstPackedArrayTests
     private const int KeySize = 16;
     private const int ValueSize = 8;
 
-    private static byte[] BuildFlat(byte[][] keys, byte[][] values, int strideBytes = HsstPackedArrayBuilder<PooledByteBufferWriter.Writer>.DefaultBinaryIndexStrideBytes, bool useHashIndex = true)
+    private static byte[] BuildFlat(byte[][] keys, byte[][] values, int strideBytes = HsstPackedArrayBuilder<PooledByteBufferWriter.Writer>.DefaultBinaryIndexStrideBytes)
     {
         using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
         HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> builder = new(
@@ -24,8 +24,7 @@ public class HsstPackedArrayTests
             keySize: KeySize,
             valueSize: ValueSize,
             binaryIndexStrideBytes: strideBytes,
-            expectedKeyCount: keys.Length,
-            useHashIndex: useHashIndex);
+            expectedKeyCount: keys.Length);
         try
         {
             for (int i = 0; i < keys.Length; i++) builder.Add(keys[i], values[i]);
@@ -219,45 +218,6 @@ public class HsstPackedArrayTests
         finally
         {
             builder.Dispose();
-        }
-    }
-
-    [TestCase(1, false)]
-    [TestCase(7, false)]
-    [TestCase(256, false)]
-    [TestCase(5000, false)]
-    public void NoHashIndex_HitsAndFloorAndMisses(int count, bool _)
-    {
-        (byte[][] keys, byte[][] values) = MakeSortedKeys(count, seed: 23);
-        byte[] data = BuildFlat(keys, values, useHashIndex: false);
-
-        Assert.That(data[^1], Is.EqualTo((byte)IndexType.PackedArray));
-
-        // Exact-match hits.
-        for (int i = 0; i < count; i++)
-        {
-            Assert.That(TryGet(data, keys[i], out byte[] got), Is.True, $"missing key {i}");
-            Assert.That(got, Is.EqualTo(values[i]));
-        }
-
-        // Floor lookups agree with linear search.
-        Random rng = new(31);
-        for (int t = 0; t < 32; t++)
-        {
-            byte[] probe = new byte[KeySize];
-            rng.NextBytes(probe);
-            int floorIdx = -1;
-            for (int i = 0; i < count; i++)
-            {
-                if (keys[i].AsSpan().SequenceCompareTo(probe) <= 0) floorIdx = i; else break;
-            }
-            bool ok = TryGetFloor(data, probe, out byte[] got);
-            if (floorIdx < 0) Assert.That(ok, Is.False);
-            else
-            {
-                Assert.That(ok, Is.True);
-                Assert.That(got, Is.EqualTo(values[floorIdx]));
-            }
         }
     }
 
