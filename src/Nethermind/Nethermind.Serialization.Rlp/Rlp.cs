@@ -182,6 +182,11 @@ namespace Nethermind.Serialization.Rlp
                 result?.Dispose();
                 throw new RlpException($"Truncated or out-of-bounds RLP while decoding array of {typeof(T).Name}.", e);
             }
+            catch
+            {
+                result?.Dispose();
+                throw;
+            }
         }
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

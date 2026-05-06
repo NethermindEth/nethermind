@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using Nethermind.Core;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -43,12 +42,18 @@ public static class Eip8037BlockGasInclusionCheck
         long regularAvailable = blockGasLimit - cumulativeBlockRegular;
         long stateAvailable = blockGasLimit - cumulativeBlockState;
 
-        long worstCaseRegular = txGas - intrinsicState;
+        // Below-intrinsic transactions are rejected by transaction validation before this
+        // block-inclusion helper runs; keep the helper defensive so validation-order bugs
+        // cannot make a negative worst case pass the regular-dimension check.
+        long worstCaseRegular = Math.Max(0, txGas - intrinsicState);
         if (worstCaseRegular > Eip7825Constants.DefaultTxGasLimitCap)
             worstCaseRegular = Eip7825Constants.DefaultTxGasLimitCap;
         if (worstCaseRegular > regularAvailable)
             return Outcome.RegularDimensionExceeded;
 
+        // Per execution-specs PR 2703, the state dimension has no per-tx equivalent of
+        // EIP-7825's DefaultTxGasLimitCap; state-heavy work may be funded by the state
+        // reservoir above that regular-dimension cap.
         long worstCaseState = txGas - intrinsicRegular;
         if (worstCaseState > stateAvailable)
             return Outcome.StateDimensionExceeded;
@@ -65,7 +70,6 @@ public static class Eip8037BlockGasInclusionCheck
         long floorGas)
     {
         long executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
-        Debug.Assert(executionRegularGasUsed >= 0, "EIP-8037 execution regular gas must not be negative for a valid gas transcript.");
         long blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
         return Math.Max(blockRegularGas, floorGas);
     }

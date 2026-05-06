@@ -95,14 +95,14 @@ public partial class BlockProcessor
         {
             int len = block.Transactions.Length;
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
-            TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[len];
+            TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[len];
 
             for (int i = 0; i < len; i++)
             {
                 BlockReceiptsTracer tracer = new(true);
                 tracer.StartNewBlockTrace(block);
                 receiptsTracers[i] = tracer;
-                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>();
+                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>();
             }
 
             Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, token), token);
@@ -130,8 +130,11 @@ public partial class BlockProcessor
 
                             int txIndex = i - 1;
                             Transaction tx = state.txs[txIndex];
+                            IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
                             try
                             {
+                                intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
+
                                 // The using block detaches the worker's BAL into _perTxBal[i] and
                                 // recycles the pool slot via Dispose BEFORE we signal the gas result,
                                 // so the validator finds _perTxBal[i] populated when it awaits
@@ -145,9 +148,10 @@ public partial class BlockProcessor
                                         tx,
                                         txIndex,
                                         state.receiptsTracers[txIndex],
-                                        state.processingOptions);
+                                        state.processingOptions,
+                                        in intrinsicGas);
                                 }
-                                state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
+                                state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
                             }
                             catch (InvalidBlockException ex)
                             {
@@ -157,7 +161,7 @@ public partial class BlockProcessor
                                 // rethrows on `ex is not null` before doing any accounting, so the
                                 // tuple values here are observed only as cross-mode telemetry; we
                                 // still report (0, 0) so any future consumer agrees with sequential.
-                                state.gasResults[txIndex].SetResult((0, 0, ex));
+                                state.gasResults[txIndex].SetResult((0, 0, intrinsicGas, ex));
                             }
                             catch
                             {

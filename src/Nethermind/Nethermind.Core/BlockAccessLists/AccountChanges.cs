@@ -5,7 +5,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
@@ -84,11 +83,11 @@ public class AccountChanges : IEquatable<AccountChanges>
     public bool Equals(AccountChanges? other) =>
         other is not null &&
         Address == other.Address &&
-        StorageChanges.SequenceEqual(other.StorageChanges) &&
-        StorageReads.SequenceEqual(other.StorageReads) &&
-        BalanceChanges.SequenceEqual(other.BalanceChanges) &&
-        NonceChanges.SequenceEqual(other.NonceChanges) &&
-        CodeChanges.SequenceEqual(other.CodeChanges);
+        ListEquals(StorageChanges, other.StorageChanges) &&
+        SetEquals(StorageReads, other.StorageReads) &&
+        ListEquals(BalanceChanges, other.BalanceChanges) &&
+        ListEquals(NonceChanges, other.NonceChanges) &&
+        ListEquals(CodeChanges, other.CodeChanges);
 
     public override bool Equals(object? obj) =>
         obj is AccountChanges other && Equals(other);
@@ -167,17 +166,6 @@ public class AccountChanges : IEquatable<AccountChanges>
                 return true;
         }
         return false;
-    }
-
-    public IEnumerable<SlotChanges> SlotChangesAtIndex(uint index)
-    {
-        foreach (SlotChanges slotChanges in StorageChanges)
-        {
-            if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
-            {
-                yield return new(slotChanges.Key, new SortedList<uint, StorageChange>(PrestateAwareIndexComparer.Instance) { { index, storageChange } });
-            }
-        }
     }
 
     public void AddStorageRead(UInt256 key)
@@ -268,46 +256,36 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public UInt256? GetNonce(uint blockAccessIndex)
     {
-        // todo: binary search
-        UInt256? lastNonce = null;
-        foreach (KeyValuePair<uint, NonceChange> change in _nonceChanges)
-        {
-            // PrestateIndex (uint.MaxValue) is the "before any real change" sentinel; sort puts
-            // it first via PrestateAwareIndexComparer but the raw value is huge, so the >= check
-            // must explicitly let it through.
-            if (change.Key != Eip7928Constants.PrestateIndex && change.Key >= blockAccessIndex)
-            {
-                return lastNonce;
-            }
-            lastNonce = change.Value.Value;
-        }
-        return lastNonce;
+        int changeIndex = FindFirstRealIndexAtOrAfter(_nonceChanges.Keys, blockAccessIndex);
+        return changeIndex == 0 ? null : _nonceChanges.Values[changeIndex - 1].Value;
     }
 
     public UInt256? GetBalance(uint blockAccessIndex)
     {
-        UInt256? lastBalance = null;
-        foreach (KeyValuePair<uint, BalanceChange> change in _balanceChanges)
-        {
-            if (change.Key != Eip7928Constants.PrestateIndex && change.Key >= blockAccessIndex)
-            {
-                return lastBalance;
-            }
-            lastBalance = change.Value.Value;
-        }
-        return lastBalance;
+        int changeIndex = FindFirstRealIndexAtOrAfter(_balanceChanges.Keys, blockAccessIndex);
+        return changeIndex == 0 ? null : _balanceChanges.Values[changeIndex - 1].Value;
     }
 
     public byte[] GetCode(uint blockAccessIndex)
     {
         GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
-        return codeChange!.Value.Code;
+        if (codeChange is null)
+        {
+            ThrowMissingCodeChange(blockAccessIndex);
+        }
+
+        return codeChange.Value.Code;
     }
 
     public ValueHash256 GetCodeHash(uint blockAccessIndex)
     {
         GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
-        return codeChange!.Value.CodeHash;
+        if (codeChange is null)
+        {
+            ThrowMissingCodeChange(blockAccessIndex);
+        }
+
+        return codeChange.Value.CodeHash;
     }
 
     public HashSet<UInt256> GetAllSlots(uint blockAccessIndex)
@@ -413,15 +391,64 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     private void GetCodeChange(uint blockAccessIndex, out CodeChange? codeChange)
     {
-        codeChange = null;
-        foreach (KeyValuePair<uint, CodeChange> change in _codeChanges)
+        int changeIndex = FindFirstRealIndexAtOrAfter(_codeChanges.Keys, blockAccessIndex);
+        codeChange = changeIndex == 0 ? null : _codeChanges.Values[changeIndex - 1];
+    }
+
+    private static int FindFirstRealIndexAtOrAfter(IList<uint> keys, uint blockAccessIndex)
+    {
+        int low = 0;
+        int high = keys.Count;
+        while (low < high)
         {
-            if (change.Key != Eip7928Constants.PrestateIndex && change.Key >= blockAccessIndex)
+            int mid = low + ((high - low) >> 1);
+            uint key = keys[mid];
+            if (key == Eip7928Constants.PrestateIndex || key < blockAccessIndex)
             {
-                return;
+                low = mid + 1;
             }
-            codeChange = change.Value;
+            else
+            {
+                high = mid;
+            }
         }
+
+        return low;
+    }
+
+    [DoesNotReturn]
+    private void ThrowMissingCodeChange(uint blockAccessIndex)
+        => throw new InvalidOperationException($"No code change found for {Address} at or before index {blockAccessIndex}. Was BAL prestate loaded?");
+
+    private static bool ListEquals<T>(IList<T> left, IList<T> right)
+        where T : IEquatable<T>
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!left[i].Equals(right[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool SetEquals<T>(SortedSet<T> left, SortedSet<T> right)
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        using SortedSet<T>.Enumerator leftEnumerator = left.GetEnumerator();
+        using SortedSet<T>.Enumerator rightEnumerator = right.GetEnumerator();
+        while (leftEnumerator.MoveNext())
+        {
+            if (!rightEnumerator.MoveNext() || !EqualityComparer<T>.Default.Equals(leftEnumerator.Current, rightEnumerator.Current))
+                return false;
+        }
+
+        return !rightEnumerator.MoveNext();
     }
 
     private static bool PopChange<T>(SortedList<uint, T> changes, uint index, [NotNullWhen(true)] out T? change) where T : IIndexedChange

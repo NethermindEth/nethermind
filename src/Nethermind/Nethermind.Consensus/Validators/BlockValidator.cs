@@ -457,6 +457,8 @@ public class BlockValidator(
 
     private bool ValidateBlockLevelAccessListSize(Block block, ref string? error)
     {
+        // Suggested/engine blocks carry the wire BAL in BlockAccessList. RLP/P2P
+        // validation reaches this helper after execution with only GeneratedBlockAccessList.
         BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
         long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
@@ -475,7 +477,7 @@ public class BlockValidator(
     // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
     private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
     {
-        BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
+        BlockAccessList bal = block.BlockAccessList!;
         uint maxAllowed = (uint)block.Transactions.Length + 1;
 
         foreach (AccountChanges accountChanges in bal.AccountChanges)

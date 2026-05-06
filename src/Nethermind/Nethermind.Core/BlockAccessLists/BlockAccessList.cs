@@ -390,7 +390,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
                     accountChanges.BalanceChangeAtIndex(index),
                     accountChanges.NonceChangeAtIndex(index),
                     accountChanges.CodeChangeAtIndex(index),
-                    accountChanges.SlotChangesAtIndex(index),
+                    accountChanges,
+                    index,
                     accountChanges.HasSlotChangesAtIndex(index),
                     isSystemContract ? 0 : accountChanges.StorageReads.Count
                 );
@@ -584,14 +585,17 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     }
 }
 
-public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, IEnumerable<SlotChanges> SlotChanges, bool HasSlotChanges, int Reads)
+public record struct ChangeAtIndex(Address Address, BalanceChange? BalanceChange, NonceChange? NonceChange, CodeChange? CodeChange, AccountChanges AccountChanges, uint Index, bool HasSlotChanges, int Reads)
 {
     public override string ToString()
     {
         int slotChangeCount = 0;
-        foreach (SlotChanges _ in SlotChanges)
+        foreach (SlotChanges slotChanges in AccountChanges.StorageChanges)
         {
-            slotChangeCount++;
+            if (slotChanges.Changes.ContainsKey(Index))
+            {
+                slotChangeCount++;
+            }
         }
 
         return $"{nameof(ChangeAtIndex)}({Address}, Balance={BalanceChange?.Value}, Nonce={NonceChange?.Value}, Code={CodeChange is not null}, Slots={slotChangeCount}, Reads={Reads})";

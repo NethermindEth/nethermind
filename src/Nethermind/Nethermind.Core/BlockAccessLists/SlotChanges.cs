@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -14,10 +13,22 @@ public record SlotChanges(UInt256 Key, SortedList<uint, StorageChange> Changes)
 {
     public SlotChanges(UInt256 slot) : this(slot, new(PrestateAwareIndexComparer.Instance)) { }
 
-    public virtual bool Equals(SlotChanges? other) =>
-        other is not null &&
-        Key.Equals(other.Key) &&
-        Changes.SequenceEqual(other.Changes);
+    public virtual bool Equals(SlotChanges? other)
+    {
+        if (other is null || !Key.Equals(other.Key) || Changes.Count != other.Changes.Count)
+            return false;
+
+        for (int i = 0; i < Changes.Count; i++)
+        {
+            if (Changes.Keys[i] != other.Changes.Keys[i] ||
+                !Changes.Values[i].Equals(other.Changes.Values[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     public override int GetHashCode() =>
         HashCode.Combine(Key, Changes);

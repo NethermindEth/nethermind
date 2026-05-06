@@ -343,7 +343,10 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
             for (int index = 0; index < _txReceipts.Count; index++)
             {
                 TxReceipt? receipt = _txReceipts[index];
-                blockBloom.Accumulate(receipt.Bloom!);
+                if (receipt is not null)
+                {
+                    blockBloom.Accumulate(receipt.Bloom!);
+                }
             }
         }
         _otherTracer = NullBlockTracer.Instance;

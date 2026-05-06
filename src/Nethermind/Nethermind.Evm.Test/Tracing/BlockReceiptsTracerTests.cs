@@ -105,5 +105,22 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.TxReceipts[2].Should().BeSameAs(receipt);
             wrappedTracer.TxReceipts[2].Should().BeSameAs(receipt);
         }
+
+        [Test]
+        public void EndBlockTrace_tolerates_harvested_receipt_gaps()
+        {
+            Block block = Build.A.Block.WithTransactions(
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject,
+                Build.A.Transaction.TestObject).TestObject;
+
+            BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(NullBlockTracer.Instance);
+            tracer.StartNewBlockTrace(block);
+            tracer.SetReceipt(2, new TxReceipt { Logs = [] });
+
+            Assert.DoesNotThrow(() => tracer.EndBlockTrace());
+            block.Header.Bloom.Should().NotBeNull();
+        }
     }
 }

@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using System.Threading.Tasks;
-using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using System.Collections.Concurrent;
@@ -158,7 +158,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         CheckInitialized();
 
@@ -183,12 +183,13 @@ public class BlockAccessListManager(
             {
                 Transaction tx = block.Transactions[j];
 
+                (long blockGasUsed, long blockStateGasUsed, IntrinsicGas<EthereumGasPolicy> intrinsicGas, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                 // EIP-8037 per-tx 2D inclusion check (execution-specs PR 2703).
                 // totalRegularGas/totalStateGas reflect the cumulatives BEFORE this tx;
                 // the worst-case per-dimension contribution must fit the remaining budget.
-                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas);
-
-                (long blockGasUsed, long blockStateGasUsed, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                // The worker precomputes intrinsic gas once and carries it here to avoid
+                // recalculating dynamic state-byte costs on the validation thread.
+                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
 
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
@@ -413,7 +414,7 @@ public class BlockAccessListManager(
                     generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
                     generatedHead.Value.CodeChange.HasValue != suggestedHead.Value.CodeChange.HasValue ||
                     generatedHead.Value.CodeChange is not null && !generatedHead.Value.CodeChange.Value.Equals(suggestedHead.Value.CodeChange.Value) ||
-                    !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
+                    !SlotChangesAtIndexEqual(generatedHead.Value.AccountChanges, suggestedHead.Value.AccountChanges, index))
                 {
                     throw new InvalidBlockLevelAccessListException(block.Header,
                         $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}. " +
@@ -451,7 +452,7 @@ public class BlockAccessListManager(
 
         static string DescribeChange(ChangeAtIndex change)
         {
-            string slotChanges = string.Join(", ", change.SlotChanges);
+            string slotChanges = DescribeSlotChangesAtIndex(change.AccountChanges, change.Index);
             return $"{change.Address} Balance={change.BalanceChange?.ToString() ?? "-"} Nonce={change.NonceChange?.ToString() ?? "-"} Code={change.CodeChange?.ToString() ?? "-"} Slots=[{slotChanges}] Reads={change.Reads}";
         }
     }
@@ -495,6 +496,9 @@ public class BlockAccessListManager(
 
     private void LoadPreStateToSuggestedBlockAccessList(BlockAccessList bal)
     {
+        // Wire BAL validation must run before this method: it appends local-only
+        // PrestateIndex entries that are sorted before real tx indices and must not be
+        // subjected to block-level wire index-bounds validation.
         foreach (AccountChanges accountChanges in bal.AccountChanges)
         {
             // check if changed before loading prestate
@@ -534,6 +538,75 @@ public class BlockAccessListManager(
 
     private static bool IsSystemAccountRead(in ChangeAtIndex c, uint index)
         => index == 0 && c.Address == Address.SystemUser && HasNoChanges(c) && c.Reads == 0;
+
+    private static bool SlotChangesAtIndexEqual(AccountChanges left, AccountChanges right, uint index)
+    {
+        IList<SlotChanges> leftChanges = left.StorageChanges;
+        IList<SlotChanges> rightChanges = right.StorageChanges;
+        int leftIndex = 0;
+        int rightIndex = 0;
+
+        while (true)
+        {
+            bool hasLeft = TryGetNextSlotChangeAtIndex(leftChanges, index, ref leftIndex, out SlotChanges leftSlot, out StorageChange leftChange);
+            bool hasRight = TryGetNextSlotChangeAtIndex(rightChanges, index, ref rightIndex, out SlotChanges rightSlot, out StorageChange rightChange);
+
+            if (!hasLeft || !hasRight)
+            {
+                return hasLeft == hasRight;
+            }
+
+            if (leftSlot.Key != rightSlot.Key || !leftChange.Equals(rightChange))
+            {
+                return false;
+            }
+        }
+    }
+
+    private static bool TryGetNextSlotChangeAtIndex(
+        IList<SlotChanges> slots,
+        uint blockAccessIndex,
+        ref int slotIndex,
+        out SlotChanges slotChanges,
+        out StorageChange storageChange)
+    {
+        while (slotIndex < slots.Count)
+        {
+            SlotChanges candidate = slots[slotIndex++];
+            if (candidate.Changes.TryGetValue(blockAccessIndex, out storageChange))
+            {
+                slotChanges = candidate;
+                return true;
+            }
+        }
+
+        slotChanges = default!;
+        storageChange = default;
+        return false;
+    }
+
+    private static string DescribeSlotChangesAtIndex(AccountChanges accountChanges, uint index)
+    {
+        StringBuilder builder = new();
+        IList<SlotChanges> slots = accountChanges.StorageChanges;
+        int slotIndex = 0;
+        bool first = true;
+
+        while (TryGetNextSlotChangeAtIndex(slots, index, ref slotIndex, out SlotChanges slotChanges, out StorageChange storageChange))
+        {
+            if (!first)
+            {
+                builder.Append(", ");
+            }
+
+            builder.Append(slotChanges.Key);
+            builder.Append(':');
+            builder.Append(storageChange);
+            first = false;
+        }
+
+        return builder.ToString();
+    }
 
     private void CheckInitialized()
     {

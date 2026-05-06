@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -46,6 +48,54 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decode_inner_empty_list_in_account_changes_throws_RlpException() =>
         Assert.That(() => Rlp.Decode<BlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
+
+    [Test]
+    public void Decode_account_changes_without_changes_or_reads_throws_RlpException()
+    {
+        SortedDictionary<Address, AccountChanges> accountChanges = new()
+        {
+            { TestItem.AddressA, new AccountChanges(TestItem.AddressA) }
+        };
+        BlockAccessList blockAccessList = new(accountChanges);
+        byte[] encoded = Rlp.Encode(blockAccessList).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<BlockAccessList>(encoded),
+            Throws.TypeOf<RlpException>().With.Message.Contain("has no changes or reads"));
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_partial_list_when_element_decoder_throws()
+    {
+        TextWriter originalError = Console.Error;
+        using StringWriter error = new();
+        Console.SetError(error);
+        try
+        {
+            Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+            RlpException? exception = null;
+            try
+            {
+                Rlp.DecodeArrayPool(ref ctx, new ThrowingByteDecoder());
+            }
+            catch (RlpException e)
+            {
+                exception = e;
+            }
+
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingByteDecoder.Error));
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            Assert.That(error.ToString(), Does.Not.Contain(nameof(ArrayPoolList<byte>)));
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+    }
 
     [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
@@ -529,4 +579,24 @@ public class BlockAccessListDecoderTests
 
     private static IComparer<T> DescendingComparer<T>() where T : IComparable<T>
         => Comparer<T>.Create((left, right) => right.CompareTo(left));
+
+    private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>
+    {
+        public const string Error = "semantic failure";
+        private int _calls;
+
+        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            byte value = decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return value;
+        }
+
+        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
 }

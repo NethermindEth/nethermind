@@ -5,6 +5,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Core.Test.BlockAccessLists;
 
@@ -47,6 +48,26 @@ public class AccountChangesPrestateTests
         ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 7));
 
         Assert.That(ac.GetNonce(0), Is.EqualTo((UInt256)7));
+    }
+
+    [Test]
+    public void GetCode_throws_clear_error_when_prestate_code_is_missing()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+
+        InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(() => ac.GetCode(0));
+
+        Assert.That(exception!.Message, Does.Contain("Was BAL prestate loaded?"));
+    }
+
+    [Test]
+    public void GetCodeHash_throws_clear_error_when_prestate_code_is_missing()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+
+        InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(() => ac.GetCodeHash(0));
+
+        Assert.That(exception!.Message, Does.Contain("Was BAL prestate loaded?"));
     }
 
     [Test]

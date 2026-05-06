@@ -322,8 +322,6 @@ public class BlockValidatorTests
             .WithGasLimit(gasLimit)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
-            .WithBlockAccessList(bal)
-            .WithEncodedBlockAccessList(encodedBal)
             .WithBlockAccessListHash(balHash)
             .TestObject;
         processedBlock.GeneratedBlockAccessList = bal;
