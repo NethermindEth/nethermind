@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -137,13 +139,16 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         CalculateBlooms(receipts);
+        // IMPORTANT: receipts must remain read-only until receiptsRootTask completes.
+        // For blocks with multiple receipts, GetReceiptsRoot runs concurrently with ProcessExecutionRequests and EndBlockTrace.
+        Task<Hash256>? receiptsRootTask = receipts.Length > 1
+            ? Task.Run(() => ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot))
+            : null;
 
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
-
-        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
         ApplyMinerRewards(block, blockTracer, spec);
         _systemContractHandler.ProcessWithdrawals(block, spec);
@@ -168,6 +173,9 @@ public partial class BlockProcessor(
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
+
+        header.ReceiptsRoot = receiptsRootTask?.GetAwaiter().GetResult()
+            ?? ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
         _balManager.SetBlockAccessList(block);
 

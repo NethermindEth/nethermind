@@ -4,6 +4,8 @@
 #nullable enable
 
 using System.Collections.Concurrent;
+using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -84,9 +86,9 @@ public class BlockCachePreWarmerTests
     public async Task PreWarmCaches_WhenPoolEvicts_EvictedEnvsAreDisposed()
     {
         (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
-            ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1);
+            ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1, synchronizeFirstTwoBuilds: true);
 
-        await preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        await preWarmer.PreWarmCaches(BuildGroupedSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
         // With pool capacity 1 and two parallel workers, at least one eviction must occur.
         created.Count.Should().BeGreaterThanOrEqualTo(2,
@@ -300,7 +302,10 @@ public class BlockCachePreWarmerTests
         return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, LimboLogs.Instance);
     }
 
-    private (BlockCachePreWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, ConcurrentBag<IReadOnlyTxProcessorSource> disposed) CreatePreWarmer(int maxPoolSize, bool parallelExecutionBatchRead = true)
+    private (BlockCachePreWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created, ConcurrentBag<IReadOnlyTxProcessorSource> disposed) CreatePreWarmer(
+        int maxPoolSize,
+        bool synchronizeFirstTwoBuilds = false,
+        bool parallelExecutionBatchRead = true)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -308,7 +313,7 @@ public class BlockCachePreWarmerTests
 
         ConcurrentBag<IReadOnlyTxProcessorSource> created = [];
         ConcurrentBag<IReadOnlyTxProcessorSource> disposed = [];
-        DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed);
+        DisposalTrackingPolicy trackingPolicy = new(envFactory, preBlockCaches, created, disposed, synchronizeFirstTwoBuilds);
 
         BlockCachePreWarmer preWarmer = new(
             trackingPolicy,
@@ -330,14 +335,33 @@ public class BlockCachePreWarmerTests
             .TestObject;
 
     /// <summary>
-    /// Builds a block with transactions from two distinct senders, producing two parallel
-    /// sender groups in <c>WarmupTransactions</c> and guaranteeing concurrent pool usage.
+    /// Builds a block with transactions from two distinct senders, exercising the
+    /// independent-sender fast path in <c>WarmupTransactions</c>.
     /// </summary>
     private static Block BuildTwoSenderBlock()
     {
         Transaction[] txs =
         [
             Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+        ];
+
+        return Build.A.Block
+            .WithTransactions(txs)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+    }
+
+    /// <summary>
+    /// Builds a block with one duplicated sender and one independent sender, forcing the
+    /// grouped-sender path while still producing two sender groups for concurrent pool usage.
+    /// </summary>
+    private static Block BuildGroupedSenderBlock()
+    {
+        Transaction[] txs =
+        [
+            Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressD).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
             Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
         ];
 
@@ -355,12 +379,15 @@ public class BlockCachePreWarmerTests
         PrewarmerEnvFactory factory,
         PreBlockCaches caches,
         ConcurrentBag<IReadOnlyTxProcessorSource> created,
-        ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
+        ConcurrentBag<IReadOnlyTxProcessorSource> disposed,
+        bool synchronizeFirstTwoBuilds)
         : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
+        private readonly BuildSynchronizer _buildSynchronizer = synchronizeFirstTwoBuilds ? new() : BuildSynchronizer.Disabled;
+
         public IReadOnlyTxProcessorSource Create()
         {
-            TrackingEnv env = new(factory.Create(caches), disposed);
+            TrackingEnv env = new(factory.Create(caches), disposed, _buildSynchronizer);
             created.Add(env);
             return env;
         }
@@ -374,16 +401,47 @@ public class BlockCachePreWarmerTests
         /// </summary>
         private sealed class TrackingEnv(
             IReadOnlyTxProcessorSource inner,
-            ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
+            ConcurrentBag<IReadOnlyTxProcessorSource> disposed,
+            BuildSynchronizer buildSynchronizer)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
-                inner.Build(baseBlock);
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                buildSynchronizer.WaitForParallelBuild();
+                return inner.Build(baseBlock);
+            }
 
             public void Dispose()
             {
                 disposed.Add(this);
                 inner.Dispose();
+            }
+        }
+
+        private sealed class BuildSynchronizer(bool enabled = true)
+        {
+            public static BuildSynchronizer Disabled { get; } = new(enabled: false);
+
+            private readonly bool _enabled = enabled;
+            private readonly ManualResetEventSlim _secondBuildStarted = new(false);
+            private int _buildCount;
+
+            public void WaitForParallelBuild()
+            {
+                if (!_enabled)
+                {
+                    return;
+                }
+
+                int buildNumber = Interlocked.Increment(ref _buildCount);
+                if (buildNumber == 1)
+                {
+                    _secondBuildStarted.Wait(TimeSpan.FromSeconds(5));
+                }
+                else if (buildNumber == 2)
+                {
+                    _secondBuildStarted.Set();
+                }
             }
         }
     }

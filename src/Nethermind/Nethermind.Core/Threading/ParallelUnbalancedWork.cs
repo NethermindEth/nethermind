@@ -35,7 +35,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// <param name="action">The delegate that is invoked once per iteration.</param>
     public static void For(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action)
     {
-        int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
+        int threads = GetEffectiveThreadCount(fromInclusive, toExclusive, parallelOptions);
 
         Data data = new(threads, fromInclusive, toExclusive, action, parallelOptions.CancellationToken);
 
@@ -160,6 +160,14 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             // Signal that this thread has completed its work
             _data.MarkThreadCompleted();
         }
+    }
+
+    internal static int GetEffectiveThreadCount(int fromInclusive, int toExclusive, ParallelOptions parallelOptions)
+    {
+        int threads = parallelOptions.MaxDegreeOfParallelism > 0 ? parallelOptions.MaxDegreeOfParallelism : Environment.ProcessorCount;
+        long workItems = (long)toExclusive - fromInclusive;
+
+        return workItems <= 1 ? 1 : workItems < threads ? (int)workItems : threads;
     }
 
     /// <summary>
@@ -287,10 +295,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             Func<int, TLocal, TLocal> action,
             Action<TLocal>? @finally = null)
         {
-            // Determine the number of threads to use
-            int threads = parallelOptions.MaxDegreeOfParallelism > 0
-                ? parallelOptions.MaxDegreeOfParallelism
-                : Environment.ProcessorCount;
+            int threads = GetEffectiveThreadCount(fromInclusive, toExclusive, parallelOptions);
 
             // Create shared data with thread-local initializers and finalizers
             Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);

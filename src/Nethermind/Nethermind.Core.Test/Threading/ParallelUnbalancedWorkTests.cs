@@ -54,7 +54,7 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WhenManyWorkersThrow_RethrowsExactlyOneException()
     {
-        // Every iteration throws — only the first captured exception should surface.
+        // Every iteration throws; only the first captured exception should surface.
         Action act = () => ParallelUnbalancedWork.For(0, 10_000, FourThreads,
             i => throw new InvalidOperationException($"boom-{i}"));
 
@@ -64,10 +64,6 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WhenWorkerThrows_WaitsForAllThreadsBeforeRethrow()
     {
-        // If the throwing worker raced ahead of the others, MarkThreadCompleted would not yet have been
-        // called for them and the calling thread would either rethrow with workers still in flight or
-        // hang on the semaphore. Use init/finally to count actual thread arrivals — with the new
-        // capture/rethrow path, every thread that ran init must run finally before For returns.
         int initCount = 0;
         int finallyCount = 0;
 
@@ -102,8 +98,6 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WithThreadLocal_WhenInitThrows_FinallyIsNotCalled()
     {
-        // Matches BCL Parallel.For<TLocal>: localFinally must not run if localInit threw — otherwise
-        // a reference-typed TLocal with non-trivial cleanup would NPE on default(TLocal).
         int finallyCalls = 0;
 
         Action act = () => ParallelUnbalancedWork.For<object>(
@@ -119,8 +113,6 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WhenWorkerFaults_OtherWorkersStopFetchingWork()
     {
-        // Once one worker captures an exception, others must stop pulling new indices — otherwise
-        // we burn CPU and run side effects after the operation is already faulted.
         int actionCalls = 0;
         const int range = 100_000;
 
@@ -131,7 +123,6 @@ public class ParallelUnbalancedWorkTests
         });
 
         act.Should().Throw<InvalidOperationException>();
-        // Some racing iterations are unavoidable, but we should be nowhere near the full range.
         actionCalls.Should().BeLessThan(range / 2);
     }
 
@@ -165,9 +156,6 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_DoesNotLeakWorkerExceptionToThreadPool()
     {
-        // If a worker exception escaped onto a thread-pool thread it would surface via
-        // AppDomain.UnhandledException (and crash the process under default settings). Subscribe and
-        // assert nothing fires while the calling thread observes the rethrow.
         int unhandled = 0;
         UnhandledExceptionEventHandler handler = (_, _) => Interlocked.Increment(ref unhandled);
         AppDomain.CurrentDomain.UnhandledException += handler;
@@ -186,6 +174,69 @@ public class ParallelUnbalancedWorkTests
         }
 
         unhandled.Should().Be(0);
+    }
+
+    [TestCase(0, 0, 16, 1)]
+    [TestCase(0, 1, 16, 1)]
+    [TestCase(0, 3, 16, 3)]
+    [TestCase(2, 5, 16, 3)]
+    [TestCase(0, 32, 16, 16)]
+    public void Effective_thread_count_is_capped_by_work_items(int fromInclusive, int toExclusive, int maxDegreeOfParallelism, int expected)
+    {
+        ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism };
+
+        int actual = ParallelUnbalancedWork.GetEffectiveThreadCount(fromInclusive, toExclusive, parallelOptions);
+
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Thread_local_loop_uses_only_needed_workers()
+    {
+        int initialized = 0;
+
+        ParallelUnbalancedWork.For(
+            0,
+            3,
+            new ParallelOptions { MaxDegreeOfParallelism = 16 },
+            () =>
+            {
+                Interlocked.Increment(ref initialized);
+                return 0;
+            },
+            static (_, state) => state,
+            static _ => { });
+
+        Assert.That(initialized, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Thread_local_loop_does_not_execute_work_for_empty_range()
+    {
+        int initialized = 0;
+        int executed = 0;
+
+        ParallelUnbalancedWork.For(
+            5,
+            5,
+            new ParallelOptions { MaxDegreeOfParallelism = 16 },
+            () =>
+            {
+                Interlocked.Increment(ref initialized);
+                return 0;
+            },
+            (_, state) =>
+            {
+                Interlocked.Increment(ref executed);
+                return state;
+            },
+            static _ => { });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(initialized, Is.EqualTo(1));
+            Assert.That(executed, Is.EqualTo(0));
+        });
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
