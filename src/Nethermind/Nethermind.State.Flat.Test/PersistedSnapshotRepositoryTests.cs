@@ -64,7 +64,7 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
         Assert.That(persisted!.From, Is.EqualTo(s0));
         Assert.That(persisted.To, Is.EqualTo(s1));
-        Assert.That(persisted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressA, out Account? decoded), Is.True);
+        Assert.That(persisted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.AddressA.Bytes), out Account? decoded), Is.True);
         Assert.That(decoded!.Balance, Is.EqualTo((UInt256)1000));
         persisted.Dispose();
     }

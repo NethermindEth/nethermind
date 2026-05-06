@@ -56,6 +56,11 @@ public interface IPersistence
 
         void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value);
         void SetAccountRaw(in ValueHash256 addrHash, Account account);
+        // Hash-keyed variants used when the original Address is not available — e.g.
+        // re-persisting a PersistedSnapshot whose column 0x01 keys are 20-byte address-
+        // hash prefixes. Implementations that don't service this path may throw.
+        void RemoveAccountRaw(in ValueHash256 addrHash) => throw new NotSupportedException();
+        void SelfDestructRaw(in ValueHash256 addrHash) => throw new NotSupportedException();
 
         void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
         void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);

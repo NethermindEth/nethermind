@@ -110,14 +110,14 @@ public class PersistedSnapshotCompactorTests
             // Verify compacted snapshot exists spanning 0→8 and contains all accounts
             Assert.That(repo.TryLeaseCompactedSnapshotTo(s8, out PersistedSnapshot? compacted), Is.True);
             Assert.That(compacted!.From, Is.EqualTo(s0));
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressA, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressB, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressC, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressD, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressE, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.AddressF, out _), Is.True);
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.Addresses[6], out _), Is.True);
-            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, TestItem.Addresses[7], out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.AddressA.Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.AddressB.Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.AddressC.Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.AddressD.Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.AddressE.Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.AddressF.Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.Addresses[6].Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(TestItem.Addresses[7].Bytes), out _), Is.True);
             compacted.Dispose();
         }
         finally

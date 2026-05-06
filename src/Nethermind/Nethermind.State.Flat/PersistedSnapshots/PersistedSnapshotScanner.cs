@@ -45,12 +45,14 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private readonly WholeReadSessionReader _reader = reader;
         private readonly Bound _key = key;
         private readonly Bound _value = value;
-        public Address Address
+        public Hash256 AddressHash
         {
             get
             {
+                Span<byte> padded = stackalloc byte[32];
                 using NoOpPin pin = Pin(in _reader, _key);
-                return new Address(pin.Buffer);
+                pin.Buffer.CopyTo(padded);
+                return new Hash256(padded);
             }
         }
         public bool IsNew
@@ -116,12 +118,14 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private readonly WholeReadSessionReader _reader = reader;
         private readonly Bound _key = key;
         private readonly Bound _rlp = rlp;
-        public Address Address
+        public Hash256 AddressHash
         {
             get
             {
+                Span<byte> padded = stackalloc byte[32];
                 using NoOpPin pin = Pin(in _reader, _key);
-                return new Address(pin.Buffer);
+                pin.Buffer.CopyTo(padded);
+                return new Hash256(padded);
             }
         }
         public Account? Account
@@ -186,10 +190,10 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     // ---------------- Storage ----------------
 
     public readonly ref struct StorageEntry(
-        WholeReadSessionReader reader, Address address, Bound prefixKey, Bound suffixKey, Bound suffixValue)
+        WholeReadSessionReader reader, Hash256 addressHash, Bound prefixKey, Bound suffixKey, Bound suffixValue)
     {
         private readonly WholeReadSessionReader _reader = reader;
-        public Address Address { get; } = address;
+        public Hash256 AddressHash { get; } = addressHash;
         private readonly Bound _prefix = prefixKey;
         private readonly Bound _suffix = suffixKey;
         private readonly Bound _value = suffixValue;
@@ -229,7 +233,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private HsstEnumerator<WholeReadSessionReader, NoOpPin> _prefixEnum;
         private HsstEnumerator<WholeReadSessionReader, NoOpPin> _suffixEnum;
         private byte _level; // 0=need new addr, 1=have prefixEnum, 2=have suffixEnum
-        private Address _curAddr;
+        private Hash256 _curAddrHash;
         private Bound _curPrefix;
         private Bound _curSuffixKey;
         private Bound _curSuffixValue;
@@ -241,11 +245,14 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
             _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
             _level = 0;
-            _curAddr = default!;
+            _curAddrHash = default!;
         }
 
         public bool MoveNext()
         {
+            // Stackalloc once outside the loop and reuse on every address transition
+            // (CA2014 — multiple stackallocs in a loop can blow the stack).
+            Span<byte> padded = stackalloc byte[32];
             while (true)
             {
                 if (_level >= 2)
@@ -281,17 +288,24 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 HsstReader<WholeReadSessionReader, NoOpPin> perAddr = new(in _reader, addrEntry.ValueBound);
                 if (!perAddr.TrySeek(PersistedSnapshot.SlotSubTag, out _))
                     continue;
-                // Address is decoded eagerly (once per address) since it's repeated
-                // across many slots; a single Address alloc per address is the right shape.
+                Bound slotBound = perAddr.GetBound();
+                // DenseByteIndex returns success even for gap-filled (length 0) absences;
+                // skip addresses that have other sub-tags but no slots.
+                if (slotBound.Length == 0)
+                    continue;
+                // Hash is repeated across many slots; decode eagerly once per address-hash
+                // by zero-padding the 20-byte column key into a Hash256.
+                padded.Clear();
                 using (NoOpPin addrPin = Pin(in _reader, addrEntry.KeyBound))
-                    _curAddr = new Address(addrPin.Buffer);
-                _prefixEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, perAddr.GetBound());
+                    addrPin.Buffer.CopyTo(padded);
+                _curAddrHash = new Hash256(padded);
+                _prefixEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound);
                 _level = 1;
             }
         }
 
         public readonly StorageEntry Current =>
-            new(_reader, _curAddr, _curPrefix, _curSuffixKey, _curSuffixValue);
+            new(_reader, _curAddrHash, _curPrefix, _curSuffixKey, _curSuffixValue);
 
         public void Dispose()
         {
@@ -423,10 +437,16 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     {
         private readonly PersistedSnapshot _snapshot;
         private readonly WholeReadSessionReader _reader;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _hashEnum;
+        // Walks the unified column 0x01 (per-address). For each address-hash we open
+        // the inner storage-trie sub-tags in order: compact (0x01) then fallback (0x02).
+        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         private HsstEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
-        private byte _stage;  // 0=Compact column, 1=Fallback column, 2=done
-        private byte _level;  // 0=need new hash, 1=have pathEnum
+        // _stage: 0 = current address-hash's compact sub-tag, 1 = its fallback sub-tag.
+        // Reported back to StorageNodeEntry for path-key decoding (compact 8 bytes vs.
+        // fallback 33 bytes), so it doubles as the on-disk path-encoding selector.
+        private byte _stage;
+        private byte _level;  // 0=need new addr, 1=have pathEnum
+        private Bound _addrInnerBound;
         private Hash256 _curHash;
         private Bound _curPathKey;
         private Bound _curValue;
@@ -438,20 +458,37 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _stage = 0;
             _level = 0;
             _curHash = default!;
-            _hashEnum = OpenColumn(in _reader, PersistedSnapshot.StorageNodeTag);
+            HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
+            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
+            _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
-        private static HsstEnumerator<WholeReadSessionReader, NoOpPin> OpenColumn(scoped in WholeReadSessionReader reader, byte[] tag)
+        private static bool TryOpenSubTag(
+            scoped in WholeReadSessionReader reader, Bound addrInner, byte[] subTag,
+            out HsstEnumerator<WholeReadSessionReader, NoOpPin> e)
         {
-            HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader);
-            Bound b = r.TrySeek(tag, out _) ? r.GetBound() : default;
-            return new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
+            HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader, addrInner);
+            if (!r.TrySeek(subTag, out _))
+            {
+                e = default;
+                return false;
+            }
+            Bound b = r.GetBound();
+            // DenseByteIndex returns success on gap-filled absences; treat length 0 as
+            // "this sub-tag is empty" so we don't pay an enumerator setup for nothing.
+            if (b.Length == 0)
+            {
+                e = default;
+                return false;
+            }
+            e = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
+            return true;
         }
 
         public bool MoveNext()
         {
             Span<byte> hashKeyPadded = stackalloc byte[32];
-            while (_stage < 2)
+            while (true)
             {
                 if (_level == 1)
                 {
@@ -464,27 +501,33 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     }
                     _pathEnum.Dispose();
                     _pathEnum = default;
+                    // Try the fallback sub-tag for the same address-hash.
+                    if (_stage == 0)
+                    {
+                        _stage = 1;
+                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageFallbackSubTag, out _pathEnum))
+                            continue;
+                    }
                     _level = 0;
+                    _stage = 0;
                 }
-                if (_hashEnum.MoveNext())
+                // _level == 0: pull next address that has at least one storage sub-tag.
+                if (!_addrEnum.MoveNext()) return false;
+                KeyValueEntry addrEntry = _addrEnum.Current;
+                _addrInnerBound = addrEntry.ValueBound;
+                _stage = 0;
+                if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageCompactSubTag, out _pathEnum))
                 {
-                    KeyValueEntry hashEntry = _hashEnum.Current;
-                    // Hash is repeated across many path entries; decode eagerly per hash.
-                    hashKeyPadded.Clear();
-                    using (NoOpPin pin = Pin(in _reader, hashEntry.KeyBound))
-                        pin.Buffer.CopyTo(hashKeyPadded);
-                    _curHash = new Hash256(hashKeyPadded);
-                    _pathEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, hashEntry.ValueBound);
-                    _level = 1;
-                    continue;
+                    _stage = 1;
+                    if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageFallbackSubTag, out _pathEnum))
+                        continue;
                 }
-                _hashEnum.Dispose();
-                _stage++;
-                _hashEnum = _stage == 1
-                    ? OpenColumn(in _reader, PersistedSnapshot.StorageNodeFallbackTag)
-                    : default;
+                hashKeyPadded.Clear();
+                using (NoOpPin pin = Pin(in _reader, addrEntry.KeyBound))
+                    pin.Buffer.CopyTo(hashKeyPadded);
+                _curHash = new Hash256(hashKeyPadded);
+                _level = 1;
             }
-            return false;
         }
 
         public readonly StorageNodeEntry Current =>
@@ -493,7 +536,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public void Dispose()
         {
             _pathEnum.Dispose();
-            _hashEnum.Dispose();
+            _addrEnum.Dispose();
         }
     }
 }

@@ -70,11 +70,15 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
-        // Check persisted snapshots (newest-first)
+        // Check persisted snapshots (newest-first). Hash the address once and reuse the
+        // resulting Hash256 across every persisted-snapshot probe; PersistedSnapshot is
+        // keyed by keccak(address)[..20] so a single hash drives both the bloom and the
+        // per-address bound seek.
+        Hash256 addressHash = persistedSnapshots.Count > 0 ? Keccak.Compute(address.Bytes) : null!;
         long psw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            if (persistedSnapshots[i].TryGetAccount(persistedBlooms[i], address, out Account? acc))
+            if (persistedSnapshots[i].TryGetAccount(persistedBlooms[i], addressHash, out Account? acc))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - psw, _readAccountPersistedLabel);
                 return acc;
@@ -105,9 +109,10 @@ public sealed class ReadOnlySnapshotBundle(
                 return persistedSnapshots.Count + i;
         }
 
+        Hash256 addressHash = persistedSnapshots.Count > 0 ? Keccak.Compute(address.Bytes) : null!;
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
-            bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(persistedBlooms[i], address);
+            bool? flag = persistedSnapshots[i].TryGetSelfDestructFlag(persistedBlooms[i], addressHash);
             if (flag.HasValue)
                 return i;
         }
@@ -140,11 +145,12 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         long psw = Stopwatch.GetTimestamp();
+        Hash256 addressHash = persistedSnapshots.Count > 0 ? Keccak.Compute(address.Bytes) : null!;
         // Check persisted snapshots (newest-first) with self-destruct boundary
         for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
         {
             SlotValue slotValue = default;
-            if (persistedSnapshots[i].TryGetSlot(persistedBlooms[i], address, index, ref slotValue))
+            if (persistedSnapshots[i].TryGetSlot(persistedBlooms[i], addressHash, index, ref slotValue))
             {
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistedLabel);
                 return slotValue.ToEvmBytes();

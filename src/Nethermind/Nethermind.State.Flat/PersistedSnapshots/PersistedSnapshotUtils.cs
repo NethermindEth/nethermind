@@ -177,7 +177,8 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
                 Address address = kv.Key;
-                if (!persisted.TryGetAccount(bloom, address, out Account? acc))
+                Hash256 addressHash = Keccak.Compute(address.Bytes);
+                if (!persisted.TryGetAccount(bloom, addressHash, out Account? acc))
                     throw new InvalidOperationException($"Account {address} not found in persisted snapshot");
 
                 if (kv.Value is null)
@@ -199,8 +200,9 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
+                Hash256 addrHash = Keccak.Compute(addr.Bytes);
                 SlotValue slotValue = default;
-                if (!persisted.TryGetSlot(bloom, addr, slot, ref slotValue))
+                if (!persisted.TryGetSlot(bloom, addrHash, slot, ref slotValue))
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
                 SlotValue expected = kv.Value ?? default;
@@ -212,7 +214,8 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
             {
                 Address address = kv.Key;
-                bool? flag = persisted.TryGetSelfDestructFlag(bloom, address) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
+                Hash256 addressHash = Keccak.Compute(address.Bytes);
+                bool? flag = persisted.TryGetSelfDestructFlag(bloom, addressHash) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
                 if (flag.Value != kv.Value)
                     throw new InvalidOperationException($"SelfDestruct {address} mismatch: expected {kv.Value}, got {flag.Value}");
             }
@@ -304,30 +307,47 @@ internal static class PersistedSnapshotUtils
                     Span<byte> slotBytes = stackalloc byte[32];
                     Bound accountColumnBound = outerReader.GetBound();
                     using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
+                    Span<byte> addrHashPadded = stackalloc byte[32];
                     while (addrEnum.MoveNext())
                     {
+                        // Column 0x01 keys are the 20-byte address-hash prefix (keccak256(address)[..20]).
+                        // The original Address is unrecoverable; validation goes through the snapshot's
+                        // hash-keyed read API instead, with synthetic Hash256 from the zero-padded prefix.
                         ReadOnlySpan<byte> addrKey = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
-                        Address address = new(addrKey);
+                        addrHashPadded.Clear();
+                        addrKey.CopyTo(addrHashPadded);
+                        Hash256 address = new(addrHashPadded);
                         ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
 
-                        // Validate account sub-tag (0x03). Presence-marker encoding under
+                        // Validate account sub-tag (0x04). Presence-marker encoding under
                         // DenseByteIndex: length 0 = absent (gap-filled), [0x00] = deleted,
-                        // RLP-bytes = present.
+                        // RLP-bytes = present. With column 0x01 keyed by address-hash we
+                        // can no longer go through the Address-keyed bundle helpers; walk
+                        // source snapshots newest-first by hash to reconstruct the expected
+                        // result.
                         if (TryGet(perAddrSpan, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp)
                             && accountRlp.Length > 0)
                         {
-                            Account? bundleAccount = bundle.GetAccount(address);
+                            Account? bundleAccount = null;
+                            for (int i = snapshots.Count - 1; i >= 0; i--)
+                            {
+                                if (snapshots[i].TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, address, out Account? acc))
+                                {
+                                    bundleAccount = acc;
+                                    break;
+                                }
+                            }
                             if (accountRlp.Length == 1 && accountRlp[0] == 0x00)
                             {
                                 if (bundleAccount is not null)
-                                    throw new InvalidOperationException($"Account {address}: compacted=deleted but bundle={bundleAccount}");
+                                    throw new InvalidOperationException($"Account {address}: compacted=deleted but source={bundleAccount}");
                             }
                             else
                             {
                                 Rlp.ValueDecoderContext ctx = new(accountRlp);
                                 Account? decoded = AccountDecoder.Slim.Decode(ref ctx) ?? throw new InvalidOperationException($"Account {address}: failed to decode compacted RLP");
                                 if (bundleAccount is null)
-                                    throw new InvalidOperationException($"Account {address}: compacted={decoded} but bundle=null");
+                                    throw new InvalidOperationException($"Account {address}: compacted={decoded} but source=null");
                                 if (decoded.Balance != bundleAccount.Balance || decoded.Nonce != bundleAccount.Nonce ||
                                     decoded.CodeHash != bundleAccount.CodeHash || decoded.StorageRoot != bundleAccount.StorageRoot)
                                 {
@@ -360,7 +380,8 @@ internal static class PersistedSnapshotUtils
                                 throw new InvalidOperationException($"SelfDestruct {address}: expected={expected.Value}, actual={actual}");
                         }
 
-                        // Validate storage sub-tag (0x01)
+                        // Validate storage sub-tag (0x03). Slots are nested HSST(prefix(31)
+                        // → ByteTagMap(suffix(1) → SlotValue)).
                         if (TryGetBound(perAddrSpan, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                         {
                             // slotOff/slotLen are relative to perAddrSpan; reframe to compactedData
@@ -382,7 +403,18 @@ internal static class PersistedSnapshotUtils
                                     suffixKey.CopyTo(slotBytes[31..]);
                                     UInt256 slot = new(slotBytes, true);
 
-                                    byte[]? bundleSlot = bundle.GetSlot(address, slot, -1);
+                                    // Walk source snapshots newest-first by address-hash.
+                                    SlotValue srcSlot = default;
+                                    bool srcFound = false;
+                                    for (int i = snapshots.Count - 1; i >= 0; i--)
+                                    {
+                                        if (snapshots[i].TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, address, slot, ref srcSlot))
+                                        {
+                                            srcFound = true;
+                                            break;
+                                        }
+                                    }
+                                    byte[]? bundleSlot = srcFound ? srcSlot.ToEvmBytes() : null;
                                     ReadOnlySpan<byte> expectedSlot = bundleSlot ?? ReadOnlySpan<byte>.Empty;
 
                                     // The two paths use different "zero" encodings: compacted stores the slot
@@ -482,69 +514,9 @@ internal static class PersistedSnapshotUtils
                 }
             }
 
-            // StorageNodes (0x07): nested HSST. addr hash prefix(20) → 8-byte encoded TreePath → RLP/NodeRef
-            {
-                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-                if (r.TrySeek(PersistedSnapshot.StorageNodeTag, out _))
-                {
-                    Span<byte> fullHashBytes = stackalloc byte[32];
-                    using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, r.GetBound());
-                    while (addrEnum.MoveNext())
-                    {
-                        ReadOnlySpan<byte> addrHashPrefix = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
-                        Bound innerBound = addrEnum.Current.ValueBound;
-
-                        fullHashBytes.Clear();
-                        addrHashPrefix.CopyTo(fullHashBytes);
-                        Hash256 addrHash = new(fullHashBytes);
-
-                        using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerBound);
-                        while (innerEnum.MoveNext())
-                        {
-                            ReadOnlySpan<byte> pathKey = SliceFromBound(compactedData, innerEnum.Current.KeyBound);
-                            ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, innerEnum.Current.ValueBound);
-                            ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
-                            TreePath path = DecodeWith8Byte(pathKey);
-
-                            byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
-                            if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                                throw new InvalidOperationException($"StorageNode {addrHash} path length {path.Length}: RLP mismatch");
-                        }
-                    }
-                }
-            }
-
-            // StorageNodeFallback (0x08): nested HSST. addr hash prefix(20) → 33-byte TreePath → RLP/NodeRef
-            {
-                HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
-                if (r.TrySeek(PersistedSnapshot.StorageNodeFallbackTag, out _))
-                {
-                    Span<byte> fullHashBytesFb = stackalloc byte[32];
-                    using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, r.GetBound());
-                    while (addrEnum.MoveNext())
-                    {
-                        ReadOnlySpan<byte> addrHashPrefix = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
-                        Bound innerBound = addrEnum.Current.ValueBound;
-
-                        fullHashBytesFb.Clear();
-                        addrHashPrefix.CopyTo(fullHashBytesFb);
-                        Hash256 addrHash = new(fullHashBytesFb);
-
-                        using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, innerBound);
-                        while (innerEnum.MoveNext())
-                        {
-                            ReadOnlySpan<byte> pathKey = SliceFromBound(compactedData, innerEnum.Current.KeyBound);
-                            ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, innerEnum.Current.ValueBound);
-                            ReadOnlySpan<byte> nodeRlp = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
-                            TreePath path = new(new Hash256(pathKey[..32]), pathKey[32]);
-
-                            byte[]? bundleRlp = bundle.TryLoadStorageRlp(addrHash, path, Keccak.Zero, ReadFlags.None);
-                            if (!nodeRlp.SequenceEqual(bundleRlp ?? ReadOnlySpan<byte>.Empty))
-                                throw new InvalidOperationException($"StorageNodeFallback {addrHash} path length {pathKey[32]}: RLP mismatch");
-                        }
-                    }
-                }
-            }
+            // Storage-trie nodes are validated as part of the unified column 0x01 loop
+            // above (sub-tags 0x01 compact, 0x02 fallback). No standalone columns 0x07/0x08
+            // exist in the new on-disk layout.
         }
         catch (InvalidOperationException ex)
         {

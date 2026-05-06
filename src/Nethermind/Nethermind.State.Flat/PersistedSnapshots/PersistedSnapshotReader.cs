@@ -23,18 +23,20 @@ public static class PersistedSnapshotReader
     private const int SlotPrefixLength = 31;
 
     /// <summary>
-    /// Seek the per-address inner-HSST bound: AccountColumnTag → address.Bytes.
+    /// Seek the per-address inner-HSST bound:
+    /// AccountColumnTag → addressHash.Bytes[..StorageHashPrefixLength].
     /// On success outs the inner-HSST bound that <see cref="HsstReader{TReader,TPin}"/>
-    /// can be re-entered with to do sub-tag lookups without re-walking the outer column.
-    /// Used by <see cref="PersistedSnapshot"/> to populate its address→bound LRU.
+    /// can be re-entered with to do sub-tag lookups (account, slots, self-destruct,
+    /// storage trie) without re-walking the outer column. Used by
+    /// <see cref="PersistedSnapshot"/> to populate its address-hash→bound LRU.
     /// </summary>
-    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, Address address, out Bound addressBound)
+    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, Hash256 addressHash, out Bound addressBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader);
         if (!r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ||
-            !r.TrySeek(address.Bytes, out _))
+            !r.TrySeek(addressHash.Bytes[..StorageHashPrefixLength], out _))
         {
             addressBound = default;
             return false;
@@ -137,73 +139,45 @@ public static class PersistedSnapshotReader
     }
 
     /// <summary>
-    /// Look up a storage-trie node by hash + tree path. Same caller-resolves-NodeRef contract
-    /// as <see cref="TryLoadStateNodeRlp"/>.
+    /// Look up a storage-trie node within an already-positioned per-address inner HSST
+    /// (produced by <see cref="TryGetAddressHsstBound"/> and cached on the snapshot).
+    /// Walks sub-tag <c>StorageCompactSubTag</c> for compact paths and
+    /// <c>StorageFallbackSubTag</c> for paths past the compact threshold.
     /// </summary>
-    internal static bool TryLoadStorageNodeRlp<TReader, TPin>(scoped in TReader reader, Hash256 address, in TreePath path, out Bound bound)
+    internal static bool TryLoadStorageNodeRlpInBound<TReader, TPin>(scoped in TReader reader, Bound addressBound, in TreePath path, out Bound bound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
+        using HsstReader<TReader, TPin> r = new(in reader, addressBound);
         if (path.Length <= CompactPathThreshold)
         {
             Span<byte> key = stackalloc byte[8];
             path.EncodeWith8Byte(key);
-            return TryGetNestedValue<TReader, TPin>(in reader, PersistedSnapshot.StorageNodeTag, address.Bytes[..StorageHashPrefixLength], key, out bound);
-        }
-        Span<byte> fullKey = stackalloc byte[33];
-        path.Path.Bytes.CopyTo(fullKey);
-        fullKey[32] = (byte)path.Length;
-        return TryGetNestedValue<TReader, TPin>(in reader, PersistedSnapshot.StorageNodeFallbackTag, address.Bytes[..StorageHashPrefixLength], fullKey, out bound);
-    }
-
-    /// <summary>
-    /// Seek the per-address-hash inner-HSST bound for the StorageNodeTag column. On success
-    /// outs the inner-HSST bound; the caller can re-enter <see cref="HsstReader{TReader,TPin}"/>
-    /// with that bound to look up tree-path keys directly. Used by
-    /// <see cref="PersistedSnapshot"/> to populate its hash→bound LRU.
-    /// </summary>
-    internal static bool TryGetStorageHsstBound<TReader, TPin>(scoped in TReader reader, Hash256 address, out Bound storageBound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(PersistedSnapshot.StorageNodeTag, out _) ||
-            !r.TrySeek(address.Bytes[..StorageHashPrefixLength], out _))
-        {
-            storageBound = default;
-            return false;
-        }
-        storageBound = r.GetBound();
-        return true;
-    }
-
-    /// <summary>
-    /// Look up a storage-trie node within an already-positioned per-address-hash
-    /// inner HSST (typically produced by <see cref="TryGetStorageHsstBound"/> and cached).
-    /// Falls back through to the <c>StorageNodeFallbackTag</c> column when the path is
-    /// past the compact threshold — the fallback path is uncommon and not pre-positioned.
-    /// </summary>
-    internal static bool TryLoadStorageNodeRlpInBound<TReader, TPin>(scoped in TReader reader, Bound storageBound, Hash256 address, in TreePath path, out Bound bound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        if (path.Length <= CompactPathThreshold)
-        {
-            Span<byte> key = stackalloc byte[8];
-            path.EncodeWith8Byte(key);
-            using HsstReader<TReader, TPin> r = new(in reader, storageBound);
-            if (!r.TrySeek(key, out _))
+            if (!r.TrySeek(PersistedSnapshot.StorageCompactSubTag, out _) ||
+                !r.TrySeek(key, out _))
             {
                 bound = default;
                 return false;
             }
             bound = r.GetBound();
+            // DenseByteIndex returns success even for gap-filled (length 0) absences; treat
+            // length 0 as "no compact entry for this path" so callers don't read into the
+            // adjacent fallback sub-tag value bytes by mistake.
+            if (bound.Length == 0) { bound = default; return false; }
             return true;
         }
         Span<byte> fullKey = stackalloc byte[33];
         path.Path.Bytes.CopyTo(fullKey);
         fullKey[32] = (byte)path.Length;
-        return TryGetNestedValue<TReader, TPin>(in reader, PersistedSnapshot.StorageNodeFallbackTag, address.Bytes[..StorageHashPrefixLength], fullKey, out bound);
+        if (!r.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out _) ||
+            !r.TrySeek(fullKey, out _))
+        {
+            bound = default;
+            return false;
+        }
+        bound = r.GetBound();
+        if (bound.Length == 0) { bound = default; return false; }
+        return true;
     }
 
     internal static bool CheckHasNodeRefsFlag<TReader, TPin>(scoped in TReader reader)
@@ -243,43 +217,6 @@ public static class PersistedSnapshotReader
     {
         using HsstReader<TReader, TPin> r = new(in reader);
         if (!r.TrySeek(tag, out _) || !r.TrySeek(entityKey, out _))
-        {
-            bound = default;
-            return false;
-        }
-        bound = r.GetBound();
-        return true;
-    }
-
-    private static bool TryGetNestedValue<TReader, TPin>(in TReader reader, scoped ReadOnlySpan<byte> tag, scoped ReadOnlySpan<byte> addressKey, scoped ReadOnlySpan<byte> entityKey, out Bound bound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(tag, out _) || !r.TrySeek(addressKey, out _) || !r.TrySeek(entityKey, out _))
-        {
-            bound = default;
-            return false;
-        }
-        bound = r.GetBound();
-        return true;
-    }
-
-    private static bool TryGetDoubleNestedValue<TReader, TPin>(
-        scoped in TReader reader,
-        scoped ReadOnlySpan<byte> tag,
-        scoped ReadOnlySpan<byte> addressKey,
-        scoped ReadOnlySpan<byte> prefixKey,
-        scoped ReadOnlySpan<byte> suffixKey,
-        out Bound bound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        using HsstReader<TReader, TPin> r = new(in reader);
-        if (!r.TrySeek(tag, out _) ||
-            !r.TrySeek(addressKey, out _) ||
-            !r.TrySeek(prefixKey, out _) ||
-            !r.TrySeek(suffixKey, out _))
         {
             bound = default;
             return false;

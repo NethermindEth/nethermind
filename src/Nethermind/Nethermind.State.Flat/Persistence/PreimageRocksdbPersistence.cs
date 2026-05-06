@@ -170,6 +170,12 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
+        public void RemoveAccountRaw(in ValueHash256 addrHash) =>
+            throw new InvalidOperationException("Raw operations not available in preimage mode");
+
+        public void SelfDestructRaw(in ValueHash256 addrHash) =>
+            throw new InvalidOperationException("Raw operations not available in preimage mode");
+
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
 

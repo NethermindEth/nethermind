@@ -217,6 +217,10 @@ public static class BasePersistence
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account);
 
+        public void RemoveAccountRaw(in ValueHash256 addrHash);
+
+        public void SelfDestructRaw(in ValueHash256 addrHash);
+
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
@@ -275,6 +279,12 @@ public static class BasePersistence
             using NettyRlpStream stream = _accountDecoder.EncodeToNewNettyStream(account);
             _flatWriteBatch.SetAccount(addrHash, stream.AsSpan());
         }
+
+        public void RemoveAccountRaw(in ValueHash256 addrHash) =>
+            _flatWriteBatch.RemoveAccount(addrHash);
+
+        public void SelfDestructRaw(in ValueHash256 addrHash) =>
+            _flatWriteBatch.SelfDestruct(addrHash);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
             _flatWriteBatch.DeleteAccountRange(fromPath, toPath);
@@ -412,6 +422,15 @@ public static class BasePersistence
 
         public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
             _flatWriter.SetAccountRaw(addrHash, account);
+
+        public void RemoveAccountRaw(in ValueHash256 addrHash) =>
+            _flatWriter.RemoveAccountRaw(addrHash);
+
+        public void SelfDestructRaw(in ValueHash256 addrHash)
+        {
+            _flatWriter.SelfDestructRaw(addrHash);
+            _trieWriteBatch.SelfDestruct(addrHash);
+        }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
             _flatWriter.DeleteAccountRange(fromPath, toPath);

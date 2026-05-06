@@ -33,16 +33,16 @@ internal static class PersistedSnapshotBloomBuilder
 
         BloomFilter bloom = new(capacity, bitsPerKey);
 
-        // Pass 2: add keys. Only Address/Slot decoded — Account/SlotValue skipped.
+        // Pass 2: add keys. Only AddressHash/Slot decoded — Account/SlotValue skipped.
         foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
-            bloom.Add(AddressKey(entry.Address));
+            bloom.Add(AddressKey(entry.AddressHash));
 
         foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
-            bloom.Add(AddressKey(entry.Address));
+            bloom.Add(AddressKey(entry.AddressHash));
 
         foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
         {
-            ulong addrKey = AddressKey(entry.Address);
+            ulong addrKey = AddressKey(entry.AddressHash);
             bloom.Add(addrKey);
             bloom.Add(SlotKey(addrKey, entry.Slot));
         }
@@ -80,8 +80,8 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong AddressKey(Address address) =>
-        MemoryMarshal.Read<ulong>(address.Bytes);
+    internal static ulong AddressKey(Hash256 addressHash) =>
+        MemoryMarshal.Read<ulong>(addressHash.Bytes);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong SlotKey(ulong addressKey, in UInt256 slot)
