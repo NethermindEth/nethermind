@@ -10,11 +10,11 @@ namespace Nethermind.Evm.Precompiles;
 /// <summary>
 /// <see href="https://eips.ethereum.org/EIPS/eip-197" />
 /// </summary>
-public partial class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
+public partial class BN254PairingCheckPrecompile : IPrecompile<BN254PairingCheckPrecompile>
 {
     private const int PairingMaxInputSizeGranite = 112_687;
 
-    public static BN254PairingPrecompile Instance { get; } = new();
+    public static BN254PairingCheckPrecompile Instance { get; } = new();
 
     public static Address Address { get; } = Address.FromNumber(8);
 

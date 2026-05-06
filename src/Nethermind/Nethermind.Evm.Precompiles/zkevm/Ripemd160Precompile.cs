@@ -8,14 +8,14 @@ using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class SecP256r1Precompile
+public partial class Ripemd160Precompile
 {
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        ReadOnlySpan<byte> input = inputData.Span;
+        byte[] output = new byte[32];
 
-        return inputData.Length == 160 && Accelerators.SecP256r1Verify(
-            input[..32], input[32..96], input[96..]
-            ) ? _successResult : [];
+        Accelerators.Ripemd160(inputData.Span, output);
+
+        return output;
     }
 }

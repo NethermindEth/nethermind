@@ -4,18 +4,16 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Zkvm.Abstractions;
+using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class SecP256r1Precompile
+public partial class Ripemd160Precompile
 {
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        ReadOnlySpan<byte> input = inputData.Span;
+        Metrics.Ripemd160Precompile++;
 
-        return inputData.Length == 160 && Accelerators.SecP256r1Verify(
-            input[..32], input[32..96], input[96..]
-            ) ? _successResult : [];
+        return Ripemd.Compute(inputData.Span);
     }
 }
