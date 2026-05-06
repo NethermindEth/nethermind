@@ -132,6 +132,18 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
     /// <summary>
     /// Persist an in-memory snapshot to disk as a base snapshot (keyed by To StateId).
     /// Uses ArenaWriter for buffered writes to the arena file.
+    ///
+    /// The input <paramref name="snapshot"/> is always expected to serialize well under
+    /// the 2 GiB Full-persisted-snapshot ceiling (see <see cref="PersistedSnapshotBuilder"/>
+    /// class doc and <see cref="PersistedSnapshotBuilder.EstimateSize"/>). Callers
+    /// (PersistenceManager) only feed snapshots covering a single <c>compactSize</c>
+    /// window — on mainnet ~40 MiB, far below the cap. <see cref="PersistedSnapshotBuilder.EstimateSize"/>
+    /// clamps the arena reservation hint to 2 GiB, so a snapshot that would actually
+    /// serialize past 2 GiB will silently overflow the dedicated arena's mmap view and
+    /// produce a corrupt persisted snapshot (manifests downstream as an invalid block).
+    /// If you change the upstream batching to allow larger inputs, you must also lift
+    /// the int-sized choke points in the persisted-snapshot layer (NodeRef.RlpDataOffset,
+    /// ConvertFullToLinked's checked int casts, ReadRlpItem) before relaxing this.
     /// </summary>
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false)
     {

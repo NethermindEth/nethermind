@@ -23,6 +23,13 @@ public readonly struct NodeRef(int snapshotId, int rlpDataOffset)
     /// Absolute byte offset of the RLP item's first byte in the referenced snapshot's HSST data.
     /// Length is recovered by parsing the RLP header (see <c>RlpHelpers.PeekNextRlpLength</c>),
     /// so the referenced index does not need to carry per-entry value-length metadata.
+    ///
+    /// 32-bit is sufficient because a Full persisted snapshot — the only thing a NodeRef
+    /// ever points into — is always under the 2 GiB ceiling (see
+    /// <see cref="PersistedSnapshots.PersistedSnapshotBuilder"/> class doc and
+    /// <see cref="PersistedSnapshots.PersistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot"/>).
+    /// Any byte past 2 GiB would be unreachable from this offset, which is why
+    /// <c>ConvertFullToLinked</c> uses <c>checked((int)colOff)</c> to surface a violation.
     /// </summary>
     public int RlpDataOffset { get; } = rlpDataOffset;
 
