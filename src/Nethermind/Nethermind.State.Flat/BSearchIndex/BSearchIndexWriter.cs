@@ -37,14 +37,18 @@ internal struct BSearchIndexMetadata
 /// <summary>
 /// Writes B-tree index nodes using an AddKey/Finalize builder pattern.
 ///
-/// Index block layout: [Values section][Keys section][Metadata][MetadataLength: u8]
+/// Index block layout (low → high address):
+///   [Values section][Keys section][BaseOffset: u32 LE]?[CommonPrefix bytes][CommonPrefixLen: u8]?
+///   [ValueSize: u16 LE][KeySize: u16 LE][KeyCount: u16 LE][Flags: u8]
 ///
-/// Variable-encoded sections place entry data first, followed by the
-/// count × u16 offset table at the end of the section. This matches the
-/// back-to-front layout of the rest of the format and lets the writer stream
-/// entries forward, appending offsets at finalization.
+/// The footer is fixed-width: 7 base bytes plus optional 4-byte BaseOffset and
+/// optional (1 + prefixLen) common-key-prefix block. Readers parse it backwards
+/// from <c>Flags</c> with no varint decoding. The 64 KiB node-size cap means
+/// every count/size field fits in u16.
 ///
-/// Metadata: [Flags: 1][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128?]
+/// Variable-encoded sections (KeyType/ValueType=0) use a sentinel-terminated
+/// offset table of (count+1) u16 entries appended after the raw entry data;
+/// length(i) = offsets[i+1] - offsets[i]. No per-entry length prefix.
 ///
 /// Usage: create with writer + metadata + key scratch buffer, call AddKey(key, value)
 /// for each entry in sorted key order, call Finalize() to produce the final binary layout.
@@ -193,14 +197,13 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private void WriteEmptyNode()
     {
+        // Empty footer: all-zero sizes/count, leaf flags only.
+        // [ValueSectionSize: u16=0][KeySectionSize: u16=0][KeyCount: u16=0][Flags: u8]
         byte flags = (byte)(_metadata.IsIntermediate ? 0x01 : 0x00);
-        Span<byte> span = _writer.GetSpan(5);
-        span[0] = flags;
-        span[1] = 0x00; // KeyCount=0
-        span[2] = 0x00; // KeySize=0
-        span[3] = 0x00; // ValueSize=0
-        span[4] = 4;    // MetadataLength=4
-        _writer.Advance(5);
+        Span<byte> span = _writer.GetSpan(7);
+        span[..6].Clear();
+        span[6] = flags;
+        _writer.Advance(7);
     }
 
     private int FinalizeUniformKeys()
@@ -237,10 +240,13 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private int FinalizeVariableKeys()
     {
-        int tableSize = _count * 2;
+        // Sentinel offset table: count+1 u16 entries; offsets[i] is the start of
+        // entry i, offsets[count] is the end of data (sentinel) so each entry's
+        // length is offsets[i+1] - offsets[i] — no per-entry length prefix.
+        int tableSize = (_count + 1) * 2;
 
         // Pre-compute offsets (relative to section start) by iterating key lengths.
-        Span<ushort> offsets = stackalloc ushort[_count];
+        Span<ushort> offsets = stackalloc ushort[_count + 1];
         int keySrc = 0;
         int dataOffset = 0;
         for (int i = 0; i < _count; i++)
@@ -250,8 +256,11 @@ internal ref struct BSearchIndexWriter<TWriter>
             if (dataOffset > ushort.MaxValue)
                 throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
             offsets[i] = (ushort)dataOffset;
-            dataOffset += Leb128.EncodedSize(len) + len;
+            dataOffset += len;
         }
+        if (dataOffset > ushort.MaxValue)
+            throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
+        offsets[_count] = (ushort)dataOffset;
 
         // Write key data first
         keySrc = 0;
@@ -259,11 +268,6 @@ internal ref struct BSearchIndexWriter<TWriter>
         {
             int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
             keySrc += 2;
-
-            Span<byte> leb = _writer.GetSpan(10);
-            int lebLen = Leb128.Write(leb, 0, len);
-            _writer.Advance(lebLen);
-
             if (len > 0)
             {
                 IByteBufferWriter.Copy(ref _writer, _keyBuf.Slice(keySrc, len));
@@ -273,12 +277,11 @@ internal ref struct BSearchIndexWriter<TWriter>
 
         // Then write offset table at the end of the section
         Span<byte> table = _writer.GetSpan(tableSize);
-        for (int i = 0; i < _count; i++)
+        for (int i = 0; i <= _count; i++)
             BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
         _writer.Advance(tableSize);
 
-        int keysSize = dataOffset + tableSize;
-        return keysSize;
+        return dataOffset + tableSize;
     }
 
     private int FinalizeUniformValues()
@@ -318,10 +321,10 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private int FinalizeVariableValues()
     {
-        int tableSize = _count * 2;
+        int tableSize = (_count + 1) * 2;
 
         // Pre-compute offsets (relative to section start)
-        Span<ushort> offsets = stackalloc ushort[_count];
+        Span<ushort> offsets = stackalloc ushort[_count + 1];
         int valSrc = 0;
         int dataOffset = 0;
         for (int i = 0; i < _count; i++)
@@ -331,8 +334,11 @@ internal ref struct BSearchIndexWriter<TWriter>
             if (dataOffset > ushort.MaxValue)
                 throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
             offsets[i] = (ushort)dataOffset;
-            dataOffset += Leb128.EncodedSize(len) + len;
+            dataOffset += len;
         }
+        if (dataOffset > ushort.MaxValue)
+            throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
+        offsets[_count] = (ushort)dataOffset;
 
         // Write value data first
         valSrc = 0;
@@ -340,11 +346,6 @@ internal ref struct BSearchIndexWriter<TWriter>
         {
             int len = BinaryPrimitives.ReadUInt16LittleEndian(_valueBuf[valSrc..]);
             valSrc += 2;
-
-            Span<byte> leb = _writer.GetSpan(10);
-            int lebLen = Leb128.Write(leb, 0, len);
-            _writer.Advance(lebLen);
-
             if (len > 0)
             {
                 IByteBufferWriter.Copy(ref _writer, _valueBuf.Slice(valSrc, len));
@@ -354,7 +355,7 @@ internal ref struct BSearchIndexWriter<TWriter>
 
         // Then write offset table at the end of the section
         Span<byte> table = _writer.GetSpan(tableSize);
-        for (int i = 0; i < _count; i++)
+        for (int i = 0; i <= _count; i++)
             BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
         _writer.Advance(tableSize);
 
@@ -363,7 +364,16 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private void WriteMetadata(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix)
     {
-        int metadataStart = _writer.Written;
+        // Footer fields are u16 — the 64 KiB per-node cap means values, keys, and
+        // count all fit, but reject anything beyond the encodable range up-front
+        // rather than silently truncating on the (ushort) cast below.
+        if ((uint)_count > ushort.MaxValue)
+            throw new InvalidOperationException($"Index node entry count {_count} exceeds u16 footer field");
+        if ((uint)keySize > ushort.MaxValue)
+            throw new InvalidOperationException($"Index node KeySize {keySize} exceeds u16 footer field (node > 64 KiB)");
+        if ((uint)valueSize > ushort.MaxValue)
+            throw new InvalidOperationException($"Index node ValueSize {valueSize} exceeds u16 footer field (node > 64 KiB)");
+
         bool hasBaseOffset = _metadata.BaseOffset > 0;
         bool hasCommonPrefix = commonKeyPrefix.Length > 0;
         byte flags = (byte)(
@@ -373,40 +383,35 @@ internal ref struct BSearchIndexWriter<TWriter>
             (hasBaseOffset ? 0x20 : 0x00) |
             (hasCommonPrefix ? 0x40 : 0x00));
 
-        Span<byte> span = _writer.GetSpan(1);
-        span[0] = flags;
-        _writer.Advance(1);
-
-        Span<byte> leb = _writer.GetSpan(10);
-        int lebLen = Leb128.Write(leb, 0, _count);
-        _writer.Advance(lebLen);
-
-        leb = _writer.GetSpan(10);
-        lebLen = Leb128.Write(leb, 0, keySize);
-        _writer.Advance(lebLen);
-
-        leb = _writer.GetSpan(10);
-        lebLen = Leb128.Write(leb, 0, valueSize);
-        _writer.Advance(lebLen);
-
+        // Optional BaseOffset (4 bytes LE) at the lowest address inside the
+        // metadata block — must come before the common-prefix block so that a
+        // backward reader can pop them in flag-determined order.
         if (hasBaseOffset)
         {
-            leb = _writer.GetSpan(10);
-            lebLen = Leb128.Write(leb, 0, _metadata.BaseOffset);
-            _writer.Advance(lebLen);
+            Span<byte> bo = _writer.GetSpan(4);
+            BinaryPrimitives.WriteInt32LittleEndian(bo, _metadata.BaseOffset);
+            _writer.Advance(4);
         }
 
+        // Optional common-prefix block: bytes followed by their length, so a
+        // backward reader sees the length first and uses it to step past the bytes.
         if (hasCommonPrefix)
         {
-            Span<byte> dst = _writer.GetSpan(1 + commonKeyPrefix.Length);
-            dst[0] = (byte)commonKeyPrefix.Length;
-            commonKeyPrefix.CopyTo(dst[1..]);
-            _writer.Advance(1 + commonKeyPrefix.Length);
+            int plen = commonKeyPrefix.Length;
+            if ((uint)plen > byte.MaxValue)
+                throw new InvalidOperationException($"Common key prefix length {plen} exceeds u8 footer field");
+            Span<byte> dst = _writer.GetSpan(plen + 1);
+            commonKeyPrefix.CopyTo(dst);
+            dst[plen] = (byte)plen;
+            _writer.Advance(plen + 1);
         }
 
-        int metadataLen = _writer.Written - metadataStart;
-        span = _writer.GetSpan(1);
-        span[0] = (byte)metadataLen;
-        _writer.Advance(1);
+        // Fixed 7-byte tail: three u16 sizes/count followed by the flags byte.
+        Span<byte> tail = _writer.GetSpan(7);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail, (ushort)valueSize);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail[2..], (ushort)keySize);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail[4..], (ushort)_count);
+        tail[6] = flags;
+        _writer.Advance(7);
     }
 }

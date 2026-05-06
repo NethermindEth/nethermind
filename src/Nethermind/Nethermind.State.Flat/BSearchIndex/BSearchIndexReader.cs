@@ -9,16 +9,22 @@ namespace Nethermind.State.Flat.BSearchIndex;
 
 /// <summary>
 /// Reads a B-tree index block. An index block stores sorted key-value pairs with separate
-/// sections for values and keys, and metadata at the end for backward reading.
+/// sections for values and keys, and a fixed-width metadata footer read backwards from the
+/// trailing flags byte.
 ///
-/// Layout: [Values section][Keys section][Metadata][MetadataLength: u8]
+/// Layout (low → high address):
+///   [Values section][Keys section][BaseOffset: u32 LE]?[CommonPrefix bytes][CommonPrefixLen: u8]?
+///   [ValueSize: u16 LE][KeySize: u16 LE][KeyCount: u16 LE][Flags: u8]
 ///
-/// Metadata: [Flags][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128 optional][CommonPrefixLen: u8 + bytes optional]
 /// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=HasBaseOffset, bit6=HasCommonKeyPrefix
 ///
+/// All footer fields are fixed-width — no varint decoding on parse. With the
+/// 64 KiB node-size cap, every count/size field fits in u16.
+///
 /// KeyType/ValueType:
-///   0 = Variable: length-prefixed entries followed by a u16 offset table at
-///       the end of the section (offsets relative to section start)
+///   0 = Variable: raw entry bytes concatenated, then a sentinel u16 offset
+///       table of (count+1) entries at the end of the section. Length(i) =
+///       offsets[i+1] - offsets[i] — no per-entry length prefix.
 ///   1 = Uniform: packed fixed-width entries
 ///   2 = UniformWithLen: fixed slot size, last byte = actual length
 ///
@@ -57,18 +63,44 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static BSearchIndexReader ReadFromEnd(ReadOnlySpan<byte> data, int indexEnd)
     {
-        if (indexEnd <= 0)
+        if (indexEnd < 7)
             return default;
 
-        // 1. Read MetadataLength from last byte
-        int metadataLen = data[indexEnd - 1];
+        // Fixed footer: [valueSize u16][keySize u16][keyCount u16][flags u8] —
+        // four contiguous loads, no varint decode.
+        int valueSize = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 7)..]);
+        int keySize = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 5)..]);
+        int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 3)..]);
+        byte flags = data[indexEnd - 1];
 
-        // 2. Read metadata section forward
-        int metadataStart = indexEnd - 1 - metadataLen;
-        IndexMetadata metadata = ReadMetadata(data, metadataStart, out ReadOnlySpan<byte> commonKeyPrefix);
+        int pos = indexEnd - 7;
 
-        // 3. Compute section boundaries.
-        int keysEnd = metadataStart;
+        ReadOnlySpan<byte> commonKeyPrefix = default;
+        if ((flags & 0x40) != 0)
+        {
+            int prefixLen = data[pos - 1];
+            pos -= 1 + prefixLen;
+            commonKeyPrefix = data.Slice(pos, prefixLen);
+        }
+
+        int baseOffset = 0;
+        if ((flags & 0x20) != 0)
+        {
+            pos -= 4;
+            baseOffset = BinaryPrimitives.ReadInt32LittleEndian(data[pos..]);
+        }
+
+        IndexMetadata metadata = new()
+        {
+            Flags = flags,
+            KeyCount = keyCount,
+            KeySize = keySize,
+            ValueSize = valueSize,
+            BaseOffset = baseOffset
+        };
+
+        // Section boundaries.
+        int keysEnd = pos;
         int keysStart = keysEnd - metadata.KeySectionSize;
         int valuesEnd = keysStart;
         int valuesStart = valuesEnd - metadata.ValueSectionSize;
@@ -78,34 +110,6 @@ public readonly ref struct BSearchIndexReader
             data.Slice(valuesStart, metadata.ValueSectionSize),
             data.Slice(keysStart, metadata.KeySectionSize),
             commonKeyPrefix);
-    }
-
-    private static IndexMetadata ReadMetadata(ReadOnlySpan<byte> data, int start, out ReadOnlySpan<byte> commonKeyPrefix)
-    {
-        int pos = start;
-        byte flags = data[pos++];
-        int keyCount = Leb128.Read(data, ref pos);
-        int keySize = Leb128.Read(data, ref pos);
-        int valueSize = Leb128.Read(data, ref pos);
-        int baseOffset = 0;
-        if ((flags & 0x20) != 0)
-            baseOffset = Leb128.Read(data, ref pos);
-
-        commonKeyPrefix = default;
-        if ((flags & 0x40) != 0)
-        {
-            int prefixLen = data[pos++];
-            commonKeyPrefix = data.Slice(pos, prefixLen);
-        }
-
-        return new IndexMetadata
-        {
-            Flags = flags,
-            KeyCount = keyCount,
-            KeySize = keySize,
-            ValueSize = valueSize,
-            BaseOffset = baseOffset
-        };
     }
 
     /// <summary>
@@ -147,12 +151,14 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ReadOnlySpan<byte> GetVariableEntry(ReadOnlySpan<byte> section, int index, int count)
     {
-        // Offset table: count * 2 bytes at end of section; offsets relative to section start
-        int tableStart = section.Length - count * 2;
-        int relativeOffset = BinaryPrimitives.ReadUInt16LittleEndian(section[(tableStart + index * 2)..]);
-        int pos = relativeOffset;
-        int len = Leb128.Read(section, ref pos);
-        return section.Slice(pos, len);
+        // Sentinel offset table at end of section: (count+1) u16 entries, offsets
+        // relative to section start. Length(i) = offsets[i+1] - offsets[i] —
+        // load both as a single u32 to halve the per-compare load count.
+        int tableStart = section.Length - (count + 1) * 2;
+        uint pair = BinaryPrimitives.ReadUInt32LittleEndian(section[(tableStart + index * 2)..]);
+        int start = (int)(ushort)pair;
+        int end = (int)(ushort)(pair >> 16);
+        return section.Slice(start, end - start);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

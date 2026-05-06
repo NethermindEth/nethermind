@@ -340,29 +340,33 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         nodeAbsStart = 0;
         pin = default;
 
-        if (absEnd < 1) return false;
+        if (absEnd < 7) return false;
 
-        Span<byte> oneByte = stackalloc byte[1];
-        if (!_reader.TryRead(absEnd - 1, oneByte)) return false;
-        int metadataLen = oneByte[0];
-
-        long metadataAbsStart = absEnd - 1 - metadataLen;
-        if (metadataAbsStart < 0) return false;
+        // BSearchIndex node footer is fixed-width; pin a bounded window covering
+        // the worst-case footer (7 base bytes + optional baseOffset + optional
+        // common-prefix block ≤ 128 bytes) and parse backwards from the flags byte.
+        const int MaxFooterBytes = 7 + 1 + 128 + 4;
+        long footerStart = Math.Max(0, absEnd - MaxFooterBytes);
+        int footerLen = (int)(absEnd - footerStart);
 
         int totalNodeSize;
-        using (TPin metaPin = _reader.PinBuffer(metadataAbsStart, metadataLen))
+        using (TPin metaPin = _reader.PinBuffer(footerStart, footerLen))
         {
             ReadOnlySpan<byte> metaSpan = metaPin.Buffer;
-            int p = 0;
-            byte flags = metaSpan[p++];
-            int keyCount = Leb128.Read(metaSpan, ref p);
-            int keySize = Leb128.Read(metaSpan, ref p);
-            int valueSize = Leb128.Read(metaSpan, ref p);
+            byte flags = metaSpan[footerLen - 1];
+            int valueSize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 7)..]);
+            int keySize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 5)..]);
+            int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 3)..]);
             int keyType = (flags >> 1) & 0x03;
             int valueType = (flags >> 3) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
             int valueSectionSize = valueType switch { 0 => valueSize, _ => keyCount * valueSize };
-            totalNodeSize = valueSectionSize + keySectionSize + metadataLen + 1;
+            int extraFooter = 0;
+            if ((flags & 0x40) != 0)
+                extraFooter += 1 + metaSpan[footerLen - 8];
+            if ((flags & 0x20) != 0)
+                extraFooter += 4;
+            totalNodeSize = valueSectionSize + keySectionSize + 7 + extraFooter;
         }
 
         nodeAbsStart = absEnd - totalNodeSize;

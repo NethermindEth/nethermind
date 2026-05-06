@@ -195,39 +195,39 @@ internal static class HsstBTreeReader
         nodeAbsStart = 0;
         pin = default;
 
-        if (absEnd < 1) return false;
+        if (absEnd < 7) return false;
 
-        // Read the trailing MetadataLength byte
-        Span<byte> oneByte = stackalloc byte[1];
-        if (!reader.TryRead(absEnd - 1, oneByte)) return false;
-        int metadataLen = oneByte[0];
-
-        long metadataAbsStart = absEnd - 1 - metadataLen;
-        if (metadataAbsStart < 0) return false;
+        // BSearchIndex footer is fixed-width; its tail is 7 bytes
+        //   [valueSize u16][keySize u16][keyCount u16][flags u8]
+        // optionally preceded by [common-prefix bytes][prefixLen u8] and/or
+        // [BaseOffset u32 LE]. Common-prefix is capped at 128 bytes by the
+        // layout planner; pin a bounded window covering the worst-case footer
+        // plus the optional baseOffset so the entire block is in one read.
+        const int MaxFooterBytes = 7 + 1 + 128 + 4;
+        long footerStart = Math.Max(0, absEnd - MaxFooterBytes);
+        int footerLen = (int)(absEnd - footerStart);
 
         int totalNodeSize;
-        using (TPin metaPin = reader.PinBuffer(metadataAbsStart, metadataLen))
+        using (TPin metaPin = reader.PinBuffer(footerStart, footerLen))
         {
             ReadOnlySpan<byte> metaSpan = metaPin.Buffer;
-            int p = 0;
-            byte flags = metaSpan[p++];
-            byte extFlags = 0;
-            if ((flags & 0x80) != 0) extFlags = metaSpan[p++];
-            int keyCount = Leb128.Read(metaSpan, ref p);
-            int keySize = Leb128.Read(metaSpan, ref p);
-            int valueSize = Leb128.Read(metaSpan, ref p);
-            // BaseOffset is consumed by HsstIndex.ReadFromEnd; we only need section sizes here.
+            byte flags = metaSpan[footerLen - 1];
+            int valueSize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 7)..]);
+            int keySize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 5)..]);
+            int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 3)..]);
             int keyType = (flags >> 1) & 0x03;
             int valueType = (flags >> 3) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
             int valueSectionSize = valueType switch { 0 => valueSize, _ => keyCount * valueSize };
-            int probeSize = 0;
-            if (keyCount > 0)
+            int extraFooter = 0;
+            if ((flags & 0x40) != 0)
             {
-                if ((extFlags & 0x01) != 0) probeSize = HsstHash.BucketCount(keyCount);
-                else if ((extFlags & 0x02) != 0) probeSize = HsstHash.BucketCount(keyCount) * 2;
+                int prefixLen = metaSpan[footerLen - 8];
+                extraFooter += 1 + prefixLen;
             }
-            totalNodeSize = valueSectionSize + keySectionSize + probeSize + metadataLen + 1;
+            if ((flags & 0x20) != 0)
+                extraFooter += 4;
+            totalNodeSize = valueSectionSize + keySectionSize + 7 + extraFooter;
         }
 
         nodeAbsStart = absEnd - totalNodeSize;

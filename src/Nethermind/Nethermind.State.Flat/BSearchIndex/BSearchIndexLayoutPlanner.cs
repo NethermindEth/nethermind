@@ -18,9 +18,10 @@ namespace Nethermind.State.Flat.BSearchIndex;
 internal static class BSearchIndexLayoutPlanner
 {
     /// <summary>
-    /// Cap on the common-key-prefix length stored in node metadata. The trailing
-    /// MetadataLength byte limits the metadata block to 255 bytes; 128 leaves
-    /// comfortable headroom for flags + LEB128 counts + base offset + the prefix.
+    /// Cap on the common-key-prefix length stored in node metadata. Bounded by
+    /// the u8 prefix-length byte in the fixed footer; 128 keeps prefix blocks
+    /// small enough that <see cref="HsstBTreeReader"/>'s footer probe-window
+    /// reads them in one shot.
     /// </summary>
     public const int MaxCommonKeyPrefixLen = 128;
 
@@ -122,8 +123,9 @@ internal static class BSearchIndexLayoutPlanner
         }
         else if (effMaxLen <= 3)
         {
-            // Variable layout costs ≥3 bytes/entry overhead (2-byte offset table
-            // entry + 1-byte LEB128 length); UniformWithLen wins for tiny suffixes.
+            // Variable layout costs 2 bytes/entry (sentinel offset table) plus a
+            // 2-byte sentinel — UniformWithLen wins for tiny suffixes since each
+            // slot is contiguous and SIMD-scannable.
             keyType = 2;
             keySlotSize = effMaxLen + 1;
         }
