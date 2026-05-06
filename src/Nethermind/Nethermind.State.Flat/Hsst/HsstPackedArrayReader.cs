@@ -15,6 +15,8 @@ internal static class HsstPackedArrayReader
 {
     /// <summary>
     /// Parsed footer of a PackedArray HSST: section starts and per-level summary geometry.
+    /// <see cref="LevelStarts"/> entries are int offsets relative to <see cref="DataStart"/>
+    /// (= start of the HSST). The HSST is capped at ≈2 GiB so 32-bit offsets are sufficient.
     /// </summary>
     internal ref struct Layout
     {
@@ -28,22 +30,28 @@ internal static class HsstPackedArrayReader
         public int EntriesPerCkLevel0Log2;
         public int RecordsPerCkHigherLog2;
         // Inline arrays sized to MaxSummaryDepth. Only [0..Depth) are valid.
+        // Stored as int offsets / counts to keep the struct small (~32 B per array,
+        // vs 64 B for long); 64 B per lookup saved on the always-allocated stack frame.
         public InlineLevelArray LevelStarts;
         public InlineLevelArray LevelCounts;
 
         public int EntryStride => KeySize + ValueSize;
         public long EntryAbsStart(int entryIdx) => DataStart + (long)entryIdx * EntryStride;
         public long ValueAbsStart(int entryIdx) => EntryAbsStart(entryIdx) + KeySize;
+        public long LevelAbsStart(int level) => DataStart + (uint)LevelStarts[level];
     }
 
     [System.Runtime.CompilerServices.InlineArray(HsstPackedArrayLayout.MaxSummaryDepth)]
     internal struct InlineLevelArray
     {
-        private long _e0;
+        private int _e0;
     }
 
     /// <summary>
     /// Parse the PackedArray footer. Returns false on truncation or self-inconsistency.
+    /// Issues a single small tail-window pin in the common case (metadata fits in
+    /// <see cref="TailWindowSize"/>); only falls back to a separate read when the
+    /// metadata is unusually large.
     /// </summary>
     public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
         where TPin : struct, IBufferPin, allows ref struct
@@ -54,15 +62,48 @@ internal static class HsstPackedArrayReader
         long hsstEnd = bound.Offset + bound.Length;
 
         if (bound.Length < 3) return false;
-        Span<byte> oneByte = stackalloc byte[1];
-        if (!reader.TryRead(hsstEnd - 2, oneByte)) return false;
-        int metaLen = oneByte[0];
-        long metaAbsStart = hsstEnd - 2 - metaLen;
-        if (metaAbsStart < hsstStart) return false;
 
-        Span<byte> metaBuf = stackalloc byte[256];
-        if (metaLen > metaBuf.Length) return false;
-        if (!reader.TryRead(metaAbsStart, metaBuf[..metaLen])) return false;
+        // Tail window covers the trailing IndexType byte, MetadataLength byte, and (almost
+        // always) the entire LEB128 metadata block. Real metadata is ~13–25 B; 64 B fits
+        // virtually every PackedArray emitted by the builder.
+        int tailLen = (int)Math.Min(TailWindowSize, bound.Length);
+        long tailAbsStart = hsstEnd - tailLen;
+
+        int metaLen;
+        long metaAbsStart;
+
+        using (TPin tailPin = reader.PinBuffer(tailAbsStart, tailLen))
+        {
+            ReadOnlySpan<byte> tail = tailPin.Buffer;
+            metaLen = tail[tailLen - 2];
+            metaAbsStart = hsstEnd - 2 - metaLen;
+            if (metaAbsStart < hsstStart) return false;
+
+            if (metaLen + 2 <= tailLen)
+            {
+                // Hot path: metadata fits in the same pinned window.
+                ReadOnlySpan<byte> metaSpan = tail.Slice(tailLen - 2 - metaLen, metaLen);
+                return ParseMetadata(metaSpan, hsstStart, metaAbsStart, ref layout);
+            }
+        }
+
+        // Cold path: metadata exceeds the tail window. Re-pin precisely.
+        using (TPin metaPin = reader.PinBuffer(metaAbsStart, metaLen))
+        {
+            return ParseMetadata(metaPin.Buffer, hsstStart, metaAbsStart, ref layout);
+        }
+    }
+
+    /// <summary>
+    /// Tail window pinned by <see cref="TryReadLayout"/>. Sized to fit every
+    /// PackedArray metadata block emitted by the current builder (well under 64 B in
+    /// practice) so the common case completes with a single pin.
+    /// </summary>
+    private const int TailWindowSize = 64;
+
+    private static bool ParseMetadata(
+        ReadOnlySpan<byte> metaBuf, long hsstStart, long metaAbsStart, ref Layout layout)
+    {
         int p = 0;
         int keySize = Leb128.Read(metaBuf, ref p);
         int valueSize = Leb128.Read(metaBuf, ref p);
@@ -103,13 +144,14 @@ internal static class HsstPackedArrayReader
         layout.HashTableStart = hashTableStart;
 
         // Summaries lie before the hash table. Each record is exactly KeySize bytes.
+        // Stored as offsets from hsstStart so the inline array can be int-typed.
         long cursor = hashTableStart;
         for (int lvl = depth - 1; lvl >= 0; lvl--)
         {
             long lvlBytes = (long)counts[lvl] * keySize;
             long lvlStart = cursor - lvlBytes;
             if (lvlStart < hsstStart) return false;
-            layout.LevelStarts[lvl] = lvlStart;
+            layout.LevelStarts[lvl] = (int)(lvlStart - hsstStart);
             cursor = lvlStart;
         }
 
@@ -136,6 +178,13 @@ internal static class HsstPackedArrayReader
 
         if (L.EntryCount == 0) return false;
 
+        // One key-compare buffer shared between the hash fast path and the descent
+        // binary search; they're mutually exclusive in execution but stackalloc lifts
+        // to the function frame, so collapsing two 255-B buffers into one halves the
+        // always-allocated stack overhead.
+        Span<byte> keyCmp = stackalloc byte[255];
+        Span<byte> keyCmpSlice = keyCmp[..L.KeySize];
+
         // Hash fast path applies only to keys of the right length and when a table is present.
         if (key.Length == L.KeySize && L.HashTableSize > 0)
         {
@@ -156,10 +205,8 @@ internal static class HsstPackedArrayReader
             {
                 int entryIdx = (int)(slotValue - 1);
                 if ((uint)entryIdx >= (uint)L.EntryCount) return false;
-                Span<byte> stored = stackalloc byte[255];
-                Span<byte> storedSlice = stored[..L.KeySize];
-                if (!reader.TryRead(L.EntryAbsStart(entryIdx), storedSlice)) return false;
-                if (storedSlice.SequenceEqual(key))
+                if (!reader.TryRead(L.EntryAbsStart(entryIdx), keyCmpSlice)) return false;
+                if (keyCmpSlice.SequenceEqual(key))
                 {
                     resultBound = new Bound(L.ValueAbsStart(entryIdx), L.ValueSize);
                     return true;
@@ -192,7 +239,7 @@ internal static class HsstPackedArrayReader
             while (true)
             {
                 int ckIdx = SearchSummaryLevel<TReader, TPin>(
-                    in reader, L.LevelStarts[curLvl], L.KeySize, levelLo, levelHi + 1, key, out bool readOk);
+                    in reader, L.LevelAbsStart(curLvl), L.KeySize, levelLo, levelHi + 1, key, out bool readOk);
                 if (!readOk) return false;
 
                 if (ckIdx > levelHi)
@@ -219,22 +266,20 @@ internal static class HsstPackedArrayReader
         }
 
         // Binary search [rangeStart, rangeEnd] in Data for the smallest entry whose key
-        // is >= target.
+        // is >= target. Reuses keyCmpSlice from the hash fast path scope above.
         int lo = rangeStart;
         int hi = rangeEnd + 1;
-        Span<byte> stored2 = stackalloc byte[255];
-        Span<byte> storedSlice2 = stored2[..L.KeySize];
         while (lo < hi)
         {
             int mid = (int)(((uint)lo + (uint)hi) >> 1);
-            if (!reader.TryRead(L.EntryAbsStart(mid), storedSlice2)) return false;
-            if (storedSlice2.SequenceCompareTo(key) < 0) lo = mid + 1;
+            if (!reader.TryRead(L.EntryAbsStart(mid), keyCmpSlice)) return false;
+            if (keyCmpSlice.SequenceCompareTo(key) < 0) lo = mid + 1;
             else hi = mid;
         }
         if (lo <= rangeEnd)
         {
-            if (!reader.TryRead(L.EntryAbsStart(lo), storedSlice2)) return false;
-            if (storedSlice2.SequenceEqual(key))
+            if (!reader.TryRead(L.EntryAbsStart(lo), keyCmpSlice)) return false;
+            if (keyCmpSlice.SequenceEqual(key))
             {
                 resultBound = new Bound(L.ValueAbsStart(lo), L.ValueSize);
                 return true;
