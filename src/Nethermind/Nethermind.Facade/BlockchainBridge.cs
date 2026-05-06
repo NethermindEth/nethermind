@@ -292,7 +292,7 @@ namespace Nethermind.Facade
         {
             // Count comparison is sufficient because WarmUp(tx.AccessList) pre-populates the warm-address
             // set with all of `previous`'s entries before execution, making `discovered` monotonically
-            // non-decreasing (discovere`d ⊇ previous). Equal counts therefore imply equal content.
+            // non-decreasing (discovered ⊇ previous). Equal counts therefore imply equal content.
             (int addrs, int keys) previousCount = previous?.Count ?? (0, 0);
             (int addrs, int keys) discoveredCount = discovered?.Count ?? (0, 0);
             return previousCount == discoveredCount;
