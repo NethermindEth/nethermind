@@ -123,9 +123,16 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
-        _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
-        _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+        if (!_balManager.ParallelExecutionEnabled)
+        {
+            _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
+            _stateProvider.Commit(spec, commitRoots: false);
+        }
+        // For BAL parallel execution these are run as iteration 1 of the parallel For so they
+        // overlap with prestate loading and tx execution; they don't mutate stateProvider in
+        // that path (BlockAccessListBasedWorldState writes are no-ops), so the suggested-BAL
+        // state lands via ApplyStateChanges in slot 0 instead.
 
         TxReceipt[] receipts;
         receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);

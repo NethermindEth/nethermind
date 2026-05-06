@@ -80,43 +80,78 @@ public partial class BlockProcessor
                 gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>();
             }
 
-            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, token), token);
+            // Pre-execution (the system-contract calls StoreBeaconRoot + ApplyBlockhashStateChanges)
+            // runs as iteration 1 of the parallel For — alongside slot 0's loader+ApplyStateChanges
+            // and the tx iterations. Its writes go through BlockAccessListBasedWorldState which is
+            // a no-op for writes (the post-block state lands in stateProvider via ApplyStateChanges
+            // in slot 0), and its reads block per-account on the prestate gate that slot 0's loader
+            // signals — so pre-execution and tx workers all proceed as soon as their accounts are
+            // loaded, without waiting for the full load.
+            //
+            // The validator (IncrementalValidation) needs to merge balIndex=0's BAL after this
+            // iteration completes. preExecutionDoneTcs is the synchronization point: iteration 1
+            // signals it on completion (or fault), and the validator awaits it before the index-0
+            // merge. Counterpart of the gasResults[txIndex] dance for txs.
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            TaskCompletionSource preExecutionDoneTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, preExecutionDoneTcs.Task, token), token);
 
             try
             {
-                // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
+                // Iterations: 0 = loader+ApplyStateChanges, 1 = pre-execution, 2..len+1 = tx (txIndex = i-2).
                 ParallelUnbalancedWork.For(
                     0,
-                    len + 1,
+                    len + 2,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, spec, preExecutionDoneTcs, txs: block.Transactions),
                     static (i, state) =>
                     {
                         if (i == 0)
                         {
                             // Prestate loading was deferred from PrepareForProcessing to here so
-                            // tx workers (slots 1..N) can start executing while we fan out the
-                            // load account-by-account. Each account's prestate gate is signaled
-                            // as soon as its load completes, freeing any worker blocked on it
-                            // (see ReadOnlyAccountChanges.WaitForPrestate).
+                            // tx workers and the pre-execution iteration can start running while
+                            // we fan out the load account-by-account. Each account's prestate
+                            // gate is signaled as soon as its load completes, freeing any consumer
+                            // blocked on it (see ReadOnlyAccountChanges.WaitForPrestate).
                             state.balManager.LoadPreStateToSuggestedBlockAccessList(state.block);
 
                             // ApplyStateChanges mutates the shared stateProvider so runs inside
                             // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                            // workers read from BAL-backed world states, not stateProvider.
-                            BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                            // workers and the pre-execution iteration read from BAL-backed world
+                            // states, not stateProvider, so neither races with this write.
+                            BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.spec, !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                             return state;
                         }
 
-                        int txIndex = i - 1;
+                        if (i == 1)
+                        {
+                            try
+                            {
+                                state.balManager.StoreBeaconRoot(state.block, state.spec);
+                                state.balManager.ApplyBlockhashStateChanges(state.block.Header, state.spec);
+                                state.preExecutionDoneTcs.SetResult();
+                            }
+                            catch (Exception ex)
+                            {
+                                // Forward the fault through the gate so the validator's await
+                                // surfaces it instead of hanging forever.
+                                state.preExecutionDoneTcs.TrySetException(ex);
+                                throw;
+                            }
+                            return state;
+                        }
+
+                        int txIndex = i - 2;
                         Transaction tx = state.txs[txIndex];
                         try
                         {
-                            // The using block detaches the worker's BAL into _perTxBal[i] and
-                            // recycles the pool slot via Dispose BEFORE we signal the gas result,
-                            // so the validator finds _perTxBal[i] populated when it awaits
-                            // gasResults[i-1] — even if ProcessTransaction throws.
-                            using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)i))
+                            // The using block detaches the worker's BAL into _perTxBal[balIndex]
+                            // and recycles the pool slot via Dispose BEFORE we signal the gas
+                            // result, so the validator finds _perTxBal[balIndex] populated when
+                            // it awaits gasResults[txIndex] — even if ProcessTransaction throws.
+                            // balIndex = txIndex + 1 = i - 1 (balIndex 0 is pre-execution).
+                            using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(i - 1)))
                             {
                                 ProcessTransaction(
                                     lease.Adapter,
@@ -147,22 +182,25 @@ public partial class BlockProcessor
             }
             catch
             {
-                // Observe the background task before propagating, so its exception isn't lost
-                // as an unobserved task exception. The worker's TrySetCanceled above guarantees
-                // IncrementalValidation will unblock and complete.
+                // Observe the validator before propagating, so its exception isn't lost as an
+                // unobserved task exception. Worker TrySetCanceled and pre-execution
+                // TrySetException above guarantee IncrementalValidation will unblock.
+                // A fault that escapes iteration 1 before SetResult/TrySetException (e.g. between
+                // StoreBeaconRoot and the catch) leaves the gate uncompleted, so cancel here as a
+                // last-resort safety to avoid hanging the validator on an unsignaled gate.
+                preExecutionDoneTcs.TrySetCanceled();
                 try
                 {
                     incrementalValidationTask.GetAwaiter().GetResult();
                 }
                 catch (TaskCanceledException)
                 {
-                    // Expected: induced by our own TrySetCanceled in the worker catch.
+                    // Expected: induced by our own TrySetCanceled.
                 }
                 catch (Exception ex)
                 {
                     // Independent secondary fault (BAL validator, gas check, etc.). Surfacing
-                    // here because the original exception is what we rethrow — this branch is
-                    // the only place this fault is observable.
+                    // here because the original exception is what we rethrow.
                     if (_logger.IsError) _logger.Error("BAL incremental validation faulted while a parallel worker was already failing.", ex);
                 }
                 throw;

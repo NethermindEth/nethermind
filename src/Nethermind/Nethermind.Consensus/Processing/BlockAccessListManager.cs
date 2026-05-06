@@ -164,14 +164,17 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token)
     {
         CheckInitialized();
 
         int len = block.Transactions.Length;
 
-        // Pre is held by main-thread system contract handlers — never went through Return,
-        // so MergeAndReturnBal will detach it before merging.
+        // Pre-execution (StoreBeaconRoot + ApplyBlockhashStateChanges) now runs concurrently on
+        // its own Task, so wait for it before merging/validating index 0 — its writes to the
+        // balIndex=0 generating BAL are needed for the validator's index-0 comparison and for
+        // MergeAndReturnBal to release the pre-exec processor without a race.
+        preExecutionTask.GetAwaiter().GetResult();
         _parallelTxProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList);
         ValidateBlockAccessList(block, 0u);
 
