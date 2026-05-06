@@ -52,15 +52,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly long _flatDataStart;
     private int _flatIdx;
 
-    // PackedArrayVariableValue state: BTree-format data section + flat EntryMetaStarts u32 array.
-    private readonly bool _isFlatVar;
-    private readonly int _flatVarKeySize;
-    private readonly int _flatVarEntryCount;
-    private readonly long _flatVarHsstStart;
-    private readonly long _flatVarHsstEnd;
-    private readonly long _flatVarEntryMetaStartsStart;
-    private int _flatVarIdx;
-
     // ByteTagMap state: tiny single-byte-keyed map; no b-tree walk. _tagIdx tracks next entry.
     private readonly bool _isTagMap;
     private readonly int _tagMapCount;
@@ -148,25 +139,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                     return;
                 }
                 break;
-            case IndexType.PackedArrayVariableValue:
-                if (!HsstPackedArrayVariableValueReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstPackedArrayVariableValueReader.Layout flatVarLayout))
-                {
-                    _empty = true;
-                    return;
-                }
-                _isFlatVar = true;
-                _flatVarKeySize = flatVarLayout.KeySize;
-                _flatVarEntryCount = flatVarLayout.EntryCount;
-                _flatVarHsstStart = flatVarLayout.HsstStart;
-                _flatVarHsstEnd = flatVarLayout.HsstEnd;
-                _flatVarEntryMetaStartsStart = flatVarLayout.EntryMetaStartsStart;
-                _flatVarIdx = -1;
-                if (flatVarLayout.EntryCount == 0)
-                {
-                    _empty = true;
-                    return;
-                }
-                break;
             case IndexType.ByteTagMap:
                 if (!HsstByteTagMapReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstByteTagMapReader.Layout tagLayout))
                 {
@@ -206,34 +178,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
             long entryAbsStart = _flatDataStart + (long)next * stride;
             _currentKeyBound = new Bound(entryAbsStart, _flatKeySize);
             _currentValueBound = new Bound(entryAbsStart + _flatKeySize, _flatValueSize);
-            return true;
-        }
-
-        if (_isFlatVar)
-        {
-            int next = _flatVarIdx + 1;
-            if ((uint)next >= (uint)_flatVarEntryCount) return false;
-            _flatVarIdx = next;
-
-            // Read EntryMetaStarts[next] (u32 LE).
-            Span<byte> metaBuf = stackalloc byte[4];
-            if (!_reader.TryRead(_flatVarEntryMetaStartsStart + (long)next * 4, metaBuf)) return false;
-            uint metaStart32 = BinaryPrimitives.ReadUInt32LittleEndian(metaBuf);
-            long absMetaStart = _flatVarHsstStart + metaStart32;
-
-            // [ValueLength: LEB128][KeyLength: u8][FullKey: KeySize].
-            Span<byte> lebBuf = stackalloc byte[6];
-            int available = (int)Math.Min(6, _flatVarHsstEnd - absMetaStart);
-            if (available <= 0 || !_reader.TryReadWithReadahead(absMetaStart, lebBuf[..available])) return false;
-            int pos = 0;
-            int valueLength = Leb128.Read(lebBuf, ref pos);
-            if (pos >= available) return false;
-            int keyLength = lebBuf[pos++];
-            if (keyLength != _flatVarKeySize) return false;
-            long keyAbsStart = absMetaStart + pos;
-
-            _currentKeyBound = new Bound(keyAbsStart, keyLength);
-            _currentValueBound = new Bound(absMetaStart - valueLength, valueLength);
             return true;
         }
 

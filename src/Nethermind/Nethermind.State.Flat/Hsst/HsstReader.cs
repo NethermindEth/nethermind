@@ -91,13 +91,6 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     return true;
                 }
                 return false;
-            case IndexType.PackedArrayVariableValue:
-                if (HsstPackedArrayVariableValueReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound flatVarBound))
-                {
-                    _bound = flatVarBound;
-                    return true;
-                }
-                return false;
             case IndexType.ByteTagMap:
                 if (HsstByteTagMapReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound tagBound))
                 {
