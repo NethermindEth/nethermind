@@ -28,7 +28,7 @@ internal class SignTransactionManager : ISignTransactionManager, IDisposable
     private readonly IBlockTree _blockTree;
     private readonly ISnapshotManager _snapshotManager;
     private readonly ISpecProvider _specProvider;
-    private AssociativeKeyCache<ValueHash256> _alreadySigned = new (128);
+    private readonly AssociativeKeyCache<ValueHash256> _alreadySigned = new (128);
 
     public SignTransactionManager(ISigner signer, ITxPool txPool, IBlockTree blockTree, ISnapshotManager snapshotManager, ISpecProvider specProvider, ILogger logger)
     {
@@ -68,10 +68,10 @@ internal class SignTransactionManager : ISignTransactionManager, IDisposable
         
         ulong round = xdcHeader.ExtraConsensusData.BlockRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, round);
-        if (spec == null)
+        if (spec is null)
             return;
 
-        if (xdcHeader.Number % spec.MergeSignRange == 0)
+        if (xdcHeader.Number % spec.MergeSignRange != 0)
             return;
 
         Snapshot snapshot = _snapshotManager.GetSnapshotByBlockNumber(xdcHeader.Number, spec);
@@ -81,7 +81,9 @@ internal class SignTransactionManager : ISignTransactionManager, IDisposable
         if (IsMasternode(snapshot, _signer.Address))
         {
             _alreadySigned.Set(xdcHeader.Hash);
-            _ = SubmitTransactionSign(xdcHeader, spec);
+            _ = SubmitTransactionSign(xdcHeader, spec)
+                .ContinueWith(t => _logger.Error("Failed to submit sign transaction", t.Exception),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 
