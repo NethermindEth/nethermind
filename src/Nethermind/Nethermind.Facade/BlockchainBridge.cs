@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
@@ -19,7 +20,6 @@ using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
-using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
@@ -276,16 +276,31 @@ namespace Nethermind.Facade
 
         private Address[] BuildAddressesToOptimize(BlockHeader header, Transaction tx, bool optimize)
         {
-            IEnumerable<Address> precompiles = specProvider.GetSpec(header).Precompiles.Select(static p => (Address)p);
+            FrozenSet<AddressAsKey> precompiles = specProvider.GetSpec(header).Precompiles;
+            int precompileCount = precompiles.Count;
 
             if (!optimize)
-                return [header.GasBeneficiary, .. precompiles];
+            {
+                Address[] result = new Address[1 + precompileCount];
+                result[0] = header.GasBeneficiary;
+                int i = 1;
+                foreach (AddressAsKey p in precompiles)
+                    result[i++] = p.Value;
+                return result;
+            }
 
             // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
             // so excluding them keeps the returned access list minimal.
             UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
             Address recipient = tx.GetRecipient(senderNonce);
-            return [tx.SenderAddress, recipient, header.GasBeneficiary, .. precompiles];
+            Address[] resultOpt = new Address[3 + precompileCount];
+            resultOpt[0] = tx.SenderAddress;
+            resultOpt[1] = recipient;
+            resultOpt[2] = header.GasBeneficiary;
+            int j = 3;
+            foreach (AddressAsKey p in precompiles)
+                resultOpt[j++] = p.Value;
+            return resultOpt;
         }
 
         private static bool HasConverged(AccessList? previous, AccessList? discovered)
