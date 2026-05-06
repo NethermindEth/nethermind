@@ -59,37 +59,6 @@ namespace Nethermind.Xdc
         private ulong _highestVotedRound;
         private bool _writeRoundInfo = true;
 
-
-        public XdcHotStuff(
-            IBlockTree blockTree,
-            IXdcConsensusContext xdcContext,
-            ISpecProvider specProvider,
-            IBlockProducer blockBuilder,
-            IEpochSwitchManager epochSwitchManager,
-            IMasternodesCalculator masternodesCalculator,
-            IQuorumCertificateManager quorumCertificateManager,
-            IVotesManager votesManager,
-            ISigner signer,
-            ITimeoutTimer timeoutTimer,
-            IProcessExitSource processExit,
-            ILogManager logManager)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _xdcContext = xdcContext;
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockBuilder = blockBuilder ?? throw new ArgumentNullException(nameof(blockBuilder));
-            _epochSwitchManager = epochSwitchManager ?? throw new ArgumentNullException(nameof(epochSwitchManager));
-            _masternodesCalculator = masternodesCalculator ?? throw new ArgumentNullException(nameof(masternodesCalculator));
-            _quorumCertificateManager = quorumCertificateManager ?? throw new ArgumentNullException(nameof(quorumCertificateManager));
-            _votesManager = votesManager ?? throw new ArgumentNullException(nameof(votesManager));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-            _timeoutTimer = timeoutTimer;
-            _processExit = processExit;
-            _logger = logManager?.GetClassLogger<XdcHotStuff>() ?? throw new ArgumentNullException(nameof(logManager));
-
-            _lastActivityTime = DateTime.UtcNow;
-        }
-
         /// <summary>
         /// Starts the consensus runner.
         /// </summary>

@@ -29,7 +29,6 @@ internal class SignTransactionManager : ISignTransactionManager, IDisposable
     private readonly ISnapshotManager _snapshotManager;
     private readonly ISpecProvider _specProvider;
     private AssociativeKeyCache<ValueHash256> _alreadySigned = new (128);
-    private bool disposedValue;
 
     public SignTransactionManager(ISigner signer, ITxPool txPool, IBlockTree blockTree, ISnapshotManager snapshotManager, ISpecProvider specProvider, ILogger logger)
     {
