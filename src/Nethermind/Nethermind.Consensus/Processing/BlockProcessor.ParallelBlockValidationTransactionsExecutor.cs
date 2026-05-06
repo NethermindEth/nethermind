@@ -11,6 +11,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
@@ -94,6 +95,8 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
         {
             int len = block.Transactions.Length;
+            bool isBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+            IBlockTracer parallelSafeTracer = GetParallelSafeTracer(outerReceiptsTracer.OtherTracer);
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
             TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[len];
 
@@ -101,6 +104,10 @@ public partial class BlockProcessor
             {
                 BlockReceiptsTracer tracer = new(true);
                 tracer.StartNewBlockTrace(block);
+                if (parallelSafeTracer != NullBlockTracer.Instance)
+                {
+                    tracer.SetOtherTracer(parallelSafeTracer);
+                }
                 receiptsTracers[i] = tracer;
                 gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>();
             }
@@ -129,93 +136,105 @@ public partial class BlockProcessor
                     0,
                     len + 2,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, spec, preExecutionDoneTcs, txs: block.Transactions),
+                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, spec, preExecutionDoneTcs, txs: block.Transactions, isBlockProcessingThread),
                     static (i, state) =>
                     {
-                        if (i == 0)
-                        {
-                            // Prestate loading was deferred from PrepareForProcessing to here so
-                            // tx workers and the pre-execution iteration can start running while
-                            // we fan out the load account-by-account. Each account's prestate
-                            // gate is signaled as soon as its load completes, freeing any consumer
-                            // blocked on it (see ReadOnlyAccountChanges.WaitForPrestate).
-                            state.balManager.LoadPreStateToSuggestedBlockAccessList(state.block);
-
-                            // ApplyStateChanges mutates the shared stateProvider so runs inside
-                            // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                            // workers and the pre-execution iteration read from BAL-backed world
-                            // states, not stateProvider, so neither races with this write.
-                            BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.spec, !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
-                            return state;
-                        }
-
-                        if (i == 1)
-                        {
-                            try
-                            {
-                                state.balManager.StoreBeaconRoot(state.block, state.spec);
-                                state.balManager.ApplyBlockhashStateChanges(state.block.Header, state.spec);
-                                state.preExecutionDoneTcs.SetResult();
-                            }
-                            catch (Exception ex)
-                            {
-                                // Forward the fault through the gate so the validator's await
-                                // surfaces it instead of hanging forever.
-                                state.preExecutionDoneTcs.TrySetException(ex);
-                                throw;
-                            }
-                            return state;
-                        }
-
-                        int txIndex = i - 2;
-                        Transaction tx = state.txs[txIndex];
-                        // Pre-compute intrinsic gas on the worker thread; carry it through the
-                        // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
-                        // check doesn't recalculate dynamic state-byte costs on the validator.
-                        IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
+                        // Propagate the parent thread's IsBlockProcessingThread flag onto the
+                        // worker so processing-stats heuristics (e.g. allocation-thread filters)
+                        // continue to attribute work correctly across the parallel boundary.
+                        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+                        ProcessingThread.IsBlockProcessingThread = state.isBlockProcessingThread;
                         try
                         {
-                            intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.spec, state.block.Header.GasLimit);
-
-                            // The using block detaches the worker's BAL into _perTxBal[balIndex]
-                            // and recycles the pool slot via Dispose BEFORE we signal the gas
-                            // result, so the validator finds _perTxBal[balIndex] populated when
-                            // it awaits gasResults[txIndex] — even if ProcessTransaction throws.
-                            // balIndex = txIndex + 1 = i - 1 (balIndex 0 is pre-execution).
-                            using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(i - 1)))
+                            if (i == 0)
                             {
-                                ProcessTransaction(
-                                    lease.Adapter,
-                                    state.stateProvider,
-                                    state.block,
-                                    tx,
-                                    txIndex,
-                                    state.receiptsTracers[txIndex],
-                                    state.processingOptions,
-                                    in intrinsicGas);
-                            }
-                            state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
-                        }
-                        catch (InvalidBlockException ex)
-                        {
-                            // A rejected tx contributes nothing to block accumulators —
-                            // the sequential path never reaches gas accounting for it because
-                            // the exception bubbles up immediately. IncrementalValidation also
-                            // rethrows on `ex is not null` before doing any accounting, so the
-                            // tuple values here are observed only as cross-mode telemetry; we
-                            // still report (0, 0) so any future consumer agrees with sequential.
-                            state.gasResults[txIndex].SetResult((0, 0, intrinsicGas, ex));
-                        }
-                        catch
-                        {
-                            // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
-                            // if an unexpected exception escapes the worker (e.g. NRE, OCE).
-                            // SetCanceled unblocks the inner GetAwaiter().GetResult() loop.
-                            state.gasResults[txIndex].TrySetCanceled();
-                            throw;
-                        }
+                                // Prestate loading was deferred from PrepareForProcessing to here so
+                                // tx workers and the pre-execution iteration can start running while
+                                // we fan out the load account-by-account. Each account's prestate
+                                // gate is signaled as soon as its load completes, freeing any consumer
+                                // blocked on it (see ReadOnlyAccountChanges.WaitForPrestate).
+                                state.balManager.LoadPreStateToSuggestedBlockAccessList(state.block);
 
-                        return state;
+                                // ApplyStateChanges mutates the shared stateProvider so runs inside
+                                // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
+                                // workers and the pre-execution iteration read from BAL-backed world
+                                // states, not stateProvider, so neither races with this write.
+                                BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.spec, !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                                return state;
+                            }
+
+                            if (i == 1)
+                            {
+                                try
+                                {
+                                    state.balManager.StoreBeaconRoot(state.block, state.spec);
+                                    state.balManager.ApplyBlockhashStateChanges(state.block.Header, state.spec);
+                                    state.preExecutionDoneTcs.SetResult();
+                                }
+                                catch (Exception ex)
+                                {
+                                    // Forward the fault through the gate so the validator's await
+                                    // surfaces it instead of hanging forever.
+                                    state.preExecutionDoneTcs.TrySetException(ex);
+                                    throw;
+                                }
+                                return state;
+                            }
+
+                            int txIndex = i - 2;
+                            Transaction tx = state.txs[txIndex];
+                            // Pre-compute intrinsic gas on the worker thread; carry it through the
+                            // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
+                            // check doesn't recalculate dynamic state-byte costs on the validator.
+                            IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
+                            try
+                            {
+                                intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.spec, state.block.Header.GasLimit);
+
+                                // The using block detaches the worker's BAL into _perTxBal[balIndex]
+                                // and recycles the pool slot via Dispose BEFORE we signal the gas
+                                // result, so the validator finds _perTxBal[balIndex] populated when
+                                // it awaits gasResults[txIndex] — even if ProcessTransaction throws.
+                                // balIndex = txIndex + 1 = i - 1 (balIndex 0 is pre-execution).
+                                using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(i - 1)))
+                                {
+                                    ProcessTransaction(
+                                        lease.Adapter,
+                                        state.stateProvider,
+                                        state.block,
+                                        tx,
+                                        txIndex,
+                                        state.receiptsTracers[txIndex],
+                                        state.processingOptions,
+                                        in intrinsicGas);
+                                }
+                                state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
+                            }
+                            catch (InvalidBlockException ex)
+                            {
+                                // A rejected tx contributes nothing to block accumulators —
+                                // the sequential path never reaches gas accounting for it because
+                                // the exception bubbles up immediately. IncrementalValidation also
+                                // rethrows on `ex is not null` before doing any accounting, so the
+                                // tuple values here are observed only as cross-mode telemetry; we
+                                // still report (0, 0) so any future consumer agrees with sequential.
+                                state.gasResults[txIndex].SetResult((0, 0, intrinsicGas, ex));
+                            }
+                            catch
+                            {
+                                // Ensure IncrementalValidation is not permanently blocked on gasResults[j]
+                                // if an unexpected exception escapes the worker (e.g. NRE, OCE).
+                                // SetCanceled unblocks the inner GetAwaiter().GetResult() loop.
+                                state.gasResults[txIndex].TrySetCanceled();
+                                throw;
+                            }
+
+                            return state;
+                        }
+                        finally
+                        {
+                            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+                        }
                     });
             }
             catch
@@ -258,6 +277,14 @@ public partial class BlockProcessor
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, outerReceiptsTracer);
             }
         }
+
+        private static IBlockTracer GetParallelSafeTracer(IBlockTracer tracer) =>
+            tracer switch
+            {
+                IParallelSafeBlockTracer => tracer,
+                CompositeBlockTracer compositeBlockTracer => compositeBlockTracer.GetParallelSafeTracer(),
+                _ => NullBlockTracer.Instance
+            };
 
         private static void HarvestPerTxReceiptsIntoOuter(BlockReceiptsTracer[] perTxTracers, BlockReceiptsTracer outer)
         {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Processing;
@@ -27,10 +28,10 @@ public interface IProcessingStats
     void CaptureStartStats();
 
     /// <summary>
-    /// Update statistics after a block has been processed.
+    /// Update statistics after blocks have been processed.
     /// </summary>
-    /// <param name="block">The processed block.</param>
+    /// <param name="blocks">The processed blocks.</param>
     /// <param name="baseBlock">The parent block header.</param>
     /// <param name="blockProcessingTimeInMicros">Processing time in microseconds.</param>
-    void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros);
+    void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros);
 }

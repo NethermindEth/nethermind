@@ -391,7 +391,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
         {
-            // EIP-8037 + EIP-7702: refund authority-code state allowance into the reservoir only.
+            // EIP-8037 execution-specs PR 2703 keeps EIP-7702 authority-code intrinsic
+            // state gas in block accounting; only the state allowance returns to the reservoir.
             gas.StateReservoir += checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
         }
 

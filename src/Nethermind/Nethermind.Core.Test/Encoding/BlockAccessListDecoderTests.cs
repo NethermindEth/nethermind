@@ -50,16 +50,17 @@ public class BlockAccessListDecoderTests
         Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
 
     [Test]
-    public void Decode_account_changes_without_changes_or_reads_throws_RlpException()
+    public void Decode_account_changes_without_changes_or_reads_roundtrips_as_account_read()
     {
         ReadOnlyBlockAccessList bal = new(
             [new ReadOnlyAccountChanges(TestItem.AddressA)],
             itemCount: 0);
         byte[] encoded = Rlp.Encode(bal).Bytes;
 
-        Assert.That(
-            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded),
-            Throws.TypeOf<RlpException>().With.Message.Contain("has no changes or reads"));
+        ReadOnlyBlockAccessList decoded = Rlp.Decode<ReadOnlyBlockAccessList>(encoded);
+
+        Assert.That(decoded, Is.EqualTo(bal));
+        Assert.That(decoded.ItemCount, Is.EqualTo(1));
     }
 
     [Test]

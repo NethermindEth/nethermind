@@ -99,4 +99,45 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
             1 => _childTracers[0],
             _ => this
         };
+
+    public IBlockTracer GetParallelSafeTracer()
+    {
+        List<IBlockTracer> parallelSafeTracers = [];
+        for (int index = 0; index < _childTracers.Count; index++)
+        {
+            IBlockTracer childTracer = _childTracers[index];
+            if (childTracer is IParallelSafeBlockTracer)
+            {
+                parallelSafeTracers.Add(childTracer);
+            }
+            else if (childTracer is CompositeBlockTracer compositeBlockTracer)
+            {
+                IBlockTracer parallelSafeTracer = compositeBlockTracer.GetParallelSafeTracer();
+                if (parallelSafeTracer != NullBlockTracer.Instance)
+                {
+                    parallelSafeTracers.Add(parallelSafeTracer);
+                }
+            }
+        }
+
+        int parallelSafeTracerCount = parallelSafeTracers.Count;
+        if (parallelSafeTracerCount == 0)
+        {
+            return NullBlockTracer.Instance;
+        }
+
+        if (parallelSafeTracerCount == 1)
+        {
+            return parallelSafeTracers[0];
+        }
+
+        CompositeBlockTracer parallelSafeCompositeBlockTracer = new();
+        parallelSafeCompositeBlockTracer._childTracers.AddRange(parallelSafeTracers);
+        for (int index = 0; index < parallelSafeTracerCount; index++)
+        {
+            parallelSafeCompositeBlockTracer.IsTracingRewards |= parallelSafeTracers[index].IsTracingRewards;
+        }
+
+        return parallelSafeCompositeBlockTracer;
+    }
 }

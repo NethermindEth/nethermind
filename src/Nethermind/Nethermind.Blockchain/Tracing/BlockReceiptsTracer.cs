@@ -257,6 +257,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
+    public IBlockTracer OtherTracer => _otherTracer;
 
     /// <summary>
     /// Diagnostic-only: place a receipt at a specific tx index, leaving any prior gaps as null.
