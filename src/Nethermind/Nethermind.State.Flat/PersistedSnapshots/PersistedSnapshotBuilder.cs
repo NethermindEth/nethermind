@@ -93,6 +93,27 @@ public static class PersistedSnapshotBuilder
         return true;
     }
 
+    /// <summary>
+    /// Reader-based <see cref="TryGetBound"/>: seek <paramref name="key"/> within
+    /// <paramref name="scope"/> of <paramref name="reader"/>. Returned offset is
+    /// reader-absolute.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryGetBound<TReader, TPin>(
+        scoped in TReader reader, Bound scope,
+        scoped ReadOnlySpan<byte> key,
+        out long offset, out int length)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        HsstReader<TReader, TPin> hsst = new(in reader, scope);
+        if (!hsst.TrySeek(key, out _)) { offset = 0; length = 0; return false; }
+        Bound b = hsst.GetBound();
+        offset = b.Offset;
+        length = b.Length;
+        return true;
+    }
+
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BloomFilter? bloom = null, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriter
     {
         // Declare mutable locals populated by the parallel jobs below.
@@ -728,9 +749,9 @@ public static class PersistedSnapshotBuilder
             for (int i = 0; i < n; i++)
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
-                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
-                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 WholeReadSessionReader r = sessions[i].GetReader();
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                    ? ((int)colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1034,9 +1055,9 @@ public static class PersistedSnapshotBuilder
             for (int i = 0; i < n; i++)
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
-                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
-                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 WholeReadSessionReader r = sessions[i].GetReader();
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                    ? ((int)colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1077,9 +1098,9 @@ public static class PersistedSnapshotBuilder
             for (int i = 0; i < n; i++)
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
-                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
-                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 WholeReadSessionReader r = sessions[i].GetReader();
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                    ? ((int)colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1257,9 +1278,9 @@ public static class PersistedSnapshotBuilder
             for (int i = 0; i < n; i++)
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
-                ReadOnlySpan<byte> snapshotData = sessions[i].GetSpan();
-                columnBounds[i] = TryGetBound(snapshotData, tag, out int colOff, out int colLen) ? (colOff, colLen) : (0, 0);
                 WholeReadSessionReader r = sessions[i].GetReader();
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                    ? ((int)colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1417,11 +1438,11 @@ public static class PersistedSnapshotBuilder
             for (int j = slotStart; j < matchCount; j++)
             {
                 WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-                using NoOpPin perAddrPin = r.PinBuffer(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                if (TryGetBound(perAddrPin.Buffer, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
+                if (TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length), PersistedSnapshot.SlotSubTag, out long slotOff, out int slotLen))
                 {
                     slotSources[slotSourceCount] = j;
-                    slotBounds[slotSourceCount] = (perAddrBounds[j].Offset + slotOff, slotLen);
+                    // slotOff is reader-absolute (snapshot-absolute) since the scope was relative to the snapshot.
+                    slotBounds[slotSourceCount] = ((int)slotOff, slotLen);
                     slotSourceCount++;
                 }
             }
