@@ -3,16 +3,10 @@
 
 using System;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace Nethermind.State.Flat.Storage;
-
-/// <summary>
-/// Composite key identifying an OS page within an arena: (<see cref="ArenaId"/>, <see cref="PageIdx"/>).
-/// <see cref="PageIdx"/> is <c>offset / Environment.SystemPageSize</c>, where <c>offset</c> is the
-/// arena-absolute byte offset of the page's first byte.
-/// </summary>
-public readonly record struct PageKey(int ArenaId, int PageIdx);
 
 /// <summary>
 /// Receives eviction notifications from <see cref="PageSlotCache"/>. Implementations typically
@@ -24,41 +18,50 @@ public interface IPageEvictionHandler
 }
 
 /// <summary>
-/// Direct-mapped page-tracking cache for arena-backed mmap regions. Two parallel arrays of equal
-/// size — one slot of <see cref="PageKey"/>, one <see cref="Lock"/> — sized to the next power of
-/// two of the requested capacity. <see cref="Touch"/> hashes the key to a slot, locks it, and
-/// either no-ops on hit or replaces the occupant, invoking the eviction handler so the caller can
-/// <c>madvise(MADV_DONTNEED)</c> the displaced page. There is no LRU or clock arm: collision is
-/// the eviction policy.
+/// Direct-mapped page-tracking cache for arena-backed mmap regions. Each slot occupies a full
+/// 64-byte cache line; the slot value packs <c>(arenaId &lt;&lt; 32) | pageIdx</c> with
+/// <c>-1L</c> as the empty sentinel. <see cref="Touch"/> hashes the key to a slot and
+/// unconditionally CAS-replaces the occupant via <see cref="Interlocked.Exchange(ref long, long)"/>;
+/// the displaced key is reported to the eviction handler so the caller can
+/// <c>madvise(MADV_DONTNEED)</c> the page. There is no LRU or clock arm: collision is the
+/// eviction policy.
 /// </summary>
-public sealed class PageSlotCache
+/// <remarks>
+/// Lock-free and false-sharing-free: slots are 64-byte aligned and stride one per cache line,
+/// so two threads writing to different slots never invalidate each other's L1 lines. The
+/// underlying buffer is allocated off-GC via
+/// <see cref="System.Runtime.InteropServices.NativeMemory.AlignedAlloc(nuint, nuint)"/> and freed
+/// in <see cref="Dispose"/> (or a finalizer fallback).
+///
+/// Two threads racing on the same slot may each observe a different prior occupant and so each
+/// fire <see cref="IPageEvictionHandler.OnPageEvicted"/> for the page they displaced. Redundant
+/// <c>madvise(DONTNEED)</c> on the same page is wasted work but harmless.
+/// </remarks>
+public sealed unsafe class PageSlotCache : IDisposable
 {
-    private static readonly PageKey EmptySlot = new(-1, -1);
+    private const long EmptySlot = -1L;
+    private const int CacheLineBytes = 64;
+    private const int SlotShift = 3; // log2(CacheLineBytes / sizeof(long))
 
-    private readonly PageKey[] _slots;
-    private readonly Lock[] _locks;
+    // Naturally 64-byte aligned via NativeMemory.AlignedAlloc; one long per cache line.
+    private long* _slots;
+    private int _disposed;
+    private readonly int _slotCount;
     private readonly int _mask;
     private readonly IPageEvictionHandler _evictionHandler;
-    private long _touchCount;
 
-    public int MaxCapacity => _slots.Length;
+    public int MaxCapacity => _slotCount;
 
     public int Count
     {
         get
         {
             int count = 0;
-            for (int i = 0; i < _slots.Length; i++)
-            {
-                lock (_locks[i])
-                    if (_slots[i] != EmptySlot) count++;
-            }
+            for (int i = 0; i < _slotCount; i++)
+                if (Volatile.Read(ref SlotRef(i)) != EmptySlot) count++;
             return count;
         }
     }
-
-    /// <summary>Total number of <see cref="Touch"/> calls observed (including no-op hits).</summary>
-    internal long TouchCount => Volatile.Read(ref _touchCount);
 
     public PageSlotCache(int maxCapacity, IPageEvictionHandler evictionHandler)
     {
@@ -68,55 +71,75 @@ public sealed class PageSlotCache
 
         if (maxCapacity == 0)
         {
-            _slots = [];
-            _locks = [];
+            _slots = null;
+            _slotCount = 0;
             _mask = 0;
             return;
         }
 
-        int size = (int)BitOperations.RoundUpToPowerOf2((uint)maxCapacity);
-        _slots = new PageKey[size];
-        _locks = new Lock[size];
-        Array.Fill(_slots, EmptySlot);
-        for (int i = 0; i < size; i++) _locks[i] = new Lock();
-        _mask = size - 1;
+        _slotCount = (int)BitOperations.RoundUpToPowerOf2((uint)maxCapacity);
+        _mask = _slotCount - 1;
+
+        nuint bytes = (nuint)_slotCount * CacheLineBytes;
+        _slots = (long*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc(bytes, CacheLineBytes);
+        for (int i = 0; i < _slotCount; i++) SlotRef(i) = EmptySlot;
     }
 
     public void Touch(int arenaId, int pageIdx)
     {
-        if (_slots.Length == 0) return;
-        Interlocked.Increment(ref _touchCount);
+        if (_slotCount == 0) return;
 
-        PageKey key = new(arenaId, pageIdx);
-        int idx = (int)((uint)key.GetHashCode() & (uint)_mask);
+        long packed = Pack(arenaId, pageIdx);
+        int idx = (int)(Mix(packed) & (uint)_mask);
+        ref long slot = ref SlotRef(idx);
 
-        PageKey evicted;
-        lock (_locks[idx])
-        {
-            PageKey existing = _slots[idx];
-            if (existing == key) return;
-            _slots[idx] = key;
-            if (existing == EmptySlot) return;
-            evicted = existing;
-        }
+        // A relaxed read first lets the common no-op-on-hit path skip the bus-locking exchange.
+        if (Volatile.Read(ref slot) == packed) return;
 
-        _evictionHandler.OnPageEvicted(evicted.ArenaId, evicted.PageIdx);
+        long prev = Interlocked.Exchange(ref slot, packed);
+        if (prev == EmptySlot || prev == packed) return;
+        _evictionHandler.OnPageEvicted((int)(prev >> 32), (int)prev);
     }
 
     internal bool ContainsPage(int arenaId, int pageIdx)
     {
-        if (_slots.Length == 0) return false;
-        PageKey key = new(arenaId, pageIdx);
-        int idx = (int)((uint)key.GetHashCode() & (uint)_mask);
-        lock (_locks[idx])
-            return _slots[idx] == key;
+        if (_slotCount == 0) return false;
+        long packed = Pack(arenaId, pageIdx);
+        int idx = (int)(Mix(packed) & (uint)_mask);
+        return Volatile.Read(ref SlotRef(idx)) == packed;
     }
 
     public void Clear()
     {
-        for (int i = 0; i < _slots.Length; i++)
-        {
-            lock (_locks[i]) _slots[i] = EmptySlot;
-        }
+        for (int i = 0; i < _slotCount; i++)
+            Volatile.Write(ref SlotRef(i), EmptySlot);
     }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        if (_slots is not null)
+        {
+            System.Runtime.InteropServices.NativeMemory.AlignedFree(_slots);
+            _slots = null;
+        }
+        GC.SuppressFinalize(this);
+    }
+
+    ~PageSlotCache() => Dispose();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ref long SlotRef(int slotIdx) =>
+        ref Unsafe.AsRef<long>(_slots + ((nint)slotIdx << SlotShift));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static long Pack(int arenaId, int pageIdx) =>
+        ((long)(uint)arenaId << 32) | (uint)pageIdx;
+
+    // Multiplicative (Fibonacci) mix; uses the high bits, which give a better
+    // slot distribution than the low bits of (arenaId, pageIdx) when arenaId is
+    // in {0..few} and pageIdx is a dense counter.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint Mix(long packed) =>
+        (uint)(((ulong)packed * 0x9E3779B97F4A7C15UL) >> 32);
 }

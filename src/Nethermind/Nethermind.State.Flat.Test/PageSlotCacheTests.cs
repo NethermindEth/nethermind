@@ -133,24 +133,41 @@ public class PageSlotCacheTests
     [Test]
     public void ArenaByteReader_RepeatedSamePageReads_OnlyTouchOnce()
     {
-        PageSlotCache cache = new(maxCapacity: 16, NoopHandler.Instance);
+        // maxCapacity=1: every Touch lands on the only slot. We probe the memo
+        // by forcing a sentinel back into the slot before each read and checking
+        // whether the next read displaced it. If ArenaByteReader's memo is
+        // working, repeated reads on the same page must NOT call Touch and the
+        // sentinel must remain.
+        PageSlotCache cache = new(maxCapacity: 1, NoopHandler.Instance);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 2];
         ArenaByteReader reader = new(data, cache, arenaId: 0, baseOffset: 0);
 
         Span<byte> b = stackalloc byte[1];
-        for (int i = 0; i < 100; i++)
-            reader.TryRead(i, b);
-        // The memo should collapse 100 single-byte reads on page 0 into a single Touch call.
-        cache.TouchCount.Should().Be(1);
 
-        // Crossing into page 1 invalidates the memo and triggers exactly one new Touch.
-        reader.TryRead(pageSize, b);
-        cache.TouchCount.Should().Be(2);
+        // First read materializes (0,0) in the slot.
+        reader.TryRead(0, b).Should().BeTrue();
+        cache.ContainsPage(0, 0).Should().BeTrue();
 
-        // A third read still on page 1 hits the memo again.
-        reader.TryRead(pageSize + 4, b);
-        cache.TouchCount.Should().Be(2);
+        // 99 more reads on page 0 — memo path must not Touch.
+        for (int i = 1; i < 100; i++)
+        {
+            cache.Touch(99, 99);
+            reader.TryRead(i, b).Should().BeTrue();
+            cache.ContainsPage(99, 99).Should().BeTrue("memo must skip Touch for same page");
+            cache.ContainsPage(0, 0).Should().BeFalse();
+        }
+
+        // Crossing into page 1 must invalidate the memo and Touch exactly once.
+        cache.Touch(99, 99);
+        reader.TryRead(pageSize, b).Should().BeTrue();
+        cache.ContainsPage(0, 1).Should().BeTrue("page boundary must invalidate the memo");
+        cache.ContainsPage(99, 99).Should().BeFalse();
+
+        // Still on page 1 — memo holds again.
+        cache.Touch(99, 99);
+        reader.TryRead(pageSize + 4, b).Should().BeTrue();
+        cache.ContainsPage(99, 99).Should().BeTrue();
     }
 
     [Test]

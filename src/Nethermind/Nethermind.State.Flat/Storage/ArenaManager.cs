@@ -320,6 +320,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             foreach (ArenaFile arena in _arenas.Values)
                 arena.Dispose();
             _arenas.Clear();
+            _pageCache?.Dispose();
         }
     }
 }
