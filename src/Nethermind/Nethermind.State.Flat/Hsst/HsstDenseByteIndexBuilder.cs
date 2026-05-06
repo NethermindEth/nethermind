@@ -14,8 +14,10 @@ namespace Nethermind.State.Flat.Hsst;
 /// <c>Ends</c> array remains contiguous and indexable by the lookup-key byte.
 ///
 /// Output: concatenated values followed by
-/// <c>[Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]</c>. <c>N</c>
-/// equals <c>(highestTag + 1)</c> and is capped at <see cref="MaxEntries"/> (256).
+/// <c>[Ends: N·OffsetSize LE][Count: u8 = N − 1][OffsetSize: u8][IndexType: u8 = 0x04]</c>.
+/// <c>OffsetSize</c> is chosen at <see cref="Build"/> time from the running values total
+/// (1, 2, 4, or 6 bytes — the same policy as <see cref="IndexType.VarPackedArray"/>).
+/// <c>N</c> equals <c>(highestTag + 1)</c> and is capped at <see cref="MaxEntries"/> (256).
 /// </summary>
 public ref struct HsstDenseByteIndexBuilder<TWriter>
     where TWriter : IByteBufferWriter
@@ -31,7 +33,7 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
     private long _writtenBeforeValue;
     /// <summary>Number of entries appended so far, including auto-filled gap entries.</summary>
     private int _count;
-    private uint[]? _ends;
+    private long[]? _ends;
 
     public HsstDenseByteIndexBuilder(ref TWriter writer)
     {
@@ -42,7 +44,7 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
 
     public void Dispose()
     {
-        if (_ends is not null) { ArrayPool<uint>.Shared.Return(_ends); _ends = null; }
+        if (_ends is not null) { ArrayPool<long>.Shared.Return(_ends); _ends = null; }
     }
 
     /// <summary>
@@ -69,11 +71,11 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
             throw new ArgumentException($"Tags must be strictly ascending; got 0x{tag:X2} after entry index {_count - 1}", nameof(tag));
 
         EnsureCapacity(tag + 1);
-        uint end = (uint)(_writer.Written - _baseOffset);
+        long end = _writer.Written - _baseOffset;
         // Fill any gap positions [_count.._count-of-tag) with zero-length entries
         // pointing at _writtenBeforeValue (the new entry's value start; i.e. the
         // previous cumulative end).
-        uint gapEnd = (uint)(_writtenBeforeValue - _baseOffset);
+        long gapEnd = _writtenBeforeValue - _baseOffset;
         for (int i = _count; i < tag; i++)
             _ends![i] = gapEnd;
         _ends![tag] = end;
@@ -88,11 +90,11 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
         int newCap = current == 0 ? InitialCapacity : current * 2;
         if (newCap < needed) newCap = needed;
 
-        uint[] newEnds = ArrayPool<uint>.Shared.Rent(newCap);
+        long[] newEnds = ArrayPool<long>.Shared.Rent(newCap);
         if (_ends is not null)
         {
             Array.Copy(_ends, newEnds, _count);
-            ArrayPool<uint>.Shared.Return(_ends);
+            ArrayPool<long>.Shared.Return(_ends);
         }
         _ends = newEnds;
     }
@@ -122,7 +124,7 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
     }
 
     /// <summary>
-    /// Append the trailer (<c>[Ends][Count][IndexType]</c>). The writer is already
+    /// Append the trailer (<c>[Ends][Count][OffsetSize][IndexType]</c>). The writer is already
     /// advanced through every value and gap-fill at this point.
     /// </summary>
     public void Build()
@@ -131,16 +133,26 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
         if (n == 0)
             throw new InvalidOperationException("DenseByteIndex cannot encode an empty map; the caller must omit Build for zero-entry maps");
 
-        // Ends section.
-        Span<byte> endsSpan = _writer.GetSpan(n * 4);
-        for (int i = 0; i < n; i++)
-            BinaryPrimitives.WriteUInt32LittleEndian(endsSpan[(i * 4)..], _ends![i]);
-        _writer.Advance(n * 4);
+        // The largest cumulative end is at the last entry. Gap entries inherit a
+        // previous end so they never raise the maximum.
+        long valuesTotal = _ends![n - 1];
+        int offsetSize = HsstOffset.ChooseOffsetSize(valuesTotal);
 
-        // Count + IndexType (Count stores N − 1 so a single byte covers 1..256).
-        Span<byte> trailer = _writer.GetSpan(2);
+        // Ends section, written at the chosen stride.
+        Span<byte> endsSpan = _writer.GetSpan(n * offsetSize);
+        Span<byte> scratch = stackalloc byte[8];
+        for (int i = 0; i < n; i++)
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(scratch, (ulong)_ends![i]);
+            scratch[..offsetSize].CopyTo(endsSpan[(i * offsetSize)..]);
+        }
+        _writer.Advance(n * offsetSize);
+
+        // Trailer: Count (N - 1) + OffsetSize + IndexType.
+        Span<byte> trailer = _writer.GetSpan(3);
         trailer[0] = (byte)(n - 1);
-        trailer[1] = (byte)IndexType.DenseByteIndex;
-        _writer.Advance(2);
+        trailer[1] = (byte)offsetSize;
+        trailer[2] = (byte)IndexType.DenseByteIndex;
+        _writer.Advance(3);
     }
 }

@@ -145,7 +145,7 @@ public ref struct HsstVarPackedArrayBuilder<TWriter>
     public void Build()
     {
         long valuesTotal = _valuesWritten;
-        int offsetSize = ChooseOffsetSize(valuesTotal);
+        int offsetSize = HsstOffset.ChooseOffsetSize(valuesTotal);
 
         // Tail checkpoint covers the last entry when count isn't a multiple of the stride.
         if (_entryCount > 0 && (_entryCount & (_entriesPerCkLevel0 - 1)) != 0)

@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -299,14 +300,29 @@ internal static class HsstSizeEstimator
     }
 
     /// <summary>
-    /// Exact size of a <c>ByteTagMap</c> HSST: trailer is <c>5·N + 2</c> bytes
-    /// (1 byte per tag + 4 bytes per end-offset + 1-byte Count + 1-byte IndexType),
-    /// plus the concatenated value bytes. No safety margin — the format has no
-    /// hidden per-entry overhead.
+    /// Exact size of a <c>ByteTagMap</c> HSST: trailer is
+    /// <c>(1 + OffsetSize)·N + 3</c> bytes (1 byte per tag + <c>OffsetSize</c> bytes
+    /// per end-offset + 1-byte Count + 1-byte OffsetSize + 1-byte IndexType), plus the
+    /// concatenated value bytes. <c>OffsetSize</c> is picked from <paramref name="sumValueBytes"/>.
+    /// No safety margin — the format has no hidden per-entry overhead.
     /// </summary>
     internal static int EstimateByteTagMapSize(int entryCount, int sumValueBytes)
     {
-        if (entryCount <= 0) return 2;
-        return 5 * entryCount + 2 + sumValueBytes;
+        if (entryCount <= 0) return 3;
+        int offsetSize = HsstOffset.ChooseOffsetSize(sumValueBytes);
+        return entryCount * (1 + offsetSize) + 3 + sumValueBytes;
+    }
+
+    /// <summary>
+    /// Exact size of a <c>DenseByteIndex</c> HSST: trailer is <c>OffsetSize·N + 3</c>
+    /// bytes (no per-entry tag — the tag byte is the array index), plus the concatenated
+    /// value bytes including any zero-length gap entries. <paramref name="entryCount"/>
+    /// must include gap-fill positions (i.e. <c>highestTag + 1</c>).
+    /// </summary>
+    internal static int EstimateDenseByteIndexSize(int entryCount, int sumValueBytes)
+    {
+        if (entryCount <= 0) return 3;
+        int offsetSize = HsstOffset.ChooseOffsetSize(sumValueBytes);
+        return entryCount * offsetSize + 3 + sumValueBytes;
     }
 }

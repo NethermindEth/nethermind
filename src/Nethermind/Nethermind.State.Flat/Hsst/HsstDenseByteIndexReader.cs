@@ -20,13 +20,15 @@ internal static class HsstDenseByteIndexReader
         public long DataStart;
         /// <summary>Number of entries (= N; valid tag indices are 0..N − 1).</summary>
         public int Count;
-        /// <summary>Absolute offset of the <c>Ends</c> array (4·Count bytes).</summary>
+        /// <summary>Per-end-offset width on disk: 1, 2, 4, or 6 bytes.</summary>
+        public int OffsetSize;
+        /// <summary>Absolute offset of the <c>Ends</c> array (<c>Count·OffsetSize</c> bytes).</summary>
         public long EndsStart;
     }
 
     /// <summary>
-    /// Parse the DenseByteIndex trailer. Returns false on truncation. Caller must
-    /// have already verified the trailing <see cref="IndexType"/> byte equals
+    /// Parse the DenseByteIndex trailer. Returns false on truncation or invalid OffsetSize.
+    /// Caller must have already verified the trailing <see cref="IndexType"/> byte equals
     /// <see cref="IndexType.DenseByteIndex"/>.
     /// </summary>
     public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
@@ -34,19 +36,23 @@ internal static class HsstDenseByteIndexReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         layout = default;
-        if (bound.Length < 2) return false;
+        if (bound.Length < 3) return false;
 
-        Span<byte> oneByte = stackalloc byte[1];
-        if (!reader.TryRead(bound.Offset + bound.Length - 2, oneByte)) return false;
+        // Read [Count, OffsetSize] at positions [-3..-1) (IndexType at -1 was already verified).
+        Span<byte> hdr = stackalloc byte[2];
+        if (!reader.TryRead(bound.Offset + bound.Length - 3, hdr)) return false;
         // Count byte stores N − 1; the empty map cannot be represented.
-        int count = oneByte[0] + 1;
+        int count = hdr[0] + 1;
+        int offsetSize = hdr[1];
+        if (!HsstOffset.IsValidOffsetSize(offsetSize)) return false;
 
-        long trailerLen = 2L + (long)count * 4;
+        long trailerLen = 3L + (long)count * offsetSize;
         if (trailerLen > bound.Length) return false;
 
-        long endsStart = bound.Offset + bound.Length - 2 - (long)count * 4;
+        long endsStart = bound.Offset + bound.Length - 3 - (long)count * offsetSize;
         layout.DataStart = bound.Offset;
         layout.Count = count;
+        layout.OffsetSize = offsetSize;
         layout.EndsStart = endsStart;
         return true;
     }
@@ -96,24 +102,34 @@ internal static class HsstDenseByteIndexReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         entryBound = default;
-        Span<byte> endsBuf = stackalloc byte[8];
-        uint prevEnd, thisEnd;
+        Span<byte> endsBuf = stackalloc byte[16]; // covers 2 · max(OffsetSize=6).
+        long prevEnd, thisEnd;
         if (idx == 0)
         {
-            if (!reader.TryRead(L.EndsStart, endsBuf[..4])) return false;
+            if (!reader.TryRead(L.EndsStart, endsBuf[..L.OffsetSize])) return false;
             prevEnd = 0;
-            thisEnd = BinaryPrimitives.ReadUInt32LittleEndian(endsBuf);
+            thisEnd = ReadEnd(endsBuf, 0, L.OffsetSize);
         }
         else
         {
-            if (!reader.TryRead(L.EndsStart + (long)(idx - 1) * 4, endsBuf)) return false;
-            prevEnd = BinaryPrimitives.ReadUInt32LittleEndian(endsBuf);
-            thisEnd = BinaryPrimitives.ReadUInt32LittleEndian(endsBuf[4..]);
+            int span = 2 * L.OffsetSize;
+            if (!reader.TryRead(L.EndsStart + (long)(idx - 1) * L.OffsetSize, endsBuf[..span])) return false;
+            prevEnd = ReadEnd(endsBuf, 0, L.OffsetSize);
+            thisEnd = ReadEnd(endsBuf, L.OffsetSize, L.OffsetSize);
         }
         if (thisEnd < prevEnd) return false;
         long valueLen = thisEnd - prevEnd;
         if (valueLen > int.MaxValue) return false;
         entryBound = new Bound(L.DataStart + prevEnd, (int)valueLen);
         return true;
+    }
+
+    /// <summary>Read a 1/2/4/6-byte LE end-offset from <paramref name="buf"/> at <paramref name="byteOffset"/>.</summary>
+    private static long ReadEnd(ReadOnlySpan<byte> buf, int byteOffset, int offsetSize)
+    {
+        Span<byte> wide = stackalloc byte[8];
+        wide.Clear();
+        buf.Slice(byteOffset, offsetSize).CopyTo(wide);
+        return (long)BinaryPrimitives.ReadUInt64LittleEndian(wide);
     }
 }

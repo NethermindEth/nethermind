@@ -66,11 +66,12 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     // ByteTagMap state: tiny single-byte-keyed map; no b-tree walk. _tagIdx tracks next entry.
     private readonly bool _isTagMap;
     private readonly int _tagMapCount;
+    private readonly int _tagMapOffsetSize;
     private readonly long _tagMapDataStart;
     private readonly long _tagMapEndsStart;
     private readonly long _tagMapTagsStart;
     private int _tagIdx;
-    private uint _tagPrevEnd;
+    private long _tagPrevEnd;
 
     private AncestorStack _ancestors;
     /// <summary>Depth of the current leaf in the tree (0 = root). −1 = not yet started.</summary>
@@ -157,6 +158,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                 }
                 _isTagMap = true;
                 _tagMapCount = tagLayout.Count;
+                _tagMapOffsetSize = tagLayout.OffsetSize;
                 _tagMapDataStart = tagLayout.DataStart;
                 _tagMapEndsStart = tagLayout.EndsStart;
                 _tagMapTagsStart = tagLayout.TagsStart;
@@ -214,14 +216,15 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         {
             int next = _tagIdx + 1;
             if ((uint)next >= (uint)_tagMapCount) return false;
-            Span<byte> endBuf = stackalloc byte[4];
-            if (!_reader.TryRead(_tagMapEndsStart + (long)next * 4, endBuf)) return false;
-            uint thisEnd = BinaryPrimitives.ReadUInt32LittleEndian(endBuf);
-            uint prev = next == 0 ? 0u : _tagPrevEnd;
+            Span<byte> endBuf = stackalloc byte[8];
+            endBuf.Clear();
+            if (!_reader.TryRead(_tagMapEndsStart + (long)next * _tagMapOffsetSize, endBuf[.._tagMapOffsetSize])) return false;
+            long thisEnd = (long)BinaryPrimitives.ReadUInt64LittleEndian(endBuf);
+            long prev = next == 0 ? 0L : _tagPrevEnd;
             if (thisEnd < prev) return false;
             _tagIdx = next;
             _currentKeyBound = new Bound(_tagMapTagsStart + next, 1);
-            _currentValueBound = new Bound(_tagMapDataStart + prev, (int)(thisEnd - prev));
+            _currentValueBound = new Bound(_tagMapDataStart + prev, thisEnd - prev);
             _tagPrevEnd = thisEnd;
             return true;
         }

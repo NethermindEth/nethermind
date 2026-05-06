@@ -9,7 +9,11 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Builds a tiny single-byte-keyed HSST. The output is concatenated values followed by a
-/// flat trailer: <c>[Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8 = 0x03]</c>.
+/// flat trailer: <c>[Ends: N×OffsetSize LE][Tags: N×u8][Count: u8 = N - 1][OffsetSize: u8][IndexType: u8 = 0x03]</c>.
+/// <c>OffsetSize</c> is chosen at <see cref="Build"/> time from the running values total
+/// (1, 2, 4, or 6 bytes — the same policy as <see cref="IndexType.VarPackedArray"/>),
+/// so small maps pay 1 byte per cumulative end instead of a fixed 4.
+///
 /// Designed for the persisted-snapshot column container (≤7 entries), per-address
 /// sub-tag map (≤3 entries), and the slot-suffix bucket (≤256 entries) where the
 /// b-tree's fixed parse cost dominates.
@@ -35,7 +39,7 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     private long _writtenBeforeValue;
     private int _count;
     private byte[]? _tags;
-    private uint[]? _ends;
+    private long[]? _ends;
 
     /// <summary>
     /// Create a builder writing via <paramref name="writer"/>. The trailing
@@ -52,7 +56,7 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     public void Dispose()
     {
         if (_tags is not null) { ArrayPool<byte>.Shared.Return(_tags); _tags = null; }
-        if (_ends is not null) { ArrayPool<uint>.Shared.Return(_ends); _ends = null; }
+        if (_ends is not null) { ArrayPool<long>.Shared.Return(_ends); _ends = null; }
     }
 
     /// <summary>
@@ -78,7 +82,7 @@ public ref struct HsstByteTagMapBuilder<TWriter>
             throw new ArgumentException($"Tags must be strictly ascending; got 0x{tag:X2} after 0x{_tags[_count - 1]:X2}", nameof(tag));
 
         EnsureCapacity(_count + 1);
-        uint end = (uint)(_writer.Written - _baseOffset);
+        long end = _writer.Written - _baseOffset;
         _tags![_count] = tag;
         _ends![_count] = end;
         _count++;
@@ -93,13 +97,13 @@ public ref struct HsstByteTagMapBuilder<TWriter>
         if (newCap < needed) newCap = needed;
 
         byte[] newTags = ArrayPool<byte>.Shared.Rent(newCap);
-        uint[] newEnds = ArrayPool<uint>.Shared.Rent(newCap);
+        long[] newEnds = ArrayPool<long>.Shared.Rent(newCap);
         if (_tags is not null)
         {
             Array.Copy(_tags, newTags, _count);
             Array.Copy(_ends!, newEnds, _count);
             ArrayPool<byte>.Shared.Return(_tags);
-            ArrayPool<uint>.Shared.Return(_ends!);
+            ArrayPool<long>.Shared.Return(_ends!);
         }
         _tags = newTags;
         _ends = newEnds;
@@ -133,8 +137,8 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     }
 
     /// <summary>
-    /// Append the trailer (<c>[Ends][Tags][Count][IndexType]</c>) to the writer. The writer
-    /// is already advanced through every value at this point.
+    /// Append the trailer (<c>[Ends][Tags][Count][OffsetSize][IndexType]</c>) to the writer.
+    /// The writer is already advanced through every value at this point.
     /// </summary>
     public void Build()
     {
@@ -142,21 +146,31 @@ public ref struct HsstByteTagMapBuilder<TWriter>
         if (n == 0)
             throw new InvalidOperationException("ByteTagMap cannot encode an empty map; the caller must omit Build for zero-entry maps");
 
-        // Ends section.
-        Span<byte> endsSpan = _writer.GetSpan(n * 4);
+        // Pick the smallest end-offset width that fits the cumulative max (= last entry's end).
+        long valuesTotal = _ends![n - 1];
+        int offsetSize = HsstOffset.ChooseOffsetSize(valuesTotal);
+
+        // Ends section, written at the chosen stride. Use an 8-byte scratch and slice
+        // off the low offsetSize bytes (LE), matching the VarPackedArray pattern.
+        Span<byte> endsSpan = _writer.GetSpan(n * offsetSize);
+        Span<byte> scratch = stackalloc byte[8];
         for (int i = 0; i < n; i++)
-            BinaryPrimitives.WriteUInt32LittleEndian(endsSpan[(i * 4)..], _ends![i]);
-        _writer.Advance(n * 4);
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(scratch, (ulong)_ends![i]);
+            scratch[..offsetSize].CopyTo(endsSpan[(i * offsetSize)..]);
+        }
+        _writer.Advance(n * offsetSize);
 
         // Tags section (adjacent to Count so reader hits it on the same cache line).
         Span<byte> tagsSpan = _writer.GetSpan(n);
         for (int i = 0; i < n; i++) tagsSpan[i] = _tags![i];
         _writer.Advance(n);
 
-        // Count byte stores N - 1 so a single byte covers 1..256.
-        Span<byte> trailer = _writer.GetSpan(2);
+        // Trailer: Count (N - 1) + OffsetSize + IndexType.
+        Span<byte> trailer = _writer.GetSpan(3);
         trailer[0] = (byte)(n - 1);
-        trailer[1] = (byte)IndexType.ByteTagMap;
-        _writer.Advance(2);
+        trailer[1] = (byte)offsetSize;
+        trailer[2] = (byte)IndexType.ByteTagMap;
+        _writer.Advance(3);
     }
 }

@@ -62,7 +62,8 @@ public class HsstDenseByteIndexTests
 
         byte[] data = Build(tags, vals);
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
-        Assert.That(data[^2], Is.EqualTo((byte)(n - 1)));
+        Assert.That(data[^2], Is.AnyOf(1, 2, 4, 6));
+        Assert.That(data[^3], Is.EqualTo((byte)(n - 1)));
 
         // Hits — every tag returns the stored value (possibly empty by design).
         for (int i = 0; i < n; i++)
@@ -83,7 +84,8 @@ public class HsstDenseByteIndexTests
         byte[] data = Build([0x02, 0x05], ["AB"u8.ToArray(), "Z"u8.ToArray()]);
 
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
-        Assert.That(data[^2], Is.EqualTo((byte)5)); // N - 1 where N = 6
+        Assert.That(data[^2], Is.EqualTo((byte)1)); // OffsetSize: total 3 bytes ≤ 255
+        Assert.That(data[^3], Is.EqualTo((byte)5)); // N - 1 where N = 6
 
         // Gap positions return success with empty value.
         Assert.That(TryGet(data, 0x00, out byte[] v0), Is.True);
@@ -155,23 +157,72 @@ public class HsstDenseByteIndexTests
     public void TrailerLayout_NoTagsArray_ThreeEntryFixture()
     {
         // Three entries at positions 0x00, 0x02, 0x03 → values "AB", "Z", "" (empty).
-        // Position 0x01 is gap-filled empty → N = 4.
+        // Position 0x01 is gap-filled empty → N = 4. valuesTotal = 3 ≤ 255 → OffsetSize = 1.
         byte[] data = Build([0x00, 0x02, 0x03], ["AB"u8.ToArray(), "Z"u8.ToArray(), []]);
 
-        // Layout: [Value_0=2][Value_2=1][Ends:4·u32][Count:1][IndexType:1] = 2 + 1 + 16 + 2 = 21
-        Assert.That(data.Length, Is.EqualTo(2 + 1 + 16 + 2));
+        // Layout: [Value_0=2][Value_2=1][Ends: 4·1][Count:1][OffsetSize:1][IndexType:1]
+        //       = 2 + 1 + 4 + 3 = 10
+        Assert.That(data.Length, Is.EqualTo(2 + 1 + 4 + 3));
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
-        Assert.That(data[^2], Is.EqualTo((byte)3)); // N - 1
+        Assert.That(data[^2], Is.EqualTo((byte)1)); // OffsetSize
+        Assert.That(data[^3], Is.EqualTo((byte)3)); // N - 1
 
-        // Ends sit immediately before the trailer; cumulative ends 2, 2, 3, 3.
-        ReadOnlySpan<byte> endsSpan = data.AsSpan(data.Length - 2 - 16, 16);
-        Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(endsSpan), Is.EqualTo(2u));
-        Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(endsSpan[4..]), Is.EqualTo(2u));
-        Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(endsSpan[8..]), Is.EqualTo(3u));
-        Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(endsSpan[12..]), Is.EqualTo(3u));
+        // Ends sit immediately before the trailer; cumulative ends 2, 2, 3, 3 (1 byte each).
+        ReadOnlySpan<byte> endsSpan = data.AsSpan(data.Length - 3 - 4, 4);
+        Assert.That(endsSpan[0], Is.EqualTo((byte)2));
+        Assert.That(endsSpan[1], Is.EqualTo((byte)2));
+        Assert.That(endsSpan[2], Is.EqualTo((byte)3));
+        Assert.That(endsSpan[3], Is.EqualTo((byte)3));
 
         // Values up front.
         Assert.That(data[..2], Is.EqualTo("AB"u8.ToArray()));
         Assert.That(data[2], Is.EqualTo((byte)'Z'));
+    }
+
+    [Test]
+    public void OffsetSize_GrowsWithValuesTotal_AndRoundTripsCorrectly()
+    {
+        // For each target OffsetSize regime, build a small DenseByteIndex whose cumulative
+        // values total falls into that bucket; verify the trailer's OffsetSize byte and
+        // that lookups round-trip including gap-filled entries.
+        (int valLen, int expectedOffsetSize)[] cases =
+        [
+            (50, 1),     // 4 entries × 50 = 200 ≤ 255
+            (300, 2),    // 4 entries × 300 = 1200 > 255 → OffsetSize 2
+            (20_000, 4), // 4 entries × 20000 = 80000 > 65535 → OffsetSize 4
+        ];
+
+        foreach ((int valLen, int expectedOffsetSize) in cases)
+        {
+            // Tags 0, 2, 4, 6 — gaps at 1, 3, 5 must round-trip as empty values regardless of OffsetSize.
+            byte[] tags = [0x00, 0x02, 0x04, 0x06];
+            byte[][] vals = new byte[4][];
+            for (int i = 0; i < 4; i++)
+            {
+                vals[i] = new byte[valLen];
+                for (int k = 0; k < valLen; k++) vals[i][k] = (byte)((i * 31 + k) & 0xff);
+            }
+
+            byte[] data = Build(tags, vals);
+            Assert.That(data[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
+            Assert.That(data[^2], Is.EqualTo((byte)expectedOffsetSize),
+                $"valLen={valLen} expected OffsetSize {expectedOffsetSize} but trailer says {data[^2]}");
+            Assert.That(data[^3], Is.EqualTo((byte)6)); // N - 1 where N = highestTag + 1 = 7
+
+            // Round-trip filled positions.
+            for (int i = 0; i < 4; i++)
+            {
+                Assert.That(TryGet(data, tags[i], out byte[] got), Is.True);
+                Assert.That(got, Is.EqualTo(vals[i]));
+            }
+            // Gap positions 1, 3, 5 round-trip as empty.
+            foreach (byte gap in new byte[] { 0x01, 0x03, 0x05 })
+            {
+                Assert.That(TryGet(data, gap, out byte[] g), Is.True);
+                Assert.That(g.Length, Is.EqualTo(0));
+            }
+            // Above-range tag 0x07 misses.
+            Assert.That(TryGet(data, 0x07, out _), Is.False);
+        }
     }
 }
