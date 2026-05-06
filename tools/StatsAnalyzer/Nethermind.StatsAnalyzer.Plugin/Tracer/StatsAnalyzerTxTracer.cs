@@ -25,10 +25,7 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
 
     protected void Build()
     {
-        using (var q = Queue)
-        {
-            Queue = new StatsProcessingQueue<TData, TStat>(Buffer, StatsAnalyzer, Ct);
-            q?.Dispose();
-        }
+        using var q = Queue;
+        Queue = new StatsProcessingQueue<TData, TStat>(Buffer, StatsAnalyzer, Ct);
     }
 }
