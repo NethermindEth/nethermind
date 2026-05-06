@@ -196,7 +196,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
             PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
             ProofDiagnostics diagnostics = new();
-            patriciaTree.AcceptMetered(treeVisitor, stateId.StateRoot.ToCommitment(), diagnostics, visitingOptions);
+            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
             return diagnostics;
         }
 

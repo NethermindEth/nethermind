@@ -1034,49 +1034,23 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
-        /// Run tree visitor
+        /// Run tree visitor.
         /// </summary>
         /// <param name="visitor">The visitor</param>
         /// <param name="rootHash">State root hash (not storage root)</param>
         /// <param name="visitingOptions">Options</param>
-        /// <param name="storageAddr">Address of storage, if it should visit storage. </param>
+        /// <param name="storageAddr">Address of storage, if it should visit storage.</param>
         /// <param name="storageRoot">Root of storage if it should visit storage. Optional for performance.</param>
+        /// <param name="diagnostics">When non-null, the resolver is wrapped with <see cref="MeteredTrieNodeResolver"/>
+        /// and per-call lookup, cache-miss, and depth counters are accumulated into this instance.</param>
         /// <typeparam name="TNodeContext"></typeparam>
         public void Accept<TNodeContext>(
             ITreeVisitor<TNodeContext> visitor,
             Hash256 rootHash,
             VisitingOptions? visitingOptions = null,
             Hash256? storageAddr = null,
-            Hash256? storageRoot = null
-        ) where TNodeContext : struct, INodeContext<TNodeContext>
-            => AcceptCore(visitor, rootHash, diagnostics: null, visitingOptions, storageAddr, storageRoot);
-
-        /// <summary>
-        /// Run a tree visitor while accumulating per-call lookup, cache-miss, and depth counters into
-        /// <paramref name="diagnostics"/>. Behaves like
-        /// <see cref="Accept{TNodeContext}(ITreeVisitor{TNodeContext}, Hash256, VisitingOptions, Hash256, Hash256)"/>
-        /// except the resolver is wrapped with <see cref="MeteredTrieNodeResolver"/>.
-        /// </summary>
-        public void AcceptMetered<TNodeContext>(
-            ITreeVisitor<TNodeContext> visitor,
-            Hash256 rootHash,
-            ProofDiagnostics diagnostics,
-            VisitingOptions? visitingOptions = null,
-            Hash256? storageAddr = null,
-            Hash256? storageRoot = null
-        ) where TNodeContext : struct, INodeContext<TNodeContext>
-        {
-            ArgumentNullException.ThrowIfNull(diagnostics);
-            AcceptCore(visitor, rootHash, diagnostics, visitingOptions, storageAddr, storageRoot);
-        }
-
-        private void AcceptCore<TNodeContext>(
-            ITreeVisitor<TNodeContext> visitor,
-            Hash256 rootHash,
-            ProofDiagnostics? diagnostics,
-            VisitingOptions? visitingOptions,
-            Hash256? storageAddr,
-            Hash256? storageRoot
+            Hash256? storageRoot = null,
+            ProofDiagnostics? diagnostics = null
         ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);

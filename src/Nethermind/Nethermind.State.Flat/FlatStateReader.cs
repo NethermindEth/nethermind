@@ -76,7 +76,7 @@ public class FlatStateReader(
 
         PatriciaTree patriciaTree = new(trieStoreAdapter, logManager);
         ProofDiagnostics diagnostics = new();
-        patriciaTree.AcceptMetered(treeVisitor, stateId.StateRoot.ToCommitment(), diagnostics, visitingOptions);
+        patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
         return diagnostics;
     }
 

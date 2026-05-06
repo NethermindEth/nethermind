@@ -45,7 +45,7 @@ namespace Nethermind.State
         public ProofDiagnostics RunTreeVisitorMetered<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? header, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
         {
             ProofDiagnostics diagnostics = new();
-            _state.AcceptMetered(treeVisitor, header?.StateRoot ?? Keccak.EmptyTreeHash, diagnostics, visitingOptions);
+            _state.Accept(treeVisitor, header?.StateRoot ?? Keccak.EmptyTreeHash, visitingOptions, diagnostics: diagnostics);
             return diagnostics;
         }
 
