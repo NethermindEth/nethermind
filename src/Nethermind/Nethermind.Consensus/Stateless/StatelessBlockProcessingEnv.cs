@@ -52,10 +52,8 @@ public class StatelessBlockProcessingEnv(
             logManager,
             new BlocksConfig()
             {
-#if ZK_EVM
                 ParallelExecution = false,
                 ParallelExecutionBatchRead = false
-#endif
             },
             new WithdrawalProcessorFactory(logManager)
         );
