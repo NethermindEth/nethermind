@@ -62,12 +62,12 @@ public interface IBlocksConfig : IConfig
     bool BuildBlocksOnMainState { get; set; }
 
     [ConfigItem(
-        Description = "Parallelize transaction execution with Block level access lists.",
+        Description = "Parallelize transaction execution when Block Level Access Lists are available. Experimental Amsterdam/BAL path; disabling falls back to sequential execution and the option is ignored for blocks without BAL bodies.",
         DefaultValue = "true")]
     bool ParallelExecution { get; set; }
 
     [ConfigItem(
-        Description = "Use parallel reads with Block level access lists.",
+        Description = "Use parallel state reads when Block Level Access Lists are available. Experimental Amsterdam/BAL path; disabling falls back to sequential reads and the option is ignored for blocks without BAL bodies.",
         DefaultValue = "true")]
     bool ParallelExecutionBatchRead { get; set; }
 

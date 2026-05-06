@@ -16,10 +16,7 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
     // Transaction execution is synchronous; the standard processing path ends
     // the trace on the same worker thread that started it.
     [ThreadStatic]
-    private static OpcodeBlockTracer? t_currentTracerOwner;
-
-    [ThreadStatic]
-    private static OpcodeCountingTxTracer? t_currentTxTracer;
+    private static Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? t_currentTxTracers;
 
     public bool IsTracingRewards => false;
 
@@ -51,21 +48,23 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
         }
 
         OpcodeCountingTxTracer tracer = new(builder);
-        t_currentTracerOwner = this;
-        t_currentTxTracer = tracer;
+        (t_currentTxTracers ??= [])[this] = tracer;
         return tracer;
     }
 
     public void EndTxTrace()
     {
-        if (!ReferenceEquals(t_currentTracerOwner, this))
+        Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? currentTxTracers = t_currentTxTracers;
+        if (currentTxTracers is null || !currentTxTracers.Remove(this, out OpcodeCountingTxTracer? currentTxTracer))
         {
             return;
         }
 
-        OpcodeCountingTxTracer? currentTxTracer = t_currentTxTracer;
-        t_currentTracerOwner = null;
-        t_currentTxTracer = null;
+        if (currentTxTracers.Count == 0)
+        {
+            t_currentTxTracers = null;
+        }
+
         currentTxTracer?.Dispose();
     }
 
@@ -82,10 +81,10 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
 
     private void ClearCurrentTxTracer()
     {
-        if (ReferenceEquals(t_currentTracerOwner, this))
+        Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? currentTxTracers = t_currentTxTracers;
+        if (currentTxTracers is not null && currentTxTracers.Remove(this) && currentTxTracers.Count == 0)
         {
-            t_currentTracerOwner = null;
-            t_currentTxTracer = null;
+            t_currentTxTracers = null;
         }
     }
 }

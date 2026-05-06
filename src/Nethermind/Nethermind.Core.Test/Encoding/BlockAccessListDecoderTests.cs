@@ -43,6 +43,12 @@ public class BlockAccessListDecoderTests
     public void Decode_truncated_outer_list_throws_RlpException() =>
         Assert.That(() => Rlp.Decode<BlockAccessList>(new byte[] { 0xf8 }), Throws.TypeOf<RlpException>());
 
+    // 0x80 is an empty byte string, not an EIP-7928 BAL list. The public Decode<T>
+    // entry point must fail with a typed RlpException rather than returning null.
+    [Test]
+    public void Decode_empty_string_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<BlockAccessList>(new byte[] { 0x80 }), Throws.TypeOf<RlpException>());
+
     // 0xc1 0xc0 = outer list of 1 containing an empty inner list. EIP-7928 requires each
     // AccountChanges to be a 6-field sequence; an empty list is structurally invalid.
     [Test]
@@ -139,6 +145,25 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void DecodeArrayPool_wraps_non_rlp_decoder_exceptions()
+    {
+        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc1, 0x01 });
+
+        RlpException? exception = null;
+        try
+        {
+            Rlp.DecodeArrayPool(ref ctx, new ThrowingArgumentDecoder());
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
+
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.InnerException, Is.TypeOf<ArgumentException>());
+    }
+
+    [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
     {
         // SlotChanges = [StorageKey, List[StorageChange]]. An empty StorageChange list means a
@@ -213,18 +238,46 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Balance_change_roundtrips_with_max_uint32_index()
+    public void Balance_change_with_prestate_index_is_rejected()
     {
-        // Upper bound of EIP-7928 BlockAccessIndex spec.
-        // (Eip7928Constants.PrestateIndex collides with this value but is internal-only and
-        // never appears on the wire.)
-        BalanceChange original = new(uint.MaxValue, 0x1);
+        byte[] rlp = [0xc6, 0x84, 0xff, 0xff, 0xff, 0xff, 0x01];
 
-        Rlp encoded = Rlp.Encode(original);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
-        BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        Rlp.ValueDecoderContext ctx = new(rlp);
+        RlpException? exception = null;
+        try
+        {
+            BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
 
-        Assert.That(decoded.Index, Is.EqualTo(uint.MaxValue));
+        Assert.That(exception, Is.Not.Null);
+        Assert.That(exception!.Message, Does.Contain("reserved for internal prestate"));
+        Assert.That(
+            () => Rlp.Encode(new BalanceChange(Eip7928Constants.PrestateIndex, 0x1)),
+            Throws.TypeOf<RlpException>().With.Message.Contain("reserved for internal prestate"));
+    }
+
+    [Test]
+    public void Block_access_list_with_wire_prestate_index_is_rejected()
+    {
+        byte[] rlp =
+        [
+            0xe2, 0xe1, 0x94,
+            0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00,
+            0xc0, 0xc0,
+            0xc7, 0xc6, 0x84, 0xff, 0xff, 0xff, 0xff, 0x01,
+            0xc0, 0xc0
+        ];
+
+        Assert.That(
+            () => Rlp.Decode<BlockAccessList>(rlp),
+            Throws.TypeOf<RlpException>().With.Message.Contain("reserved for internal prestate"));
     }
 
     [Test]
@@ -686,5 +739,16 @@ public class BlockAccessListDecoderTests
         }
 
         public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
+
+    private sealed class ThrowingArgumentDecoder : IRlpValueDecoder<byte>
+    {
+        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            throw new ArgumentException("semantic argument failure");
+        }
+
+        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 }

@@ -12,7 +12,7 @@ namespace Nethermind.Core.BlockAccessLists;
 /// </summary>
 public sealed class PrestateAwareIndexComparer : IComparer<uint>
 {
-    public static readonly PrestateAwareIndexComparer Instance = new();
+    public static PrestateAwareIndexComparer Instance { get; } = new();
 
     private PrestateAwareIndexComparer() { }
 

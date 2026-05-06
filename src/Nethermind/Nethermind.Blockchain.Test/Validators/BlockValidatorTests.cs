@@ -280,8 +280,7 @@ public class BlockValidatorTests
             .WithEncodedBlockAccessList(encodedBal)
             .WithBlockAccessListHash(balHash)
             .TestObject;
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
@@ -294,6 +293,80 @@ public class BlockValidatorTests
         {
             Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
         }
+    }
+
+    [TestCase(0u, true)]
+    [TestCase(1u, true)]
+    [TestCase(2u, true)]
+    [TestCase(3u, true)]
+    [TestCase(4u, false)]
+    public void ValidateSuggestedBlock_enforces_bal_index_bounds(uint index, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        AccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(index, 1))
+            .TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(accountChanges)
+            .TestObject;
+        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(10_000)
+            .WithTransactions(2, Amsterdam.Instance)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid));
+        if (expectedValid)
+        {
+            Assert.That(error, Is.Null);
+        }
+        else
+        {
+            Assert.That(error, Does.StartWith("BlockLevelAccessListIndexOutOfRange"));
+        }
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_rejects_bal_item_when_gas_limit_allows_no_items()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        AccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(0, 1))
+            .TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(accountChanges)
+            .TestObject;
+        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(0)
+            .WithTransactions([])
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
     }
 
     [TestCase(30_000, true)]
