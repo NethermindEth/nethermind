@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// <summary>
 /// Absolute offset + length region within an <see cref="IHsstByteReader{TPin}"/>.
 /// </summary>
-public readonly record struct Bound(long Offset, int Length)
+public readonly record struct Bound(long Offset, long Length)
 {
     public bool IsEmpty => Length == 0;
 }

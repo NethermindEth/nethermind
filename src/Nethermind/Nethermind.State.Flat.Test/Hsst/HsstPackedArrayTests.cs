@@ -43,7 +43,7 @@ public class HsstPackedArrayTests
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         if (!r.TrySeek(key, out _)) { value = []; return false; }
         Bound b = r.GetBound();
-        value = data.Slice((int)b.Offset, b.Length).ToArray();
+        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
         return true;
     }
 
@@ -53,7 +53,7 @@ public class HsstPackedArrayTests
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         if (!r.TrySeekFloor(key, out _)) { value = []; return false; }
         Bound b = r.GetBound();
-        value = data.Slice((int)b.Offset, b.Length).ToArray();
+        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
         return true;
     }
 
@@ -66,7 +66,7 @@ public class HsstPackedArrayTests
         {
             Bound kb = e.Current.KeyBound;
             Bound vb = e.Current.ValueBound;
-            entries.Add((data.Slice((int)kb.Offset, kb.Length).ToArray(), data.Slice((int)vb.Offset, vb.Length).ToArray()));
+            entries.Add((data.Slice((int)kb.Offset, (int)kb.Length).ToArray(), data.Slice((int)vb.Offset, (int)vb.Length).ToArray()));
         }
         return entries;
     }

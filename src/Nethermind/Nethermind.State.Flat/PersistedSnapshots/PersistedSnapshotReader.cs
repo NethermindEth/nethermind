@@ -225,11 +225,12 @@ public static class PersistedSnapshotReader
             return null;
         Bound b = r.GetBound();
         if (b.Length == 0 || b.Length % 4 != 0) return null;
-        int count = b.Length / 4;
+        int len = checked((int)b.Length);
+        int count = len / 4;
         Span<byte> buf = stackalloc byte[256];
-        if (b.Length > buf.Length)
-            buf = new byte[b.Length];
-        if (!reader.TryRead(b.Offset, buf[..b.Length])) return null;
+        if (len > buf.Length)
+            buf = new byte[len];
+        if (!reader.TryRead(b.Offset, buf[..len])) return null;
         int[] ids = new int[count];
         for (int i = 0; i < count; i++)
             ids[i] = BitConverter.ToInt32(buf.Slice(i * 4, 4));

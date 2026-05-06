@@ -23,7 +23,7 @@ public class HsstTests
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         if (!r.TrySeek(key, out _)) { value = []; return false; }
         Bound b = r.GetBound();
-        value = data.Slice((int)b.Offset, b.Length).ToArray();
+        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
         return true;
     }
 
@@ -37,8 +37,8 @@ public class HsstTests
         {
             Bound kb = e.Current.KeyBound;
             Bound vb = e.Current.ValueBound;
-            byte[] k = data.Slice((int)kb.Offset, kb.Length).ToArray();
-            byte[] v = data.Slice((int)vb.Offset, vb.Length).ToArray();
+            byte[] k = data.Slice((int)kb.Offset, (int)kb.Length).ToArray();
+            byte[] v = data.Slice((int)vb.Offset, (int)vb.Length).ToArray();
             entries.Add((k, v));
         }
         return entries;

@@ -164,14 +164,14 @@ public class PersistedSnapshotCompactorTests
         HsstReader<SpanByteReader, NoOpPin> nodeRefsR = new(in mergedReader, metaBound);
         Assert.That(nodeRefsR.TrySeek("noderefs"u8, out _), Is.True);
         Bound nodeRefsBound = nodeRefsR.GetBound();
-        ReadOnlySpan<byte> nodeRefsValue = merged.AsSpan((int)nodeRefsBound.Offset, nodeRefsBound.Length);
+        ReadOnlySpan<byte> nodeRefsValue = merged.AsSpan((int)nodeRefsBound.Offset, (int)nodeRefsBound.Length);
         Assert.That(nodeRefsValue.ToArray(), Is.EqualTo(new byte[] { 0x01 }));
 
         // "ref_ids" key with both base snapshot IDs as LE int32s
         HsstReader<SpanByteReader, NoOpPin> refIdsR = new(in mergedReader, metaBound);
         Assert.That(refIdsR.TrySeek("ref_ids"u8, out _), Is.True);
         Bound refIdsBound = refIdsR.GetBound();
-        ReadOnlySpan<byte> refIdsValue = merged.AsSpan((int)refIdsBound.Offset, refIdsBound.Length);
+        ReadOnlySpan<byte> refIdsValue = merged.AsSpan((int)refIdsBound.Offset, (int)refIdsBound.Length);
         Assert.That(refIdsValue.Length, Is.EqualTo(8)); // 2 IDs × 4 bytes
 
         // ReadRefIdsFromMetadata should return both IDs

@@ -24,7 +24,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     private TReader _reader = reader;
     private Bound _bound = initialBound;
 
-    public HsstReader(scoped in TReader reader) : this(reader, new Bound(0, (int)reader.Length)) { }
+    public HsstReader(scoped in TReader reader) : this(reader, new Bound(0, reader.Length)) { }
 
     public readonly Bound GetBound() => _bound;
     public void SetBound(Bound bound) => _bound = bound;
@@ -35,7 +35,7 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
     /// </summary>
     public readonly int GetValue(Span<byte> output)
     {
-        int count = Math.Min(_bound.Length, output.Length);
+        int count = (int)Math.Min(_bound.Length, output.Length);
         if (count > 0)
             _reader.TryRead(_bound.Offset, output[..count]);
         return count;

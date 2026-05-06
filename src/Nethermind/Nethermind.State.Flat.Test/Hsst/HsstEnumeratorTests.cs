@@ -31,9 +31,9 @@ public class HsstEnumeratorTests
 
         Assert.That(e.MoveNext(), Is.True);
         Bound k = e.Current.KeyBound;
-        Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, k.Length)), Is.EqualTo("key1"));
+        Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, (int)k.Length)), Is.EqualTo("key1"));
         Bound v = e.Current.ValueBound;
-        Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, v.Length)), Is.EqualTo("value1"));
+        Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, (int)v.Length)), Is.EqualTo("value1"));
         Assert.That(e.MoveNext(), Is.False);
     }
 
@@ -65,10 +65,10 @@ public class HsstEnumeratorTests
         {
             (string expectedKey, string expectedValue) = entries[idx];
             Bound k = e.Current.KeyBound;
-            Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, k.Length)), Is.EqualTo(expectedKey),
+            Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, (int)k.Length)), Is.EqualTo(expectedKey),
                 $"Key mismatch at idx {idx}");
             Bound v = e.Current.ValueBound;
-            Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, v.Length)), Is.EqualTo(expectedValue),
+            Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, (int)v.Length)), Is.EqualTo(expectedValue),
                 $"Value mismatch at idx {idx}");
             idx++;
         }
@@ -112,10 +112,10 @@ public class HsstEnumeratorTests
         while (e.MoveNext())
         {
             Bound k = e.Current.KeyBound;
-            Assert.That(data.AsSpan((int)k.Offset, k.Length).SequenceEqual(deduped[idx].Key), Is.True,
+            Assert.That(data.AsSpan((int)k.Offset, (int)k.Length).SequenceEqual(deduped[idx].Key), Is.True,
                 $"Key mismatch at idx {idx}");
             Bound v = e.Current.ValueBound;
-            Assert.That(data.AsSpan((int)v.Offset, v.Length).SequenceEqual(deduped[idx].Value), Is.True,
+            Assert.That(data.AsSpan((int)v.Offset, (int)v.Length).SequenceEqual(deduped[idx].Value), Is.True,
                 $"Value mismatch at idx {idx}");
             idx++;
         }
@@ -148,7 +148,7 @@ public class HsstEnumeratorTests
         while (outerEnum.MoveNext())
         {
             Bound ak = outerEnum.Current.KeyBound;
-            string addr = Encoding.UTF8.GetString(outer.AsSpan((int)ak.Offset, ak.Length));
+            string addr = Encoding.UTF8.GetString(outer.AsSpan((int)ak.Offset, (int)ak.Length));
             seenAddrs.Add(addr);
             List<string> subs = [];
 
@@ -156,9 +156,9 @@ public class HsstEnumeratorTests
             while (innerEnum.MoveNext())
             {
                 Bound sk = innerEnum.Current.KeyBound;
-                string sub = Encoding.UTF8.GetString(outer.AsSpan((int)sk.Offset, sk.Length));
+                string sub = Encoding.UTF8.GetString(outer.AsSpan((int)sk.Offset, (int)sk.Length));
                 Bound v = innerEnum.Current.ValueBound;
-                string val = Encoding.UTF8.GetString(outer.AsSpan((int)v.Offset, v.Length));
+                string val = Encoding.UTF8.GetString(outer.AsSpan((int)v.Offset, (int)v.Length));
                 subs.Add($"{sub}={val}");
             }
             seenSubtags[addr] = subs;

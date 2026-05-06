@@ -585,7 +585,7 @@ internal static class PersistedSnapshotUtils
         HsstReader<SpanByteReader, NoOpPin> hsst = new(in r);
         if (!hsst.TrySeek(key, out _)) { value = default; return false; }
         Bound b = hsst.GetBound();
-        value = data.Slice((int)b.Offset, b.Length);
+        value = data.Slice(checked((int)b.Offset), checked((int)b.Length));
         return true;
     }
 
@@ -596,14 +596,14 @@ internal static class PersistedSnapshotUtils
         HsstReader<SpanByteReader, NoOpPin> hsst = new(in r);
         if (!hsst.TrySeek(key, out _)) { offset = 0; length = 0; return false; }
         Bound b = hsst.GetBound();
-        offset = (int)b.Offset;
-        length = b.Length;
+        offset = checked((int)b.Offset);
+        length = checked((int)b.Length);
         return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ReadOnlySpan<byte> SliceFromBound(ReadOnlySpan<byte> data, Bound b) =>
-        data.Slice((int)b.Offset, b.Length);
+        data.Slice(checked((int)b.Offset), checked((int)b.Length));
 
     private static TreePath DecodeWith3Byte(ReadOnlySpan<byte> key) =>
         TreePath.DecodeWith3Byte(key);

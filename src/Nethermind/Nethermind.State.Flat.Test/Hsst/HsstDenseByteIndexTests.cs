@@ -28,7 +28,7 @@ public class HsstDenseByteIndexTests
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         if (!r.TrySeek([key], out _)) { value = []; return false; }
         Bound b = r.GetBound();
-        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, b.Length).ToArray();
+        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
         return true;
     }
 
@@ -38,7 +38,7 @@ public class HsstDenseByteIndexTests
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         if (!r.TrySeekFloor([key], out _)) { value = []; return false; }
         Bound b = r.GetBound();
-        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, b.Length).ToArray();
+        value = b.Length == 0 ? [] : data.Slice((int)b.Offset, (int)b.Length).ToArray();
         return true;
     }
 

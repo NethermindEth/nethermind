@@ -28,7 +28,7 @@ public class HsstByteTagMapTests
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         if (!r.TrySeek(key, out _)) { value = []; return false; }
         Bound b = r.GetBound();
-        value = data.Slice((int)b.Offset, b.Length).ToArray();
+        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
         return true;
     }
 
@@ -38,7 +38,7 @@ public class HsstByteTagMapTests
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
         if (!r.TrySeekFloor(key, out _)) { value = []; tag = 0; return false; }
         Bound b = r.GetBound();
-        value = data.Slice((int)b.Offset, b.Length).ToArray();
+        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
         tag = 0;
         return true;
     }
@@ -54,7 +54,7 @@ public class HsstByteTagMapTests
             Bound vb = e.Current.ValueBound;
             Assert.That(kb.Length, Is.EqualTo(1), "tag is one byte");
             byte tag = data[(int)kb.Offset];
-            byte[] v = vb.Length == 0 ? [] : data.Slice((int)vb.Offset, vb.Length).ToArray();
+            byte[] v = vb.Length == 0 ? [] : data.Slice((int)vb.Offset, (int)vb.Length).ToArray();
             entries.Add((tag, v));
         }
         return entries;

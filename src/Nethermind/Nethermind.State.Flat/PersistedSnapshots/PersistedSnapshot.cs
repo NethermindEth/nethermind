@@ -107,7 +107,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         }
 
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
-        Span<byte> nr = nrBuf[..localBound.Length];
+        Span<byte> nr = nrBuf[..checked((int)localBound.Length)];
         reader.TryRead(localBound.Offset, nr);
         NodeRef nodeRef = NodeRef.Read(nr);
         if (!_referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snap))
@@ -184,8 +184,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         // length-0 (absent) entries; a present entry is either [0x00] = deleted or
         // RLP-bytes = present. Slim account RLP starts with a list header (0xc0+) so
         // the 0x00 marker never collides with a valid RLP first byte.
-        Span<byte> buf = b.Length <= 256 ? stackalloc byte[256] : new byte[b.Length];
-        Span<byte> rlp = buf[..b.Length];
+        int bLenInt = checked((int)b.Length);
+        Span<byte> buf = bLenInt <= 256 ? stackalloc byte[256] : new byte[bLenInt];
+        Span<byte> rlp = buf[..bLenInt];
         reader.TryRead(b.Offset, rlp);
         if (rlp.Length == 1 && rlp[0] == 0x00)
         {
@@ -207,7 +208,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             !PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, addrBound, in index, out Bound b))
             return false;
         Span<byte> buf = stackalloc byte[32];
-        Span<byte> raw = buf[..b.Length];
+        Span<byte> raw = buf[..checked((int)b.Length)];
         reader.TryRead(b.Offset, raw);
         slotValue = SlotValue.FromSpanWithoutLeadingZero(raw);
         return true;

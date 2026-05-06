@@ -140,12 +140,6 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         _ => default,
     };
 
-    public (long Offset, int Length) GetCurrentValueBound()
-    {
-        Bound b = CurrentValue;
-        return (b.Offset, b.Length);
-    }
-
     public long CurrentMetadataStart => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
