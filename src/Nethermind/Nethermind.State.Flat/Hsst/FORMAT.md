@@ -39,7 +39,6 @@ A compact, immutable binary format for sorted key/value tables.
 | Variant | Bytes |
 |---|---|
 | **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
-| **BTreeHashIndex** | `[Data Region][Index Region][HashTable: 4·N bytes][TableSize: u32 LE][IndexType: u8 = 0x03]` |
 | **FlatEntries** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]` |
 | **ByteTagMap** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x08]` |
 
@@ -49,14 +48,12 @@ the variant by enumerated value (not a bitfield):
 | Value | Name | Meaning |
 |---|---|---|
 | `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
-| `0x03` | `BTreeHashIndex` | `BTree` plus a trailing open-address hash table of metaStart pointers. |
 | `0x06` | `FlatEntries` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
 | `0x08` | `ByteTagMap` | Tiny single-byte-keyed map (≤ 255 entries) — flat tag/end-offset trailer over a concatenated value region. |
 
 Other values are reserved for future index strategies. The root B-tree
-node lives just before the index type byte (or just before the hash table,
-for `BTreeHashIndex`) and is read backward via its trailing `MetadataLength`
-byte; there is no header.
+node lives just before the index type byte and is read backward via its
+trailing `MetadataLength` byte; there is no header.
 
 ### BTree variant
 
@@ -102,65 +99,6 @@ no per-entry key reconstruction during iteration, and entries that can be
 recovered from just `(buffer, MetadataStart)` without consulting any
 index.
 
-### BTreeHashIndex variant
-
-A `BTree` with an extra open-address hash table appended after the root.
-Layout, reading backward from the index type byte:
-
-```
-... B-tree root ... [HashTable][TableSize: u32 LE = N][IndexType: u8 = 0x03]
-```
-
-- `TableSize` (`N`) is a 4-byte little-endian unsigned integer; the table
-  holds exactly `N` slots. With Lemire's multiply-shift reduction `N` need
-  not be a power of two.
-- `HashTable` is `N` slots of `u32` little-endian, each one of:
-  - `0x00000000` — **empty**: no entry hashes to this slot.
-  - `0xFFFFFFFF` — **collision sentinel**: two or more entries hashed here;
-    the reader must consult the B-tree.
-  - any other value — a `MetadataStart` pointer with the same encoding as a
-    B-tree leaf value (see "BTree variant"): byte offset relative
-    to byte 0 of the HSST.
-
-Slot index for a key:
-
-```
-slot = (uint)(((ulong)HashKey(key) * (ulong)N) >> 32)
-```
-
-Where `HashKey` is the low 32 bits of `XxHash3` over the full key bytes
-(no prefix stripping); writer and reader must compute it identically.
-This is Daniel Lemire's multiply-shift reduction — uniform on `[0, N)`
-without requiring `N` to be a power of two
-(<https://lemire.me/blog/2016/06/27/a-fast-alternative-to-the-modulo-reduction/>).
-
-The empty sentinel is unambiguous because in a valid `BTreeHashIndex` HSST
-the data region is non-empty (an empty HSST is encoded as plain `BTree`),
-so a real `MetadataStart` is always nonzero. The collision sentinel
-`0xFFFFFFFF` is unambiguous because `MetadataStart` for a single HSST
-cannot reach `2^32 - 1` (the HSST is bounded by the surrounding 4-byte
-B-tree pointer encoding, ≈2 GiB).
-
-**Lookup procedure.** Compute `slot`. Read the slot value:
-
-1. **Empty.** No entry could match; exact lookup returns "not found". A
-   floor lookup must still consult the B-tree.
-2. **Collision.** Multiple keys hashed to this slot; consult the B-tree.
-3. **Pointer.** Resolve the candidate exactly as for a B-tree
-   leaf hit: decode `ValueLength`/`KeyLength` at the `MetadataStart` cursor
-   and compare the stored key to the input. On match, return; on mismatch
-   (the candidate's hash collides with the input's hash), exact lookup
-   returns "not found" and floor must consult the B-tree.
-
-**Sizing.** Builders pick `N = max(1, ceil(entries / targetUtilization))`
-(default target `0.75`); the target is a build-time knob, never recorded
-in the file.
-
-The B-tree under the hash table is identical to a `BTree` HSST and remains
-authoritative — readers that only know `BTree` could parse this variant by
-peeling off the trailing `5 + 4·N` bytes and reading the rest as a
-`BTree` HSST. The hash table is purely a fast path.
-
 ### FlatEntries variant
 
 A specialised layout for fixed-size keys and values. The b-tree is replaced
@@ -198,9 +136,9 @@ hash table.
 - **`HashTable`** — Optional. When `TableSize == 0` the section is omitted
   entirely (no on-disk bytes). When present, `TableSize` `u32` LE slots;
   `0x00000000` = empty, `0xFFFFFFFF` = collision sentinel, otherwise the
-  slot stores `entryIndex + 1` (1-based). Hash function is the same
-  `HashKey` (low 32 bits of `XxHash3`) as `BTreeHashIndex`; the slot is
-  derived via Lemire's multiply-shift reduction
+  slot stores `entryIndex + 1` (1-based). Hash function is the low 32 bits
+  of `XxHash3` over the full key bytes; the slot is derived via Lemire's
+  multiply-shift reduction
   `(uint)(((ulong)hash * (ulong)TableSize) >> 32)` so `TableSize` need not
   be a power of two.
 - **`Metadata`** — sequence of LEB128 varints, read forward from
@@ -305,8 +243,7 @@ trailer cost is `5·N + 2` bytes regardless of value sizes.
 **Restrictions and trade-offs.**
 
 - All keys are exactly 1 byte. Multi-byte keys are rejected at build time.
-- `N ≤ 32` (one-byte `Count`). Larger maps must use `BTree` /
-  `BTreeHashIndex`.
+- `N ≤ 32` (one-byte `Count`). Larger maps must use `BTree`.
 - HSST size capped at ≈4 GiB (u32 `Ends`).
 - Per-entry overhead is 5 bytes (1 tag + 4 end-offset); plus the
   2-byte trailer footer. No b-tree, no leaf metadata, no per-entry
@@ -413,10 +350,6 @@ data region).
   table (Variable key/value sections) remains a `u16` per entry, so a
   single Variable section is still capped at 64 KiB. There is no in-format
   cap on a containing host file holding many HSSTs.
-- The `BTreeHashIndex` variant additionally requires every `MetadataStart`
-  to fit in a 4-byte unsigned slot (≤ 4 GiB); the writer rejects HSSTs
-  that exceed that limit. Use the plain `BTree` variant for larger HSSTs.
-
 ## Affected files
 
 When changing this format, every file below has byte-level knowledge of

@@ -23,7 +23,6 @@ public class HsstReaderBenchmark
     {
         Flat,
         BTree,
-        BTree_HashIndex,
     }
 
     private byte[] _hsst = null!;
@@ -36,7 +35,7 @@ public class HsstReaderBenchmark
     [Params(false)]
     public bool SimdEnabled { get; set; }
 
-    [Params(Scenario.Flat, Scenario.BTree, Scenario.BTree_HashIndex)]
+    [Params(Scenario.Flat, Scenario.BTree)]
     public Scenario Variant { get; set; }
 
     [Params(1024)]
@@ -83,10 +82,7 @@ public class HsstReaderBenchmark
                 BuildFlat(ref pooled.GetWriter(), keys, StrideBytes, SummaryStrideBytes);
                 break;
             case Scenario.BTree:
-                BuildBTree(ref pooled.GetWriter(), keys, useHashIndex: false);
-                break;
-            case Scenario.BTree_HashIndex:
-                BuildBTree(ref pooled.GetWriter(), keys, useHashIndex: true);
+                BuildBTree(ref pooled.GetWriter(), keys);
                 break;
         }
         _hsst = pooled.WrittenSpan.ToArray();
@@ -122,11 +118,10 @@ public class HsstReaderBenchmark
         finally { b.Dispose(); }
     }
 
-    private static void BuildBTree(ref PooledByteBufferWriter.Writer writer, byte[][] keys, bool useHashIndex)
+    private static void BuildBTree(ref PooledByteBufferWriter.Writer writer, byte[][] keys)
     {
         HsstBuilder<PooledByteBufferWriter.Writer> b = new(ref writer, new HsstBTreeOptions
         {
-            UseHashIndex = useHashIndex,
             MaxLeafEntries = 256,
             MaxIntermediateEntries = 256,
         });

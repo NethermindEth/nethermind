@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
@@ -15,16 +15,6 @@ namespace Nethermind.State.Flat.Hsst;
 /// Binary layout (BTree):
 ///   [Data Region: entries...][Index Region: B-tree nodes...][IndexType: u8 = 0x01]
 ///   Root index is readable from the end via MetadataLength byte (no trailer).
-///
-/// Binary layout (BTreeHashIndex):
-///   [Data Region][Index Region][HashTable: 4*N bytes][TableSize: u32 LE][IndexType: u8 = 0x03]
-///   Same as BTree, with an open-addressed hash table of 4-byte LE pointers
-///   appended after the root. Each non-zero, non-0xFFFFFFFF entry points at
-///   the same MetadataStart that the B-tree would yield. 0 = empty slot;
-///   0xFFFFFFFF = collision sentinel — reader must consult the B-tree. The slot
-///   for a key is computed via Lemire's multiply-shift reduction so the table
-///   need not be a power of two; <see cref="HsstHash.BucketCount"/> sizes it
-///   directly to ceil(N / target).
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
 ///   [Value][ValueLength: LEB128][KeyLength: u8][FullKey]
@@ -49,9 +39,6 @@ public ref struct HsstBuilder<TWriter>
     private NativeMemoryListRef<HsstEntry> _entriesBuffer;
     private NativeMemoryListRef<byte> _prevKeyBuffer;
 
-    // Hash index entry hashes (only allocated when UseHashIndex)
-    private NativeMemoryListRef<uint> _entryHashes;
-
     public readonly struct HsstEntry(int sepOffset, int sepLen, ulong metadataStart)
     {
         public readonly int SepOffset = sepOffset;
@@ -74,8 +61,6 @@ public ref struct HsstBuilder<TWriter>
     public HsstBuilder(ref TWriter writer, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
     {
         HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
-        if (opts.UseHashIndex && !(opts.HashIndexTargetUtilization > 0.1 && opts.HashIndexTargetUtilization <= 1.0))
-            throw new ArgumentOutOfRangeException(nameof(options), "HashIndexTargetUtilization must be in (0.1, 1.0].");
 
         _writer = ref writer;
         _baseOffset = _writer.Written;
@@ -86,14 +71,7 @@ public ref struct HsstBuilder<TWriter>
         _separatorBuffer = new NativeMemoryListRef<byte>(byteCap);
         _entriesBuffer = new NativeMemoryListRef<HsstEntry>(expectedKeyCount);
         _prevKeyBuffer = new NativeMemoryListRef<byte>(256);
-
-        if (opts.UseHashIndex)
-        {
-            _entryHashes = new NativeMemoryListRef<uint>(expectedKeyCount);
-        }
     }
-
-    private bool NeedsEntryHashes => _options.UseHashIndex;
 
     /// <summary>
     /// Free working NativeMemory buffers.
@@ -103,10 +81,6 @@ public ref struct HsstBuilder<TWriter>
         _separatorBuffer.Dispose();
         _entriesBuffer.Dispose();
         _prevKeyBuffer.Dispose();
-        if (NeedsEntryHashes)
-        {
-            _entryHashes.Dispose();
-        }
     }
 
     /// <summary>
@@ -159,11 +133,6 @@ public ref struct HsstBuilder<TWriter>
 
         _entriesBuffer.Add(new HsstEntry(sepOffset, sepLen, metadataStart));
 
-        if (NeedsEntryHashes)
-        {
-            _entryHashes.Add(HsstHash.HashKey(key));
-        }
-
         _prevKeyBuffer.Clear();
         _prevKeyBuffer.AddRange(key);
     }
@@ -199,69 +168,10 @@ public ref struct HsstBuilder<TWriter>
 
         indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
 
-        // Optional hash index section. Empty HSSTs fall back to plain BTree because
-        // a 0-entry table has no benefit and an empty data region would make the
-        // 0 sentinel ambiguous.
-        bool emitHashIndex = _options.UseHashIndex && _entriesBuffer.Count > 0;
-        if (emitHashIndex)
-        {
-            EmitHashTable();
-        }
-
         // Trailing IndexType byte (last byte of the HSST).
-        IndexType tag = emitHashIndex ? IndexType.BTreeHashIndex : IndexType.BTree;
         Span<byte> tail = _writer.GetSpan(1);
-        tail[0] = (byte)tag;
+        tail[0] = (byte)IndexType.BTree;
         _writer.Advance(1);
-    }
-
-    private void EmitHashTable()
-    {
-        ReadOnlySpan<HsstEntry> entries = _entriesBuffer.AsSpan();
-        ReadOnlySpan<uint> hashes = _entryHashes.AsSpan();
-        int n = entries.Length;
-
-        int tableSize = HsstHash.BucketCount(n, _options.HashIndexTargetUtilization);
-
-        // Build the table in a scratch buffer first, then blit. Avoids interleaving
-        // GetSpan/Advance calls and simplifies grow-aware writers.
-        // The (capacity, startingCount) ctor zero-initializes the first startingCount slots.
-        using NativeMemoryListRef<uint> table = new(tableSize, tableSize);
-        Span<uint> slots = table.AsSpan();
-
-        const uint Empty = 0u;
-        const uint Collision = 0xFFFFFFFFu;
-
-        for (int i = 0; i < n; i++)
-        {
-            uint slot = HsstHash.Slot(hashes[i], tableSize);
-            if (slots[(int)slot] == Empty)
-            {
-                ulong meta = entries[i].MetadataStart;
-                if (meta > uint.MaxValue)
-                    throw new InvalidOperationException(
-                        $"BTreeHashIndex MetadataStart {meta} exceeds 4 GiB; use plain BTree variant for >4 GiB HSSTs.");
-                slots[(int)slot] = (uint)meta;
-            }
-            else
-            {
-                slots[(int)slot] = Collision;
-            }
-        }
-
-        // Emit table in 4-byte little-endian slots.
-        for (int i = 0; i < tableSize; i++)
-        {
-            Span<byte> dst = _writer.GetSpan(4);
-            BinaryPrimitives.WriteUInt32LittleEndian(dst, slots[i]);
-            _writer.Advance(4);
-        }
-
-        // Emit TableSize as 4-byte little-endian (replaces TableSizeLog2 byte; Lemire
-        // sizing produces non-power-of-two values so a single log2 byte no longer fits).
-        Span<byte> sizeSpan = _writer.GetSpan(4);
-        BinaryPrimitives.WriteUInt32LittleEndian(sizeSpan, (uint)tableSize);
-        _writer.Advance(4);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

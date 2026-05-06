@@ -100,27 +100,6 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
             case IndexType.BTree:
                 _rootAbsEnd = _hsstEnd - 1;
                 break;
-            case IndexType.BTreeHashIndex:
-                Span<byte> sizeBuf = stackalloc byte[4];
-                if (!_reader.TryRead(_hsstEnd - 5, sizeBuf))
-                {
-                    _empty = true;
-                    return;
-                }
-                uint tableSizeU = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(sizeBuf);
-                if (tableSizeU == 0 || tableSizeU > int.MaxValue)
-                {
-                    _empty = true;
-                    return;
-                }
-                long tableBytes = (long)tableSizeU * 4;
-                _rootAbsEnd = _hsstEnd - 5 - tableBytes;
-                if (_rootAbsEnd < _hsstStart)
-                {
-                    _empty = true;
-                    return;
-                }
-                break;
             case IndexType.PackedArray:
                 if (!HsstPackedArrayReader.TryReadLayout<TReader, TPin>(in _reader, bound, out HsstPackedArrayReader.Layout flatLayout))
                 {
@@ -199,8 +178,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 
         if (_depth < 0)
         {
-            // Root node ends just before the trailing IndexType byte (BTree)
-            // or just before the appended hash table (BTreeHashIndex).
+            // Root node ends just before the trailing IndexType byte.
             return DescendToLeaf(_rootAbsEnd);
         }
 

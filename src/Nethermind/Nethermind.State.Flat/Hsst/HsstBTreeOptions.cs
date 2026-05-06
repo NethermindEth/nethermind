@@ -33,12 +33,6 @@ public sealed record HsstBTreeOptions
     /// <summary>Minimum length of separators stored in leaf nodes.</summary>
     public int MinSeparatorLength { get; init; } = 0;
 
-    /// <summary>When true, append a file-level open-addressed hash index after the root node.</summary>
-    public bool UseHashIndex { get; init; } = false;
-
-    /// <summary>Target load factor for the file-level hash index. Must be in (0.1, 1.0].</summary>
-    public double HashIndexTargetUtilization { get; init; } = 0.75;
-
     /// <summary>Maximum entries per leaf node before the builder splits.</summary>
     public int MaxLeafEntries { get; init; } = DefaultMaxLeafEntries;
 

@@ -71,16 +71,9 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
         switch ((IndexType)idxType[0])
         {
             case IndexType.BTree:
-                if (HsstBTreeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, hasHashIndex: false, out Bound btreeBound))
+                if (HsstBTreeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound btreeBound))
                 {
                     _bound = btreeBound;
-                    return true;
-                }
-                return false;
-            case IndexType.BTreeHashIndex:
-                if (HsstBTreeReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, hasHashIndex: true, out Bound bhBound))
-                {
-                    _bound = bhBound;
                     return true;
                 }
                 return false;

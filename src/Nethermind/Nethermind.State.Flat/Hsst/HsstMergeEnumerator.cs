@@ -21,8 +21,7 @@ namespace Nethermind.State.Flat.Hsst;
 ///
 ///   - <see cref="IndexType.PackedArray"/>     → <see cref="PackedArrayVariant"/> (no offset table; fixed stride).
 ///   - <see cref="IndexType.ByteTagMap"/>      → <see cref="ByteTagMapVariant"/>  (no offset table; offsets via trailing Ends array).
-///   - <see cref="IndexType.BTree"/> /
-///     <see cref="IndexType.BTreeHashIndex"/>  → <see cref="BTreeVariant"/>       (offset table; leaves only reachable by recursing the index tree).
+///   - <see cref="IndexType.BTree"/>          → <see cref="BTreeVariant"/>       (offset table; leaves only reachable by recursing the index tree).
 ///
 /// <see cref="MoveNext"/> consumes the data span (variants need it for LEB128 / Ends-array
 /// reads) and caches the current key/value bounds. Subsequent <see cref="CurrentKey"/>
@@ -48,9 +47,7 @@ public sealed class HsstMergeEnumerator : IDisposable
             return;
         }
 
-        // Last byte of the HSST is the IndexType byte. For BTreeHashIndex the
-        // appended hash table sits between the root and the IndexType byte; the
-        // BTree variant skips past it to find where the root ends.
+        // Last byte of the HSST is the IndexType byte.
         IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
         switch (tag)
         {
@@ -63,8 +60,7 @@ public sealed class HsstMergeEnumerator : IDisposable
                 _kind = _byteTag is not null ? VariantKind.ByteTagMap : VariantKind.Empty;
                 break;
             case IndexType.BTree:
-            case IndexType.BTreeHashIndex:
-                _btree = new BTreeVariant(hsstData, tag);
+                _btree = new BTreeVariant(hsstData);
                 _kind = VariantKind.BTree;
                 break;
             // DenseByteIndex is used for the persisted-snapshot outer + per-address
@@ -253,9 +249,9 @@ public sealed class HsstMergeEnumerator : IDisposable
     }
 
     // -----------------------------------------------------------------------
-    // BTree / BTreeHashIndex: indirect entries reachable only by recursing
-    // the index tree. Materialises an offset table once in the ctor; each
-    // MoveNext does a small LEB128 decode to populate the current-key/value bounds.
+    // BTree: indirect entries reachable only by recursing the index tree.
+    // Materialises an offset table once in the ctor; each MoveNext does a
+    // small LEB128 decode to populate the current-key/value bounds.
     // -----------------------------------------------------------------------
 
     private sealed class BTreeVariant : IDisposable
@@ -271,17 +267,9 @@ public sealed class HsstMergeEnumerator : IDisposable
         private int _currentMetaStart;
         private bool _disposed;
 
-        public BTreeVariant(scoped ReadOnlySpan<byte> hsstData, IndexType tag)
+        public BTreeVariant(scoped ReadOnlySpan<byte> hsstData)
         {
             int rootEnd = hsstData.Length - 1;
-            if (tag == IndexType.BTreeHashIndex)
-            {
-                // [HashTable: N * 4 bytes][TableSize: u32 LE][IndexType: u8]
-                uint tableSize = BinaryPrimitives.ReadUInt32LittleEndian(
-                    hsstData[(hsstData.Length - 5)..(hsstData.Length - 1)]);
-                rootEnd = hsstData.Length - 5 - (int)tableSize * 4;
-            }
-
             HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);
             _entries = new NativeMemoryList<(int, int, int)>(16);
             CollectLeafOffsets(hsstData, rootIndex, _entries);

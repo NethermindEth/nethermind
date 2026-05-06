@@ -10,7 +10,6 @@ namespace Nethermind.State.Flat.Hsst;
 public enum IndexType : byte
 {
     BTree = 0x01,
-    BTreeHashIndex = 0x03,
     /// <summary>
     /// Fixed-size key/value layout. Replaces the b-tree with a packed entry array, a sparse
     /// "checkpoint" binary index (every ~1 KiB by default) for two-level binary search, and an
