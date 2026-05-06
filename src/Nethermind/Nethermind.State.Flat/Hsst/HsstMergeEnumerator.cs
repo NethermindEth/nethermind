@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
@@ -11,225 +12,340 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Cursor-based forward enumerator over an HSST scope, optimised for N-way merge.
-/// Materialises the offset table for every leaf entry up-front (zero per-entry heap
-/// allocations during the merge), then iterates by index. Class-based — not a ref struct —
-/// so callers can put many of these into an array and round-robin them in a sort-merge.
+/// Class-based — not a ref struct — so callers can put many of these into an array
+/// and round-robin them in a sort-merge.
 ///
-/// The data span is passed externally to <see cref="MoveNext"/>/<see cref="GetCurrentValue"/>/
-/// <see cref="GetCurrentValueBound"/>: the enumerator only stores integer offsets.
+/// The constructor selects exactly one layout-specific variant based on the trailing
+/// <see cref="IndexType"/> byte and stores it in a typed field; the other variant fields
+/// remain null. Each public method dispatches via a <c>switch</c> on a discriminator.
+///
+///   - <see cref="IndexType.PackedArray"/>     → <see cref="PackedArrayVariant"/> (no offset table; fixed stride).
+///   - <see cref="IndexType.ByteTagMap"/>      → <see cref="ByteTagMapVariant"/>  (no offset table; offsets via trailing Ends array).
+///   - <see cref="IndexType.BTree"/> /
+///     <see cref="IndexType.BTreeHashIndex"/>  → <see cref="BTreeVariant"/>       (offset table; leaves only reachable by recursing the index tree).
+///
+/// <see cref="MoveNext"/> consumes the data span (variants need it for LEB128 / Ends-array
+/// reads) and caches the current key/value bounds. Subsequent <see cref="CurrentKey"/>
+/// access is a property read; <see cref="GetCurrentValue"/> / <see cref="GetCurrentValueBound"/>
+/// take <c>data</c> only to materialise spans (no decode). The enumerator stores only
+/// integer offsets, never key/value bytes.
 /// </summary>
 public sealed class HsstMergeEnumerator : IDisposable
 {
-    // Per-leaf-entry: separator offset+length in data, and metadata/value offset+length.
-    // Backed by NativeMemoryList so the per-merge enumerator allocations sit off the managed heap.
-    private readonly NativeMemoryList<(int SepOffset, int SepLength, int MetaOrValOffset, int ValLength)> _entries;
-    // True when each tuple's slots point directly at (keyOffset, keyLen, valueOffset, valueLen)
-    // — no further data-region decoding needed (ByteTagMap, PackedArray).
-    // False when the second pair is a metaStart pointer that needs LEB128 decoding to recover
-    // the full key and value (BTree, BTreeHashIndex).
-    private bool _directEntries;
-    private int _index = -1;
+    private enum VariantKind : byte { Empty, PackedArray, ByteTagMap, BTree }
 
-    // Single reusable key buffer (NativeMemoryList, disposed in Dispose()).
-    private readonly NativeMemoryList<byte> _keyBufferList;
-    private int _keyLength;
+    private readonly VariantKind _kind;
+    private readonly PackedArrayVariant? _packed;
+    private readonly ByteTagMapVariant? _byteTag;
+    private readonly BTreeVariant? _btree;
     private bool _disposed;
 
-    public HsstMergeEnumerator(scoped ReadOnlySpan<byte> hsstData, int maxKeyLength = 64)
+    public HsstMergeEnumerator(scoped ReadOnlySpan<byte> hsstData)
     {
-        _keyBufferList = new NativeMemoryList<byte>(maxKeyLength, maxKeyLength);
-
         if (hsstData.Length < 2)
         {
-            _entries = new NativeMemoryList<(int, int, int, int)>(0);
+            _kind = VariantKind.Empty;
             return;
         }
 
-        // Last byte of the HSST is the IndexType byte. For hash-index variants the
-        // appended hash table sits between the root and the IndexType byte; skip
-        // past it to find where the root ends.
+        // Last byte of the HSST is the IndexType byte. For BTreeHashIndex the
+        // appended hash table sits between the root and the IndexType byte; the
+        // BTree variant skips past it to find where the root ends.
         IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
-        if (tag == IndexType.ByteTagMap)
+        switch (tag)
         {
-            // ByteTagMap: key (1 byte) lives in the tags section, value at a known absolute offset.
-            _directEntries = true;
-            _entries = new NativeMemoryList<(int, int, int, int)>(8);
-            CollectByteTagMap(hsstData, _entries);
-            return;
-        }
-
-        if (tag == IndexType.DenseByteIndex)
-        {
+            case IndexType.PackedArray:
+                _packed = PackedArrayVariant.TryCreate(hsstData);
+                _kind = _packed is not null ? VariantKind.PackedArray : VariantKind.Empty;
+                break;
+            case IndexType.ByteTagMap:
+                _byteTag = ByteTagMapVariant.TryCreate(hsstData);
+                _kind = _byteTag is not null ? VariantKind.ByteTagMap : VariantKind.Empty;
+                break;
+            case IndexType.BTree:
+            case IndexType.BTreeHashIndex:
+                _btree = new BTreeVariant(hsstData, tag);
+                _kind = VariantKind.BTree;
+                break;
             // DenseByteIndex is used for the persisted-snapshot outer + per-address
-            // containers, which the merge code accesses directly via TryGet rather than
-            // via this enumerator. Defensive empty enumeration: never invoked in
-            // production paths but avoids crashing the BTree parser if the trailer
-            // ever reaches this constructor.
-            _entries = new NativeMemoryList<(int, int, int, int)>(0);
-            return;
+            // containers, which the merge code accesses directly via TryGet rather
+            // than via this enumerator. Defensive empty enumeration: never invoked
+            // in production paths but avoids crashing the BTree parser if the
+            // trailer ever reaches this constructor.
+            default:
+                _kind = VariantKind.Empty;
+                break;
         }
-
-        if (tag == IndexType.PackedArray)
-        {
-            // PackedArray's data section is a packed [key|value][key|value]... array. Both
-            // key and value sit at fixed offsets.
-            _directEntries = true;
-            SpanByteReader spanReader = new(hsstData);
-            if (HsstPackedArrayReader.TryReadLayout<SpanByteReader, NoOpPin>(
-                    in spanReader, new Bound(0, hsstData.Length), out HsstPackedArrayReader.Layout layout))
-            {
-                _entries = new NativeMemoryList<(int, int, int, int)>(Math.Max(layout.EntryCount, 1));
-                int dataStart = (int)layout.DataStart;
-                int stride = layout.KeySize + layout.ValueSize;
-                for (int i = 0; i < layout.EntryCount; i++)
-                {
-                    int entryStart = dataStart + i * stride;
-                    _entries.Add((entryStart, layout.KeySize, entryStart + layout.KeySize, layout.ValueSize));
-                }
-            }
-            else
-            {
-                _entries = new NativeMemoryList<(int, int, int, int)>(0);
-            }
-            return;
-        }
-
-        int rootEnd = hsstData.Length - 1;
-        if (tag == IndexType.BTreeHashIndex)
-        {
-            // [HashTable: N * 4 bytes][TableSize: u32 LE][IndexType: u8]
-            uint tableSize = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
-                hsstData[(hsstData.Length - 5)..(hsstData.Length - 1)]);
-            rootEnd = hsstData.Length - 5 - (int)tableSize * 4;
-        }
-
-        HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);
-        _entries = new NativeMemoryList<(int, int, int, int)>(16);
-        CollectLeafOffsets(hsstData, rootIndex, _entries);
     }
 
-    private static void CollectLeafOffsets(ReadOnlySpan<byte> data, HsstIndex index,
-        NativeMemoryList<(int, int, int, int)> entries)
+    public int Count => _kind switch
     {
-        if (!index.IsIntermediate)
-        {
-            for (int i = 0; i < index.EntryCount; i++)
-            {
-                ReadOnlySpan<byte> sep = index.GetKey(i);
-                int sepOffset = SpanOffset(data, sep);
-                int metaStart = checked((int)index.GetUInt64Value(i));
-                entries.Add((sepOffset, sep.Length, metaStart, 0));
-            }
-        }
-        else
-        {
-            for (int i = 0; i < index.EntryCount; i++)
-            {
-                int childOffset = checked((int)index.GetUInt64Value(i));
-                HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
-                CollectLeafOffsets(data, child, entries);
-            }
-        }
-    }
+        VariantKind.PackedArray => _packed!.Count,
+        VariantKind.ByteTagMap => _byteTag!.Count,
+        VariantKind.BTree => _btree!.Count,
+        _ => 0,
+    };
+
+    public bool MoveNext(ReadOnlySpan<byte> data) => _kind switch
+    {
+        VariantKind.PackedArray => _packed!.MoveNext(),
+        VariantKind.ByteTagMap => _byteTag!.MoveNext(data),
+        VariantKind.BTree => _btree!.MoveNext(data),
+        _ => false,
+    };
 
     /// <summary>
-    /// Materialise (sepOffset, sepLength=1, valOffset, valLength) tuples for a ByteTagMap
-    /// HSST. Each tag byte's offset within the data span becomes the "separator" (it IS
-    /// the key); each value's start/length are derived from the trailing Ends array.
+    /// Bound (offset + length) of the current key within the data span the caller
+    /// passed to <see cref="MoveNext"/>. Slice <c>data</c> with this to materialise
+    /// the key bytes for comparison.
     /// </summary>
-    private static void CollectByteTagMap(ReadOnlySpan<byte> data,
-        NativeMemoryList<(int, int, int, int)> entries)
+    public Bound CurrentKey => _kind switch
     {
-        // Trailer layout: [Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8 = 0x08]
-        if (data.Length < 2) return;
-        int n = data[data.Length - 2] + 1;
-        int trailerLen = 2 + n + n * 4;
-        if (trailerLen > data.Length) return;
-        int tagsStart = data.Length - 2 - n;
-        int endsStart = tagsStart - n * 4;
+        VariantKind.PackedArray => _packed!.CurrentKey,
+        VariantKind.ByteTagMap => _byteTag!.CurrentKey,
+        VariantKind.BTree => _btree!.CurrentKey,
+        _ => default,
+    };
 
-        uint prev = 0;
-        for (int i = 0; i < n; i++)
-        {
-            uint thisEnd = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(
-                data.Slice(endsStart + i * 4, 4));
-            int valLen = (int)(thisEnd - prev);
-            entries.Add((tagsStart + i, 1, (int)prev, valLen));
-            prev = thisEnd;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
-        (int)Unsafe.ByteOffset(
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
-            ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
-
-    /// <summary>
-    /// Decode an entry's <c>(fullKey, value)</c> at <paramref name="metadataStart"/> within
-    /// <paramref name="data"/>. Entry format: <c>[Value][ValueLength: LEB128][KeyLength: LEB128][FullKey]</c>.
-    /// metaStart points at the <c>ValueLength</c> LEB128 (value sits before, lengths + key sit
-    /// after) — LEB128 has a forward-only terminator so it can't be reliably read backward.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ReadEntry(ReadOnlySpan<byte> data, int metadataStart,
-        out ReadOnlySpan<byte> fullKey, out ReadOnlySpan<byte> value)
+    /// <summary>Convenience: <c>data.Slice(CurrentKey.Offset, CurrentKey.Length)</c>.</summary>
+    public ReadOnlySpan<byte> GetCurrentKey(ReadOnlySpan<byte> data)
     {
-        int pos = metadataStart;
-        int valueLength = Leb128.Read(data, ref pos);
-        int keyLength = Leb128.Read(data, ref pos);
-        fullKey = data.Slice(pos, keyLength);
-        value = data.Slice(metadataStart - valueLength, valueLength);
+        Bound b = CurrentKey;
+        return data.Slice((int)b.Offset, b.Length);
     }
-
-    public int Count => _entries.Count;
-
-    public bool MoveNext(ReadOnlySpan<byte> data)
-    {
-        if (++_index >= _entries.Count) return false;
-        (int sepOff, int sepLen, int metaOrValOff, _) = _entries[_index];
-        if (_directEntries)
-        {
-            // First pair IS the full-key bound; copy directly.
-            data.Slice(sepOff, sepLen).CopyTo(_keyBufferList.AsSpan());
-            _keyLength = sepLen;
-        }
-        else
-        {
-            // metaStart points into a data-region entry that carries the full key.
-            ReadEntry(data, metaOrValOff, out ReadOnlySpan<byte> fullKey, out _);
-            fullKey.CopyTo(_keyBufferList.AsSpan());
-            _keyLength = fullKey.Length;
-        }
-        return true;
-    }
-
-    public ReadOnlySpan<byte> CurrentKey => _keyBufferList.AsSpan().Slice(0, _keyLength);
 
     public ReadOnlySpan<byte> GetCurrentValue(ReadOnlySpan<byte> data)
     {
-        (_, _, int metaOrValOff, int valLen) = _entries[_index];
-        if (_directEntries) return valLen == 0 ? [] : data.Slice(metaOrValOff, valLen);
-        ReadEntry(data, metaOrValOff, out _, out ReadOnlySpan<byte> value);
-        return value;
+        Bound b = CurrentValue;
+        return b.Length == 0 ? [] : data.Slice((int)b.Offset, b.Length);
     }
+
+    public Bound CurrentValue => _kind switch
+    {
+        VariantKind.PackedArray => _packed!.CurrentValue,
+        VariantKind.ByteTagMap => _byteTag!.CurrentValue,
+        VariantKind.BTree => _btree!.CurrentValue,
+        _ => default,
+    };
 
     public (int Offset, int Length) GetCurrentValueBound(ReadOnlySpan<byte> data)
     {
-        (_, _, int metaOrValOff, int valLen) = _entries[_index];
-        if (_directEntries) return (metaOrValOff, valLen);
-        int pos = metaOrValOff;
-        int valueLength = Leb128.Read(data, ref pos);
-        return (metaOrValOff - valueLength, valueLength);
+        Bound b = CurrentValue;
+        return ((int)b.Offset, b.Length);
     }
 
-    public int CurrentMetadataStart => _entries[_index].MetaOrValOffset;
+    public int CurrentMetadataStart => _kind switch
+    {
+        VariantKind.PackedArray => _packed!.CurrentMetadataStart,
+        VariantKind.ByteTagMap => _byteTag!.CurrentMetadataStart,
+        VariantKind.BTree => _btree!.CurrentMetadataStart,
+        _ => 0,
+    };
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        _entries.Dispose();
-        _keyBufferList.Dispose();
+        _btree?.Dispose();
+    }
+
+    // -----------------------------------------------------------------------
+    // PackedArray: fixed key/value stride. No offset table — compute on the fly.
+    // -----------------------------------------------------------------------
+
+    private sealed class PackedArrayVariant
+    {
+        private readonly int _dataStart;
+        private readonly int _keySize;
+        private readonly int _valueSize;
+        private readonly int _stride;
+        private readonly int _count;
+        private int _index = -1;
+        private int _currentEntryStart;
+
+        public static PackedArrayVariant? TryCreate(scoped ReadOnlySpan<byte> hsstData)
+        {
+            SpanByteReader spanReader = new(hsstData);
+            if (!HsstPackedArrayReader.TryReadLayout<SpanByteReader, NoOpPin>(
+                    in spanReader, new Bound(0, hsstData.Length), out HsstPackedArrayReader.Layout layout))
+            {
+                return null;
+            }
+            return new PackedArrayVariant(layout);
+        }
+
+        private PackedArrayVariant(HsstPackedArrayReader.Layout layout)
+        {
+            _dataStart = (int)layout.DataStart;
+            _keySize = layout.KeySize;
+            _valueSize = layout.ValueSize;
+            _stride = layout.EntryStride;
+            _count = layout.EntryCount;
+        }
+
+        public int Count => _count;
+
+        public bool MoveNext()
+        {
+            if (++_index >= _count) return false;
+            _currentEntryStart = _dataStart + _index * _stride;
+            return true;
+        }
+
+        public Bound CurrentKey => new(_currentEntryStart, _keySize);
+        public Bound CurrentValue => new(_currentEntryStart + _keySize, _valueSize);
+        public int CurrentMetadataStart => _currentEntryStart + _keySize;
+    }
+
+    // -----------------------------------------------------------------------
+    // ByteTagMap: 1-byte keys, variable-length values driven by the trailing
+    // Ends array. No offset table — derive each entry's offsets in MoveNext.
+    // -----------------------------------------------------------------------
+
+    private sealed class ByteTagMapVariant
+    {
+        private readonly int _count;
+        private readonly int _tagsStart;
+        private readonly int _endsStart;
+        private int _index = -1;
+        private int _prevEnd;
+        private int _currentValStart;
+        private int _currentValLen;
+
+        public static ByteTagMapVariant? TryCreate(scoped ReadOnlySpan<byte> hsstData)
+        {
+            // Trailer layout: [Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8]
+            if (hsstData.Length < 2) return null;
+            int n = hsstData[hsstData.Length - 2] + 1;
+            int trailerLen = 2 + n + n * 4;
+            if (trailerLen > hsstData.Length) return null;
+            int tagsStart = hsstData.Length - 2 - n;
+            int endsStart = tagsStart - n * 4;
+            return new ByteTagMapVariant(n, tagsStart, endsStart);
+        }
+
+        private ByteTagMapVariant(int count, int tagsStart, int endsStart)
+        {
+            _count = count;
+            _tagsStart = tagsStart;
+            _endsStart = endsStart;
+        }
+
+        public int Count => _count;
+
+        public bool MoveNext(ReadOnlySpan<byte> data)
+        {
+            int next = _index + 1;
+            if (next >= _count) return false;
+            _index = next;
+
+            int thisEnd = (int)BinaryPrimitives.ReadUInt32LittleEndian(
+                data.Slice(_endsStart + next * 4, 4));
+            _currentValStart = _prevEnd;
+            _currentValLen = thisEnd - _prevEnd;
+            _prevEnd = thisEnd;
+            return true;
+        }
+
+        public Bound CurrentKey => new(_tagsStart + _index, 1);
+        public Bound CurrentValue => new(_currentValStart, _currentValLen);
+        public int CurrentMetadataStart => _currentValStart;
+    }
+
+    // -----------------------------------------------------------------------
+    // BTree / BTreeHashIndex: indirect entries reachable only by recursing
+    // the index tree. Materialises an offset table once in the ctor; each
+    // MoveNext does a small LEB128 decode to populate the current-key/value bounds.
+    // -----------------------------------------------------------------------
+
+    private sealed class BTreeVariant : IDisposable
+    {
+        // Per-leaf-entry: (separator offset, separator length, metadata pointer).
+        // metaStart points at the entry's ValueLength LEB128.
+        private readonly NativeMemoryList<(int SepOffset, int SepLength, int MetaStart)> _entries;
+        private int _index = -1;
+        private int _currentKeyOffset;
+        private int _currentKeyLength;
+        private int _currentValueOffset;
+        private int _currentValueLength;
+        private int _currentMetaStart;
+        private bool _disposed;
+
+        public BTreeVariant(scoped ReadOnlySpan<byte> hsstData, IndexType tag)
+        {
+            int rootEnd = hsstData.Length - 1;
+            if (tag == IndexType.BTreeHashIndex)
+            {
+                // [HashTable: N * 4 bytes][TableSize: u32 LE][IndexType: u8]
+                uint tableSize = BinaryPrimitives.ReadUInt32LittleEndian(
+                    hsstData[(hsstData.Length - 5)..(hsstData.Length - 1)]);
+                rootEnd = hsstData.Length - 5 - (int)tableSize * 4;
+            }
+
+            HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);
+            _entries = new NativeMemoryList<(int, int, int)>(16);
+            CollectLeafOffsets(hsstData, rootIndex, _entries);
+        }
+
+        public int Count => _entries.Count;
+
+        public bool MoveNext(ReadOnlySpan<byte> data)
+        {
+            if (++_index >= _entries.Count) return false;
+            int metaStart = _entries[_index].MetaStart;
+            // Entry layout: [Value][ValueLength: LEB128][KeyLength: LEB128][FullKey].
+            // metaStart points at the ValueLength LEB128 — value sits before, lengths + key after.
+            // LEB128 has a forward-only terminator so it can't be reliably read backward.
+            int pos = metaStart;
+            int valueLength = Leb128.Read(data, ref pos);
+            int keyLength = Leb128.Read(data, ref pos);
+            _currentMetaStart = metaStart;
+            _currentKeyOffset = pos;
+            _currentKeyLength = keyLength;
+            _currentValueOffset = metaStart - valueLength;
+            _currentValueLength = valueLength;
+            return true;
+        }
+
+        public Bound CurrentKey => new(_currentKeyOffset, _currentKeyLength);
+        public Bound CurrentValue => new(_currentValueOffset, _currentValueLength);
+        public int CurrentMetadataStart => _currentMetaStart;
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _entries.Dispose();
+        }
+
+        private static void CollectLeafOffsets(ReadOnlySpan<byte> data, HsstIndex index,
+            NativeMemoryList<(int, int, int)> entries)
+        {
+            if (!index.IsIntermediate)
+            {
+                for (int i = 0; i < index.EntryCount; i++)
+                {
+                    ReadOnlySpan<byte> sep = index.GetKey(i);
+                    int sepOffset = SpanOffset(data, sep);
+                    int metaStart = checked((int)index.GetUInt64Value(i));
+                    entries.Add((sepOffset, sep.Length, metaStart));
+                }
+            }
+            else
+            {
+                for (int i = 0; i < index.EntryCount; i++)
+                {
+                    int childOffset = checked((int)index.GetUInt64Value(i));
+                    HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
+                    CollectLeafOffsets(data, child, entries);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
+            (int)Unsafe.ByteOffset(
+                ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
+                ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
     }
 }

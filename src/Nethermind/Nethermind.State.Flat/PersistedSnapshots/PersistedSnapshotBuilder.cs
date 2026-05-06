@@ -753,6 +753,8 @@ public static class PersistedSnapshotBuilder
 
             using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
 
+            ReadOnlySpan<byte> Col(int i) => sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
+
             while (true)
             {
                 // Find min key across all active enumerators, newest wins on tie
@@ -765,33 +767,25 @@ public static class PersistedSnapshotBuilder
                         minIdx = i;
                         continue;
                     }
-                    int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                    int cmp = enums[i].GetCurrentKey(Col(i)).SequenceCompareTo(enums[minIdx].GetCurrentKey(Col(minIdx)));
                     if (cmp < 0) minIdx = i;
                     else if (cmp == 0) minIdx = i; // newer (higher index) wins
                 }
 
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
-                ReadOnlySpan<byte> colSpan = sessions[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
+                ReadOnlySpan<byte> colSpan = Col(minIdx);
+                ReadOnlySpan<byte> minKey = enums[minIdx].GetCurrentKey(colSpan);
                 (int valOff, int valLen) = enums[minIdx].GetCurrentValueBound(colSpan);
                 builder.Add(minKey, colSpan.Slice(valOff, valLen));
 
-                // Advance all enumerators that had the min key.
-                // Advance minIdx LAST because minKey references its _keyBuffer which MoveNext overwrites.
                 for (int i = 0; i < n; i++)
                 {
                     if (i == minIdx || !hasMore[i]) continue;
-                    if (enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
-                    {
-                        ReadOnlySpan<byte> cs = sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
-                        hasMore[i] = enums[i].MoveNext(cs);
-                    }
+                    if (enums[i].GetCurrentKey(Col(i)).SequenceCompareTo(minKey) == 0)
+                        hasMore[i] = enums[i].MoveNext(Col(i));
                 }
-                {
-                    ReadOnlySpan<byte> cs = sessions[minIdx].GetSpan().Slice(columnBounds[minIdx].Offset, columnBounds[minIdx].Length);
-                    hasMore[minIdx] = enums[minIdx].MoveNext(cs);
-                }
+                hasMore[minIdx] = enums[minIdx].MoveNext(Col(minIdx));
             }
 
             builder.Build();
@@ -832,19 +826,20 @@ public static class PersistedSnapshotBuilder
                     minIdx = i;
                     continue;
                 }
-                int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                int cmp = enums[i].GetCurrentKey(getColumnSpan(i)).SequenceCompareTo(enums[minIdx].GetCurrentKey(getColumnSpan(minIdx)));
                 if (cmp < 0) minIdx = i;
             }
 
             if (minIdx < 0) break;
 
-            ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
+            ReadOnlySpan<byte> minIdxColumn = getColumnSpan(minIdx);
+            ReadOnlySpan<byte> minKey = enums[minIdx].GetCurrentKey(minIdxColumn);
 
             // Collect all sources with this key
             int matchCount = 0;
             for (int i = 0; i < n; i++)
             {
-                if (hasMore[i] && enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
+                if (hasMore[i] && enums[i].GetCurrentKey(getColumnSpan(i)).SequenceCompareTo(minKey) == 0)
                     matchingSources[matchCount++] = i;
             }
 
@@ -915,14 +910,16 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    private static int PickMinIdx(ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore, int matchCount)
+    private static int PickMinIdx(ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore, ArrayPoolList<(int Offset, int Length)> innerBounds, int[] matchingSources, int matchCount, Func<int, ReadOnlySpan<byte>> getColumnSpan)
     {
         int minIdx = -1;
         for (int j = 0; j < matchCount; j++)
         {
             if (!innerHasMore[j]) continue;
             if (minIdx < 0) { minIdx = j; continue; }
-            int cmp = innerEnums[j].CurrentKey.SequenceCompareTo(innerEnums[minIdx].CurrentKey);
+            ReadOnlySpan<byte> jSpan = getColumnSpan(matchingSources[j]).Slice(innerBounds[j].Offset, innerBounds[j].Length);
+            ReadOnlySpan<byte> mSpan = getColumnSpan(matchingSources[minIdx]).Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length);
+            int cmp = innerEnums[j].GetCurrentKey(jSpan).SequenceCompareTo(innerEnums[minIdx].GetCurrentKey(mSpan));
             if (cmp < 0) minIdx = j;
             else if (cmp == 0) minIdx = j; // newer (higher j = higher source index) wins
         }
@@ -931,13 +928,12 @@ public static class PersistedSnapshotBuilder
 
     private static void AdvanceMatching(ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore, ArrayPoolList<(int Offset, int Length)> innerBounds, int[] matchingSources, int matchCount, Func<int, ReadOnlySpan<byte>> getColumnSpan, int minIdx, ReadOnlySpan<byte> minKey)
     {
-        // Advance all with min key. Advance minIdx LAST because minKey references its
-        // _keyBuffer which MoveNext overwrites.
         for (int j = 0; j < matchCount; j++)
         {
             if (j == minIdx || !innerHasMore[j]) continue;
-            if (innerEnums[j].CurrentKey.SequenceCompareTo(minKey) == 0)
-                innerHasMore[j] = innerEnums[j].MoveNext(getColumnSpan(matchingSources[j]).Slice(innerBounds[j].Offset, innerBounds[j].Length));
+            ReadOnlySpan<byte> jSpan = getColumnSpan(matchingSources[j]).Slice(innerBounds[j].Offset, innerBounds[j].Length);
+            if (innerEnums[j].GetCurrentKey(jSpan).SequenceCompareTo(minKey) == 0)
+                innerHasMore[j] = innerEnums[j].MoveNext(jSpan);
         }
         innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(getColumnSpan(matchingSources[minIdx]).Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length));
     }
@@ -952,11 +948,11 @@ public static class PersistedSnapshotBuilder
         using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
         while (true)
         {
-            int minIdx = PickMinIdx(innerEnums, innerHasMore, matchCount);
+            int minIdx = PickMinIdx(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getColumnSpan);
             if (minIdx < 0) break;
 
-            ReadOnlySpan<byte> minKey = innerEnums[minIdx].CurrentKey;
             ReadOnlySpan<byte> innerSpan = getColumnSpan(matchingSources[minIdx]).Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length);
+            ReadOnlySpan<byte> minKey = innerEnums[minIdx].GetCurrentKey(innerSpan);
             (int valOff, int valLen) = innerEnums[minIdx].GetCurrentValueBound(innerSpan);
             builder.Add(minKey, innerSpan.Slice(valOff, valLen));
             AdvanceMatching(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getColumnSpan, minIdx, minKey);
@@ -974,11 +970,11 @@ public static class PersistedSnapshotBuilder
         using HsstByteTagMapBuilder<TWriter> builder = new(ref writer);
         while (true)
         {
-            int minIdx = PickMinIdx(innerEnums, innerHasMore, matchCount);
+            int minIdx = PickMinIdx(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getColumnSpan);
             if (minIdx < 0) break;
 
-            ReadOnlySpan<byte> minKey = innerEnums[minIdx].CurrentKey;
             ReadOnlySpan<byte> innerSpan = getColumnSpan(matchingSources[minIdx]).Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length);
+            ReadOnlySpan<byte> minKey = innerEnums[minIdx].GetCurrentKey(innerSpan);
             (int valOff, int valLen) = innerEnums[minIdx].GetCurrentValueBound(innerSpan);
             builder.Add(minKey[0], innerSpan.Slice(valOff, valLen));
             AdvanceMatching(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getColumnSpan, minIdx, minKey);
@@ -1072,17 +1068,18 @@ public static class PersistedSnapshotBuilder
                 {
                     if (!hasMore[i]) continue;
                     if (minIdx < 0) { minIdx = i; continue; }
-                    int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                    int cmp = enums[i].GetCurrentKey(getColumnSpan(i)).SequenceCompareTo(enums[minIdx].GetCurrentKey(getColumnSpan(minIdx)));
                     if (cmp < 0) minIdx = i;
                 }
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
+                ReadOnlySpan<byte> minIdxColumn = getColumnSpan(minIdx);
+                ReadOnlySpan<byte> minKey = enums[minIdx].GetCurrentKey(minIdxColumn);
 
                 int matchCount = 0;
                 for (int i = 0; i < n; i++)
                 {
-                    if (hasMore[i] && enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
+                    if (hasMore[i] && enums[i].GetCurrentKey(getColumnSpan(i)).SequenceCompareTo(minKey) == 0)
                         matchingSources[matchCount++] = i;
                 }
 
@@ -1145,6 +1142,9 @@ public static class PersistedSnapshotBuilder
 
             using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
 
+            ReadOnlySpan<byte> InnerSpan(int j) =>
+                getColumnSpan(matchingSources[j]).Slice(innerBounds[j].Offset, innerBounds[j].Length);
+
             while (true)
             {
                 int minIdx = -1;
@@ -1152,27 +1152,25 @@ public static class PersistedSnapshotBuilder
                 {
                     if (!innerHasMore[j]) continue;
                     if (minIdx < 0) { minIdx = j; continue; }
-                    int cmp = innerEnums[j].CurrentKey.SequenceCompareTo(innerEnums[minIdx].CurrentKey);
+                    int cmp = innerEnums[j].GetCurrentKey(InnerSpan(j)).SequenceCompareTo(innerEnums[minIdx].GetCurrentKey(InnerSpan(minIdx)));
                     if (cmp < 0) minIdx = j;
                     else if (cmp == 0) minIdx = j; // newer wins
                 }
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> minKey = innerEnums[minIdx].CurrentKey;
-                ReadOnlySpan<byte> innerSpan = getColumnSpan(matchingSources[minIdx])
-                    .Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length);
+                ReadOnlySpan<byte> innerSpan = InnerSpan(minIdx);
+                ReadOnlySpan<byte> minKey = innerEnums[minIdx].GetCurrentKey(innerSpan);
                 (int valOff, int valLen) = innerEnums[minIdx].GetCurrentValueBound(innerSpan);
                 builder.Add(minKey, innerSpan.Slice(valOff, valLen));
 
                 for (int j = 0; j < matchCount; j++)
                 {
                     if (j == minIdx || !innerHasMore[j]) continue;
-                    if (innerEnums[j].CurrentKey.SequenceCompareTo(minKey) == 0)
-                        innerHasMore[j] = innerEnums[j].MoveNext(getColumnSpan(matchingSources[j])
-                            .Slice(innerBounds[j].Offset, innerBounds[j].Length));
+                    ReadOnlySpan<byte> jSpan = InnerSpan(j);
+                    if (innerEnums[j].GetCurrentKey(jSpan).SequenceCompareTo(minKey) == 0)
+                        innerHasMore[j] = innerEnums[j].MoveNext(jSpan);
                 }
-                innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(getColumnSpan(matchingSources[minIdx])
-                    .Slice(innerBounds[minIdx].Offset, innerBounds[minIdx].Length));
+                innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(InnerSpan(minIdx));
             }
 
             builder.Build();
@@ -1217,6 +1215,8 @@ public static class PersistedSnapshotBuilder
 
             using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 2 });
 
+            ReadOnlySpan<byte> Col(int i) => sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
+
             while (true)
             {
                 int minIdx = -1;
@@ -1228,18 +1228,18 @@ public static class PersistedSnapshotBuilder
                         minIdx = i;
                         continue;
                     }
-                    int cmp = enums[i].CurrentKey.SequenceCompareTo(enums[minIdx].CurrentKey);
+                    int cmp = enums[i].GetCurrentKey(Col(i)).SequenceCompareTo(enums[minIdx].GetCurrentKey(Col(minIdx)));
                     if (cmp < 0) minIdx = i;
                 }
 
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> minKey = enums[minIdx].CurrentKey;
+                ReadOnlySpan<byte> minKey = enums[minIdx].GetCurrentKey(Col(minIdx));
 
                 int matchCount = 0;
                 for (int i = 0; i < n; i++)
                 {
-                    if (hasMore[i] && enums[i].CurrentKey.SequenceCompareTo(minKey) == 0)
+                    if (hasMore[i] && enums[i].GetCurrentKey(Col(i)).SequenceCompareTo(minKey) == 0)
                         matchingSources[matchCount++] = i;
                 }
 
@@ -1496,12 +1496,12 @@ public static class PersistedSnapshotBuilder
         HsstMergeEnumerator outerEnum = new(slotSection);
         while (outerEnum.MoveNext(slotSection))
         {
-            outerEnum.CurrentKey.CopyTo(fullSlot);
+            outerEnum.GetCurrentKey(slotSection).CopyTo(fullSlot);
             ReadOnlySpan<byte> innerSection = outerEnum.GetCurrentValue(slotSection);
             HsstMergeEnumerator innerEnum = new(innerSection);
             while (innerEnum.MoveNext(innerSection))
             {
-                innerEnum.CurrentKey.CopyTo(fullSlot[31..]);
+                innerEnum.GetCurrentKey(innerSection).CopyTo(fullSlot[31..]);
                 ulong s0 = MemoryMarshal.Read<ulong>(fullSlot);
                 ulong s1 = MemoryMarshal.Read<ulong>(fullSlot[8..]);
                 ulong s2 = MemoryMarshal.Read<ulong>(fullSlot[16..]);
