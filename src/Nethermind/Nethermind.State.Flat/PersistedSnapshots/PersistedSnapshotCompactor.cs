@@ -27,6 +27,7 @@ public class PersistedSnapshotCompactor(
     private readonly int _minCompactSize = Math.Max(config.MinCompactSize, 2);
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
+    private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
 
     /// <summary>
     /// Try to compact persisted snapshots using logarithmic compaction.
@@ -106,11 +107,10 @@ public class PersistedSnapshotCompactor(
             bloomCapacity += srcBloom.KeyBloomCount;
         }
 
-        const long MaxCompactedSourceBytes = 2L * 1024 * 1024 * 1024;
-        if (estimatedSize > MaxCompactedSourceBytes)
+        if (estimatedSize > _maxCompactedSourceBytes)
         {
             if (_logger.IsDebug) _logger.Debug(
-                $"Skipping compactSize={compactSize}: source bytes {estimatedSize} > 2 GiB cap");
+                $"Skipping compactSize={compactSize}: source bytes {estimatedSize} > {_maxCompactedSourceBytes} cap");
             return false;
         }
 
