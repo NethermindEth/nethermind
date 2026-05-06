@@ -192,8 +192,7 @@ public static partial class EvmInstructions
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
-        // Also runs under access-list tracing so eth_createAccessList captures the new contract address.
-        if (spec.UseHotAndColdStorage || vm.TxTracer.IsTracingAccess)
+        if (spec.UseHotAndColdStorage)
         {
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }

@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -119,64 +118,6 @@ namespace Nethermind.Evm.Test.Tracing
             AccessTxTracer tracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
             return (tracer, block, transaction);
-        }
-    }
-
-    [TestFixture]
-    public class AccessTxTracerPreBerlinTests : VirtualMachineTestsBase
-    {
-        protected override ISpecProvider SpecProvider => new TestSpecProvider(Istanbul.Instance);
-
-        [Test]
-        public void Pre_berlin_call_address_is_captured_in_access_list()
-        {
-            byte[] code = Prepare.EvmCode
-                .Call(TestItem.AddressC, 50000)
-                .Op(Instruction.STOP)
-                .Done;
-
-            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-
-            Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
-            addresses.Should().Contain(TestItem.AddressC);
-        }
-
-        [Test]
-        public void Pre_berlin_sstore_storage_key_is_captured_in_access_list()
-        {
-            byte[] code = Prepare.EvmCode
-                .PushData("0x01")
-                .PushData("0x69")
-                .Op(Instruction.SSTORE)
-                .Done;
-
-            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-
-            tracer.AccessList!.Should().ContainEquivalentOf(
-                (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 }));
-        }
-
-        [Test]
-        public void Pre_berlin_sload_storage_key_is_captured_in_access_list()
-        {
-            byte[] code = Prepare.EvmCode
-                .PushData("0x07")
-                .Op(Instruction.SLOAD)
-                .Op(Instruction.STOP)
-                .Done;
-
-            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-
-            tracer.AccessList!.Should().ContainEquivalentOf(
-                (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 7 }));
-        }
-
-        private AccessTxTracer ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
-        {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            AccessTxTracer tracer = new(addresses.Sender, addresses.Recipient, addresses.Miner);
-            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
-            return tracer;
         }
     }
 

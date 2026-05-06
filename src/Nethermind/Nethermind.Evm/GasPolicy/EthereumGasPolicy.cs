@@ -122,7 +122,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         Address? delegated,
         bool chargeForWarm = true)
     {
-        if (!spec.UseHotAndColdStorage && !isTracingAccess)
+        if (!spec.UseHotAndColdStorage)
             return true;
 
         bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
@@ -136,27 +136,25 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         Address address,
         bool chargeForWarm = true)
     {
-        if (isTracingAccess)
+        bool result = true;
+        if (spec.UseHotAndColdStorage)
         {
-            accessTracker.WarmUp(address);
+            if (isTracingAccess)
+            {
+                accessTracker.WarmUp(address);
+            }
+
+            if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
+            {
+                result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
+            }
+            else if (chargeForWarm)
+            {
+                result = UpdateGas(ref gas, GasCostOf.WarmStateRead);
+            }
         }
 
-        if (!spec.UseHotAndColdStorage)
-            return true;
-
-        // Note: isTracingAccess pre-warms the address above, so this second WarmUp returns false
-        // (already warm). Cold gas is intentionally not charged here — the caller will include
-        // these addresses in an EIP-2930 access list, making them warm on actual execution.
-        if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
-        {
-            return UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
-        }
-        if (chargeForWarm)
-        {
-            return UpdateGas(ref gas, GasCostOf.WarmStateRead);
-        }
-
-        return true;
+        return result;
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
@@ -166,13 +164,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
     {
+        if (!spec.UseHotAndColdStorage)
+            return true;
         if (isTracingAccess)
         {
             accessTracker.WarmUp(in storageCell);
         }
-
-        if (!spec.UseHotAndColdStorage)
-            return true;
 
         if (accessTracker.WarmUp(in storageCell))
             return UpdateGas(ref gas, GasCostOf.ColdSLoad);
