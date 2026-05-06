@@ -7,6 +7,7 @@ using Autofac;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
@@ -43,7 +44,13 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.AddTransient<IStartupFilter, SszMiddlewareStartupFilter>();
 
         services.Bridge<ILogManager>(ctx);
-        services.Bridge<IJsonRpcUrlCollection>(ctx);
+        services.AddSingleton<IJsonRpcUrlCollection>(_ =>
+        {
+            IJsonRpcConfig jsonRpcConfig = ctx.Resolve<IJsonRpcConfig>();
+            IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+            ILogManager logManager = ctx.Resolve<ILogManager>();
+            return new JsonRpcUrlCollection(logManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
+        });
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IEngineRpcModule>(ctx);
         services.Bridge<IProcessExitSource>(ctx);

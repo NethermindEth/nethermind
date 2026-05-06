@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 
 namespace Nethermind.HealthChecks;
 
@@ -20,8 +21,12 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         {
             IReleaseSpec spec = specProvider.GetFinalSpec();
 
+            // engine_exchangeTransitionConfigurationV1 was deprecated in Cancun (EIP-4844).
+            // Gate it on !IsEip4844Enabled so post-Cancun clients stop advertising it, matching spec.
+            bool preCancun = !spec.IsEip4844Enabled;
+
             // The Merge
-            _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = (true, false);
+            _capabilities[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = (preCancun, false);
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = (true, false);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = (true, false);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = (true, false);
@@ -59,41 +64,41 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
 
 
             // Always-on SSZ-REST paths (The Merge baseline)
-            _capabilities["POST /engine/v1/payloads"] = (true, false);
-            _capabilities["GET /engine/v1/payloads/{payload_id}"] = (true, false);
-            _capabilities["POST /engine/v1/forkchoice"] = (true, false);
-            _capabilities["POST /engine/v1/capabilities"] = (true, false);
-            _capabilities["POST /engine/v1/client/version"] = (true, false);
-            _capabilities["POST /engine/v1/transition-configuration"] = (true, false);
+            _capabilities[SszRestPaths.PostV1Payloads] = (true, false);
+            _capabilities[SszRestPaths.GetV1Payloads] = (true, false);
+            _capabilities[SszRestPaths.PostV1Forkchoice] = (true, false);
+            _capabilities[SszRestPaths.PostV1Capabilities] = (true, false);
+            _capabilities[SszRestPaths.PostV1ClientVersion] = (true, false);
+            _capabilities[SszRestPaths.PostV1TransitionConfig] = (preCancun, false);
 
             // Shanghai SSZ-REST paths
-            _capabilities["POST /engine/v2/payloads"] = (spec.WithdrawalsEnabled, false);
-            _capabilities["POST /engine/v2/forkchoice"] = (spec.WithdrawalsEnabled, false);
-            _capabilities["GET /engine/v2/payloads/{payload_id}"] = (spec.WithdrawalsEnabled, false);
-            _capabilities["POST /engine/v1/payloads/bodies/by-hash"] = (spec.WithdrawalsEnabled, false);
-            _capabilities["POST /engine/v1/payloads/bodies/by-range"] = (spec.WithdrawalsEnabled, false);
+            _capabilities[SszRestPaths.PostV2Payloads] = (spec.WithdrawalsEnabled, false);
+            _capabilities[SszRestPaths.PostV2Forkchoice] = (spec.WithdrawalsEnabled, false);
+            _capabilities[SszRestPaths.GetV2Payloads] = (spec.WithdrawalsEnabled, false);
+            _capabilities[SszRestPaths.PostV1PayloadBodiesByHash] = (spec.WithdrawalsEnabled, false);
+            _capabilities[SszRestPaths.PostV1PayloadBodiesByRange] = (spec.WithdrawalsEnabled, false);
 
             // Cancun SSZ-REST paths
-            _capabilities["POST /engine/v3/payloads"] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
-            _capabilities["POST /engine/v3/forkchoice"] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
-            _capabilities["GET /engine/v3/payloads/{payload_id}"] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
-            _capabilities["POST /engine/v1/blobs"] = (spec.IsEip4844Enabled, false);
+            _capabilities[SszRestPaths.PostV3Payloads] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities[SszRestPaths.PostV3Forkchoice] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities[SszRestPaths.GetV3Payloads] = (spec.IsEip4844Enabled, spec.IsEip4844Enabled);
+            _capabilities[SszRestPaths.PostV1Blobs] = (spec.IsEip4844Enabled, false);
 
             // Prague SSZ-REST paths
-            _capabilities["POST /engine/v4/payloads"] = (v4, v4);
-            _capabilities["GET /engine/v4/payloads/{payload_id}"] = (v4, v4);
+            _capabilities[SszRestPaths.PostV4Payloads] = (v4, v4);
+            _capabilities[SszRestPaths.GetV4Payloads] = (v4, v4);
 
             // Osaka SSZ-REST paths
-            _capabilities["GET /engine/v5/payloads/{payload_id}"] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
-            _capabilities["POST /engine/v2/blobs"] = (spec.IsEip7594Enabled, false);
-            _capabilities["POST /engine/v3/blobs"] = (spec.IsEip7594Enabled, false);
+            _capabilities[SszRestPaths.GetV5Payloads] = (spec.IsEip7594Enabled, spec.IsEip7594Enabled);
+            _capabilities[SszRestPaths.PostV2Blobs] = (spec.IsEip7594Enabled, false);
+            _capabilities[SszRestPaths.PostV3Blobs] = (spec.IsEip7594Enabled, false);
 
             // Amsterdam SSZ-REST paths
-            _capabilities["POST /engine/v5/payloads"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-            _capabilities["GET /engine/v6/payloads/{payload_id}"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-            _capabilities["POST /engine/v4/forkchoice"] = (spec.IsEip7843Enabled, spec.IsEip7843Enabled);
-            _capabilities["POST /engine/v2/payloads/bodies/by-hash"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-            _capabilities["POST /engine/v2/payloads/bodies/by-range"] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities[SszRestPaths.PostV5Payloads] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities[SszRestPaths.GetV6Payloads] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities[SszRestPaths.PostV4Forkchoice] = (spec.IsEip7843Enabled, spec.IsEip7843Enabled);
+            _capabilities[SszRestPaths.PostV2PayloadBodiesByHash] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+            _capabilities[SszRestPaths.PostV2PayloadBodiesByRange] = (spec.IsEip7928Enabled, spec.IsEip7928Enabled);
         }
 
         return _capabilities;

@@ -1720,7 +1720,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
-            .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal)
+                            && !m.Equals(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), StringComparison.Ordinal))
             .Order();
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
@@ -1747,7 +1748,6 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV1),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
             nameof(IEngineRpcModule.engine_newPayloadV1),
-            nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1),
 
             nameof(IEngineRpcModule.engine_getPayloadV2),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
@@ -1814,38 +1814,36 @@ public partial class EngineModuleTests
             .Where(static s => s.Contains(' '))
             .ToArray();
 
-        // Assert every path that must be present for mainnet (foundation.json schedules up to Osaka).
-        // Amsterdam-gated paths (IsEip7928Enabled / IsEip7843Enabled) are intentionally excluded here
-        // because foundation.json does not yet schedule Amsterdam; they are covered by a separate test below.
-        result.Should().Contain(new[]
+        result.Should().BeEquivalentTo(new[]
         {
-            // Paris baseline
+            // Paris baseline (always-on)
             "POST /engine/v1/payloads",
             "GET /engine/v1/payloads/{payload_id}",
             "POST /engine/v1/forkchoice",
             "POST /engine/v1/capabilities",
             "POST /engine/v1/client/version",
-            "POST /engine/v1/transition-configuration",
 
-            // Shanghai bodies (v1)
+            // Shanghai
+            "POST /engine/v2/payloads",
+            "GET /engine/v2/payloads/{payload_id}",
+            "POST /engine/v2/forkchoice",
             "POST /engine/v1/payloads/bodies/by-hash",
             "POST /engine/v1/payloads/bodies/by-range",
 
-            // Cancun blobs
+            // Cancun
+            "POST /engine/v3/payloads",
+            "GET /engine/v3/payloads/{payload_id}",
+            "POST /engine/v3/forkchoice",
             "POST /engine/v1/blobs",
 
-            // Osaka blobs
-            "POST /engine/v3/blobs",
-        });
+            // Prague
+            "POST /engine/v4/payloads",
+            "GET /engine/v4/payloads/{payload_id}",
 
-        // Amsterdam-gated paths must NOT appear when foundation.json does not schedule Amsterdam.
-        result.Should().NotContain(new[]
-        {
-            "POST /engine/v2/payloads/bodies/by-hash",
-            "POST /engine/v2/payloads/bodies/by-range",
-            "POST /engine/v5/payloads",
-            "GET /engine/v6/payloads/{payload_id}",
-            "POST /engine/v4/forkchoice",
+            // Osaka
+            "GET /engine/v5/payloads/{payload_id}",
+            "POST /engine/v2/blobs",
+            "POST /engine/v3/blobs",
         });
     }
 
@@ -1860,34 +1858,43 @@ public partial class EngineModuleTests
             .Where(static s => s.Contains(' '))
             .ToArray();
 
-        result.Should().Contain(new[]
+        result.Should().BeEquivalentTo(new[]
         {
-            // Paris baseline
+            // Paris baseline (always-on)
             "POST /engine/v1/payloads",
             "GET /engine/v1/payloads/{payload_id}",
             "POST /engine/v1/forkchoice",
             "POST /engine/v1/capabilities",
             "POST /engine/v1/client/version",
-            "POST /engine/v1/transition-configuration",
 
-            // Shanghai bodies (v1)
+            // Shanghai
+            "POST /engine/v2/payloads",
+            "GET /engine/v2/payloads/{payload_id}",
+            "POST /engine/v2/forkchoice",
             "POST /engine/v1/payloads/bodies/by-hash",
             "POST /engine/v1/payloads/bodies/by-range",
 
-            // Amsterdam bodies (v2)
-            "POST /engine/v2/payloads/bodies/by-hash",
-            "POST /engine/v2/payloads/bodies/by-range",
-
-            // Cancun blobs
+            // Cancun
+            "POST /engine/v3/payloads",
+            "GET /engine/v3/payloads/{payload_id}",
+            "POST /engine/v3/forkchoice",
             "POST /engine/v1/blobs",
 
-            // Osaka blobs
+            // Prague
+            "POST /engine/v4/payloads",
+            "GET /engine/v4/payloads/{payload_id}",
+
+            // Osaka
+            "GET /engine/v5/payloads/{payload_id}",
+            "POST /engine/v2/blobs",
             "POST /engine/v3/blobs",
 
-            // Amsterdam payloads / forkchoice
+            // Amsterdam
             "POST /engine/v5/payloads",
             "GET /engine/v6/payloads/{payload_id}",
             "POST /engine/v4/forkchoice",
+            "POST /engine/v2/payloads/bodies/by-hash",
+            "POST /engine/v2/payloads/bodies/by-range",
         });
     }
 
