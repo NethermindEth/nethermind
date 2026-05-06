@@ -215,6 +215,20 @@ public class Eip8037BlockGasInclusionCheckTests
     }
 
     [Test]
+    public void Regular_worst_case_is_clamped_when_intrinsic_state_exceeds_tx_gas()
+    {
+        Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
+            blockGasLimit: 30_000_000,
+            cumulativeBlockRegular: 0,
+            cumulativeBlockState: 0,
+            txGas: 10,
+            intrinsicRegular: 5,
+            intrinsicState: 20);
+
+        Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
+    }
+
+    [Test]
     public void Calculate_block_regular_gas_keeps_valid_transcripts_non_negative()
     {
         Random random = new(8037);
@@ -254,6 +268,20 @@ public class Eip8037BlockGasInclusionCheckTests
             intrinsicRegularGas: 21_000,
             initialRegularGas: 300,
             remainingRegularGas: 100,
+            stateGasSpill: 200,
+            stateGasSpillReclassified: 0,
+            floorGas: 53_000);
+
+        Assert.That(blockRegularGas, Is.EqualTo(53_000));
+    }
+
+    [Test]
+    public void Calculate_block_regular_gas_allows_negative_execution_intermediate()
+    {
+        long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
+            intrinsicRegularGas: 21_000,
+            initialRegularGas: 0,
+            remainingRegularGas: 0,
             stateGasSpill: 200,
             stateGasSpillReclassified: 0,
             floorGas: 53_000);

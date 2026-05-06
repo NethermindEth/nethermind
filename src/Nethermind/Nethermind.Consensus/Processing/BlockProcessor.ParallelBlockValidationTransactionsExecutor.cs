@@ -95,14 +95,14 @@ public partial class BlockProcessor
         {
             int len = block.Transactions.Length;
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
-            TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[len];
+            TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[len];
 
             for (int i = 0; i < len; i++)
             {
                 BlockReceiptsTracer tracer = new(true);
                 tracer.StartNewBlockTrace(block);
                 receiptsTracers[i] = tracer;
-                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>();
+                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>();
             }
 
             // Pre-execution (the system-contract calls StoreBeaconRoot + ApplyBlockhashStateChanges)
@@ -169,8 +169,14 @@ public partial class BlockProcessor
 
                         int txIndex = i - 2;
                         Transaction tx = state.txs[txIndex];
+                        // Pre-compute intrinsic gas on the worker thread; carry it through the
+                        // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
+                        // check doesn't recalculate dynamic state-byte costs on the validator.
+                        IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
                         try
                         {
+                            intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.spec, state.block.Header.GasLimit);
+
                             // The using block detaches the worker's BAL into _perTxBal[balIndex]
                             // and recycles the pool slot via Dispose BEFORE we signal the gas
                             // result, so the validator finds _perTxBal[balIndex] populated when
@@ -185,13 +191,20 @@ public partial class BlockProcessor
                                     tx,
                                     txIndex,
                                     state.receiptsTracers[txIndex],
-                                    state.processingOptions);
+                                    state.processingOptions,
+                                    in intrinsicGas);
                             }
-                            state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
+                            state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
                         }
                         catch (InvalidBlockException ex)
                         {
-                            state.gasResults[txIndex].SetResult((tx.GasLimit, 0, ex));
+                            // A rejected tx contributes nothing to block accumulators —
+                            // the sequential path never reaches gas accounting for it because
+                            // the exception bubbles up immediately. IncrementalValidation also
+                            // rethrows on `ex is not null` before doing any accounting, so the
+                            // tuple values here are observed only as cross-mode telemetry; we
+                            // still report (0, 0) so any future consumer agrees with sequential.
+                            state.gasResults[txIndex].SetResult((0, 0, intrinsicGas, ex));
                         }
                         catch
                         {

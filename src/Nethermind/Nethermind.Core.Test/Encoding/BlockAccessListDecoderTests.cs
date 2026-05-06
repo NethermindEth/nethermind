@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -46,6 +48,92 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decode_inner_empty_list_in_account_changes_throws_RlpException() =>
         Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
+
+    [Test]
+    public void Decode_account_changes_without_changes_or_reads_throws_RlpException()
+    {
+        ReadOnlyBlockAccessList bal = new(
+            [new ReadOnlyAccountChanges(TestItem.AddressA)],
+            itemCount: 0);
+        byte[] encoded = Rlp.Encode(bal).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyBlockAccessList>(encoded),
+            Throws.TypeOf<RlpException>().With.Message.Contain("has no changes or reads"));
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_partial_list_when_element_decoder_throws()
+    {
+        TextWriter originalError = Console.Error;
+        using StringWriter error = new();
+        Console.SetError(error);
+        try
+        {
+            Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+            RlpException? exception = null;
+            try
+            {
+                Rlp.DecodeArrayPool(ref ctx, new ThrowingByteDecoder());
+            }
+            catch (RlpException e)
+            {
+                exception = e;
+            }
+
+            Assert.That(exception?.Message, Is.EqualTo(ThrowingByteDecoder.Error));
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            Assert.That(error.ToString(), Does.Not.Contain(nameof(ArrayPoolList<byte>)));
+        }
+        finally
+        {
+            Console.SetError(originalError);
+        }
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_decoded_items_when_element_decoder_throws()
+    {
+        DisposableElement.DisposedCount = 0;
+        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+        RlpException? exception = null;
+        try
+        {
+            Rlp.DecodeArrayPool(ref ctx, new ThrowingDisposableDecoder());
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
+
+        Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
+        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_runtime_disposable_items_when_static_type_does_not_implement_disposable()
+    {
+        DisposableElement.DisposedCount = 0;
+        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+        RlpException? exception = null;
+        try
+        {
+            Rlp.DecodeArrayPool<object>(ref ctx, new ThrowingObjectDecoder());
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
+
+        Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
+        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+    }
 
     [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
@@ -473,4 +561,70 @@ public class BlockAccessListDecoderTests
         }
     }
 
+    private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>
+    {
+        public const string Error = "semantic failure";
+        private int _calls;
+
+        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            byte value = decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return value;
+        }
+
+        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
+
+    private sealed class DisposableElement : IDisposable
+    {
+        public static int DisposedCount;
+
+        public void Dispose() => DisposedCount++;
+    }
+
+    private sealed class ThrowingDisposableDecoder : IRlpValueDecoder<DisposableElement>
+    {
+        public const string Error = "disposable semantic failure";
+        private int _calls;
+
+        public DisposableElement Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return new DisposableElement();
+        }
+
+        public int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
+
+    private sealed class ThrowingObjectDecoder : IRlpValueDecoder<object>
+    {
+        public const string Error = "object semantic failure";
+        private int _calls;
+
+        public object Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return new DisposableElement();
+        }
+
+        public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
 }

@@ -14,6 +14,9 @@ namespace Nethermind.Evm.GasPolicy;
 /// Unified Ethereum gas policy supporting both legacy single-dimensional behavior and EIP-8037
 /// two-dimensional behavior when opcode dispatch and spec flags enable it.
 /// </summary>
+/// <remarks>
+/// The spill split fields below follow EIP-8037 / execution-specs PR 2703 block-gas accounting.
+/// </remarks>
 public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     /// <summary>Regular gas budget (legacy gas_left).</summary>
@@ -24,11 +27,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
     public long StateGasSpill;
-    /// <summary>Tx-cumulative state gas spill from reverted child frames used by top-level halt accounting.</summary>
+    /// <summary>Tx-cumulative spill from reverted child frames used by top-level halt accounting.</summary>
     public long StateGasSpillBurned;
-    /// <summary>State gas spill that should remain in the block regular dimension.</summary>
+    /// <summary>Spill that should remain in the block regular dimension.</summary>
     public long StateGasSpillReclassified;
-    /// <summary>State gas spill consumed by state refunds and excluded from block regular gas.</summary>
+    /// <summary>Spill consumed by state refunds and excluded from block regular gas.</summary>
     public long StateGasSpillRefunded;
     /// <summary>Per-block EIP-8037 cost-per-state-byte.</summary>
     public long CostPerStateByte;
@@ -142,13 +145,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         Debug.Assert(gas.CostPerStateByte == childGas.CostPerStateByte, "CostPerStateByte must flow parent to child, not child to parent.");
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     // On explicit REVERT, restore the child's remaining state reservoir plus its unreverted
     // state gas usage, then subtract inline refunds that inflated the reservoir inside the
     // child. The child's StateGasSpill (which already includes any spill propagated up from
     // descendants) is recorded permanently in StateGasSpillBurned for top-level halt accounting.
     // State-gas refunds mark their spilled portion in StateGasSpillRefunded. If this REVERT
     // carries such a refund, any remaining unrefunded spill stays in the regular dimension.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
     {
         long unrefundedSpill = GetUnrefundedStateGasSpill(in childGas, childStateRefund);
@@ -165,7 +168,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     // Do NOT propagate childGas.StateGasSpill into parentGas.StateGasSpill: an exceptional halt
     // burns the child's regular gas - including the portion that was charged via spill. Letting
     // Calculate8037BlockRegularGas subtract that already-burned gas from the block's regular total
@@ -175,6 +177,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     // halt formula attributes to the regular dimension. Adding it again via spillBurned would
     // double-count. Only propagate child's cumulative spillBurned,
     // which carries grand-descendant REVERT spill that hasn't yet been attributed.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
     {
         parentGas.StateReservoir += GetRestoredChildStateReservoir(in childGas, initialStateReservoir);
@@ -388,6 +391,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
         {
+            // EIP-8037 + EIP-7702: refund authority-code state allowance into the reservoir only.
             gas.StateReservoir += checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
         }
 

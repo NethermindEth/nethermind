@@ -19,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -404,13 +405,13 @@ public class BlockProcessorTests
         balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
         balManager.Setup(block);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults =
         [
             new(),
             new()
         ];
-        gasResults[0].SetResult((65_000, 0, null));
-        gasResults[1].SetResult((21_000, 0, null));
+        gasResults[0].SetResult(GasResult(block, 0, 65_000, 0));
+        gasResults[1].SetResult(GasResult(block, 1, 21_000, 0));
 
         InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -443,13 +444,13 @@ public class BlockProcessorTests
         balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
         balManager.Setup(block);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults =
         [
             new(),
             new()
         ];
-        gasResults[0].SetResult((80_000, 0, null));
-        gasResults[1].SetResult((21_000, 0, null));
+        gasResults[0].SetResult(GasResult(block, 0, 80_000, 0));
+        gasResults[1].SetResult(GasResult(block, 1, 21_000, 0));
 
         InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -488,13 +489,13 @@ public class BlockProcessorTests
         balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
         balManager.Setup(block);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults =
         [
             new(),
             new()
         ];
-        gasResults[0].SetResult((0, 60_000, null));
-        gasResults[1].SetResult((50_000, GasCostOf.CreateState, null));
+        gasResults[0].SetResult(GasResult(block, 0, 0, 60_000));
+        gasResults[1].SetResult(GasResult(block, 1, 50_000, GasCostOf.CreateState));
 
         Assert.DoesNotThrow(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -528,11 +529,11 @@ public class BlockProcessorTests
         balManager.Setup(block);
 
         InvalidBlockException workerException = new(block, "worker-original-cause");
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults =
         [
             new()
         ];
-        gasResults[0].SetResult((0, 0, workerException));
+        gasResults[0].SetResult(GasResult(block, 0, 0, 0, workerException));
 
         BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
@@ -576,14 +577,14 @@ public class BlockProcessorTests
         balManager.Setup(block);
 
         InvalidBlockException workerException = new(block, "worker-original-cause");
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults =
         [
             new(),
             new()
         ];
-        gasResults[0].SetResult((80_000, 0, null));
+        gasResults[0].SetResult(GasResult(block, 0, 80_000, 0));
         // Legacy buggy shape: charges tx.GasLimit on rejection. Cumulative 80k+50k > 100k limit.
-        gasResults[1].SetResult((50_000, 0, workerException));
+        gasResults[1].SetResult(GasResult(block, 1, 50_000, 0, workerException));
 
         BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -602,4 +603,8 @@ public class BlockProcessorTests
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance));
     }
+
+    private static (long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)
+        GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
+        => (blockGasUsed, blockStateGasUsed, EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit), exception);
 }

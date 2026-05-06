@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -52,6 +53,22 @@ public class AccountChangesPrestateTests
         ac.LoadPreStateNonce(7);
 
         Assert.That(ac.GetNonce(0), Is.EqualTo((UInt256)7));
+    }
+
+    [Test]
+    public void GetCode_returns_empty_when_prestate_code_is_missing()
+    {
+        ReadOnlyAccountChanges ac = new(TestItem.AddressA);
+
+        Assert.That(ac.GetCode(0), Is.Empty);
+    }
+
+    [Test]
+    public void GetCodeHash_returns_empty_string_hash_when_prestate_code_is_missing()
+    {
+        ReadOnlyAccountChanges ac = new(TestItem.AddressA);
+
+        Assert.That(ac.GetCodeHash(0), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256));
     }
 
     [Test]

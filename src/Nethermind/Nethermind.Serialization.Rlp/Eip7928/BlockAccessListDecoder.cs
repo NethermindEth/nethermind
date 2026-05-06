@@ -22,6 +22,7 @@ public class BlockAccessListDecoder :
         ReadOnlyAccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
 
         Address? lastAddress = null;
+        Address? firstEmptyAccount = null;
         int itemCount = 0;
         foreach (ReadOnlyAccountChanges a in accountChanges)
         {
@@ -38,7 +39,26 @@ public class BlockAccessListDecoder :
                 throw new RlpException("Account changes were in incorrect order.");
             }
             lastAddress = address;
+
+            // EIP-7928: an AccountChanges entry on the wire must carry at least one
+            // change or one storage read. Throw eagerly so engine_newPayloadV5 fails fast
+            // on a malformed BAL rather than silently widening the Keccak.
+            if (firstEmptyAccount is null &&
+                a.BalanceChanges.Length == 0 &&
+                a.NonceChanges.Length == 0 &&
+                a.CodeChanges.Length == 0 &&
+                a.StorageChanges.Length == 0 &&
+                a.StorageReads.Length == 0)
+            {
+                firstEmptyAccount = address;
+            }
+
             itemCount += 1 + a.StorageChanges.Length + a.StorageReads.Length;
+        }
+
+        if (firstEmptyAccount is not null)
+        {
+            throw new RlpException($"AccountChanges for {firstEmptyAccount} has no changes or reads.");
         }
 
         return new ReadOnlyBlockAccessList(accountChanges, itemCount);

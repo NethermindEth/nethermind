@@ -70,7 +70,7 @@ namespace Nethermind.Core
         public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
-        // EIP-8037: bal-devnet-4 keeps the static cost_per_state_byte = 1174 from bal-devnet-3.
+        // EIP-8037: bal-devnet-6 keeps the static cost_per_state_byte = 1174 from bal-devnet-3.
         public const long CostPerStateByte = 1174;
         public const long SSetRegular = 2_900;
         public const long SSetState = 32 * CostPerStateByte;
@@ -82,7 +82,7 @@ namespace Nethermind.Core
         public const long PerAuthBaseRegular = 7_500;
         public const long PerAuthBaseState = 23 * CostPerStateByte;
         public const long PerEmptyAccountState = 112 * CostPerStateByte;
-        public const long BlockAccessListItem = 2_000; // eip-7928
+        public const long BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
@@ -90,7 +90,7 @@ namespace Nethermind.Core
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
-        // EIP-8037 in bal-devnet-4 fixes cost_per_state_byte at the static value, ignoring blockGasLimit.
+        // EIP-8037 in bal-devnet-6 fixes cost_per_state_byte at the static value, ignoring blockGasLimit.
         // The parameter is retained on call sites that may revisit per-block scaling in a future devnet.
         public static long CalculateCostPerStateByte(long blockGasLimit) => CostPerStateByte;
 

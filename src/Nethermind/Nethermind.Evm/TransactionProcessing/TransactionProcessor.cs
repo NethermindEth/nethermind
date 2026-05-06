@@ -542,6 +542,10 @@ namespace Nethermind.Evm.TransactionProcessing
                         return TransactionResult.BlockGasLimitExceeded;
                     }
 
+                    // Per-block EIP-8037 inclusion depends on cumulative regular/state gas,
+                    // so block validation performs the 2D check in BlockAccessListManager
+                    // where those accumulators are available. Direct Execute/BuildUp/estimator
+                    // callers can only validate the tx-local allowance here.
                     return TransactionResult.Ok;
                 }
 
@@ -1191,6 +1195,9 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
+                // Non-BAL callers only expose the flat access tracker, so this fallback scans
+                // all touched storage cells. Keep the BAL source path preferred for block
+                // execution; optimize this if selfdestruct refunds become hot outside BAL.
                 foreach (StorageCell storageCell in accessedItems.AccessedStorageCells)
                 {
                     if (storageCell.Address == address && !WorldState.Get(in storageCell).IsZero())
@@ -1294,6 +1301,11 @@ namespace Nethermind.Evm.TransactionProcessing
             long refundedSpill = TGasPolicy.GetStateGasSpillRefunded(in gas);
             long refundedSpillNotInReservoir = Math.Min(returnedSpillNotInReservoir, refundedSpill);
             long createStateGas = TGasPolicy.GetCreateStateCost(in gas);
+            if (createStateGas <= 0)
+            {
+                return 0;
+            }
+
             // Only whole CREATE-state units are restored to state on halt; partial spill remains regular.
             return Math.Max(0, (refundedSpillNotInReservoir / createStateGas) * createStateGas);
         }

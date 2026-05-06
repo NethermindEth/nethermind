@@ -162,7 +162,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token)
     {
         CheckInitialized();
 
@@ -188,12 +188,13 @@ public class BlockAccessListManager(
             {
                 Transaction tx = block.Transactions[j];
 
+                (long blockGasUsed, long blockStateGasUsed, IntrinsicGas<EthereumGasPolicy> intrinsicGas, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                 // EIP-8037 per-tx 2D inclusion check (execution-specs PR 2703).
                 // totalRegularGas/totalStateGas reflect the cumulatives BEFORE this tx;
                 // the worst-case per-dimension contribution must fit the remaining budget.
-                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas);
-
-                (long blockGasUsed, long blockStateGasUsed, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                // The worker precomputes intrinsic gas once and carries it here to avoid
+                // recalculating dynamic state-byte costs on the validation thread.
+                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
 
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
@@ -478,6 +479,9 @@ public class BlockAccessListManager(
         if (suggestedBlock.Hash == _lastLoadedBal) return;
         _lastLoadedBal = suggestedBlock.Hash;
 
+        // Wire BAL validation must run before this method: it appends local-only
+        // PrestateIndex entries that are sorted before real tx indices and must not be
+        // subjected to block-level wire index-bounds validation.
         ReadOnlyBlockAccessList bal = suggestedBlock.BlockAccessList;
         try
         {
