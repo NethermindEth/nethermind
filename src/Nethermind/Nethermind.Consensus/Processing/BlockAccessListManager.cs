@@ -457,10 +457,6 @@ public class BlockAccessListManager(
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
     {
         CheckInitialized();
-        if (!spec.IsEip2935Enabled || header.IsGenesis || header.ParentHash is null)
-        {
-            return;
-        }
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
         new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);

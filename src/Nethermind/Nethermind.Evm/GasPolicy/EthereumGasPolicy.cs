@@ -173,7 +173,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     // Do NOT add childGas.StateGasSpill to parentGas.StateGasSpillBurned either: an inner halt's
     // burned regular gas is already included in the initial regular budget that the top-level
     // halt formula attributes to the regular dimension. Adding it again via spillBurned would
-    // double-count (regression seen at block 423). Only propagate child's cumulative spillBurned,
+    // double-count. Only propagate child's cumulative spillBurned,
     // which carries grand-descendant REVERT spill that hasn't yet been attributed.
     public static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
     {

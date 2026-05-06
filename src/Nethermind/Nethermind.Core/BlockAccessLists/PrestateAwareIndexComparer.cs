@@ -7,12 +7,8 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Orders <see cref="uint"/> BAL access indices with <see cref="Eip7928Constants.PrestateIndex"/>
-/// sorted ahead of every real index. Used for BALs that may later receive prestate entries so
-/// that entries added by <c>BlockAccessListManager.LoadPreState</c> appear first in iteration —
-/// matching the semantics of the legacy <c>-1</c> int sentinel before BlockAccessIndex was
-/// widened to uint32. Decoded BALs (from the wire) also use this comparer even though they do
-/// not initially contain a prestate entry, so later prestate grafting preserves sorted order.
+/// Orders <see cref="Eip7928Constants.PrestateIndex"/> before every real BAL access index,
+/// preserving iteration order after prestate entries are grafted into decoded BALs.
 /// </summary>
 public sealed class PrestateAwareIndexComparer : IComparer<uint>
 {

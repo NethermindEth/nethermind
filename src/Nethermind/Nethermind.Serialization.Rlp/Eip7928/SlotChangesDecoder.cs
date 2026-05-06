@@ -32,8 +32,7 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         }
 
         uint? lastIndex = null;
-        // See AccountChangesDecoder.ToSortedByIndex: prestate-aware so a later
-        // LoadPreStateToSuggestedBlockAccessList graft sorts prestate first.
+        // Allows prestate entries to be grafted into decoded BALs while preserving order.
         SortedList<uint, StorageChange> changesList = new(changes.Length, PrestateAwareIndexComparer.Instance);
         foreach (StorageChange s in changes)
         {

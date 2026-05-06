@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
@@ -479,45 +480,29 @@ public class BlockValidator(
 
         foreach (AccountChanges accountChanges in bal.AccountChanges)
         {
-            foreach (BalanceChange change in accountChanges.BalanceChanges)
-            {
-                if (change.Index > maxAllowed)
-                {
-                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
-                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
-                    return false;
-                }
-            }
-            foreach (NonceChange change in accountChanges.NonceChanges)
-            {
-                if (change.Index > maxAllowed)
-                {
-                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
-                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
-                    return false;
-                }
-            }
-            foreach (CodeChange change in accountChanges.CodeChanges)
-            {
-                if (change.Index > maxAllowed)
-                {
-                    error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
-                    if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
-                    return false;
-                }
-            }
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.BalanceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.NonceChanges, maxAllowed, ref error)) return false;
+            if (!ValidateBlockLevelAccessListIndexBounds(block, accountChanges.CodeChanges, maxAllowed, ref error)) return false;
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                foreach (StorageChange change in slotChanges.Changes.Values)
-                {
-                    if (change.Index > maxAllowed)
-                    {
-                        error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(change.Index, maxAllowed);
-                        if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
-                        return false;
-                    }
-                }
+                if (!ValidateBlockLevelAccessListIndexBounds(block, slotChanges.Changes.Values, maxAllowed, ref error)) return false;
             }
+        }
+
+        return true;
+    }
+
+    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, IList<T> changes, uint maxAllowed, ref string? error)
+        where T : IIndexedChange
+    {
+        for (int i = 0; i < changes.Count; i++)
+        {
+            uint index = changes[i].Index;
+            if (index <= maxAllowed) continue;
+
+            error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(index, maxAllowed);
+            if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
+            return false;
         }
 
         return true;

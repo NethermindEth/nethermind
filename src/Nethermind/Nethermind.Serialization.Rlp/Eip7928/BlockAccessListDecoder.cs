@@ -20,39 +20,32 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
     public BlockAccessList Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
-        try
+        AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
+
+        Address? lastAddress = null;
+        long itemCount = 0;
+        SortedDictionary<Address, AccountChanges> accountChangesMap = new(GenericComparer.GetOptimized<Address>());
+        foreach (AccountChanges a in accountChanges)
         {
-            AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
-
-            Address? lastAddress = null;
-            long itemCount = 0;
-            SortedDictionary<Address, AccountChanges> accountChangesMap = new(GenericComparer.GetOptimized<Address>());
-            foreach (AccountChanges a in accountChanges)
+            // EIP-7928 AccountChanges is a 6-field sequence; an empty inner
+            // list (RLP 0xc0) is rejected by DecodeArray as defaultElement -> null.
+            if (a is null)
             {
-                // EIP-7928 AccountChanges is a 6-field sequence; an empty inner
-                // list (RLP 0xc0) is rejected by DecodeArray as defaultElement → null.
-                if (a is null)
-                {
-                    throw new RlpException("Empty AccountChanges entry; EIP-7928 requires a 6-field sequence.");
-                }
-
-                Address address = a.Address;
-                if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
-                {
-                    throw new RlpException("Account changes were in incorrect order.");
-                }
-                lastAddress = address;
-                accountChangesMap.Add(address, a);
-                itemCount += 1L + a.StorageChanges.Count + a.StorageReads.Count;
+                throw new RlpException("Empty AccountChanges entry; EIP-7928 requires a 6-field sequence.");
             }
 
-            BlockAccessList blockAccessList = new(accountChangesMap) { ItemCount = itemCount };
-            return blockAccessList;
+            Address address = a.Address;
+            if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
+            {
+                throw new RlpException("Account changes were in incorrect order.");
+            }
+            lastAddress = address;
+            accountChangesMap.Add(address, a);
+            itemCount += 1L + a.StorageChanges.Count + a.StorageReads.Count;
         }
-        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-        {
-            throw new RlpException("Truncated or out-of-bounds RLP while decoding BlockAccessList.", e);
-        }
+
+        BlockAccessList blockAccessList = new(accountChangesMap) { ItemCount = itemCount };
+        return blockAccessList;
     }
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

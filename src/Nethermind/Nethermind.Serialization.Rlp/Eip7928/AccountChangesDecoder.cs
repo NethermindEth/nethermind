@@ -108,10 +108,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         where T : struct, IIndexedChange
     {
         uint? lastIndex = null;
-        // PrestateAwareIndexComparer keeps PrestateIndex sorted first if the suggested BAL
-        // later has prestate entries grafted in by LoadPreStateToSuggestedBlockAccessList.
-        // For wire-decoded entries (always real uint indices) it behaves identically to
-        // ascending uint compare, since real values never collide with the sentinel.
+        // Allows prestate entries to be grafted into decoded BALs while preserving order.
         SortedList<uint, T> sorted = new(items.Length, PrestateAwareIndexComparer.Instance);
         foreach (T item in items)
         {
