@@ -78,14 +78,14 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
                 PageResidencyTracker tracker = PageResidencyTracker.FromByteBudget(cfg.PersistedSnapshotPageCacheBytes);
-                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), tracker, cfg.ArenaFileSizeBytes);
+                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), tracker, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
             })
             .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
                 PageResidencyTracker tracker = PageResidencyTracker.FromByteBudget(cfg.PersistedSnapshotPageCacheBytes);
-                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"), tracker, cfg.ArenaFileSizeBytes);
+                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"), tracker, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
                 IArenaManager compactedArena = ctx.Resolve<IArenaManager>();
                 IDb catalogDb = ctx.Resolve<IColumnsDb<FlatDbColumns>>().GetColumnDb(FlatDbColumns.PersistedSnapshotCatalog);
                 PersistedSnapshotRepository repo = new(baseArena, compactedArena, catalogDb, cfg);

@@ -18,10 +18,14 @@ public sealed unsafe class ArenaFile : IDisposable
     private const int MADV_NORMAL = 0;
     private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
+    private const int POSIX_FADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
 
     [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
     private static extern int Madvise(void* addr, nuint length, int advice);
+
+    [DllImport("libc", EntryPoint = "posix_fadvise", SetLastError = true)]
+    private static extern int PosixFadvise(int fd, long offset, long len, int advice);
 
     private readonly SafeFileHandle _handle;
     private readonly MemoryMappedFile _mmf;
@@ -99,6 +103,26 @@ public sealed unsafe class ArenaFile : IDisposable
         if (end <= start) return;
 
         Madvise(_basePtr + start, end - start, MADV_DONTNEED);
+    }
+
+    /// <summary>
+    /// posix_fadvise(POSIX_FADV_DONTNEED) on the underlying file descriptor for the
+    /// page-aligned subrange of <c>[offset, offset+size)</c>. Drops the corresponding
+    /// pages from the OS file cache. Redundant with <see cref="AdviseDontNeed"/> on
+    /// Linux for shared mappings, but useful for benchmarking to ensure arena pages
+    /// don't pollute the file cache.
+    /// </summary>
+    public void FadviseDontNeed(long offset, int size)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        nuint pageSize = PageSize;
+        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
+        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
+        if (end <= start) return;
+
+        int fd = (int)_handle.DangerousGetHandle();
+        PosixFadvise(fd, (long)start, (long)(end - start), POSIX_FADV_DONTNEED);
     }
 
     /// <summary>

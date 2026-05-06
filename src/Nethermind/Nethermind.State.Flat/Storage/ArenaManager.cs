@@ -19,6 +19,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
 
     private readonly string _basePath;
     private readonly long _maxArenaSize;
+    private readonly bool _fadviseOnEviction;
     // Make it prefer earlier arena.
     private readonly Dictionary<int, ArenaFile> _arenas = [];
     private readonly Dictionary<int, long> _frontiers = [];
@@ -51,11 +52,12 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
         }
     }
 
-    public ArenaManager(string basePath, PageResidencyTracker pageTracker, long maxArenaSize = 1L * 1024 * 1024 * 1024)
+    public ArenaManager(string basePath, PageResidencyTracker pageTracker, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false)
     {
         ArgumentNullException.ThrowIfNull(pageTracker);
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
+        _fadviseOnEviction = fadviseOnEviction;
         Directory.CreateDirectory(basePath);
         _pageTracker = pageTracker;
     }
@@ -220,6 +222,12 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
                 _frontiers.Remove(location.ArenaId);
                 _deadBytes.Remove(location.ArenaId);
             }
+            else if (_arenas.TryGetValue(location.ArenaId, out ArenaFile? arena))
+            {
+                arena.AdviseDontNeed(location.Offset, location.Size);
+                if (_fadviseOnEviction)
+                    arena.FadviseDontNeed(location.Offset, location.Size);
+            }
         }
     }
 
@@ -250,6 +258,8 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             if (!_arenas.TryGetValue(arenaId, out arena)) return;
         }
         arena.AdviseDontNeed(offset, pageSize);
+        if (_fadviseOnEviction)
+            arena.FadviseDontNeed(offset, pageSize);
     }
 
     private ArenaFile GetOrCreateArena(int requiredSize)
