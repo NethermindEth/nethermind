@@ -36,4 +36,15 @@ public enum IndexType : byte
     /// container, where the set of tag positions is fixed and known.
     /// </summary>
     DenseByteIndex = 0x09,
+    /// <summary>
+    /// Fixed-size keys with variable-size values. Reuses the BTree data-section format
+    /// per entry (<c>[Value][ValueLength: LEB128][KeyLength: u8][FullKey]</c>) so each
+    /// entry's <c>MetadataStart</c> is directly compatible with the noderef mechanism
+    /// and with <see cref="BTreeHashIndex"/>'s 4-byte slot encoding. Replaces the
+    /// B-tree node region with a flat <c>EntryCount × u32</c> array of MetadataStart
+    /// anchors plus a recursive summary index over fixed-size keys (mirroring
+    /// <see cref="PackedArray"/>) and an optional open-addressed hash table.
+    /// MetadataStart values are capped at 4 GiB by the u32 anchor / slot encoding.
+    /// </summary>
+    PackedArrayVariableValue = 0x0A,
 }

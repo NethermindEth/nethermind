@@ -32,10 +32,11 @@ namespace Nethermind.State.Flat.Hsst;
 /// </summary>
 public sealed class HsstMergeEnumerator : IDisposable
 {
-    private enum VariantKind : byte { Empty, PackedArray, ByteTagMap, BTree }
+    private enum VariantKind : byte { Empty, PackedArray, PackedArrayVariableValue, ByteTagMap, BTree }
 
     private readonly VariantKind _kind;
     private readonly PackedArrayVariant? _packed;
+    private readonly PackedArrayVariableValueVariant? _packedVar;
     private readonly ByteTagMapVariant? _byteTag;
     private readonly BTreeVariant? _btree;
     private bool _disposed;
@@ -57,6 +58,10 @@ public sealed class HsstMergeEnumerator : IDisposable
             case IndexType.PackedArray:
                 _packed = PackedArrayVariant.TryCreate(hsstData);
                 _kind = _packed is not null ? VariantKind.PackedArray : VariantKind.Empty;
+                break;
+            case IndexType.PackedArrayVariableValue:
+                _packedVar = PackedArrayVariableValueVariant.TryCreate(hsstData);
+                _kind = _packedVar is not null ? VariantKind.PackedArrayVariableValue : VariantKind.Empty;
                 break;
             case IndexType.ByteTagMap:
                 _byteTag = ByteTagMapVariant.TryCreate(hsstData);
@@ -81,6 +86,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     public int Count => _kind switch
     {
         VariantKind.PackedArray => _packed!.Count,
+        VariantKind.PackedArrayVariableValue => _packedVar!.Count,
         VariantKind.ByteTagMap => _byteTag!.Count,
         VariantKind.BTree => _btree!.Count,
         _ => 0,
@@ -89,6 +95,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     public bool MoveNext(ReadOnlySpan<byte> data) => _kind switch
     {
         VariantKind.PackedArray => _packed!.MoveNext(),
+        VariantKind.PackedArrayVariableValue => _packedVar!.MoveNext(data),
         VariantKind.ByteTagMap => _byteTag!.MoveNext(data),
         VariantKind.BTree => _btree!.MoveNext(data),
         _ => false,
@@ -102,6 +109,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     public Bound CurrentKey => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentKey,
+        VariantKind.PackedArrayVariableValue => _packedVar!.CurrentKey,
         VariantKind.ByteTagMap => _byteTag!.CurrentKey,
         VariantKind.BTree => _btree!.CurrentKey,
         _ => default,
@@ -123,6 +131,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     public Bound CurrentValue => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentValue,
+        VariantKind.PackedArrayVariableValue => _packedVar!.CurrentValue,
         VariantKind.ByteTagMap => _byteTag!.CurrentValue,
         VariantKind.BTree => _btree!.CurrentValue,
         _ => default,
@@ -137,6 +146,7 @@ public sealed class HsstMergeEnumerator : IDisposable
     public int CurrentMetadataStart => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
+        VariantKind.PackedArrayVariableValue => _packedVar!.CurrentMetadataStart,
         VariantKind.ByteTagMap => _byteTag!.CurrentMetadataStart,
         VariantKind.BTree => _btree!.CurrentMetadataStart,
         _ => 0,
@@ -195,6 +205,76 @@ public sealed class HsstMergeEnumerator : IDisposable
         public Bound CurrentKey => new(_currentEntryStart, _keySize);
         public Bound CurrentValue => new(_currentEntryStart + _keySize, _valueSize);
         public int CurrentMetadataStart => _currentEntryStart + _keySize;
+    }
+
+    // -----------------------------------------------------------------------
+    // PackedArrayVariableValue: BTree-format data section (per-entry
+    // [Value][ValueLength: LEB128][KeyLength: u8][FullKey]) with a flat
+    // EntryMetaStarts u32 array driving forward iteration.
+    // -----------------------------------------------------------------------
+
+    private sealed class PackedArrayVariableValueVariant
+    {
+        private readonly int _hsstStart;
+        private readonly int _hsstEnd;
+        private readonly int _entryMetaStartsStart;
+        private readonly int _keySize;
+        private readonly int _count;
+        private int _index = -1;
+        private int _currentKeyOffset;
+        private int _currentValueOffset;
+        private int _currentValueLength;
+        private int _currentMetaStart;
+
+        public static PackedArrayVariableValueVariant? TryCreate(scoped ReadOnlySpan<byte> hsstData)
+        {
+            SpanByteReader spanReader = new(hsstData);
+            if (!HsstPackedArrayVariableValueReader.TryReadLayout<SpanByteReader, NoOpPin>(
+                    in spanReader, new Bound(0, hsstData.Length), out HsstPackedArrayVariableValueReader.Layout layout))
+            {
+                return null;
+            }
+            return new PackedArrayVariableValueVariant(layout);
+        }
+
+        private PackedArrayVariableValueVariant(HsstPackedArrayVariableValueReader.Layout layout)
+        {
+            _hsstStart = (int)layout.HsstStart;
+            _hsstEnd = (int)layout.HsstEnd;
+            _entryMetaStartsStart = (int)layout.EntryMetaStartsStart;
+            _keySize = layout.KeySize;
+            _count = layout.EntryCount;
+        }
+
+        public int Count => _count;
+
+        public bool MoveNext(ReadOnlySpan<byte> data)
+        {
+            int next = _index + 1;
+            if (next >= _count) return false;
+            _index = next;
+
+            int metaStart = (int)BinaryPrimitives.ReadUInt32LittleEndian(
+                data.Slice(_entryMetaStartsStart + next * 4, 4));
+            int absMetaStart = _hsstStart + metaStart;
+
+            // Forward LEB128 + KeyLength byte, then FullKey.
+            int pos = absMetaStart;
+            int valueLength = Leb128.Read(data, ref pos);
+            int keyLength = data[pos++];
+            // Builder writes KeyLength = KeySize; we don't need to re-validate
+            // here (layout parse already enforced KeySize bounds).
+            _ = keyLength;
+            _currentMetaStart = absMetaStart;
+            _currentKeyOffset = pos;
+            _currentValueOffset = absMetaStart - valueLength;
+            _currentValueLength = valueLength;
+            return true;
+        }
+
+        public Bound CurrentKey => new(_currentKeyOffset, _keySize);
+        public Bound CurrentValue => new(_currentValueOffset, _currentValueLength);
+        public int CurrentMetadataStart => _currentMetaStart;
     }
 
     // -----------------------------------------------------------------------
