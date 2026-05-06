@@ -60,7 +60,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
     {
         if (_logger.IsInfo) _logger.Info("Setting up Call Analyzer tracer");
 
-        var analyzer = new CallStatsAnalyzer(callAnalyzerConfig.TopN);
+        CallStatsAnalyzer analyzer = new(callAnalyzerConfig.TopN);
         CallAnalyzerFileTracer callAnalyzerFileTracer = new(
             new ResettableList<Address>(),
             callAnalyzerConfig.ProcessingQueueSize,
@@ -79,7 +79,7 @@ public class StatsAnalyzerPlugin(IPatternAnalyzerConfig patternAnalyzerConfig, I
     {
         if (_logger.IsInfo) _logger.Info("Setting up Pattern Analyzer tracer");
 
-        var analyzer = new PatternStatsAnalyzer(patternAnalyzerConfig.GetStatsAnalyzerConfig());
+        PatternStatsAnalyzer analyzer = new(patternAnalyzerConfig.GetStatsAnalyzerConfig());
         PatternAnalyzerFileTracer patternAnalyzerFileTracer = new(
             new ResettableList<Instruction>(),
             patternAnalyzerConfig.ProcessingQueueSize,

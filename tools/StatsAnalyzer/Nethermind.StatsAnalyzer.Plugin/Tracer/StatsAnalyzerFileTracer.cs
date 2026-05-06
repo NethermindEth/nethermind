@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
 using System.IO.Abstractions;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
@@ -12,58 +11,44 @@ using Nethermind.StatsAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Tracer;
 
-public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBase<TxTrace, TxTracer>
+public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer>(
+    TxTracer tracer,
+    string defaultFile,
+    int processingQueueSize,
+    IFileSystem fileSystem,
+    ILogger logger,
+    int writeFreq,
+    ProcessingMode mode,
+    SortOrder sort,
+    CancellationToken ct,
+    string? fileName) : BlockTracerBase<TxTrace, TxTracer>
     where TxTracer : class, ITxTracer, IStatsAnalyzerTxTracer<TxTrace>
 
 {
     private readonly List<Task> _fileTracingQueue = [];
-    private readonly int _fileTracingQueueSize = 1;
-    private readonly int _writeFreq = 1;
-    protected readonly CancellationToken Ct;
-    protected readonly string FileName;
-    private readonly IFileSystem _fileSystem;
-    protected readonly ILogger Logger;
-    private readonly ProcessingMode _processingMode;
+    private readonly int _fileTracingQueueSize = processingQueueSize;
+    private readonly int _writeFreq = writeFreq;
+    protected readonly CancellationToken Ct = ct;
+    protected readonly string FileName = fileName ?? defaultFile;
+    private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+    protected readonly ILogger Logger = logger;
+    private readonly ProcessingMode _processingMode = mode;
     private readonly JsonSerializerOptions _serializerOptions = new();
-    protected readonly SortOrder Sort;
+    protected readonly SortOrder Sort = sort;
     private int _pos;
     private long _currentBlock;
     protected Task CurrentTask = Task.CompletedTask;
     private long _initialBlock;
     private Task _lastTask = Task.CompletedTask;
-    protected TxTracer Tracer;
-
-    protected StatsAnalyzerFileTracer(
-        TxTracer tracer,
-        string defaultFile,
-        int processingQueueSize,
-        IFileSystem fileSystem,
-        ILogger logger,
-        int writeFreq,
-        ProcessingMode mode,
-        SortOrder sort,
-        CancellationToken ct,
-        string? fileName)
-    {
-        Tracer = tracer;
-        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _writeFreq = writeFreq;
-        _fileTracingQueueSize = processingQueueSize;
-        FileName = fileName ?? defaultFile;
-        Logger = logger;
-        _processingMode = mode;
-        Sort = sort;
-        Ct = ct;
-    }
-
+    protected TxTracer Tracer = tracer;
 
     protected abstract void ResetBufferAndTracer();
 
     public override void EndBlockTrace()
     {
-        var tracer = Tracer;
-        var initialBlockNumber = _initialBlock;
-        var currentBlockNumber = _currentBlock;
+        TxTracer tracer = Tracer;
+        long initialBlockNumber = _initialBlock;
+        long currentBlockNumber = _currentBlock;
 
         ResetBufferAndTracer();
 
@@ -112,7 +97,7 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
                     break;
                 case ProcessingMode.Sequential:
                     {
-                        var firstUnfinishedTask = _fileTracingQueue.FirstOrDefault(t => !t.IsCompleted);
+                        Task? firstUnfinishedTask = _fileTracingQueue.FirstOrDefault(t => !t.IsCompleted);
                         if (firstUnfinishedTask != null) firstUnfinishedTask.Wait(Ct);
                         break;
                     }
@@ -122,21 +107,15 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
     }
 
 
-    private void CleanUpCompletedTasks()
-    {
-        _fileTracingQueue.RemoveAll(t => t.IsCompleted);
-    }
+    private void CleanUpCompletedTasks() => _fileTracingQueue.RemoveAll(t => t.IsCompleted);
 
 
-    public TxTracer StartNewTxTrace(Transaction? tx)
-    {
-        return Tracer;
-    }
+    public TxTracer StartNewTxTrace(Transaction? tx) => Tracer;
 
     public override void StartNewBlockTrace(Block block)
     {
         base.StartNewBlockTrace(block);
-        var number = block.Header.Number;
+        long number = block.Header.Number;
         // _initialBlock == 0 means "unset" rather than "genesis"; on a
         // fresh node this means the genesis block itself does not anchor
         // _initialBlock — the first non-genesis block the tracer sees does.
@@ -154,19 +133,13 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
         Task.WaitAll(_fileTracingQueue.ToArray(), Ct);
     }
 
-    protected override TxTracer OnStart(Transaction? tx)
-    {
-        return Tracer;
-    }
+    protected override TxTracer OnStart(Transaction? tx) => Tracer;
 
     public override void EndTxTrace()
     {
     }
 
-    protected override TxTrace OnEnd(TxTracer txTracer)
-    {
-        throw new NotImplementedException();
-    }
+    protected override TxTrace OnEnd(TxTracer txTracer) => throw new NotImplementedException();
 
     private static void WriteTrace(
         long initialBlockNumber,
@@ -179,14 +152,14 @@ public abstract class StatsAnalyzerFileTracer<TxTrace, TxTracer> : BlockTracerBa
     {
         ct.ThrowIfCancellationRequested();
 
-        var trace = tracer.BuildResult(initialBlockNumber, currentBlockNumber);
+        TxTrace trace = tracer.BuildResult(initialBlockNumber, currentBlockNumber);
 
         ct.ThrowIfCancellationRequested();
 
         // FileMode.Create truncates the file in a single open via the injected
         // IFileSystem, so MockFileSystem-backed tests see the truncation.
-        using (var file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write))
-        using (var jsonWriter = new Utf8JsonWriter(file))
+        using (Stream file = fileSystem.File.Open(fileName, FileMode.Create, FileAccess.Write))
+        using (Utf8JsonWriter jsonWriter = new(file))
         {
             JsonSerializer.Serialize(jsonWriter, trace, serializerOptions);
         }

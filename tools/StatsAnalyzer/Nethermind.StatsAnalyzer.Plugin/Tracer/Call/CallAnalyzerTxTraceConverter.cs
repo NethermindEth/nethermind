@@ -6,10 +6,7 @@ namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Call;
 public class CallAnalyzerTxTraceConvertor : JsonConverter<CallAnalyzerTxTrace>
 {
     public override CallAnalyzerTxTrace Read(ref Utf8JsonReader reader, Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        throw new NotImplementedException();
-    }
+        JsonSerializerOptions options) => throw new NotImplementedException();
 
     public override void Write(Utf8JsonWriter writer, CallAnalyzerTxTrace value, JsonSerializerOptions options)
     {
@@ -29,7 +26,7 @@ public class CallAnalyzerTxTraceConvertor : JsonConverter<CallAnalyzerTxTrace>
         {
             writer.WritePropertyName("stats"u8);
             writer.WriteStartArray();
-            foreach (var callStats in value.Entries)
+            foreach (CallAnalyzerTraceEntry callStats in value.Entries)
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("address"u8);

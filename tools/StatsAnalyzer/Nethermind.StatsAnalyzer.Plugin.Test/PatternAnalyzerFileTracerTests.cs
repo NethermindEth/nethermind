@@ -69,7 +69,7 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
         var forkActivation = MainnetSpecProvider.PragueActivation;
         var (block, _) = PrepareTx(forkActivation, 100000, codes[0]);
         tracer.StartNewBlockTrace(block);
-        foreach (var code in codes)
+        foreach (byte[] code in codes)
         {
             var (_, transaction) = PrepareTx(forkActivation, 100000, code);
             ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
@@ -85,7 +85,7 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
     public void Test_File_Tracer(byte[][] codes, string expectedTrace)
     {
         ExecuteTransactions(codes, _tracer);
-        var fileContent = _fileSystem.File.ReadAllText(_testFileName);
+        string fileContent = _fileSystem.File.ReadAllText(_testFileName);
         Assert.That(fileContent, Is.Not.Empty); //IsNotEmpty(fileContent);
         Assert.That(fileContent, Is.EqualTo(expectedTrace),
             $"\n --- Found: {fileContent} \n Expected: {expectedTrace}");
@@ -95,7 +95,7 @@ public class PatternAnalyzerFileTracerTests : VirtualMachineTestsBase
     public void Test_File_Tracer_With_Ignore_Set(byte[][] codes, string expectedTrace)
     {
         ExecuteTransactions(codes, _tracerIgnore);
-        var fileContent = _fileSystem.File.ReadAllText(_testIgnoreFileName);
+        string fileContent = _fileSystem.File.ReadAllText(_testIgnoreFileName);
         Assert.That(fileContent, Is.Not.Empty); //IsNotEmpty(fileContent);
         Assert.That(fileContent, Is.EqualTo(expectedTrace),
             $"\n --- Found: {fileContent} \n Expected: {expectedTrace}");

@@ -59,7 +59,7 @@ public class PatternAnalyzerFileTracer : StatsAnalyzerFileTracer<PatternAnalyzer
 
     public override void EndTxTrace()
     {
-        var tracer = (PatternStatsAnalyzerTxTracer)Tracer;
+        PatternStatsAnalyzerTxTracer tracer = (PatternStatsAnalyzerTxTracer)Tracer;
         tracer.AddTxEndMarker();
     }
 }

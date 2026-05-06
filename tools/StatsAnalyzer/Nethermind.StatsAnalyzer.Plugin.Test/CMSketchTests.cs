@@ -36,7 +36,7 @@ public class CmSketchTests
     // n updates of the same item
     public static void make_n_updates(ulong value, int numberOfUpdates, CmSketch sketch)
     {
-        for (var i = 0; i < numberOfUpdates; i++)
+        for (int i = 0; i < numberOfUpdates; i++)
             sketch.Update(value);
     }
 
@@ -108,7 +108,7 @@ public class CmSketchTests
     [Test]
     public void validate_reset()
     {
-        var sketch = new CmSketch(10, 10);
+        CmSketch sketch = new(10, 10);
 
         for (ulong i = 0; i <= 10; i++)
             sketch.Update(i);
@@ -122,7 +122,7 @@ public class CmSketchTests
     [Test]
     public void test_buckets()
     {
-        var buckets = 1000;
+        int buckets = 1000;
         var sketch = _highAccuracyHighConfidence;
         for (ulong i = 0; i < (ulong)buckets; i++)
         {
@@ -144,7 +144,7 @@ public class CmSketchTests
     {
         // Seeded for reproducibility — an unseeded Random produced different
         // empirical breach counts each run, making the assertion below flaky.
-        var random = new Random(42);
+        Random random = new(42);
         ulong randomUlong;
 
 
@@ -152,19 +152,19 @@ public class CmSketchTests
         Dictionary<ulong, ulong> actualCounts;
 
         const double trials = 100;
-        var observedConfidence = 0d;
+        double observedConfidence = 0d;
 
-        for (var trial = 0; trial < trials; trial++)
+        for (int trial = 0; trial < trials; trial++)
         {
             sketch.Reset();
             actualCounts = new Dictionary<ulong, ulong>();
 
-            for (var i = 0; i < numberOfItemsInStream; i++)
+            for (int i = 0; i < numberOfItemsInStream; i++)
             {
                 // for each item in stream select a random ulong
                 randomUlong = (ulong)random.NextInt64(long.MinValue, long.MaxValue);
                 // for each item in stream select a random update Qty
-                var randomUpdate = random.Next(1, 100);
+                int randomUpdate = random.Next(1, 100);
                 // make n-random updates for random ulong
                 make_n_updates(randomUlong, randomUpdate, sketch);
                 // store the actual update qty in the dictionary
@@ -188,16 +188,16 @@ public class CmSketchTests
     private static bool check_confidence(CmSketch sketch, Dictionary<ulong, ulong> actualCounts, double error,
         double confidence)
     {
-        var countOfGreaterThanExpectedError = 0;
+        int countOfGreaterThanExpectedError = 0;
 
         // Iterate over every value and Qty added
         foreach (var kvp in actualCounts)
         {
-            var trueCount = kvp.Value;
-            var observedCount = sketch.Query(kvp.Key);
+            ulong trueCount = kvp.Value;
+            ulong observedCount = sketch.Query(kvp.Key);
 
             // our upper error bound
-            var expectedMaxCount = trueCount + (ulong)Math.Round(sketch.ErrorPerItem);
+            ulong expectedMaxCount = trueCount + (ulong)Math.Round(sketch.ErrorPerItem);
             //our lower bound should never be violated
             trueCount.Should().BeLessThanOrEqualTo(observedCount);
             // we count the number of times our upper bound was broken
@@ -205,7 +205,7 @@ public class CmSketchTests
                 ++countOfGreaterThanExpectedError;
         }
 
-        var observedFreqOfBreaches = countOfGreaterThanExpectedError / (double)actualCounts.Count;
+        double observedFreqOfBreaches = countOfGreaterThanExpectedError / (double)actualCounts.Count;
         // if the freq of false results is not accounted by the confidence return false
         return observedFreqOfBreaches <= 1.0d - confidence;
     }

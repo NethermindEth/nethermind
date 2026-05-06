@@ -13,7 +13,7 @@ public class PatternAnalyzerConfigTests
     [Test]
     public void GetIgnoreSet_ReturnsEmpty_WhenIgnoreIsDefault()
     {
-        var config = new PatternAnalyzerConfig();
+        PatternAnalyzerConfig config = new();
         Assert.That(config.Ignore, Is.EqualTo(string.Empty));
         Assert.DoesNotThrow(() => config.GetIgnoreSet());
         Assert.That(config.GetIgnoreSet(), Is.Empty);
@@ -22,14 +22,14 @@ public class PatternAnalyzerConfigTests
     [Test]
     public void GetIgnoreSet_ReturnsEmpty_WhenIgnoreIsWhitespace()
     {
-        var config = new PatternAnalyzerConfig { Ignore = "   " };
+        PatternAnalyzerConfig config = new() { Ignore = "   " };
         Assert.That(config.GetIgnoreSet(), Is.Empty);
     }
 
     [Test]
     public void GetIgnoreSet_ParsesAndTrimsCommaSeparatedInstructions()
     {
-        var config = new PatternAnalyzerConfig { Ignore = "JUMPDEST , JUMP" };
+        PatternAnalyzerConfig config = new() { Ignore = "JUMPDEST , JUMP" };
         var set = config.GetIgnoreSet();
         Assert.That(set, Is.EquivalentTo(new[] { Instruction.JUMPDEST, Instruction.JUMP }));
     }

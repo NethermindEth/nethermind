@@ -105,8 +105,8 @@ public class NGramTests
     [TestCase("ADD DIV", new[] { Instruction.ADD, Instruction.DIV })]
     public void validate_ngram_string_conversion(string str, Instruction[] testcase)
     {
-        var ngram = new NGram(testcase);
-        var instructions = ngram.ToString();
+        NGram ngram = new(testcase);
+        string instructions = ngram.ToString();
         Assert.That(instructions == str, $" expected {str} found {instructions}");
     }
 
@@ -115,10 +115,10 @@ public class NGramTests
     [TestCase(new[] { Instruction.ADD, Instruction.DIV })]
     public void validate_ngram_byte_conversion(Instruction[] testcase)
     {
-        var ngram = new NGram(testcase);
-        var instructions = ngram.ToBytes();
+        NGram ngram = new(testcase);
+        byte[] instructions = ngram.ToBytes();
         Assert.That(instructions.Length == testcase.Length);
-        for (var i = 0; i < testcase.Length; i++)
+        for (int i = 0; i < testcase.Length; i++)
             Assert.That(instructions[i] == (byte)testcase[i]);
     }
 
@@ -135,7 +135,7 @@ public class NGramTests
     [TestCase(new[] { Instruction.ADD, Instruction.DIV }, Instruction.MUL)]
     public void validate_ngram_shift_add_op(Instruction[] instructions, Instruction instruction)
     {
-        var ngram = new NGram(instructions);
+        NGram ngram = new(instructions);
         ngram = ngram.ShiftAdd(instruction);
         var _instructions = ngram.ToInstructions();
         if (instructions.Length < 7)
@@ -155,18 +155,18 @@ public class NGramTests
     [TestCaseSource(nameof(SubsequenceTestCases))]
     public void validate_ngram_subsequece_generation(Instruction[] testcase, Instruction[][] expectedSubsequences)
     {
-        var counts = new Dictionary<ulong, ulong>();
-        var ngram = new NGram(testcase);
+        Dictionary<ulong, ulong> counts = new();
+        NGram ngram = new(testcase);
 
 
         Assert.That(ngram.GetSubsequences().Count() == expectedSubsequences.Length,
             $"Found: {ngram.GetSubsequences().Count()}, Expected: {expectedSubsequences.Length}");
 
-        var expectedSubsequence = 0;
+        int expectedSubsequence = 0;
 
         foreach (var subSequence in ngram.GetSubsequences())
         {
-            var expected = new NGram(expectedSubsequences[expectedSubsequence]);
+            NGram expected = new(expectedSubsequences[expectedSubsequence]);
             Assert.That(subSequence == expected,
                 $"Expected sub-sequence {expected.ToString()} found {subSequence.ToString()}");
             expectedSubsequence++;
@@ -178,10 +178,10 @@ public class NGramTests
     public unsafe void validate_ngram_subsequece_processing(Instruction[] testcase,
         Instruction[][] expectedSubsequences)
     {
-        var sketchBuffer = new CmSketch[1];
-        var topNMap = new Dictionary<ulong, ulong>();
-        var topNQueue = new PriorityQueue<ulong, ulong>();
-        var ngram = new NGram(testcase);
+        CmSketch[] sketchBuffer = new CmSketch[1];
+        Dictionary<ulong, ulong> topNMap = new();
+        PriorityQueue<ulong, ulong> topNQueue = new();
+        NGram ngram = new(testcase);
 
         static ulong CollectSubsequence(ulong subNgram, int currentSketchPos, int bufferSize,
             ulong minSupport, ulong max, int topN, CmSketch[] sketchBuffer, Dictionary<ulong, ulong> topNMap,
@@ -202,8 +202,8 @@ public class NGramTests
 
         foreach (var expectedArray in expectedSubsequences)
         {
-            var expectedNGram = new NGram(expectedArray);
-            var expectedHash = expectedNGram.Ulong0;
+            NGram expectedNGram = new(expectedArray);
+            ulong expectedHash = expectedNGram.Ulong0;
             Assert.That(topNMap.ContainsKey(expectedHash),
                 $"Expected NGram {expectedNGram.ToString()} was not processed.");
         }
@@ -213,7 +213,7 @@ public class NGramTests
     [Test]
     public void validate_ngrams_reset()
     {
-        var ngrams = new NGram();
+        NGram ngrams = new();
         ngrams = ngrams.ShiftAdd(Instruction.PUSH1);
         ngrams = ngrams.ShiftAdd(Instruction.PUSH1);
         Assert.That(ngrams.Ulong0 != NGram.Null);

@@ -2,21 +2,14 @@ using Nethermind.StatsAnalyzer.Plugin.Types;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
-public abstract class TopNAnalyzer<TData, TEncoding, TStat> : IStatsAnalyzer<TData, TStat>
+public abstract class TopNAnalyzer<TData, TEncoding, TStat>(int topN, int capacity = 1000) : IStatsAnalyzer<TData, TStat>
     where TEncoding : notnull
 {
-    protected readonly int TopN;
-    protected readonly Dictionary<TEncoding, ulong> TopNMap;
-    protected readonly PriorityQueue<TEncoding, ulong> TopNQueue;
+    protected readonly int TopN = topN;
+    protected readonly Dictionary<TEncoding, ulong> TopNMap = new(capacity);
+    protected readonly PriorityQueue<TEncoding, ulong> TopNQueue = new(topN);
     protected ulong Max = 1;
     protected ulong MinSupport = 1;
-
-    protected TopNAnalyzer(int topN, int capacity = 1000)
-    {
-        TopN = topN;
-        TopNQueue = new PriorityQueue<TEncoding, ulong>(topN);
-        TopNMap = new Dictionary<TEncoding, ulong>(capacity);
-    }
 
     public abstract void Add(IEnumerable<TData> items);
 
@@ -28,7 +21,7 @@ public abstract class TopNAnalyzer<TData, TEncoding, TStat> : IStatsAnalyzer<TDa
     {
         TopNQueue.Clear();
 
-        foreach (var kvp in TopNMap)
+        foreach (KeyValuePair<TEncoding, ulong> kvp in TopNMap)
         {
             Max = Math.Max(Max, kvp.Value);
 
@@ -36,7 +29,7 @@ public abstract class TopNAnalyzer<TData, TEncoding, TStat> : IStatsAnalyzer<TDa
                 TopNQueue.Enqueue(kvp.Key, kvp.Value);
 
             if (TopNQueue.Count < TopN) continue;
-            TopNQueue.TryPeek(out _, out var min);
+            TopNQueue.TryPeek(out _, out ulong min);
             if (min < kvp.Value) TopNQueue.DequeueEnqueue(kvp.Key, kvp.Value);
             //Queue has filled up, we update min support to filter out lower count updates
             TopNQueue.TryPeek(out _, out MinSupport);

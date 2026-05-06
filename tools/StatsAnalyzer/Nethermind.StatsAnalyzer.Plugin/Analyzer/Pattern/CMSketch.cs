@@ -30,7 +30,7 @@ public class CmSketchBuilder
         if (!_sketchBuckets.HasValue || !_sketchNumberOfHashFunctions.HasValue)
             throw new InvalidOperationException(
                 "(buckets and number of hash functions must be set.");
-        var sketch = new CmSketch(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
+        CmSketch sketch = new(_sketchNumberOfHashFunctions.Value, _sketchBuckets.Value);
         if (_sketchError.HasValue)
             Debug.Assert(sketch.Error <= _sketchError,
                 $" expected sketch error to be initialized to at most {_sketchError} found {sketch.Error}");
@@ -108,31 +108,28 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     public void Update(ulong item)
     {
         _seen++;
-        for (var hasher = 0; hasher < numberOfhashFunctions; hasher++)
+        for (int hasher = 0; hasher < numberOfhashFunctions; hasher++)
             Increment(item, hasher);
     }
 
 
     private static long[] GenerateSeed(int numberOfhashFunctions)
     {
-        var seeds = new long[numberOfhashFunctions];
-        var rand = new Random();
-        for (var i = 0; i < numberOfhashFunctions; i++) seeds[i] = rand.NextInt64(long.MinValue, long.MaxValue);
+        long[] seeds = new long[numberOfhashFunctions];
+        Random rand = new();
+        for (int i = 0; i < numberOfhashFunctions; i++) seeds[i] = rand.NextInt64(long.MinValue, long.MaxValue);
 
         return seeds;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ulong Increment(ulong item, int hasher)
-    {
-        return Interlocked.Increment(
+    private ulong Increment(ulong item, int hasher) => Interlocked.Increment(
             ref _sketch[(ulong)hasher * (ulong)numberOfBuckets + ComputeHash(item, hasher) % (ulong)numberOfBuckets]);
-    }
 
     public ulong Query(ulong item)
     {
-        var minCount = ulong.MaxValue;
-        for (var hasher = 0; hasher < numberOfhashFunctions; hasher++)
+        ulong minCount = ulong.MaxValue;
+        for (int hasher = 0; hasher < numberOfhashFunctions; hasher++)
             minCount = Math.Min(minCount,
                 _sketch[(ulong)hasher * (ulong)numberOfBuckets + ComputeHash(item, hasher) % (ulong)numberOfBuckets]);
         return minCount;
@@ -142,8 +139,8 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     public ulong UpdateAndQuery(ulong item)
     {
         _seen++;
-        var minCount = ulong.MaxValue;
-        for (var hasher = 0; hasher < numberOfhashFunctions; hasher++)
+        ulong minCount = ulong.MaxValue;
+        for (int hasher = 0; hasher < numberOfhashFunctions; hasher++)
             minCount = Math.Min(minCount, Increment(item, hasher));
         return minCount;
     }
@@ -154,7 +151,7 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
         // Seeds MUST NOT be regenerated: QueryAllSketches sums counts across the
         // sketch buffer, which only makes sense when every sketch hashes 'item'
         // to the same cell — i.e. shares the same seeds.
-        var cms = new CmSketch((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), _seen,
+        CmSketch cms = new((ulong[])_sketch.Clone(), (long[])_seeds.Clone(), _seen,
                                numberOfhashFunctions, numberOfBuckets);
         _sketch = new ulong[numberOfBuckets * numberOfhashFunctions];
         _seen = 0;
@@ -176,9 +173,9 @@ public class CmSketch(int numberOfhashFunctions, int numberOfBuckets)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong Fnv1A(ulong value, long seed, ulong offsetBasis, ulong prime, int sizeInBytes)
     {
-        var startHash = offsetBasis;
-        var hash = 0UL; // for 0 size
-        for (var i = 0; i < sizeInBytes; i++)
+        ulong startHash = offsetBasis;
+        ulong hash = 0UL; // for 0 size
+        for (int i = 0; i < sizeInBytes; i++)
         {
             startHash = (startHash ^ (byte)((value >> (i * 8)) & 0xFF)) * prime;
             startHash = (startHash ^ (byte)((seed >> (i * 8)) & 0xFF)) * prime;

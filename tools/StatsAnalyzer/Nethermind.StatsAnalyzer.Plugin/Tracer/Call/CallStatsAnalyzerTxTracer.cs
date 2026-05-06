@@ -15,11 +15,7 @@ public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address, C
 {
     public CallStatsAnalyzerTxTracer(ResettableList<Address> buffer,
         CallStatsAnalyzer callStatsAnalyzer, SortOrder sort, CancellationToken ct) : base(buffer, callStatsAnalyzer,
-        sort, ct)
-
-    {
-        IsTracingActions = true;
-    }
+        sort, ct) => IsTracingActions = true;
 
 
     public override CallAnalyzerTxTrace BuildResult(long fromBlock = 0, long toBlock = 0)
@@ -28,11 +24,11 @@ public sealed class CallStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Address, C
         CallAnalyzerTxTrace trace = new();
         trace.InitialBlockNumber = fromBlock;
         trace.CurrentBlockNumber = toBlock;
-        var stats = StatsAnalyzer.Stats(Sort);
+        IEnumerable<CallStat> stats = StatsAnalyzer.Stats(Sort);
 
-        foreach (var stat in stats)
+        foreach (CallStat stat in stats)
         {
-            var entry = new CallAnalyzerTraceEntry
+            CallAnalyzerTraceEntry entry = new()
             {
                 Address = stat.Address.ToString(),
                 Count = stat.Count

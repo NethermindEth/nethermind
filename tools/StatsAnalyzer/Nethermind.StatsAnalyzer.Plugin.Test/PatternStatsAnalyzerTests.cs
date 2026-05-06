@@ -190,11 +190,11 @@ public class PatternStatsAnalyzerTests
     public void validate_stats(Instruction[] executionOpCodes,
         (Instruction[] ngram, int count)[] expectedNGrams)
     {
-        var counts = new Dictionary<ulong, ulong>();
+        Dictionary<ulong, ulong> counts = new();
 
         foreach ((Instruction[] instructions, int count) expected in expectedNGrams)
         {
-            var ngram = new NGram(expected.instructions);
+            NGram ngram = new(expected.instructions);
             counts[ngram.Ulong0] = (ulong)expected.count;
         }
 
@@ -202,7 +202,7 @@ public class PatternStatsAnalyzerTests
 
         foreach (var stat in _patternStatsAnalyzer.Stats(SortOrder.Unordered))
         {
-            var ulong0 = stat.Ngram.Ulong0;
+            ulong ulong0 = stat.Ngram.Ulong0;
             Assert.That(counts[ulong0] == stat.Count);
             counts.Remove(ulong0);
         }

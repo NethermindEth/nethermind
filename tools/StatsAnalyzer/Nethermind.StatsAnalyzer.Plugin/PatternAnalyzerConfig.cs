@@ -25,7 +25,7 @@ public class PatternAnalyzerConfig : IPatternAnalyzerConfig
 
     public PatternStatsAnalyzerConfig GetStatsAnalyzerConfig()
     {
-        var config = new PatternStatsAnalyzerConfig
+        PatternStatsAnalyzerConfig config = new()
         {
             Sketch = GetSketchConfig(),
             TopN = AnalyzerTopN,
@@ -39,7 +39,7 @@ public class PatternAnalyzerConfig : IPatternAnalyzerConfig
 
     public CmSketchConfig GetSketchConfig()
     {
-        var config = new CmSketchConfig
+        CmSketchConfig config = new()
         {
             Buckets = SketchBuckets,
             HashFunctions = SketchHashFunctions,

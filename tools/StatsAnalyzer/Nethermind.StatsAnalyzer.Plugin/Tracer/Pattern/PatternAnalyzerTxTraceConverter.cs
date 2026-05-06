@@ -6,10 +6,7 @@ namespace Nethermind.StatsAnalyzer.Plugin.Tracer.Pattern;
 public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
 {
     public override PatternAnalyzerTxTrace Read(ref Utf8JsonReader reader, Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        throw new NotImplementedException();
-    }
+        JsonSerializerOptions options) => throw new NotImplementedException();
 
     public override void Write(Utf8JsonWriter writer, PatternAnalyzerTxTrace value, JsonSerializerOptions options)
     {
@@ -33,7 +30,7 @@ public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
         {
             writer.WritePropertyName("stats"u8);
             writer.WriteStartArray();
-            foreach (var opCodePattern in value.Entries)
+            foreach (PatternAnalyzerTraceEntry opCodePattern in value.Entries)
             {
                 writer.WriteStartObject();
                 writer.WritePropertyName("pattern"u8);
@@ -41,7 +38,7 @@ public class OpcodeStatsTraceConvertor : JsonConverter<PatternAnalyzerTxTrace>
 
                 writer.WritePropertyName("bytes"u8);
                 writer.WriteStartArray();
-                foreach (var opCode in opCodePattern.Bytes)
+                foreach (byte opCode in opCodePattern.Bytes)
                     writer.WriteNumberValue(opCode);
                 writer.WriteEndArray();
 

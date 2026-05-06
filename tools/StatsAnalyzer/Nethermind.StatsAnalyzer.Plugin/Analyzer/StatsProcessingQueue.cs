@@ -10,10 +10,7 @@ public sealed class StatsProcessingQueue<TData, TStat>(
 {
     private bool _disposed;
 
-    public void Enqueue(TData item)
-    {
-        buffer.Add(item);
-    }
+    public void Enqueue(TData item) => buffer.Add(item);
 
     public void Dispose()
     {

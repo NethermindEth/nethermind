@@ -25,7 +25,7 @@ public abstract class StatsAnalyzerTxTracer<TData, TStat, TTrace>(
 
     protected void Build()
     {
-        using var q = Queue;
+        using StatsProcessingQueue<TData, TStat>? q = Queue;
         Queue = new StatsProcessingQueue<TData, TStat>(Buffer, StatsAnalyzer, Ct);
     }
 }

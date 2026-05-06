@@ -21,10 +21,7 @@ public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruc
     }
 
 
-    public void AddTxEndMarker()
-    {
-        Queue?.Enqueue(NGram.Reset);
-    }
+    public void AddTxEndMarker() => Queue?.Enqueue(NGram.Reset);
 
 
     public override PatternAnalyzerTxTrace BuildResult(long fromBlock = 0, long toBlock = 0)
@@ -36,11 +33,11 @@ public sealed class PatternStatsAnalyzerTxTracer : StatsAnalyzerTxTracer<Instruc
         trace.Confidence = ((PatternStatsAnalyzer)StatsAnalyzer).Confidence;
         trace.ErrorPerItem = ((PatternStatsAnalyzer)StatsAnalyzer).Error;
 
-        var stats = StatsAnalyzer.Stats(Sort);
+        IEnumerable<PatternStat> stats = StatsAnalyzer.Stats(Sort);
 
-        foreach (var stat in stats)
+        foreach (PatternStat stat in stats)
         {
-            var entry = new PatternAnalyzerTraceEntry
+            PatternAnalyzerTraceEntry entry = new()
             {
                 Pattern = stat.Ngram.ToString(),
                 Bytes = stat.Ngram.ToBytes(),

@@ -1,7 +1,6 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Evm;
 using Nethermind.StatsAnalyzer.Plugin.Types;
-using Nethermind.StatsAnalyzer.Plugin.Analyzer;
 
 namespace Nethermind.StatsAnalyzer.Plugin.Analyzer.Pattern;
 
@@ -59,7 +58,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
         ResetSketchAtError();
 
         TopNQueue.Clear();
-        foreach (var instruction in instructions)
+        foreach (Instruction instruction in instructions)
         {
             _ngram = _ngram.ShiftAdd(instruction);
             delegate*<ulong, int, int, ulong, ulong, int, CmSketch[], Dictionary<ulong, ulong>,
@@ -101,7 +100,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
                     _sketchBuffer,
                     TopNMap,
                     TopNQueue);
-        TopNQueue.TryPeek(out _, out var min);
+        TopNQueue.TryPeek(out _, out ulong min);
         MinSupport = Math.Max(min, MinSupport);
     }
 
@@ -112,7 +111,7 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
         PriorityQueue<ulong, ulong> topNQueue)
     {
         sketchBuffer[currentSketchPos].Update(ngram);
-        var count = QueryAllSketches(bufferSize, sketchBuffer, ngram);
+        ulong count = QueryAllSketches(bufferSize, sketchBuffer, ngram);
         if (count < minSupport)
         {
             topNMap.Remove(ngram);
@@ -130,8 +129,8 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong QueryAllSketches(int bufferSize, CmSketch[] sketchBuffer, ulong ngram)
     {
-        var count = 0UL;
-        for (var i = 0; i <= bufferSize; i++)
+        ulong count = 0UL;
+        for (int i = 0; i <= bufferSize; i++)
             count += sketchBuffer[i].Query(ngram);
         return count;
     }
@@ -142,21 +141,21 @@ public class PatternStatsAnalyzer : TopNAnalyzer<Instruction, ulong, PatternStat
         switch (order)
         {
             case SortOrder.Unordered:
-                foreach (var (ngram, count) in TopNQueue.UnorderedItems)
+                foreach ((ulong ngram, ulong count) in TopNQueue.UnorderedItems)
                     yield return new PatternStat(new NGram(ngram), count);
                 break;
             case SortOrder.Ascending:
-                var queue = new PriorityQueue<ulong, ulong>(TopN);
-                foreach (var (ngram, count) in TopNQueue.UnorderedItems) queue.Enqueue(ngram, count);
-                while (queue.TryDequeue(out var ngramAsc, out var countAsc))
+                PriorityQueue<ulong, ulong> queue = new(TopN);
+                foreach ((ulong ngram, ulong count) in TopNQueue.UnorderedItems) queue.Enqueue(ngram, count);
+                while (queue.TryDequeue(out ulong ngramAsc, out ulong countAsc))
                     yield return new PatternStat(new NGram(ngramAsc), countAsc);
                 break;
             case SortOrder.Descending:
-                var queueDecending =
-                    new PriorityQueue<ulong, ulong>(TopN, Comparer<ulong>.Create((x, y) => y.CompareTo(x)));
-                foreach (var (ngram, count) in TopNQueue.UnorderedItems) queueDecending.Enqueue(ngram, count);
+                PriorityQueue<ulong, ulong> queueDecending =
+                    new(TopN, Comparer<ulong>.Create((x, y) => y.CompareTo(x)));
+                foreach ((ulong ngram, ulong count) in TopNQueue.UnorderedItems) queueDecending.Enqueue(ngram, count);
                 while (queueDecending.Count > 0)
-                    if (queueDecending.TryDequeue(out var ngram, out var count))
+                    if (queueDecending.TryDequeue(out ulong ngram, out ulong count))
                         yield return new PatternStat(new NGram(ngram), count);
                 break;
         }
