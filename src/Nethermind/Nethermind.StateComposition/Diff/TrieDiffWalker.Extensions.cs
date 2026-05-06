@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.StateComposition.Diff;
 
