@@ -260,6 +260,7 @@ namespace Nethermind.Xdc
                 _highestSelfMinedRound = currentRound;
                 Task blockBuilder = BuildAndProposeBlock(roundParent, currentRound, spec, ct);
             }
+
             _writeRoundInfo = false;
         }
 

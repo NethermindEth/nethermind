@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -19,7 +20,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal class SignTransactionManager : ISignTransactionManager
+internal class SignTransactionManager : ISignTransactionManager, IDisposable
 {
     private readonly ISigner _signer;
     private readonly ITxPool _txPool;
@@ -28,8 +29,9 @@ internal class SignTransactionManager : ISignTransactionManager
     private readonly ISnapshotManager _snapshotManager;
     private readonly ISpecProvider _specProvider;
     private AssociativeKeyCache<ValueHash256> _alreadySigned = new (128);
+    private bool disposedValue;
 
-    public SignTransactionManager(ISigner signer, ITxPool txPool, ILogger logger, IBlockTree blockTree, ISnapshotManager snapshotManager, ISpecProvider specProvider)
+    public SignTransactionManager(ISigner signer, ITxPool txPool, IBlockTree blockTree, ISnapshotManager snapshotManager, ISpecProvider specProvider, ILogger logger)
     {
         _signer = signer;
         _txPool = txPool;
@@ -103,5 +105,11 @@ internal class SignTransactionManager : ISignTransactionManager
         transaction.Type = TxType.Legacy;
 
         return transaction;
+    }
+
+    public void Dispose()
+    {
+        _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+        GC.SuppressFinalize(this);
     }
 }

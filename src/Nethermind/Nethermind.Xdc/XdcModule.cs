@@ -101,7 +101,7 @@ public class XdcModule : Module
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
             .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
             .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
-            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager, IBlockTree, IEpochSwitchManager, ISpecProvider>(CreateSignTransactionManager)
+            .AddSingleton<ISignTransactionManager, SignTransactionManager>()
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
@@ -132,14 +132,8 @@ public class XdcModule : Module
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-    {
-        return new SnapshotManager(db, blockTree, votingContract, specProvider);
-    }
-    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager, IBlockTree blockTree, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider)
-    {
-        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>(), blockTree, epochSwitchManager, specProvider);
-    }
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, IBlockTree blockTree, ISnapshotManager snapshotManager, ISpecProvider specProvider, ILogManager logManager) => new SignTransactionManager(signer, txPool, blockTree, snapshotManager, specProvider, logManager.GetClassLogger<SignTransactionManager>());
 
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,
