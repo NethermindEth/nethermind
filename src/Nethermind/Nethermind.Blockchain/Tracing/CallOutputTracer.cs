@@ -38,4 +38,13 @@ public class CallOutputTracer : TxTracer
         ReturnValue = output;
         StatusCode = Evm.StatusCode.Failure;
     }
+
+    public void Reset()
+    {
+        GasSpent = 0;
+        OperationGas = 0;
+        ReturnValue = null;
+        Error = null;
+        StatusCode = 0;
+    }
 }

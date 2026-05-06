@@ -115,5 +115,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
-            ctx.Resolve<ISubscriptionManager>());
+            ctx.Resolve<ISubscriptionManager>(),
+            ctx.Resolve<IJsonRpcConfig>());
 }

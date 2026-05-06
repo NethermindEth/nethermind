@@ -54,9 +54,8 @@ internal class VotesManager(
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash);
-        if (epochSwitchInfo is null)
-            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash) ??
+            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(blockInfo));
         //Optimize this by fetching with block number and round only
 
         if (_blockTree.FindHeader(blockInfo.Hash) is not XdcBlockHeader header)
@@ -87,7 +86,11 @@ internal class VotesManager(
         // Collect votes
         _votePool.Add(vote);
         IReadOnlyCollection<Vote> roundVotes = _votePool.GetItems(vote);
-        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotes);
+        IReadOnlyCollection<Vote> roundVotesFromOtherKeys = _votePool.GetItemsFromRoundExcludingKey(vote);
+        // Forensics is expected to run asynchronously and must not block vote processing.
+        // The two calls are complementary: one checks signer conflicts across pool keys in the same round,
+        // the other validates against committed-QC ancestry.
+        _ = _forensicsProcessor.DetectEquivocationInVotePool(vote, roundVotesFromOtherKeys);
         _ = _forensicsProcessor.ProcessVoteEquivocation(vote);
 
         if (_blockTree.FindHeader(vote.ProposedBlockInfo.Hash, vote.ProposedBlockInfo.BlockNumber) is not XdcBlockHeader proposedHeader)
@@ -136,8 +139,8 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (ulong key in _qcBuildStartedByRound.Keys)
-            if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
+        foreach (KeyValuePair<ulong, byte> kvp in _qcBuildStartedByRound)
+            if (kvp.Key <= round) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
