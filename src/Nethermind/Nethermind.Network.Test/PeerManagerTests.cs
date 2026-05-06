@@ -191,6 +191,49 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Will_replace_channel_closed_incoming_session_before_delayed_disconnect()
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+
+            Session firstSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
+            Session secondSession = CreateIncomingSessionTemplate(TestItem.PublicKeyA);
+
+            ctx.RlpxPeer.CreateIncoming(firstSession);
+            Session staleSession = ctx.Sessions.Single();
+            staleSession.MarkChannelClosed();
+
+            ctx.RlpxPeer.CreateIncoming(secondSession);
+            Session freshSession = ctx.Sessions.Last();
+
+            InitSession(freshSession);
+
+            freshSession.State.Should().Be(SessionState.Initialized);
+            ctx.PeerManager.ActivePeers.Single().InSession.Should().BeSameAs(freshSession);
+
+            staleSession.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
+
+            freshSession.State.Should().Be(SessionState.Initialized);
+            ctx.PeerManager.ActivePeers.Single().InSession.Should().BeSameAs(freshSession);
+        }
+
+        private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
+        {
+            Session session = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.RemoteHost = "1.2.3.4";
+            session.RemotePort = 12345;
+            session.RemoteNodeId = remoteNodeId;
+            return session;
+        }
+
+        private static void InitSession(Session session)
+        {
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+
+            session.Init(5, context, Substitute.For<IPacketSender>());
+        }
+
+        [Test]
         public void Will_return_exception_in_port() =>
             Assert.Throws<ArgumentException>(static () => new Enode(enode3String));
 
@@ -234,7 +277,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.NetworkConfig.MaxActivePeers = 1;
-            ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
+            ctx.StaticNodesManager.IsStatic(Arg.Is<NetworkNode>(n => n.Enode!.Info == enode2String)).Returns(true);
 
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
