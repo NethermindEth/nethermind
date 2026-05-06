@@ -63,6 +63,7 @@ public readonly ref struct TransactionSubstate
         EvmExceptionType = exceptionType;
         Refund = 0;
         _destroyList = _emptyDestroyList;
+        // Can be mutated by SELFDESTRUCT and BURN logs so need to initialize as empty.
         _logs = [];
         ShouldRevert = false;
     }
