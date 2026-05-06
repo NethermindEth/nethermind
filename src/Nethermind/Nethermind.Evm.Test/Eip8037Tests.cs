@@ -356,6 +356,18 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Refund_state_gas_from_exceptional_halt_does_not_mark_spilled_refund()
+    {
+        EthereumGasPolicy gas = new() { Value = GasCostOf.CreateState, StateReservoir = 0, StateGasUsed = 0 };
+        Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState), Is.True);
+
+        EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.CreateState, stateGasFloor: 0, trackSpillRefund: false);
+
+        Assert.That((gas.StateGasUsed, gas.StateReservoir, gas.StateGasSpill, gas.StateGasSpillRefunded),
+            Is.EqualTo((0L, GasCostOf.CreateState, GasCostOf.CreateState, 0L)));
+    }
+
+    [Test]
     public void Refunded_spill_propagates_through_success_chain()
     {
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };

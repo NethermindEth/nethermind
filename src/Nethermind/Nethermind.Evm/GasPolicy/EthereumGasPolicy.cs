@@ -342,11 +342,19 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
+        => RefundStateGas(ref gas, amount, stateGasFloor, trackSpillRefund: true);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor, bool trackSpillRefund)
     {
         long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
         long appliedRefund = Math.Min(amount, refundableStateGas);
         long unrefundedSpill = GetUnrefundedStateGasSpill(in gas);
-        gas.StateGasSpillRefunded += Math.Min(appliedRefund, unrefundedSpill);
+        if (trackSpillRefund)
+        {
+            gas.StateGasSpillRefunded += Math.Min(appliedRefund, unrefundedSpill);
+        }
+
         gas.StateReservoir += appliedRefund;
         gas.StateGasUsed -= appliedRefund;
     }

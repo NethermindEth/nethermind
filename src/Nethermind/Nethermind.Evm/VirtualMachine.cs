@@ -449,7 +449,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
@@ -587,7 +587,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
         }
 
         shouldExit = false;
@@ -624,7 +624,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void CreditStateGasRefund(ref TGasPolicy gas, long amount)
+    internal void CreditStateGasRefund(ref TGasPolicy gas, long amount, bool trackSpillRefund = true)
     {
         if (amount <= 0)
         {
@@ -638,7 +638,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         if (appliedRefund > 0)
         {
-            TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor);
+            TGasPolicy.RefundStateGas(ref gas, appliedRefund, stateGasFloor, trackSpillRefund);
             vmState.StateGasRefund += appliedRefund;
         }
 
@@ -739,7 +739,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         PopAndRestoreParentState();
         if (failedCreate)
         {
-            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas));
+            CreditStateGasRefund(ref _currentState.Gas, TGasPolicy.GetCreateStateCost(in _currentState.Gas), trackSpillRefund: false);
         }
 
         // Return null to indicate that the failure was handled and execution should continue in the parent frame.

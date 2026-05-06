@@ -319,6 +319,45 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_block_15149_failed_create_must_not_keep_inner_create_refund_in_state_dimension()
+    {
+        byte[] initCode = Bytes.FromHexString(
+            "7f05558dabac9fc072364593435c5eb80848fef8caa932ac512d5ecd122ec6bba67f" +
+            "00000000000000000000000000000000000000000000000000000000000d6a1e5b7f" +
+            "000000000000000000000000000000b29801d0cf03fc861ad824aa1b93fc26000527" +
+            "f1466f4b82c3a3c0bee6bd718e6588323f9a0a8432ea8ad32f1636d68a9c72b5a60" +
+            "20526080604060406000600060105af160405160605160805160a05161078a72e493" +
+            "dae2d23df83e60dba8223aa12e772557b23d6026601760ce448c474b6202ffff165c" +
+            "827d2517a2f9adc9cf6d378a23164876aaad6688943ad2aa69284a09839aa6c638" +
+            "805f5f397f63000001255679f3a59e0ab9b74ed342471f42902651fda5a93b83f6" +
+            "ac22b8985f52633eef874e905f5ff55f5f5f5f845af45b621fe802606938805f5f" +
+            "397f630000015f5679e51bfa36ea9722169a830d7c0c0ee947d36fae48afba3dbc" +
+            "ab5f525f5ff05f5f5f5f5f855af15b595b60a7602277c35c7b8814a6cb4a9d1e29" +
+            "78a27b5f6072b9a0b1868f8c1d63d260e76a60f286660769d3e14701ae33598a14" +
+            "5b6202ffff168161ffff169150f330365b06835b3546f5845b62cf50d27357b2b3b" +
+            "89ee8ddf27acd20499861e7d6e79746285a61ac50606660373de6005b075b70e5eb" +
+            "93590f38ebc61dbdd26f034d11d68a00");
+
+        const long gasLimit = 1_000_000;
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            initCode,
+            value: 0,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+    }
+
+    [Test]
     public void Eip8037_create_memory_oog_must_not_charge_create_state_gas()
     {
         byte[] code = Prepare.EvmCode

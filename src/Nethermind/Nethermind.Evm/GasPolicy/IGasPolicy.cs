@@ -364,6 +364,17 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
+    /// Refunds state gas back to the state reservoir.
+    /// Pre-EIP-8037 fallback refunds into regular gas.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="amount">Refunded state gas amount.</param>
+    /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas).</param>
+    /// <param name="trackSpillRefund">Whether spilled state gas should be marked as state-refunded for block gas accounting.</param>
+    static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor, bool trackSpillRefund) =>
+        TSelf.RefundStateGas(ref gas, amount, stateGasFloor);
+
+    /// <summary>
     /// Discards state gas from block-state accounting without refunding it back into the
     /// usable gas budget. This is used for reverted state charges that should remain paid
     /// by the transaction but must not contribute to committed state gas.
