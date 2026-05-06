@@ -9,8 +9,9 @@ using System.Threading;
 namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
-/// Receives eviction notifications from <see cref="PageResidencyTracker"/>. Implementations typically
-/// issue <c>madvise(MADV_DONTNEED)</c> on the evicted page so the kernel can drop it.
+/// Receives eviction notifications surfaced by <see cref="PageResidencyTracker.TryTouch"/>.
+/// Implementations typically issue <c>madvise(MADV_DONTNEED)</c> on the evicted page so the
+/// kernel can drop it.
 /// </summary>
 public interface IPageEvictionHandler
 {
@@ -20,11 +21,11 @@ public interface IPageEvictionHandler
 /// <summary>
 /// Direct-mapped page residency tracker for arena-backed mmap regions. Each slot occupies a full
 /// 64-byte cache line; the slot value packs <c>(arenaId &lt;&lt; 32) | pageIdx</c> with
-/// <c>-1L</c> as the empty sentinel. <see cref="Touch"/> hashes the key to a slot and
+/// <c>-1L</c> as the empty sentinel. <see cref="TryTouch"/> hashes the key to a slot and
 /// unconditionally CAS-replaces the occupant via <see cref="Interlocked.Exchange(ref long, long)"/>;
-/// the displaced key is reported to the eviction handler so the caller can
-/// <c>madvise(MADV_DONTNEED)</c> the page. There is no LRU or clock arm: collision is the
-/// eviction policy.
+/// the displaced key (if any) is reported back to the caller via out parameters so the caller
+/// can dispatch eviction (e.g. <c>madvise(MADV_DONTNEED)</c>). There is no LRU or clock arm:
+/// collision is the eviction policy.
 /// </summary>
 /// <remarks>
 /// Lock-free and false-sharing-free: slots are 64-byte aligned and stride one per cache line,
@@ -34,8 +35,8 @@ public interface IPageEvictionHandler
 /// in <see cref="Dispose"/> (or a finalizer fallback).
 ///
 /// Two threads racing on the same slot may each observe a different prior occupant and so each
-/// fire <see cref="IPageEvictionHandler.OnPageEvicted"/> for the page they displaced. Redundant
-/// <c>madvise(DONTNEED)</c> on the same page is wasted work but harmless.
+/// report a different evicted page. Redundant <c>madvise(DONTNEED)</c> on the same page is
+/// wasted work but harmless.
 /// </remarks>
 public sealed unsafe class PageResidencyTracker : IDisposable
 {
@@ -48,7 +49,6 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     private int _disposed;
     private readonly int _slotCount;
     private readonly int _mask;
-    private readonly IPageEvictionHandler _evictionHandler;
 
     public int MaxCapacity => _slotCount;
 
@@ -63,11 +63,9 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         }
     }
 
-    public PageResidencyTracker(int maxCapacity, IPageEvictionHandler evictionHandler)
+    public PageResidencyTracker(int maxCapacity)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
-        ArgumentNullException.ThrowIfNull(evictionHandler);
-        _evictionHandler = evictionHandler;
 
         if (maxCapacity == 0)
         {
@@ -85,20 +83,43 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         for (int i = 0; i < _slotCount; i++) SlotRef(i) = EmptySlot;
     }
 
-    public void Touch(int arenaId, int pageIdx)
+    /// <summary>
+    /// Records <paramref name="arenaId"/>/<paramref name="pageIdx"/> as recently touched. If the
+    /// hashed slot already held a different page, returns <c>true</c> and emits the displaced
+    /// key via the out parameters; otherwise returns <c>false</c> with the outs zeroed. Disabled
+    /// trackers (<see cref="MaxCapacity"/> == 0) always return <c>false</c>.
+    /// </summary>
+    public bool TryTouch(int arenaId, int pageIdx, out int evictedArenaId, out int evictedPageIdx)
     {
-        if (_slotCount == 0) return;
+        if (_slotCount == 0)
+        {
+            evictedArenaId = 0;
+            evictedPageIdx = 0;
+            return false;
+        }
 
         long packed = Pack(arenaId, pageIdx);
         int idx = (int)(Mix(packed) & (uint)_mask);
         ref long slot = ref SlotRef(idx);
 
         // A relaxed read first lets the common no-op-on-hit path skip the bus-locking exchange.
-        if (Volatile.Read(ref slot) == packed) return;
+        if (Volatile.Read(ref slot) == packed)
+        {
+            evictedArenaId = 0;
+            evictedPageIdx = 0;
+            return false;
+        }
 
         long prev = Interlocked.Exchange(ref slot, packed);
-        if (prev == EmptySlot || prev == packed) return;
-        _evictionHandler.OnPageEvicted((int)(prev >> 32), (int)prev);
+        if (prev == EmptySlot || prev == packed)
+        {
+            evictedArenaId = 0;
+            evictedPageIdx = 0;
+            return false;
+        }
+        evictedArenaId = (int)(prev >> 32);
+        evictedPageIdx = (int)prev;
+        return true;
     }
 
     internal bool ContainsPage(int arenaId, int pageIdx)

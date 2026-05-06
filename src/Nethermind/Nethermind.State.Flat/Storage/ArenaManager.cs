@@ -66,7 +66,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             ? (int)Math.Min(int.MaxValue, pageCacheBytes / Environment.SystemPageSize)
             : 0;
         _pageTracker = pageCacheCapacity > 0
-            ? new PageResidencyTracker(pageCacheCapacity, this)
+            ? new PageResidencyTracker(pageCacheCapacity)
             : null;
     }
 

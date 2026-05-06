@@ -3,7 +3,7 @@
 
 namespace Nethermind.State.Flat.Storage;
 
-public interface IArenaManager : IDisposable
+public interface IArenaManager : IDisposable, IPageEvictionHandler
 {
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
     ArenaWriter CreateWriter(int estimatedSize, string tag);

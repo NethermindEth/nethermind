@@ -52,7 +52,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// reports each read/pin to the arena's <see cref="PageResidencyTracker"/> so collision-displaced
     /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction.
     /// </summary>
-    public ArenaByteReader CreateReader() => new(GetSpanInternal(), _arenaManager.PageTracker, ArenaId, Offset);
+    public ArenaByteReader CreateReader() => new(GetSpanInternal(), _arenaManager.PageTracker, _arenaManager, ArenaId, Offset);
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 

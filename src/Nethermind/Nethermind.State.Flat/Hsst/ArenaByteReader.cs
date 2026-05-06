@@ -16,6 +16,7 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 {
     private readonly ReadOnlySpan<byte> _data;
     private readonly PageResidencyTracker? _tracker;
+    private readonly IPageEvictionHandler _evictionHandler;
     private readonly int _arenaId;
     private readonly long _baseOffset;
     // OS page size is a power of two — use shift for division and mask for modulo.
@@ -27,10 +28,12 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
     // bytes within one node.
     private long _lastPageBase;
 
-    public ArenaByteReader(ReadOnlySpan<byte> data, PageResidencyTracker? tracker, int arenaId, long baseOffset)
+    public ArenaByteReader(ReadOnlySpan<byte> data, PageResidencyTracker? tracker, IPageEvictionHandler evictionHandler, int arenaId, long baseOffset)
     {
+        ArgumentNullException.ThrowIfNull(evictionHandler);
         _data = data;
         _tracker = tracker;
+        _evictionHandler = evictionHandler;
         _arenaId = arenaId;
         _baseOffset = baseOffset;
         int pageSize = Environment.SystemPageSize;
@@ -74,6 +77,9 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
         int firstPage = (int)(absStart >> _pageShift);
         int lastPage = (int)(absEnd >> _pageShift);
         for (int p = firstPage; p <= lastPage; p++)
-            _tracker.Touch(_arenaId, p);
+        {
+            if (_tracker.TryTouch(_arenaId, p, out int evictedArenaId, out int evictedPageIdx))
+                _evictionHandler.OnPageEvicted(evictedArenaId, evictedPageIdx);
+        }
     }
 }

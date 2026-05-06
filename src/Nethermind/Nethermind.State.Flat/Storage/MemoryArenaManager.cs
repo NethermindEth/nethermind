@@ -67,6 +67,8 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void AdviseDontNeedPage(int arenaId, int pageIdx) { }
 
+    void IPageEvictionHandler.OnPageEvicted(int arenaId, int pageIdx) { }
+
     public PageResidencyTracker? PageTracker => null;
 
     public int ArenaFileCount => _arenas.Count;
