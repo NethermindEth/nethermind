@@ -81,27 +81,40 @@ public sealed unsafe class BloomFilter : IDisposable
         _data = (byte*)NativeMemory.AlignedAlloc(_dataSize, alignment);
         if (_data == null) throw new OutOfMemoryException();
 
-        // Hint the kernel to use huge pages BEFORE we touch the memory (Clear).
-        // This ensures that when Clear() triggers page faults, the kernel allocates 2MB physical pages immediately.
-        if (useHugePages)
-        {
-            Madvise(_data, _dataSize, MADV_HUGEPAGE);
-        }
+        GC.AddMemoryPressure((long)_dataSize);
 
-        // zero init
-        // Note: For huge allocations, this loop will trigger the actual physical memory allocation.
-        new Span<byte>(_data, checked((int)Math.Min(totalBytes, int.MaxValue))).Clear();
-        if (totalBytes > int.MaxValue)
+        try
         {
-            // chunk clear for huge allocations
-            long off = 0;
-            const int Chunk = 8 * 1024 * 1024;
-            while (off < totalBytes)
+            // Hint the kernel to use huge pages BEFORE we touch the memory (Clear).
+            // This ensures that when Clear() triggers page faults, the kernel allocates 2MB physical pages immediately.
+            if (useHugePages)
             {
-                int len = (int)Math.Min(Chunk, totalBytes - off);
-                new Span<byte>(_data + off, len).Clear();
-                off += len;
+                Madvise(_data, _dataSize, MADV_HUGEPAGE);
             }
+
+            // zero init
+            // Note: For huge allocations, this loop will trigger the actual physical memory allocation.
+            new Span<byte>(_data, checked((int)Math.Min(totalBytes, int.MaxValue))).Clear();
+            if (totalBytes > int.MaxValue)
+            {
+                // chunk clear for huge allocations
+                long off = 0;
+                const int Chunk = 8 * 1024 * 1024;
+                while (off < totalBytes)
+                {
+                    int len = (int)Math.Min(Chunk, totalBytes - off);
+                    new Span<byte>(_data + off, len).Clear();
+                    off += len;
+                }
+            }
+        }
+        catch
+        {
+            NativeMemory.AlignedFree(_data);
+            GC.RemoveMemoryPressure((long)_dataSize);
+            _data = null;
+            _dataSize = 0;
+            throw;
         }
     }
 
@@ -192,6 +205,7 @@ public sealed unsafe class BloomFilter : IDisposable
         if (_data != null)
         {
             NativeMemory.AlignedFree(_data);
+            GC.RemoveMemoryPressure((long)_dataSize);
             _data = null;
             _dataSize = 0;
         }
