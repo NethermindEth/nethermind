@@ -294,6 +294,16 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
+    /// Reader-based <see cref="ReadRefIdsFromMetadata(ReadOnlySpan{byte})"/>. Avoids the
+    /// caller having to materialise a whole-reservation span, so it works with
+    /// chunk-aware readers once those land.
+    /// </summary>
+    public static int[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct =>
+        PersistedSnapshotReader.ReadRefIdsFromMetadata<TReader, TPin>(in reader);
+
+    /// <summary>
     /// Read the raw entry value at a given <c>MetadataStart</c> offset (the LEB128 ValueLength
     /// cursor). Decodes the LEB128 forward via the reader, then copies the preceding value
     /// bytes directly into a heap-allocated array.

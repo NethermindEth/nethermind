@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Collections.Pooled;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.Storage;
 using Prometheus;
@@ -94,7 +95,8 @@ public sealed class PersistedSnapshotRepository(IArenaManager baseArenaManager, 
         if (entry.Type == PersistedSnapshotType.Linked)
         {
             using WholeReadSession refIdsSession = reservation.BeginWholeReadSession();
-            int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(refIdsSession.GetSpan());
+            WholeReadSessionReader refIdsReader = refIdsSession.GetReader();
+            int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
             if (refIds is { Length: > 0 })
             {
                 List<PersistedSnapshot> refs = [];
