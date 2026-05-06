@@ -152,8 +152,11 @@ public class PersistenceManager(
         catch (OperationCanceledException) { }
     }
 
+    private int _disposed;
+
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _cancelTokenSource.Cancel();
         _compactPersistedJobs.Writer.Complete();
         _boundaryCompactJobs.Writer.Complete();
