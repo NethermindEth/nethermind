@@ -258,17 +258,24 @@ public class StateCompositionServiceIncrementalRecoveryTests
     }
 
     [Test]
-    public void RunIncrementalDiff_GatherSnapshotsFails_InvalidatesBaselineAndRescans()
+    public void RunIncrementalDiff_BeginScopeThrowsInvalidOperation_InvalidatesBaselineAndRescans()
     {
         // FlatDb retains state bundles for a bounded window; once the chain has
-        // moved past it, GatherReadOnlySnapshotBundle throws InvalidOperationException
-        // with "Unable to gather snapshots for state ...". Treat this the same
-        // as MissingTrieNodeException — invalidate the baseline and rescan.
+        // moved past it, BeginScope raises InvalidOperationException. The diff
+        // path translates that into the same MissingTrieNodeException recovery
+        // channel the pruning store uses, so the catch remains type-based —
+        // no string match against the FlatDb error message.
         long invalidationsBefore = Metrics.StateCompBaselineInvalidations;
         long diffErrorsBefore = Metrics.StateCompDiffErrors;
 
+        IReadOnlyTrieStore readOnlyStore = Substitute.For<IReadOnlyTrieStore>();
+        readOnlyStore.BeginScope(Arg.Any<BlockHeader?>())
+            .Returns(_ => throw new InvalidOperationException(
+                "Unable to gather snapshots for state StateId { BlockNumber = 100, StateRoot = 0x... }."));
+
         IStateReader stateReader = Substitute.For<IStateReader>();
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CreateReadOnlyTrieStore().Returns(readOnlyStore);
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         StateCompositionStateHolder stateHolder = new();
 
@@ -277,10 +284,6 @@ public class StateCompositionServiceIncrementalRecoveryTests
         blockTree.Head.Returns(headBlock);
         blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>())
             .Returns(Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject);
-
-        worldStateManager.CreateReadOnlyTrieStore()
-            .Returns(_ => throw new InvalidOperationException(
-                "Unable to gather snapshots for state StateId { BlockNumber = 100, StateRoot = 0x... }."));
 
         using StateCompositionService service = new(
             stateReader, worldStateManager, blockTree, stateHolder,
@@ -291,7 +294,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Metrics.StateCompBaselineInvalidations, Is.EqualTo(invalidationsBefore + 1),
-                "FlatDb 'Unable to gather snapshots' must route through the baseline-invalidation recovery path.");
+                "BeginScope's InvalidOperationException must route through the baseline-invalidation recovery path.");
             Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore),
                 "Recoverable bundle-gather failures must NOT count toward diff_errors.");
         }

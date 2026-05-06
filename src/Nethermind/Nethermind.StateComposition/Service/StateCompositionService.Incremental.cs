@@ -62,9 +62,9 @@ internal sealed partial class StateCompositionService
                 ?? throw new MissingTrieNodeException("prev block header is no longer canonical", null, TreePath.Empty, prevRoot);
 
             using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
-            using IDisposable oldScope = oldStore.BeginScope(prevHeader);
+            using IDisposable oldScope = BeginScopeOrThrowMissing(oldStore, prevHeader, prevRoot);
             using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
-            using IDisposable newScope = newStore.BeginScope(head.Header);
+            using IDisposable newScope = BeginScopeOrThrowMissing(newStore, head.Header, head.Header.StateRoot);
             IScopedTrieStore oldResolver = oldStore.GetTrieStore(null);
             IScopedTrieStore newResolver = newStore.GetTrieStore(null);
 
@@ -87,11 +87,10 @@ internal sealed partial class StateCompositionService
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
         }
-        catch (Exception ex) when (ex is MissingTrieNodeException
-            || (ex is InvalidOperationException && ex.Message.Contains("gather snapshots", StringComparison.Ordinal)))
+        catch (MissingTrieNodeException ex)
         {
-            // prevRoot is no longer reachable — pruned out (MissingTrieNodeException)
-            // or rolled past FlatDb's bundle window ("Unable to gather snapshots for state ...").
+            // prevRoot is no longer reachable — pruned out, or rolled past FlatDb's
+            // bundle window (BeginScopeOrThrowMissing translates that case here).
             // Drop the baseline so OnNewHeadBlock stops dispatching, then rescan.
             Metrics.StateCompBaselineInvalidations++;
             _stateHolder.InvalidateBaseline();
@@ -122,6 +121,28 @@ internal sealed partial class StateCompositionService
         finally
         {
             _diffLock.Exit();
+        }
+    }
+
+    /// <summary>
+    /// FlatDb's <see cref="ITrieStore.BeginScope"/> raises a generic
+    /// <see cref="InvalidOperationException"/> when the requested state's bundle
+    /// has rolled past its retention window or was never gatherable. Translate
+    /// at the call site to the same recovery channel the pruning store uses
+    /// (<see cref="MissingTrieNodeException"/>) so a single catch handles both
+    /// backends without matching exception messages by string.
+    /// </summary>
+    private static IDisposable BeginScopeOrThrowMissing(IReadOnlyTrieStore store, BlockHeader header, Hash256 root)
+    {
+        try
+        {
+            return store.BeginScope(header);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new MissingTrieNodeException(
+                $"BeginScope failed for block {header.Number}: {ex.Message}",
+                address: null, TreePath.Empty, root, innerException: ex);
         }
     }
 

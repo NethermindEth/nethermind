@@ -196,6 +196,34 @@ public class StateCompositionSnapshotStoreTests
     }
 
     [Test]
+    public void ReadSnapshot_MidSequenceTruncatedChunk_KeepsPriorEntries()
+    {
+        // First chunk is intact; chunk 1 is truncated mid-flush. Reader must
+        // stop at the corruption boundary, keep chunk 0's entries, and not
+        // throw — the plugin will rescan to repair the missing tail.
+        MemDb db = new();
+        StateCompositionSnapshotStore store = new(db, LimboLogs.Instance, entriesPerChunk: 2);
+
+        Dictionary<ValueHash256, long> slots = [];
+        for (int i = 0; i < 2; i++)
+            slots[Keccak.Compute($"slot-{i}").ValueHash256] = i + 1;
+        store.WriteSnapshot(BuildSnapshot(blockNumber: 1, slotCountByAddress: slots));
+
+        // Manually inject a truncated chunk 1 (header claims 2 entries, only 5 bytes follow).
+        byte[] truncatedChunk1 =
+        [
+            0, 0, 0, 0, 0, 0, 0, 1,        // blockNumber = 1
+            0x01,                            // SlotCountKind
+            0, 0, 0, 1,                      // chunk index 1
+        ];
+        db.Set(truncatedChunk1, [0, 0, 0, 2, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE]);
+
+        StateCompositionSnapshot loaded = store.ReadLatestSnapshot()!.Value;
+        Assert.That(loaded.SlotCountByAddress, Has.Count.EqualTo(2),
+            "Chunk 0's entries survive; truncated chunk 1 stops the iteration without throwing.");
+    }
+
+    [Test]
     public void EmptyMaps_AreNotPersistedAsChunks()
     {
         MemDb db = new();

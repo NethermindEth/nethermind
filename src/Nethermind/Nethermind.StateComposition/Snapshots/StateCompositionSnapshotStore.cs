@@ -302,9 +302,20 @@ internal sealed class StateCompositionSnapshotStore
             // declared payload length before slicing, so a truncated or
             // mid-read corrupted chunk degrades to "no more entries"
             // instead of throwing ArgumentOutOfRangeException up the stack.
-            if (data.Length < 4) break;
+            // Truncation mid-sequence (chunkIdx > 0) leaves a partially-loaded
+            // map; warn once so a follow-up rescan can be diagnosed and the
+            // discrepancy isn't silent.
+            if (data.Length < 4)
+            {
+                LogChunkTruncated(blockNumber, kind, chunkIdx);
+                break;
+            }
             int chunkCount = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(0, 4));
-            if (chunkCount < 0 || data.Length < 4 + (long)chunkCount * entrySize) break;
+            if (chunkCount < 0 || data.Length < 4 + (long)chunkCount * entrySize)
+            {
+                LogChunkTruncated(blockNumber, kind, chunkIdx);
+                break;
+            }
             int pos = 4;
             for (int i = 0; i < chunkCount; i++)
             {
@@ -316,4 +327,11 @@ internal sealed class StateCompositionSnapshotStore
     }
 
     private delegate void EntryReader<TDict>(ReadOnlySpan<byte> entry, TDict dict);
+
+    private void LogChunkTruncated(long blockNumber, byte kind, int chunkIdx)
+    {
+        if (chunkIdx > 0 && _logger.IsWarn)
+            _logger.Warn($"StateComposition: corrupt chunk {chunkIdx} for block {blockNumber} kind {kind:x2}; " +
+                         $"loaded {chunkIdx} valid chunk(s) before truncation. Plugin will rescan.");
+    }
 }
