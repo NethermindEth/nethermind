@@ -575,7 +575,7 @@ internal static class PersistedSnapshotUtils
         NodeRef nodeRef = NodeRef.Read(value);
         if (!snapshotLookup.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snapshot))
             throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found during validation");
-        return snapshot.ReadEntryValue(nodeRef.ValueLengthOffset);
+        return snapshot.ReadRlpItem(nodeRef.RlpDataOffset);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

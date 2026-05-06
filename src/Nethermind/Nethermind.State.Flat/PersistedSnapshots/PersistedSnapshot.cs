@@ -112,7 +112,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         NodeRef nodeRef = NodeRef.Read(nr);
         if (!_referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snap))
             throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found");
-        return snap.ReadEntryValue(nodeRef.ValueLengthOffset);
+        return snap.ReadRlpItem(nodeRef.RlpDataOffset);
     }
 
     public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
@@ -305,27 +305,27 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         PersistedSnapshotReader.ReadRefIdsFromMetadata<TReader, TPin>(in reader);
 
     /// <summary>
-    /// Read the raw entry value at a given <c>MetadataStart</c> offset (the LEB128 ValueLength
-    /// cursor). Decodes the LEB128 forward via the reader, then copies the preceding value
-    /// bytes directly into a heap-allocated array.
+    /// Read a self-describing RLP item starting at <paramref name="rlpDataOffset"/>. Peeks the
+    /// RLP header (≤ 9 bytes) to recover the total item length via
+    /// <see cref="Rlp.ValueDecoderContext.PeekNextRlpLength"/>, then copies the full item
+    /// into a heap-allocated array. Used to deref <see cref="NodeRef"/> values, which now
+    /// point directly at the RLP rather than at a per-entry length-metadata cursor.
     /// </summary>
-    public byte[] ReadEntryValue(int valueLengthOffset)
+    public byte[] ReadRlpItem(int rlpDataOffset)
     {
         ArenaByteReader reader = _reservation.CreateReader();
-        int valueLength = 0;
-        int shift = 0;
-        int pos = valueLengthOffset;
-        Span<byte> oneByte = stackalloc byte[1];
-        while (true)
-        {
-            reader.TryRead(pos++, oneByte);
-            byte b = oneByte[0];
-            valueLength |= (b & 0x7F) << shift;
-            if ((b & 0x80) == 0) break;
-            shift += 7;
-        }
-        byte[] result = new byte[valueLength];
-        reader.TryRead(valueLengthOffset - valueLength, result);
+        // Worst-case RLP prefix is 1 + 8 bytes (long form with 8-byte length). Clamp the
+        // peek to the remaining reservation so an item near the end of the buffer doesn't
+        // trip TryRead's bounds check; PeekNextRlpLength only consumes as many prefix bytes
+        // as the prefix actually requires.
+        Span<byte> headerBuf = stackalloc byte[9];
+        long remaining = reader.Length - rlpDataOffset;
+        Span<byte> header = headerBuf[..(int)Math.Min(headerBuf.Length, remaining)];
+        reader.TryRead(rlpDataOffset, header);
+        Rlp.ValueDecoderContext ctx = new(header);
+        int totalLength = ctx.PeekNextRlpLength();
+        byte[] result = new byte[totalLength];
+        reader.TryRead(rlpDataOffset, result);
         return result;
     }
 

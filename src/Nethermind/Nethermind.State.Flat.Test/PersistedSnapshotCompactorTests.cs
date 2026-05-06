@@ -198,8 +198,8 @@ public class PersistedSnapshotCompactorTests
             TreePath pathA = new(Hash256.Zero, 4);
             TreePath pathB = new(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), 4);
             SnapshotContent c0 = new();
-            c0.StateNodes[pathA] = new TrieNode(NodeType.Leaf, [0xC0, 0x80]);
-            c0.StateNodes[pathB] = new TrieNode(NodeType.Leaf, [0xC0, 0x80]);
+            c0.StateNodes[pathA] = new TrieNode(NodeType.Leaf, [0xC0]);
+            c0.StateNodes[pathB] = new TrieNode(NodeType.Leaf, [0xC0]);
             SnapshotContent c1 = new();
             c1.StateNodes[pathB] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
             yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_AdvanceOrder_StateTopNodes");

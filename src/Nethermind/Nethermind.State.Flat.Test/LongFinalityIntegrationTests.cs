@@ -188,7 +188,7 @@ public class LongFinalityIntegrationTests
         Snapshot snap2 = CreateSnapshot(s1, s2, c =>
         {
             c.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
-            c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80, 0x80]); // Override
+            c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]); // Override
         });
 
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
@@ -205,7 +205,7 @@ public class LongFinalityIntegrationTests
 
         // State node should have newer value
         Assert.That(mergedSnap.TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, statePath, out byte[]? stateRlpResult), Is.True);
-        Assert.That(stateRlpResult, Is.EqualTo(new byte[] { 0xC1, 0x80, 0x80 }));
+        Assert.That(stateRlpResult, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x80 }));
 
         // Storage node from older should be preserved
         Assert.That(mergedSnap.TryLoadStorageNodeRlp(PersistedSnapshotBloom.AlwaysTrue, storageAddr, storagePath, out byte[]? storageRlpResult), Is.True);

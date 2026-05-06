@@ -179,7 +179,7 @@ public class PersistedSnapshotTests
         NodeRef decoded = NodeRef.Read(buffer);
 
         Assert.That(decoded.SnapshotId, Is.EqualTo(42));
-        Assert.That(decoded.ValueLengthOffset, Is.EqualTo(12345));
+        Assert.That(decoded.RlpDataOffset, Is.EqualTo(12345));
     }
 
     [Test]

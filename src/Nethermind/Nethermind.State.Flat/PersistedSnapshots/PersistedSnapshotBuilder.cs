@@ -594,9 +594,9 @@ public static class PersistedSnapshotBuilder
         while (e.MoveNext())
         {
             KeyValueEntry cur = e.Current;
-            // metaStart relative to column = ValueBound.Offset + ValueBound.Length
-            int metaStart = (int)(cur.ValueBound.Offset + cur.ValueBound.Length);
-            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + metaStart));
+            // NodeRef points directly at the RLP start; length is recovered from the
+            // RLP header on read, so the referenced index doesn't need length metadata.
+            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffset + (int)cur.ValueBound.Offset));
             builder.Add(column.Slice((int)cur.KeyBound.Offset, checked((int)cur.KeyBound.Length)), refBytes);
         }
 
@@ -629,10 +629,8 @@ public static class PersistedSnapshotBuilder
             while (innerEnum.MoveNext())
             {
                 KeyValueEntry inner = innerEnum.Current;
-                // metaStart relative to column for the inner entry; add columnOffsetInSnapshot
-                // to land at the absolute snapshot offset NodeRef expects.
-                int metaStartInColumn = (int)(inner.ValueBound.Offset + inner.ValueBound.Length);
-                NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffsetInSnapshot + metaStartInColumn));
+                // NodeRef points directly at the RLP start (absolute snapshot offset).
+                NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffsetInSnapshot + (int)inner.ValueBound.Offset));
                 innerBuilder.Add(column.Slice((int)inner.KeyBound.Offset, checked((int)inner.KeyBound.Length)), refBytes);
             }
 

@@ -12,17 +12,21 @@ namespace Nethermind.State.Flat;
 /// Used by compacted snapshots to avoid duplicating data from base snapshots.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct NodeRef(int snapshotId, int valueLengthOffset)
+public readonly struct NodeRef(int snapshotId, int rlpDataOffset)
 {
     public const int Size = 8;
 
     /// <summary>ID of the referenced snapshot.</summary>
     public int SnapshotId { get; } = snapshotId;
 
-    /// <summary>Byte offset of the ValueLength LEB128 in the referenced snapshot's HSST data.</summary>
-    public int ValueLengthOffset { get; } = valueLengthOffset;
+    /// <summary>
+    /// Absolute byte offset of the RLP item's first byte in the referenced snapshot's HSST data.
+    /// Length is recovered by parsing the RLP header (see <c>RlpHelpers.PeekNextRlpLength</c>),
+    /// so the referenced index does not need to carry per-entry value-length metadata.
+    /// </summary>
+    public int RlpDataOffset { get; } = rlpDataOffset;
 
-    public bool IsEmpty => SnapshotId == 0 && ValueLengthOffset == 0;
+    public bool IsEmpty => SnapshotId == 0 && RlpDataOffset == 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static NodeRef Read(ReadOnlySpan<byte> data)
@@ -36,6 +40,6 @@ public readonly struct NodeRef(int snapshotId, int valueLengthOffset)
     public static void Write(Span<byte> data, in NodeRef nodeRef)
     {
         BinaryPrimitives.WriteInt32LittleEndian(data, nodeRef.SnapshotId);
-        BinaryPrimitives.WriteInt32LittleEndian(data[4..], nodeRef.ValueLengthOffset);
+        BinaryPrimitives.WriteInt32LittleEndian(data[4..], nodeRef.RlpDataOffset);
     }
 }
