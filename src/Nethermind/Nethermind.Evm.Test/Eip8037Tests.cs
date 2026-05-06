@@ -85,6 +85,21 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Gas_policy_preserves_zero_cost_per_state_byte()
+    {
+        EthereumGasPolicy gas = new() { CostPerStateByte = 0 };
+
+        Assert.That(
+            (
+                EthereumGasPolicy.GetCostPerStateByte(in gas),
+                EthereumGasPolicy.GetStorageSetStateCost(in gas),
+                EthereumGasPolicy.GetCreateStateCost(in gas),
+                EthereumGasPolicy.GetNewAccountStateCost(in gas)
+            ),
+            Is.EqualTo((0L, 0L, 0L, 0L)));
+    }
+
+    [Test]
     public void Generic_code_deposit_cost_uses_policy_state_pricing()
     {
         long costPerStateByte = GasCostOf.CalculateCostPerStateByte(30_000_000);
@@ -168,7 +183,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Failed_state_spill_preserves_existing_reservoir()
+    public void ConsumeStateGas_oog_does_not_zero_reservoir()
     {
         EthereumGasPolicy gas = new() { Value = 10, StateReservoir = 50, StateGasUsed = 0, StateGasSpill = 0 };
 
@@ -176,6 +191,17 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         Assert.That((consumed, gas.Value, gas.StateReservoir, gas.StateGasUsed, gas.StateGasSpill),
             Is.EqualTo((false, 10L, 50L, 0L, 0L)));
+    }
+
+    [Test]
+    public void Refund_does_not_copy_child_cost_per_state_byte_to_parent()
+    {
+        EthereumGasPolicy parent = new() { CostPerStateByte = 11, Value = 100 };
+        EthereumGasPolicy child = new() { CostPerStateByte = 22, Value = 50 };
+
+        EthereumGasPolicy.Refund(ref parent, in child);
+
+        Assert.That(parent.CostPerStateByte, Is.EqualTo(11L));
     }
 
     [Test]
@@ -219,6 +245,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy gas = new()
         {
             StateGasUsed = intrinsicAuthState,
+            CostPerStateByte = GasCostOf.CostPerStateByte,
         };
 
         long regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, intrinsicAuthState);

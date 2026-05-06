@@ -404,8 +404,7 @@ public class BlockValidatorTests
     }
 
     // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
-    // 1..n = transaction indices, n+1 = post-execution. Geth bal-devnet-4 enforces
-    // index < txCount + 2; nethermind enforces index <= txCount + 1.
+    // 1..n = transaction indices, n+1 = post-execution.
     // For a block with 0 transactions, valid indices are 0 and 1.
     [TestCase(0u, true)]
     [TestCase(1u, true)]

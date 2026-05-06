@@ -51,6 +51,9 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            long totalRegularGas = 0;
+            long totalStateGas = 0;
 
             balManager.NextTransaction();
             balManager.ValidateBlockAccessList(block, 0);
@@ -58,7 +61,14 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
+                if (shouldValidate)
+                {
+                    BlockAccessListManager.CheckPerTxInclusion(block, i, currentTx, spec, totalRegularGas, totalStateGas);
+                }
+
                 ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
+                totalStateGas = receiptsTracer.BlockStateGasUsed;
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {

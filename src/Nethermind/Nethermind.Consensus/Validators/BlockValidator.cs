@@ -459,9 +459,10 @@ public class BlockValidator(
         BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;
         long maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
 
-        if (bal.ItemCount > maxBalItems)
+        long balItemCount = bal.ItemCount;
+        if (balItemCount < 0 || balItemCount > maxBalItems)
         {
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(bal.ItemCount, maxBalItems);
+            error = BlockErrorMessages.BlockAccessListGasLimitExceeded(balItemCount, maxBalItems);
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }
@@ -471,7 +472,6 @@ public class BlockValidator(
 
     // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
     // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).
-    // Mirrors geth bal-devnet-4 check `txIdx >= blockTxCount + 2`.
     private bool ValidateBlockLevelAccessListIndexBounds(Block block, ref string? error)
     {
         BlockAccessList bal = block.BlockAccessList ?? block.GeneratedBlockAccessList;

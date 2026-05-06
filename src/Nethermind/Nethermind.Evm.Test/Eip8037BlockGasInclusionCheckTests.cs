@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using NUnit.Framework;
@@ -211,5 +212,52 @@ public class Eip8037BlockGasInclusionCheckTests
             intrinsicState: 0);
 
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
+    }
+
+    [Test]
+    public void Calculate_block_regular_gas_keeps_valid_transcripts_non_negative()
+    {
+        Random random = new(8037);
+        for (int i = 0; i < 2_000; i++)
+        {
+            long intrinsicRegular = random.Next(21_000, 500_000);
+            long initialRegular = random.Next(0, 5_000_000);
+            long spentRegular = random.Next(0, (int)Math.Min(initialRegular, int.MaxValue)) + (initialRegular > int.MaxValue ? random.Next(0, 2) : 0);
+            if (spentRegular > initialRegular)
+            {
+                spentRegular = initialRegular;
+            }
+
+            long stateGasSpill = random.Next(0, (int)Math.Min(spentRegular, int.MaxValue));
+            long stateGasSpillReclassified = random.Next(0, (int)Math.Min(stateGasSpill, int.MaxValue));
+            long remainingRegular = initialRegular - spentRegular;
+            long floorGas = random.Next(21_000, 200_000);
+
+            long executionRegularGasUsed = initialRegular - remainingRegular - stateGasSpill + stateGasSpillReclassified;
+            long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
+                intrinsicRegular,
+                initialRegular,
+                remainingRegular,
+                stateGasSpill,
+                stateGasSpillReclassified,
+                floorGas);
+
+            Assert.That(executionRegularGasUsed, Is.GreaterThanOrEqualTo(0L));
+            Assert.That(blockRegularGas, Is.EqualTo(Math.Max(intrinsicRegular + executionRegularGasUsed, floorGas)));
+        }
+    }
+
+    [Test]
+    public void Calculate_block_regular_gas_floor_clamps_invalid_negative_transcript()
+    {
+        long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
+            intrinsicRegularGas: 21_000,
+            initialRegularGas: 100,
+            remainingRegularGas: 100,
+            stateGasSpill: 200,
+            stateGasSpillReclassified: 0,
+            floorGas: 53_000);
+
+        Assert.That(blockRegularGas, Is.EqualTo(53_000));
     }
 }

@@ -25,7 +25,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
 
             Address? lastAddress = null;
-            int itemCount = 0;
+            long itemCount = 0;
             SortedDictionary<Address, AccountChanges> accountChangesMap = new(GenericComparer.GetOptimized<Address>());
             foreach (AccountChanges a in accountChanges)
             {
@@ -43,7 +43,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
                 }
                 lastAddress = address;
                 accountChangesMap.Add(address, a);
-                itemCount += 1 + a.StorageChanges.Count + a.StorageReads.Count;
+                itemCount += 1L + a.StorageChanges.Count + a.StorageReads.Count;
             }
 
             BlockAccessList blockAccessList = new(accountChangesMap) { ItemCount = itemCount };

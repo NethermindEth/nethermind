@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
 using Nethermind.Core;
 
 namespace Nethermind.Evm.GasPolicy;
@@ -52,5 +54,19 @@ public static class Eip8037BlockGasInclusionCheck
             return Outcome.StateDimensionExceeded;
 
         return Outcome.Ok;
+    }
+
+    public static long CalculateBlockRegularGas(
+        long intrinsicRegularGas,
+        long initialRegularGas,
+        long remainingRegularGas,
+        long stateGasSpill,
+        long stateGasSpillReclassified,
+        long floorGas)
+    {
+        long executionRegularGasUsed = initialRegularGas - remainingRegularGas - stateGasSpill + stateGasSpillReclassified;
+        Debug.Assert(executionRegularGasUsed >= 0, "EIP-8037 execution regular gas must not be negative for a valid gas transcript.");
+        long blockRegularGas = intrinsicRegularGas + executionRegularGasUsed;
+        return Math.Max(blockRegularGas, floorGas);
     }
 }

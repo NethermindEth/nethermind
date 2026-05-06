@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -53,7 +54,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long GetCostPerStateByte(in EthereumGasPolicy gas) => gas.CostPerStateByte == 0 ? GasCostOf.CostPerStateByte : gas.CostPerStateByte;
+    public static long GetCostPerStateByte(in EthereumGasPolicy gas)
+    {
+        Debug.Assert(gas.CostPerStateByte >= 0, "CostPerStateByte must be explicitly initialized or intentionally set to zero.");
+        return gas.CostPerStateByte;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetStorageSetStateCost(in EthereumGasPolicy gas) => GasCostOf.CalculateSSetState(GetCostPerStateByte(in gas));
@@ -141,7 +146,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         gas.StateGasSpillBurned += childGas.StateGasSpillBurned;
         gas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
         gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
-        gas.CostPerStateByte = GetCostPerStateByte(in childGas);
+        Debug.Assert(gas.CostPerStateByte == childGas.CostPerStateByte, "CostPerStateByte must flow parent to child, not child to parent.");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -150,8 +155,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     // child. The child's StateGasSpill (which already includes any spill propagated up from
     // descendants) is recorded permanently in StateGasSpillBurned for top-level halt accounting.
     // State-gas refunds mark their spilled portion in StateGasSpillRefunded. If this REVERT
-    // carries such a refund, any remaining unrefunded spill is what Geth keeps in the regular
-    // dimension.
+    // carries such a refund, any remaining unrefunded spill stays in the regular dimension.
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
     {
         long unrefundedSpill = GetUnrefundedStateGasSpill(in childGas, childStateRefund);

@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using System.Collections.Concurrent;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
@@ -61,7 +62,6 @@ public class BlockAccessListManager(
     private readonly ParallelTxProcessorWithWorldStateManager _parallelTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
     private readonly SequentialTxProcessorWithWorldStateManager _sequentialTxProcessorWithWorldStateManager = new(blockHashProvider, specProvider, stateProvider, logManager);
     private const int GasValidationChunkSize = 8;
-    private const long SystemTransactionGasLimit = 30_000_000L;
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
@@ -233,33 +233,34 @@ public class BlockAccessListManager(
             }
         }
 
-        static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
+    }
+
+    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
+    {
+        // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
+        // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
+        // continue to rely solely on the post-execution running max(R,S) check.
+        if (!spec.IsEip8037Enabled) return;
+
+        IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
+        long intrinsicRegular = intrinsic.Standard.Value;
+        long intrinsicState = intrinsic.Standard.StateReservoir;
+
+        Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
+            block.Header.GasLimit,
+            cumulativeRegular,
+            cumulativeState,
+            tx.GasLimit,
+            intrinsicRegular,
+            intrinsicState);
+
+        if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
         {
-            // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
-            // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
-            // continue to rely solely on the post-execution running max(R,S) check.
-            if (!spec.IsEip8037Enabled) return;
-
-            IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
-            long intrinsicRegular = intrinsic.Standard.Value;
-            long intrinsicState = intrinsic.Standard.StateReservoir;
-
-            Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-                block.Header.GasLimit,
-                cumulativeRegular,
-                cumulativeState,
-                tx.GasLimit,
-                intrinsicRegular,
-                intrinsicState);
-
-            if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
-            {
-                throw new InvalidBlockException(block,
-                    $"Block gas limit exceeded: tx {index} fails EIP-8037 inclusion check ({outcome}); " +
-                    $"regular_available={block.Header.GasLimit - cumulativeRegular}, " +
-                    $"state_available={block.Header.GasLimit - cumulativeState}, " +
-                    $"tx.gas={tx.GasLimit}, intrinsic.regular={intrinsicRegular}, intrinsic.state={intrinsicState}.");
-            }
+            throw new InvalidBlockException(block,
+                $"Block gas limit exceeded: tx {index} fails EIP-8037 inclusion check ({outcome}); " +
+                $"regular_available={block.Header.GasLimit - cumulativeRegular}, " +
+                $"state_available={block.Header.GasLimit - cumulativeState}, " +
+                $"tx.gas={tx.GasLimit}, intrinsic.regular={intrinsicRegular}, intrinsic.state={intrinsicState}.");
         }
     }
 
@@ -468,24 +469,7 @@ public class BlockAccessListManager(
         }
 
         TxProcessorWithWorldState preExecution = _txProcessorWithWorldStateManager.GetPreExecution();
-        Address to = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        if (!preExecution.WorldState.IsContract(to))
-        {
-            return;
-        }
-
-        SystemCall systemCall = new()
-        {
-            Value = UInt256.Zero,
-            Data = header.ParentHash.Bytes.ToArray(),
-            To = to,
-            SenderAddress = Address.SystemUser,
-            GasLimit = SystemTransactionGasLimit,
-            GasPrice = UInt256.Zero,
-        };
-        systemCall.Hash = systemCall.CalculateHash();
-
-        preExecution.TxProcessor.Execute(systemCall, NullTxTracer.Instance);
+        new BlockhashStore(preExecution.WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)

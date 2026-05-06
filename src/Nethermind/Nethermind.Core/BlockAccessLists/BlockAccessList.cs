@@ -22,7 +22,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     /// storage keys across all accounts + addresses
     [JsonIgnore]
-    public int ItemCount
+    public long ItemCount
     {
         get => _itemCount ??= CountItems();
         init => _itemCount = value;
@@ -35,7 +35,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges = new(GenericComparer.GetOptimized<Address>());
     private readonly Stack<Change> _changes = new();
-    private int? _itemCount = null;
+    private long? _itemCount = null;
 
     public BlockAccessList()
     {
@@ -553,9 +553,9 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         return existing;
     }
 
-    private int CountItems()
+    private long CountItems()
     {
-        int count = _accountChanges.Count;
+        long count = _accountChanges.Count;
         foreach (AccountChanges accountChanges in _accountChanges.Values)
         {
             count += accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;

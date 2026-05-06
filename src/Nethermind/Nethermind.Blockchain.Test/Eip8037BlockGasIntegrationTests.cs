@@ -24,17 +24,13 @@ namespace Nethermind.Blockchain.Test;
 /// <summary>
 /// Integration tests exercising EIP-8037 (bal-devnet-6) per-tx 2D block-gas accounting
 /// against Nethermind's <c>BlockAccessListManager.IncrementalValidation</c>. Each test
-/// mirrors a scenario from execution-specs PR 2703.
+/// mirrors a scenario from execution-specs PR 2703. The sequential executor regression
+/// pins the same inclusion rule on the BAL-off/parallel-disabled path.
 ///
 /// Tests pinned to <c>Assert.DoesNotThrow</c> verify spec acceptance; tests pinned to
 /// <c>Assert.Throws&lt;InvalidBlockException&gt;</c> verify spec rejection. Failures
 /// indicate Nethermind diverges from spec PR 2703 in that scenario.
 ///
-/// Note: <c>IncrementalValidation</c> only does the post-execution running check.
-/// Spec scenarios that depend on pre-tx inclusion semantics (worst-case rejection
-/// before execution starts) cannot be fully covered here without the inclusion-check
-/// helper being wired into the executor; those tests are deliberately written to fail
-/// until that wiring lands.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class Eip8037BlockGasIntegrationTests
@@ -219,5 +215,49 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
+    }
+
+    [Test]
+    public void Sequential_executor_applies_eip8037_inclusion_check_before_execution()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
+        BlockAccessListManager balManager = new(
+            stateProvider,
+            specProvider,
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + 100;
+        Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA)
+            .WithGasLimit(blockGasLimit + 21_000 + 1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(blockGasLimit)
+            .WithTransactions(tx)
+            .TestObject;
+
+        IBlockProcessor.IBlockTransactionsExecutor inner = Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>();
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            inner,
+            stateProvider,
+            specProvider,
+            balManager,
+            LimboLogs.Instance);
+        BlockExecutionContext executionContext = new(block.Header, Amsterdam.Instance);
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        executor.SetBlockExecutionContext(executionContext);
+        balManager.Setup(block);
+
+        BlockReceiptsTracer tracer = new();
+        tracer.StartNewBlockTrace(block);
+
+        InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() =>
+            executor.ProcessTransactions(block, ProcessingOptions.None, tracer, CancellationToken.None));
+
+        Assert.That(ex!.Message, Does.Contain("EIP-8037 inclusion check"));
     }
 }
