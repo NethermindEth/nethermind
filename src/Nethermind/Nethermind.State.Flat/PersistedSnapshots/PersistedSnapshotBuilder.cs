@@ -258,7 +258,7 @@ public static class PersistedSnapshotBuilder
         ref TWriter addressWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> addressLevel = new(ref addressWriter, new HsstBTreeOptions
         {
-            MinSeparatorLength = 2,
+            MinSeparatorLength = 4,
             UseHashIndex = hashIndex.ForAddressIndex,
             HashIndexTargetUtilization = hashIndex.TargetUtilization > 0 ? hashIndex.TargetUtilization : 0.75,
         }, expectedKeyCount: uniqueAddresses.Count);
@@ -293,7 +293,7 @@ public static class PersistedSnapshotBuilder
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBuilder<TWriter> prefixLevel = new(ref slotWriter, new HsstBTreeOptions { MinSeparatorLength = 2 });
+                using HsstBuilder<TWriter> prefixLevel = new(ref slotWriter, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.Bytes.SequenceEqual(address.Bytes))
@@ -442,7 +442,7 @@ public static class PersistedSnapshotBuilder
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, new HsstBTreeOptions { MinSeparatorLength = 2 });
+        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, new HsstBTreeOptions { MinSeparatorLength = 4 });
         Span<byte> pathKey = stackalloc byte[8];
         int i = 0;
         while (i < storageNodes.Count)
@@ -478,7 +478,7 @@ public static class PersistedSnapshotBuilder
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, new HsstBTreeOptions { MinSeparatorLength = 2 });
+        using HsstBuilder<TWriter> hashLevel = new(ref hashWriter, new HsstBTreeOptions { MinSeparatorLength = 4 });
         Span<byte> pathKey = stackalloc byte[33];
         int i = 0;
         while (i < storageNodes.Count)
@@ -549,10 +549,10 @@ public static class PersistedSnapshotBuilder
                     break;
                 // Nested trie columns: convert inner values to NodeRefs (outer stays BTree, inner is PackedArray)
                 case 0x07:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2, innerKeySize: 8);
+                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 4, innerKeySize: 8);
                     break;
                 case 0x08:
-                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 2, innerKeySize: 33);
+                    ConvertNestedColumnToNodeRefs(column, snapshotData, ref valueWriter, snapshotId, outerMinSep: 4, innerKeySize: 33);
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
@@ -697,11 +697,11 @@ public static class PersistedSnapshotBuilder
                         break;
                     case 0x07:
                         NWayNestedStreamingMergeTrie(mergeSnapshots, tag, ref valueWriter,
-                            outerMinSep: 2, innerKeySize: 8);
+                            outerMinSep: 4, innerKeySize: 8);
                         break;
                     case 0x08:
                         NWayNestedStreamingMergeTrie(mergeSnapshots, tag, ref valueWriter,
-                            outerMinSep: 2, innerKeySize: 33);
+                            outerMinSep: 4, innerKeySize: 33);
                         break;
                     default:
                         throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
@@ -1183,7 +1183,7 @@ public static class PersistedSnapshotBuilder
 
     /// <summary>
     /// N-way merge of the account column (tag 0x01) across N snapshots.
-    /// Outer: 20-byte address keys (minSep=2). For matching addresses with M sources,
+    /// Outer: 20-byte address keys (minSep=4). For matching addresses with M sources,
     /// calls <see cref="NWayMergePerAddressHsst"/>. Single source: copy as-is.
     /// </summary>
     internal static void NWayMergeAccountColumn<TWriter>(
@@ -1213,7 +1213,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(column);
             }
 
-            using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 2 });
+            using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
             ReadOnlySpan<byte> Col(int i) => sessions[i].GetSpan().Slice(columnBounds[i].Offset, columnBounds[i].Length);
 
@@ -1385,7 +1385,7 @@ public static class PersistedSnapshotBuilder
                         slotEnums, slotHasMore, slotSourceCount,
                         j => sessions[matchingSources[slotSources[j]]].GetSpan().Slice(slotBounds[j].Offset, slotBounds[j].Length),
                         ref slotWriter,
-                        outerMinSep: 2, innerByteTagMap: true);
+                        outerMinSep: 4, innerByteTagMap: true);
                     perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
                 }
                 finally
