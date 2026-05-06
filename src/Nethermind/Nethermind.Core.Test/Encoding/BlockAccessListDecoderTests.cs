@@ -98,6 +98,46 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void DecodeArrayPool_disposes_decoded_items_when_element_decoder_throws()
+    {
+        DisposableElement.DisposedCount = 0;
+        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+        RlpException? exception = null;
+        try
+        {
+            Rlp.DecodeArrayPool(ref ctx, new ThrowingDisposableDecoder());
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
+
+        Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
+        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void DecodeArrayPool_disposes_runtime_disposable_items_when_static_type_does_not_implement_disposable()
+    {
+        DisposableElement.DisposedCount = 0;
+        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
+
+        RlpException? exception = null;
+        try
+        {
+            Rlp.DecodeArrayPool<object>(ref ctx, new ThrowingObjectDecoder());
+        }
+        catch (RlpException e)
+        {
+            exception = e;
+        }
+
+        Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
+        Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
     {
         // SlotChanges = [StorageKey, List[StorageChange]]. An empty StorageChange list means a
@@ -598,5 +638,52 @@ public class BlockAccessListDecoderTests
         }
 
         public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
+
+    private sealed class DisposableElement : IDisposable
+    {
+        public static int DisposedCount;
+
+        public void Dispose() => DisposedCount++;
+    }
+
+    private sealed class ThrowingDisposableDecoder : IRlpValueDecoder<DisposableElement>
+    {
+        public const string Error = "disposable semantic failure";
+        private int _calls;
+
+        public DisposableElement Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return new DisposableElement();
+        }
+
+        public int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
+
+    private sealed class ThrowingObjectDecoder : IRlpValueDecoder<object>
+    {
+        public const string Error = "object semantic failure";
+        private int _calls;
+
+        public object Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            _calls++;
+            if (_calls == 2)
+            {
+                throw new RlpException(Error);
+            }
+
+            return new DisposableElement();
+        }
+
+        public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 }

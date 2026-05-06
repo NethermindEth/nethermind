@@ -42,9 +42,7 @@ public static class Eip8037BlockGasInclusionCheck
         long regularAvailable = blockGasLimit - cumulativeBlockRegular;
         long stateAvailable = blockGasLimit - cumulativeBlockState;
 
-        // Below-intrinsic transactions are rejected by transaction validation before this
-        // block-inclusion helper runs; keep the helper defensive so validation-order bugs
-        // cannot make a negative worst case pass the regular-dimension check.
+        // Keep below-intrinsic txs from producing a negative worst-case regular dimension.
         long worstCaseRegular = Math.Max(0, txGas - intrinsicState);
         if (worstCaseRegular > Eip7825Constants.DefaultTxGasLimitCap)
             worstCaseRegular = Eip7825Constants.DefaultTxGasLimitCap;

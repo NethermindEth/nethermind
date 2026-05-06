@@ -179,13 +179,56 @@ namespace Nethermind.Serialization.Rlp
             }
             catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
             {
-                result?.Dispose();
+                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
                 throw new RlpException($"Truncated or out-of-bounds RLP while decoding array of {typeof(T).Name}.", e);
             }
             catch
             {
-                result?.Dispose();
+                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
                 throw;
+            }
+        }
+
+        private static void DisposeDecodedItemsAndList<T>(ArrayPoolList<T>? list, int count)
+        {
+            if (list is null)
+            {
+                return;
+            }
+
+            try
+            {
+                DisposeDecodedItems(list, count);
+            }
+            finally
+            {
+                list.Dispose();
+            }
+        }
+
+        private static void DisposeDecodedItems<T>(ArrayPoolList<T> list, int count)
+        {
+            if (typeof(IDisposable).IsAssignableFrom(typeof(T)))
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    ((IDisposable?)list[i])?.Dispose();
+                }
+
+                return;
+            }
+
+            if (typeof(T).IsValueType || typeof(T).IsSealed)
+            {
+                return;
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                if (list[i] is IDisposable disposable)
+                {
+                    disposable.Dispose();
+                }
             }
         }
 
@@ -1476,27 +1519,8 @@ namespace Nethermind.Serialization.Rlp
                 }
                 catch
                 {
-                    try
-                    {
-                        DisposeDecodedItems(result, i);
-                    }
-                    finally
-                    {
-                        result.Dispose();
-                    }
-
+                    DisposeDecodedItemsAndList(result, i);
                     throw;
-                }
-
-                static void DisposeDecodedItems(ArrayPoolList<T> list, int count)
-                {
-                    for (int j = 0; j < count; j++)
-                    {
-                        if (list[j] is IDisposable disposable)
-                        {
-                            disposable.Dispose();
-                        }
-                    }
                 }
             }
 

@@ -168,6 +168,17 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
+    public IEnumerable<(SlotChanges SlotChanges, StorageChange StorageChange)> SlotChangePairsAtIndex(uint index)
+    {
+        foreach (SlotChanges slotChanges in StorageChanges)
+        {
+            if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
+            {
+                yield return (slotChanges, storageChange);
+            }
+        }
+    }
+
     public void AddStorageRead(UInt256 key)
         => _storageReads.Add(key);
 
@@ -395,6 +406,50 @@ public class AccountChanges : IEquatable<AccountChanges>
         codeChange = changeIndex == 0 ? null : _codeChanges.Values[changeIndex - 1];
     }
 
+    public bool SlotChangesAtIndexEqual(AccountChanges other, uint index)
+    {
+        using IEnumerator<(SlotChanges SlotChanges, StorageChange StorageChange)> left = SlotChangePairsAtIndex(index).GetEnumerator();
+        using IEnumerator<(SlotChanges SlotChanges, StorageChange StorageChange)> right = other.SlotChangePairsAtIndex(index).GetEnumerator();
+
+        while (true)
+        {
+            bool hasLeft = left.MoveNext();
+            bool hasRight = right.MoveNext();
+            if (!hasLeft || !hasRight)
+            {
+                return hasLeft == hasRight;
+            }
+
+            (SlotChanges leftSlot, StorageChange leftChange) = left.Current;
+            (SlotChanges rightSlot, StorageChange rightChange) = right.Current;
+            if (leftSlot.Key != rightSlot.Key || !leftChange.Equals(rightChange))
+            {
+                return false;
+            }
+        }
+    }
+
+    public string DescribeSlotChangesAtIndex(uint index)
+    {
+        StringBuilder builder = new();
+        bool first = true;
+
+        foreach ((SlotChanges slotChanges, StorageChange storageChange) in SlotChangePairsAtIndex(index))
+        {
+            if (!first)
+            {
+                builder.Append(", ");
+            }
+
+            builder.Append(slotChanges.Key);
+            builder.Append(':');
+            builder.Append(storageChange);
+            first = false;
+        }
+
+        return builder.ToString();
+    }
+
     private static int FindFirstRealIndexAtOrAfter(IList<uint> keys, uint blockAccessIndex)
     {
         int low = 0;
@@ -436,20 +491,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     private static bool SetEquals<T>(SortedSet<T> left, SortedSet<T> right)
-    {
-        if (left.Count != right.Count)
-            return false;
-
-        using SortedSet<T>.Enumerator leftEnumerator = left.GetEnumerator();
-        using SortedSet<T>.Enumerator rightEnumerator = right.GetEnumerator();
-        while (leftEnumerator.MoveNext())
-        {
-            if (!rightEnumerator.MoveNext() || !EqualityComparer<T>.Default.Equals(leftEnumerator.Current, rightEnumerator.Current))
-                return false;
-        }
-
-        return !rightEnumerator.MoveNext();
-    }
+        => left.Count == right.Count && left.SetEquals(right);
 
     private static bool PopChange<T>(SortedList<uint, T> changes, uint index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
     {

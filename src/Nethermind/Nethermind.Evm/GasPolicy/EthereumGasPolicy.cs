@@ -14,6 +14,9 @@ namespace Nethermind.Evm.GasPolicy;
 /// Unified Ethereum gas policy supporting both legacy single-dimensional behavior and EIP-8037
 /// two-dimensional behavior when opcode dispatch and spec flags enable it.
 /// </summary>
+/// <remarks>
+/// The spill split fields below follow EIP-8037 / execution-specs PR 2703 block-gas accounting.
+/// </remarks>
 public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     /// <summary>Regular gas budget (legacy gas_left).</summary>
@@ -24,11 +27,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasUsed;
     /// <summary>State gas that spilled from gas_left (for block regular gas exclusion).</summary>
     public long StateGasSpill;
-    /// <summary>EIP-8037 / execution-specs PR 2703 tx-cumulative spill from reverted child frames used by top-level halt accounting.</summary>
+    /// <summary>Tx-cumulative spill from reverted child frames used by top-level halt accounting.</summary>
     public long StateGasSpillBurned;
-    /// <summary>EIP-8037 / execution-specs PR 2703 spill that should remain in the block regular dimension.</summary>
+    /// <summary>Spill that should remain in the block regular dimension.</summary>
     public long StateGasSpillReclassified;
-    /// <summary>EIP-8037 / execution-specs PR 2703 spill consumed by state refunds and excluded from block regular gas.</summary>
+    /// <summary>Spill consumed by state refunds and excluded from block regular gas.</summary>
     public long StateGasSpillRefunded;
     /// <summary>Per-block EIP-8037 cost-per-state-byte.</summary>
     public long CostPerStateByte;
@@ -388,9 +391,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
         {
-            // EIP-8037 + EIP-7702: a successful authority-code insertion refunds its
-            // state-gas allowance into the reservoir for later state work, but the
-            // intrinsic state floor remains charged to block state accounting.
+            // EIP-8037 + EIP-7702: refund authority-code state allowance into the reservoir only.
             gas.StateReservoir += checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
         }
 

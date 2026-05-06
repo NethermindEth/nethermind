@@ -110,9 +110,6 @@ public static partial class EvmInstructions
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
-                // This branch runs before EIP-8037 CREATE state gas is charged; later
-                // CREATE failures that occur after that charge are paired with the
-                // CreditStateGasRefund path in VM unwind.
                 TGasPolicy.SetOutOfGas(ref gas);
                 goto OutOfGas;
             }
