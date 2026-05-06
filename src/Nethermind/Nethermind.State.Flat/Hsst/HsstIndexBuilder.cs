@@ -31,7 +31,7 @@ public ref struct HsstIndexBuilder<TWriter>
     /// Build B-tree index via writer.
     /// The absolute data region start offset (= 1 + dataLen) is needed to compute child offsets.
     /// </summary>
-    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries, int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries, int maxIntermediateBytes = HsstBTreeOptions.DefaultMaxIntermediateBytes)
+    public void Build(long absoluteIndexStart, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries, int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries, int maxIntermediateBytes = HsstBTreeOptions.DefaultMaxIntermediateBytes)
     {
         long startWritten = _writer.Written;
 
@@ -79,7 +79,7 @@ public ref struct HsstIndexBuilder<TWriter>
                 ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> leafEntries = _entries.Slice(entryIdx, count);
 
                 long nodeStart = _writer.Written;
-                int relativeStart = checked((int)(nodeStart - startWritten));
+                long relativeStart = nodeStart - startWritten;
                 WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx, layout.NaturalMax);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
 
@@ -87,7 +87,7 @@ public ref struct HsstIndexBuilder<TWriter>
                 HsstBuilder<TWriter>.HsstEntry last = leafEntries[count - 1];
 
                 // childOffset = absolute last byte position of this node
-                ulong childOffset = (ulong)(absoluteIndexStart + relativeStart + nodeLen) - 1UL;
+                ulong childOffset = checked((ulong)(absoluteIndexStart + relativeStart + nodeLen)) - 1UL;
 
                 currentLevel[currentLevelCount++] = new NodeInfo(
                     childOffset,
@@ -111,14 +111,14 @@ public ref struct HsstIndexBuilder<TWriter>
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
                     long nodeStart = _writer.Written;
-                    int relativeStart = checked((int)(nodeStart - startWritten));
+                    long relativeStart = nodeStart - startWritten;
                     WriteInternalIndexNode(children, _separatorBuffer);
                     int nodeLen = checked((int)(_writer.Written - nodeStart));
 
                     NodeInfo first = children[0];
                     NodeInfo last = children[childCount - 1];
 
-                    ulong childOffset = (ulong)(absoluteIndexStart + relativeStart + nodeLen) - 1UL;
+                    ulong childOffset = checked((ulong)(absoluteIndexStart + relativeStart + nodeLen)) - 1UL;
 
                     nextLevel[nextLevelCount++] = new NodeInfo(
                         childOffset,
@@ -235,7 +235,7 @@ public ref struct HsstIndexBuilder<TWriter>
 
     private void WriteLeafIndexNode(
         ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> entries,
-        int absoluteNodeStart,
+        long absoluteNodeStart,
         int globalStartIndex,
         int naturalMax)
     {

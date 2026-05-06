@@ -160,7 +160,7 @@ public ref struct HsstBuilder<TWriter>
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
         int maxIntermediateBytes = _options.MaxIntermediateBytes;
 
-        int absoluteIndexStart = checked((int)(_writer.Written - _baseOffset));
+        long absoluteIndexStart = _writer.Written - _baseOffset;
 
         HsstIndexBuilder<TWriter> indexBuilder = new(
             ref _writer, _entriesBuffer.AsSpan(),

@@ -5,6 +5,7 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.State.Flat.Test</RootNamespace>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
