@@ -38,10 +38,11 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    private void WalkStructure<TH>(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
+    private void WalkStructure<TH>(TrieNode node, ref TreePath path, ResolverPair resolvers,
         bool isStorage, bool added, int depth, ref TH leafHandler)
         where TH : struct, ILeafHandler
     {
+        ITrieNodeResolver side = resolvers.Pick(added);
         RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
 
         if (trackDepth)
@@ -74,20 +75,20 @@ internal sealed partial class TrieDiffWalker
                         {
                             int prevLen = path.Length;
                             path.AppendMut(i);
-                            TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                            child.ResolveNode(resolver, in path);
-                            WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
+                            TrieNode child = side.FindCachedOrUnknown(in path, childHash);
+                            child.ResolveNode(side, in path);
+                            WalkStructure(child, ref path, resolvers, isStorage, added, childDepth, ref leafHandler);
                             path.TruncateMut(prevLen);
                         }
                         else if (!node.IsChildNull(i))
                         {
                             int prevLen = path.Length;
                             path.AppendMut(i);
-                            TrieNode? child = node.GetChildWithChildPath(resolver, ref path, i);
+                            TrieNode? child = node.GetChildWithChildPath(side, ref path, i);
                             if (child is not null)
                             {
-                                child.ResolveNode(resolver, in path);
-                                WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
+                                child.ResolveNode(side, in path);
+                                WalkStructure(child, ref path, resolvers, isStorage, added, childDepth, ref leafHandler);
                             }
                             path.TruncateMut(prevLen);
                         }
@@ -105,18 +106,18 @@ internal sealed partial class TrieDiffWalker
 
                     if (childHash is not null)
                     {
-                        TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                        child.ResolveNode(resolver, in path);
-                        WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
+                        TrieNode child = side.FindCachedOrUnknown(in path, childHash);
+                        child.ResolveNode(side, in path);
+                        WalkStructure(child, ref path, resolvers, isStorage, added, childDepth, ref leafHandler);
                     }
                     else
                     {
                         TreePath childPath = path;
-                        TrieNode? child = node.GetChildWithChildPath(resolver, ref childPath, 0);
+                        TrieNode? child = node.GetChildWithChildPath(side, ref childPath, 0);
                         if (child is not null)
                         {
-                            child.ResolveNode(resolver, in path);
-                            WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
+                            child.ResolveNode(side, in path);
+                            WalkStructure(child, ref path, resolvers, isStorage, added, childDepth, ref leafHandler);
                         }
                     }
 
@@ -130,17 +131,17 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    private void CollectSubtree(TrieNode node, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added, int depth)
+    private void CollectSubtree(TrieNode node, ref TreePath path, ResolverPair resolvers, bool isStorage, bool added, int depth)
     {
         SemanticLeafHandler handler = new(this);
-        WalkStructure(node, ref path, resolver, isStorage, added, depth, ref handler);
+        WalkStructure(node, ref path, resolvers, isStorage, added, depth, ref handler);
     }
 
-    private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
+    private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ResolverPair resolvers,
         bool isStorage, bool added, Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves, int depth)
     {
         DictionaryLeafHandler handler = new(leaves);
-        WalkStructure(node, ref path, resolver, isStorage, added, depth, ref handler);
+        WalkStructure(node, ref path, resolvers, isStorage, added, depth, ref handler);
     }
 
     private void CollectLeaf(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
@@ -203,17 +204,18 @@ internal sealed partial class TrieDiffWalker
 
         if (account.HasStorage)
         {
-            ITrieNodeResolver storageResolver = _rootResolver.GetStorageTrieNodeResolver(addressHash);
+            ResolverPair storageResolvers = _resolvers.ForStorage(addressHash);
+            ITrieNodeResolver storageSide = storageResolvers.Pick(added);
             TreePath storagePath = TreePath.Empty;
             Hash256 storageRoot = new(account.StorageRoot);
 
-            TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, storageRoot);
-            storageRootNode.ResolveNode(storageResolver, in storagePath);
+            TrieNode storageRootNode = storageSide.FindCachedOrUnknown(in storagePath, storageRoot);
+            storageRootNode.ResolveNode(storageSide, in storagePath);
 
             BeginContractStorage(addressHash.ValueHash256);
             try
             {
-                CollectSubtree(storageRootNode, ref storagePath, storageResolver, isStorage: true, added, depth: 0);
+                CollectSubtree(storageRootNode, ref storagePath, storageResolvers, isStorage: true, added, depth: 0);
             }
             finally
             {

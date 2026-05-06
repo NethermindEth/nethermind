@@ -620,4 +620,45 @@ public class TrieDiffWalkerTests
         }
     }
 
+    [Test]
+    public void DualResolver_OldNodesUnreachableViaNewResolver_DiffStillEmitsBytes()
+    {
+        // Regression for the FlatDb scoping bug: a single resolver scoped on the
+        // new state cannot resolve nodes belonging only to the prev state. With
+        // disjoint per-state stores (each holding only its own root's reachable
+        // nodes), the dual-resolver overload must still produce non-zero deltas;
+        // the legacy single-resolver overload silently zeroes out under the same
+        // setup because the walker treats unresolvable old nodes as Unknown.
+        MemDb oldDb = new();
+        StateTree oldTree = new(new RawScopedTrieStore(oldDb), LimboLogs.Instance);
+        oldTree.Set(TestItem.AddressA, CreateEOA(100));
+        oldTree.Commit();
+        oldTree.UpdateRootHash();
+        Hash256 oldRoot = oldTree.RootHash;
+
+        MemDb newDb = new();
+        StateTree newTree = new(new RawScopedTrieStore(newDb), LimboLogs.Instance);
+        newTree.Set(TestItem.AddressA, CreateEOA(100));
+        newTree.Set(TestItem.AddressB, CreateEOA(200));
+        newTree.Set(TestItem.AddressC, CreateEOA(300));
+        newTree.Commit();
+        newTree.UpdateRootHash();
+        Hash256 newRoot = newTree.RootHash;
+
+        RawScopedTrieStore oldResolver = new(oldDb);
+        RawScopedTrieStore newResolver = new(newDb);
+
+        TrieDiffWalker walker = new();
+        TrieDiff dual = walker.ComputeDiff(oldRoot, newRoot, oldResolver, newResolver);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dual.AccountsAdded, Is.EqualTo(2),
+                "Dual resolver must observe both new EOAs even though oldDb lacks the new-side trie nodes.");
+            Assert.That(dual.AccountTrieLeavesAdded, Is.GreaterThanOrEqualTo(2));
+            Assert.That(dual.NetAccountTrieBytes, Is.GreaterThan(0),
+                "Net trie bytes must reflect real growth — the FlatDb scoping bug regresses this to zero.");
+        }
+    }
+
 }

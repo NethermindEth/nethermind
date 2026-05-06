@@ -65,13 +65,13 @@ internal sealed partial class TrieDiffWalker
         Hash256? normalizedOldStorage = oldAccount.HasStorage ? new Hash256(oldAccount.StorageRoot) : null;
         Hash256? normalizedNewStorage = newAccount.HasStorage ? new Hash256(newAccount.StorageRoot) : null;
 
-        ITrieNodeResolver storageResolver = _rootResolver.GetStorageTrieNodeResolver(addressHash);
+        ResolverPair storageResolvers = _resolvers.ForStorage(addressHash);
         TreePath storagePath = TreePath.Empty;
 
         BeginContractStorage(addressHash.ValueHash256);
         try
         {
-            DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);
+            DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolvers, isStorage: true, depth: 0);
         }
         finally
         {

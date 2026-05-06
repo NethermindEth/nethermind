@@ -19,7 +19,18 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
     private readonly List<SlotCountChange> _slotCountChanges = [];
     private readonly List<CodeHashChange> _codeHashChanges = [];
 
-    private ITrieNodeResolver _rootResolver = null!;
+    // Old and new state share neither node hashes nor — under FlatDb — a single
+    // snapshot bundle. Each side resolves nodes through its own scoped store so a
+    // diff walker scoped on the new head can still descend the previous root's
+    // disjoint subtrees instead of treating them as Unknown.
+    private readonly record struct ResolverPair(ITrieNodeResolver Old, ITrieNodeResolver New)
+    {
+        public ITrieNodeResolver Pick(bool added) => added ? New : Old;
+        public ResolverPair ForStorage(Hash256? address) =>
+            new(Old.GetStorageTrieNodeResolver(address), New.GetStorageTrieNodeResolver(address));
+    }
+
+    private ResolverPair _resolvers;
 
     // Active contract context for per-account slot tracking.
     // Set by BeginContractStorage / cleared by EndContractStorage around every
@@ -48,9 +59,13 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
     private int _emptyAccountsAdded, _emptyAccountsRemoved;
 
-    public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot, ITrieNodeResolver rootResolver)
+    public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot, ITrieNodeResolver rootResolver) =>
+        ComputeDiff(oldRoot, newRoot, rootResolver, rootResolver);
+
+    public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot,
+        ITrieNodeResolver oldResolver, ITrieNodeResolver newResolver)
     {
-        _rootResolver = rootResolver;
+        _resolvers = new ResolverPair(oldResolver, newResolver);
         ResetCounters();
         if (trackDepth) _depthDelta.Reset();
 
@@ -60,7 +75,7 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
         if (oldHash == newHash) return TrieDiff.Empty;
 
         TreePath path = TreePath.Empty;
-        DiffSubtree(oldHash, newHash, ref path, _rootResolver, isStorage: false, depth: 0);
+        DiffSubtree(oldHash, newHash, ref path, _resolvers, isStorage: false, depth: 0);
 
         return new TrieDiff(
             _accountsAdded, _accountsRemoved,
@@ -112,35 +127,35 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
         _codeHashChanges.Add(new CodeHashChange(addressHash, oldNormalized, newNormalized));
     }
 
-    private void DiffSubtree(Hash256? oldHash, Hash256? newHash, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
+    private void DiffSubtree(Hash256? oldHash, Hash256? newHash, ref TreePath path, ResolverPair resolvers, bool isStorage, int depth)
     {
         if (oldHash == newHash) return;
 
         if (oldHash is null)
         {
-            TrieNode newNode = resolver.FindCachedOrUnknown(in path, newHash!);
-            newNode.ResolveNode(resolver, in path);
-            CollectSubtree(newNode, ref path, resolver, isStorage, added: true, depth: depth);
+            TrieNode newNode = resolvers.New.FindCachedOrUnknown(in path, newHash!);
+            newNode.ResolveNode(resolvers.New, in path);
+            CollectSubtree(newNode, ref path, resolvers, isStorage, added: true, depth: depth);
             return;
         }
 
         if (newHash is null)
         {
-            TrieNode oldNode = resolver.FindCachedOrUnknown(in path, oldHash);
-            oldNode.ResolveNode(resolver, in path);
-            CollectSubtree(oldNode, ref path, resolver, isStorage, added: false, depth: depth);
+            TrieNode oldNode = resolvers.Old.FindCachedOrUnknown(in path, oldHash);
+            oldNode.ResolveNode(resolvers.Old, in path);
+            CollectSubtree(oldNode, ref path, resolvers, isStorage, added: false, depth: depth);
             return;
         }
 
-        TrieNode oldResolved = resolver.FindCachedOrUnknown(in path, oldHash);
-        oldResolved.ResolveNode(resolver, in path);
-        TrieNode newResolved = resolver.FindCachedOrUnknown(in path, newHash);
-        newResolved.ResolveNode(resolver, in path);
+        TrieNode oldResolved = resolvers.Old.FindCachedOrUnknown(in path, oldHash);
+        oldResolved.ResolveNode(resolvers.Old, in path);
+        TrieNode newResolved = resolvers.New.FindCachedOrUnknown(in path, newHash);
+        newResolved.ResolveNode(resolvers.New, in path);
 
-        DiffNodes(oldResolved, newResolved, ref path, resolver, isStorage, depth);
+        DiffNodes(oldResolved, newResolved, ref path, resolvers, isStorage, depth);
     }
 
-    private void DiffNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
+    private void DiffNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path, ResolverPair resolvers, bool isStorage, int depth)
     {
         if (oldNode.NodeType != newNode.NodeType)
         {
@@ -148,17 +163,17 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
             // Can't just collect both subtrees independently — that would double-count
             // accounts/contracts/slots that exist in both. Instead, enumerate leaves
             // from both sides, match by full path, and diff semantically.
-            DiffMismatchedNodes(oldNode, newNode, ref path, resolver, isStorage, depth);
+            DiffMismatchedNodes(oldNode, newNode, ref path, resolvers, isStorage, depth);
             return;
         }
 
         switch (oldNode.NodeType)
         {
             case NodeType.Branch:
-                DiffBranches(oldNode, newNode, ref path, resolver, isStorage, depth);
+                DiffBranches(oldNode, newNode, ref path, resolvers, isStorage, depth);
                 break;
             case NodeType.Extension:
-                DiffExtensions(oldNode, newNode, ref path, resolver, isStorage, depth);
+                DiffExtensions(oldNode, newNode, ref path, resolvers, isStorage, depth);
                 break;
             case NodeType.Leaf:
                 DiffLeaves(oldNode, newNode, ref path, isStorage, depth);

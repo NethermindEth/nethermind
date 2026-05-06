@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -54,11 +55,21 @@ internal sealed partial class StateCompositionService
             head = _blockTree.Head;
             if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
-            using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
-            using IDisposable scope = readOnlyStore.BeginScope(head.Header);
-            IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
+            // Diffing across two state roots needs each side resolved against
+            // its own scope: under FlatDb, `BeginScope` only materialises the
+            // bundle for one block, so a single resolver makes the other
+            // side's nodes look Unknown and silently zeroes the diff.
+            BlockHeader prevHeader = _blockTree.FindHeader(_stateHolder.IncrementalBlock, BlockTreeLookupOptions.RequireCanonical)
+                ?? throw new MissingTrieNodeException("prev block header is no longer canonical", null, TreePath.Empty, prevRoot);
 
-            TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, resolver);
+            using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
+            using IDisposable oldScope = oldStore.BeginScope(prevHeader);
+            using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
+            using IDisposable newScope = newStore.BeginScope(head.Header);
+            IScopedTrieStore oldResolver = oldStore.GetTrieStore(null);
+            IScopedTrieStore newResolver = newStore.GetTrieStore(null);
+
+            TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, oldResolver, newResolver);
             // Size-lookup lambda is invoked once per newly-observed code hash,
             // not per reference, so cost stays bounded by distinct new hashes.
             CumulativeTrieStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(

@@ -10,7 +10,7 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    private void DiffExtensions(TrieNode oldExt, TrieNode newExt, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
+    private void DiffExtensions(TrieNode oldExt, TrieNode newExt, ref TreePath path, ResolverPair resolvers, bool isStorage, int depth)
     {
         byte[]? oldKey = oldExt.Key;
         byte[]? newKey = newExt.Key;
@@ -39,30 +39,30 @@ internal sealed partial class TrieDiffWalker
 
             if (oldChildHash is not null && newChildHash is not null)
             {
-                DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage, childDepth);
+                DiffSubtree(oldChildHash, newChildHash, ref path, resolvers, isStorage, childDepth);
             }
             else
             {
                 TreePath oldChildPath = path;
-                TrieNode? oldChild = oldExt.GetChildWithChildPath(resolver, ref oldChildPath, 0);
+                TrieNode? oldChild = oldExt.GetChildWithChildPath(resolvers.Old, ref oldChildPath, 0);
                 TreePath newChildPath = path;
-                TrieNode? newChild = newExt.GetChildWithChildPath(resolver, ref newChildPath, 0);
+                TrieNode? newChild = newExt.GetChildWithChildPath(resolvers.New, ref newChildPath, 0);
 
                 if (oldChild is not null && newChild is not null)
                 {
-                    oldChild.ResolveNode(resolver, in path);
-                    newChild.ResolveNode(resolver, in path);
-                    DiffNodes(oldChild, newChild, ref path, resolver, isStorage, childDepth);
+                    oldChild.ResolveNode(resolvers.Old, in path);
+                    newChild.ResolveNode(resolvers.New, in path);
+                    DiffNodes(oldChild, newChild, ref path, resolvers, isStorage, childDepth);
                 }
                 else if (oldChild is not null)
                 {
-                    oldChild.ResolveNode(resolver, in path);
-                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false, childDepth);
+                    oldChild.ResolveNode(resolvers.Old, in path);
+                    CollectSubtree(oldChild, ref path, resolvers, isStorage, added: false, childDepth);
                 }
                 else if (newChild is not null)
                 {
-                    newChild.ResolveNode(resolver, in path);
-                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true, childDepth);
+                    newChild.ResolveNode(resolvers.New, in path);
+                    CollectSubtree(newChild, ref path, resolvers, isStorage, added: true, childDepth);
                 }
             }
 
@@ -74,7 +74,7 @@ internal sealed partial class TrieDiffWalker
             // Use DiffMismatchedNodes to match shared leaves by path instead of independently
             // collecting both subtrees, which would emit spurious CodeHashChange / SlotCountChange
             // events for leaves that exist on both sides.
-            DiffMismatchedNodes(oldExt, newExt, ref path, resolver, isStorage, depth);
+            DiffMismatchedNodes(oldExt, newExt, ref path, resolvers, isStorage, depth);
         }
     }
 }
