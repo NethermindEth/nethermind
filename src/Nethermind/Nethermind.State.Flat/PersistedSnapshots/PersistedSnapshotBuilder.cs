@@ -805,7 +805,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     internal static void NWayNestedStreamingMerge<TWriter>(
         HsstMergeEnumerator[] enums, bool[] hasMore, int n,
-        Func<int, WholeReadSession> getSession,
+        WholeReadSession[] sessions,
         ref TWriter writer,
         int outerMinSep = 0, int innerMinSep = 0,
         bool innerByteTagMap = false) where TWriter : IByteBufferWriter
@@ -829,8 +829,8 @@ public static class PersistedSnapshotBuilder
                 }
                 Bound bI = enums[i].CurrentKey;
                 Bound bM = enums[minIdx].CurrentKey;
-                WholeReadSessionReader rI = getSession(i).GetReader();
-                WholeReadSessionReader rM = getSession(minIdx).GetReader();
+                WholeReadSessionReader rI = sessions[i].GetReader();
+                WholeReadSessionReader rM = sessions[minIdx].GetReader();
                 using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
                 using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
                 int cmp = pinI.Buffer.SequenceCompareTo(pinM.Buffer);
@@ -840,7 +840,7 @@ public static class PersistedSnapshotBuilder
             if (minIdx < 0) break;
 
             Bound minKeyBound = enums[minIdx].CurrentKey;
-            WholeReadSessionReader minIdxReader = getSession(minIdx).GetReader();
+            WholeReadSessionReader minIdxReader = sessions[minIdx].GetReader();
             using NoOpPin minKeyPin = minIdxReader.PinBuffer(minKeyBound.Offset, minKeyBound.Length);
             ReadOnlySpan<byte> minKey = minKeyPin.Buffer;
 
@@ -850,7 +850,7 @@ public static class PersistedSnapshotBuilder
             {
                 if (!hasMore[i]) continue;
                 Bound bI = enums[i].CurrentKey;
-                WholeReadSessionReader rI = getSession(i).GetReader();
+                WholeReadSessionReader rI = sessions[i].GetReader();
                 using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
                 if (pinI.Buffer.SequenceCompareTo(minKey) == 0)
                     matchingSources[matchCount++] = i;
@@ -861,7 +861,7 @@ public static class PersistedSnapshotBuilder
                 // Single source: copy as-is
                 int srcIdx = matchingSources[0];
                 Bound vb = enums[srcIdx].CurrentValue;
-                WholeReadSessionReader srcReader = getSession(srcIdx).GetReader();
+                WholeReadSessionReader srcReader = sessions[srcIdx].GetReader();
                 using NoOpPin valPin = srcReader.PinBuffer(vb.Offset, vb.Length);
                 builder.Add(minKey, valPin.Buffer);
             }
@@ -869,7 +869,7 @@ public static class PersistedSnapshotBuilder
             {
                 // M sources: create M inner enumerators and merge
                 ref TWriter innerWriter = ref builder.BeginValueWrite();
-                NWayInnerMerge(enums, matchingSources, matchCount, getSession,
+                NWayInnerMerge(enums, matchingSources, matchCount, sessions,
                     ref innerWriter, innerMinSep, innerByteTagMap);
                 builder.FinishValueWrite(minKey);
             }
@@ -878,7 +878,7 @@ public static class PersistedSnapshotBuilder
             for (int j = 0; j < matchCount; j++)
             {
                 int i = matchingSources[j];
-                WholeReadSessionReader r = getSession(i).GetReader();
+                WholeReadSessionReader r = sessions[i].GetReader();
                 hasMore[i] = enums[i].MoveNext(in r);
             }
         }
@@ -893,7 +893,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void NWayInnerMerge<TWriter>(
         HsstMergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        Func<int, WholeReadSession> getSession,
+        WholeReadSession[] sessions,
         ref TWriter writer,
         int minSeparatorLength = 0,
         bool useByteTagMap = false) where TWriter : IByteBufferWriter
@@ -910,15 +910,15 @@ public static class PersistedSnapshotBuilder
                 int srcIdx = matchingSources[j];
                 Bound vb = outerEnums[srcIdx].CurrentValue;
                 innerBounds[j] = ((int)vb.Offset, vb.Length);
-                WholeReadSessionReader r = getSession(srcIdx).GetReader();
+                WholeReadSessionReader r = sessions[srcIdx].GetReader();
                 innerEnums[j] = new HsstMergeEnumerator(in r, new Bound(innerBounds[j].Offset, innerBounds[j].Length));
                 innerHasMore[j] = innerEnums[j].MoveNext(in r);
             }
 
             if (useByteTagMap)
-                MergeIntoByteTagMap(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getSession, ref writer);
+                MergeIntoByteTagMap(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions, ref writer);
             else
-                MergeIntoBTree(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getSession, ref writer, minSeparatorLength);
+                MergeIntoBTree(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions, ref writer, minSeparatorLength);
         }
         finally
         {
@@ -926,7 +926,7 @@ public static class PersistedSnapshotBuilder
         }
     }
 
-    private static int PickMinIdx(ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore, ArrayPoolList<(int Offset, int Length)> innerBounds, int[] matchingSources, int matchCount, Func<int, WholeReadSession> getSession)
+    private static int PickMinIdx(ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore, ArrayPoolList<(int Offset, int Length)> innerBounds, int[] matchingSources, int matchCount, WholeReadSession[] sessions)
     {
         int minIdx = -1;
         for (int j = 0; j < matchCount; j++)
@@ -935,8 +935,8 @@ public static class PersistedSnapshotBuilder
             if (minIdx < 0) { minIdx = j; continue; }
             Bound bJ = innerEnums[j].CurrentKey;
             Bound bM = innerEnums[minIdx].CurrentKey;
-            WholeReadSessionReader rJ = getSession(matchingSources[j]).GetReader();
-            WholeReadSessionReader rM = getSession(matchingSources[minIdx]).GetReader();
+            WholeReadSessionReader rJ = sessions[matchingSources[j]].GetReader();
+            WholeReadSessionReader rM = sessions[matchingSources[minIdx]].GetReader();
             using NoOpPin pinJ = rJ.PinBuffer(bJ.Offset, bJ.Length);
             using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
             int cmp = pinJ.Buffer.SequenceCompareTo(pinM.Buffer);
@@ -946,18 +946,18 @@ public static class PersistedSnapshotBuilder
         return minIdx;
     }
 
-    private static void AdvanceMatching(ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore, ArrayPoolList<(int Offset, int Length)> innerBounds, int[] matchingSources, int matchCount, Func<int, WholeReadSession> getSession, int minIdx, ReadOnlySpan<byte> minKey)
+    private static void AdvanceMatching(ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore, ArrayPoolList<(int Offset, int Length)> innerBounds, int[] matchingSources, int matchCount, WholeReadSession[] sessions, int minIdx, ReadOnlySpan<byte> minKey)
     {
         for (int j = 0; j < matchCount; j++)
         {
             if (j == minIdx || !innerHasMore[j]) continue;
             Bound jKey = innerEnums[j].CurrentKey;
-            WholeReadSessionReader rJ = getSession(matchingSources[j]).GetReader();
+            WholeReadSessionReader rJ = sessions[matchingSources[j]].GetReader();
             using NoOpPin pinJ = rJ.PinBuffer(jKey.Offset, jKey.Length);
             if (pinJ.Buffer.SequenceCompareTo(minKey) == 0)
                 innerHasMore[j] = innerEnums[j].MoveNext(in rJ);
         }
-        WholeReadSessionReader rMin = getSession(matchingSources[minIdx]).GetReader();
+        WholeReadSessionReader rMin = sessions[matchingSources[minIdx]].GetReader();
         innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(in rMin);
     }
 
@@ -965,23 +965,23 @@ public static class PersistedSnapshotBuilder
         ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore,
         ArrayPoolList<(int Offset, int Length)> innerBounds,
         int[] matchingSources, int matchCount,
-        Func<int, WholeReadSession> getSession,
+        WholeReadSession[] sessions,
         ref TWriter writer, int minSeparatorLength) where TWriter : IByteBufferWriter
     {
         using HsstBuilder<TWriter> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
         while (true)
         {
-            int minIdx = PickMinIdx(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getSession);
+            int minIdx = PickMinIdx(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions);
             if (minIdx < 0) break;
 
             Bound kb = innerEnums[minIdx].CurrentKey;
             Bound vb = innerEnums[minIdx].CurrentValue;
-            WholeReadSessionReader r = getSession(matchingSources[minIdx]).GetReader();
+            WholeReadSessionReader r = sessions[matchingSources[minIdx]].GetReader();
             using NoOpPin keyPin = r.PinBuffer(kb.Offset, kb.Length);
             using NoOpPin valPin = r.PinBuffer(vb.Offset, vb.Length);
             ReadOnlySpan<byte> minKey = keyPin.Buffer;
             builder.Add(minKey, valPin.Buffer);
-            AdvanceMatching(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getSession, minIdx, minKey);
+            AdvanceMatching(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions, minIdx, minKey);
         }
         builder.Build();
     }
@@ -990,23 +990,23 @@ public static class PersistedSnapshotBuilder
         ArrayPoolList<HsstMergeEnumerator> innerEnums, ArrayPoolList<bool> innerHasMore,
         ArrayPoolList<(int Offset, int Length)> innerBounds,
         int[] matchingSources, int matchCount,
-        Func<int, WholeReadSession> getSession,
+        WholeReadSession[] sessions,
         ref TWriter writer) where TWriter : IByteBufferWriter
     {
         using HsstByteTagMapBuilder<TWriter> builder = new(ref writer);
         while (true)
         {
-            int minIdx = PickMinIdx(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getSession);
+            int minIdx = PickMinIdx(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions);
             if (minIdx < 0) break;
 
             Bound kb = innerEnums[minIdx].CurrentKey;
             Bound vb = innerEnums[minIdx].CurrentValue;
-            WholeReadSessionReader r = getSession(matchingSources[minIdx]).GetReader();
+            WholeReadSessionReader r = sessions[matchingSources[minIdx]].GetReader();
             using NoOpPin keyPin = r.PinBuffer(kb.Offset, kb.Length);
             using NoOpPin valPin = r.PinBuffer(vb.Offset, vb.Length);
             ReadOnlySpan<byte> minKey = keyPin.Buffer;
             builder.Add(minKey[0], valPin.Buffer);
-            AdvanceMatching(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, getSession, minIdx, minKey);
+            AdvanceMatching(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions, minIdx, minKey);
         }
         builder.Build();
     }
@@ -1041,8 +1041,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(in r);
             }
 
-            NWayNestedStreamingMerge(enums, hasMore, n,
-                i => sessions[i],
+            NWayNestedStreamingMerge(enums, hasMore, n, sessions,
                 ref writer, outerMinSep, innerMinSep);
         }
         finally
@@ -1084,8 +1083,6 @@ public static class PersistedSnapshotBuilder
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
-
-            Func<int, WholeReadSession> getSession = i => sessions[i];
 
             using HsstBuilder<TWriter> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
@@ -1134,7 +1131,7 @@ public static class PersistedSnapshotBuilder
                 else
                 {
                     ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
-                    NWayInnerMergeTrie(enums, matchingSources, matchCount, getSession,
+                    NWayInnerMergeTrie(enums, matchingSources, matchCount, sessions,
                         ref innerWriter, innerKeySize);
                     outerBuilder.FinishValueWrite(minKey);
                 }
@@ -1162,7 +1159,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void NWayInnerMergeTrie<TWriter>(
         HsstMergeEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        Func<int, WholeReadSession> getSession,
+        WholeReadSession[] sessions,
         ref TWriter writer,
         int keySize) where TWriter : IByteBufferWriter
     {
@@ -1178,7 +1175,7 @@ public static class PersistedSnapshotBuilder
                 int srcIdx = matchingSources[j];
                 Bound vb = outerEnums[srcIdx].CurrentValue;
                 innerBounds[j] = ((int)vb.Offset, vb.Length);
-                WholeReadSessionReader r = getSession(srcIdx).GetReader();
+                WholeReadSessionReader r = sessions[srcIdx].GetReader();
                 innerEnums[j] = new HsstMergeEnumerator(in r, new Bound(innerBounds[j].Offset, innerBounds[j].Length));
                 innerHasMore[j] = innerEnums[j].MoveNext(in r);
             }
@@ -1194,8 +1191,8 @@ public static class PersistedSnapshotBuilder
                     if (minIdx < 0) { minIdx = j; continue; }
                     Bound bJ = innerEnums[j].CurrentKey;
                     Bound bM = innerEnums[minIdx].CurrentKey;
-                    WholeReadSessionReader rJ = getSession(matchingSources[j]).GetReader();
-                    WholeReadSessionReader rM = getSession(matchingSources[minIdx]).GetReader();
+                    WholeReadSessionReader rJ = sessions[matchingSources[j]].GetReader();
+                    WholeReadSessionReader rM = sessions[matchingSources[minIdx]].GetReader();
                     using NoOpPin pinJ = rJ.PinBuffer(bJ.Offset, bJ.Length);
                     using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
                     int cmp = pinJ.Buffer.SequenceCompareTo(pinM.Buffer);
@@ -1206,7 +1203,7 @@ public static class PersistedSnapshotBuilder
 
                 Bound kb = innerEnums[minIdx].CurrentKey;
                 Bound vb2 = innerEnums[minIdx].CurrentValue;
-                WholeReadSessionReader minReader = getSession(matchingSources[minIdx]).GetReader();
+                WholeReadSessionReader minReader = sessions[matchingSources[minIdx]].GetReader();
                 using NoOpPin keyPin = minReader.PinBuffer(kb.Offset, kb.Length);
                 using NoOpPin valPin = minReader.PinBuffer(vb2.Offset, vb2.Length);
                 ReadOnlySpan<byte> minKey = keyPin.Buffer;
@@ -1216,13 +1213,13 @@ public static class PersistedSnapshotBuilder
                 {
                     if (j == minIdx || !innerHasMore[j]) continue;
                     Bound jKey = innerEnums[j].CurrentKey;
-                    WholeReadSessionReader jr = getSession(matchingSources[j]).GetReader();
+                    WholeReadSessionReader jr = sessions[matchingSources[j]].GetReader();
                     using NoOpPin jPin = jr.PinBuffer(jKey.Offset, jKey.Length);
                     if (jPin.Buffer.SequenceCompareTo(minKey) == 0)
                         innerHasMore[j] = innerEnums[j].MoveNext(in jr);
                 }
                 {
-                    WholeReadSessionReader mr = getSession(matchingSources[minIdx]).GetReader();
+                    WholeReadSessionReader mr = sessions[matchingSources[minIdx]].GetReader();
                     innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(in mr);
                 }
             }
@@ -1440,21 +1437,23 @@ public static class PersistedSnapshotBuilder
                 // N-way nested streaming merge on slot prefix-level HSSTs
                 using ArrayPoolList<HsstMergeEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
                 using ArrayPoolList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
+                using ArrayPoolList<WholeReadSession> slotSessionsList = new(slotSourceCount, slotSourceCount);
                 HsstMergeEnumerator[] slotEnums = slotEnumsList.UnsafeGetInternalArray();
                 bool[] slotHasMore = slotHasMoreList.UnsafeGetInternalArray();
+                WholeReadSession[] slotSessions = slotSessionsList.UnsafeGetInternalArray();
                 try
                 {
                     for (int j = 0; j < slotSourceCount; j++)
                     {
-                        WholeReadSessionReader slotReader = sessions[matchingSources[slotSources[j]]].GetReader();
+                        slotSessions[j] = sessions[matchingSources[slotSources[j]]];
+                        WholeReadSessionReader slotReader = slotSessions[j].GetReader();
                         slotEnums[j] = new HsstMergeEnumerator(in slotReader, new Bound(slotBounds[j].Offset, slotBounds[j].Length));
                         slotHasMore[j] = slotEnums[j].MoveNext(in slotReader);
                     }
 
                     ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                     NWayNestedStreamingMerge(
-                        slotEnums, slotHasMore, slotSourceCount,
-                        j => sessions[matchingSources[slotSources[j]]],
+                        slotEnums, slotHasMore, slotSourceCount, slotSessions,
                         ref slotWriter,
                         outerMinSep: 4, innerByteTagMap: true);
                     perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
