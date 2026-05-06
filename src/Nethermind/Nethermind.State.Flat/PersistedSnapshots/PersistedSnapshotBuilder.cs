@@ -794,10 +794,9 @@ public static class PersistedSnapshotBuilder
     {
         SpanByteReader reader = new(column);
         // The sub-tag value is itself an inner HSST(BTree) of (path → RLP). Walk every
-        // entry, replacing RLP with a NodeRef whose RlpDataOffset is the
-        // snapshot-absolute offset of the LEB128 length cursor in the source Full
-        // snapshot's column 0x01 region (matching the convention used by the flat /
-        // nested converters above).
+        // entry, replacing RLP with a NodeRef whose RlpDataOffset points at the RLP
+        // start in the source Full snapshot's column 0x01 region (length is recovered
+        // from the RLP header on read).
         HsstPackedArrayBuilder<TWriter> innerBuilder = new(ref writer, innerKeySize, NodeRef.Size);
         using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, new Bound(subTagOffInColumn, subTagLen));
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
@@ -805,8 +804,7 @@ public static class PersistedSnapshotBuilder
         while (innerEnum.MoveNext())
         {
             KeyValueEntry inner = innerEnum.Current;
-            int metaStartInColumn = (int)(inner.ValueBound.Offset + inner.ValueBound.Length);
-            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffsetInSnapshot + metaStartInColumn));
+            NodeRef.Write(refBytes, new NodeRef(snapshotId, columnOffsetInSnapshot + (int)inner.ValueBound.Offset));
             innerBuilder.Add(column.Slice((int)inner.KeyBound.Offset, checked((int)inner.KeyBound.Length)), refBytes);
         }
 
