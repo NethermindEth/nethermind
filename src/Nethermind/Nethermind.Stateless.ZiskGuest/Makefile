@@ -15,6 +15,7 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
   -r $(BIN_DIR)/Nethermind.Abi.dll \
   -r $(BIN_DIR)/Nethermind.Blockchain.dll \
+  -r $(BIN_DIR)/Nethermind.Config.dll \
   -r $(BIN_DIR)/Nethermind.Consensus.dll \
   -r $(BIN_DIR)/Nethermind.Core.dll \
   -r $(BIN_DIR)/Nethermind.Crypto.dll \
