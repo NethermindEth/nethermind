@@ -79,10 +79,9 @@ public ref struct HsstIndexBuilder<TWriter>
                 ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> leafEntries = _entries.Slice(entryIdx, count);
 
                 long nodeStart = _writer.Written;
-                // Per-HSST cap is ≤2 GiB so the node-relative offsets fit in int.
-                int relativeStart = (int)(nodeStart - startWritten);
+                int relativeStart = checked((int)(nodeStart - startWritten));
                 WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx, layout.NaturalMax);
-                int nodeLen = (int)(_writer.Written - nodeStart);
+                int nodeLen = checked((int)(_writer.Written - nodeStart));
 
                 HsstBuilder<TWriter>.HsstEntry first = leafEntries[0];
                 HsstBuilder<TWriter>.HsstEntry last = leafEntries[count - 1];
@@ -112,10 +111,9 @@ public ref struct HsstIndexBuilder<TWriter>
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
                     long nodeStart = _writer.Written;
-                    // Per-HSST cap is ≤2 GiB so the node-relative offsets fit in int.
-                    int relativeStart = (int)(nodeStart - startWritten);
+                    int relativeStart = checked((int)(nodeStart - startWritten));
                     WriteInternalIndexNode(children, _separatorBuffer);
-                    int nodeLen = (int)(_writer.Written - nodeStart);
+                    int nodeLen = checked((int)(_writer.Written - nodeStart));
 
                     NodeInfo first = children[0];
                     NodeInfo last = children[childCount - 1];

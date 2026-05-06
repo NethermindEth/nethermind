@@ -192,8 +192,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         // whole-node accounting separately.
         if (_metadata.KeyType == 0 || _metadata.ValueType == 0)
         {
-            // Per-HSST cap is ≤2 GiB so the per-node delta fits in int.
-            int totalNodeSize = (int)(_writer.Written - _startWritten);
+            int totalNodeSize = checked((int)(_writer.Written - _startWritten));
             const int MaxVariableNodeSize = 64 * 1024;
             if (totalNodeSize > MaxVariableNodeSize)
                 throw new InvalidOperationException(

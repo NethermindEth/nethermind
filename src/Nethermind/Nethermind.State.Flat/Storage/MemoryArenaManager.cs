@@ -37,7 +37,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
         {
             // Ensure arena has enough space
             EnsureCapacity(arenaId, checked((int)(startOffset + actualSize)));
-            stream.GetBuffer().AsSpan(0, actualSizeInt).CopyTo(_arenas[arenaId].AsSpan((int)startOffset));
+            stream.GetBuffer().AsSpan(0, actualSizeInt).CopyTo(_arenas[arenaId].AsSpan(checked((int)startOffset)));
         }
 
         _frontiers[arenaId] = startOffset + actualSize;
@@ -53,10 +53,10 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
         new(this, location.ArenaId, location.Offset, location.Size, tag);
 
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
-        _arenas[reservation.ArenaId].AsSpan((int)reservation.Offset, checked((int)reservation.Size));
+        _arenas[reservation.ArenaId].AsSpan(checked((int)reservation.Offset), checked((int)reservation.Size));
 
     public IArenaWholeView OpenWholeView(ArenaReservation reservation) =>
-        new MemoryWholeView(_arenas[reservation.ArenaId], (int)reservation.Offset, checked((int)reservation.Size));
+        new MemoryWholeView(_arenas[reservation.ArenaId], checked((int)reservation.Offset), checked((int)reservation.Size));
 
     private sealed class MemoryWholeView(byte[] buffer, int offset, int size) : IArenaWholeView
     {

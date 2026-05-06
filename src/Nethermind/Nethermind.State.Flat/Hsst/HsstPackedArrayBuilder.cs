@@ -251,8 +251,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         WriteLeb128(recordsPerCkHigherLog2);
         WriteLeb128(depth);
         for (int i = 0; i < depth; i++) WriteLeb128(levelCounts[i]);
-        // Per-HSST cap is ≤2 GiB so the metadata-block length fits in int.
-        int metaLen = (int)(_writer.Written - metaStart);
+        int metaLen = checked((int)(_writer.Written - metaStart));
         if (metaLen > 255)
             throw new InvalidOperationException("PackedArray metadata exceeds 255 bytes.");
 

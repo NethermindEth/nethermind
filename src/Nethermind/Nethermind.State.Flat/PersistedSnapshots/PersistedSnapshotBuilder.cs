@@ -531,9 +531,11 @@ public static class PersistedSnapshotBuilder
 
         foreach (byte[] tag in s_columnTags)
         {
-            if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen))
+            if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, checked((int)r.Length)), tag, out long colOff, out int colLen))
                 continue;
-            int columnOffset = (int)colOff;
+            // NodeRef encodes the offset as int; columnOffset must fit even though the
+            // snapshot itself can exceed 2 GiB. Checked cast surfaces invariant violations.
+            int columnOffset = checked((int)colOff);
             using NoOpPin colPin = r.PinBuffer(colOff, colLen);
             ReadOnlySpan<byte> column = colPin.Buffer;
 
@@ -752,7 +754,7 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, checked((int)r.Length)), tag, out long colOff, out int colLen)
                     ? (colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
@@ -1058,7 +1060,7 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, checked((int)r.Length)), tag, out long colOff, out int colLen)
                     ? (colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
@@ -1101,7 +1103,7 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, checked((int)r.Length)), tag, out long colOff, out int colLen)
                     ? (colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
@@ -1281,7 +1283,7 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, (int)r.Length), tag, out long colOff, out int colLen)
+                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, checked((int)r.Length)), tag, out long colOff, out int colLen)
                     ? (colOff, colLen) : (0, 0);
                 enums[i] = new HsstMergeEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
@@ -1564,8 +1566,8 @@ public static class PersistedSnapshotBuilder
 
         // Pin the metadata blobs (small, ~100 B); span-based TryGet then walks them
         // for individual fields without further reader plumbing.
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in oldestReader, new Bound(0, (int)oldestReader.Length), PersistedSnapshot.MetadataTag, out long oldestMetaOff, out int oldestMetaLen);
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in newestReader, new Bound(0, (int)newestReader.Length), PersistedSnapshot.MetadataTag, out long newestMetaOff, out int newestMetaLen);
+        TryGetBound<WholeReadSessionReader, NoOpPin>(in oldestReader, new Bound(0, checked((int)oldestReader.Length)), PersistedSnapshot.MetadataTag, out long oldestMetaOff, out int oldestMetaLen);
+        TryGetBound<WholeReadSessionReader, NoOpPin>(in newestReader, new Bound(0, checked((int)newestReader.Length)), PersistedSnapshot.MetadataTag, out long newestMetaOff, out int newestMetaLen);
 
         using NoOpPin oldestMetaPin = oldestReader.PinBuffer(oldestMetaOff, oldestMetaLen);
         using NoOpPin newestMetaPin = newestReader.PinBuffer(newestMetaOff, newestMetaLen);

@@ -101,10 +101,9 @@ public ref struct HsstBuilder<TWriter>
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
 
-        // Per-HSST cap is ≤2 GiB so the delta fits in int.
-        int actualLen = (int)(_writer.Written - _writtenBeforeValue);
+        int actualLen = checked((int)(_writer.Written - _writtenBeforeValue));
         // metadataStart stored in index is relative to byte 0 of this HSST.
-        ulong metadataStart = (ulong)(_writer.Written - _baseOffset);
+        ulong metadataStart = checked((ulong)(_writer.Written - _baseOffset));
 
         // Compute separator eagerly
         int sepLen = ComputeSeparatorLength(
@@ -161,8 +160,7 @@ public ref struct HsstBuilder<TWriter>
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
         int maxIntermediateBytes = _options.MaxIntermediateBytes;
 
-        // Per-HSST cap is ≤2 GiB so the index start fits in int.
-        int absoluteIndexStart = (int)(_writer.Written - _baseOffset);
+        int absoluteIndexStart = checked((int)(_writer.Written - _baseOffset));
 
         HsstIndexBuilder<TWriter> indexBuilder = new(
             ref _writer, _entriesBuffer.AsSpan(),
