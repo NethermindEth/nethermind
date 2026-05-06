@@ -428,18 +428,28 @@ public class BlockAccessListDecoderTests
     {
         AccountChanges accountChangesA = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
         AccountChanges accountChangesB = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
-        SortedDictionary<Address, AccountChanges> accountChanges = new(DescendingComparer<Address>())
-        {
-            { accountChangesA.Address, accountChangesA },
-            { accountChangesB.Address, accountChangesB }
-        };
+        SortByAddress(ref accountChangesA, ref accountChangesB);
 
-        BlockAccessList blockAccessList = new(accountChanges);
-        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
+        byte[] encoded = EncodeAccountChangesSequence(accountChangesB, accountChangesA);
 
         Assert.That(
             () => Rlp.Decode<BlockAccessList>(encoded, RlpBehaviors.None),
             Throws.TypeOf<RlpException>().With.Message.EqualTo("Account changes were in incorrect order."));
+    }
+
+    [Test]
+    public void Encoding_block_access_list_orders_account_changes_by_address()
+    {
+        AccountChanges accountChangesA = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
+        AccountChanges accountChangesB = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
+        SortByAddress(ref accountChangesA, ref accountChangesB);
+        BlockAccessList blockAccessList = new();
+        blockAccessList.AddAccountChanges(accountChangesB, accountChangesA);
+
+        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
+        byte[] expected = EncodeAccountChangesSequence(accountChangesA, accountChangesB);
+
+        Assert.That(encoded, Is.EqualTo(expected));
     }
 
     [Test]
@@ -673,6 +683,34 @@ public class BlockAccessListDecoderTests
 
     private static IComparer<T> DescendingComparer<T>() where T : IComparable<T>
         => Comparer<T>.Create((left, right) => right.CompareTo(left));
+
+    private static void SortByAddress(ref AccountChanges left, ref AccountChanges right)
+    {
+        if (left.Address.CompareTo(right.Address) > 0)
+        {
+            (left, right) = (right, left);
+        }
+    }
+
+    private static byte[] EncodeAccountChangesSequence(params AccountChanges[] accountChanges)
+    {
+        Rlp[] encodedAccountChanges = new Rlp[accountChanges.Length];
+        int contentLength = 0;
+        for (int i = 0; i < accountChanges.Length; i++)
+        {
+            encodedAccountChanges[i] = Rlp.Encode(accountChanges[i], RlpBehaviors.None);
+            contentLength += encodedAccountChanges[i].Length;
+        }
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        for (int i = 0; i < encodedAccountChanges.Length; i++)
+        {
+            stream.Encode(encodedAccountChanges[i]);
+        }
+
+        return stream.Data.ToArray()!;
+    }
 
     private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>
     {

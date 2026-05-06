@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
@@ -24,7 +23,6 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
         Address? lastAddress = null;
         long itemCount = 0;
-        SortedDictionary<Address, AccountChanges> accountChangesMap = new(GenericComparer.GetOptimized<Address>());
         foreach (AccountChanges a in accountChanges)
         {
             // EIP-7928 AccountChanges is a 6-field sequence; an empty inner
@@ -41,19 +39,17 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             }
             lastAddress = address;
 
-            accountChangesMap.Add(address, a);
             itemCount += 1L + a.StorageChanges.Count + a.StorageReads.Count;
         }
 
-        BlockAccessList blockAccessList = new(accountChangesMap) { ItemCount = itemCount };
-        return blockAccessList;
+        return BlockAccessList.FromSortedAccountChanges(accountChanges, itemCount);
     }
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
 
-        foreach (AccountChanges accountChanges in item.AccountChanges)
+        foreach (AccountChanges accountChanges in item.AccountChangesByAddress)
         {
             AccountChangesDecoder.Instance.Encode(stream, accountChanges, rlpBehaviors);
         }
@@ -62,7 +58,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
     private static int GetContentLength(BlockAccessList item, RlpBehaviors rlpBehaviors)
     {
         int contentLength = 0;
-        foreach (AccountChanges accountChanges in item.AccountChanges)
+        foreach (AccountChanges accountChanges in item.AccountChangesByAddress)
         {
             contentLength += AccountChangesDecoder.Instance.GetLength(accountChanges, rlpBehaviors);
         }

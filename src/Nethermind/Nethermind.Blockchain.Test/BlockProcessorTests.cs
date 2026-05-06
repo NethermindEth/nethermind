@@ -344,6 +344,45 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void ValidateBlockAccessList_matches_accounts_by_address_when_insertion_order_differs()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+        Address lowAddress = TestItem.AddressA;
+        Address highAddress = TestItem.AddressB;
+        if (lowAddress.CompareTo(highAddress) > 0)
+        {
+            (lowAddress, highAddress) = (highAddress, lowAddress);
+        }
+
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddBalanceChange(highAddress, before: 0, after: 2);
+        suggestedBal.AddBalanceChange(lowAddress, before: 0, after: 1);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(0)
+            .WithBlockAccessList(suggestedBal)
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        balManager.GeneratedBlockAccessList.AddBalanceChange(lowAddress, before: 0, after: 1);
+        balManager.GeneratedBlockAccessList.AddBalanceChange(highAddress, before: 0, after: 2);
+
+        Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+    }
+
+    [Test]
     public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_multi_tx_blocks()
     {
         BlockAccessListManager balManager = CreateAmsterdamBalManager();

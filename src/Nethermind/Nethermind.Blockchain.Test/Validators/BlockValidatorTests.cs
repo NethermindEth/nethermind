@@ -480,7 +480,7 @@ public class BlockValidatorTests
     [TestCase(0u, true)]
     [TestCase(1u, true)]
     [TestCase(2u, false)]
-    [TestCase(uint.MaxValue, false)]
+    [TestCase(uint.MaxValue - 1u, false)]
     public void ValidateSuggestedBlock_rejects_bal_index_above_tx_count_plus_one(uint balanceChangeIndex, bool expectedValid)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;

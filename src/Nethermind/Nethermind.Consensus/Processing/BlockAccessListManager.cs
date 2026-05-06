@@ -270,7 +270,7 @@ public class BlockAccessListManager(
 
     public static void ApplyStateChanges(BlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
-        foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
+        foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChangesByAddress)
         {
             if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
@@ -350,15 +350,84 @@ public class BlockAccessListManager(
         }
     }
 
-    // todo: optimize early validation
     public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true)
     {
-        if (block.BlockAccessList is null)
+        BlockAccessList? suggestedBlockAccessList = block.BlockAccessList;
+        if (suggestedBlockAccessList is null)
         {
             return;
         }
 
         CheckInitialized();
+
+        if (!TryValidateBlockAccessListFast(block, suggestedBlockAccessList, index, validateStorageReads))
+        {
+            ValidateBlockAccessListSlow(block, index, validateStorageReads);
+        }
+    }
+
+    private bool TryValidateBlockAccessListFast(Block block, BlockAccessList suggestedBlockAccessList, uint index, bool validateStorageReads)
+    {
+        int generatedReads = 0;
+        int suggestedReads = 0;
+        int matchedGeneratedAccounts = 0;
+        int suggestedAccountCount = suggestedBlockAccessList.UnorderedAccountChanges.Count;
+
+        foreach (AccountChanges generatedAccountChanges in GeneratedBlockAccessList.UnorderedAccountChanges)
+        {
+            ChangeAtIndex generated = BlockAccessList.CreateChangeAtIndex(generatedAccountChanges, index);
+            generatedReads += generated.Reads;
+
+            AccountChanges? suggestedAccountChanges = suggestedBlockAccessList.GetAccountChanges(generated.Address);
+            if (suggestedAccountChanges is null)
+            {
+                if (IsSystemAccountRead(generated, index) || HasOptionalStorageReads(generated))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            matchedGeneratedAccounts++;
+            ChangeAtIndex suggested = BlockAccessList.CreateChangeAtIndex(suggestedAccountChanges, index);
+            suggestedReads += suggested.Reads;
+
+            if (!ChangesAtIndexEqual(generated, suggested, index))
+            {
+                return false;
+            }
+        }
+
+        if (matchedGeneratedAccounts != suggestedAccountCount)
+        {
+            foreach (AccountChanges suggestedAccountChanges in suggestedBlockAccessList.UnorderedAccountChanges)
+            {
+                if (GeneratedBlockAccessList.HasAccount(suggestedAccountChanges.Address))
+                {
+                    continue;
+                }
+
+                ChangeAtIndex suggested = BlockAccessList.CreateChangeAtIndex(suggestedAccountChanges, index);
+                suggestedReads += suggested.Reads;
+
+                if (!HasNoChanges(suggested))
+                {
+                    return false;
+                }
+            }
+        }
+
+        ValidateSurplusStorageReads(block, validateStorageReads, generatedReads, suggestedReads);
+        return true;
+    }
+
+    private void ValidateBlockAccessListSlow(Block block, uint index, bool validateStorageReads)
+    {
+        if (block.BlockAccessList is null)
+        {
+            return;
+        }
 
         IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
         IEnumerator<ChangeAtIndex> suggestedChanges = block.BlockAccessList.GetChangesAtIndex(index).GetEnumerator();
@@ -443,11 +512,7 @@ public class BlockAccessListManager(
             AdvanceSuggested();
         }
 
-        int surplusSuggestedReads = suggestedReads - generatedReads;
-        if (validateStorageReads && surplusSuggestedReads > 0 && _gasRemaining < surplusSuggestedReads * Eip7928Constants.ItemCost)
-        {
-            throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
-        }
+        ValidateSurplusStorageReads(block, validateStorageReads, generatedReads, suggestedReads);
 
         static string DescribeChange(ChangeAtIndex change)
         {
@@ -455,6 +520,22 @@ public class BlockAccessListManager(
             return $"{change.Address} Balance={change.BalanceChange?.ToString() ?? "-"} Nonce={change.NonceChange?.ToString() ?? "-"} Code={change.CodeChange?.ToString() ?? "-"} Slots=[{slotChanges}] Reads={change.Reads}";
         }
     }
+
+    private void ValidateSurplusStorageReads(Block block, bool validateStorageReads, int generatedReads, int suggestedReads)
+    {
+        int surplusSuggestedReads = suggestedReads - generatedReads;
+        if (validateStorageReads && surplusSuggestedReads > 0 && _gasRemaining < surplusSuggestedReads * Eip7928Constants.ItemCost)
+        {
+            throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
+        }
+    }
+
+    private static bool ChangesAtIndexEqual(in ChangeAtIndex generated, in ChangeAtIndex suggested, uint index) =>
+        generated.BalanceChange == suggested.BalanceChange &&
+        generated.NonceChange == suggested.NonceChange &&
+        generated.CodeChange.HasValue == suggested.CodeChange.HasValue &&
+        (generated.CodeChange is null || generated.CodeChange.Value.Equals(suggested.CodeChange.Value)) &&
+        generated.AccountChanges.SlotChangesAtIndexEqual(suggested.AccountChanges, index);
 
     public void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
@@ -498,7 +579,7 @@ public class BlockAccessListManager(
         // Wire BAL validation must run before this method: it appends local-only
         // PrestateIndex entries that are sorted before real tx indices and must not be
         // subjected to block-level wire index-bounds validation.
-        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        foreach (AccountChanges accountChanges in bal.AccountChangesByAddress)
         {
             // check if changed before loading prestate
             accountChanges.CheckWasChanged();
