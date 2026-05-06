@@ -26,9 +26,12 @@ public abstract class TopNAnalyzer<TData, TEncoding, TStat>(int topN, int capaci
             Max = Math.Max(Max, kvp.Value);
 
             if (TopNQueue.Count < TopN)
+            {
                 TopNQueue.Enqueue(kvp.Key, kvp.Value);
+                continue;
+            }
 
-            if (TopNQueue.Count < TopN) continue;
+            // Queue is full; only displace the current minimum if this entry is larger.
             TopNQueue.TryPeek(out _, out ulong min);
             if (min < kvp.Value) TopNQueue.DequeueEnqueue(kvp.Key, kvp.Value);
             //Queue has filled up, we update min support to filter out lower count updates
