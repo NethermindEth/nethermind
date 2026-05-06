@@ -3,6 +3,7 @@
   <Import Project="../../Directory.Build.props" />
 
   <PropertyGroup>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <NuGetAuditMode>direct</NuGetAuditMode>
   </PropertyGroup>
 
