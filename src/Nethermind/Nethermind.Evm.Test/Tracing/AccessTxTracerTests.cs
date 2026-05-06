@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -110,21 +111,6 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(sut.AccessList.Select(static x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
         }
 
-        protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
-
-        protected (AccessTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
-        {
-            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            AccessTxTracer tracer = new();
-            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
-            return (tracer, block, transaction);
-        }
-    }
-
-    [TestFixture]
-    public class AccessTxTracerRevertedFrameTests : VirtualMachineTestsBase
-    {
-        protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
 
         [Test]
         public void Reverted_call_target_address_is_still_captured_in_access_list()
@@ -137,7 +123,9 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.REVERT)
                 .Done;
 
-            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
+            (Block block, Transaction tx) = PrepareTx(BlockNumber, 100000, code, SenderRecipientAndMiner.Default);
+            AccessTxTracer tracer = new(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, SenderRecipientAndMiner.Default.Miner);
+            _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
 
             Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
             // AddressC must appear even though the outer frame reverts after the CALL returns
@@ -168,7 +156,9 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, recipientCode);
+            (Block block, Transaction tx) = PrepareTx(BlockNumber, 100000, recipientCode, SenderRecipientAndMiner.Default);
+            AccessTxTracer tracer = new(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, SenderRecipientAndMiner.Default.Miner);
+            _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
 
             AccessList list = tracer.AccessList!;
             // AddressC slot 7 must appear despite the REVERT inside AddressC's sub-frame
@@ -206,19 +196,23 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            AccessTxTracer tracer = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, recipientCode);
+            (Block block, Transaction tx) = PrepareTx(BlockNumber, 100000, recipientCode, SenderRecipientAndMiner.Default);
+            AccessTxTracer tracer = new(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, SenderRecipientAndMiner.Default.Miner);
+            _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
 
             Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
             addresses.Should().Contain(TestItem.AddressC, because: "committed outer CALL target must be in access list");
             addresses.Should().Contain(TestItem.AddressE, because: "address accessed inside inner reverted frame must still be in access list");
         }
 
-        private AccessTxTracer ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code)
+        protected override ISpecProvider SpecProvider => new TestSpecProvider(Berlin.Instance);
+
+        protected (AccessTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            AccessTxTracer tracer = new(addresses.Sender, addresses.Recipient, addresses.Miner);
+            AccessTxTracer tracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
-            return tracer;
+            return (tracer, block, transaction);
         }
     }
 }

@@ -11,10 +11,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker(bool isTracingAccess) : IDisposable
+public struct StackAccessTracker(bool isTracingAccess = false) : IDisposable
 {
-    public readonly IReadOnlyCollection<Address> AllAccessedAddresses => _trackingState.AllAccessedAddresses;
-    public readonly IReadOnlyCollection<StorageCell> AllAccessedStorageCells => _trackingState.AllAccessedStorageCells;
+    public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
+    public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
@@ -27,25 +27,15 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public StackAccessTracker() : this(false) { }
-
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
 
     public readonly bool WarmUp(Address address)
-    {
-        if (_isTracingAccess)
-            _trackingState.AllAccessedAddresses.Add(address);
-        return _trackingState.AccessedAddresses.Add(address);
-    }
+        => _trackingState.AccessedAddresses.Add(address);
 
     public readonly bool WarmUp(in StorageCell storageCell)
-    {
-        if (_isTracingAccess)
-            _trackingState.AllAccessedStorageCells.Add(storageCell);
-        return _trackingState.AccessedStorageCells.Add(storageCell);
-    }
+        => _trackingState.AccessedStorageCells.Add(storageCell);
 
     public readonly void WarmUp(AccessList? accessList)
     {
@@ -54,14 +44,9 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
             {
                 _trackingState.AccessedAddresses.Add(address);
-                if (_isTracingAccess)
-                    _trackingState.AllAccessedAddresses.Add(address);
                 foreach (UInt256 storage in storages)
                 {
-                    StorageCell cell = new(address, in storage);
-                    _trackingState.AccessedStorageCells.Add(cell);
-                    if (_isTracingAccess)
-                        _trackingState.AllAccessedStorageCells.Add(cell);
+                    _trackingState.AccessedStorageCells.Add(new StorageCell(address, in storage));
                 }
             }
         }
@@ -81,8 +66,13 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     public readonly void Restore()
     {
-        _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
-        _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+        // When tracing access, don't restore the access sets on sub-frame revert.
+        // The generated list will pre-warm all touched addresses.
+        if (!_isTracingAccess)
+        {
+            _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
+            _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+        }
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
     }
@@ -111,10 +101,6 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
         public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
 
-        // Non-journaled sets for access-list tracing — never restored on sub-frame revert.
-        public HashSet<Address> AllAccessedAddresses { get; } = new(Address.EqualityComparer);
-        public HashSet<StorageCell> AllAccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
-
         private void Clear()
         {
             AccessedAddresses.Clear();
@@ -122,8 +108,6 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
             Logs.Clear();
             DestroyList.Clear();
             CreateList.Clear();
-            AllAccessedAddresses.Clear();
-            AllAccessedStorageCells.Clear();
         }
     }
 }

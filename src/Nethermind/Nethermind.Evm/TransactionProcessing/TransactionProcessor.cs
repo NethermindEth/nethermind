@@ -775,7 +775,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (tracer.IsTracingAccess)
                 {
-                    tracer.ReportAccess(accessedItems.AllAccessedAddresses, accessedItems.AllAccessedStorageCells);
+                    tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
                 }
 
                 if (substate.ShouldRevert || substate.IsError)
