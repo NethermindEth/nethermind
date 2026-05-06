@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -722,6 +724,34 @@ public class BlockchainBridgeTests
     }
 
     [Test]
+    public void Simulate_call_header_preserves_parent_header_type()
+    {
+        TestSpecProvider specProvider = new(London.Instance);
+        SimulateBridgeHelper helper = new(new BlocksConfig(), specProvider);
+        DerivedBlockHeader parent = new(
+            TestItem.KeccakA,
+            Keccak.OfAnEmptySequenceRlp,
+            TestItem.AddressA,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            100,
+            [1, 2, 3])
+        {
+            Hash = TestItem.KeccakB,
+            Marker = "custom-chain-header"
+        };
+
+        BlockHeader callHeader = InvokeGetCallHeader(helper, specProvider, parent);
+
+        callHeader.Should().BeOfType<DerivedBlockHeader>();
+        ((DerivedBlockHeader)callHeader).Marker.Should().Be(parent.Marker);
+        callHeader.ParentHash.Should().Be(parent.Hash);
+        callHeader.Number.Should().Be(parent.Number + 1);
+        callHeader.Hash.Should().BeNull();
+    }
+
+    [Test]
     public void HasStateForBlock_returns_true_when_stateReader_returns_true()
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
@@ -770,5 +800,32 @@ public class BlockchainBridgeTests
 
         simulateRequestState.TotalGasLeft.Should().Be(50_000);
         simulateRequestState.BlockGasLeft.Should().Be(30_000);
+    }
+
+    private static BlockHeader InvokeGetCallHeader(SimulateBridgeHelper helper, ISpecProvider specProvider, BlockHeader parent)
+    {
+        MethodInfo method = typeof(SimulateBridgeHelper).GetMethod("GetCallHeader", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        ValueTuple<BlockHeader, IReleaseSpec> result = (ValueTuple<BlockHeader, IReleaseSpec>)method.Invoke(
+            helper,
+            [specProvider, new BlockStateCall<TransactionWithSourceDetails>(), parent, true])!;
+        return result.Item1;
+    }
+
+    private class DerivedBlockHeader : BlockHeader
+    {
+        public DerivedBlockHeader(
+            Hash256 parentHash,
+            Hash256 unclesHash,
+            Address beneficiary,
+            in UInt256 difficulty,
+            long number,
+            long gasLimit,
+            ulong timestamp,
+            byte[] extraData)
+            : base(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData)
+        {
+        }
+
+        public string? Marker { get; set; }
     }
 }

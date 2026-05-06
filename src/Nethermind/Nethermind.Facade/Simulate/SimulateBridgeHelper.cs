@@ -250,20 +250,33 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         BlockHeader parent,
         bool validate)
     {
-        BlockHeader result = new(
-            parent.Hash!,
-            Keccak.OfAnEmptySequenceRlp,
-            parent.Beneficiary,
-            UInt256.Zero,
-            parent.Number + 1,
-            parent.GasLimit,
-            parent.Timestamp + blocksConfig.SecondsPerSlot,
-            [],
-            requestsHash: parent.RequestsHash)
-        {
-            MixHash = Hash256.Zero,
-            RequestsHash = parent.RequestsHash,
-        };
+        BlockHeader result = parent.Clone();
+        result.ParentHash = parent.Hash!;
+        result.UnclesHash = Keccak.OfAnEmptySequenceRlp;
+        result.Beneficiary = parent.Beneficiary;
+        result.Author = null;
+        result.StateRoot = null;
+        result.TxRoot = null;
+        result.ReceiptsRoot = null;
+        result.Bloom = null;
+        result.Difficulty = UInt256.Zero;
+        result.Number = parent.Number + 1;
+        result.GasUsed = 0;
+        result.GasLimit = parent.GasLimit;
+        result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
+        result.MixHash = Hash256.Zero;
+        result.Nonce = 0;
+        result.Hash = null;
+        result.TotalDifficulty = null;
+        result.AuRaSignature = null;
+        result.AuRaStep = null;
+        result.WithdrawalsRoot = null;
+        result.ParentBeaconBlockRoot = null;
+        result.BlockAccessListHash = null;
+        result.BlobGasUsed = null;
+        result.ExcessBlobGas = null;
+        result.SlotNumber = null;
+        result.RequestsHash = parent.RequestsHash;
 
         if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
         {
