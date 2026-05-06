@@ -88,10 +88,14 @@ internal sealed partial class StateCompositionService
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
         }
-        catch (MissingTrieNodeException ex)
+        catch (Exception ex) when (ex is MissingTrieNodeException
+            || (ex is InvalidOperationException && ex.Message.Contains("gather snapshots", StringComparison.Ordinal)))
         {
-            // prevRoot is no longer in the trie DB (pruning window exceeded).
-            // Invalidate so OnNewHeadBlock stops dispatching diffs, then rescan.
+            // prevRoot is no longer reachable: either the trie DB pruned it
+            // (MissingTrieNodeException) or FlatDb's bundle window has rolled
+            // past it (`Unable to gather snapshots for state ...`). Either way,
+            // invalidate the baseline so OnNewHeadBlock stops dispatching
+            // diffs against an unreachable root, then schedule a fresh rescan.
             Metrics.StateCompBaselineInvalidations++;
             _stateHolder.InvalidateBaseline();
             if (_logger.IsWarn)
