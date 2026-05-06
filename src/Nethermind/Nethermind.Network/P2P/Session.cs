@@ -38,6 +38,7 @@ namespace Nethermind.Network.P2P
         private readonly IChannel _channel;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IChannelHandlerContext? _context;
+        private volatile bool _isChannelClosed;
 
         public Session(
             int localPort,
@@ -79,6 +80,7 @@ namespace Nethermind.Network.P2P
 
         public bool IsClosing => State > SessionState.Initialized;
         private bool IsClosed => State > SessionState.DisconnectingProtocols;
+        public bool IsChannelClosed => _isChannelClosed;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -401,8 +403,9 @@ namespace Nethermind.Network.P2P
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (!_protocols.IsEmpty)
             {
-                foreach (IProtocolHandler protocolHandler in _protocols.Values)
+                foreach (KeyValuePair<string, IProtocolHandler> kvp in _protocols)
                 {
+                    IProtocolHandler protocolHandler = kvp.Value;
                     try
                     {
                         if (_logger.IsTrace) TraceDisconnectingProtocol(protocolHandler, disconnectReason, details);
@@ -538,6 +541,8 @@ namespace Nethermind.Network.P2P
             void DebugNoDisconnectedSubscriptions()
                 => _logger.DebugError($"No subscriptions for session disconnected event on {this}");
         }
+
+        internal void MarkChannelClosed() => _isChannelClosed = true;
 
         private async Task DisconnectAsync(DisconnectType disconnectType)
         {

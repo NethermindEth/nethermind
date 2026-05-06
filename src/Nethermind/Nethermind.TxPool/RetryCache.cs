@@ -179,8 +179,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _expiringQueue.Clear();
         _requestingResources.Clear();
 
-        foreach (HandlerBag<TMessage> bag in _retryRequests.Values)
+        foreach (KeyValuePair<TResourceId, HandlerBag<TMessage>> kvp in _retryRequests)
         {
+            HandlerBag<TMessage> bag = kvp.Value;
             bag.Deactivate();
             _handlerBagsPool.Return(bag);
         }
