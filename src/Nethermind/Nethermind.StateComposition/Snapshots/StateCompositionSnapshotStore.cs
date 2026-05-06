@@ -192,7 +192,8 @@ internal sealed class StateCompositionSnapshotStore
         if (map.Count == 0) return;
 
         const int entrySize = 32 + 8;
-        WriteMap(blockNumber, kind, map.Count, map.GetEnumerator(), entrySize, static (kvp, dst) =>
+        using IEnumerator<KeyValuePair<ValueHash256, long>> entries = map.GetEnumerator();
+        WriteMap(blockNumber, kind, map.Count, entries, entrySize, static (kvp, dst) =>
         {
             kvp.Key.Bytes.CopyTo(dst);
             BinaryPrimitives.WriteInt64BigEndian(dst[32..40], kvp.Value);
@@ -204,7 +205,8 @@ internal sealed class StateCompositionSnapshotStore
         if (map.Count == 0) return;
 
         const int entrySize = 32 + 4;
-        WriteMap(blockNumber, kind, map.Count, map.GetEnumerator(), entrySize, static (kvp, dst) =>
+        using IEnumerator<KeyValuePair<ValueHash256, int>> entries = map.GetEnumerator();
+        WriteMap(blockNumber, kind, map.Count, entries, entrySize, static (kvp, dst) =>
         {
             kvp.Key.Bytes.CopyTo(dst);
             BinaryPrimitives.WriteInt32BigEndian(dst[32..36], kvp.Value);
@@ -296,7 +298,13 @@ internal sealed class StateCompositionSnapshotStore
             byte[]? data = _db.Get(chunkKey);
             if (data is null) break;
 
+            // Disk-read boundary: validate the chunk-count prefix and the
+            // declared payload length before slicing, so a truncated or
+            // mid-read corrupted chunk degrades to "no more entries"
+            // instead of throwing ArgumentOutOfRangeException up the stack.
+            if (data.Length < 4) break;
             int chunkCount = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(0, 4));
+            if (chunkCount < 0 || data.Length < 4 + (long)chunkCount * entrySize) break;
             int pos = 4;
             for (int i = 0; i < chunkCount; i++)
             {

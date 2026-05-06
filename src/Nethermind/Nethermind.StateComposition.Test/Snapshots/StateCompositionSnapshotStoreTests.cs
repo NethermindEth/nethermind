@@ -168,6 +168,34 @@ public class StateCompositionSnapshotStoreTests
     }
 
     [Test]
+    public void ReadSnapshot_TruncatedChunk_DegradesToEmptyMapsInsteadOfThrowing()
+    {
+        // Disk-read boundary: a snapshot whose chunk header was written but the
+        // payload was truncated mid-flush must not propagate
+        // ArgumentOutOfRangeException to the startup path. The reader bails to
+        // "no more entries" so the plugin can fall back to a fresh scan.
+        MemDb db = new();
+        StateCompositionSnapshotStore store = new(db, LimboLogs.Instance, entriesPerChunk: 100);
+
+        Dictionary<ValueHash256, long> slots = [];
+        for (int i = 0; i < 4; i++)
+            slots[Keccak.Compute($"slot-{i}").ValueHash256] = i;
+        store.WriteSnapshot(BuildSnapshot(blockNumber: 1, slotCountByAddress: slots));
+
+        byte[] truncatedChunkKey =
+        [
+            0, 0, 0, 0, 0, 0, 0, 1,        // blockNumber = 1
+            0x01,                            // SlotCountKind
+            0, 0, 0, 0,                      // chunk index 0
+        ];
+        // Header claims 4 entries (160 bytes payload) but only 3 bytes follow.
+        db.Set(truncatedChunkKey, [0, 0, 0, 4, 0xAA, 0xBB, 0xCC]);
+
+        StateCompositionSnapshot loaded = store.ReadLatestSnapshot()!.Value;
+        Assert.That(loaded.SlotCountByAddress, Is.Empty);
+    }
+
+    [Test]
     public void EmptyMaps_AreNotPersistedAsChunks()
     {
         MemDb db = new();
