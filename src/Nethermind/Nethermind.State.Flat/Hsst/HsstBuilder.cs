@@ -67,7 +67,8 @@ public ref struct HsstBuilder<TWriter>
         _options = opts;
 
         // Heuristic: ~32 bytes per separator/value. The buffers grow as needed.
-        int byteCap = Math.Max(64, expectedKeyCount * 32);
+        // Clamp to avoid int overflow at large expectedKeyCount (>~67M).
+        int byteCap = (int)Math.Clamp((long)expectedKeyCount * 32, 64, 1L << 30);
         _separatorBuffer = new NativeMemoryListRef<byte>(byteCap);
         _entriesBuffer = new NativeMemoryListRef<HsstEntry>(expectedKeyCount);
         _prevKeyBuffer = new NativeMemoryListRef<byte>(256);

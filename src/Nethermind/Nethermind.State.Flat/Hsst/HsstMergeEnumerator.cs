@@ -293,16 +293,16 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         public BTreeVariant(scoped in TReader reader, Bound scope)
         {
             _scopeEnd = scope.Offset + scope.Length;
-            // The BTree index walk is span-based (HsstIndex / BSearchIndexReader operate on
-            // a contiguous span). Pin the entire scope for the duration of construction;
-            // afterwards we hold only long offsets, so the pin can be released.
-            using TPin scopePin = reader.PinBuffer(scope.Offset, scope.Length);
-            ReadOnlySpan<byte> hsstData = scopePin.Buffer;
+            // Walk the BTree index without pinning the whole scope (which would require
+            // a single Span<byte> ≤2 GiB). HsstBTreeReader.TryLoadNode pins one node at a
+            // time via the reader, and we collect leaf entry tuples with snapshot-absolute
+            // offsets so the merge step can pin keys/values individually later.
 
-            int rootEnd = hsstData.Length - 1;
-            HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);
+            // Plain BTree trailer is just the IndexType byte; the root ends one byte before it.
+            long rootAbsEnd = scope.Offset + scope.Length - 1;
+
             _entries = new NativeMemoryList<(long, int, long)>(16);
-            CollectLeafOffsets(hsstData, scope.Offset, rootIndex, _entries);
+            CollectLeafOffsets(in reader, scope.Offset, rootAbsEnd, _entries);
         }
 
         public int Count => _entries.Count;
@@ -352,26 +352,34 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
             _entries.Dispose();
         }
 
-        private static void CollectLeafOffsets(ReadOnlySpan<byte> data, long scopeStart, HsstIndex index,
+        private static void CollectLeafOffsets(scoped in TReader reader, long scopeStart, long absEnd,
             NativeMemoryList<(long, int, long)> entries)
         {
-            if (!index.IsIntermediate)
+            // Pin one node, walk its entries, recurse into children for intermediate nodes.
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, absEnd, out HsstIndex node, out long nodeAbsStart, out TPin pin))
+                throw new InvalidOperationException("Failed to load BTree index node");
+            using (pin)
             {
-                for (int i = 0; i < index.EntryCount; i++)
+                ReadOnlySpan<byte> nodeSpan = pin.Buffer;
+                if (!node.IsIntermediate)
                 {
-                    ReadOnlySpan<byte> sep = index.GetKey(i);
-                    int sepRelOffset = SpanOffset(data, sep);
-                    long metaStart = scopeStart + (long)index.GetUInt64Value(i);
-                    entries.Add((scopeStart + sepRelOffset, sep.Length, metaStart));
+                    for (int i = 0; i < node.EntryCount; i++)
+                    {
+                        ReadOnlySpan<byte> sep = node.GetKey(i);
+                        int sepRelOffset = SpanOffset(nodeSpan, sep);
+                        long metaStart = scopeStart + (long)node.GetUInt64Value(i);
+                        entries.Add((nodeAbsStart + sepRelOffset, sep.Length, metaStart));
+                    }
                 }
-            }
-            else
-            {
-                for (int i = 0; i < index.EntryCount; i++)
+                else
                 {
-                    int childOffset = checked((int)index.GetUInt64Value(i));
-                    HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
-                    CollectLeafOffsets(data, scopeStart, child, entries);
+                    // Intermediate child values are absolute end-1 positions within the HSST.
+                    for (int i = 0; i < node.EntryCount; i++)
+                    {
+                        long childRelEnd = (long)node.GetUInt64Value(i) + 1;
+                        long childAbsEnd = scopeStart + childRelEnd;
+                        CollectLeafOffsets(in reader, scopeStart, childAbsEnd, entries);
+                    }
                 }
             }
         }

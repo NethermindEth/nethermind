@@ -32,7 +32,10 @@ public class HsstLargeBuildTests
     // 1M entries → ~10 MB per HSST: validates pipeline end to end. Bump to
     // ~300_000_000 to actually push a single HSST past 2 GiB (slow — see
     // class summary).
-    private static readonly long EntryCountPerHsst = 1_000_000L;
+    // Cap is set so that the *merged* HSST's separator buffer (≈ 6 bytes per entry
+    // for sequential 6-byte keys, summed across both sources) stays under
+    // int.MaxValue — _separatorBuffer count is still int.
+    private static readonly long EntryCountPerHsst = 150_000_000L;
     private const int KeySize = 6;
     private const byte ValueByte = 0xAB;
 
@@ -53,7 +56,7 @@ public class HsstLargeBuildTests
             long sizeA = new FileInfo(pathA).Length;
             long sizeB = new FileInfo(pathB).Length;
             // Skip the >2 GiB assertion when running with a smoke-sized entry count.
-            if (EntryCountPerHsst > 200_000_000L)
+            if (EntryCountPerHsst >= 150_000_000L)
             {
                 Assert.That(sizeA, Is.GreaterThan((long)int.MaxValue),
                     "HSST A is supposed to exceed the 2 GiB single-Span ceiling");
@@ -69,7 +72,7 @@ public class HsstLargeBuildTests
             MergeTwo(pathA, pathB, pathMerged);
 
             long sizeMerged = new FileInfo(pathMerged).Length;
-            if (EntryCountPerHsst > 200_000_000L)
+            if (EntryCountPerHsst >= 150_000_000L)
                 Assert.That(sizeMerged, Is.GreaterThan((long)int.MaxValue),
                     "merged HSST is supposed to also exceed 2 GiB");
 
@@ -89,7 +92,7 @@ public class HsstLargeBuildTests
         StreamBufferWriter writer = new(fs);
         try
         {
-            using HsstBuilder<StreamBufferWriter> hsst = new(ref writer);
+            using HsstBuilder<StreamBufferWriter> hsst = new(ref writer, expectedKeyCount: checked((int)count));
             Span<byte> keyBuf = stackalloc byte[8];
             Span<byte> valueBuf = stackalloc byte[1];
             valueBuf[0] = ValueByte;
@@ -163,7 +166,7 @@ public class HsstLargeBuildTests
             StreamBufferWriter writer = new(outFs);
             try
             {
-                using HsstBuilder<StreamBufferWriter> outHsst = new(ref writer);
+                using HsstBuilder<StreamBufferWriter> outHsst = new(ref writer, expectedKeyCount: checked((int)(EntryCountPerHsst * 2)));
 
                 while (moreA || moreB)
                 {

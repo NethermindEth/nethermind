@@ -19,11 +19,22 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         int count,
         int itemsToAdd = 1)
     {
-        int newCount = count + itemsToAdd;
-        if (newCount <= capacity) return;
+        // Compute newCount as long to detect overflow past int.MaxValue. The element
+        // count itself is bounded by int.MaxValue (Count returns int); throw OOM when
+        // the caller would push past that ceiling instead of silently writing past
+        // the buffer.
+        long newCountLong = (long)count + itemsToAdd;
+        if (newCountLong <= capacity) return;
+        if (newCountLong > int.MaxValue)
+            throw new OutOfMemoryException($"NativeMemoryList<{typeof(T).Name}> exceeded int.MaxValue elements (requested {newCountLong}).");
+        int newCount = (int)newCountLong;
 
-        int newCapacity = capacity == 0 ? 1 : capacity * 2;
-        while (newCount > newCapacity) newCapacity *= 2;
+        // Doubling growth, computed via long so the *2 step doesn't overflow int when
+        // capacity > int.MaxValue / 2. Clamp at int.MaxValue.
+        long newCapacityLong = capacity == 0 ? 1 : (long)capacity * 2;
+        while (newCount > newCapacityLong) newCapacityLong *= 2;
+        if (newCapacityLong > int.MaxValue) newCapacityLong = int.MaxValue;
+        int newCapacity = (int)newCapacityLong;
 
         T* newPtr = (T*)NativeMemory.Alloc((nuint)newCapacity, (nuint)sizeof(T));
         if (count > 0)

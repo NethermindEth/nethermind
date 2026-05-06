@@ -101,7 +101,7 @@ internal static class HsstBTreeReader
     /// <paramref name="node"/>). The caller must dispose the pin once it's done with the node.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryLoadNode<TReader, TPin>(
+    internal static bool TryLoadNode<TReader, TPin>(
         scoped in TReader reader, long absEnd,
         out HsstIndex node, out long nodeAbsStart, out TPin pin)
         where TPin : struct, IBufferPin, allows ref struct
