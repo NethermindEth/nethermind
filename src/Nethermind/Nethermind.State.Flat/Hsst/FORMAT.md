@@ -39,8 +39,9 @@ A compact, immutable binary format for sorted key/value tables.
 | Variant | Bytes |
 |---|---|
 | **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
-| **FlatEntries** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]` |
-| **ByteTagMap** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x08]` |
+| **PackedArray** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x02]` |
+| **ByteTagMap** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x03]` |
+| **DenseByteIndex** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -48,8 +49,9 @@ the variant by enumerated value (not a bitfield):
 | Value | Name | Meaning |
 |---|---|---|
 | `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
-| `0x06` | `FlatEntries` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
-| `0x08` | `ByteTagMap` | Tiny single-byte-keyed map (≤ 255 entries) — flat tag/end-offset trailer over a concatenated value region. |
+| `0x02` | `PackedArray` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
+| `0x03` | `ByteTagMap` | Tiny single-byte-keyed map (≤ 255 entries) — flat tag/end-offset trailer over a concatenated value region. |
+| `0x04` | `DenseByteIndex` | Single-byte-keyed map indexed directly by the tag byte; gap-filled with zero-length values. |
 
 Other values are reserved for future index strategies. The root B-tree
 node lives just before the index type byte and is read backward via its
@@ -99,14 +101,14 @@ no per-entry key reconstruction during iteration, and entries that can be
 recovered from just `(buffer, MetadataStart)` without consulting any
 index.
 
-### FlatEntries variant
+### PackedArray variant
 
 A specialised layout for fixed-size keys and values. The b-tree is replaced
 by a packed entry array with a recursive "summary" index and an optional
 hash table.
 
 ```
-[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x06]
+[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x02]
 ```
 
 - **`Data`** — `EntryCount * (KeySize + ValueSize)` bytes, packed. Each entry
@@ -195,7 +197,7 @@ slot-suffix bucket under a 31-byte slot prefix (≤256 distinct suffix bytes,
 encoded up to the u8 `Count` cap of 255).
 
 ```
-[Value_0][Value_1]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x08]
+[Value_0][Value_1]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x03]
 ```
 
 Section ordering rationale: `Tags` is touched on every lookup (linear
@@ -219,11 +221,11 @@ same cache line as the trailer bytes the reader fetches first.
 - **`Count`** — single byte, holds `N`. Capped at **255** (the u8 limit;
   `0` is reserved for the empty case). Beyond that, callers should use
   `BTree` instead. The empty case (`N = 0`) encodes as the 2-byte sequence
-  `[0x00][0x08]`.
+  `[0x00][0x03]`.
 
 **Lookup procedure** (exact and floor):
 
-1. Read tail byte → `IndexType` must equal `0x08`.
+1. Read tail byte → `IndexType` must equal `0x03`.
 2. Read byte at `end - 2` → `N`. If `N == 0`, no entry → not found.
 3. `Tags` lives at `[end - 2 - N, end - 2)` — directly adjacent to
    `Count`, no further offset math. `Ends` lives at
@@ -248,6 +250,49 @@ trailer cost is `5·N + 2` bytes regardless of value sizes.
 - Per-entry overhead is 5 bytes (1 tag + 4 end-offset); plus the
   2-byte trailer footer. No b-tree, no leaf metadata, no per-entry
   LEB128 length prefix in the data region.
+
+### DenseByteIndex variant
+
+Like `ByteTagMap` but the tag byte *is* the array index — there is no
+separate `Tags` array. The reader resolves single-byte key `k` directly
+to `Ends[k]` with no scan. Used for column containers where the set of
+tag positions is fixed and known (persisted-snapshot outer column
+container; per-address sub-tag container).
+
+```
+[Value_0][Value_1]…[Value_{N-1}][Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]
+```
+
+- **`Value_i`** — raw bytes of the value associated with tag `i`. Tag
+  positions that were never written are gap-filled with **zero-length**
+  values: `Ends[i] == (i == 0 ? 0 : Ends[i-1])`. Length 0 is therefore
+  the in-band "absent" marker — callers that need to distinguish absent
+  from present-but-empty must encode a presence byte inside the value.
+- **`Ends`** — `N` little-endian `u32`s. Same semantics as `ByteTagMap`:
+  `Ends[i]` is the exclusive end offset of `Value_i` measured from byte
+  0 of the HSST. `N` is `(highestWrittenTag + 1)`.
+- **`Count`** — single byte, holds `N − 1` (so `N` ranges over `1..256`
+  encoded as `0..255`). The empty case (no values ever written) is not
+  representable; callers must always emit at least one entry.
+
+**Lookup procedure** (exact and floor):
+
+1. Read tail byte → `IndexType` must equal `0x04`.
+2. Read byte at `end - 2` → `N − 1`; `N = (Count) + 1`.
+3. Reject lookups whose key is not exactly 1 byte. For exact match,
+   reject keys with `key[0] >= N`. For floor, clamp `k = min(key[0], N - 1)`.
+4. `Ends` lives at `[end - 2 - 4·N, end - 2)`. Read `Ends[k]` (and
+   `Ends[k-1]` when `k > 0`) to derive `valueStart`/`valueEnd`. A
+   zero-length result on exact match means absent → not found; on floor
+   the reader walks down to the largest `j ≤ k` with non-zero length.
+
+**Restrictions and trade-offs.**
+
+- All keys are exactly 1 byte. Multi-byte keys are rejected at build time.
+- `N ≤ 256` (`Count` is a u8 holding `N − 1`).
+- Cheaper than `ByteTagMap` when the tag space is dense (no `Tags`
+  array, no scan); strictly worse when most tag positions are unused
+  (gap-filled `Ends` slots are paid in full).
 
 ## B-tree index node layout
 
@@ -368,10 +413,12 @@ Writers / encoders:
 - `BSearchIndex/BSearchIndexLayoutPlanner.cs` — picks key/value section
   encodings (Variable / Uniform / UniformWithLen) and section sizes.
 - `Hsst/IndexType.cs` — enum of valid index-type byte values.
-- `Hsst/HsstFlatBuilder.cs` / `Hsst/HsstFlatReader.cs` — `FlatEntries`
+- `Hsst/HsstPackedArrayBuilder.cs` / `Hsst/HsstPackedArrayReader.cs` — `PackedArray`
   writer / reader (recursive summary index, optional hash table).
 - `Hsst/HsstByteTagMapBuilder.cs` — `ByteTagMap` writer (concatenated
   values + flat tag/end-offset trailer).
+- `Hsst/HsstDenseByteIndexBuilder.cs` — `DenseByteIndex` writer
+  (concatenated values + Ends-only trailer; tag-byte = array index).
 
 Readers / decoders:
 - `Hsst/HsstReader.cs` — point-query reader; reads the trailing
@@ -382,6 +429,11 @@ Readers / decoders:
 - `Hsst/HsstByteTagMapReader.cs` — `ByteTagMap` lookup helper (linear
   tag scan + Ends-derived value bound); dispatched into from
   `HsstReader`/`HsstEnumerator`/`HsstMergeEnumerator`.
+- `Hsst/HsstDenseByteIndexReader.cs` — `DenseByteIndex` lookup helper
+  (direct `Ends[k]` index, no tag scan); dispatched into from
+  `HsstReader`.
+- `Hsst/HsstPackedArrayReader.cs` — `PackedArray` lookup helper
+  (recursive summary descent + optional hash fast path).
 
 Iterators:
 - `Hsst/HsstEnumerator.cs` — forward iterator over a whole HSST scope;

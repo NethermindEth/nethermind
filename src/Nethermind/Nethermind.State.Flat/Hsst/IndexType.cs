@@ -16,14 +16,14 @@ public enum IndexType : byte
     /// always-present open-addressed hash index. Requires every key and every value to be the
     /// same size.
     /// </summary>
-    PackedArray = 0x06,
+    PackedArray = 0x02,
     /// <summary>
     /// Tiny single-byte-keyed map (≤ 32 entries). Replaces the b-tree with a flat
     /// trailer of `[Ends: N×u32 LE][Tags: N×u8][Count: u8][IndexType: u8]` over a
     /// concatenated value region. Lookup is a linear/SIMD scan of the tag bytes
     /// followed by an index into `Ends` — no LEB128 / b-tree machinery.
     /// </summary>
-    ByteTagMap = 0x08,
+    ByteTagMap = 0x03,
     /// <summary>
     /// Byte-addressed array map. Like <see cref="ByteTagMap"/> but the tag byte is
     /// the array index directly: lookup of single-byte key <c>k</c> resolves to
@@ -34,5 +34,5 @@ public enum IndexType : byte
     /// persisted-snapshot outer column container and the per-address sub-tag
     /// container, where the set of tag positions is fixed and known.
     /// </summary>
-    DenseByteIndex = 0x09,
+    DenseByteIndex = 0x04,
 }

@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// <c>Ends</c> array remains contiguous and indexable by the lookup-key byte.
 ///
 /// Output: concatenated values followed by
-/// <c>[Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x09]</c>. <c>N</c>
+/// <c>[Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]</c>. <c>N</c>
 /// equals <c>(highestTag + 1)</c> and is capped at <see cref="MaxEntries"/> (256).
 /// </summary>
 public ref struct HsstDenseByteIndexBuilder<TWriter>

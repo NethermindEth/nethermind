@@ -21,7 +21,7 @@ namespace Nethermind.State.Flat.Hsst;
 ///   [Metadata: KeySize, ValueSize, EntryCount, EntriesPerCkLevel0,
 ///              RecordsPerCkHigher, Depth, Count_0..Count_{D-1} as LEB128]
 ///   [MetadataLength: u8]
-///   [IndexType: u8 = 0x06]
+///   [IndexType: u8 = 0x02]
 ///
 /// Each summary record is just the checkpoint key — the slab boundaries at the level below
 /// are derived from the level's strides (<c>EntriesPerCkLevel0</c> for level 0, which spans

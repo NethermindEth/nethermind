@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Builds a tiny single-byte-keyed HSST. The output is concatenated values followed by a
-/// flat trailer: <c>[Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8 = 0x08]</c>.
+/// flat trailer: <c>[Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8 = 0x03]</c>.
 /// Designed for the persisted-snapshot column container (≤7 entries), per-address
 /// sub-tag map (≤3 entries), and the slot-suffix bucket (≤256 entries) where the
 /// b-tree's fixed parse cost dominates.
