@@ -185,11 +185,11 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     /// Get a read-only span for the reservation's data region.
     /// </summary>
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
-        ArenaForReservation(reservation).GetSpan(reservation.Offset, reservation.Size);
+        _arenas[reservation.ArenaId].GetSpan(reservation.Offset, reservation.Size);
 
     public unsafe void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size)
     {
-        ArenaFile arena = ArenaForReservation(reservation);
+        ArenaFile arena = _arenas[reservation.ArenaId];
         dataPtr = arena.BasePtr + reservation.Offset;
         size = reservation.Size;
     }
@@ -198,21 +198,8 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     {
         lock (_lock)
         {
-            return ArenaForReservation(reservation).OpenWholeView(reservation.Offset, reservation.Size);
+            return _arenas[reservation.ArenaId].OpenWholeView(reservation.Offset, reservation.Size);
         }
-    }
-
-    private ArenaFile ArenaForReservation(ArenaReservation reservation)
-    {
-        if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena)) return arena;
-        // Arena has been removed but a reservation pointing at it is still alive — that's a
-        // refcount accounting bug somewhere upstream (a reservation was MarkDead'd while still
-        // leased, or dead-bytes accounting double-counted a release). Surface enough context
-        // to diagnose: which reservation, which manager, what's currently mapped.
-        throw new InvalidOperationException(
-            $"ArenaManager(basePath={_basePath}): arena {reservation.ArenaId} is missing but reservation " +
-            $"tag='{reservation.Tag}' offset={reservation.Offset} size={reservation.Size} still references it. " +
-            $"Live arenas: [{string.Join(", ", _arenas.Keys)}].");
     }
 
     /// <summary>
