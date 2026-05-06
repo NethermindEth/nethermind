@@ -65,8 +65,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
                 for (int i = 0; i < count; i++)
                 {
-                    ctx.ReadSequenceLength();
+                    int length = ctx.ReadSequenceLength();
+                    int checkPosition = ctx.Position + length;
                     pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                    ctx.Check(checkPosition);
                 }
 
                 message.PathsWithAccounts = pathsWithAccounts;

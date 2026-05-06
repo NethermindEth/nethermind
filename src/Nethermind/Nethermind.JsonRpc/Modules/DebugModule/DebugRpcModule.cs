@@ -706,8 +706,13 @@ public class DebugRpcModule(
 
         tx.SenderAddress ??= Address.Zero;
 
+        // Clone header (avoid mutating caller's) and zero GasUsed so the budget check
+        // (block.GasUsed + tx.GasLimit <= block.GasLimit) doesn't reject default-gas calls.
+        BlockHeader callHeader = header.Clone();
+        callHeader.GasUsed = 0;
+
         if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
 
-        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(header, tx));
+        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(callHeader, tx));
     }
 }
