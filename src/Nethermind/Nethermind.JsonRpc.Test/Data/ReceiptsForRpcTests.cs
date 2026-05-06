@@ -98,8 +98,7 @@ namespace Nethermind.JsonRpc.Test.Data
             ReceiptForRpc? receiptForRpc = new EthereumJsonSerializer().Deserialize<ReceiptForRpc>(json);
 
             Assert.That(receiptForRpc, Is.Not.Null);
-            Assert.That(receiptForRpc!.Error, Is.Null);
-            Assert.That(receiptForRpc.ToReceipt().Error, Is.Null);
+            Assert.That(receiptForRpc!.ToReceipt().Error, Is.Null);
         }
     }
 }

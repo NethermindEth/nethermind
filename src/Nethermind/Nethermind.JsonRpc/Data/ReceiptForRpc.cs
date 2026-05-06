@@ -34,7 +34,6 @@ namespace Nethermind.JsonRpc.Data
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
-            Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
             Type = receipt.TxType;
         }
 
@@ -64,8 +63,6 @@ namespace Nethermind.JsonRpc.Data
         public Hash256? Root { get; set; }
         public long? Status { get; set; }
 
-        [JsonIgnore]
-        public string? Error { get; set; }
         public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()
@@ -73,7 +70,6 @@ namespace Nethermind.JsonRpc.Data
             TxReceipt receipt = new()
             {
                 Bloom = LogsBloom,
-                Error = Error,
                 Index = (int)TransactionIndex,
                 Logs = Logs.Select(static l => l.ToLogEntry()).ToArray(),
                 Recipient = To,
