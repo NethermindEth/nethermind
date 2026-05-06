@@ -52,7 +52,11 @@ public class TaikoPayloadAttributes : PayloadAttributes
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        return base.Validate(specProvider, fcuVersion, out error);
+        // Taiko always uses V2 engine API payloads regardless of the active EVM fork
+        // (Cancun/Prague/Osaka). Skip the base fork-version check which would reject
+        // V2 attributes once EIP-4844 is active and demand V3.
+        error = null;
+        return PayloadAttributesValidationResult.Success;
     }
 
 }

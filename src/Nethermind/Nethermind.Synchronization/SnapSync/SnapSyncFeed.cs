@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : SyncFeed<SnapSyncBatch?>, IDisposable
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : ISimpleSyncFeed<SnapSyncBatch>
     {
         private readonly Lock _syncLock = new();
 
@@ -23,36 +23,42 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ISnapProvider _snapProvider = snapProvider;
 
         private readonly ILogger _logger = logManager.GetClassLogger<SnapSyncFeed>();
-        private bool _disposed = false;
-        public override bool IsMultiFeed => true;
-        public override AllocationContexts Contexts => AllocationContexts.Snap;
 
-        public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
+        public async Task<SnapSyncBatch?> PrepareRequest(CancellationToken token)
         {
-            try
+            while (!token.IsCancellationRequested)
             {
-                bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
-
-                if (request is null)
+                try
                 {
-                    if (finished)
+                    bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
+
+                    if (request is not null)
                     {
-                        Finish();
+                        return request;
                     }
 
-                    return Task.FromResult(EmptyBatch);
+                    if (finished)
+                    {
+                        _snapProvider.Dispose();
+                        return null;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    return EmptyBatch;
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Error when preparing a batch", e);
                 }
 
-                return Task.FromResult(request);
+                await Task.Delay(50, token);
             }
-            catch (Exception e)
-            {
-                _logger.Error("Error when preparing a batch", e);
-                return Task.FromResult(EmptyBatch);
-            }
+
+            return EmptyBatch;
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
+        public SyncResponseHandlingResult HandleResponse(SnapSyncBatch batch, PeerInfo? peer = null)
         {
             if (batch is null)
             {
@@ -103,7 +109,7 @@ namespace Nethermind.Synchronization.SnapSync
             return AnalyzeResponsePerPeer(result, peer);
         }
 
-        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer)
         {
             if (peer is null)
             {
@@ -188,31 +194,5 @@ namespace Nethermind.Synchronization.SnapSync
                 return SyncResponseHandlingResult.OK;
             }
         }
-
-        public void Dispose() => _disposed = true;
-
-        public override void SyncModeSelectorOnChanged(SyncMode current)
-        {
-            if (_disposed) return;
-            if (CurrentState == SyncFeedState.Dormant)
-            {
-                if ((current & SyncMode.SnapSync) == SyncMode.SnapSync)
-                {
-                    if (_snapProvider.CanSync())
-                    {
-                        Activate();
-                    }
-                }
-            }
-        }
-
-        public override void Finish()
-        {
-            _snapProvider.Dispose();
-            base.Finish();
-        }
-
-        public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
-        public override string FeedName => nameof(SnapSyncFeed);
     }
 }

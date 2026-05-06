@@ -118,7 +118,6 @@ public class SyncServerTests
         }
     }
 
-    [TestCase(SyncMode.SnapSync, false)]
     [TestCase(SyncMode.FastSync, false)]
     [TestCase(SyncMode.StateNodes, false)]
     [TestCase(SyncMode.Full, true)]
@@ -129,7 +128,6 @@ public class SyncServerTests
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
         StaticSelector staticSelector = syncMode switch
         {
-            SyncMode.SnapSync => StaticSelector.SnapSync,
             SyncMode.FastSync => StaticSelector.FastSync,
             SyncMode.StateNodes => StaticSelector.StateNodesWithFastBlocks,
             _ => StaticSelector.Full,

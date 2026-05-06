@@ -37,9 +37,9 @@ public class Snapshot(
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => content.SelfDestructedStorageAddresses;
     public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => content.Storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => content.StorageNodes;
-    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Keys.Select(k => k.Key);
+    public IEnumerable<(Hash256, TreePath)> StorageTrieNodeKeys => content.StorageNodes.Select(static kvp => kvp.Key.Key);
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => content.StateNodes;
-    public IEnumerable<TreePath> StateNodeKeys => content.StateNodes.Keys.Select(k => k.Key);
+    public IEnumerable<TreePath> StateNodeKeys => content.StateNodes.Select(static kvp => kvp.Key.Key);
     public int AccountsCount => content.Accounts.Count;
     public int StoragesCount => content.Storages.Count;
     public int StateNodesCount => content.StateNodes.Count;
@@ -75,8 +75,8 @@ public sealed class SnapshotContent : IDisposable, IResettable
 
     public void Reset()
     {
-        foreach (TrieNode node in StateNodes.Values) node.PrunePersistedRecursively(1);
-        foreach (TrieNode node in StorageNodes.Values) node.PrunePersistedRecursively(1);
+        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in StateNodes) kvp.Value.PrunePersistedRecursively(1);
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in StorageNodes) kvp.Value.PrunePersistedRecursively(1);
 
         Accounts.NoResizeClear();
         Storages.NoResizeClear();

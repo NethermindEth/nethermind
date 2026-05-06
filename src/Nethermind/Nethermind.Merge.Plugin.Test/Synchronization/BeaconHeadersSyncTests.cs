@@ -303,6 +303,47 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
+    public async Task Does_not_request_headers_when_destination_advances_past_lowest_requested()
+    {
+        // PivotDestinationNumber rising above _lowestRequestedHeaderNumber mid-sync must not produce
+        // a batch with negative RequestSize.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SyncPivot.Returns((1000, Keccak.Zero));
+        blockTree.LowestInsertedBeaconHeader.Returns((BlockHeader?)null);
+
+        IBeaconPivot beaconPivot = Substitute.For<IBeaconPivot>();
+        beaconPivot.PivotNumber.Returns(2000);
+        beaconPivot.PivotHash.Returns(TestItem.KeccakA);
+        beaconPivot.PivotParentHash.Returns(TestItem.KeccakB);
+        beaconPivot.PivotDestinationNumber.Returns(1100);
+
+        Context ctx = new()
+        {
+            BlockTree = blockTree,
+            SyncConfig = new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = 1000,
+                PivotHash = Keccak.Zero.ToString(),
+                PivotTotalDifficulty = "1000"
+            },
+            BeaconPivot = beaconPivot,
+        };
+        BeaconHeadersSyncFeed feed = ctx.Feed;
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch? first = await feed.PrepareRequest();
+        first.Should().NotBeNull();
+        first!.RequestSize.Should().BeGreaterThan(0);
+
+        // Simulate Head advancing so that PivotDestinationNumber moves above _lowestRequestedHeaderNumber.
+        beaconPivot.PivotDestinationNumber.Returns(first.StartNumber + 10);
+
+        using HeadersSyncBatch? second = await feed.PrepareRequest();
+        second.Should().BeNull();
+    }
+
+    [Test]
     public async Task When_pivot_changed_during_header_sync_after_chain_merged__do_not_return_null_request()
     {
         ISyncConfig syncConfig = new SyncConfig
