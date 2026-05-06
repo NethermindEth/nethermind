@@ -23,7 +23,6 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         AccountChanges[] accountChanges = ctx.DecodeArray(AccountChangesDecoder.Instance, true, default, _accountsLimit);
 
         Address? lastAddress = null;
-        Address? firstEmptyAccount = null;
         long itemCount = 0;
         SortedDictionary<Address, AccountChanges> accountChangesMap = new(GenericComparer.GetOptimized<Address>());
         foreach (AccountChanges a in accountChanges)
@@ -42,23 +41,8 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             }
             lastAddress = address;
 
-            if (firstEmptyAccount is null &&
-                a.BalanceChanges.Count == 0 &&
-                a.NonceChanges.Count == 0 &&
-                a.CodeChanges.Count == 0 &&
-                a.StorageChanges.Count == 0 &&
-                a.StorageReads.Count == 0)
-            {
-                firstEmptyAccount = address;
-            }
-
             accountChangesMap.Add(address, a);
             itemCount += 1L + a.StorageChanges.Count + a.StorageReads.Count;
-        }
-
-        if (firstEmptyAccount is not null)
-        {
-            throw new RlpException($"AccountChanges for {firstEmptyAccount} has no changes or reads.");
         }
 
         BlockAccessList blockAccessList = new(accountChangesMap) { ItemCount = itemCount };

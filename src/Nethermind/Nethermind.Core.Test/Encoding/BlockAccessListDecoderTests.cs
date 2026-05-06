@@ -50,7 +50,7 @@ public class BlockAccessListDecoderTests
         Assert.That(() => Rlp.Decode<BlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
 
     [Test]
-    public void Decode_account_changes_without_changes_or_reads_throws_RlpException()
+    public void Decode_account_changes_without_changes_or_reads_roundtrips_as_account_read()
     {
         SortedDictionary<Address, AccountChanges> accountChanges = new()
         {
@@ -59,9 +59,10 @@ public class BlockAccessListDecoderTests
         BlockAccessList blockAccessList = new(accountChanges);
         byte[] encoded = Rlp.Encode(blockAccessList).Bytes;
 
-        Assert.That(
-            () => Rlp.Decode<BlockAccessList>(encoded),
-            Throws.TypeOf<RlpException>().With.Message.Contain("has no changes or reads"));
+        BlockAccessList decoded = Rlp.Decode<BlockAccessList>(encoded);
+
+        Assert.That(decoded, Is.EqualTo(blockAccessList));
+        Assert.That(decoded.ItemCount, Is.EqualTo(1));
     }
 
     [Test]
