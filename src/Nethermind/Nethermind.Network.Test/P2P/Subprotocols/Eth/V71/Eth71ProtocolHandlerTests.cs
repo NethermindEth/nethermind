@@ -10,6 +10,7 @@ using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -118,7 +120,7 @@ public class Eth71ProtocolHandlerTests
     {
         for (int i = 0; i < hashes.Length; i++)
         {
-            _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(expectedBlockAccessLists[i]);
+            _syncManager.GetBlockAccessListRlp(hashes[i]).Returns(ArrayMemoryManager.From(expectedBlockAccessLists[i]));
         }
 
         HandleIncomingStatusMessage();
@@ -142,21 +144,21 @@ public class Eth71ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
         {
             sentRequest = (GetBlockAccessListsMessage)call[0];
-            response = new BlockAccessListsMessage(sentRequest.RequestId, new ArrayPoolList<byte[]?>(2) { bal1, bal2 });
+            response = new BlockAccessListsMessage(sentRequest.RequestId, BuildBlockAccessLists(bal1, bal2));
         });
 
         HandleIncomingStatusMessage();
-        Task<IOwnedReadOnlyList<byte[]?>> task = viaSyncPeerInterface
+        Task<IByteArrayList> task = viaSyncPeerInterface
             ? ((ISyncPeer)_handler).GetBlockAccessLists(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None)
             : _handler.GetBlockAccessLists(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         _session.Received(1).DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
         HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
 
-        using IOwnedReadOnlyList<byte[]?> result = await task;
+        using IByteArrayList result = await task;
         Assert.That(result, Has.Count.EqualTo(2));
-        Assert.That(result[0], Is.EqualTo(bal1));
-        Assert.That(result[1], Is.EqualTo(bal2));
+        Assert.That(result[0].SequenceEqual(bal1), Is.True);
+        Assert.That(result[1].SequenceEqual(bal2), Is.True);
         Assert.Throws<ObjectDisposedException>(() => _ = sentRequest!.Hashes[0]);
         response?.Dispose();
     }
@@ -164,7 +166,7 @@ public class Eth71ProtocolHandlerTests
     [Test]
     public void Should_throw_when_receiving_unrequested_block_access_lists()
     {
-        using BlockAccessListsMessage msg = new(9999, ArrayPoolList<byte[]?>.Empty());
+        using BlockAccessListsMessage msg = new(9999, EmptyByteArrayList.Instance);
 
         HandleIncomingStatusMessage();
         Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth71MessageCode.BlockAccessLists));
@@ -174,10 +176,11 @@ public class Eth71ProtocolHandlerTests
     public async Task Should_return_empty_list_when_requesting_zero_hashes()
     {
         HandleIncomingStatusMessage();
-        IOwnedReadOnlyList<byte[]?> result = await _handler.GetBlockAccessLists(
+        IByteArrayList result = await _handler.GetBlockAccessLists(
             Array.Empty<Hash256>(), CancellationToken.None);
 
         Assert.That(result, Has.Count.EqualTo(0));
+        result.Dispose();
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
     }
 
@@ -264,6 +267,20 @@ public class Eth71ProtocolHandlerTests
         return true;
     }
 
-    private static bool SameBytesOrMissing(byte[]? actual, byte[]? expected) =>
-        expected is null ? actual is null : actual is not null && actual.AsSpan().SequenceEqual(expected);
+    private static bool SameBytesOrMissing(ReadOnlySpan<byte> actual, byte[]? expected) =>
+        expected is null ? actual.IsEmpty : actual.SequenceEqual(expected);
+
+    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
+    {
+        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
+        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
+        {
+            for (int i = 0; i < blockAccessLists.Length; i++)
+            {
+                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
+            }
+        }
+
+        return new RlpByteArrayList(builder.ToRlpItemList());
+    }
 }

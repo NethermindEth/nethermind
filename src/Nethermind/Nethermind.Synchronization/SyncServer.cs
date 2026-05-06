@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
@@ -375,7 +376,7 @@ namespace Nethermind.Synchronization
 
         public TxReceipt[] GetReceipts(Hash256? blockHash) => blockHash is not null ? _receiptFinder.Get(blockHash) : [];
 
-        public byte[]? GetBlockAccessListRlp(Hash256 blockHash) =>
+        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash) =>
             _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.BlockAccessListHash is null
                 ? null
                 : _blockAccessListStore.GetRlp(blockHash);

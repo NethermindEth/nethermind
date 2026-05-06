@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +18,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -87,34 +90,43 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     {
         using GetBlockAccessListsMessage req = request;
         IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
-        ArrayPoolList<byte[]?> results = new(hashes.Count);
         long totalSize = 0;
+        RlpByteArrayList results;
 
-        for (int i = 0; i < hashes.Count; i++)
+        using (DeferredRlpItemList.Builder builder = new(entryCapacity: hashes.Count))
         {
-            if (cancellationToken.IsCancellationRequested)
+            using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
             {
-                break;
+                for (int i = 0; i < hashes.Count; i++)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    using MemoryManager<byte>? balRlp = SyncServer.GetBlockAccessListRlp(hashes[i]);
+                    ReadOnlySpan<byte> balRlpSpan = balRlp is null ? ReadOnlySpan<byte>.Empty : balRlp.Memory.Span;
+                    writer.WriteValue(balRlpSpan);
+                    totalSize += Rlp.LengthOf(balRlpSpan);
+
+                    if (totalSize > BalResponseSoftLimit)
+                    {
+                        break;
+                    }
+                }
             }
 
-            byte[]? balRlp = SyncServer.GetBlockAccessListRlp(hashes[i]);
-            results.Add(balRlp);
-            totalSize += balRlp?.Length ?? 1;
-
-            if (totalSize > BalResponseSoftLimit)
-            {
-                break;
-            }
+            results = new RlpByteArrayList(builder.ToRlpItemList());
         }
 
         return Task.FromResult(new BlockAccessListsMessage(req.RequestId, results));
     }
 
-    public async Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    public async Task<IByteArrayList> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
     {
         if (blockHashes.Count == 0)
         {
-            return ArrayPoolList<byte[]?>.Empty();
+            return EmptyByteArrayList.Instance;
         }
 
         ArrayPoolList<Hash256> hashList = new(blockHashes.Count);
@@ -138,6 +150,6 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         }
     }
 
-    Task<IOwnedReadOnlyList<byte[]?>> ISyncPeer.GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+    Task<IByteArrayList> ISyncPeer.GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         => GetBlockAccessLists(blockHashes, token);
 }

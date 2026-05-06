@@ -1,11 +1,10 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -13,12 +12,8 @@ namespace Nethermind.Synchronization;
 
 public class SyncPointers : ISyncPointers
 {
-    private readonly IDb _blocksDb;
+    private readonly IDb _metadataDb;
     private readonly IDb _defaultReceiptDbColumn;
-    private readonly IDb _blockAccessListsDb;
-
-    private static readonly byte[] LowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
-
 
     private long? _lowestInsertedBodyNumber;
     public long? LowestInsertedBodyNumber
@@ -27,7 +22,7 @@ public class SyncPointers : ISyncPointers
         set
         {
             _lowestInsertedBodyNumber = value;
-            if (value.HasValue) _blocksDb[LowestInsertedBodyNumberDbEntryAddress] = Rlp.Encode(value.Value).Bytes;
+            if (value.HasValue) _metadataDb.Set(MetadataDbKeys.LowestInsertedBodyNumber, Rlp.Encode(value.Value).Bytes);
         }
     }
 
@@ -56,30 +51,27 @@ public class SyncPointers : ISyncPointers
             _lowestInsertedBlockAccessListBlock = value;
             if (value.HasValue)
             {
-                // Keccak.Zero is a metadata sentinel inside the BAL DB, matching the receipts pointer pattern.
-                _blockAccessListsDb.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber, Rlp.Encode(value.Value).Bytes);
             }
         }
     }
 
 
     public SyncPointers(
-        [KeyFilter(DbNames.Blocks)] IDb blocksDb,
         IColumnsDb<ReceiptsColumns> receiptsDb,
-        [KeyFilter(DbNames.BlockAccessLists)] IDb blockAccessListsDb,
+        [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         IReceiptConfig receiptConfig)
     {
-        _blocksDb = blocksDb;
+        _metadataDb = metadataDb;
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
-        _blockAccessListsDb = blockAccessListsDb;
 
-        LowestInsertedBodyNumber = _blocksDb[LowestInsertedBodyNumberDbEntryAddress]?.AsRlpValueContext().DecodeLong();
+        _lowestInsertedBodyNumber = ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBodyNumber);
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBytes).DecodeLong();
 
-        byte[] lowestBalBytes = _blockAccessListsDb.Get(Keccak.Zero);
-        _lowestInsertedBlockAccessListBlock = lowestBalBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBalBytes).DecodeLong();
+        _lowestInsertedBlockAccessListBlock =
+            ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
 
         // When not storing receipt, set the lowest inserted receipt to 0 so that old receipt will finish immediately
         if (!receiptConfig.StoreReceipts)
@@ -87,4 +79,13 @@ public class SyncPointers : ISyncPointers
             _lowestInsertedReceiptBlock = 0;
         }
     }
+
+    private static long? ReadPointer(IDb sourceDb, int metadataKey)
+    {
+        byte[]? pointerBytes = sourceDb.Get(metadataKey);
+        return pointerBytes is null ? null : DecodePointer(pointerBytes);
+    }
+
+    private static long DecodePointer(byte[] pointerBytes) =>
+        new Rlp.ValueDecoderContext(pointerBytes).DecodeLong();
 }

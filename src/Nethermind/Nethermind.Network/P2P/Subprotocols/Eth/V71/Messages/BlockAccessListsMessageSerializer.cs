@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
-using Nethermind.Core.Collections;
+using Nethermind.Core.Buffers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -15,48 +16,40 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
         GethSyncLimits.MaxBodyFetch, nameof(BlockAccessListsMessage.BlockAccessLists));
 
     protected override void SerializeInternal(IByteBuffer byteBuffer, BlockAccessListsMessage message)
-    {
-        NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
+        => NettyRlpStream.WriteByteArrayList(byteBuffer, message.BlockAccessLists);
 
-        foreach (byte[]? bal in message.BlockAccessLists.AsSpan())
+    public override BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
+    {
+        NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+        Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, sliceMemory: true);
+        int startPosition = ctx.Position;
+        RlpByteArrayList? blockAccessLists = null;
+
+        try
         {
-            if (bal is not null)
-            {
-                stream.Encode(bal);
-            }
-            else
-            {
-                stream.EncodeEmptyByteArray();
-            }
-        }
-    }
+            int sequenceLength = ctx.ReadSequenceLength();
+            int checkPosition = ctx.Position + sequenceLength;
+            long requestId = ctx.DecodeLong();
 
-    protected override BlockAccessListsMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId)
-    {
-        ArrayPoolList<byte[]?> blockAccessLists =
-            ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext nestedContext) => DecodeBlockAccessList(ref nestedContext), limit: RlpLimit);
-        return new BlockAccessListsMessage(requestId, blockAccessLists);
+            blockAccessLists = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+            Rlp.GuardLimit(blockAccessLists.Count, sequenceLength, RlpLimit);
+            ctx.Check(checkPosition);
+
+            memoryOwner = null;
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position - startPosition);
+            return new BlockAccessListsMessage(requestId, blockAccessLists);
+        }
+        catch
+        {
+            blockAccessLists?.Dispose();
+            memoryOwner?.Dispose();
+            throw;
+        }
     }
 
     protected override int GetLengthInternal(BlockAccessListsMessage message) =>
-        Rlp.LengthOfSequence(GetBlockAccessListsContentLength(message.BlockAccessLists));
+        Rlp.LengthOfByteArrayList(message.BlockAccessLists);
 
-    private static int GetBlockAccessListsContentLength(IOwnedReadOnlyList<byte[]?> blockAccessLists)
-    {
-        int contentLength = 0;
-
-        foreach (byte[]? bal in blockAccessLists.AsSpan())
-        {
-            contentLength += Rlp.LengthOf(bal);
-        }
-
-        return contentLength;
-    }
-
-    private static byte[]? DecodeBlockAccessList(ref Rlp.ValueDecoderContext ctx)
-    {
-        byte[] blockAccessList = ctx.DecodeByteArray();
-        return blockAccessList.Length == 0 ? null : blockAccessList;
-    }
+    protected override BlockAccessListsMessage DeserializeInternal(ref Rlp.ValueDecoderContext ctx, long requestId) =>
+        throw new NotSupportedException($"{nameof(BlockAccessListsMessageSerializer)} requires {nameof(NettyBufferMemoryOwner)} to avoid BAL copies.");
 }

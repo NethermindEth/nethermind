@@ -193,7 +193,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         }
     }
 
-    private bool IsValidAccessList(BlockInfo blockInfo, byte[] accessListRlp, out string? errorMessage)
+    private bool IsValidAccessList(BlockInfo blockInfo, ReadOnlySpan<byte> accessListRlp, out string? errorMessage)
     {
         BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash, blockNumber: blockInfo.BlockNumber);
         bool isValid;
@@ -219,11 +219,12 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         for (int i = 0; i < blockInfos.Length; i++)
         {
             BlockInfo? blockInfo = blockInfos[i];
-            byte[]? accessListRlp = (batch.Response?.Count ?? 0) <= i
-                ? null
-                : batch.Response![i];
+            bool hasAccessListResponse = (batch.Response?.Count ?? 0) > i;
+            ReadOnlySpan<byte> accessListRlp = hasAccessListResponse
+                ? batch.Response![i]
+                : ReadOnlySpan<byte>.Empty;
 
-            if (accessListRlp is not null)
+            if (!accessListRlp.IsEmpty)
             {
                 // last batch
                 if (blockInfo is null)

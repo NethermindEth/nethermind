@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
-            bool? bodiesOnly = null; // Otherwise receipts only
+            BlocksRequestContentType? requestContentType = null;
 
             ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
             ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
@@ -309,14 +309,14 @@ namespace Nethermind.Synchronization.Blocks
                 }
                 parentHeader = blockHeader;
 
-                if ((bodiesOnly ?? true) && entry.NeedBodyDownload)
+                if ((requestContentType is null or BlocksRequestContentType.Bodies) && entry.NeedBodyDownload)
                 {
                     entry.MarkBlockRequestSent();
                     bodiesToDownload.Add(blockHeader);
-                    bodiesOnly = true;
+                    requestContentType = BlocksRequestContentType.Bodies;
                 }
 
-                if (entry.NeedAccessListDownload)
+                if ((requestContentType is null or BlocksRequestContentType.BlockAccessLists) && entry.NeedAccessListDownload)
                 {
                     blockAccessListsRequestSize ??=
                         (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.BlockAccessLists, cancellation))
@@ -326,17 +326,18 @@ namespace Nethermind.Synchronization.Blocks
                     {
                         entry.MarkAccessListRequestSent();
                         blockAccessListsToDownload.Add(blockHeader);
+                        requestContentType = BlocksRequestContentType.BlockAccessLists;
                     }
                 }
 
                 if (
                     shouldDownloadReceipt &&
-                    !(bodiesOnly ?? false) &&
+                    (requestContentType is null or BlocksRequestContentType.Receipts) &&
                     entry.NeedReceiptDownload)
                 {
                     entry.MarkReceiptRequestSent();
                     receiptsToDownload.Add(blockHeader);
-                    bodiesOnly = false;
+                    requestContentType = BlocksRequestContentType.Receipts;
                 }
 
                 if (bodiesToDownload.Count >= bodiesRequestSize)
@@ -403,7 +404,7 @@ namespace Nethermind.Synchronization.Blocks
             using BlocksRequest _ = response;
             BlockBody[]? bodies = response.OwnedBodies?.Bodies;
             response.OwnedBodies?.Disown();
-            IOwnedReadOnlyList<byte[]?>? blockAccessLists = response.BlockAccessLists;
+            IByteArrayList? blockAccessLists = response.BlockAccessLists;
             bool unsupportedBlockAccessListsPeer = response.BlockAccessListsRequests.Count > 0 &&
                                                    peer is not null &&
                                                    !peer.SyncPeer.SupportsBlockAccessLists();
@@ -557,7 +558,7 @@ namespace Nethermind.Synchronization.Blocks
         private bool TryHandleBlockAccessListResponse(
             BlockHeader header,
             BlockEntry entry,
-            IOwnedReadOnlyList<byte[]?>? blockAccessLists,
+            IByteArrayList? blockAccessLists,
             int index,
             bool unsupportedBlockAccessListsPeer,
             PeerInfo? peer,
@@ -574,8 +575,8 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
-            byte[]? encodedAccessList = blockAccessLists[index];
-            if (encodedAccessList is null || encodedAccessList.Length == 0)
+            ReadOnlySpan<byte> encodedAccessList = blockAccessLists[index];
+            if (encodedAccessList.IsEmpty)
             {
                 entry.RetryAccessListRequest();
                 return false;
@@ -591,14 +592,22 @@ namespace Nethermind.Synchronization.Blocks
                 return false;
             }
 
-            entry.EncodedAccessList = encodedAccessList;
+            byte[] ownedEncodedAccessList = encodedAccessList.ToArray();
+            entry.EncodedAccessList = ownedEncodedAccessList;
             if (entry.Block is not null)
             {
-                entry.Block.EncodedBlockAccessList = encodedAccessList;
+                entry.Block.EncodedBlockAccessList = ownedEncodedAccessList;
             }
 
             entry.PeerInfo = peer;
             return true;
+        }
+
+        private enum BlocksRequestContentType
+        {
+            Bodies,
+            BlockAccessLists,
+            Receipts
         }
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)

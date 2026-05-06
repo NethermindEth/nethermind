@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -32,8 +33,9 @@ public interface IBlockAccessListStore
     }
 
     void Insert(Hash256 blockHash, byte[] bal);
+    void Insert(Hash256 blockHash, ReadOnlySpan<byte> bal);
     void Insert(Hash256 blockHash, BlockAccessList bal);
-    byte[]? GetRlp(Hash256 blockHash);
+    MemoryManager<byte>? GetRlp(Hash256 blockHash);
     BlockAccessList? Get(Hash256 blockHash);
     bool Exists(Hash256 blockHash);
     void Delete(Hash256 blockHash);

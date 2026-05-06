@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             SerializeInternal(byteBuffer, message);
         }
 
-        public TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+        public virtual TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
 
         private TMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {

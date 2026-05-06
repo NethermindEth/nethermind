@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
@@ -12,6 +13,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
@@ -75,7 +77,7 @@ public class BlockAccessListsSyncFeedTests
 
         BlockAccessListsSyncBatch batch = new([blockInfo])
         {
-            Response = new ArrayPoolList<byte[]?>(1) { wrongBal },
+            Response = BuildBlockAccessLists(wrongBal),
             ResponseSourcePeer = peerInfo
         };
 
@@ -116,7 +118,7 @@ public class BlockAccessListsSyncFeedTests
 
         BlockAccessListsSyncBatch batch = new([blockInfo])
         {
-            Response = new ArrayPoolList<byte[]?>(1) { null },
+            Response = BuildBlockAccessLists((byte[]?)null),
             ResponseSourcePeer = peerInfo
         };
 
@@ -128,5 +130,19 @@ public class BlockAccessListsSyncFeedTests
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
             Arg.Any<string>());
+    }
+
+    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
+    {
+        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
+        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
+        {
+            for (int i = 0; i < blockAccessLists.Length; i++)
+            {
+                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
+            }
+        }
+
+        return new RlpByteArrayList(builder.ToRlpItemList());
     }
 }

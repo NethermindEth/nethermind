@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -686,12 +688,21 @@ public class SyncServerTests
         ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
         if (shouldReadStore)
         {
-            blockAccessListStore.GetRlp(TestItem.KeccakA).Returns(expectedRlp);
+            blockAccessListStore.GetRlp(TestItem.KeccakA).Returns(ArrayMemoryManager.From(expectedRlp));
         }
 
         SyncServer syncServer = ctx.CreateSyncServer(blockAccessListStore);
 
-        Assert.That(syncServer.GetBlockAccessListRlp(TestItem.KeccakA), Is.EqualTo(expectedRlp));
+        using MemoryManager<byte>? actualRlp = syncServer.GetBlockAccessListRlp(TestItem.KeccakA);
+        if (expectedRlp is null)
+        {
+            Assert.That(actualRlp, Is.Null);
+        }
+        else
+        {
+            Assert.That(actualRlp!.Memory.ToArray(), Is.EqualTo(expectedRlp));
+        }
+
         if (shouldReadStore)
         {
             blockAccessListStore.Received(1).GetRlp(TestItem.KeccakA);

@@ -22,7 +22,24 @@ public class BlockAccessListsMessageSerializerTests
     {
         BlockAccessListsMessageSerializer serializer = new();
         using BlockAccessListsMessage msg = buildMessage();
-        SerializerTester.TestZero(serializer, msg, expectedData);
+        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+        using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+
+        serializer.Serialize(buffer, msg);
+        using BlockAccessListsMessage deserialized = serializer.Deserialize(buffer);
+
+        AssertBlockAccessListsMessage(deserialized, msg);
+        Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+
+        serializer.Serialize(buffer2, deserialized);
+        buffer.SetReaderIndex(0);
+        string allHex = buffer.ReadAllHex();
+        Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+
+        if (expectedData is not null)
+        {
+            Assert.That(allHex, Is.EqualTo(expectedData));
+        }
     }
 
     [TestCaseSource(nameof(BlockAccessListsRejectionCases))]
@@ -37,27 +54,19 @@ public class BlockAccessListsMessageSerializerTests
     private static IEnumerable<TestCaseData> BlockAccessListsRoundtripCases()
     {
         yield return new TestCaseData(
-                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(42, ArrayPoolList<byte[]?>.Empty())),
+                new Func<BlockAccessListsMessage>(() => BuildMessage(42)),
                 null)
             .SetName("Roundtrip_empty");
         yield return new TestCaseData(
-                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(43, new ArrayPoolList<byte[]?>(1)
-                {
-                    null
-                })),
+                new Func<BlockAccessListsMessage>(() => BuildMessage(43, (byte[]?)null)),
                 "c32bc180")
             .SetName("Roundtrip_single_absent_bal");
         yield return new TestCaseData(
-                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(44, new ArrayPoolList<byte[]?>(3)
-                {
-                    new byte[] { 0xc1, 0x80 },
-                    new byte[] { 0xc2, 0x01, 0x02 },
-                    null
-                })),
+                new Func<BlockAccessListsMessage>(() => BuildMessage(44, [0xc1, 0x80], [0xc2, 0x01, 0x02], null)),
                 null)
             .SetName("Roundtrip_multiple_bals");
         yield return new TestCaseData(
-                new Func<BlockAccessListsMessage>(() => new BlockAccessListsMessage(-1, ArrayPoolList<byte[]?>.Empty())),
+                new Func<BlockAccessListsMessage>(() => BuildMessage(-1)),
                 null)
             .SetName("Roundtrip_negative_request_id");
     }
@@ -81,16 +90,40 @@ public class BlockAccessListsMessageSerializerTests
     private static IByteBuffer BuildTooManyBlockAccessListsPayload()
     {
         BlockAccessListsMessageSerializer serializer = new();
-        ArrayPoolList<byte[]?> blockAccessLists = new(GethSyncLimits.MaxBodyFetch + 1);
-        for (int i = 0; i <= GethSyncLimits.MaxBodyFetch; i++)
-        {
-            blockAccessLists.Add(null);
-        }
+        byte[]?[] blockAccessLists = new byte[]?[GethSyncLimits.MaxBodyFetch + 1];
 
-        using BlockAccessListsMessage msg = new(45, blockAccessLists);
+        using BlockAccessListsMessage msg = BuildMessage(45, blockAccessLists);
         IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg, out _));
         serializer.Serialize(payload, msg);
         return payload;
+    }
+
+    private static BlockAccessListsMessage BuildMessage(long requestId, params byte[]?[] blockAccessLists) =>
+        new(requestId, BuildBlockAccessLists(blockAccessLists));
+
+    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
+    {
+        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
+        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
+        {
+            for (int i = 0; i < blockAccessLists.Length; i++)
+            {
+                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
+            }
+        }
+
+        return new RlpByteArrayList(builder.ToRlpItemList());
+    }
+
+    private static void AssertBlockAccessListsMessage(BlockAccessListsMessage actual, BlockAccessListsMessage expected)
+    {
+        Assert.That(actual.RequestId, Is.EqualTo(expected.RequestId));
+        Assert.That(actual.BlockAccessLists.Count, Is.EqualTo(expected.BlockAccessLists.Count));
+
+        for (int i = 0; i < expected.BlockAccessLists.Count; i++)
+        {
+            Assert.That(actual.BlockAccessLists[i].SequenceEqual(expected.BlockAccessLists[i]), Is.True);
+        }
     }
 }
 

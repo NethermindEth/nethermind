@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,6 +12,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -37,7 +39,7 @@ public partial class BlockDownloaderTests
             DownloaderOptions.Insert,
             0,
             CancellationToken.None))!;
-        request.BlockAccessLists = new ArrayPoolList<byte[]?>(1) { null };
+        request.BlockAccessLists = BuildBlockAccessLists((byte[]?)null);
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.ProtocolVersion.Returns(EthVersions.Eth71);
@@ -50,6 +52,40 @@ public partial class BlockDownloaderTests
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
             Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Prepares_only_one_download_type_per_request()
+    {
+        IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(forwardHeaderProvider));
+        Context ctx = node.Resolve<Context>();
+        ConfigureBlockAccessListRequest(ctx, forwardHeaderProvider);
+
+        using BlocksRequest bodyRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None))!;
+
+        Assert.That(bodyRequest.BodiesRequests, Has.Count.EqualTo(1));
+        Assert.That(bodyRequest.BlockAccessListsRequests, Has.Count.EqualTo(0));
+        Assert.That(bodyRequest.ReceiptsRequests, Has.Count.EqualTo(0));
+
+        using BlocksRequest blockAccessListRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None))!;
+
+        Assert.That(blockAccessListRequest.BodiesRequests, Has.Count.EqualTo(0));
+        Assert.That(blockAccessListRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
+        Assert.That(blockAccessListRequest.ReceiptsRequests, Has.Count.EqualTo(0));
+
+        BlocksRequest? noRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
+            DownloaderOptions.Insert,
+            0,
+            CancellationToken.None);
+
+        Assert.That(noRequest, Is.Null);
     }
 
     [Test]
@@ -103,6 +139,20 @@ public partial class BlockDownloaderTests
         ctx.PeerPool
             .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<int?>(1));
+    }
+
+    private static IByteArrayList BuildBlockAccessLists(params byte[]?[] blockAccessLists)
+    {
+        using DeferredRlpItemList.Builder builder = new(entryCapacity: blockAccessLists.Length);
+        using (DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer())
+        {
+            for (int i = 0; i < blockAccessLists.Length; i++)
+            {
+                writer.WriteValue(blockAccessLists[i] ?? ReadOnlySpan<byte>.Empty);
+            }
+        }
+
+        return new RlpByteArrayList(builder.ToRlpItemList());
     }
 
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
@@ -114,7 +115,8 @@ public class BlockTreeTests
             .TestObject;
 
         blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
-        blockAccessListStore.GetRlp(block.Hash!).Should().BeNull();
+        using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
+        missingBal.Should().BeNull();
 
         byte[] encodedBal = Rlp.Encode(new BlockAccessList()).Bytes;
         block.GeneratedBlockAccessList = new BlockAccessList();
@@ -123,7 +125,9 @@ public class BlockTreeTests
 
         blockTree.UpdateMainChain([block], true);
 
-        blockAccessListStore.GetRlp(block.Hash!).Should().Equal(encodedBal);
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Hash!);
+        persistedBal.Should().NotBeNull();
+        persistedBal!.Memory.ToArray().Should().Equal(encodedBal);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

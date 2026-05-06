@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -588,7 +589,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(BalSyncChainLength));
 
         IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
-        Assert.That(serverBalStore.GetRlp(serverBlockTree.FindBlock(1)!.Hash!), Is.Not.Null);
+        using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(serverBlockTree.FindBlock(1)!.Hash!))
+        {
+            Assert.That(serverBal, Is.Not.Null);
+        }
 
         long syncPivotNumber = 0;
         PrivateKey clientKey = TestItem.PrivateKeyF;
@@ -667,9 +671,15 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
         Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
         Assert.That(lastPreActivationBlock.Header.BlockAccessListHash, Is.Null);
-        Assert.That(serverBalStore.GetRlp(lastPreActivationBlock.Hash!), Is.Null);
+        using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Hash!))
+        {
+            Assert.That(preActivationBal, Is.Null);
+        }
         Assert.That(firstActivatedBlock.Header.BlockAccessListHash, Is.Not.Null);
-        Assert.That(serverBalStore.GetRlp(firstActivatedBlock.Hash!), Is.Not.Null);
+        using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Hash!))
+        {
+            Assert.That(firstActivatedBal, Is.Not.Null);
+        }
 
         long syncPivotNumber = 0;
         PrivateKey clientKey = TestItem.PrivateKeyF;
@@ -1080,8 +1090,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 Block sourceBlock = sourceBlockTree.FindBlock(blockNumber)!;
                 Block syncedBlock = blockTree.FindBlock(blockNumber)!;
 
-                byte[]? sourceBal = sourceBlockAccessListStore.GetRlp(sourceBlock.Hash!);
-                byte[]? syncedBal = blockAccessListStore.GetRlp(syncedBlock.Hash!);
+                byte[]? sourceBal = GetBlockAccessListRlp(sourceBlockAccessListStore, sourceBlock.Hash!);
+                byte[]? syncedBal = GetBlockAccessListRlp(blockAccessListStore, syncedBlock.Hash!);
                 bool balEnabled = sourceBlock.Header.BlockAccessListHash is not null;
 
                 if (!balEnabled)
@@ -1117,6 +1127,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 Assert.That(new Hash256(ValueKeccak.Compute(syncedBal!).Bytes), Is.EqualTo(syncedBlock.Header.BlockAccessListHash),
                     $"BAL hash mismatch at block {blockNumber}.");
             }
+        }
+
+        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, Hash256 blockHash)
+        {
+            using MemoryManager<byte>? rlp = blockAccessListStore.GetRlp(blockHash);
+            return rlp?.Memory.ToArray();
         }
     }
 
