@@ -76,7 +76,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Bits per key for the per-snapshot trie-node bloom filter (state and storage trie nodes). Sized independently of the address/slot bloom because trie nodes vastly outnumber accounts. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "10.0")]
     double PersistedSnapshotTrieBloomBitsPerKey { get; set; }
 
-    [ConfigItem(Description = "Append a hash-index section to the address-level HSST (BTreeHashIndex format). Direct hash lookup with b-tree fallback on collision.", DefaultValue = "true")]
+    [ConfigItem(Description = "Append a hash-index section to the address-level HSST (BTreeHashIndex format). Direct hash lookup with b-tree fallback on collision.", DefaultValue = "false")]
     bool PersistedSnapshotHashIndexAddress { get; set; }
 
     [ConfigItem(Description = "Append a hash-index section to the trie-node HSSTs (state + storage, compact/top/fallback). BTreeHashIndex format with b-tree fallback on collision.", DefaultValue = "false")]
