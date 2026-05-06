@@ -180,14 +180,18 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             account = null;
             return false;
         }
-        if (b.Length == 0)
+        // Presence-marker encoding: PersistedSnapshotReader.TryGetAccount filters out
+        // length-0 (absent) entries; a present entry is either [0x00] = deleted or
+        // RLP-bytes = present. Slim account RLP starts with a list header (0xc0+) so
+        // the 0x00 marker never collides with a valid RLP first byte.
+        Span<byte> buf = b.Length <= 256 ? stackalloc byte[256] : new byte[b.Length];
+        Span<byte> rlp = buf[..b.Length];
+        reader.TryRead(b.Offset, rlp);
+        if (rlp.Length == 1 && rlp[0] == 0x00)
         {
             account = null;
             return true;
         }
-        Span<byte> buf = b.Length <= 256 ? stackalloc byte[256] : new byte[b.Length];
-        Span<byte> rlp = buf[..b.Length];
-        reader.TryRead(b.Offset, rlp);
         Rlp.ValueDecoderContext ctx = new(rlp);
         account = AccountDecoder.Slim.Decode(ref ctx);
         return true;

@@ -176,7 +176,7 @@ public static class PersistedSnapshotBuilder
                 uniqueAddresses = addrs;
             });
 
-        HsstByteTagMapBuilder<TWriter> outer = new(ref writer);
+        HsstDenseByteIndexBuilder<TWriter> outer = new(ref writer);
         try
         {
             // Column 0x00: Metadata
@@ -221,7 +221,7 @@ public static class PersistedSnapshotBuilder
         // and all arithmetic is done in long to avoid int overflow for large snapshots.
         (int)Math.Min(1.GiB, snapshot.EstimateMemory() + 1.KiB);
 
-    private static void WriteMetadataColumn<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
+    private static void WriteMetadataColumn<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot) where TWriter : IByteBufferWriter
     {
         // Metadata keys must be in sorted order (ASCII): "from_block" < "from_hash" < "to_block" < "to_hash" < "version"
         ref TWriter innerWriter = ref outer.BeginValueWrite();
@@ -246,7 +246,7 @@ public static class PersistedSnapshotBuilder
     }
 
     private static void WriteAccountColumn<TWriter>(
-        ref HsstByteTagMapBuilder<TWriter> outer, Snapshot snapshot,
+        ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot,
         ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
         ArrayPoolList<Address> uniqueAddresses,
         BloomFilter? bloom = null,
@@ -280,8 +280,12 @@ public static class PersistedSnapshotBuilder
             // Begin per-address HSST
             ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
             // Per-address column has at most 3 sub-tags (slots, self-destruct, account) keyed
-            // by single bytes, so a flat ByteTagMap beats a b-tree on both bytes and parse cost.
-            using HsstByteTagMapBuilder<TWriter> perAddr = new(ref perAddrWriter);
+            // by single bytes 0x01..0x03; DenseByteIndex addresses entries by tag-byte directly,
+            // gap-filling unused positions (0x00, plus any sub-tag missing for this address)
+            // with zero-length values. Sub-tag values carry an explicit presence marker:
+            // SD = [0x00] destructed / [0x01] new account, Account = [0x00] deleted / RLP present.
+            // length 0 = absent (gap-filled).
+            using HsstDenseByteIndexBuilder<TWriter> perAddr = new(ref perAddrWriter);
 
             // Sub-tag 0x01: Slots
             bool hasStorage = storageIdx < sortedStorages.Count &&
@@ -338,18 +342,21 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshot.SlotSubTag);
             }
 
-            // Sub-tag 0x02: Self-destruct
+            // Sub-tag 0x02: Self-destruct. Present-marker encoding: [0x00] destructed,
+            // [0x01] new account; length 0 = absent (gap-filled by DenseByteIndex).
             if (snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
             {
-                perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : []);
+                perAddr.Add(PersistedSnapshot.SelfDestructSubTag, sdValue ? [0x01] : [0x00]);
             }
 
-            // Sub-tag 0x03: Account
+            // Sub-tag 0x03: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
+            // present; length 0 = absent (gap-filled). Slim account RLP starts with a
+            // list header (0xc0+) so 0x00 first-byte is unambiguous.
             if (snapshot.TryGetAccount(address, out Account? account))
             {
                 if (account is null)
                 {
-                    perAddr.Add(PersistedSnapshot.AccountSubTag, []);
+                    perAddr.Add(PersistedSnapshot.AccountSubTag, [0x00]);
                 }
                 else
                 {
@@ -368,7 +375,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
     }
 
-    private static void WriteStateTopNodesColumn<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStateTopNodesColumn<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
@@ -389,7 +396,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateTopNodesTag);
     }
 
-    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnCompact<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
@@ -410,7 +417,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateNodeTag);
     }
 
-    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStateNodesColumnFallback<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
         using HsstBuilder<TWriter> inner = new(ref innerWriter, new HsstBTreeOptions
@@ -431,7 +438,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
     }
 
-    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnCompact<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(8) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
@@ -467,7 +474,7 @@ public static class PersistedSnapshotBuilder
         outer.FinishValueWrite(PersistedSnapshot.StorageNodeTag);
     }
 
-    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstByteTagMapBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
+    private static void WriteStorageNodesColumnFallback<TWriter>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storageNodes, BloomFilter? trieBloom = null, HsstHashIndexOptions hashIndex = default) where TWriter : IByteBufferWriter
     {
         // Hash-level HSST: Hash256(32) -> inner HSST(TreePath(33) -> NodeRLP)
         ref TWriter hashWriter = ref outer.BeginValueWrite();
@@ -513,7 +520,7 @@ public static class PersistedSnapshotBuilder
     {
         using WholeReadSession session = fullSnapshot.BeginWholeReadSession();
         ReadOnlySpan<byte> snapshotData = session.GetSpan();
-        using HsstByteTagMapBuilder<TWriter> outerBuilder = new(ref writer);
+        using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
         int snapshotId = fullSnapshot.Id;
 
@@ -664,7 +671,7 @@ public static class PersistedSnapshotBuilder
                 }
             }
 
-            using HsstByteTagMapBuilder<TWriter> outerBuilder = new(ref writer);
+            using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
             foreach (byte[] tag in s_columnTags)
             {
@@ -1306,14 +1313,17 @@ public static class PersistedSnapshotBuilder
             perAddrBounds[j] = (columnBounds[srcIdx].Offset + valOff, valLen);
         }
 
-        using HsstByteTagMapBuilder<TWriter> perAddrBuilder = new(ref writer);
+        using HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref writer);
 
-        // Find newest destruct barrier: newest j where SelfDestructSubTag value is empty (destructed)
+        // Find newest destruct barrier: newest j where SelfDestructSubTag is present and
+        // marks "destructed" ([0x00]). With DenseByteIndex per-address encoding, sub-tag
+        // values are presence-marked: length 0 = absent, [0x00] = destructed, [0x01] = new.
         int destructBarrier = -1;
         for (int j = 0; j < matchCount; j++)
         {
             ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-            if (TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) && sdVal.IsEmpty)
+            if (TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)
+                && sdVal.Length == 1 && sdVal[0] == 0x00)
                 destructBarrier = j;
         }
 
@@ -1385,7 +1395,9 @@ public static class PersistedSnapshotBuilder
             }
         }
 
-        // Sub-tag 0x02: SelfDestruct — iterate 0..M-1, apply TryAdd semantics
+        // Sub-tag 0x02: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
+        // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
+        // filled length 0 under DenseByteIndex) are ignored.
         {
             bool hasSd = false;
             ReadOnlySpan<byte> sdResult = default;
@@ -1393,20 +1405,19 @@ public static class PersistedSnapshotBuilder
             for (int j = 0; j < matchCount; j++)
             {
                 ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                if (!TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal)) continue;
+                if (!TryGet(perAddr, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdVal) || sdVal.Length == 0)
+                    continue;
 
                 if (!hasSd)
                 {
-                    // First SD entry
                     hasSd = true;
                     sdResult = sdVal;
                 }
                 else
                 {
-                    // TryAdd: newer=empty -> empty, newer=0x01 -> keep older
-                    if (sdVal.IsEmpty)
-                        sdResult = [];
-                    // else newer=0x01 (new account): keep existing sdResult (TryAdd)
+                    // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
+                    if (sdVal[0] == 0x00)
+                        sdResult = sdVal;
                 }
             }
 
@@ -1414,12 +1425,12 @@ public static class PersistedSnapshotBuilder
                 perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, sdResult);
         }
 
-        // Sub-tag 0x03: Account — newest wins (walk M-1..0, first with AccountSubTag)
+        // Sub-tag 0x03: Account — newest wins (walk M-1..0, first present (length>0)).
         {
             for (int j = matchCount - 1; j >= 0; j--)
             {
                 ReadOnlySpan<byte> perAddr = sessions[matchingSources[j]].GetSpan().Slice(perAddrBounds[j].Offset, perAddrBounds[j].Length);
-                if (TryGet(perAddr, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account))
+                if (TryGet(perAddr, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> account) && account.Length > 0)
                 {
                     perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, account);
                     break;

@@ -58,6 +58,17 @@ public sealed class HsstMergeEnumerator : IDisposable
             return;
         }
 
+        if (tag == IndexType.DenseByteIndex)
+        {
+            // DenseByteIndex is used for the persisted-snapshot outer + per-address
+            // containers, which the merge code accesses directly via TryGet rather than
+            // via this enumerator. Defensive empty enumeration: never invoked in
+            // production paths but avoids crashing the BTree parser if the trailer
+            // ever reaches this constructor.
+            _entries = new NativeMemoryList<(int, int, int, int)>(0);
+            return;
+        }
+
         if (tag == IndexType.PackedArray)
         {
             // PackedArray's data section is a packed [key|value][key|value]... array. Both

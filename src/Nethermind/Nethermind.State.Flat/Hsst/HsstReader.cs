@@ -98,6 +98,13 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                     return true;
                 }
                 return false;
+            case IndexType.DenseByteIndex:
+                if (HsstDenseByteIndexReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound denseBound))
+                {
+                    _bound = denseBound;
+                    return true;
+                }
+                return false;
             default: return false;
         }
     }

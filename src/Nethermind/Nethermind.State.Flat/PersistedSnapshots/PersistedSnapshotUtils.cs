@@ -310,11 +310,14 @@ internal static class PersistedSnapshotUtils
                         Address address = new(addrKey);
                         ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
 
-                        // Validate account sub-tag (0x03)
-                        if (TryGet(perAddrSpan, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp))
+                        // Validate account sub-tag (0x03). Presence-marker encoding under
+                        // DenseByteIndex: length 0 = absent (gap-filled), [0x00] = deleted,
+                        // RLP-bytes = present.
+                        if (TryGet(perAddrSpan, PersistedSnapshot.AccountSubTag, out ReadOnlySpan<byte> accountRlp)
+                            && accountRlp.Length > 0)
                         {
                             Account? bundleAccount = bundle.GetAccount(address);
-                            if (accountRlp.IsEmpty)
+                            if (accountRlp.Length == 1 && accountRlp[0] == 0x00)
                             {
                                 if (bundleAccount is not null)
                                     throw new InvalidOperationException($"Account {address}: compacted=deleted but bundle={bundleAccount}");
@@ -333,10 +336,12 @@ internal static class PersistedSnapshotUtils
                             }
                         }
 
-                        // Validate self-destruct sub-tag (0x02)
-                        if (TryGet(perAddrSpan, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue))
+                        // Validate self-destruct sub-tag (0x02). Presence-marker encoding:
+                        // length 0 = absent, [0x00] = destructed, [0x01] = new account.
+                        if (TryGet(perAddrSpan, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue)
+                            && sdValue.Length > 0)
                         {
-                            bool actual = !sdValue.IsEmpty; // true = new account (0x01), false = destructed (empty)
+                            bool actual = sdValue[0] != 0x00; // true = new account, false = destructed
 
                             bool? expected = null;
                             for (int i = 0; i < snapshots.Count; i++)

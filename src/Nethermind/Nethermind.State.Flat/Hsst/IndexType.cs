@@ -25,4 +25,15 @@ public enum IndexType : byte
     /// followed by an index into `Ends` — no LEB128 / b-tree machinery.
     /// </summary>
     ByteTagMap = 0x08,
+    /// <summary>
+    /// Byte-addressed array map. Like <see cref="ByteTagMap"/> but the tag byte is
+    /// the array index directly: lookup of single-byte key <c>k</c> resolves to
+    /// <c>Ends[k]</c> with no tag scan. Trailer is
+    /// <c>[Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8]</c> — no tags array.
+    /// Entries that were not explicitly written are gap-filled with zero-length
+    /// values (the cumulative end equals the previous entry's end). Used by the
+    /// persisted-snapshot outer column container and the per-address sub-tag
+    /// container, where the set of tag positions is fixed and known.
+    /// </summary>
+    DenseByteIndex = 0x09,
 }

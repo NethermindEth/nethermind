@@ -48,12 +48,21 @@ public static class PersistedSnapshotReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader, addressBound);
+        // DenseByteIndex returns success for any tag below count, including gap-filled
+        // (length 0) absences; treat length 0 as "no account record" so callers don't
+        // misread an absent entry as a deleted account.
         if (!r.TrySeek(PersistedSnapshot.AccountSubTag, out _))
         {
             accountBound = default;
             return false;
         }
-        accountBound = r.GetBound();
+        Bound b = r.GetBound();
+        if (b.Length == 0)
+        {
+            accountBound = default;
+            return false;
+        }
+        accountBound = b;
         return true;
     }
 
@@ -80,7 +89,9 @@ public static class PersistedSnapshotReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader, addressBound);
-        return r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _);
+        // Presence-marker encoding: an entry of length 0 means "no SD record" (gap-filled
+        // by DenseByteIndex); only a non-empty value (with marker [0x00]/[0x01]) counts.
+        return r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _) && r.GetBound().Length > 0;
     }
 
     internal static bool? TryGetSelfDestructFlag<TReader, TPin>(scoped in TReader reader, Bound addressBound)
@@ -91,10 +102,11 @@ public static class PersistedSnapshotReader
         if (!r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
             return null;
         Bound b = r.GetBound();
-        if (b.Length == 0) return false;
+        // length 0 = absent (DenseByteIndex gap fill). [0x00] = destructed. [0x01] = new account.
+        if (b.Length == 0) return null;
         Span<byte> oneByte = stackalloc byte[1];
-        if (!reader.TryRead(b.Offset, oneByte)) return false;
-        return oneByte[0] == 0x01;
+        if (!reader.TryRead(b.Offset, oneByte)) return null;
+        return oneByte[0] != 0x00;
     }
 
     /// <summary>

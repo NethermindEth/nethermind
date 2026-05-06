@@ -77,10 +77,15 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             {
                 KeyValueEntry addrEntry = _addrEnum.Current;
                 HsstReader<SpanByteReader, NoOpPin> perAddr = new(in _reader, addrEntry.ValueBound);
+                // DenseByteIndex returns success even for gap-filled (length 0) absent
+                // entries; only yield addresses with an actual SD record (length > 0).
                 if (!perAddr.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
                     continue;
+                Bound sdBound = perAddr.GetBound();
+                if (sdBound.Length == 0)
+                    continue;
                 _curKey = addrEntry.KeyBound;
-                _curValue = perAddr.GetBound();
+                _curValue = sdBound;
                 return true;
             }
             return false;
@@ -102,8 +107,11 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         {
             get
             {
+                // Presence-marker encoding: [0x00] = deleted (null), RLP-bytes = present.
+                // The enumerator already filters length-0 absences before yielding.
                 ReadOnlySpan<byte> rlp = Slice(_data, _rlp);
-                return rlp.IsEmpty ? null : AccountDecoder.Slim.Decode(rlp);
+                if (rlp.Length == 1 && rlp[0] == 0x00) return null;
+                return AccountDecoder.Slim.Decode(rlp);
             }
         }
     }
@@ -137,10 +145,15 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             {
                 KeyValueEntry addrEntry = _addrEnum.Current;
                 HsstReader<SpanByteReader, NoOpPin> perAddr = new(in _reader, addrEntry.ValueBound);
+                // DenseByteIndex returns success even for gap-filled (length 0) absent
+                // entries; only yield addresses with an actual account record (length > 0).
                 if (!perAddr.TrySeek(PersistedSnapshot.AccountSubTag, out _))
                     continue;
+                Bound rlpBound = perAddr.GetBound();
+                if (rlpBound.Length == 0)
+                    continue;
                 _curKey = addrEntry.KeyBound;
-                _curRlp = perAddr.GetBound();
+                _curRlp = rlpBound;
                 return true;
             }
             return false;
