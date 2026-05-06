@@ -30,7 +30,7 @@ public static class PersistedSnapshotReader
     /// storage trie) without re-walking the outer column. Used by
     /// <see cref="PersistedSnapshot"/> to populate its address-hash→bound LRU.
     /// </summary>
-    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, Hash256 addressHash, out Bound addressBound)
+    internal static bool TryGetAddressHsstBound<TReader, TPin>(scoped in TReader reader, in ValueHash256 addressHash, out Bound addressBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {

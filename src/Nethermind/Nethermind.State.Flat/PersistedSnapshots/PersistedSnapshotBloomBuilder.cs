@@ -80,7 +80,7 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong AddressKey(Hash256 addressHash) =>
+    internal static ulong AddressKey(in ValueHash256 addressHash) =>
         MemoryMarshal.Read<ulong>(addressHash.Bytes);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -124,6 +124,6 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong StorageNodeKey(Hash256 addressHash, in TreePath path) =>
+    internal static ulong StorageNodeKey(in ValueHash256 addressHash, in TreePath path) =>
         MemoryMarshal.Read<ulong>(addressHash.Bytes) ^ StatePathKey(in path);
 }

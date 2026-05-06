@@ -51,13 +51,13 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // (AccountColumnTag, addressHash[..20]). Since accounts, slots, self-destruct, and
     // both storage-trie partitions all live under that single bound, every per-address
     // path shares this cache. Bounds are stable for the lifetime of the snapshot since
-    // the data is immutable; we only cache successful seeks (negative lookups go through
-    // the bloom filter).
+    // the data is immutable; we only cache successful seeks (negative lookups are filtered
+    // upstream by the bloom held in ReadOnlySnapshotBundle).
     private const int AddressBoundCacheCapacity = 8;
 
     private readonly ArenaReservation _reservation;
     private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
-    private readonly ClockCache<Hash256AsKey, Bound> _addressBoundCache = new(AddressBoundCacheCapacity);
+    private readonly ClockCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheCapacity);
 
     internal ICollection<PersistedSnapshot>? ReferencedSnapshots => _referencedSnapshots?.Values;
     internal Dictionary<int, PersistedSnapshot>? ReferencedSnapshotsLookup => _referencedSnapshots;
@@ -145,27 +145,23 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// repeat lookups for the same address-hash skip the outer column-tag + 20-byte
     /// address-hash seeks. The same bound serves account / slot / self-destruct / storage
     /// trie sub-tags. Returns false (with default <paramref name="addressBound"/>) when
-    /// the address-hash is not present in this snapshot.
+    /// the address-hash is not present in this snapshot. Bloom filtering is the caller's
+    /// responsibility (see <see cref="ReadOnlySnapshotBundle"/>).
     /// </summary>
-    private bool TryGetAddressBound(in ArenaByteReader reader, Hash256 addressHash, out Bound addressBound)
+    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound)
     {
         if (_addressBoundCache.TryGet(addressHash, out addressBound))
             return true;
-        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, addressHash, out addressBound))
+        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound))
             return false;
         _addressBoundCache.Set(addressHash, addressBound);
         return true;
     }
 
-    public bool TryGetAccount(PersistedSnapshotBloom bloom, Hash256 addressHash, out Account? account)
+    public bool TryGetAccount(in ValueHash256 addressHash, out Account? account)
     {
-        if (!bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(addressHash)))
-        {
-            account = null;
-            return false;
-        }
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, addressHash, out Bound addrBound) ||
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
             !PersistedSnapshotReader.TryGetAccount<ArenaByteReader, NoOpPin>(in reader, addrBound, out Bound b))
         {
             account = null;
@@ -189,13 +185,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool TryGetSlot(PersistedSnapshotBloom bloom, Hash256 addressHash, in UInt256 index, ref SlotValue slotValue)
+    public bool TryGetSlot(in ValueHash256 addressHash, in UInt256 index, ref SlotValue slotValue)
     {
-        ulong addrKey = PersistedSnapshotBloomBuilder.AddressKey(addressHash);
-        if (!bloom.KeyBloom.MightContain(addrKey) || !bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.SlotKey(addrKey, in index)))
-            return false;
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, addressHash, out Bound addrBound) ||
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
             !PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(in reader, addrBound, in index, out Bound b))
             return false;
         Span<byte> buf = stackalloc byte[32];
@@ -205,12 +198,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool IsSelfDestructed(PersistedSnapshotBloom bloom, Hash256 addressHash)
+    public bool IsSelfDestructed(in ValueHash256 addressHash)
     {
-        if (!bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(addressHash)))
-            return false;
         ArenaByteReader reader = CreateReader();
-        return TryGetAddressBound(in reader, addressHash, out Bound addrBound)
+        return TryGetAddressBound(in reader, in addressHash, out Bound addrBound)
             && PersistedSnapshotReader.IsSelfDestructed<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
 
@@ -219,23 +210,16 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// Returns null if no self-destruct entry exists for this address-hash.
     /// Returns true if this is a new account (value = 0x01), false if destructed (value = empty).
     /// </summary>
-    public bool? TryGetSelfDestructFlag(PersistedSnapshotBloom bloom, Hash256 addressHash)
+    public bool? TryGetSelfDestructFlag(in ValueHash256 addressHash)
     {
-        if (!bloom.KeyBloom.MightContain(PersistedSnapshotBloomBuilder.AddressKey(addressHash)))
-            return null;
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, addressHash, out Bound addrBound))
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound))
             return null;
         return PersistedSnapshotReader.TryGetSelfDestructFlag<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
 
-    public bool TryLoadStateNodeRlp(PersistedSnapshotBloom bloom, scoped in TreePath path, out byte[]? nodeRlp)
+    public bool TryLoadStateNodeRlp(scoped in TreePath path, out byte[]? nodeRlp)
     {
-        if (!bloom.TrieBloom.MightContain(PersistedSnapshotBloomBuilder.StatePathKey(in path)))
-        {
-            nodeRlp = null;
-            return false;
-        }
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryLoadStateNodeRlp<ArenaByteReader, NoOpPin>(in reader, in path, out Bound bound))
         {
@@ -246,15 +230,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool TryLoadStorageNodeRlp(PersistedSnapshotBloom bloom, Hash256 addressHash, in TreePath path, out byte[]? nodeRlp)
+    public bool TryLoadStorageNodeRlp(in ValueHash256 addressHash, in TreePath path, out byte[]? nodeRlp)
     {
-        if (!bloom.TrieBloom.MightContain(PersistedSnapshotBloomBuilder.StorageNodeKey(addressHash, in path)))
-        {
-            nodeRlp = null;
-            return false;
-        }
         ArenaByteReader reader = CreateReader();
-        if (!TryGetAddressBound(in reader, addressHash, out Bound addrBound) ||
+        if (!TryGetAddressBound(in reader, in addressHash, out Bound addrBound) ||
             !PersistedSnapshotReader.TryLoadStorageNodeRlpInBound<ArenaByteReader, NoOpPin>(in reader, addrBound, in path, out Bound bound))
         {
             nodeRlp = null;

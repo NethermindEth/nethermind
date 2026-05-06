@@ -216,7 +216,7 @@ public class PersistedSnapshotTests
         bool found = false;
         for (int i = list.Count - 1; i >= 0; i--)
         {
-            if (list[i].TryLoadStateNodeRlp(PersistedSnapshotBloom.AlwaysTrue, path, out result))
+            if (list[i].TryLoadStateNodeRlp(path, out result))
             {
                 found = true;
                 break;
@@ -282,17 +282,17 @@ public class PersistedSnapshotTests
 
         // addrA slot 1 should be overridden to val3
         SlotValue slot1 = default;
-        Assert.That(persisted.TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(addrA.Bytes), (UInt256)1, ref slot1), Is.True);
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(addrA.Bytes), (UInt256)1, ref slot1), Is.True);
         Assert.That(slot1.ToEvmBytes()[0], Is.EqualTo(0x03));
 
         // addrA slot 2 should be val2 (from newer)
         SlotValue slot2 = default;
-        Assert.That(persisted.TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(addrA.Bytes), (UInt256)2, ref slot2), Is.True);
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(addrA.Bytes), (UInt256)2, ref slot2), Is.True);
         Assert.That(slot2.ToEvmBytes()[0], Is.EqualTo(0x02));
 
         // addrB slot 5 should be val2 (from older, carried through)
         SlotValue slot5 = default;
-        Assert.That(persisted.TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(addrB.Bytes), (UInt256)5, ref slot5), Is.True);
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(addrB.Bytes), (UInt256)5, ref slot5), Is.True);
         Assert.That(slot5.ToEvmBytes()[0], Is.EqualTo(0x02));
     }
 
@@ -324,7 +324,7 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
         SlotValue slot = default;
-        Assert.That(persisted.TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(addr.Bytes), (UInt256)1, ref slot), Is.True);
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(addr.Bytes), (UInt256)1, ref slot), Is.True);
         Assert.That(slot.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot should override value after merge");
     }
 
@@ -356,7 +356,7 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
         SlotValue slot = default;
-        Assert.That(persisted.TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(addr.Bytes), (UInt256)1, ref slot), Is.True);
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(addr.Bytes), (UInt256)1, ref slot), Is.True);
         Assert.That(slot.ToEvmBytes().Length, Is.GreaterThan(0), "Value should override null slot after merge");
     }
 
@@ -388,11 +388,11 @@ public class PersistedSnapshotTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Full, merged);
 
         SlotValue slot1 = default;
-        Assert.That(persisted.TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(addr.Bytes), (UInt256)1, ref slot1), Is.True);
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(addr.Bytes), (UInt256)1, ref slot1), Is.True);
         Assert.That(slot1.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "Null slot from older should be preserved");
 
         SlotValue slot2 = default;
-        Assert.That(persisted.TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, Keccak.Compute(addr.Bytes), (UInt256)2, ref slot2), Is.True);
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(addr.Bytes), (UInt256)2, ref slot2), Is.True);
         Assert.That(slot2.AsReadOnlySpan.IndexOfAnyExcept((byte)0), Is.GreaterThanOrEqualTo(0), "Value from newer should be present");
     }
 

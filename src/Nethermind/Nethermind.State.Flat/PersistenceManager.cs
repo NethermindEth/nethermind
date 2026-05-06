@@ -618,29 +618,29 @@ public class PersistenceManager(
                 // column 0x01 key — the original Address is unrecoverable. Use the hash-
                 // keyed batch entrypoint, which is what the underlying flat layer uses
                 // anyway (Address-keyed methods just hash internally).
-                batch.SelfDestructRaw(entry.AddressHash.ValueHash256);
+                batch.SelfDestructRaw(entry.AddressHash);
             }
 
             foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
             {
                 if (entry.Account is { } account)
-                    batch.SetAccountRaw(entry.AddressHash.ValueHash256, account);
+                    batch.SetAccountRaw(entry.AddressHash, account);
                 else
-                    batch.RemoveAccountRaw(entry.AddressHash.ValueHash256);
+                    batch.RemoveAccountRaw(entry.AddressHash);
             }
 
             foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
             {
                 ValueHash256 slotHash = ValueKeccak.Zero;
                 StorageTree.ComputeKeyWithLookup(entry.Slot, ref slotHash);
-                batch.SetStorageRaw(entry.AddressHash.ValueHash256, slotHash, entry.Value);
+                batch.SetStorageRaw(entry.AddressHash, slotHash, entry.Value);
             }
 
             foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
                 batch.SetStateTrieNode(entry.Path, entry.Rlp);
 
             foreach (PersistedSnapshotScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash, entry.Path, entry.Rlp);
+                batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);

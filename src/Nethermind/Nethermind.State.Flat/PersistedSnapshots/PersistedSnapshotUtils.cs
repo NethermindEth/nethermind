@@ -177,8 +177,8 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
                 Address address = kv.Key;
-                Hash256 addressHash = Keccak.Compute(address.Bytes);
-                if (!persisted.TryGetAccount(bloom, addressHash, out Account? acc))
+                ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
+                if (!persisted.TryGetAccount(in addressHash, out Account? acc))
                     throw new InvalidOperationException($"Account {address} not found in persisted snapshot");
 
                 if (kv.Value is null)
@@ -200,9 +200,9 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
-                Hash256 addrHash = Keccak.Compute(addr.Bytes);
+                ValueHash256 addrHash = ValueKeccak.Compute(addr.Bytes);
                 SlotValue slotValue = default;
-                if (!persisted.TryGetSlot(bloom, addrHash, slot, ref slotValue))
+                if (!persisted.TryGetSlot(in addrHash, slot, ref slotValue))
                     throw new InvalidOperationException($"Storage {addr}:{slot} not found in persisted snapshot");
 
                 SlotValue expected = kv.Value ?? default;
@@ -214,8 +214,8 @@ internal static class PersistedSnapshotUtils
             foreach (KeyValuePair<HashedKey<Address>, bool> kv in snapshot.SelfDestructedStorageAddresses)
             {
                 Address address = kv.Key;
-                Hash256 addressHash = Keccak.Compute(address.Bytes);
-                bool? flag = persisted.TryGetSelfDestructFlag(bloom, addressHash) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
+                ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
+                bool? flag = persisted.TryGetSelfDestructFlag(in addressHash) ?? throw new InvalidOperationException($"SelfDestruct {address} not found in persisted snapshot");
                 if (flag.Value != kv.Value)
                     throw new InvalidOperationException($"SelfDestruct {address} mismatch: expected {kv.Value}, got {flag.Value}");
             }
@@ -225,7 +225,7 @@ internal static class PersistedSnapshotUtils
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 TreePath path = kv.Key;
-                if (!persisted.TryLoadStateNodeRlp(bloom, path, out byte[]? nodeRlp))
+                if (!persisted.TryLoadStateNodeRlp(in path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} not found in persisted snapshot");
                 if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StateNode at path length {path.Length} RLP mismatch");
@@ -236,7 +236,8 @@ internal static class PersistedSnapshotUtils
             {
                 if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                 (Hash256 hash, TreePath path) = kv.Key.Key;
-                if (!persisted.TryLoadStorageNodeRlp(bloom, hash, path, out byte[]? nodeRlp))
+                ValueHash256 hashStruct = hash.ValueHash256;
+                if (!persisted.TryLoadStorageNodeRlp(in hashStruct, path, out byte[]? nodeRlp))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} not found in persisted snapshot");
                 if (!nodeRlp!.AsSpan().SequenceEqual(kv.Value.FullRlp.AsSpan()))
                     throw new InvalidOperationException($"StorageNode {hash} at path length {path.Length} RLP mismatch");
@@ -307,16 +308,14 @@ internal static class PersistedSnapshotUtils
                     Span<byte> slotBytes = stackalloc byte[32];
                     Bound accountColumnBound = outerReader.GetBound();
                     using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
-                    Span<byte> addrHashPadded = stackalloc byte[32];
                     while (addrEnum.MoveNext())
                     {
                         // Column 0x01 keys are the 20-byte address-hash prefix (keccak256(address)[..20]).
                         // The original Address is unrecoverable; validation goes through the snapshot's
-                        // hash-keyed read API instead, with synthetic Hash256 from the zero-padded prefix.
+                        // hash-keyed read API instead, with the zero-padded prefix as a ValueHash256.
                         ReadOnlySpan<byte> addrKey = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
-                        addrHashPadded.Clear();
-                        addrKey.CopyTo(addrHashPadded);
-                        Hash256 address = new(addrHashPadded);
+                        ValueHash256 address = default;
+                        addrKey.CopyTo(address.BytesAsSpan);
                         ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
 
                         // Validate account sub-tag (0x04). Presence-marker encoding under
@@ -331,7 +330,7 @@ internal static class PersistedSnapshotUtils
                             Account? bundleAccount = null;
                             for (int i = snapshots.Count - 1; i >= 0; i--)
                             {
-                                if (snapshots[i].TryGetAccount(PersistedSnapshotBloom.AlwaysTrue, address, out Account? acc))
+                                if (snapshots[i].TryGetAccount(in address, out Account? acc))
                                 {
                                     bundleAccount = acc;
                                     break;
@@ -366,7 +365,7 @@ internal static class PersistedSnapshotUtils
                             bool? expected = null;
                             for (int i = 0; i < snapshots.Count; i++)
                             {
-                                bool? flag = snapshots[i].TryGetSelfDestructFlag(PersistedSnapshotBloom.AlwaysTrue, address);
+                                bool? flag = snapshots[i].TryGetSelfDestructFlag(in address);
                                 if (flag is null) continue;
                                 if (expected is null)
                                     expected = flag;
@@ -408,7 +407,7 @@ internal static class PersistedSnapshotUtils
                                     bool srcFound = false;
                                     for (int i = snapshots.Count - 1; i >= 0; i--)
                                     {
-                                        if (snapshots[i].TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, address, slot, ref srcSlot))
+                                        if (snapshots[i].TryGetSlot(in address, slot, ref srcSlot))
                                         {
                                             srcFound = true;
                                             break;
@@ -438,7 +437,7 @@ internal static class PersistedSnapshotUtils
                                         for (int i = 0; i < snapshots.Count; i++)
                                         {
                                             SlotValue sv = default;
-                                            bool tryGetOk = snapshots[i].TryGetSlot(PersistedSnapshotBloom.AlwaysTrue, address, slot, ref sv);
+                                            bool tryGetOk = snapshots[i].TryGetSlot(in address, slot, ref sv);
                                             sb.Append($"src[{i}](id={snapshots[i].Id} {snapshots[i].From.BlockNumber}->{snapshots[i].To.BlockNumber}): ");
                                             sb.Append($"TryGetSlot={tryGetOk}");
                                             if (tryGetOk) sb.Append($"={sv.AsReadOnlySpan.ToHexString()}");

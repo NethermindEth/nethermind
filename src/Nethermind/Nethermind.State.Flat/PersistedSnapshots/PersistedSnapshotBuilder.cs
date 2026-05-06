@@ -31,7 +31,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///   Account (0x01), slot, and self-destruct values are copied as-is (not NodeRefs).
 ///
 /// Size cap: a Full persisted snapshot cannot exceed 2 GiB.
-/// <see cref="NodeRef.ValueLengthOffset"/> is a 32-bit int that addresses bytes inside
+/// <see cref="NodeRef.RlpDataOffset"/> is a 32-bit int that addresses bytes inside
 /// the referenced Full snapshot, so any byte past 2 GiB is unreachable from a Linked
 /// snapshot's NodeRef. <see cref="ConvertFullToLinked"/> enforces this with a
 /// <c>checked((int)colOff)</c> cast on each column offset.
@@ -317,7 +317,7 @@ public static class PersistedSnapshotBuilder
     /// <summary>
     /// Estimate of the serialized Full snapshot size, used to size the destination arena
     /// reservation. Capped at 2 GiB — the hard ceiling on a Full snapshot (see the
-    /// <see cref="NodeRef.ValueLengthOffset"/> note on the class doc above). Returned as
+    /// <see cref="NodeRef.RlpDataOffset"/> note on the class doc above). Returned as
     /// <see cref="long"/> so callers feeding this into long-typed APIs (e.g. arena
     /// reservations) don't truncate; the cap also keeps the value within
     /// <see cref="int"/>.MaxValue for callers that need to allocate a contiguous buffer.
@@ -384,13 +384,12 @@ public static class PersistedSnapshotBuilder
             // skipped because all three are keyed by raw Address.
             Address? address = uniqueAddresses[addrIdx];
             ValueHash256 addressHash = uniqueAddressHashes[addrIdx];
-            Hash256 addressHashCommit = addressHash.ToCommitment();
             ReadOnlySpan<byte> addressHashPrefix = addressHash.Bytes[..StorageHashPrefixLength];
 
             ulong addrBloomKey = 0;
             if (bloom is not null)
             {
-                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressHashCommit);
+                addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(in addressHash);
                 bloom.Add(addrBloomKey);
             }
 
@@ -422,7 +421,7 @@ public static class PersistedSnapshotBuilder
                     ((Hash256 _, TreePath path) k, TrieNode node) = storCompact[i];
                     k.path.EncodeWith8Byte(compactPathKey);
                     compactLevel.Add(compactPathKey, node.FullRlp.AsSpan());
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(addressHashCommit, in k.path));
+                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in k.path));
                 }
                 compactLevel.Build();
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
@@ -443,7 +442,7 @@ public static class PersistedSnapshotBuilder
                     k.path.Path.Bytes.CopyTo(fallbackPathKey);
                     fallbackPathKey[32] = (byte)k.path.Length;
                     fbLevel.Add(fallbackPathKey, node.FullRlp.AsSpan());
-                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(addressHashCommit, in k.path));
+                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in k.path));
                 }
                 fbLevel.Build();
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
@@ -795,7 +794,7 @@ public static class PersistedSnapshotBuilder
     {
         SpanByteReader reader = new(column);
         // The sub-tag value is itself an inner HSST(BTree) of (path → RLP). Walk every
-        // entry, replacing RLP with a NodeRef whose ValueLengthOffset is the
+        // entry, replacing RLP with a NodeRef whose RlpDataOffset is the
         // snapshot-absolute offset of the LEB128 length cursor in the source Full
         // snapshot's column 0x01 region (matching the convention used by the flat /
         // nested converters above).
