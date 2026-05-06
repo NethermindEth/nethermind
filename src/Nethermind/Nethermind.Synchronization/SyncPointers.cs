@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -14,6 +15,8 @@ public class SyncPointers : ISyncPointers
 {
     private readonly IDb _metadataDb;
     private readonly IDb _defaultReceiptDbColumn;
+
+    private static readonly byte[] LegacyLowestInsertedBodyNumberDbEntryAddress = ((long)0).ToBigEndianByteArrayWithoutLeadingZeros();
 
     private long? _lowestInsertedBodyNumber;
     public long? LowestInsertedBodyNumber
@@ -58,6 +61,7 @@ public class SyncPointers : ISyncPointers
 
 
     public SyncPointers(
+        [KeyFilter(DbNames.Blocks)] IDb blocksDb,
         IColumnsDb<ReceiptsColumns> receiptsDb,
         [KeyFilter(DbNames.Metadata)] IDb metadataDb,
         IReceiptConfig receiptConfig)
@@ -66,6 +70,10 @@ public class SyncPointers : ISyncPointers
         _defaultReceiptDbColumn = receiptsDb.GetColumnDb(ReceiptsColumns.Default);
 
         _lowestInsertedBodyNumber = ReadPointer(_metadataDb, MetadataDbKeys.LowestInsertedBodyNumber);
+        if (_lowestInsertedBodyNumber is null)
+        {
+            MigrateLegacyLowestInsertedBodyNumber(blocksDb);
+        }
 
         byte[] lowestBytes = _defaultReceiptDbColumn.Get(Keccak.Zero);
         _lowestInsertedReceiptBlock = lowestBytes is null ? (long?)null : new Rlp.ValueDecoderContext(lowestBytes).DecodeLong();
@@ -88,4 +96,16 @@ public class SyncPointers : ISyncPointers
 
     private static long DecodePointer(byte[] pointerBytes) =>
         new Rlp.ValueDecoderContext(pointerBytes).DecodeLong();
+
+    private void MigrateLegacyLowestInsertedBodyNumber(IDb blocksDb)
+    {
+        byte[]? pointerBytes = blocksDb.Get(LegacyLowestInsertedBodyNumberDbEntryAddress);
+        if (pointerBytes is null)
+        {
+            return;
+        }
+
+        LowestInsertedBodyNumber = DecodePointer(pointerBytes);
+        blocksDb.Remove(LegacyLowestInsertedBodyNumberDbEntryAddress);
+    }
 }
