@@ -277,9 +277,12 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
     // -----------------------------------------------------------------------
     // BTree: indirect entries reachable only by recursing the index tree.
     // Streams the walk: keeps an ancestor stack of (AbsEnd, LastIdx) frames
-    // and the current leaf's (AbsEnd, EntryCount, Idx); re-pins/re-parses
-    // the leaf node on each MoveNext (no long-lived TPin since this is a
-    // class). Memory is O(tree depth), not O(total entries).
+    // and the current leaf's metaStart values buffered in a reusable array.
+    // Pinning a node isn't free for non-mmap readers, so each leaf is loaded
+    // exactly once — every entry's metaStart is copied into _leafMetaStarts
+    // up front, then MoveNext only pins the small LEB+key-length window per
+    // entry. Memory is O(tree depth) for the ancestor stack plus one leaf's
+    // worth of long offsets (typically a few hundred at most).
     // -----------------------------------------------------------------------
 
     private sealed class BTreeVariant : IDisposable
@@ -294,9 +297,10 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
         // Current leaf state. _depth: -1 = not started, -2 = exhausted, ≥0 = leaf depth in tree.
+        // _leafMetaStarts is sized to fit the current leaf and reused across leaves.
         private int _depth = -1;
-        private long _leafAbsEnd;
-        private int _leafEntryCount;
+        private long[] _leafMetaStarts = [];
+        private int _leafCount;
         private int _leafIdx;
 
         // Current entry — populated by LoadCurrentEntry after positioning at a leaf.
@@ -333,7 +337,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
             }
 
             _leafIdx++;
-            if (_leafIdx < _leafEntryCount)
+            if (_leafIdx < _leafCount)
             {
                 return LoadCurrentEntry(in reader);
             }
@@ -350,7 +354,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         /// <summary>
         /// Descend leftmost from the node ending at <paramref name="absEnd"/> down to a leaf,
         /// pushing (AbsEnd, LastIdx=0) ancestor frames as we cross intermediate levels. On
-        /// success, _depth/_leafAbsEnd/_leafEntryCount point at the new leaf with _leafIdx=0;
+        /// success, _depth and the leaf metaStart buffer are populated with _leafIdx=0;
         /// returns false if a node fails to load or the tree exceeds MaxDepth.
         /// </summary>
         private bool DescendToLeaf(scoped in TReader reader, long absEnd, int depthHint)
@@ -367,10 +371,9 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
                     if (!node.IsIntermediate)
                     {
                         _depth = depth;
-                        _leafAbsEnd = currentEnd;
-                        _leafEntryCount = node.EntryCount;
+                        BufferLeaf(node);
                         _leafIdx = 0;
-                        if (_leafEntryCount == 0)
+                        if (_leafCount == 0)
                         {
                             // Empty leaf shouldn't normally happen; fall through to ascent.
                             return AscendAndDescend(in reader);
@@ -388,6 +391,27 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
                 depth++;
             }
             return false;
+        }
+
+        /// <summary>
+        /// Copy each entry's metaStart into the reusable buffer. Called once per leaf
+        /// transition while the leaf pin is still live; subsequent in-leaf MoveNext
+        /// calls index the array directly with no further node pinning.
+        /// </summary>
+        private void BufferLeaf(HsstIndex leaf)
+        {
+            int n = leaf.EntryCount;
+            if (_leafMetaStarts.Length < n)
+            {
+                int cap = Math.Max(16, _leafMetaStarts.Length);
+                while (cap < n) cap *= 2;
+                _leafMetaStarts = new long[cap];
+            }
+            for (int i = 0; i < n; i++)
+            {
+                _leafMetaStarts[i] = _scopeStart + (long)leaf.GetUInt64Value(i);
+            }
+            _leafCount = n;
         }
 
         /// <summary>
@@ -427,19 +451,13 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         }
 
         /// <summary>
-        /// Re-pin the current leaf, read entry _leafIdx's metaStart, then pin a small window
-        /// at metaStart to decode value/key lengths. Sets _currentKeyOffset/_currentKeyLength
-        /// and _currentValueOffset/_currentValueLength to absolute reader-space bounds.
+        /// Read entry _leafIdx's metaStart from the buffered leaf table, then pin a small
+        /// window at metaStart to decode value/key lengths. Sets _currentKeyOffset/Length and
+        /// _currentValueOffset/Length to absolute reader-space bounds.
         /// </summary>
         private bool LoadCurrentEntry(scoped in TReader reader)
         {
-            long metaStart;
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, _leafAbsEnd, out HsstIndex leaf, out _, out TPin leafPin))
-                return false;
-            using (leafPin)
-            {
-                metaStart = _scopeStart + (long)leaf.GetUInt64Value(_leafIdx);
-            }
+            long metaStart = _leafMetaStarts[_leafIdx];
 
             // Entry layout: [Value][ValueLength: LEB128][KeyLength: u8][FullKey].
             // metaStart points at the ValueLength LEB128 — value sits before, lengths + key after.
