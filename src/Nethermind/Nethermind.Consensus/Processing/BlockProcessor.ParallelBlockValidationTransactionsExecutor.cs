@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -44,19 +45,43 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
 
             return !block.IsGenesis && balManager.ParallelExecutionEnabled
-                ? ProcessTransactionsParallel(block, processingOptions, token)
+                ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
         }
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
+            bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            IReleaseSpec spec = specProvider.GetSpec(block.Header);
+            long totalRegularGas = 0;
+            long totalStateGas = 0;
+
             balManager.NextTransaction();
             balManager.ValidateBlockAccessList(block, 0u);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
+                if (shouldValidate)
+                {
+                    BlockAccessListManager.CheckPerTxInclusion(block, i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                }
+
+                ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions, in intrinsicGas);
+                totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
+                totalStateGas = receiptsTracer.BlockStateGasUsed;
+
+                if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
+                {
+                    // Match BlockAccessListManager.IncrementalValidation's error format so
+                    // both sequential and parallel paths map to the same EEST exception
+                    // (TransactionException.GAS_ALLOWANCE_EXCEEDED). The sequential path
+                    // previously threw ExceededGasLimit which mapped only to
+                    // INVALID_GAS_USED_ABOVE_LIMIT, diverging from what fixtures expect.
+                    throw new InvalidBlockException(block,
+                        $"Block gas limit exceeded: cumulative gas {block.Header.GasUsed} > block gas limit {block.Header.GasLimit} after transaction index {i}.");
+                }
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
@@ -66,7 +91,7 @@ public partial class BlockProcessor
             return [.. receiptsTracer.TxReceipts];
         }
 
-        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, CancellationToken token)
+        private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer outerReceiptsTracer, CancellationToken token)
         {
             int len = block.Transactions.Length;
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
@@ -207,7 +232,37 @@ public partial class BlockProcessor
             }
 
             incrementalValidationTask.GetAwaiter().GetResult();
-            return CombineReceipts(receiptsTracers, len, block);
+            try
+            {
+                return CombineReceipts(receiptsTracers, len, block);
+            }
+            finally
+            {
+                // Always populate the outer tracer with per-tx receipts so the parallel path's
+                // tracer state matches what the sequential path would have produced. Needed for
+                // BlockTraceDumper's invalid-block dump on failure, and keeps tracer state
+                // consistent on success.
+                HarvestPerTxReceiptsIntoOuter(receiptsTracers, outerReceiptsTracer);
+            }
+        }
+
+        private static void HarvestPerTxReceiptsIntoOuter(BlockReceiptsTracer[] perTxTracers, BlockReceiptsTracer outer)
+        {
+            // Index-based placement preserves tx order despite parallel out-of-order completion;
+            // gaps for txs the worker threw on (no MarkAs* fired) stay null so the dump shows
+            // exactly which tx caused the rejection. Recompute GasUsedTotal across the harvested
+            // sequence: each per-tx tracer's _cumulativeReceiptGas only tracks that single tx
+            // (resets to 0 per tracer), so the dump would otherwise show GasUsedTotal = GasUsed.
+            long cumulativeGas = 0;
+            for (int i = 0; i < perTxTracers.Length; i++)
+            {
+                ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
+                if (receipts.IsEmpty) continue;
+                TxReceipt receipt = receipts[0];
+                cumulativeGas += receipt.GasUsed;
+                receipt.GasUsedTotal = cumulativeGas;
+                outer.SetReceipt(i, receipt);
+            }
         }
 
         private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
@@ -240,6 +295,20 @@ public partial class BlockProcessor
             ProcessingOptions processingOptions)
         {
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+            if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+        }
+
+        private static void ProcessTransaction(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider,
+            Block block,
+            Transaction currentTx,
+            int index,
+            BlockReceiptsTracer receiptsTracer,
+            ProcessingOptions processingOptions,
+            in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
+        {
+            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
     }

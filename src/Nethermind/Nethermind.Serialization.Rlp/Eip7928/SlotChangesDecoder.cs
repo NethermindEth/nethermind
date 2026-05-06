@@ -27,6 +27,13 @@ public class SlotChangesDecoder :
         UInt256 slot = ctx.DecodeUInt256();
         StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
 
+        // EIP-7928: a slot in storage_changes must have at least one change.
+        // A slot with zero changes belongs in storage_reads instead.
+        if (changes.Length == 0)
+        {
+            throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+        }
+
         uint? lastIndex = null;
         foreach (StorageChange s in changes)
         {

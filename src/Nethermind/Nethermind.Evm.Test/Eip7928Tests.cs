@@ -130,20 +130,20 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
 
         UInt256 value = _testAccountBalance;
+        Block block = Build.A.Block.TestObject;
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
             .WithGasLimit(0)
             .WithValue(value)
             .TestObject;
-        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas + _gasLimit;
+        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas + _gasLimit;
 
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
             .WithGasLimit(gasLimit)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
-        Block block = Build.A.Block.TestObject;
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -188,13 +188,14 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         InitWorldState(TestState, extraCode);
 
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        Block block = Build.A.Block.TestObject;
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
             .WithGasLimit(0)
             .WithValue(_testAccountBalance)
             .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
         long gasLimit = intrinsicGas + executionGas;
 
         Transaction createTx = Build.A.Transaction
@@ -202,7 +203,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(gasLimit)
             .WithValue(_testAccountBalance)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
-        Block block = Build.A.Block.TestObject;
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -265,6 +265,60 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         worldState.Commit(SpecProvider.GenesisSpec);
         worldState.CommitTree(0);
         worldState.RecalculateStateRoot();
+    }
+
+    [TestCase(120_000_000L, 30_000_000L, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
+    [TestCase(120_000_000L, 30_000L, false, TestName = "EIP2935_system_call_records_only_read_when_state_gas_not_affordable")]
+    public void Eip2935_system_call_bal_respects_eip8037_state_gas(long blockGasLimit, long systemCallGasLimit, bool shouldStoreParentHash)
+    {
+        InitWorldState(TestState);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        Hash256 parentHash = Keccak.Compute("parent");
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithGasLimit(blockGasLimit)
+            .WithBaseFee(1.GWei)
+            .WithParentHash(parentHash)
+            .TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        SystemCall systemCall = new()
+        {
+            Data = parentHash.BytesToArray(),
+            GasLimit = systemCallGasLimit,
+            GasPrice = header.BaseFeePerGas,
+            SenderAddress = Address.SystemUser,
+            To = Eip2935Constants.BlockHashHistoryAddress,
+            Value = UInt256.Zero,
+        };
+        systemCall.Hash = systemCall.CalculateHash();
+
+        processor.Execute(systemCall, NullTxTracer.Instance);
+
+        AccountChangesAtIndex? accountChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
+        Assert.That(accountChanges, Is.Not.Null);
+        if (shouldStoreParentHash)
+        {
+            KeyValuePair<UInt256, StorageChange> storageEntry = accountChanges!.StorageChanges.Single();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountChanges.StorageChangeCount, Is.EqualTo(1));
+                Assert.That(storageEntry.Key, Is.EqualTo(UInt256.Zero));
+                Assert.That(storageEntry.Value.Index, Is.EqualTo(0));
+                Assert.That(storageEntry.Value.Value, Is.EqualTo(new UInt256(parentHash.Bytes, isBigEndian: true)));
+                Assert.That(accountChanges.StorageReads, Is.Empty);
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountChanges!.StorageChangeCount, Is.EqualTo(0));
+                Assert.That(accountChanges.StorageReads, Is.EquivalentTo(new[] { UInt256.Zero }));
+            }
+        }
     }
 
     private static IEnumerable<TestCaseData> CodeTestSource
@@ -375,10 +429,13 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 .Op(Instruction.REVERT)
                 .Done;
             // revert should convert storage load to read, nonce and balance changes revert
-            changes = [Build.An.AccountChanges
-                .WithAddress(_testAddress)
-                .WithStorageReads(slot)
-                .TestObject];
+            changes =
+            [
+                Build.An.AccountChanges
+                    .WithAddress(_testAddress)
+                    .WithStorageReads(slot)
+                    .TestObject
+            ];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
             UInt256 changedValue = 2;
@@ -827,7 +884,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
+                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create_oog_pre_state_access" };
 
@@ -848,7 +905,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
+                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create2_oog_pre_state_access" };
 
@@ -909,7 +966,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.ColdSLoad + GasCostOf.SSet - 1,
+                GasCostOf.ColdSLoad + GasCostOf.SSetRegular - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "sstore_oog_post_state_access" };
 

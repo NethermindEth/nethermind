@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -19,8 +20,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState
+public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches, IBlockAccessListSource
 {
+    public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
+    public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
+
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
@@ -188,7 +192,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             GetNonceInternal(address),
             GetBalanceInternal(address),
             Keccak.EmptyTreeHash, // never used
-            _innerWorldState.GetCodeHash(address)) : AccountStruct.TotallyEmpty;
+            GetCodeHashInternal(address)) : AccountStruct.TotallyEmpty;
         return !account.IsTotallyEmpty;
     }
 
@@ -214,6 +218,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
     public void MergeGeneratingBal(GeneratedBlockAccessList target)
         => target.Merge(_generatingBlockAccessList);
+
+    BlockAccessListAtIndex? IBlockAccessListSource.GeneratedBlockAccessList => _generatingBlockAccessList;
 
     public void Restore(Snapshot snapshot)
     {
@@ -362,6 +368,13 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             // if nonce or balance is changed in this tx must exist (could have been created this tx)
             return true;
         }
+
+        // EIP-7928: code-only modifications (e.g. EIP-7702 SetCode) also imply existence at this index.
+        if (accountChanges?.CodeChange is { Code.Length: > 0 })
+        {
+            return true;
+        }
+
         return null;
     }
 

@@ -137,6 +137,80 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
+    public void TryGetAccount_WithPriorCodeChange_ReturnsExistingAccount()
+    {
+        byte[] priorTxCode = [0xAA, 0xBB];
+        ValueHash256 expectedCodeHash = ValueKeccak.Compute(priorTxCode);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
+                .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
+                .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []), new CodeChange(0, priorTxCode))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal);
+        using (scope)
+        {
+            bool exists = bws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.True);
+                Assert.That(account.CodeHash, Is.EqualTo(expectedCodeHash));
+                Assert.That(account.HasCode, Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void AccountExists_WithOnlyPrestateSentinelAndCurrentTxChanges_ReturnsFalseBeforeCurrentTx()
+    {
+        byte[] currentTxCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
+            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0), new NonceChange(23, 1))
+            .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []), new CodeChange(23, currentTxCode))
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 23,
+            suggestedBal: bal);
+
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
+    public void AccountExists_WithPriorTxCodeChange_ReturnsTrue()
+    {
+        byte[] priorTxCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
+        ReadOnlyAccountChanges ac = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
+            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0), new NonceChange(23, 1))
+            .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []), new CodeChange(23, priorTxCode))
+            .TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 24,
+            suggestedBal: bal);
+
+        using (scope)
+        {
+            Assert.That(bws.AccountExists(TestItem.AddressA), Is.True);
+        }
+    }
+
+    [Test]
     public void GetStorage_WithPriorTxChange_ReturnsPriorTxValue()
     {
         StorageCell cell = new(TestItem.AddressA, 1);

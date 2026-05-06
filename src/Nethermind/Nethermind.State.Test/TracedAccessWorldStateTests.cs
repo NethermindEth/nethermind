@@ -14,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -130,6 +131,53 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.CodeChange, Is.Not.Null);
                 Assert.That(ac.CodeChange!.Value.Code, Is.EquivalentTo(code));
+            }
+        }
+    }
+
+    [Test]
+    public void TryGetAccount_UsesCurrentCodeChange_WhenInnerStateDoesNotMutateCode()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
+            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
+            .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []))
+            .TestObject;
+        accountChanges.SetExistedBeforeBlock(true);
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList.WithAccountChanges(accountChanges).TestObject;
+
+        BlockAccessListBasedWorldState balWorldState = new(inner, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(0);
+        Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
+        balWorldState.Setup(block);
+
+        TracedAccessWorldState tws = new(balWorldState, parallel: true);
+        tws.SetGeneratingBlockAccessList(new());
+        using (tws.BeginScope(baseBlock))
+        {
+            tws.SetIndex(0);
+            byte[] code = [0x60, 0x00];
+            ValueHash256 codeHash = ValueKeccak.Compute(code);
+            tws.InsertCode(TestItem.AddressA, codeHash, code, Spec);
+
+            bool exists = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.True);
+                Assert.That(account.CodeHash, Is.EqualTo(codeHash));
+                Assert.That(account.HasCode, Is.True);
             }
         }
     }

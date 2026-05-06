@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
@@ -574,19 +575,16 @@ public partial class EngineModuleTests
         }
         else
         {
+            using JsonDocument responseJson = JsonDocument.Parse(response);
+            JsonElement result = responseJson.RootElement.GetProperty("result");
+            string? validationError = result.GetProperty("validationError").GetString();
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(successResponse, Is.Not.Null);
-                Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-                {
-                    Id = successResponse.Id,
-                    Result = new PayloadStatusV1
-                    {
-                        LatestValidHash = Keccak.Zero,
-                        Status = PayloadStatus.Invalid,
-                        ValidationError = expectedError
-                    }
-                })));
+                Assert.That(result.GetProperty("latestValidHash").GetString(), Is.EqualTo(Keccak.Zero.ToString(true)));
+                Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Invalid));
+                Assert.That(validationError, Does.Contain(expectedError));
             }
         }
 

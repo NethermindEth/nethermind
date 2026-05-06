@@ -11,7 +11,7 @@ public class BalanceChangeDecoder : IndexedChangeDecoder<BalanceChange>
     public static BalanceChangeDecoder Instance => _instance ??= new();
 
     protected override BalanceChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
-        => new(ctx.DecodeUShort(), ctx.DecodeUInt256());
+        => new(ctx.DecodeUInt(), ctx.DecodeUInt256());
 
     protected override void EncodeValue(RlpStream stream, BalanceChange item)
         => stream.Encode(item.Value);

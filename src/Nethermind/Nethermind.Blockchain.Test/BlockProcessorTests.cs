@@ -342,4 +342,264 @@ public class BlockProcessorTests
             Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
         }
     }
+
+    [Test]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_multi_tx_blocks()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(2, Amsterdam.Instance)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+
+        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+    }
+
+    [Test]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_single_tx_blocks()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(1, Amsterdam.Instance)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+
+        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+    }
+
+    [Test]
+    public void IncrementalValidation_rejects_eip8037_tx_at_inclusion_when_worst_case_exceeds_remaining_budget()
+    {
+        // execution-specs PR 2703: the per-tx 2D inclusion check rejects a tx whose
+        // worst-case dimension contribution exceeds the remaining budget, even if its
+        // actual post-execution gas would have fit. tx1.GasLimit (50_000) exceeds the
+        // remaining regular budget of 35_000 left after tx0's 65_000 actual usage, so
+        // the spec rejects tx1 at inclusion regardless of its actual usage.
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(90_000)
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithGasLimit(50_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((65_000, 0, null));
+        gasResults[1].SetResult((21_000, 0, null));
+
+        InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+
+        Assert.That(exception!.Message, Does.Contain("EIP-8037 inclusion check"));
+        Assert.That(exception.Message, Does.Contain("RegularDimensionExceeded"));
+    }
+
+    [Test]
+    public void IncrementalValidation_rejects_eip8037_tx_when_actual_cumulative_gas_exceeds_limit()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(90_000)
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithGasLimit(50_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((80_000, 0, null));
+        gasResults[1].SetResult((21_000, 0, null));
+
+        InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+
+        Assert.That(exception!.Message, Does.Contain("Block gas limit exceeded"));
+    }
+
+    [Test]
+    public void IncrementalValidation_eip8037_block_gas_check_uses_actual_state_dimension()
+    {
+        // CREATE tx GasLimit sized to pass the EIP-8037 worst-case inclusion check
+        // (worst-case state = GasLimit - intrinsic.regular must <= state_available
+        // = 200_000 - 60_000 = 140_000). A 165_000 limit gives worst-case state of
+        // ~135_000, which fits. Actual post-execution state is GasCostOf.CreateState
+        // (the AccountCreationCost) so the post-exec max(R,S) check still ends up
+        // verifying the state dimension drives block.Header.GasUsed.
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(21_000)
+            .TestObject;
+        Transaction createTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithCode([])
+            .WithGasLimit(165_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(200_000)
+            .WithTransactions(firstTx, createTx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((0, 60_000, null));
+        gasResults[1].SetResult((50_000, GasCostOf.CreateState, null));
+
+        Assert.DoesNotThrow(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(60_000 + GasCostOf.CreateState));
+    }
+
+    [Test]
+    public void IncrementalValidation_surfaces_worker_exception_before_gas_accounting()
+    {
+        // tx0's worker rejected the tx (e.g. signature/nonce/balance check inside ProcessTransaction
+        // produced an InvalidBlockException). Even if tx0's reported gas would also trip downstream
+        // gas accounting, the validator must surface the worker's original cause so parallel mode
+        // reports the same root cause as sequential.
+        // Tx GasLimit must pass the EIP-8037 inclusion check (worst-case <= block budget)
+        // so the inclusion check doesn't fire before we can read the worker exception.
+        // 50_000 worst-case <= 100_000 budget; the worker rejection then surfaces.
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction onlyTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(50_000)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(onlyTx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        InvalidBlockException workerException = new(block, "worker-original-cause");
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new()
+        ];
+        gasResults[0].SetResult((0, 0, workerException));
+
+        BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
+
+        Assert.That(thrown!.InnerException, Is.SameAs(workerException));
+    }
+
+    [Test]
+    public void IncrementalValidation_surfaces_worker_exception_even_when_reported_gas_would_trip_block_limit()
+    {
+        // Regression guard: the legacy parallel worker reported (tx.GasLimit, 0, ex) on rejection.
+        // That value can push cumulative gas past block.GasLimit so CheckGasUsed throws an
+        // InvalidBlockException("Block gas limit exceeded") that masks the worker's original cause.
+        // Even with the worker now reporting (0, 0, ex), this test feeds the legacy shape so the
+        // validator's exception-first ordering is verified directly, independent of worker behaviour.
+        // tx0 has GasLimit 30_000 (passes inclusion: worst-case 30_000 <= 100_000) but
+        // its ACTUAL gas reported by the worker is 80_000 (legacy buggy worker shape).
+        // tx1 has GasLimit 20_000, which still passes inclusion (worst-case 20_000 <=
+        // remaining 20_000 - strict > check) but its worker rejected. The validator
+        // must surface tx1's worker exception, not the post-exec gas-limit overshoot
+        // it would otherwise compute from the buggy (50_000, 0, ex) gas tuple.
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(30_000)
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithGasLimit(20_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        InvalidBlockException workerException = new(block, "worker-original-cause");
+        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>[] gasResults =
+        [
+            new(),
+            new()
+        ];
+        gasResults[0].SetResult((80_000, 0, null));
+        // Legacy buggy shape: charges tx.GasLimit on rejection. Cumulative 80k+50k > 100k limit.
+        gasResults[1].SetResult((50_000, 0, workerException));
+
+        BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+
+        Assert.That(thrown!.InnerException, Is.SameAs(workerException));
+    }
+
+    private static BlockAccessListManager CreateAmsterdamBalManager()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        return new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = true },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+    }
 }

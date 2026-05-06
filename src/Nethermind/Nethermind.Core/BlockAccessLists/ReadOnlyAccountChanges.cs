@@ -203,13 +203,30 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         foreach (NonceChange change in _nonceChanges)
         {
             if (change.Index == Eip7928Constants.PrestateIndex) continue;
-            return change.Index < blockAccessIndex;
+            if (change.Index < blockAccessIndex) return true;
+            break;
         }
 
         foreach (BalanceChange change in _balanceChanges)
         {
             if (change.Index == Eip7928Constants.PrestateIndex) continue;
-            return change.Index < blockAccessIndex;
+            if (change.Index < blockAccessIndex) return true;
+            break;
+        }
+
+        // EIP-7702 / EIP-7928: a code-only modification (e.g. SetCode) at a prior tx also
+        // implies existence at this index, but only when the resulting code is non-empty.
+        CodeChange? lastCodeChange = null;
+        foreach (CodeChange change in _codeChanges)
+        {
+            if (change.Index == Eip7928Constants.PrestateIndex) continue;
+            if (change.Index >= blockAccessIndex) break;
+            lastCodeChange = change;
+        }
+
+        if (lastCodeChange is { Code.Length: > 0 })
+        {
+            return true;
         }
 
         return false;

@@ -197,10 +197,16 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return false;
     }
 
-    public void Restore(Snapshot snapshot) { }
+    // BAL-backed account/storage mutations are restored by the generated BAL journal;
+    // the world-state snapshot only owns transient storage for this wrapper.
+    public void Restore(Snapshot snapshot)
+        => _transientStorageProvider.Restore(snapshot.StorageSnapshot.TransientStorageSnapshot);
 
     public Snapshot TakeSnapshot(bool newTransactionStart = false)
-        => Snapshot.Empty;
+    {
+        int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
+        return new Snapshot(new Snapshot.Storage(Snapshot.EmptyPosition, transientSnapshot), Snapshot.EmptyPosition);
+    }
 
     public bool AccountExists(Address address)
     {

@@ -399,7 +399,10 @@ namespace Nethermind.Synchronization.FastBlocks
             do
             {
                 batch = BuildNewBatch(requestSize);
-                batch = ProcessPersistedPortion(batch);
+                if (batch is not null)
+                {
+                    batch = ProcessPersistedPortion(batch);
+                }
 
                 if (batch is null)
                 {
@@ -415,11 +418,17 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        private HeadersSyncBatch BuildNewBatch(int requestSize)
+        private HeadersSyncBatch? BuildNewBatch(int requestSize)
         {
+            long headersLeft = _lowestRequestedHeaderNumber - HeadersDestinationNumber;
+            if (headersLeft <= 0 || requestSize <= 0)
+            {
+                return null;
+            }
+
             HeadersSyncBatch batch = new();
-            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - requestSize);
-            batch.RequestSize = (int)Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, requestSize);
+            batch.RequestSize = (int)Math.Min(headersLeft, requestSize);
+            batch.StartNumber = _lowestRequestedHeaderNumber - batch.RequestSize;
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }

@@ -29,6 +29,65 @@ public class BlockAccessListDecoderTests
         Assert.That(encoded, Is.EqualTo(rlp));
     }
 
+    // Truncated RLP causes an out-of-bounds primitive read; the Rlp.Decode entry-point
+    // wrap converts that to RlpException so callers see a consistent failure mode
+    // (engine_newPayloadV5 returns a clean error instead of crashing the RPC).
+    [Test]
+    public void Decode_empty_bytes_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>([]), Throws.TypeOf<RlpException>());
+
+    // 0xf8 announces a long-form list with a 1-byte length follower, but the byte is missing.
+    [Test]
+    public void Decode_truncated_outer_list_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xf8 }), Throws.TypeOf<RlpException>());
+
+    // 0xc1 0xc0 = outer list of 1 containing an empty inner list. EIP-7928 requires each
+    // AccountChanges to be a 6-field sequence; an empty list is structurally invalid.
+    [Test]
+    public void Decode_inner_empty_list_in_account_changes_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
+
+    [Test]
+    public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
+    {
+        // SlotChanges = [StorageKey, List[StorageChange]]. An empty StorageChange list means a
+        // slot with no changes — that slot belongs in storage_reads instead. Geth bal-devnet-4
+        // rejects this with "empty storage writes".
+        ReadOnlySlotChanges withEmptyChanges = new(123u, []);
+        byte[] rlp = Rlp.Encode(withEmptyChanges).Bytes;
+
+        RlpException? thrown = null;
+        try
+        {
+            Rlp.ValueDecoderContext ctx = new(rlp);
+            SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+        }
+        catch (RlpException e)
+        {
+            thrown = e;
+        }
+
+        Assert.That(thrown, Is.Not.Null);
+        Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
+    }
+
+    [Test]
+    public void Decoded_slot_changes_accepts_prestate_graft_first()
+    {
+        // Wire path: SlotChangesDecoder produces a sorted StorageChange[] with real indices.
+        // LoadPreStateChange prepends a PrestateIndex entry afterwards (one realloc), so the
+        // sentinel must end up at index [0] of the resulting array.
+        StorageChange change = new(0, 0xCC);
+        ReadOnlySlotChanges seed = new(7u, [change]);
+        byte[] rlp = Rlp.Encode(seed).Bytes;
+
+        Rlp.ValueDecoderContext ctx = new(rlp);
+        ReadOnlySlotChanges decoded = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        decoded.LoadPreStateChange(new StorageChange(Eip7928Constants.PrestateIndex, 0xAA));
+        Assert.That(decoded.Changes[0].Index, Is.EqualTo(Eip7928Constants.PrestateIndex));
+    }
+
     [Test]
     public void Can_decode_then_encode_balance_change()
     {
@@ -42,6 +101,36 @@ public class BlockAccessListDecoderTests
         Console.WriteLine(encoded);
         Console.WriteLine(rlp);
         Assert.That(encoded, Is.EqualTo(rlp));
+    }
+
+    [Test]
+    public void Balance_change_roundtrips_with_index_above_uint16_range()
+    {
+        // EIP-7928 widened BlockAccessIndex to uint32 (commit 645099785a). This test catches
+        // any regression to the old uint16 decoder by using an index above 65535.
+        BalanceChange original = new(0x10_0000u, 0x42);
+
+        Rlp encoded = Rlp.Encode(original);
+        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(decoded, Is.EqualTo(original));
+        Assert.That(decoded.Index, Is.EqualTo(0x10_0000u));
+    }
+
+    [Test]
+    public void Balance_change_roundtrips_with_max_uint32_index()
+    {
+        // Upper bound of EIP-7928 BlockAccessIndex spec.
+        // (Eip7928Constants.PrestateIndex collides with this value but is internal-only and
+        // never appears on the wire.)
+        BalanceChange original = new(uint.MaxValue, 0x1);
+
+        Rlp encoded = Rlp.Encode(original);
+        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
+
+        Assert.That(decoded.Index, Is.EqualTo(uint.MaxValue));
     }
 
     [Test]
@@ -207,7 +296,13 @@ public class BlockAccessListDecoderTests
         UInt256 slot1 = UInt256.One;
         UInt256 slot2 = new(2);
         // Pass slot changes in descending order so encoding emits unsorted RLP.
-        ReadOnlySlotChanges[] storageChanges = [new ReadOnlySlotChanges(slot2), new ReadOnlySlotChanges(slot1)];
+        // Each SlotChanges must have at least one StorageChange (per EIP-7928 / geth bal-devnet-4
+        // "empty storage_changes" rejection), so add a real change to each.
+        ReadOnlySlotChanges[] storageChanges =
+        [
+            new ReadOnlySlotChanges(slot2, [new StorageChange(0, 2)]),
+            new ReadOnlySlotChanges(slot1, [new StorageChange(0, 1)])
+        ];
         ReadOnlyAccountChanges accountChanges = new(
             TestItem.AddressA,
             storageChanges,

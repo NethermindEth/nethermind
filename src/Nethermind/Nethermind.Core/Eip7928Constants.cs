@@ -26,9 +26,8 @@ public static class Eip7928Constants
 
     /// <summary>
     /// Sentinel index used internally for prestate (pre-block) entries in the
-    /// suggested BAL after <c>LoadPreStateToSuggestedBlockAccessList</c>. Never
-    /// appears on the wire; replaces the legacy <c>-1</c> sentinel used before
-    /// BlockAccessIndex was widened to <see cref="uint"/>.
+    /// generating BAL. Never appears on the wire; replaces the legacy <c>-1</c>
+    /// sentinel used before BlockAccessIndex was widened to <see cref="uint"/>.
     /// </summary>
     public const uint PrestateIndex = uint.MaxValue;
 }

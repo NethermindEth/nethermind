@@ -33,16 +33,15 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        // Wire format keeps the legacy ushort encoding even though Index is uint internally.
-        // Real indices are bounded by Eip7928Constants.MaxTxs == ushort.MaxValue, and the
-        // PrestateIndex sentinel is never encoded (it is only added to the suggested BAL on
-        // the receiving side via LoadPreStateToSuggestedBlockAccessList).
-        stream.Encode((ushort)item.Index);
+        // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
+        // PrestateIndex sentinel is never encoded — it's only added to the suggested BAL on
+        // the receiving side via LoadPreStateToSuggestedBlockAccessList.
+        stream.Encode(item.Index);
         EncodeValue(stream, item);
     }
 
     public int GetContentLength(T item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf((ushort)item.Index) + GetValueLength(item);
+        => Rlp.LengthOf(item.Index) + GetValueLength(item);
 
     /// <summary>Decode Index + value field and return a new T.</summary>
     protected abstract T DecodeFields(ref Rlp.ValueDecoderContext ctx);

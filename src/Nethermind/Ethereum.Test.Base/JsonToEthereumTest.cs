@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -244,9 +244,11 @@ namespace Ethereum.Test.Base
             }
 
             List<GeneralStateTest> blockchainTests = [];
+            ulong chainId = LoadChainId(testJson.Config);
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int iterationNumber = 0;
+                IReleaseSpec fork = LoadSpec(postStateBySpec.Key, testJson.Config?.BlobSchedule);
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new()
@@ -255,7 +257,8 @@ namespace Ethereum.Test.Base
                                     $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_",
                         Category = category,
                         ForkName = postStateBySpec.Key,
-                        Fork = SpecNameParser.Parse(postStateBySpec.Key),
+                        Fork = fork,
+                        ChainId = chainId,
                         PreviousHash = testJson.Env.PreviousHash,
                         CurrentCoinbase = testJson.Env.CurrentCoinbase,
                         CurrentDifficulty = testJson.Env.CurrentDifficulty,
@@ -339,6 +342,37 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
+        public static IEnumerable<TransactionTest> ConvertTransactionTests(string json)
+        {
+            Dictionary<string, TransactionTestJson> testsInFile =
+                _serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
+
+            List<TransactionTest> tests = [];
+            foreach ((string testName, TransactionTestJson testSpec) in testsInFile)
+            {
+                if (testSpec.Result is null)
+                {
+                    continue;
+                }
+
+                (string name, string category) = GetNameAndCategory(testName);
+                foreach ((string fork, TransactionTestResultJson result) in testSpec.Result)
+                {
+                    tests.Add(new TransactionTest
+                    {
+                        Name = $"{name}::{fork}",
+                        Category = category,
+                        Fork = fork,
+                        TxBytes = testSpec.TxBytes,
+                        ExpectedException = result.Exception,
+                        ExpectedIntrinsicGas = result.IntrinsicGas,
+                    });
+                }
+            }
+
+            return tests;
+        }
+
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
             Dictionary<string, BlockchainTestJson> testsInFile;
@@ -376,6 +410,9 @@ namespace Ethereum.Test.Base
 
             return testsByName;
         }
+
+        private static ulong LoadChainId(ConfigJson? config) =>
+            config?.Chainid is null ? MainnetSpecProvider.Instance.ChainId : System.Convert.ToUInt64(config.Chainid, 16);
 
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {

@@ -46,6 +46,20 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
         JsonSerializer.Serialize(writer, receipt.ContractAddress, options);
         writer.WritePropertyName("gasUsed");
         JsonSerializer.Serialize(writer, receipt.GasUsed, options);
+        // Diagnostic-only EIP-7778 gas breakdown.
+        if (value.BlockGasUsed > 0)
+        {
+            writer.WritePropertyName("blockGasUsed");
+            JsonSerializer.Serialize(writer, value.BlockGasUsed, options);
+        }
+        // Diagnostic-only EIP-8037 gas breakdown.
+        if (value.StorageGasUsed > 0 || value.ExecutionGasUsed > 0)
+        {
+            writer.WritePropertyName("executionGasUsed");
+            JsonSerializer.Serialize(writer, value.ExecutionGasUsed, options);
+            writer.WritePropertyName("storageGasUsed");
+            JsonSerializer.Serialize(writer, value.StorageGasUsed, options);
+        }
         writer.WritePropertyName("blockHash");
         JsonSerializer.Serialize(writer, receipt.BlockHash ?? Hash256.Zero, options);
 

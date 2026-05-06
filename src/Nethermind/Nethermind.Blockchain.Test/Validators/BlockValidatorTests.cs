@@ -293,7 +293,7 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
         }
     }
 
@@ -356,7 +356,49 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
+    // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
+    // 1..n = transaction indices, n+1 = post-execution.
+    // For a block with 0 transactions, valid indices are 0 and 1.
+    [TestCase(0u, true)]
+    [TestCase(1u, true)]
+    [TestCase(2u, false)]
+    [TestCase(uint.MaxValue, false)]
+    public void ValidateSuggestedBlock_rejects_bal_index_above_tx_count_plus_one(uint balanceChangeIndex, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithPrecompileChanges(parent.Hash!, timestamp: 12)
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges([new BalanceChange(balanceChangeIndex, 100)])
+                    .TestObject)
+            .TestObject;
+        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(30_000_000)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid));
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("BlockLevelAccessListIndexOutOfRange"));
         }
     }
 }
