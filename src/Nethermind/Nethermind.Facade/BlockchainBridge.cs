@@ -19,6 +19,7 @@ using Nethermind.Trie;
 using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
+using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
@@ -275,21 +276,23 @@ namespace Nethermind.Facade
 
         private Address[] BuildAddressesToOptimize(BlockHeader header, Transaction tx, bool optimize)
         {
+            IEnumerable<Address> precompiles = specProvider.GetSpec(header).Precompiles.Select(static p => (Address)p);
+
             if (!optimize)
-                return [header.GasBeneficiary];
+                return [header.GasBeneficiary, .. precompiles];
 
             // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
             // so excluding them keeps the returned access list minimal.
             UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
             Address recipient = tx.GetRecipient(senderNonce);
-            return [tx.SenderAddress, recipient, header.GasBeneficiary];
+            return [tx.SenderAddress, recipient, header.GasBeneficiary, .. precompiles];
         }
 
         private static bool HasConverged(AccessList? previous, AccessList? discovered)
         {
             // Count comparison is sufficient because WarmUp(tx.AccessList) pre-populates the warm-address
             // set with all of `previous`'s entries before execution, making `discovered` monotonically
-            // non-decreasing (discovered ⊇ previous). Equal counts therefore imply equal content.
+            // non-decreasing (discovere`d ⊇ previous). Equal counts therefore imply equal content.
             (int addrs, int keys) previousCount = previous?.Count ?? (0, 0);
             (int addrs, int keys) discoveredCount = discovered?.Count ?? (0, 0);
             return previousCount == discoveredCount;
