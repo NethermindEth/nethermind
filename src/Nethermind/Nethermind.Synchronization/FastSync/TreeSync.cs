@@ -66,10 +66,8 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IBlockTree _blockTree;
         private readonly IStateSyncPivot _stateSyncPivot;
 
-        // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
-        // below which need to be cleared atomically during reset root, hence the write lock, while allowing
-        // concurrent request handling with the read lock.
-        private readonly ReaderWriterLockSlim _syncStateLock = new();
+        // SimpleDispatcher.Run drains in-flight workers before returning, and StateSyncRunner
+        // only resets / cleans up outside dispatcher.Run — the drain is the sole barrier.
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _ongoingRequests = new();
         private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
         private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
@@ -148,7 +146,6 @@ namespace Nethermind.Synchronization.FastSync
 
             try
             {
-                _syncStateLock.EnterReadLock();
                 try
                 {
                     if (!_ongoingRequests.TryRemove(batch, out _))
@@ -324,7 +321,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 finally
                 {
-                    _syncStateLock.ExitReadLock();
                     batch.Dispose();
                 }
             }
@@ -340,7 +336,6 @@ namespace Nethermind.Synchronization.FastSync
             if (_rootSaved == 1)
             {
                 if (_logger.IsInfo) _logger.Info("StateNode sync: falling asleep - root saved");
-                VerifyPostSyncCleanUp();
                 return true;
             }
 
@@ -350,7 +345,8 @@ namespace Nethermind.Synchronization.FastSync
                 return true;
             }
 
-            if (_stateSyncPivot.GetPivotHeader().StateRoot != _rootNode)
+            BlockHeader? pivotHeader = _stateSyncPivot.GetPivotHeader();
+            if (pivotHeader is null || pivotHeader.StateRoot != _rootNode)
             {
                 if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - updating state root");
                 return true;
@@ -381,116 +377,96 @@ namespace Nethermind.Synchronization.FastSync
 
             if (rootNodeKeyExists)
             {
-                try
-                {
-                    _logger.Info($"STATE SYNC FINISHED:{Metrics.StateSyncRequests}, {Metrics.SyncedStateTrieNodes}");
-
-                    VerifyPostSyncCleanUp();
-                }
-                catch (ObjectDisposedException) { }
                 return true;
             }
 
             return false;
         }
 
-        public void ResetStateRoot(SyncFeedState currentState) => ResetStateRoot(_blockNumber, _rootNode, currentState);
+        public void FinalizeSync(BlockHeader pivotHeader) => _store.FinalizeSync(pivotHeader);
 
-        public void ResetStateRootToBestSuggested(SyncFeedState currentState)
+        public void ResetStateRoot() => ResetStateRoot(_blockNumber, _rootNode);
+
+        public BlockHeader? ResetStateRootToBestSuggested()
         {
-            if (currentState == SyncFeedState.Dormant)
-            {
-                _stateSyncPivot.UpdateHeaderForcefully();
-            }
+            _stateSyncPivot.UpdateHeaderForcefully();
 
             BlockHeader headerForState = _stateSyncPivot.GetPivotHeader();
 
             if (headerForState is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"State pivot header not known.");
-                return;
+                return null;
             }
             if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {headerForState.ToString(BlockHeader.Format.Short)} {headerForState.StateRoot} root");
 
-            ResetStateRoot(headerForState.Number, headerForState.StateRoot!, currentState);
+            ResetStateRoot(headerForState.Number, headerForState.StateRoot!);
+            return headerForState;
         }
 
-        private void ResetStateRoot(long blockNumber, Hash256 stateRoot, SyncFeedState currentState)
+        private void ResetStateRoot(long blockNumber, Hash256 stateRoot)
         {
-            _syncStateLock.EnterWriteLock();
-            try
+            _lastResetRoot = DateTime.UtcNow;
+            Interlocked.Exchange(ref _hintsToResetRoot, 0);
+
+            if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
+            _currentSyncStart = DateTime.UtcNow;
+            _currentSyncStartSecondsInSync = _data.SecondsInSync;
+
+            _data.LastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
+            _data.LastSavedNodesCount = _data.SavedNodesCount;
+            _data.LastRequestedNodesCount = _data.RequestedNodesCount;
+            if (_rootNode != stateRoot)
             {
-                _lastResetRoot = DateTime.UtcNow;
-                if (currentState != SyncFeedState.Dormant)
+                _branchProgress = new BranchProgress(blockNumber, _logger);
+                _blockNumber = blockNumber;
+                _rootNode = stateRoot;
+                lock (_dependencies)
                 {
-                    throw new InvalidOperationException("Cannot reset state sync on an active feed");
+                    // Swap the pending items
+                    _previouslyPendingItems.Clear();
+                    (_newPendingItems, _previouslyPendingItems) = (_previouslyPendingItems, _newPendingItems);
+                    _dependencies.Clear();
                 }
 
-                Interlocked.Exchange(ref _hintsToResetRoot, 0);
-
-                if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
-                _currentSyncStart = DateTime.UtcNow;
-                _currentSyncStartSecondsInSync = _data.SecondsInSync;
-
-                _data.LastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
-                _data.LastSavedNodesCount = _data.SavedNodesCount;
-                _data.LastRequestedNodesCount = _data.RequestedNodesCount;
-                if (_rootNode != stateRoot)
+                if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
+                _pendingItems.Clear();
+                Interlocked.Exchange(ref _rootSaved, 0);
+            }
+            else
+            {
+                foreach ((StateSyncBatch pendingRequest, _) in _ongoingRequests)
                 {
-                    _branchProgress = new BranchProgress(blockNumber, _logger);
-                    _blockNumber = blockNumber;
-                    _rootNode = stateRoot;
-                    lock (_dependencies)
+                    // re-add the pending request
+                    for (int i = 0; i < pendingRequest.RequestedNodes?.Count; i++)
                     {
-                        // Swap the pending items
-                        _previouslyPendingItems.Clear();
-                        (_newPendingItems, _previouslyPendingItems) = (_previouslyPendingItems, _newPendingItems);
-                        _dependencies.Clear();
+                        AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
                     }
 
-                    if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
-                    _pendingItems.Clear();
-                    Interlocked.Exchange(ref _rootSaved, 0);
-                }
-                else
-                {
-                    foreach ((StateSyncBatch pendingRequest, _) in _ongoingRequests)
-                    {
-                        // re-add the pending request
-                        for (int i = 0; i < pendingRequest.RequestedNodes?.Count; i++)
-                        {
-                            AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
-                        }
-
-                        pendingRequest.Dispose();
-                    }
-                }
-
-                _ongoingRequests.Clear();
-
-                bool hasOnlyRootNode = false;
-
-                if (_rootNode != Keccak.EmptyTreeHash)
-                {
-                    if (_pendingItems.Count == 1)
-                    {
-                        // state root can only be located on state stream
-                        StateSyncItem? potentialRoot = _pendingItems.PeekState();
-                        if (potentialRoot?.Hash == _rootNode)
-                        {
-                            hasOnlyRootNode = true;
-                        }
-                    }
-
-                    if (!hasOnlyRootNode)
-                    {
-                        AddNodeToPending(new StateSyncItem(_rootNode, null, TreePath.Empty, NodeDataType.State), null, "initial");
-                    }
+                    pendingRequest.Dispose();
                 }
             }
-            finally
+
+            _ongoingRequests.Clear();
+
+            bool hasOnlyRootNode = false;
+
+            if (_rootNode != Keccak.EmptyTreeHash)
             {
-                _syncStateLock.ExitWriteLock();
+                if (_pendingItems.Count == 1)
+                {
+                    // state root can only be located on state stream
+                    StateSyncItem? potentialRoot = _pendingItems.PeekState();
+                    if (potentialRoot?.Hash == _rootNode)
+                    {
+                        hasOnlyRootNode = true;
+                    }
+                }
+
+                if (!hasOnlyRootNode)
+                {
+                    AddNodeToPending(new StateSyncItem(_rootNode, null, TreePath.Empty, NodeDataType.State), null, "initial");
+                }
             }
         }
 
@@ -713,10 +689,6 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
-                {
-                    _store.FinalizeSync(pivotHeader);
-                }
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
@@ -738,14 +710,16 @@ namespace Nethermind.Synchronization.FastSync
             {
                 Account? account = verificationContext.GetAccount(updatedAddress);
 
-                if (account?.StorageRoot == Keccak.EmptyTreeHash)
+                // Account may be null if it was deleted in the final state. In both the deleted
+                // and empty-storage-root cases, any flat storage entries written earlier in sync
+                // must be cleared to avoid stale slots.
+                if (account is null || account.StorageRoot == Keccak.EmptyTreeHash)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is empty, ensuring flat storage cleared");
+                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is empty or account deleted, ensuring flat storage cleared");
                     _store.EnsureStorageEmpty(updatedAddress);
                     dependentItem.Counter--;
                 }
-                else if (account?.StorageRoot is not null
-                    && AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
+                else if (AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
                 }
@@ -768,7 +742,7 @@ namespace Nethermind.Synchronization.FastSync
             return dependentItem.Counter == 0;
         }
 
-        private void VerifyPostSyncCleanUp()
+        public void VerifyPostSyncCleanUp()
         {
             lock (_dependencies)
             {
@@ -790,22 +764,14 @@ namespace Nethermind.Synchronization.FastSync
 
         private void CleanupMemory()
         {
-            _syncStateLock.EnterWriteLock();
-            try
+            _ongoingRequests.Clear();
+            _dependencies.Clear();
+            _alreadySavedNode.Clear();
+            _alreadySavedCode.Clear();
+            if (_rootSaved == 1)
             {
-                _ongoingRequests.Clear();
-                _dependencies.Clear();
-                _alreadySavedNode.Clear();
-                _alreadySavedCode.Clear();
-                if (_rootSaved == 1)
-                {
-                    _previouslyPendingItems.Clear();
-                    _newPendingItems.Clear();
-                }
-            }
-            finally
-            {
-                _syncStateLock.ExitWriteLock();
+                _previouslyPendingItems.Clear();
+                _newPendingItems.Clear();
             }
         }
 

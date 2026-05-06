@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
@@ -329,7 +330,13 @@ namespace Nethermind.Network.Rlpx
             _ = connectTask.Result.DisconnectAsync();
         }
 
-        private void OnChannelCloseCompleted(Task _, object? state) =>
+        private void OnChannelCloseCompleted(Task _, object? state)
+        {
+            if (state is Session session)
+            {
+                session.MarkChannelClosed();
+            }
+
             // The close completion is completed before actual closing or remaining packet is processed.
             // So usually, we do get a disconnect reason from peer, we just receive it after this. So we need to
             // add some delay to account for whatever is holding the network pipeline.
@@ -339,6 +346,7 @@ namespace Nethermind.Network.Rlpx
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
+        }
 
         private void MarkDisconnectedAfterCloseDelay(Task _, object? state)
         {
@@ -381,9 +389,9 @@ namespace Nethermind.Network.Rlpx
 
             // Detach subscriptions and dispose any sessions that weren't disconnected during shutdown.
             // Sessions whose Disconnected event fired are already disposed via OnDisconnected.
-            foreach (SessionActivitySubscription subscription in _sessionActivitySubscriptions.Values)
+            foreach (KeyValuePair<Guid, SessionActivitySubscription> kvp in _sessionActivitySubscriptions)
             {
-                subscription.DetachAndDispose();
+                kvp.Value.DetachAndDispose();
             }
 
             _sessionActivitySubscriptions.Clear();
