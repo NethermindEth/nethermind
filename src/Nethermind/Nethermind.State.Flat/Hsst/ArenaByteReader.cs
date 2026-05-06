@@ -7,14 +7,18 @@ using Nethermind.State.Flat.Storage;
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Span-backed <see cref="IHsstByteReader{TPin}"/> that, on every read or pin, computes which OS
-/// page(s) the access spans (in arena-absolute terms) and reports them to a
-/// <see cref="PageResidencyTracker"/>. Page math: <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
-/// Otherwise identical to <see cref="SpanByteReader"/> — zero-copy slice, <see cref="NoOpPin"/>.
+/// Pointer-backed <see cref="IHsstByteReader{TPin}"/> over an arena-mmap region. On every
+/// read or pin computes which OS page(s) the access spans (in arena-absolute terms) and
+/// reports them to a <see cref="PageResidencyTracker"/>; on eviction dispatches via
+/// <see cref="IPageEvictionHandler"/>. Page math:
+/// <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
+/// Holds a raw <c>byte*</c> + <see cref="long"/> length so the addressed region can exceed
+/// 2 GiB (each individual pin still materialises an int-sized <see cref="ReadOnlySpan{T}"/>).
 /// </summary>
-public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
+public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 {
-    private readonly ReadOnlySpan<byte> _data;
+    private readonly byte* _basePtr;
+    private readonly long _length;
     private readonly PageResidencyTracker _tracker;
     private readonly IPageEvictionHandler _evictionHandler;
     private readonly int _arenaId;
@@ -28,11 +32,12 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
     // bytes within one node.
     private long _lastPageBase;
 
-    public ArenaByteReader(ReadOnlySpan<byte> data, PageResidencyTracker tracker, IPageEvictionHandler evictionHandler, int arenaId, long baseOffset)
+    public ArenaByteReader(byte* basePtr, long length, PageResidencyTracker tracker, IPageEvictionHandler evictionHandler, int arenaId, long baseOffset)
     {
         ArgumentNullException.ThrowIfNull(tracker);
         ArgumentNullException.ThrowIfNull(evictionHandler);
-        _data = data;
+        _basePtr = basePtr;
+        _length = length;
         _tracker = tracker;
         _evictionHandler = evictionHandler;
         _arenaId = arenaId;
@@ -43,13 +48,13 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
         _lastPageBase = -1;
     }
 
-    public long Length => _data.Length;
+    public long Length => _length;
 
     public bool TryRead(long offset, scoped Span<byte> output)
     {
-        if ((ulong)offset > (ulong)(_data.Length - output.Length)) return false;
+        if ((ulong)offset + (ulong)output.Length > (ulong)_length) return false;
         TouchRange(offset, output.Length);
-        _data.Slice((int)offset, output.Length).CopyTo(output);
+        new ReadOnlySpan<byte>(_basePtr + offset, output.Length).CopyTo(output);
         return true;
     }
 
@@ -57,10 +62,10 @@ public ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 
     public NoOpPin PinBuffer(long offset, long size)
     {
-        if ((ulong)offset + (ulong)size > (ulong)_data.Length)
+        if ((ulong)offset + (ulong)size > (ulong)_length)
             throw new ArgumentOutOfRangeException(nameof(offset));
         TouchRange(offset, size);
-        return new NoOpPin(_data.Slice((int)offset, (int)size));
+        return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + offset, checked((int)size)));
     }
 
     private void TouchRange(long localOffset, long length)

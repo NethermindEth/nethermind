@@ -122,58 +122,67 @@ public class PageResidencyTrackerTests
     }
 
     [Test]
-    public void ArenaByteReader_TryRead_TouchesAllSpannedPages()
+    public unsafe void ArenaByteReader_TryRead_TouchesAllSpannedPages()
     {
         PageResidencyTracker tracker = new(maxCapacity: 1024);
         int pageSize = Environment.SystemPageSize;
         long baseOffset = pageSize - 8;
         byte[] data = new byte[pageSize * 2];
-        ArenaByteReader reader = new(data, tracker, NoopHandler.Instance, arenaId: 9, baseOffset: baseOffset);
+        fixed (byte* dataPtr = data)
+        {
+            ArenaByteReader reader = new(dataPtr, data.Length, tracker, NoopHandler.Instance, arenaId: 9, baseOffset: baseOffset);
 
-        Span<byte> sink = stackalloc byte[16];
-        reader.TryRead(0, sink).Should().BeTrue();
+            Span<byte> sink = stackalloc byte[16];
+            reader.TryRead(0, sink).Should().BeTrue();
 
-        int firstPage = (int)(baseOffset / pageSize);
-        int lastPage = (int)((baseOffset + 15) / pageSize);
-        firstPage.Should().NotBe(lastPage, "test setup must straddle a page boundary");
-        tracker.ContainsPage(9, firstPage).Should().BeTrue();
-        tracker.ContainsPage(9, lastPage).Should().BeTrue();
+            int firstPage = (int)(baseOffset / pageSize);
+            int lastPage = (int)((baseOffset + 15) / pageSize);
+            firstPage.Should().NotBe(lastPage, "test setup must straddle a page boundary");
+            tracker.ContainsPage(9, firstPage).Should().BeTrue();
+            tracker.ContainsPage(9, lastPage).Should().BeTrue();
+        }
     }
 
     [Test]
-    public void ArenaByteReader_PinBuffer_TouchesAllSpannedPages()
+    public unsafe void ArenaByteReader_PinBuffer_TouchesAllSpannedPages()
     {
         PageResidencyTracker tracker = new(maxCapacity: 1024);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 3];
-        ArenaByteReader reader = new(data, tracker, NoopHandler.Instance, arenaId: 1, baseOffset: 0);
+        fixed (byte* dataPtr = data)
+        {
+            ArenaByteReader reader = new(dataPtr, data.Length, tracker, NoopHandler.Instance, arenaId: 1, baseOffset: 0);
 
-        using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
-        pin.Buffer.Length.Should().Be(pageSize * 2 + 1);
-        tracker.ContainsPage(1, 0).Should().BeTrue();
-        tracker.ContainsPage(1, 1).Should().BeTrue();
-        tracker.ContainsPage(1, 2).Should().BeTrue();
+            using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
+            pin.Buffer.Length.Should().Be(pageSize * 2 + 1);
+            tracker.ContainsPage(1, 0).Should().BeTrue();
+            tracker.ContainsPage(1, 1).Should().BeTrue();
+            tracker.ContainsPage(1, 2).Should().BeTrue();
+        }
     }
 
     [Test]
-    public void ArenaByteReader_DispatchesEvictionsToHandler()
+    public unsafe void ArenaByteReader_DispatchesEvictionsToHandler()
     {
         // maxCapacity=1 forces every Touch to evict whatever was there.
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(maxCapacity: 1);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 2];
-        ArenaByteReader reader = new(data, tracker, handler, arenaId: 5, baseOffset: 0);
+        fixed (byte* dataPtr = data)
+        {
+            ArenaByteReader reader = new(dataPtr, data.Length, tracker, handler, arenaId: 5, baseOffset: 0);
 
-        Span<byte> b = stackalloc byte[1];
-        reader.TryRead(0, b).Should().BeTrue();           // primes (5,0)
-        reader.TryRead(pageSize, b).Should().BeTrue();    // crosses to page 1 → evicts (5,0)
+            Span<byte> b = stackalloc byte[1];
+            reader.TryRead(0, b).Should().BeTrue();           // primes (5,0)
+            reader.TryRead(pageSize, b).Should().BeTrue();    // crosses to page 1 → evicts (5,0)
 
-        handler.Evictions.Should().ContainSingle().Which.Should().Be((5, 0));
+            handler.Evictions.Should().ContainSingle().Which.Should().Be((5, 0));
+        }
     }
 
     [Test]
-    public void ArenaByteReader_RepeatedSamePageReads_OnlyTouchOnce()
+    public unsafe void ArenaByteReader_RepeatedSamePageReads_OnlyTouchOnce()
     {
         // maxCapacity=1: every Touch lands on the only slot. We probe the memo
         // by forcing a sentinel back into the slot before each read and checking
@@ -183,45 +192,51 @@ public class PageResidencyTrackerTests
         PageResidencyTracker tracker = new(maxCapacity: 1);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * 2];
-        ArenaByteReader reader = new(data, tracker, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
-
-        Span<byte> b = stackalloc byte[1];
-
-        // First read materializes (0,0) in the slot.
-        reader.TryRead(0, b).Should().BeTrue();
-        tracker.ContainsPage(0, 0).Should().BeTrue();
-
-        // 99 more reads on page 0 — memo path must not Touch.
-        for (int i = 1; i < 100; i++)
+        fixed (byte* dataPtr = data)
         {
+            ArenaByteReader reader = new(dataPtr, data.Length, tracker, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
+
+            Span<byte> b = stackalloc byte[1];
+
+            // First read materializes (0,0) in the slot.
+            reader.TryRead(0, b).Should().BeTrue();
+            tracker.ContainsPage(0, 0).Should().BeTrue();
+
+            // 99 more reads on page 0 — memo path must not Touch.
+            for (int i = 1; i < 100; i++)
+            {
+                Touch(tracker, 99, 99);
+                reader.TryRead(i, b).Should().BeTrue();
+                tracker.ContainsPage(99, 99).Should().BeTrue("memo must skip Touch for same page");
+                tracker.ContainsPage(0, 0).Should().BeFalse();
+            }
+
+            // Crossing into page 1 must invalidate the memo and Touch exactly once.
             Touch(tracker, 99, 99);
-            reader.TryRead(i, b).Should().BeTrue();
-            tracker.ContainsPage(99, 99).Should().BeTrue("memo must skip Touch for same page");
-            tracker.ContainsPage(0, 0).Should().BeFalse();
+            reader.TryRead(pageSize, b).Should().BeTrue();
+            tracker.ContainsPage(0, 1).Should().BeTrue("page boundary must invalidate the memo");
+            tracker.ContainsPage(99, 99).Should().BeFalse();
+
+            // Still on page 1 — memo holds again.
+            Touch(tracker, 99, 99);
+            reader.TryRead(pageSize + 4, b).Should().BeTrue();
+            tracker.ContainsPage(99, 99).Should().BeTrue();
         }
-
-        // Crossing into page 1 must invalidate the memo and Touch exactly once.
-        Touch(tracker, 99, 99);
-        reader.TryRead(pageSize, b).Should().BeTrue();
-        tracker.ContainsPage(0, 1).Should().BeTrue("page boundary must invalidate the memo");
-        tracker.ContainsPage(99, 99).Should().BeFalse();
-
-        // Still on page 1 — memo holds again.
-        Touch(tracker, 99, 99);
-        reader.TryRead(pageSize + 4, b).Should().BeTrue();
-        tracker.ContainsPage(99, 99).Should().BeTrue();
     }
 
     [Test]
-    public void ArenaByteReader_DisabledTracker_DoesNotThrow()
+    public unsafe void ArenaByteReader_DisabledTracker_DoesNotThrow()
     {
         // Capacity-0 tracker is the "disabled" form — TryTouch is a no-op, no allocation.
         using PageResidencyTracker disabled = new(maxCapacity: 0);
         byte[] data = new byte[64];
-        ArenaByteReader reader = new(data, disabled, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
-        Span<byte> sink = stackalloc byte[8];
-        reader.TryRead(4, sink).Should().BeTrue();
-        using NoOpPin pin = reader.PinBuffer(0, 16);
-        pin.Buffer.Length.Should().Be(16);
+        fixed (byte* dataPtr = data)
+        {
+            ArenaByteReader reader = new(dataPtr, data.Length, disabled, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
+            Span<byte> sink = stackalloc byte[8];
+            reader.TryRead(4, sink).Should().BeTrue();
+            using NoOpPin pin = reader.PinBuffer(0, 16);
+            pin.Buffer.Length.Should().Be(16);
+        }
     }
 }

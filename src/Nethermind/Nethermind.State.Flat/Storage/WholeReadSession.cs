@@ -31,11 +31,12 @@ public sealed class WholeReadSession : IDisposable
     /// <summary>
     /// <see cref="IHsstByteReader{TPin}"/> over the session's view, addressed in the
     /// reservation's own offset space (offset 0 = first byte of the reservation).
+    /// Pointer-backed so &gt;2 GiB reservations are addressable.
     /// </summary>
-    public WholeReadSessionReader GetReader()
+    public unsafe WholeReadSessionReader GetReader()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return new WholeReadSessionReader(_view.GetSpan());
+        return new WholeReadSessionReader(_view.DataPtr, _view.Size);
     }
 
     public void Dispose()

@@ -3,7 +3,7 @@
 
 namespace Nethermind.State.Flat.Storage;
 
-public interface IArenaManager : IDisposable, IPageEvictionHandler
+public unsafe interface IArenaManager : IDisposable, IPageEvictionHandler
 {
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
     ArenaWriter CreateWriter(long estimatedSize, string tag);
@@ -12,6 +12,15 @@ public interface IArenaManager : IDisposable, IPageEvictionHandler
     ArenaReservation Open(in SnapshotLocation location, string tag);
     ReadOnlySpan<byte> GetSpan(ArenaReservation reservation);
     IArenaWholeView OpenWholeView(ArenaReservation reservation);
+
+    /// <summary>
+    /// Raw pointer to the first byte of <paramref name="reservation"/> within the
+    /// owning arena's mmap. Long-offset arithmetic on the returned pointer is valid
+    /// for <paramref name="size"/> bytes. Pointer lifetime matches the reservation
+    /// (or, for the test arena, the manager's lifetime).
+    /// </summary>
+    void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size);
+
     void MarkDead(in SnapshotLocation location);
     void AdviseDontNeed(ArenaReservation reservation);
     void Touch(ArenaReservation reservation, long subOffset, long size);

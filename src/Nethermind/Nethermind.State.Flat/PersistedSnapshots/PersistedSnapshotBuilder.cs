@@ -1605,13 +1605,15 @@ public static class PersistedSnapshotBuilder
         builder.Build();
     }
 
-    private static void AddSlotKeysToBloom(ReadOnlySpan<byte> slotSection, ulong addrKey, BloomFilter bloom)
+    private static unsafe void AddSlotKeysToBloom(ReadOnlySpan<byte> slotSection, ulong addrKey, BloomFilter bloom)
     {
         // slotSection is a 2-level HSST: prefix(31 bytes) → inner ByteTagMap(suffix(1 byte) → slot value)
-        // Span-rooted reader (offsets relative to slotSection start) — no session is available here
-        // because the slot section is materialised from a parent column.
+        // No session is available here (slot section is sliced from a parent column) so we pin
+        // the span ourselves and feed its pointer into a WholeReadSessionReader.
         Span<byte> fullSlot = stackalloc byte[32];
-        WholeReadSessionReader outerReader = new(slotSection);
+        fixed (byte* slotSectionPtr = slotSection)
+        {
+        WholeReadSessionReader outerReader = new(slotSectionPtr, slotSection.Length);
         HsstMergeEnumerator outerEnum = new(in outerReader, new Bound(0, slotSection.Length));
         while (outerEnum.MoveNext(in outerReader))
         {
@@ -1619,7 +1621,9 @@ public static class PersistedSnapshotBuilder
             slotSection.Slice((int)okb.Offset, checked((int)okb.Length)).CopyTo(fullSlot);
             Bound ovb = outerEnum.CurrentValue;
             ReadOnlySpan<byte> innerSection = slotSection.Slice((int)ovb.Offset, checked((int)ovb.Length));
-            WholeReadSessionReader innerReader = new(innerSection);
+            fixed (byte* innerPtr = innerSection)
+            {
+            WholeReadSessionReader innerReader = new(innerPtr, innerSection.Length);
             HsstMergeEnumerator innerEnum = new(in innerReader, new Bound(0, innerSection.Length));
             while (innerEnum.MoveNext(in innerReader))
             {
@@ -1632,7 +1636,9 @@ public static class PersistedSnapshotBuilder
                 bloom.Add(addrKey ^ s0 ^ s1 ^ s2 ^ s3);
             }
             innerEnum.Dispose();
+            } // fixed innerPtr
         }
         outerEnum.Dispose();
+        } // fixed slotSectionPtr
     }
 }

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.InteropServices;
+
 namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
@@ -10,6 +12,9 @@ namespace Nethermind.State.Flat.Storage;
 public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManager
 {
     private readonly Dictionary<int, byte[]> _arenas = [];
+    // Each arena's byte[] is pinned via a GCHandle so GetReservationPointer can return
+    // a stable raw pointer. Re-pinned on EnsureCapacity reallocation; freed on remove/Dispose.
+    private readonly Dictionary<int, GCHandle> _arenaPins = [];
     private readonly Dictionary<int, long> _frontiers = [];
     private readonly Dictionary<int, long> _deadBytes = [];
     private readonly Dictionary<(int ArenaId, long Offset), MemoryStream> _pendingStreams = [];
@@ -55,13 +60,35 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].AsSpan(checked((int)reservation.Offset), checked((int)reservation.Size));
 
+    public unsafe void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size)
+    {
+        GCHandle pin = _arenaPins[reservation.ArenaId];
+        dataPtr = (byte*)pin.AddrOfPinnedObject() + reservation.Offset;
+        size = reservation.Size;
+    }
+
     public IArenaWholeView OpenWholeView(ArenaReservation reservation) =>
         new MemoryWholeView(_arenas[reservation.ArenaId], checked((int)reservation.Offset), checked((int)reservation.Size));
 
-    private sealed class MemoryWholeView(byte[] buffer, int offset, int size) : IArenaWholeView
+    private sealed unsafe class MemoryWholeView : IArenaWholeView
     {
-        public ReadOnlySpan<byte> GetSpan() => buffer.AsSpan(offset, size);
-        public void Dispose() { }
+        private readonly byte[] _buffer;
+        private readonly int _offset;
+        private GCHandle _handle;
+        public byte* DataPtr { get; }
+        public long Size { get; }
+
+        public MemoryWholeView(byte[] buffer, int offset, int size)
+        {
+            _buffer = buffer;
+            _offset = offset;
+            Size = size;
+            _handle = GCHandle.Alloc(_buffer, GCHandleType.Pinned);
+            DataPtr = (byte*)_handle.AddrOfPinnedObject() + offset;
+        }
+
+        public ReadOnlySpan<byte> GetSpan() => _buffer.AsSpan(_offset, checked((int)Size));
+        public void Dispose() { if (_handle.IsAllocated) _handle.Free(); }
     }
 
     public void AdviseDontNeed(ArenaReservation reservation) { }
@@ -96,6 +123,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
         {
             _mutableArenas.Remove(location.ArenaId);
             _arenas.Remove(location.ArenaId);
+            if (_arenaPins.Remove(location.ArenaId, out GCHandle pin) && pin.IsAllocated) pin.Free();
             _frontiers.Remove(location.ArenaId);
             _deadBytes.Remove(location.ArenaId);
         }
@@ -108,6 +136,9 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
             int newSize = Math.Max(_arenaSize, needed);
             byte[] newArena = new byte[newSize];
             arena?.AsSpan(0, Math.Min(arena.Length, newSize)).CopyTo(newArena);
+            // Re-pin to keep the raw pointer stable for the lifetime of the new buffer.
+            if (_arenaPins.Remove(arenaId, out GCHandle oldPin)) oldPin.Free();
+            _arenaPins[arenaId] = GCHandle.Alloc(newArena, GCHandleType.Pinned);
             _arenas[arenaId] = newArena;
         }
     }
@@ -139,7 +170,9 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
         int newId = _nextArenaId++;
         int size = Math.Max(_arenaSize, requiredSize);
-        _arenas[newId] = new byte[size];
+        byte[] arena = new byte[size];
+        _arenas[newId] = arena;
+        _arenaPins[newId] = GCHandle.Alloc(arena, GCHandleType.Pinned);
         _frontiers[newId] = 0;
         _deadBytes[newId] = 0;
         _mutableArenas.Add(newId);
@@ -148,6 +181,9 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Dispose()
     {
+        foreach (GCHandle pin in _arenaPins.Values)
+            if (pin.IsAllocated) pin.Free();
+        _arenaPins.Clear();
         _arenas.Clear();
         _frontiers.Clear();
         _deadBytes.Clear();

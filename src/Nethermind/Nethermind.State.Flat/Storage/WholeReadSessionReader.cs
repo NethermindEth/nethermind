@@ -7,22 +7,21 @@ namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
 /// <see cref="IHsstByteReader{TPin}"/> over a <see cref="WholeReadSession"/>'s mmap view.
-/// Currently span-backed — behaviour identical to <see cref="SpanByteReader"/> — but kept as
-/// a distinct type so the address space (a single <see cref="ArenaReservation"/>'s view) can
-/// later evolve to a chunked / long-sized backing without touching call sites.
+/// Holds a raw <c>byte*</c> + <see cref="long"/> length (pointer arithmetic on the long
+/// offset, then constructs an int-sized <see cref="ReadOnlySpan{T}"/> for each pin), so
+/// it correctly addresses &gt;2 GiB views without trying to materialise a single
+/// <see cref="ReadOnlySpan{T}"/> over the whole reservation. The pointer's lifetime is
+/// owned by the <see cref="WholeReadSession"/>; the reader assumes the session is alive.
 /// </summary>
-public readonly ref struct WholeReadSessionReader : IHsstByteReader<NoOpPin>
+public readonly unsafe ref struct WholeReadSessionReader(byte* basePtr, long length) : IHsstByteReader<NoOpPin>
 {
-    private readonly ReadOnlySpan<byte> _data;
-
-    public WholeReadSessionReader(ReadOnlySpan<byte> data) => _data = data;
-
-    public long Length => _data.Length;
+    private readonly byte* _basePtr = basePtr;
+    public long Length => length;
 
     public bool TryRead(long offset, scoped Span<byte> output)
     {
-        if ((ulong)offset > (ulong)(_data.Length - output.Length)) return false;
-        _data.Slice((int)offset, output.Length).CopyTo(output);
+        if ((ulong)offset + (ulong)output.Length > (ulong)length) return false;
+        new ReadOnlySpan<byte>(_basePtr + offset, output.Length).CopyTo(output);
         return true;
     }
 
@@ -30,8 +29,8 @@ public readonly ref struct WholeReadSessionReader : IHsstByteReader<NoOpPin>
 
     public NoOpPin PinBuffer(long offset, long size)
     {
-        if ((ulong)offset + (ulong)size > (ulong)_data.Length)
+        if ((ulong)offset + (ulong)size > (ulong)length)
             throw new ArgumentOutOfRangeException(nameof(offset));
-        return new NoOpPin(_data.Slice((int)offset, (int)size));
+        return new NoOpPin(new ReadOnlySpan<byte>(_basePtr + offset, checked((int)size)));
     }
 }

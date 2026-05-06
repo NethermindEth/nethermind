@@ -32,6 +32,9 @@ public sealed unsafe class ArenaFile : IDisposable
     private readonly MemoryMappedViewAccessor _accessor;
     private readonly byte* _basePtr;
 
+    /// <summary>Raw pointer to the first byte of the arena's mmap. Long-offset arithmetic OK across the full <see cref="MappedSize"/>.</summary>
+    public byte* BasePtr => _basePtr;
+
     public int Id { get; }
     public string Path { get; }
     public long MappedSize { get; }
@@ -149,8 +152,10 @@ public sealed unsafe class ArenaFile : IDisposable
     private sealed unsafe class MmapWholeView(
         MemoryMappedViewAccessor accessor, byte* dataPtr, long size) : IArenaWholeView
     {
-        // Span<T> is int-bounded; for >2 GiB views the caller must use a chunk-aware
-        // reader (a future evolution of WholeReadSessionReader) instead of GetSpan.
+        public byte* DataPtr => dataPtr;
+        public long Size => size;
+        // Span<T> is int-bounded; for >2 GiB views callers should use DataPtr + Size
+        // (or a reader built on top of them) instead of GetSpan.
         public ReadOnlySpan<byte> GetSpan() => new(dataPtr, checked((int)size));
 
         public void Dispose()

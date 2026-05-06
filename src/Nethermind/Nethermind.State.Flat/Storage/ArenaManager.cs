@@ -187,6 +187,13 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].GetSpan(reservation.Offset, reservation.Size);
 
+    public unsafe void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size)
+    {
+        ArenaFile arena = _arenas[reservation.ArenaId];
+        dataPtr = arena.BasePtr + reservation.Offset;
+        size = reservation.Size;
+    }
+
     public IArenaWholeView OpenWholeView(ArenaReservation reservation)
     {
         lock (_lock)

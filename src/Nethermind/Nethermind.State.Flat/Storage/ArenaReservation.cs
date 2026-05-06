@@ -50,9 +50,14 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// <summary>
     /// Construct an <see cref="ArenaByteReader"/> over this reservation's bytes. The reader
     /// reports each read/pin to the arena's <see cref="PageResidencyTracker"/> so collision-displaced
-    /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction.
+    /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction. Pointer-backed so &gt;2 GiB
+    /// reservations are addressable.
     /// </summary>
-    public ArenaByteReader CreateReader() => new(GetSpanInternal(), _arenaManager.PageTracker, _arenaManager, ArenaId, Offset);
+    public unsafe ArenaByteReader CreateReader()
+    {
+        _arenaManager.GetReservationPointer(this, out byte* dataPtr, out long size);
+        return new ArenaByteReader(dataPtr, size, _arenaManager.PageTracker, _arenaManager, ArenaId, Offset);
+    }
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 
