@@ -682,6 +682,7 @@ public static class PersistedSnapshotBuilder
                     (_, ArenaReservation tempRes) = tempWriter.Complete();
                     PersistedSnapshot convertedSnap = new(snapshots[i].Id, snapshots[i].From, snapshots[i].To,
                         PersistedSnapshotType.Linked, tempRes);
+                    tempRes.Dispose();
                     mergeSnapshots.Add(convertedSnap);
                 }
                 else
