@@ -118,7 +118,7 @@ public sealed unsafe class ArenaFile : IDisposable
     /// Linux for shared mappings, but useful for benchmarking to ensure arena pages
     /// don't pollute the file cache.
     /// </summary>
-    public void FadviseDontNeed(long offset, int size)
+    public void FadviseDontNeed(long offset, long size)
     {
         if (!OperatingSystem.IsLinux()) return;
 
