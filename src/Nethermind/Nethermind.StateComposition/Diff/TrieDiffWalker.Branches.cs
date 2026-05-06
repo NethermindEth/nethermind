@@ -129,13 +129,13 @@ internal sealed partial class TrieDiffWalker
                 if (!isStorage)
                 {
                     TreePath leafPath = oldEntry.Path;
-                    DecodeAndDiffAccountLeaves(oldEntry.Leaf, newLeaf, ref leafPath);
+                    DecodeAndDiffAccountLeaves(oldEntry.Leaf, newLeaf, ref leafPath, resolvers);
                 }
             }
             else
             {
                 TreePath leafPath = newLeafPath;
-                CollectLeaf(newLeaf, ref leafPath, added: true, isStorage);
+                CollectLeaf(newLeaf, ref leafPath, added: true, isStorage, resolvers);
             }
         }
 
@@ -143,7 +143,7 @@ internal sealed partial class TrieDiffWalker
         {
             (TrieNode oldLeaf, TreePath oldLeafPath) = kvp.Value;
             TreePath leafPath = oldLeafPath;
-            CollectLeaf(oldLeaf, ref leafPath, added: false, isStorage);
+            CollectLeaf(oldLeaf, ref leafPath, added: false, isStorage, resolvers);
         }
     }
 }

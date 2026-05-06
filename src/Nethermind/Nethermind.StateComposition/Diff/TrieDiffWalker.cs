@@ -28,7 +28,6 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
             new(Old.GetStorageTrieNodeResolver(address), New.GetStorageTrieNodeResolver(address));
     }
 
-    private ResolverPair _resolvers;
 
     // Active contract context for per-account slot tracking.
     // Set by BeginContractStorage / cleared by EndContractStorage around every
@@ -57,13 +56,10 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
     private int _emptyAccountsAdded, _emptyAccountsRemoved;
 
-    public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot, ITrieNodeResolver rootResolver) =>
-        ComputeDiff(oldRoot, newRoot, rootResolver, rootResolver);
-
     public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot,
         ITrieNodeResolver oldResolver, ITrieNodeResolver newResolver)
     {
-        _resolvers = new ResolverPair(oldResolver, newResolver);
+        ResolverPair resolvers = new(oldResolver, newResolver);
         ResetCounters();
         if (trackDepth) _depthDelta.Reset();
 
@@ -73,7 +69,7 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
         if (oldHash == newHash) return TrieDiff.Empty;
 
         TreePath path = TreePath.Empty;
-        DiffSubtree(oldHash, newHash, ref path, _resolvers, isStorage: false, depth: 0);
+        DiffSubtree(oldHash, newHash, ref path, resolvers, isStorage: false, depth: 0);
 
         return new TrieDiff(
             _accountsAdded, _accountsRemoved,
@@ -174,7 +170,7 @@ internal sealed partial class TrieDiffWalker(bool trackDepth = false)
                 DiffExtensions(oldNode, newNode, ref path, resolvers, isStorage, depth);
                 break;
             case NodeType.Leaf:
-                DiffLeaves(oldNode, newNode, ref path, isStorage, depth);
+                DiffLeaves(oldNode, newNode, ref path, resolvers, isStorage, depth);
                 break;
         }
     }

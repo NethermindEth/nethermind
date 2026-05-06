@@ -74,7 +74,7 @@ public class TrieDiffWalkerTests
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
-        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -117,7 +117,7 @@ public class TrieDiffWalkerTests
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
-        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
 
         // Same slot modified → net zero (leaf at same path means update, not add/remove)
         Assert.That(diff.NetStorageSlots, Is.Zero);
@@ -151,7 +151,7 @@ public class TrieDiffWalkerTests
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
-        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -179,8 +179,8 @@ public class TrieDiffWalkerTests
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
-        TrieDiff forward = walker.ComputeDiff(root1, root2, resolver);
-        TrieDiff reverse = walker.ComputeDiff(root2, root1, resolver);
+        TrieDiff forward = walker.ComputeDiff(root1, root2, resolver, resolver);
+        TrieDiff reverse = walker.ComputeDiff(root2, root1, resolver, resolver);
 
         using (Assert.EnterMultipleScope())
         {
@@ -220,7 +220,7 @@ public class TrieDiffWalkerTests
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
-        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
         CumulativeTrieStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
@@ -254,20 +254,20 @@ public class TrieDiffWalkerTests
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
-        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root1, root2, resolver));
+        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root1, root2, resolver, resolver));
 
         tree.Set(TestItem.AddressD, CreateContractNoStorage());
         tree.Set(TestItem.AddressA, CreateEOA(999));
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root3 = tree.RootHash;
-        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root2, root3, resolver));
+        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root2, root3, resolver, resolver));
 
         tree.Set(TestItem.AddressB, null);
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root4 = tree.RootHash;
-        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root3, root4, resolver));
+        cumulative = cumulative.ApplyDiff(walker.ComputeDiff(root3, root4, resolver, resolver));
 
         using StateCompositionVisitor v4 = new(LimboLogs.Instance);
         tree.Accept(v4, root4);
@@ -309,7 +309,7 @@ public class TrieDiffWalkerTests
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
-        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
         CumulativeTrieStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
@@ -362,7 +362,7 @@ public class TrieDiffWalkerTests
 
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
-        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff diff = walker.ComputeDiff(root1, root2, resolver, resolver);
         CumulativeTrieStats updated = cumulative.ApplyDiff(diff);
 
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);
@@ -515,7 +515,7 @@ public class TrieDiffWalkerTests
             TrieDiffWalker walker = new();
             for (int b = from; b < to; b++)
             {
-                TrieDiff diff = walker.ComputeDiff(roots[b], roots[b + 1], resolver);
+                TrieDiff diff = walker.ComputeDiff(roots[b], roots[b + 1], resolver, resolver);
                 cumulative = cumulative.ApplyDiff(diff);
             }
 
@@ -599,11 +599,11 @@ public class TrieDiffWalkerTests
         RawScopedTrieStore resolver = new(db);
         TrieDiffWalker walker = new();
 
-        TrieDiff forward = walker.ComputeDiff(root1, root2, resolver);
+        TrieDiff forward = walker.ComputeDiff(root1, root2, resolver, resolver);
         CumulativeTrieStats updated = baseline.ApplyDiff(forward);
 
         // Backward diff root2 → root1 (reorg rollback)
-        TrieDiff backward = walker.ComputeDiff(root2, root1, resolver);
+        TrieDiff backward = walker.ComputeDiff(root2, root1, resolver, resolver);
         CumulativeTrieStats final = updated.ApplyDiff(backward);
 
         using (Assert.EnterMultipleScope())

@@ -16,18 +16,18 @@ internal sealed partial class TrieDiffWalker
 {
     private interface ILeafHandler
     {
-        void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage);
+        void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage, ResolverPair resolvers);
     }
 
     private struct SemanticLeafHandler(TrieDiffWalker walker) : ILeafHandler
     {
-        public readonly void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
-            => walker.CollectLeaf(leaf, ref path, added, isStorage);
+        public readonly void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage, ResolverPair resolvers)
+            => walker.CollectLeaf(leaf, ref path, added, isStorage, resolvers);
     }
 
     private struct DictionaryLeafHandler(Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves) : ILeafHandler
     {
-        public readonly void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
+        public readonly void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage, ResolverPair resolvers)
         {
             TreePath pathAtLeaf = path;
             int prevLen = path.Length;
@@ -126,7 +126,7 @@ internal sealed partial class TrieDiffWalker
                 }
 
             case NodeType.Leaf:
-                leafHandler.Handle(node, ref path, added, isStorage);
+                leafHandler.Handle(node, ref path, added, isStorage, resolvers);
                 break;
         }
     }
@@ -144,7 +144,7 @@ internal sealed partial class TrieDiffWalker
         WalkStructure(node, ref path, resolvers, isStorage, added, depth, ref handler);
     }
 
-    private void CollectLeaf(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
+    private void CollectLeaf(TrieNode leaf, ref TreePath path, bool added, bool isStorage, ResolverPair resolvers)
     {
         if (isStorage)
         {
@@ -204,7 +204,7 @@ internal sealed partial class TrieDiffWalker
 
         if (account.HasStorage)
         {
-            ResolverPair storageResolvers = _resolvers.ForStorage(addressHash);
+            ResolverPair storageResolvers = resolvers.ForStorage(addressHash);
             ITrieNodeResolver storageSide = storageResolvers.Pick(added);
             TreePath storagePath = TreePath.Empty;
             Hash256 storageRoot = new(account.StorageRoot);
