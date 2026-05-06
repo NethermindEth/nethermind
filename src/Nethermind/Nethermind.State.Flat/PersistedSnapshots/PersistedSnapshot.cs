@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -46,18 +46,20 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] AccountSubTag = [0x04];
     internal static readonly byte[] SelfDestructSubTag = [0x05];
 
-    // Tiny per-snapshot CLOCK cache that skips the outer-column + address-hash seek on
+    // Tiny per-snapshot seqlock cache that skips the outer-column + address-hash seek on
     // repeat lookups. The cached Bound is the per-address inner-HSST bound after seeking
     // (AccountColumnTag, addressHash[..20]). Since accounts, slots, self-destruct, and
     // both storage-trie partitions all live under that single bound, every per-address
     // path shares this cache. Bounds are stable for the lifetime of the snapshot since
     // the data is immutable; we only cache successful seeks (negative lookups are filtered
-    // upstream by the bloom held in ReadOnlySnapshotBundle).
-    private const int AddressBoundCacheCapacity = 8;
+    // upstream by the bloom held in ReadOnlySnapshotBundle). Lock-free reads on hot paths.
+    // 8 sets × 2 ways = 16 entries — slight bump from the previous 8-entry ClockCache,
+    // chosen as the smallest power of two that keeps per-snapshot footprint negligible.
+    private const int AddressBoundCacheSets = 8;
 
     private readonly ArenaReservation _reservation;
     private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
-    private readonly ClockCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheCapacity);
+    private readonly SeqlockValueCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheSets);
 
     internal ICollection<PersistedSnapshot>? ReferencedSnapshots => _referencedSnapshots?.Values;
     internal Dictionary<int, PersistedSnapshot>? ReferencedSnapshotsLookup => _referencedSnapshots;
@@ -150,11 +152,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound)
     {
-        if (_addressBoundCache.TryGet(addressHash, out addressBound))
+        if (_addressBoundCache.TryGetValue(in addressHash, out addressBound))
             return true;
         if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound))
             return false;
-        _addressBoundCache.Set(addressHash, addressBound);
+        _addressBoundCache.Set(in addressHash, addressBound);
         return true;
     }
 
