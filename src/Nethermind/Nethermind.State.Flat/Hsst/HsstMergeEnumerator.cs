@@ -3,9 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Hsst;
@@ -279,56 +276,175 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
 
     // -----------------------------------------------------------------------
     // BTree: indirect entries reachable only by recursing the index tree.
-    // Materialises an offset table once in the ctor; each MoveNext does a
-    // small LEB128 decode to populate the current-key/value bounds.
+    // Streams the walk: keeps an ancestor stack of (AbsEnd, LastIdx) frames
+    // and the current leaf's (AbsEnd, EntryCount, Idx); re-pins/re-parses
+    // the leaf node on each MoveNext (no long-lived TPin since this is a
+    // class). Memory is O(tree depth), not O(total entries).
     // -----------------------------------------------------------------------
 
     private sealed class BTreeVariant : IDisposable
     {
-        // Per-leaf-entry: (separator absolute offset, separator length, metadata absolute pointer).
-        // metaStart points at the entry's ValueLength LEB128.
-        private readonly NativeMemoryList<(long SepOffset, int SepLength, long MetaStart)> _entries;
+        private const int MaxDepth = 16;
+
+        private struct Ancestor { public long AbsEnd; public int LastIdx; }
+
+        private readonly long _scopeStart;
         private readonly long _scopeEnd;
-        private int _index = -1;
+        private readonly long _rootAbsEnd;
+        private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
+
+        // Current leaf state. _depth: -1 = not started, -2 = exhausted, ≥0 = leaf depth in tree.
+        private int _depth = -1;
+        private long _leafAbsEnd;
+        private int _leafEntryCount;
+        private int _leafIdx;
+
+        // Current entry — populated by LoadCurrentEntry after positioning at a leaf.
         private long _currentKeyOffset;
         private long _currentKeyLength;
         private long _currentValueOffset;
         private long _currentValueLength;
         private long _currentMetaStart;
-        private bool _disposed;
 
         public BTreeVariant(scoped in TReader reader, Bound scope)
         {
+            _scopeStart = scope.Offset;
             _scopeEnd = scope.Offset + scope.Length;
-            // Walk the BTree index without pinning the whole scope (which would require
-            // a single Span<byte> ≤2 GiB). HsstBTreeReader.TryLoadNode pins one node at a
-            // time via the reader, and we collect leaf entry tuples with snapshot-absolute
-            // offsets so the merge step can pin keys/values individually later.
-
             // Plain BTree trailer is just the IndexType byte; the root ends one byte before it.
-            long rootAbsEnd = scope.Offset + scope.Length - 1;
-
-            _entries = new NativeMemoryList<(long, int, long)>(16);
-            CollectLeafOffsets(in reader, scope.Offset, rootAbsEnd, _entries);
+            _rootAbsEnd = _scopeEnd - 1;
         }
 
-        public int Count => _entries.Count;
+        // Streaming variant: total entry count is unknown without a full walk. Not used by
+        // any caller today — keep the property for variant-shape parity but return -1.
+        public int Count => -1;
 
         public bool MoveNext(scoped in TReader reader)
         {
-            if (++_index >= _entries.Count) return false;
-            // SepOffset/SepLength are the index separator (a prefix of the full key); not
-            // surfaced through this enumerator because callers compare/copy the FullKey.
-            // Kept on the entry tuple for future sharded lookups.
-            long metaStart = _entries[_index].MetaStart;
+            if (_depth == -2) return false;
+            if (_depth == -1)
+            {
+                // First call: descend leftmost from root.
+                if (!DescendToLeaf(in reader, _rootAbsEnd, depthHint: 0))
+                {
+                    _depth = -2;
+                    return false;
+                }
+                return LoadCurrentEntry(in reader);
+            }
 
-            // Entry layout: [Value][ValueLength: LEB128][KeyLength: LEB128][FullKey].
+            _leafIdx++;
+            if (_leafIdx < _leafEntryCount)
+            {
+                return LoadCurrentEntry(in reader);
+            }
+            // Leaf exhausted — ascend until we find a sibling subtree.
+            return AscendAndDescend(in reader);
+        }
+
+        public Bound CurrentKey => new(_currentKeyOffset, _currentKeyLength);
+        public Bound CurrentValue => new(_currentValueOffset, _currentValueLength);
+        public long CurrentMetadataStart => _currentMetaStart;
+
+        public void Dispose() { /* No long-lived state to release. */ }
+
+        /// <summary>
+        /// Descend leftmost from the node ending at <paramref name="absEnd"/> down to a leaf,
+        /// pushing (AbsEnd, LastIdx=0) ancestor frames as we cross intermediate levels. On
+        /// success, _depth/_leafAbsEnd/_leafEntryCount point at the new leaf with _leafIdx=0;
+        /// returns false if a node fails to load or the tree exceeds MaxDepth.
+        /// </summary>
+        private bool DescendToLeaf(scoped in TReader reader, long absEnd, int depthHint)
+        {
+            long currentEnd = absEnd;
+            int depth = depthHint;
+            while (depth < MaxDepth)
+            {
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentEnd, out HsstIndex node, out _, out TPin pin))
+                    return false;
+
+                using (pin)
+                {
+                    if (!node.IsIntermediate)
+                    {
+                        _depth = depth;
+                        _leafAbsEnd = currentEnd;
+                        _leafEntryCount = node.EntryCount;
+                        _leafIdx = 0;
+                        if (_leafEntryCount == 0)
+                        {
+                            // Empty leaf shouldn't normally happen; fall through to ascent.
+                            return AscendAndDescend(in reader);
+                        }
+                        return true;
+                    }
+
+                    // Intermediate: push frame for this level, follow leftmost child.
+                    ref Ancestor frame = ref _ancestors[depth];
+                    frame.AbsEnd = currentEnd;
+                    frame.LastIdx = 0;
+                    long childRelEnd = (long)node.GetUInt64Value(0) + 1;
+                    currentEnd = _scopeStart + childRelEnd;
+                }
+                depth++;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Pop ancestors looking for a frame with another child to advance into; on success,
+        /// descend leftmost from that child and load the first entry. Sets _depth=-2 when
+        /// the whole tree is exhausted.
+        /// </summary>
+        private bool AscendAndDescend(scoped in TReader reader)
+        {
+            while (_depth > 0)
+            {
+                _depth--;
+                ref Ancestor anc = ref _ancestors[_depth];
+                anc.LastIdx++;
+
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsEnd, out HsstIndex parent, out _, out TPin parentPin))
+                {
+                    _depth = -2;
+                    return false;
+                }
+                long childAbsEnd;
+                using (parentPin)
+                {
+                    if (anc.LastIdx >= parent.EntryCount) continue;
+                    long childRelEnd = (long)parent.GetUInt64Value(anc.LastIdx) + 1;
+                    childAbsEnd = _scopeStart + childRelEnd;
+                }
+                if (!DescendToLeaf(in reader, childAbsEnd, depthHint: _depth + 1))
+                {
+                    _depth = -2;
+                    return false;
+                }
+                return LoadCurrentEntry(in reader);
+            }
+            _depth = -2;
+            return false;
+        }
+
+        /// <summary>
+        /// Re-pin the current leaf, read entry _leafIdx's metaStart, then pin a small window
+        /// at metaStart to decode value/key lengths. Sets _currentKeyOffset/_currentKeyLength
+        /// and _currentValueOffset/_currentValueLength to absolute reader-space bounds.
+        /// </summary>
+        private bool LoadCurrentEntry(scoped in TReader reader)
+        {
+            long metaStart;
+            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, _leafAbsEnd, out HsstIndex leaf, out _, out TPin leafPin))
+                return false;
+            using (leafPin)
+            {
+                metaStart = _scopeStart + (long)leaf.GetUInt64Value(_leafIdx);
+            }
+
+            // Entry layout: [Value][ValueLength: LEB128][KeyLength: u8][FullKey].
             // metaStart points at the ValueLength LEB128 — value sits before, lengths + key after.
-            // LEB128 has a forward-only terminator so it can't be reliably read backward.
-            // Each LEB128 is at most 10 bytes for a long; pin a 20-byte window covering both
-            // length prefixes (the FullKey itself stays addressed by absolute offset).
-            const int LebPairMaxBytes = 20;
-            int lebWindow = (int)Math.Min(LebPairMaxBytes, _scopeEnd - metaStart);
+            const int LenPrefixMaxBytes = 6;
+            int lebWindow = (int)Math.Min(LenPrefixMaxBytes, _scopeEnd - metaStart);
             int pos;
             long valueLength;
             long keyLength;
@@ -337,7 +453,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
                 ReadOnlySpan<byte> leb = lebPin.Buffer;
                 pos = 0;
                 valueLength = Leb128.Read(leb, ref pos);
-                keyLength = Leb128.Read(leb, ref pos);
+                keyLength = leb[pos++];
             }
 
             _currentMetaStart = metaStart;
@@ -347,55 +463,6 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
             _currentValueLength = valueLength;
             return true;
         }
-
-        public Bound CurrentKey => new(_currentKeyOffset, _currentKeyLength);
-        public Bound CurrentValue => new(_currentValueOffset, _currentValueLength);
-        public long CurrentMetadataStart => _currentMetaStart;
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            _entries.Dispose();
-        }
-
-        private static void CollectLeafOffsets(scoped in TReader reader, long scopeStart, long absEnd,
-            NativeMemoryList<(long, int, long)> entries)
-        {
-            // Pin one node, walk its entries, recurse into children for intermediate nodes.
-            if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, absEnd, out HsstIndex node, out long nodeAbsStart, out TPin pin))
-                throw new InvalidOperationException("Failed to load BTree index node");
-            using (pin)
-            {
-                ReadOnlySpan<byte> nodeSpan = pin.Buffer;
-                if (!node.IsIntermediate)
-                {
-                    for (int i = 0; i < node.EntryCount; i++)
-                    {
-                        ReadOnlySpan<byte> sep = node.GetKey(i);
-                        int sepRelOffset = SpanOffset(nodeSpan, sep);
-                        long metaStart = scopeStart + (long)node.GetUInt64Value(i);
-                        entries.Add((nodeAbsStart + sepRelOffset, sep.Length, metaStart));
-                    }
-                }
-                else
-                {
-                    // Intermediate child values are absolute end-1 positions within the HSST.
-                    for (int i = 0; i < node.EntryCount; i++)
-                    {
-                        long childRelEnd = (long)node.GetUInt64Value(i) + 1;
-                        long childAbsEnd = scopeStart + childRelEnd;
-                        CollectLeafOffsets(in reader, scopeStart, childAbsEnd, entries);
-                    }
-                }
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static int SpanOffset(ReadOnlySpan<byte> outer, ReadOnlySpan<byte> inner) =>
-            (int)Unsafe.ByteOffset(
-                ref Unsafe.AsRef(in MemoryMarshal.GetReference(outer)),
-                ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
     }
 }
 
