@@ -94,7 +94,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     {
         if (tx is SystemCall)
         {
-            gasAvailable = TGasPolicy.CreateSystemTransactionGas(tx.GasLimit, intrinsicGas.Standard);
+            gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(tx.GasLimit, intrinsicGas.Standard, spec);
             return TransactionResult.Ok;
         }
 

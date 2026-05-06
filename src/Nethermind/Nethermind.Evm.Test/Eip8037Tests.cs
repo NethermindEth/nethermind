@@ -197,7 +197,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     public void Refund_does_not_copy_child_cost_per_state_byte_to_parent()
     {
         EthereumGasPolicy parent = new() { CostPerStateByte = 11, Value = 100 };
-        EthereumGasPolicy child = new() { CostPerStateByte = 22, Value = 50 };
+        EthereumGasPolicy child = new() { CostPerStateByte = 11, Value = 50 };
 
         EthereumGasPolicy.Refund(ref parent, in child);
 

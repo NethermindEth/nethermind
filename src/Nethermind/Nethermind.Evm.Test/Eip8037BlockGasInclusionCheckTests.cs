@@ -248,11 +248,11 @@ public class Eip8037BlockGasInclusionCheckTests
     }
 
     [Test]
-    public void Calculate_block_regular_gas_floor_clamps_invalid_negative_transcript()
+    public void Calculate_block_regular_gas_floor_clamps_low_regular_gas()
     {
         long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
             intrinsicRegularGas: 21_000,
-            initialRegularGas: 100,
+            initialRegularGas: 300,
             remainingRegularGas: 100,
             stateGasSpill: 200,
             stateGasSpillReclassified: 0,
