@@ -46,7 +46,7 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         blockInfo.BaseFee.ToBigEndian().CopyTo(data, 36);
         blockInfo.BlobBaseFee.ToBigEndian().CopyTo(data, 68);
         blockInfo.BlockHash.Bytes.CopyTo(data.AsSpan(100));
-        blockInfo.BatcherAddress.Bytes.CopyTo(data, 144);
+        blockInfo.BatcherAddress.Bytes.CopyTo(data.AsSpan(144));
 
         Span<byte> source = stackalloc byte[64];
         blockInfo.BlockHash.Bytes.CopyTo(source);

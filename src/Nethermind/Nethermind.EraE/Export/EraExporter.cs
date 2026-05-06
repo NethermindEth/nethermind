@@ -56,12 +56,8 @@ public sealed class EraExporter(
         if (from > to)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to}).");
 
-        Block? lastBlock = blockTree.FindBlock(to, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (lastBlock is null)
-            throw new InvalidOperationException(
-                $"Block {to} is not available. " +
-                "EraE export requires all block bodies to be present. " +
-                "Ensure the node is fully synced before exporting.");
+        _ = blockTree.FindBlock(to, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+            ?? throw new InvalidOperationException($"Block {to} is not available. EraE export requires all block bodies to be present. Ensure the node is fully synced before exporting.");
 
         return DoExport(destinationPath, from, to, cancellation);
     }
@@ -139,9 +135,8 @@ public sealed class EraExporter(
             {
                 for (long blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
-                    Block? block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-                    if (block is null)
-                        throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
+                    Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
+                        ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
 
                     // IsPostMerge is not part of the RLP encoding and defaults to false when read from
                     // the block store. Restore it from Difficulty (EIP-3675: post-merge Difficulty == 0).

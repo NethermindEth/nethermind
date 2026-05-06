@@ -1144,11 +1144,9 @@ public partial class BlockDownloaderTests
                 throw new TimeoutException();
             }
 
-            BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None)!;
-            if (startBlock is null)
-            {
-                throw new Exception($"Null start block {startNumber} {_testHeaderMapping[startNumber]}");
-            }
+            BlockHeader startBlock = _blockTree.FindHeader(_testHeaderMapping[startNumber], BlockTreeLookupOptions.None)
+                ?? throw new($"Null start block {startNumber} {_testHeaderMapping[startNumber]}");
+
             BlockHeader[] headers = new BlockHeader[number];
             headers[0] = startBlock;
             if (!justFirst)

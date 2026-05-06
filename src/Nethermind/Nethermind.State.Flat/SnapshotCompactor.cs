@@ -204,10 +204,10 @@ public class SnapshotCompactor : ISnapshotCompactor
 
             if (addressHashToClear.Count > 0)
             {
-                foreach (HashedKey<(Hash256, TreePath)> key in storageNodes.Keys)
+                foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in storageNodes)
                 {
-                    if (addressHashToClear.Contains(key.Key.Item1))
-                        storageNodes.TryRemove(key, out _);
+                    if (addressHashToClear.Contains(kvp.Key.Key.Item1))
+                        storageNodes.TryRemove(kvp.Key, out _);
                 }
             }
 

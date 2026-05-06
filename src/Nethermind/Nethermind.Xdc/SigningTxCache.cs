@@ -30,7 +30,8 @@ public class SigningTxCache : ISigningTxCache
         if (_signingTxsCache.TryGet(blockHash, out Transaction[] signingTxs))
             return signingTxs;
 
-        Block block = _blockTree.FindBlock(blockHash, blockNumber) ?? throw new InvalidOperationException($"Expected block {blockHash} at number {blockNumber} to exist in block tree.");
+        Block block = _blockTree.FindBlock(blockHash, blockNumber)
+            ?? throw new InvalidOperationException($"Expected block {blockHash} at number {blockNumber} to exist in block tree.");
         return CacheSigningTransactions(blockHash, block, spec);
     }
 

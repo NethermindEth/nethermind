@@ -256,7 +256,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationNumber;
+            // `<=` because `HeadersDestinationNumber` (beacon: `PivotDestinationNumber`) can advance
+            // above `_lowestRequestedHeaderNumber` mid-sync; `==` would let `BuildNewBatch` produce a negative `RequestSize`.
+            bool destinationHeaderRequested = _lowestRequestedHeaderNumber <= HeadersDestinationNumber;
 
             bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
@@ -286,7 +288,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void ClearDependencies()
         {
-            _dependencies.Values.DisposeItems();
+            foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+            {
+                kvp.Value.Dispose();
+            }
             _dependencies.Clear();
             MarkDirty();
         }
@@ -858,7 +863,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _sent.DisposeItems();
                 _pending.DisposeItems();
-                _dependencies.Values.DisposeItems();
+                foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+                {
+                    kvp.Value.Dispose();
+                }
                 base.Dispose();
                 _disposed = true;
             }
