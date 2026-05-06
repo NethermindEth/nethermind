@@ -28,6 +28,16 @@ public sealed class WholeReadSession : IDisposable
         return _view.GetSpan();
     }
 
+    /// <summary>
+    /// <see cref="IHsstByteReader{TPin}"/> over the session's view, addressed in the
+    /// reservation's own offset space (offset 0 = first byte of the reservation).
+    /// </summary>
+    public WholeReadSessionReader GetReader()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new WholeReadSessionReader(_view.GetSpan());
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

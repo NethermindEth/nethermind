@@ -15,52 +15,69 @@ namespace Nethermind.State.Flat.Hsst;
 /// Class-based — not a ref struct — so callers can put many of these into an array
 /// and round-robin them in a sort-merge.
 ///
+/// Generic on <typeparamref name="TReader"/> / <typeparamref name="TPin"/> so the
+/// enumerator can address scopes anywhere in a long-offset reader (e.g. an mmap
+/// view spanning more than 2 GiB) without losing precision. Internal offsets are
+/// stored as <see cref="long"/> absolute positions; public <see cref="Bound"/>s
+/// returned by <see cref="CurrentKey"/> / <see cref="CurrentValue"/> are
+/// reader-absolute.
+///
 /// The constructor selects exactly one layout-specific variant based on the trailing
 /// <see cref="IndexType"/> byte and stores it in a typed field; the other variant fields
 /// remain null. Each public method dispatches via a <c>switch</c> on a discriminator.
 ///
-///   - <see cref="IndexType.PackedArray"/>     → <see cref="PackedArrayVariant"/> (no offset table; fixed stride).
-///   - <see cref="IndexType.ByteTagMap"/>      → <see cref="ByteTagMapVariant"/>  (no offset table; offsets via trailing Ends array).
-///   - <see cref="IndexType.BTree"/>          → <see cref="BTreeVariant"/>       (offset table; leaves only reachable by recursing the index tree).
+///   - <see cref="IndexType.PackedArray"/>     → <c>PackedArrayVariant</c> (no offset table; fixed stride).
+///   - <see cref="IndexType.ByteTagMap"/>      → <c>ByteTagMapVariant</c>  (no offset table; offsets via trailing Ends array).
+///   - <see cref="IndexType.BTree"/>           → <c>BTreeVariant</c>       (offset table; leaves only reachable by recursing the index tree).
 ///
-/// <see cref="MoveNext"/> consumes the data span (variants need it for LEB128 / Ends-array
+/// <see cref="MoveNext"/> consumes the reader (variants need it for LEB128 / Ends-array
 /// reads) and caches the current key/value bounds. Subsequent <see cref="CurrentKey"/>
-/// access is a property read; <see cref="GetCurrentValue"/> / <see cref="GetCurrentValueBound"/>
-/// take <c>data</c> only to materialise spans (no decode). The enumerator stores only
-/// integer offsets, never key/value bytes.
+/// access is a property read; <see cref="GetCurrentValue"/> takes the reader only to
+/// materialise a pinned span (no decode). The enumerator stores only integer offsets,
+/// never key/value bytes.
 /// </summary>
-public sealed class HsstMergeEnumerator : IDisposable
+public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
+    where TPin : struct, IBufferPin, allows ref struct
+    where TReader : IHsstByteReader<TPin>, allows ref struct
 {
     private enum VariantKind : byte { Empty, PackedArray, ByteTagMap, BTree }
 
+    private readonly Bound _scope;
     private readonly VariantKind _kind;
     private readonly PackedArrayVariant? _packed;
     private readonly ByteTagMapVariant? _byteTag;
     private readonly BTreeVariant? _btree;
     private bool _disposed;
 
-    public HsstMergeEnumerator(scoped ReadOnlySpan<byte> hsstData)
+    public HsstMergeEnumerator(scoped in TReader reader, Bound scope)
     {
-        if (hsstData.Length < 2)
+        _scope = scope;
+        if (scope.Length < 2)
         {
             _kind = VariantKind.Empty;
             return;
         }
 
         // Last byte of the HSST is the IndexType byte.
-        IndexType tag = (IndexType)hsstData[hsstData.Length - 1];
+        IndexType tag;
+        using (TPin tagPin = reader.PinBuffer(scope.Offset + scope.Length - 1, 1))
+        {
+            tag = (IndexType)tagPin.Buffer[0];
+        }
+
+
         switch (tag)
         {
             case IndexType.PackedArray:
-                _packed = PackedArrayVariant.TryCreate(hsstData);
+                _packed = PackedArrayVariant.TryCreate(in reader, scope);
                 _kind = _packed is not null ? VariantKind.PackedArray : VariantKind.Empty;
                 break;
             case IndexType.ByteTagMap:
-                _byteTag = ByteTagMapVariant.TryCreate(hsstData);
+                _byteTag = ByteTagMapVariant.TryCreate(in reader, scope);
                 _kind = _byteTag is not null ? VariantKind.ByteTagMap : VariantKind.Empty;
                 break;
             case IndexType.BTree:
-                _btree = new BTreeVariant(hsstData);
+                _btree = new BTreeVariant(in reader, scope);
                 _kind = VariantKind.BTree;
                 break;
             // DenseByteIndex is used for the persisted-snapshot outer + per-address
@@ -82,18 +99,16 @@ public sealed class HsstMergeEnumerator : IDisposable
         _ => 0,
     };
 
-    public bool MoveNext(ReadOnlySpan<byte> data) => _kind switch
+    public bool MoveNext(scoped in TReader reader) => _kind switch
     {
         VariantKind.PackedArray => _packed!.MoveNext(),
-        VariantKind.ByteTagMap => _byteTag!.MoveNext(data),
-        VariantKind.BTree => _btree!.MoveNext(data),
+        VariantKind.ByteTagMap => _byteTag!.MoveNext(in reader),
+        VariantKind.BTree => _btree!.MoveNext(in reader),
         _ => false,
     };
 
     /// <summary>
-    /// Bound (offset + length) of the current key within the data span the caller
-    /// passed to <see cref="MoveNext"/>. Slice <c>data</c> with this to materialise
-    /// the key bytes for comparison.
+    /// Reader-absolute bound of the current key. Pin it via the reader to materialise bytes.
     /// </summary>
     public Bound CurrentKey => _kind switch
     {
@@ -103,17 +118,18 @@ public sealed class HsstMergeEnumerator : IDisposable
         _ => default,
     };
 
-    /// <summary>Convenience: <c>data.Slice(CurrentKey.Offset, CurrentKey.Length)</c>.</summary>
-    public ReadOnlySpan<byte> GetCurrentKey(ReadOnlySpan<byte> data)
+    /// <summary>Pin the current key bytes via <paramref name="reader"/>.</summary>
+    public TPin GetCurrentKey(scoped in TReader reader)
     {
         Bound b = CurrentKey;
-        return data.Slice((int)b.Offset, b.Length);
+        return reader.PinBuffer(b.Offset, b.Length);
     }
 
-    public ReadOnlySpan<byte> GetCurrentValue(ReadOnlySpan<byte> data)
+    /// <summary>Pin the current value bytes via <paramref name="reader"/>; empty pin when length is 0.</summary>
+    public TPin GetCurrentValue(scoped in TReader reader)
     {
         Bound b = CurrentValue;
-        return b.Length == 0 ? [] : data.Slice((int)b.Offset, b.Length);
+        return reader.PinBuffer(b.Offset, b.Length);
     }
 
     public Bound CurrentValue => _kind switch
@@ -124,13 +140,13 @@ public sealed class HsstMergeEnumerator : IDisposable
         _ => default,
     };
 
-    public (int Offset, int Length) GetCurrentValueBound(ReadOnlySpan<byte> data)
+    public (long Offset, int Length) GetCurrentValueBound()
     {
         Bound b = CurrentValue;
-        return ((int)b.Offset, b.Length);
+        return (b.Offset, b.Length);
     }
 
-    public int CurrentMetadataStart => _kind switch
+    public long CurrentMetadataStart => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
         VariantKind.ByteTagMap => _byteTag!.CurrentMetadataStart,
@@ -151,19 +167,17 @@ public sealed class HsstMergeEnumerator : IDisposable
 
     private sealed class PackedArrayVariant
     {
-        private readonly int _dataStart;
+        private readonly long _dataStart;
         private readonly int _keySize;
         private readonly int _valueSize;
         private readonly int _stride;
         private readonly int _count;
         private int _index = -1;
-        private int _currentEntryStart;
+        private long _currentEntryStart;
 
-        public static PackedArrayVariant? TryCreate(scoped ReadOnlySpan<byte> hsstData)
+        public static PackedArrayVariant? TryCreate(scoped in TReader reader, Bound scope)
         {
-            SpanByteReader spanReader = new(hsstData);
-            if (!HsstPackedArrayReader.TryReadLayout<SpanByteReader, NoOpPin>(
-                    in spanReader, new Bound(0, hsstData.Length), out HsstPackedArrayReader.Layout layout))
+            if (!HsstPackedArrayReader.TryReadLayout<TReader, TPin>(in reader, scope, out HsstPackedArrayReader.Layout layout))
             {
                 return null;
             }
@@ -172,7 +186,7 @@ public sealed class HsstMergeEnumerator : IDisposable
 
         private PackedArrayVariant(HsstPackedArrayReader.Layout layout)
         {
-            _dataStart = (int)layout.DataStart;
+            _dataStart = layout.DataStart;
             _keySize = layout.KeySize;
             _valueSize = layout.ValueSize;
             _stride = layout.EntryStride;
@@ -184,13 +198,13 @@ public sealed class HsstMergeEnumerator : IDisposable
         public bool MoveNext()
         {
             if (++_index >= _count) return false;
-            _currentEntryStart = _dataStart + _index * _stride;
+            _currentEntryStart = _dataStart + (long)_index * _stride;
             return true;
         }
 
         public Bound CurrentKey => new(_currentEntryStart, _keySize);
         public Bound CurrentValue => new(_currentEntryStart + _keySize, _valueSize);
-        public int CurrentMetadataStart => _currentEntryStart + _keySize;
+        public long CurrentMetadataStart => _currentEntryStart + _keySize;
     }
 
     // -----------------------------------------------------------------------
@@ -200,44 +214,58 @@ public sealed class HsstMergeEnumerator : IDisposable
 
     private sealed class ByteTagMapVariant
     {
+        private readonly long _scopeStart;
         private readonly int _count;
-        private readonly int _tagsStart;
-        private readonly int _endsStart;
+        private readonly long _tagsStart;
+        private readonly long _endsStart;
         private int _index = -1;
         private int _prevEnd;
-        private int _currentValStart;
+        private long _currentValStart;
         private int _currentValLen;
 
-        public static ByteTagMapVariant? TryCreate(scoped ReadOnlySpan<byte> hsstData)
+        public static ByteTagMapVariant? TryCreate(scoped in TReader reader, Bound scope)
         {
             // Trailer layout: [Ends: N×u32 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8]
-            if (hsstData.Length < 2) return null;
-            int n = hsstData[hsstData.Length - 2] + 1;
+            if (scope.Length < 2) return null;
+
+            // Pin the trailing Count byte to compute N. n ≤ 256, so trailer is ≤ ~1.3 KiB —
+            // pin it whole for the construction so we can read the Tags block contiguously.
+            int n;
+            using (TPin tailByte = reader.PinBuffer(scope.Offset + scope.Length - 2, 1))
+            {
+                n = tailByte.Buffer[0] + 1;
+            }
             int trailerLen = 2 + n + n * 4;
-            if (trailerLen > hsstData.Length) return null;
-            int tagsStart = hsstData.Length - 2 - n;
-            int endsStart = tagsStart - n * 4;
-            return new ByteTagMapVariant(n, tagsStart, endsStart);
+            if (trailerLen > scope.Length) return null;
+            long tagsStart = scope.Offset + scope.Length - 2 - n;
+            long endsStart = tagsStart - n * 4;
+            return new ByteTagMapVariant(scope.Offset, n, tagsStart, endsStart);
         }
 
-        private ByteTagMapVariant(int count, int tagsStart, int endsStart)
+        private ByteTagMapVariant(long scopeStart, int count, long tagsStart, long endsStart)
         {
+            _scopeStart = scopeStart;
             _count = count;
             _tagsStart = tagsStart;
             _endsStart = endsStart;
+            _currentValStart = scopeStart;
         }
 
         public int Count => _count;
 
-        public bool MoveNext(ReadOnlySpan<byte> data)
+        public bool MoveNext(scoped in TReader reader)
         {
             int next = _index + 1;
             if (next >= _count) return false;
             _index = next;
 
-            int thisEnd = (int)BinaryPrimitives.ReadUInt32LittleEndian(
-                data.Slice(_endsStart + next * 4, 4));
-            _currentValStart = _prevEnd;
+            int thisEnd;
+            using (TPin endPin = reader.PinBuffer(_endsStart + next * 4, 4))
+            {
+                thisEnd = (int)BinaryPrimitives.ReadUInt32LittleEndian(endPin.Buffer);
+            }
+            // Ends are scope-relative offsets; convert to absolute.
+            _currentValStart = _scopeStart + _prevEnd;
             _currentValLen = thisEnd - _prevEnd;
             _prevEnd = thisEnd;
             return true;
@@ -245,7 +273,7 @@ public sealed class HsstMergeEnumerator : IDisposable
 
         public Bound CurrentKey => new(_tagsStart + _index, 1);
         public Bound CurrentValue => new(_currentValStart, _currentValLen);
-        public int CurrentMetadataStart => _currentValStart;
+        public long CurrentMetadataStart => _currentValStart;
     }
 
     // -----------------------------------------------------------------------
@@ -256,39 +284,63 @@ public sealed class HsstMergeEnumerator : IDisposable
 
     private sealed class BTreeVariant : IDisposable
     {
-        // Per-leaf-entry: (separator offset, separator length, metadata pointer).
+        // Per-leaf-entry: (separator absolute offset, separator length, metadata absolute pointer).
         // metaStart points at the entry's ValueLength LEB128.
-        private readonly NativeMemoryList<(int SepOffset, int SepLength, int MetaStart)> _entries;
+        private readonly NativeMemoryList<(long SepOffset, int SepLength, long MetaStart)> _entries;
+        private readonly long _scopeEnd;
         private int _index = -1;
-        private int _currentKeyOffset;
+        private long _currentKeyOffset;
         private int _currentKeyLength;
-        private int _currentValueOffset;
+        private long _currentValueOffset;
         private int _currentValueLength;
-        private int _currentMetaStart;
+        private long _currentMetaStart;
         private bool _disposed;
 
-        public BTreeVariant(scoped ReadOnlySpan<byte> hsstData)
+        public BTreeVariant(scoped in TReader reader, Bound scope)
         {
+            _scopeEnd = scope.Offset + scope.Length;
+            // The BTree index walk is span-based (HsstIndex / BSearchIndexReader operate on
+            // a contiguous span). Pin the entire scope for the duration of construction;
+            // afterwards we hold only long offsets, so the pin can be released.
+            using TPin scopePin = reader.PinBuffer(scope.Offset, scope.Length);
+            ReadOnlySpan<byte> hsstData = scopePin.Buffer;
+
             int rootEnd = hsstData.Length - 1;
             HsstIndex rootIndex = HsstIndex.ReadFromEnd(hsstData, rootEnd);
-            _entries = new NativeMemoryList<(int, int, int)>(16);
-            CollectLeafOffsets(hsstData, rootIndex, _entries);
+            _entries = new NativeMemoryList<(long, int, long)>(16);
+            CollectLeafOffsets(hsstData, scope.Offset, rootIndex, _entries);
         }
 
         public int Count => _entries.Count;
 
-        public bool MoveNext(ReadOnlySpan<byte> data)
+        public bool MoveNext(scoped in TReader reader)
         {
             if (++_index >= _entries.Count) return false;
-            int metaStart = _entries[_index].MetaStart;
+            // SepOffset/SepLength are the index separator (a prefix of the full key); not
+            // surfaced through this enumerator because callers compare/copy the FullKey.
+            // Kept on the entry tuple for future sharded lookups.
+            long metaStart = _entries[_index].MetaStart;
+
             // Entry layout: [Value][ValueLength: LEB128][KeyLength: LEB128][FullKey].
             // metaStart points at the ValueLength LEB128 — value sits before, lengths + key after.
             // LEB128 has a forward-only terminator so it can't be reliably read backward.
-            int pos = metaStart;
-            int valueLength = Leb128.Read(data, ref pos);
-            int keyLength = Leb128.Read(data, ref pos);
+            // Each LEB128 is at most 5 bytes for an int; pin a 10-byte window covering both
+            // length prefixes (the FullKey itself stays addressed by absolute offset).
+            const int LebPairMaxBytes = 10;
+            int lebWindow = (int)Math.Min(LebPairMaxBytes, _scopeEnd - metaStart);
+            int pos;
+            int valueLength;
+            int keyLength;
+            using (TPin lebPin = reader.PinBuffer(metaStart, lebWindow))
+            {
+                ReadOnlySpan<byte> leb = lebPin.Buffer;
+                pos = 0;
+                valueLength = Leb128.Read(leb, ref pos);
+                keyLength = Leb128.Read(leb, ref pos);
+            }
+
             _currentMetaStart = metaStart;
-            _currentKeyOffset = pos;
+            _currentKeyOffset = metaStart + pos;
             _currentKeyLength = keyLength;
             _currentValueOffset = metaStart - valueLength;
             _currentValueLength = valueLength;
@@ -297,7 +349,7 @@ public sealed class HsstMergeEnumerator : IDisposable
 
         public Bound CurrentKey => new(_currentKeyOffset, _currentKeyLength);
         public Bound CurrentValue => new(_currentValueOffset, _currentValueLength);
-        public int CurrentMetadataStart => _currentMetaStart;
+        public long CurrentMetadataStart => _currentMetaStart;
 
         public void Dispose()
         {
@@ -306,17 +358,17 @@ public sealed class HsstMergeEnumerator : IDisposable
             _entries.Dispose();
         }
 
-        private static void CollectLeafOffsets(ReadOnlySpan<byte> data, HsstIndex index,
-            NativeMemoryList<(int, int, int)> entries)
+        private static void CollectLeafOffsets(ReadOnlySpan<byte> data, long scopeStart, HsstIndex index,
+            NativeMemoryList<(long, int, long)> entries)
         {
             if (!index.IsIntermediate)
             {
                 for (int i = 0; i < index.EntryCount; i++)
                 {
                     ReadOnlySpan<byte> sep = index.GetKey(i);
-                    int sepOffset = SpanOffset(data, sep);
-                    int metaStart = checked((int)index.GetUInt64Value(i));
-                    entries.Add((sepOffset, sep.Length, metaStart));
+                    int sepRelOffset = SpanOffset(data, sep);
+                    long metaStart = scopeStart + (long)index.GetUInt64Value(i);
+                    entries.Add((scopeStart + sepRelOffset, sep.Length, metaStart));
                 }
             }
             else
@@ -325,7 +377,7 @@ public sealed class HsstMergeEnumerator : IDisposable
                 {
                     int childOffset = checked((int)index.GetUInt64Value(i));
                     HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
-                    CollectLeafOffsets(data, child, entries);
+                    CollectLeafOffsets(data, scopeStart, child, entries);
                 }
             }
         }
@@ -337,3 +389,4 @@ public sealed class HsstMergeEnumerator : IDisposable
                 ref Unsafe.AsRef(in MemoryMarshal.GetReference(inner)));
     }
 }
+
