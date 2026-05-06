@@ -31,7 +31,7 @@ public ref struct HsstIndexBuilder<TWriter>
     /// Build B-tree index via writer.
     /// The absolute data region start offset (= 1 + dataLen) is needed to compute child offsets.
     /// </summary>
-    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries, int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries)
+    public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries, int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries, int maxIntermediateBytes = HsstBTreeOptions.DefaultMaxIntermediateBytes)
     {
         int startWritten = _writer.Written;
 
@@ -105,7 +105,9 @@ public ref struct HsstIndexBuilder<TWriter>
 
                 while (childIdx < currentLevelCount)
                 {
-                    int childCount = Math.Min(maxIntermediateEntries, currentLevelCount - childIdx);
+                    int childCount = ChooseIntermediateChildCount(
+                        currentLevel[..currentLevelCount], childIdx,
+                        maxIntermediateEntries, maxIntermediateBytes);
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
                     int nodeStart = _writer.Written;
@@ -303,6 +305,55 @@ public ref struct HsstIndexBuilder<TWriter>
             indexWriter.AddKey(sep[prefixLen..], valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
+    }
+
+    /// <summary>
+    /// Pick the number of children to pack into the next intermediate node by
+    /// summing values + keys section bytes until the next child would push the
+    /// estimate over <paramref name="byteThreshold"/> (capped at
+    /// <paramref name="maxChildren"/>; always includes at least one child).
+    /// Footer/BaseOffset overhead is intentionally ignored — it's a fixed tax
+    /// per node, doesn't affect packing decisions.
+    /// </summary>
+    private int ChooseIntermediateChildCount(
+        scoped ReadOnlySpan<NodeInfo> level, int childIdx,
+        int maxChildren, int byteThreshold)
+    {
+        int remaining = level.Length - childIdx;
+        int hardMax = Math.Min(maxChildren, remaining);
+        if (hardMax <= 1) return hardMax;
+
+        int childCount = 1;
+        int sumSepBytes = 0;
+        ulong minOff = level[childIdx].ChildOffset;
+        ulong maxOff = minOff;
+
+        Span<byte> sepBuf = stackalloc byte[256];
+        while (childCount < hardMax)
+        {
+            NodeInfo prev = level[childIdx + childCount - 1];
+            NodeInfo curr = level[childIdx + childCount];
+            ReadOnlySpan<byte> leftKey = _separatorBuffer.Slice(
+                prev.LastEntry.SepOffset, prev.LastEntry.SepLen);
+            ReadOnlySpan<byte> rightKey = _separatorBuffer.Slice(
+                curr.FirstEntry.SepOffset, curr.FirstEntry.SepLen);
+            int sepLen = WriteSeparatorBetween(sepBuf, leftKey, rightKey);
+
+            ulong newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
+            ulong newMinOff = curr.ChildOffset < minOff ? curr.ChildOffset : minOff;
+            int valueSlotSize = MinBytesFor(newMaxOff - newMinOff);
+
+            int newCount = childCount + 1;
+            int newSumSep = sumSepBytes + sepLen;
+            int estimated = newCount * valueSlotSize + newSumSep;
+            if (estimated > byteThreshold) break;
+
+            childCount = newCount;
+            sumSepBytes = newSumSep;
+            maxOff = newMaxOff;
+            minOff = newMinOff;
+        }
+        return childCount;
     }
 
     private void WriteInternalIndexNode(

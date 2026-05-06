@@ -189,6 +189,7 @@ public ref struct HsstBuilder<TWriter>
         int maxLeafEntries = _options.MaxLeafEntries;
         int minLeafEntries = Math.Min(_options.MinLeafEntries, maxLeafEntries);
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
+        int maxIntermediateBytes = _options.MaxIntermediateBytes;
 
         int absoluteIndexStart = _writer.Written - _baseOffset;
 
@@ -196,7 +197,7 @@ public ref struct HsstBuilder<TWriter>
             ref _writer, _entriesBuffer.AsSpan(),
             _separatorBuffer.AsSpan());
 
-        indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries);
+        indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
 
         // Optional hash index section. Empty HSSTs fall back to plain BTree because
         // a 0-entry table has no benefit and an empty data region would make the
