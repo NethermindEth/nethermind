@@ -74,7 +74,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     public int[]? ReferencedSnapshotIds { get; }
 
-    public int Size => _reservation.Size;
+    public long Size => _reservation.Size;
 
     internal ArenaReservation Reservation => _reservation;
 

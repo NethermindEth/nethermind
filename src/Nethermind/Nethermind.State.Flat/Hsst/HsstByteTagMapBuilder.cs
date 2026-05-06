@@ -31,8 +31,8 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     private const int InitialCapacity = 16;
 
     private ref TWriter _writer;
-    private readonly int _baseOffset;
-    private int _writtenBeforeValue;
+    private readonly long _baseOffset;
+    private long _writtenBeforeValue;
     private int _count;
     private byte[]? _tags;
     private uint[]? _ends;

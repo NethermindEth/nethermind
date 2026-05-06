@@ -27,7 +27,7 @@ public sealed class ArenaWriter : IDisposable
     {
         _writer.Flush();
         _completed = true;
-        int actualSize = _writer.Written;
+        long actualSize = _writer.Written;
         return _manager.CompleteWrite(_arenaId, _startOffset, actualSize, _tag);
     }
 

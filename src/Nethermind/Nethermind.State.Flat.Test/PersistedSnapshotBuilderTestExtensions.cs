@@ -46,11 +46,11 @@ internal static class PersistedSnapshotBuilderTestExtensions
             }
         }
 
-        int totalSize = 0;
+        long totalSize = 0;
         for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
         totalSize += 4096;
 
-        using PooledByteBufferWriter pooled = new(totalSize);
+        using PooledByteBufferWriter pooled = new(checked((int)totalSize));
         PersistedSnapshotBuilder.NWayMergeSnapshots(snapshots, ref pooled.GetWriter(), referencedIds);
         return pooled.WrittenSpan.ToArray();
     }

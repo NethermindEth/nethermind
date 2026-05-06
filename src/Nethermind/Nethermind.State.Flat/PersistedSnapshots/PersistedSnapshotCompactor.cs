@@ -130,7 +130,7 @@ public class PersistedSnapshotCompactor(
                     s.AdviseDontNeed();
             }
 
-            int len = arenaWriter.GetWriter().Written;
+            long len = arenaWriter.GetWriter().Written;
             _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
             _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 

@@ -36,7 +36,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     public const int DefaultBinaryIndexStrideBytes = 1024;
 
     private ref TWriter _writer;
-    private readonly int _baseOffset;
+    private readonly long _baseOffset;
     private readonly int _keySize;
     private readonly int _valueSize;
     private readonly int _strideBytes;
@@ -243,7 +243,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
             }
         }
 
-        int metaStart = _writer.Written;
+        long metaStart = _writer.Written;
         WriteLeb128(_keySize);
         WriteLeb128(_valueSize);
         WriteLeb128(_entryCount);
@@ -251,7 +251,8 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         WriteLeb128(recordsPerCkHigherLog2);
         WriteLeb128(depth);
         for (int i = 0; i < depth; i++) WriteLeb128(levelCounts[i]);
-        int metaLen = _writer.Written - metaStart;
+        // Per-HSST cap is ≤2 GiB so the metadata-block length fits in int.
+        int metaLen = (int)(_writer.Written - metaStart);
         if (metaLen > 255)
             throw new InvalidOperationException("PackedArray metadata exceeds 255 bytes.");
 

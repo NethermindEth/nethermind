@@ -568,7 +568,7 @@ public class HsstTests
         {
             outer.Dispose();
         }
-        int len = writer.Written;
+        int len = (int)writer.Written;
 
         ReadOnlySpan<byte> outerSpan = buffer.AsSpan(0, len);
         Assert.That(CountEntries(outerSpan), Is.EqualTo(1));
@@ -612,7 +612,7 @@ public class HsstTests
             outer.Build();
         }
         finally { outer.Dispose(); }
-        int len = writer.Written;
+        int len = (int)writer.Written;
 
         ReadOnlySpan<byte> outerSpan = buffer.AsSpan(0, len);
         Assert.That(CountEntries(outerSpan), Is.EqualTo(3));

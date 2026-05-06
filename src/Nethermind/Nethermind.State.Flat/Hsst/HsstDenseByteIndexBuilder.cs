@@ -27,8 +27,8 @@ public ref struct HsstDenseByteIndexBuilder<TWriter>
     private const int InitialCapacity = 16;
 
     private ref TWriter _writer;
-    private readonly int _baseOffset;
-    private int _writtenBeforeValue;
+    private readonly long _baseOffset;
+    private long _writtenBeforeValue;
     /// <summary>Number of entries appended so far, including auto-filled gap entries.</summary>
     private int _count;
     private uint[]? _ends;

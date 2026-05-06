@@ -25,7 +25,7 @@ public struct StreamBufferWriter(Stream stream) : IByteBufferWriter, IDisposable
 
     public void Advance(int count) => _buffered += count;
 
-    public readonly int Written => (int)(_flushed + _buffered);
+    public readonly long Written => _flushed + _buffered;
 
     public void Flush()
     {

@@ -16,10 +16,10 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     internal int ArenaId { get; }
     internal long Offset { get; }
-    public int Size { get; internal set; }
+    public long Size { get; internal set; }
     public string Tag { get; }
 
-    public ArenaReservation(IArenaManager arenaManager, int arenaId, long offset, int size, string tag)
+    public ArenaReservation(IArenaManager arenaManager, int arenaId, long offset, long size, string tag)
         : base(1)
     {
         _arenaManager = arenaManager;
@@ -29,7 +29,7 @@ public sealed class ArenaReservation : RefCountingDisposable
         Tag = tag;
         _initialSize = size;
         Metrics.ArenaReservationCountByTag.AddOrUpdate(tag, 1L, static (_, c) => c + 1);
-        Metrics.ArenaReservationBytesByTag.AddOrUpdate(tag, static (_, s) => s, static (_, b, s) => b + s, (long)size);
+        Metrics.ArenaReservationBytesByTag.AddOrUpdate(tag, static (_, s) => s, static (_, b, s) => b + s, size);
     }
 
     /// <summary>
@@ -56,7 +56,7 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 
-    public void Touch(int subOffset, int size) => _arenaManager.Touch(this, subOffset, size);
+    public void Touch(long subOffset, long size) => _arenaManager.Touch(this, subOffset, size);
 
     protected override void CleanUp()
     {

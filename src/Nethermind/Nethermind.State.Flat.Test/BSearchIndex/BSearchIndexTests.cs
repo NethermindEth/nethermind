@@ -129,7 +129,7 @@ public class BSearchIndexTests
             writer.AddKey(key, valBuf);
         }
         writer.FinalizeNode();
-        int written = bufWriter.Written;
+        int written = (int)bufWriter.Written;
 
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
@@ -174,7 +174,7 @@ public class BSearchIndexTests
             writer.AddKey(Convert.FromHexString(sepHex), valBuf);
         }
         writer.FinalizeNode();
-        int written = bufWriter.Written;
+        int written = (int)bufWriter.Written;
 
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
@@ -249,7 +249,7 @@ public class BSearchIndexTests
             writer.AddKey(key, valBuf);
         }
         writer.FinalizeNode();
-        int written = bufWriter.Written;
+        int written = (int)bufWriter.Written;
 
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
@@ -333,7 +333,7 @@ public class BSearchIndexTests
             writer.AddKey(key, valBuf);
         }
         writer.FinalizeNode();
-        int written = bufWriter.Written;
+        int written = (int)bufWriter.Written;
 
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
@@ -456,7 +456,7 @@ public class BSearchIndexTests
             writer.AddKey(sep.AsSpan(prefixLen), valBuf);
         }
         writer.FinalizeNode();
-        int written = w.Written;
+        int written = (int)w.Written;
 
         // Control node: same data without the prefix optimization (full-length keys,
         // no commonKeyPrefix passed). Demonstrates the size win.
@@ -558,7 +558,7 @@ public class BSearchIndexTests
         writer.AddKey(sepBuffer.AsSpan(2, 2), valBuf);
         writer.FinalizeNode();
 
-        BSearchIndexReader reader = BSearchIndexReader.ReadFromEnd(output, w.Written);
+        BSearchIndexReader reader = BSearchIndexReader.ReadFromEnd(output, (int)w.Written);
         Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.False);
         Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
     }
@@ -600,7 +600,7 @@ public class BSearchIndexTests
         }
         writer.FinalizeNode();
 
-        BSearchIndexReader reader = BSearchIndexReader.ReadFromEnd(output, w.Written);
+        BSearchIndexReader reader = BSearchIndexReader.ReadFromEnd(output, (int)w.Written);
 
         // For each stored key plus a synthetic "between" probe, the two paths must agree.
         try

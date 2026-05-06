@@ -122,7 +122,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     /// Create an <see cref="ArenaWriter"/> for buffered writes.
     /// The arena is marked as reserved until <see cref="CompleteWrite"/> or <see cref="CancelWrite"/>.
     /// </summary>
-    public ArenaWriter CreateWriter(int estimatedSize, string tag)
+    public ArenaWriter CreateWriter(long estimatedSize, string tag)
     {
         lock (_lock)
         {
@@ -139,7 +139,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     /// <summary>
     /// Complete a buffered write. Updates frontier and returns location + reservation.
     /// </summary>
-    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize, string tag)
+    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag)
     {
         lock (_lock)
         {
@@ -240,7 +240,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
         }
     }
 
-    public void Touch(ArenaReservation reservation, int subOffset, int size)
+    public void Touch(ArenaReservation reservation, long subOffset, long size)
     {
         if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
             arena.Touch(reservation.Offset + subOffset, size);
@@ -262,7 +262,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             arena.FadviseDontNeed(offset, pageSize);
     }
 
-    private ArenaFile GetOrCreateArena(int requiredSize)
+    private ArenaFile GetOrCreateArena(long requiredSize)
     {
         // Scan only mutable arenas; remove any that can't fit (they become permanently read-only)
         List<int>? toRemove = null;

@@ -10,7 +10,7 @@ public interface IByteBufferWriter
 {
     Span<byte> GetSpan(int sizeHint = 0);
     void Advance(int count);
-    int Written { get; }
+    long Written { get; }
 
     static void Copy<TWriter>(ref TWriter writer, ReadOnlySpan<byte> value) where TWriter : IByteBufferWriter
     {
@@ -32,5 +32,5 @@ public unsafe struct SpanBufferWriter(Span<byte> buffer) : IByteBufferWriter
 
     public readonly Span<byte> GetSpan(int sizeHint = 0) => new(_buffer + _written, _length - _written);
     public void Advance(int count) => _written += count;
-    public readonly int Written => _written;
+    public readonly long Written => _written;
 }

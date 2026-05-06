@@ -57,8 +57,11 @@ public sealed unsafe class ArenaFile : IDisposable
             Madvise(_basePtr, (nuint)mappedSize, MADV_RANDOM);
     }
 
-    public ReadOnlySpan<byte> GetSpan(long offset, int size) =>
-        new(_basePtr + offset, size);
+    public ReadOnlySpan<byte> GetSpan(long offset, long size) =>
+        // Span<T> is intrinsically int-bounded; a single GetSpan can't materialise a
+        // >2 GiB region. Use OpenWholeView for chunk-aware whole-reservation access
+        // once that path is widened to long.
+        new(_basePtr + offset, checked((int)size));
 
     public byte[] Read(long offset, int size) =>
         GetSpan(offset, size).ToArray();
@@ -74,7 +77,7 @@ public sealed unsafe class ArenaFile : IDisposable
         return fs;
     }
 
-    public void Touch(long offset, int size)
+    public void Touch(long offset, long size)
     {
         if (size <= 0) return;
         byte[] buf = ArrayPool<byte>.Shared.Rent(64 * 1024);
@@ -92,7 +95,7 @@ public sealed unsafe class ArenaFile : IDisposable
         finally { ArrayPool<byte>.Shared.Return(buf); }
     }
 
-    public void AdviseDontNeed(long offset, int size)
+    public void AdviseDontNeed(long offset, long size)
     {
         if (!OperatingSystem.IsLinux()) return;
 
@@ -130,7 +133,7 @@ public sealed unsafe class ArenaFile : IDisposable
     /// <c>MADV_NORMAL</c> hint, distinct from the global random-access view used by point
     /// queries. Disposing the returned view applies <c>MADV_DONTNEED</c> to the range.
     /// </summary>
-    public IArenaWholeView OpenWholeView(long offset, int size)
+    public IArenaWholeView OpenWholeView(long offset, long size)
     {
         MemoryMappedViewAccessor accessor = _mmf.CreateViewAccessor(offset, size, MemoryMappedFileAccess.Read);
         byte* ptr = null;
@@ -144,9 +147,11 @@ public sealed unsafe class ArenaFile : IDisposable
     }
 
     private sealed unsafe class MmapWholeView(
-        MemoryMappedViewAccessor accessor, byte* dataPtr, int size) : IArenaWholeView
+        MemoryMappedViewAccessor accessor, byte* dataPtr, long size) : IArenaWholeView
     {
-        public ReadOnlySpan<byte> GetSpan() => new(dataPtr, size);
+        // Span<T> is int-bounded; for >2 GiB views the caller must use a chunk-aware
+        // reader (a future evolution of WholeReadSessionReader) instead of GetSpan.
+        public ReadOnlySpan<byte> GetSpan() => new(dataPtr, checked((int)size));
 
         public void Dispose()
         {

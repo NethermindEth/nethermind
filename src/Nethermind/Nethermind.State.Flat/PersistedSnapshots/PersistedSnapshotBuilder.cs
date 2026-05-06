@@ -660,7 +660,7 @@ public static class PersistedSnapshotBuilder
             {
                 if (snapshots[i].Type == PersistedSnapshotType.Full)
                 {
-                    int estimatedSize = snapshots[i].Size / 2 + 4096;
+                    long estimatedSize = snapshots[i].Size / 2 + 4096;
                     using ArenaWriter tempWriter = tempArena.CreateWriter(Math.Max(estimatedSize, snapshots[i].Size), ArenaReservationTags.TempLinkedConversion);
                     ConvertFullToLinked(snapshots[i], ref tempWriter.GetWriter());
                     (_, ArenaReservation tempRes) = tempWriter.Complete();

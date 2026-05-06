@@ -34,7 +34,7 @@ public sealed class PooledByteBufferWriter(int initialCapacity) : IDisposable
         }
 
         public void Advance(int count) => _written += count;
-        public readonly int Written => _written;
+        public readonly long Written => _written;
         public readonly ReadOnlySpan<byte> WrittenSpan => new(_buffer, _written);
 
         private void Grow(int sizeHint)

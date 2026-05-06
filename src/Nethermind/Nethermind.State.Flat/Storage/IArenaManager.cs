@@ -6,15 +6,15 @@ namespace Nethermind.State.Flat.Storage;
 public interface IArenaManager : IDisposable, IPageEvictionHandler
 {
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
-    ArenaWriter CreateWriter(int estimatedSize, string tag);
-    (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize, string tag);
+    ArenaWriter CreateWriter(long estimatedSize, string tag);
+    (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag);
     void CancelWrite(int arenaId, long startOffset);
     ArenaReservation Open(in SnapshotLocation location, string tag);
     ReadOnlySpan<byte> GetSpan(ArenaReservation reservation);
     IArenaWholeView OpenWholeView(ArenaReservation reservation);
     void MarkDead(in SnapshotLocation location);
     void AdviseDontNeed(ArenaReservation reservation);
-    void Touch(ArenaReservation reservation, int subOffset, int size);
+    void Touch(ArenaReservation reservation, long subOffset, long size);
 
     /// <summary>
     /// MADV_DONTNEED a single OS page within <paramref name="arenaId"/>. Used by

@@ -6,4 +6,4 @@ namespace Nethermind.State.Flat.Storage;
 /// <summary>
 /// Physical location of a persisted snapshot within an arena file.
 /// </summary>
-public readonly record struct SnapshotLocation(int ArenaId, long Offset, int Size);
+public readonly record struct SnapshotLocation(int ArenaId, long Offset, long Size);

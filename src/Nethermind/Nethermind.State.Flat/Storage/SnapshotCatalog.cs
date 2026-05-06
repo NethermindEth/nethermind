@@ -27,7 +27,8 @@ public sealed class SnapshotCatalog(IDb db)
         SnapshotLocation Location);
 
     // Binary layout per entry: Id(4) + From.Block(8) + From.Root(32) + To.Block(8) + To.Root(32) + Type(1) + ArenaId(4) + Offset(8) + Size(4) = 101
-    internal const int EntrySize = 101;
+    // Layout: id(4) + fromBlock(8) + fromRoot(32) + toBlock(8) + toRoot(32) + type(1) + arenaId(4) + offset(8) + size(8) = 105
+    internal const int EntrySize = 105;
 
     // Reserved id 0 holds (nextId:int32). Entry ids start at 1.
     private static readonly byte[] MetadataKey = new byte[4];
@@ -157,7 +158,7 @@ public sealed class SnapshotCatalog(IDb db)
         span[84] = (byte)entry.Type;
         BinaryPrimitives.WriteInt32LittleEndian(span[85..], entry.Location.ArenaId);
         BinaryPrimitives.WriteInt64LittleEndian(span[89..], entry.Location.Offset);
-        BinaryPrimitives.WriteInt32LittleEndian(span[97..], entry.Location.Size);
+        BinaryPrimitives.WriteInt64LittleEndian(span[97..], entry.Location.Size);
     }
 
     private static CatalogEntry ReadEntry(ReadOnlySpan<byte> span)
@@ -175,7 +176,7 @@ public sealed class SnapshotCatalog(IDb db)
         PersistedSnapshotType type = (PersistedSnapshotType)span[84];
         int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[85..]);
         long offset = BinaryPrimitives.ReadInt64LittleEndian(span[89..]);
-        int size = BinaryPrimitives.ReadInt32LittleEndian(span[97..]);
+        long size = BinaryPrimitives.ReadInt64LittleEndian(span[97..]);
 
         return new CatalogEntry(id, from, to, type, new SnapshotLocation(arenaId, offset, size));
     }

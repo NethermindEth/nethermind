@@ -633,7 +633,7 @@ public class HsstReaderTests
             outer.Build();
         }
         finally { outer.Dispose(); }
-        int len = writer.Written;
+        int len = (int)writer.Written;
 
         SpanByteReader reader = new(buffer.AsSpan(0, len));
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
@@ -686,7 +686,7 @@ public class HsstReaderTests
             outer.Build();
         }
         finally { outer.Dispose(); }
-        int len = writer.Written;
+        int len = (int)writer.Written;
 
         SpanByteReader reader = new(buffer.AsSpan(0, len));
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);

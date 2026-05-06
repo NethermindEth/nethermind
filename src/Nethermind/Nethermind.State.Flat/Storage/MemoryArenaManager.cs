@@ -19,22 +19,25 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) { }
 
-    public ArenaWriter CreateWriter(int estimatedSize, string tag)
+    public ArenaWriter CreateWriter(long estimatedSize, string tag)
     {
-        int arenaId = GetOrCreateArena(estimatedSize);
+        // Test-only: backed by byte[] so capped at int.MaxValue.
+        int arenaId = GetOrCreateArena(checked((int)estimatedSize));
         long offset = _frontiers[arenaId];
         MemoryStream stream = new();
         _pendingStreams[(arenaId, offset)] = stream;
         return new ArenaWriter(this, arenaId, offset, stream, tag);
     }
 
-    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, int actualSize, string tag)
+    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag)
     {
+        // Test-only: byte[]-backed arenas are int-bounded.
+        int actualSizeInt = checked((int)actualSize);
         if (_pendingStreams.Remove((arenaId, startOffset), out MemoryStream? stream))
         {
             // Ensure arena has enough space
-            EnsureCapacity(arenaId, (int)(startOffset + actualSize));
-            stream.GetBuffer().AsSpan(0, actualSize).CopyTo(_arenas[arenaId].AsSpan((int)startOffset));
+            EnsureCapacity(arenaId, checked((int)(startOffset + actualSize)));
+            stream.GetBuffer().AsSpan(0, actualSizeInt).CopyTo(_arenas[arenaId].AsSpan((int)startOffset));
         }
 
         _frontiers[arenaId] = startOffset + actualSize;
@@ -50,10 +53,10 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
         new(this, location.ArenaId, location.Offset, location.Size, tag);
 
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
-        _arenas[reservation.ArenaId].AsSpan((int)reservation.Offset, reservation.Size);
+        _arenas[reservation.ArenaId].AsSpan((int)reservation.Offset, checked((int)reservation.Size));
 
     public IArenaWholeView OpenWholeView(ArenaReservation reservation) =>
-        new MemoryWholeView(_arenas[reservation.ArenaId], (int)reservation.Offset, reservation.Size);
+        new MemoryWholeView(_arenas[reservation.ArenaId], (int)reservation.Offset, checked((int)reservation.Size));
 
     private sealed class MemoryWholeView(byte[] buffer, int offset, int size) : IArenaWholeView
     {
@@ -63,7 +66,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void AdviseDontNeed(ArenaReservation reservation) { }
 
-    public void Touch(ArenaReservation reservation, int subOffset, int size) { }
+    public void Touch(ArenaReservation reservation, long subOffset, long size) { }
 
     public void AdviseDontNeedPage(int arenaId, int pageIdx) { }
 

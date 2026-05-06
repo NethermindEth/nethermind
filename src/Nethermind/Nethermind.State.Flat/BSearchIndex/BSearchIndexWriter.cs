@@ -65,7 +65,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     where TWriter : IByteBufferWriter
 {
     private ref TWriter _writer;
-    private readonly int _startWritten;
+    private readonly long _startWritten;
     private readonly BSearchIndexMetadata _metadata;
     private readonly Span<byte> _keyBuf;
     private readonly Span<byte> _valueBuf;
@@ -192,7 +192,8 @@ internal ref struct BSearchIndexWriter<TWriter>
         // whole-node accounting separately.
         if (_metadata.KeyType == 0 || _metadata.ValueType == 0)
         {
-            int totalNodeSize = _writer.Written - _startWritten;
+            // Per-HSST cap is ≤2 GiB so the per-node delta fits in int.
+            int totalNodeSize = (int)(_writer.Written - _startWritten);
             const int MaxVariableNodeSize = 64 * 1024;
             if (totalNodeSize > MaxVariableNodeSize)
                 throw new InvalidOperationException(

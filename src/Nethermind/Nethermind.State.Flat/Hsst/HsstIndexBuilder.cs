@@ -33,7 +33,7 @@ public ref struct HsstIndexBuilder<TWriter>
     /// </summary>
     public void Build(int absoluteIndexStart, int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries, int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries, int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries, int maxIntermediateBytes = HsstBTreeOptions.DefaultMaxIntermediateBytes)
     {
-        int startWritten = _writer.Written;
+        long startWritten = _writer.Written;
 
         if (_entries.Length == 0)
         {
@@ -78,10 +78,11 @@ public ref struct HsstIndexBuilder<TWriter>
                 int count = layout.Count;
                 ReadOnlySpan<HsstBuilder<TWriter>.HsstEntry> leafEntries = _entries.Slice(entryIdx, count);
 
-                int nodeStart = _writer.Written;
-                int relativeStart = nodeStart - startWritten;
+                long nodeStart = _writer.Written;
+                // Per-HSST cap is ≤2 GiB so the node-relative offsets fit in int.
+                int relativeStart = (int)(nodeStart - startWritten);
                 WriteLeafIndexNode(leafEntries, absoluteIndexStart + relativeStart, entryIdx, layout.NaturalMax);
-                int nodeLen = _writer.Written - nodeStart;
+                int nodeLen = (int)(_writer.Written - nodeStart);
 
                 HsstBuilder<TWriter>.HsstEntry first = leafEntries[0];
                 HsstBuilder<TWriter>.HsstEntry last = leafEntries[count - 1];
@@ -110,10 +111,11 @@ public ref struct HsstIndexBuilder<TWriter>
                         maxIntermediateEntries, maxIntermediateBytes);
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
-                    int nodeStart = _writer.Written;
-                    int relativeStart = nodeStart - startWritten;
+                    long nodeStart = _writer.Written;
+                    // Per-HSST cap is ≤2 GiB so the node-relative offsets fit in int.
+                    int relativeStart = (int)(nodeStart - startWritten);
                     WriteInternalIndexNode(children, _separatorBuffer);
-                    int nodeLen = _writer.Written - nodeStart;
+                    int nodeLen = (int)(_writer.Written - nodeStart);
 
                     NodeInfo first = children[0];
                     NodeInfo last = children[childCount - 1];

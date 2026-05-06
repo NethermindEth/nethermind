@@ -30,8 +30,8 @@ public ref struct HsstBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
     private ref TWriter _writer;
-    private int _writtenBeforeValue;
-    private readonly int _baseOffset;
+    private long _writtenBeforeValue;
+    private readonly long _baseOffset;
     private readonly HsstBTreeOptions _options;
 
     // Working buffers allocated from NativeMemory
@@ -101,7 +101,8 @@ public ref struct HsstBuilder<TWriter>
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
 
-        int actualLen = _writer.Written - _writtenBeforeValue;
+        // Per-HSST cap is ≤2 GiB so the delta fits in int.
+        int actualLen = (int)(_writer.Written - _writtenBeforeValue);
         // metadataStart stored in index is relative to byte 0 of this HSST.
         ulong metadataStart = (ulong)(_writer.Written - _baseOffset);
 
@@ -160,7 +161,8 @@ public ref struct HsstBuilder<TWriter>
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
         int maxIntermediateBytes = _options.MaxIntermediateBytes;
 
-        int absoluteIndexStart = _writer.Written - _baseOffset;
+        // Per-HSST cap is ≤2 GiB so the index start fits in int.
+        int absoluteIndexStart = (int)(_writer.Written - _baseOffset);
 
         HsstIndexBuilder<TWriter> indexBuilder = new(
             ref _writer, _entriesBuffer.AsSpan(),
