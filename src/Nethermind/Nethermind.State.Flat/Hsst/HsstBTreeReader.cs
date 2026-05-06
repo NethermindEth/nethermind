@@ -125,10 +125,10 @@ internal static class HsstBTreeReader
                 {
                     if (!node.TryGetFloor(key, out _, out ReadOnlySpan<byte> childValueBytes))
                         return false;
-                    int childOffset = BinaryPrimitives.ReadInt32LittleEndian(childValueBytes) + node.Metadata.BaseOffset;
+                    ulong childOffset = BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + node.Metadata.BaseOffset;
                     // childOffset is the inclusive last byte of the child node (0-indexed within the HSST).
                     // Exclusive end in reader-absolute terms = bound.Offset + childOffset + 1.
-                    currentAbsEnd = bound.Offset + childOffset + 1;
+                    currentAbsEnd = bound.Offset + (long)childOffset + 1;
                     continue;
                 }
 
@@ -144,8 +144,8 @@ internal static class HsstBTreeReader
                     if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
                 }
 
-                int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + node.Metadata.BaseOffset;
-                long absMetaStart = bound.Offset + metaStart;
+                ulong metaStart = BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset;
+                long absMetaStart = bound.Offset + (long)metaStart;
 
                 // Read up to 6 bytes from absMetaStart: enough for ValueLength (≤5)
                 // LEB128 + KeyLength (1 byte). KeyLength only consumed when exact-matching.
@@ -195,15 +195,15 @@ internal static class HsstBTreeReader
         nodeAbsStart = 0;
         pin = default;
 
-        if (absEnd < 7) return false;
+        if (absEnd < 12) return false;
 
-        // BSearchIndex footer is fixed-width; its tail is 7 bytes
-        //   [valueSize u16][keySize u16][keyCount u16][flags u8]
-        // optionally preceded by [common-prefix bytes][prefixLen u8] and/or
-        // [BaseOffset u32 LE]. Common-prefix is capped at 128 bytes by the
-        // layout planner; pin a bounded window covering the worst-case footer
-        // plus the optional baseOffset so the entire block is in one read.
-        const int MaxFooterBytes = 7 + 1 + 128 + 4;
+        // BSearchIndex footer is fixed-width; its tail is 6 bytes
+        //   [valueSize u8][keySize u16][keyCount u16][flags u8]
+        // preceded by a mandatory 6-byte BaseOffset and an optional
+        // [common-prefix bytes][prefixLen u8]. Common-prefix is capped at 128
+        // bytes by the layout planner; pin a bounded window covering the
+        // worst-case footer so the entire block is in one read.
+        const int MaxFooterBytes = 6 + 1 + 128 + 6;
         long footerStart = Math.Max(0, absEnd - MaxFooterBytes);
         int footerLen = (int)(absEnd - footerStart);
 
@@ -212,22 +212,20 @@ internal static class HsstBTreeReader
         {
             ReadOnlySpan<byte> metaSpan = metaPin.Buffer;
             byte flags = metaSpan[footerLen - 1];
-            int valueSize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 7)..]);
+            int valueSize = metaSpan[footerLen - 6];
             int keySize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 5)..]);
             int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 3)..]);
             int keyType = (flags >> 1) & 0x03;
             int valueType = (flags >> 3) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
             int valueSectionSize = valueType switch { 0 => valueSize, _ => keyCount * valueSize };
-            int extraFooter = 0;
+            int extraFooter = 6; // mandatory BaseOffset
             if ((flags & 0x40) != 0)
             {
-                int prefixLen = metaSpan[footerLen - 8];
+                int prefixLen = metaSpan[footerLen - 7];
                 extraFooter += 1 + prefixLen;
             }
-            if ((flags & 0x20) != 0)
-                extraFooter += 4;
-            totalNodeSize = valueSectionSize + keySectionSize + 7 + extraFooter;
+            totalNodeSize = valueSectionSize + keySectionSize + 6 + extraFooter;
         }
 
         nodeAbsStart = absEnd - totalNodeSize;

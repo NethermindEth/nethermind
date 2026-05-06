@@ -13,10 +13,11 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// trailing flags byte.
 ///
 /// Layout (low → high address):
-///   [Values section][Keys section][BaseOffset: u32 LE]?[CommonPrefix bytes][CommonPrefixLen: u8]?
-///   [ValueSize: u16 LE][KeySize: u16 LE][KeyCount: u16 LE][Flags: u8]
+///   [Values section][Keys section][BaseOffset: 6-byte LE][CommonPrefix bytes][CommonPrefixLen: u8]?
+///   [ValueSize: u8][KeySize: u16 LE][KeyCount: u16 LE][Flags: u8]
 ///
-/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=HasBaseOffset, bit6=HasCommonKeyPrefix
+/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=reserved, bit6=HasCommonKeyPrefix
+/// (BaseOffset is mandatory — bit5 used to gate it; readers MUST ignore the bit.)
 ///
 /// All footer fields are fixed-width — no varint decoding on parse. With the
 /// 64 KiB node-size cap, every count/size field fits in u16.
@@ -63,17 +64,17 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static BSearchIndexReader ReadFromEnd(ReadOnlySpan<byte> data, int indexEnd)
     {
-        if (indexEnd < 7)
+        // 6-byte tail + mandatory 6-byte BaseOffset = 12 minimum.
+        if (indexEnd < 12)
             return default;
 
-        // Fixed footer: [valueSize u16][keySize u16][keyCount u16][flags u8] —
-        // four contiguous loads, no varint decode.
-        int valueSize = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 7)..]);
+        // Fixed footer: [valueSize u8][keySize u16][keyCount u16][flags u8].
+        int valueSize = data[indexEnd - 6];
         int keySize = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 5)..]);
         int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 3)..]);
         byte flags = data[indexEnd - 1];
 
-        int pos = indexEnd - 7;
+        int pos = indexEnd - 6;
 
         ReadOnlySpan<byte> commonKeyPrefix = default;
         if ((flags & 0x40) != 0)
@@ -83,12 +84,15 @@ public readonly ref struct BSearchIndexReader
             commonKeyPrefix = data.Slice(pos, prefixLen);
         }
 
-        int baseOffset = 0;
-        if ((flags & 0x20) != 0)
-        {
-            pos -= 4;
-            baseOffset = BinaryPrimitives.ReadInt32LittleEndian(data[pos..]);
-        }
+        // Mandatory 6-byte LE BaseOffset.
+        pos -= 6;
+        ReadOnlySpan<byte> bo = data.Slice(pos, 6);
+        ulong baseOffset = (ulong)bo[0]
+                         | ((ulong)bo[1] << 8)
+                         | ((ulong)bo[2] << 16)
+                         | ((ulong)bo[3] << 24)
+                         | ((ulong)bo[4] << 32)
+                         | ((ulong)bo[5] << 40);
 
         IndexMetadata metadata = new()
         {
@@ -137,15 +141,28 @@ public readonly ref struct BSearchIndexReader
     };
 
     /// <summary>
-    /// Get the integer value at the given entry index with BaseOffset applied.
-    /// For Uniform 4-byte values (typical for offsets).
+    /// Get the unsigned integer value at the given entry index with BaseOffset applied.
+    /// Reads the entry's value slot (1..8 byte LE Uniform width given by
+    /// <see cref="IndexMetadata.ValueSize"/>) as a ulong and adds <see cref="IndexMetadata.BaseOffset"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GetIntValue(int index)
+    public ulong GetUInt64Value(int index)
     {
         ReadOnlySpan<byte> raw = GetValue(index);
-        int value = BinaryPrimitives.ReadInt32LittleEndian(raw);
-        return value + _metadata.BaseOffset;
+        return ReadUInt64LE(raw) + _metadata.BaseOffset;
+    }
+
+    /// <summary>
+    /// Read a 1..8 byte little-endian unsigned integer. Higher bytes are zero-extended.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong ReadUInt64LE(ReadOnlySpan<byte> src)
+    {
+        ulong v = 0;
+        int len = src.Length;
+        for (int i = 0; i < len; i++)
+            v |= (ulong)src[i] << (i * 8);
+        return v;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -434,14 +451,14 @@ public readonly ref struct BSearchIndexReader
         public int KeyCount { get; init; }
         /// <summary>KeyType=0: section size. KeyType=1: fixed key length. KeyType=2: slot size.</summary>
         public int KeySize { get; init; }
-        /// <summary>ValueType=0: section size. ValueType=1: fixed value length. ValueType=2: slot size.</summary>
+        /// <summary>ValueType=0: section size. ValueType=1: fixed value length (1..8 for offsets). ValueType=2: slot size.</summary>
         public int ValueSize { get; init; }
-        public int BaseOffset { get; init; }
+        /// <summary>Base offset added to every Uniform value read. 0 when absent. Encoded on disk as 6-byte LE.</summary>
+        public ulong BaseOffset { get; init; }
 
         public bool IsIntermediate => (Flags & 0x01) != 0;
         public int KeyType => (Flags >> 1) & 0x03;
         public int ValueType => (Flags >> 3) & 0x03;
-        public bool HasBaseOffset => (Flags & 0x20) != 0;
         public bool HasCommonKeyPrefix => (Flags & 0x40) != 0;
 
         /// <summary>Total byte size of the Keys section.</summary>

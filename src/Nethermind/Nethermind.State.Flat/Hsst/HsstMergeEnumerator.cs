@@ -117,7 +117,7 @@ public sealed class HsstMergeEnumerator : IDisposable
             {
                 ReadOnlySpan<byte> sep = index.GetKey(i);
                 int sepOffset = SpanOffset(data, sep);
-                int metaStart = index.GetIntValue(i);
+                int metaStart = checked((int)index.GetUInt64Value(i));
                 entries.Add((sepOffset, sep.Length, metaStart, 0));
             }
         }
@@ -125,7 +125,7 @@ public sealed class HsstMergeEnumerator : IDisposable
         {
             for (int i = 0; i < index.EntryCount; i++)
             {
-                int childOffset = index.GetIntValue(i);
+                int childOffset = checked((int)index.GetUInt64Value(i));
                 HsstIndex child = HsstIndex.ReadFromEnd(data, childOffset + 1);
                 CollectLeafOffsets(data, child, entries);
             }

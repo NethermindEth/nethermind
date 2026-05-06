@@ -17,10 +17,11 @@ internal struct BSearchIndexMetadata
     /// <summary>0=Variable, 1=Uniform, 2=UniformWithLen.</summary>
     public int KeyType;
     /// <summary>
-    /// Base offset subtracted from values before writing.
-    /// 0 means no base offset. When non-zero, caller must subtract this from each value before calling AddKey.
+    /// Base offset subtracted from values before writing. 0 means no base offset.
+    /// When non-zero, caller must subtract this from each value before calling AddKey.
+    /// Encoded on disk as a fixed 6-byte LE field (max 2^48 − 1 ≈ 256 TiB).
     /// </summary>
-    public int BaseOffset;
+    public ulong BaseOffset;
     /// <summary>
     /// Uniform/UniformWithLen: fixed key length or slot size.
     /// Variable: ignored.
@@ -28,7 +29,10 @@ internal struct BSearchIndexMetadata
     public int KeySlotSize;
     /// <summary>0=Variable, 1=Uniform, 2=UniformWithLen. Default: Uniform.</summary>
     public int ValueType = 1;
-    /// <summary>Uniform/UniformWithLen: fixed value size or slot size. Default: 4-byte int offsets.</summary>
+    /// <summary>
+    /// Uniform/UniformWithLen: fixed value size or slot size in bytes (1..8 for Uniform offsets).
+    /// Default: 4 bytes.
+    /// </summary>
     public int ValueSlotSize = 4;
 
     public BSearchIndexMetadata() { }
@@ -38,13 +42,14 @@ internal struct BSearchIndexMetadata
 /// Writes B-tree index nodes using an AddKey/Finalize builder pattern.
 ///
 /// Index block layout (low → high address):
-///   [Values section][Keys section][BaseOffset: u32 LE]?[CommonPrefix bytes][CommonPrefixLen: u8]?
-///   [ValueSize: u16 LE][KeySize: u16 LE][KeyCount: u16 LE][Flags: u8]
+///   [Values section][Keys section][BaseOffset: 6-byte LE][CommonPrefix bytes][CommonPrefixLen: u8]?
+///   [ValueSize: u8][KeySize: u16 LE][KeyCount: u16 LE][Flags: u8]
 ///
-/// The footer is fixed-width: 7 base bytes plus optional 4-byte BaseOffset and
-/// optional (1 + prefixLen) common-key-prefix block. Readers parse it backwards
-/// from <c>Flags</c> with no varint decoding. The 64 KiB node-size cap means
-/// every count/size field fits in u16.
+/// The footer is fixed-width: 6 base bytes + a mandatory 6-byte BaseOffset, plus
+/// an optional (1 + prefixLen) common-key-prefix block. Readers parse it
+/// backwards from <c>Flags</c> with no varint decoding. <c>ValueSize</c> is u8
+/// because per-entry value slots are 1..8 bytes (Uniform pointers); Variable
+/// value sections are not used by index nodes.
 ///
 /// Variable-encoded sections (KeyType/ValueType=0) use a sentinel-terminated
 /// offset table of (count+1) u16 entries appended after the raw entry data;
@@ -197,13 +202,13 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private void WriteEmptyNode()
     {
-        // Empty footer: all-zero sizes/count, leaf flags only.
-        // [ValueSectionSize: u16=0][KeySectionSize: u16=0][KeyCount: u16=0][Flags: u8]
+        // Empty footer: all-zero BaseOffset + sizes/count, leaf flags only.
+        // [BaseOffset: 6 bytes=0][ValueSize: u8=0][KeySize: u16=0][KeyCount: u16=0][Flags: u8]
         byte flags = (byte)(_metadata.IsIntermediate ? 0x01 : 0x00);
-        Span<byte> span = _writer.GetSpan(7);
-        span[..6].Clear();
-        span[6] = flags;
-        _writer.Advance(7);
+        Span<byte> span = _writer.GetSpan(12);
+        span[..11].Clear();
+        span[11] = flags;
+        _writer.Advance(12);
     }
 
     private int FinalizeUniformKeys()
@@ -364,33 +369,40 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private void WriteMetadata(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix)
     {
-        // Footer fields are u16 — the 64 KiB per-node cap means values, keys, and
-        // count all fit, but reject anything beyond the encodable range up-front
-        // rather than silently truncating on the (ushort) cast below.
+        // Footer fields are sized for the 64 KiB per-node cap; ValueSize is u8 since
+        // per-entry value slots are 1..8 bytes for Uniform offsets (the only value
+        // shape b-tree index nodes use). Reject anything beyond the encodable range
+        // up-front rather than silently truncating on the cast below.
         if ((uint)_count > ushort.MaxValue)
             throw new InvalidOperationException($"Index node entry count {_count} exceeds u16 footer field");
         if ((uint)keySize > ushort.MaxValue)
             throw new InvalidOperationException($"Index node KeySize {keySize} exceeds u16 footer field (node > 64 KiB)");
-        if ((uint)valueSize > ushort.MaxValue)
-            throw new InvalidOperationException($"Index node ValueSize {valueSize} exceeds u16 footer field (node > 64 KiB)");
+        if ((uint)valueSize > byte.MaxValue)
+            throw new InvalidOperationException($"Index node ValueSize {valueSize} exceeds u8 footer field");
 
-        bool hasBaseOffset = _metadata.BaseOffset > 0;
         bool hasCommonPrefix = commonKeyPrefix.Length > 0;
         byte flags = (byte)(
             (_metadata.IsIntermediate ? 0x01 : 0x00) |
             (_metadata.KeyType << 1) |
             (_metadata.ValueType << 3) |
-            (hasBaseOffset ? 0x20 : 0x00) |
             (hasCommonPrefix ? 0x40 : 0x00));
 
-        // Optional BaseOffset (4 bytes LE) at the lowest address inside the
-        // metadata block — must come before the common-prefix block so that a
-        // backward reader can pop them in flag-determined order.
-        if (hasBaseOffset)
+        // BaseOffset is mandatory: a fixed 6-byte LE field (low 48 bits of the
+        // ulong). Now that value slots are variable-width, the 6-byte footer cost
+        // is paid once per node and the per-entry savings dwarf it.
+        if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
+            throw new InvalidOperationException(
+                $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) footer field");
         {
-            Span<byte> bo = _writer.GetSpan(4);
-            BinaryPrimitives.WriteInt32LittleEndian(bo, _metadata.BaseOffset);
-            _writer.Advance(4);
+            Span<byte> bo = _writer.GetSpan(6);
+            ulong v = _metadata.BaseOffset;
+            bo[0] = (byte)v;
+            bo[1] = (byte)(v >> 8);
+            bo[2] = (byte)(v >> 16);
+            bo[3] = (byte)(v >> 24);
+            bo[4] = (byte)(v >> 32);
+            bo[5] = (byte)(v >> 40);
+            _writer.Advance(6);
         }
 
         // Optional common-prefix block: bytes followed by their length, so a
@@ -406,12 +418,12 @@ internal ref struct BSearchIndexWriter<TWriter>
             _writer.Advance(plen + 1);
         }
 
-        // Fixed 7-byte tail: three u16 sizes/count followed by the flags byte.
-        Span<byte> tail = _writer.GetSpan(7);
-        BinaryPrimitives.WriteUInt16LittleEndian(tail, (ushort)valueSize);
-        BinaryPrimitives.WriteUInt16LittleEndian(tail[2..], (ushort)keySize);
-        BinaryPrimitives.WriteUInt16LittleEndian(tail[4..], (ushort)_count);
-        tail[6] = flags;
-        _writer.Advance(7);
+        // Fixed 6-byte tail: [ValueSize u8][KeySize u16][KeyCount u16][Flags u8].
+        Span<byte> tail = _writer.GetSpan(6);
+        tail[0] = (byte)valueSize;
+        BinaryPrimitives.WriteUInt16LittleEndian(tail[1..], (ushort)keySize);
+        BinaryPrimitives.WriteUInt16LittleEndian(tail[3..], (ushort)_count);
+        tail[5] = flags;
+        _writer.Advance(6);
     }
 }

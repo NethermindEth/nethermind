@@ -105,21 +105,8 @@ internal static class BSearchIndexLayoutPlanner
         }
         else if (allSameLen && effFirstLen > 0)
         {
-            if (effFirstLen == 3)
-            {
-                // Special case: a 3-byte Uniform slot is awkward — it doesn't tile
-                // into 4-byte aligned reads and a Vector128 holds 5⅓ of them.
-                // Promote to UniformWithLen with slot=4 (1 extra byte/entry of
-                // overhead) so each slot reads as a single uint32 and 4 slots
-                // pack cleanly into Vector128 for SIMD-friendly scans.
-                keyType = 2;
-                keySlotSize = 4;
-            }
-            else
-            {
-                keyType = 1;
-                keySlotSize = effFirstLen;
-            }
+            keyType = 1;
+            keySlotSize = effFirstLen;
         }
         else if (effMaxLen <= 3)
         {

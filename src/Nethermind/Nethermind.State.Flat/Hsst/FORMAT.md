@@ -326,8 +326,17 @@ byte. Reading an index node backward from its exclusive-end offset:
 ### Metadata
 
 ```
-[Flags: u8][KeyCount: LEB128][KeySize: LEB128][ValueSize: LEB128][BaseOffset: LEB128 optional][CommonKeyPrefixLen: u8 + bytes optional]
+[Flags: u8][KeyCount: LEB128][KeySize: LEB128][ValueSize: u8][BaseOffset: 6 bytes LE][CommonKeyPrefixLen: u8 + bytes optional]
 ```
+
+`ValueSize` is a single byte because per-entry value slots are 1..8 bytes
+(Uniform pointers); the b-tree index nodes never use Variable-encoded value
+sections.
+
+`BaseOffset` is a **mandatory** fixed 6-byte little-endian unsigned integer
+(low 48 bits; enough for any HSST up to 256 TiB). The 6 bytes are paid once
+per node, and per-entry slot widths are picked from `[1, 8]` to keep the
+total cheaper than always-4-byte slots. There is no flag bit gating it.
 
 `Flags` bits:
 
@@ -336,7 +345,7 @@ byte. Reading an index node backward from its exclusive-end offset:
 | 0    | `IsIntermediate` — 1 = intermediate B-tree node, 0 = leaf |
 | 1–2  | `KeyType`        — 0 Variable / 1 Uniform / 2 UniformWithLen |
 | 3–4  | `ValueType`      — 0 Variable / 1 Uniform / 2 UniformWithLen |
-| 5    | `HasBaseOffset`  — 1 = `BaseOffset` LEB128 follows |
+| 5    | reserved (was `HasBaseOffset`; BaseOffset is now mandatory). Writers MUST emit 0; readers MUST ignore. |
 | 6    | `HasCommonKeyPrefix` — 1 = `CommonKeyPrefixLen` (u8) + prefix bytes follow |
 | 7    | `HasFlagsContinuation` — 1 = a second flags byte follows the first, reserved for future expansion. Current writers always emit 0; current readers may reject `1` as unsupported. |
 
@@ -366,24 +375,29 @@ stays well under the `MetadataLength` u8 ceiling, and only emit it when
   records the actual byte length used. Section size still `KeyCount * size`.
 
 `BaseOffset`, when present, is added to every integer value read out of the
-node. This lets intermediate nodes and leaves with metaStart-pointers store
-offsets in 4 bytes even when the underlying buffer is larger than the
-naive `int` range: pick a base near the cluster of values and store small
-deltas off it.
+node. The writer picks `BaseOffset = min(values)` (when there's more than one
+distinct value and the minimum is non-zero) and then stores each value as a
+**Uniform unsigned LE integer** whose width is the smallest power-of-two-byte
+count in `[1, 8]` that fits `max(values) - BaseOffset`. The chosen width is
+recorded in the node header's `ValueSize` field, so a leaf with deltas that
+all fit in one byte stores 1-byte slots, while a leaf spanning a 5 GiB
+range stores 5-byte slots.
 
 ### Children pointers (intermediate nodes)
 
-For an intermediate node, each value is a 4-byte little-endian `int`
-(Uniform, 4) interpreted (after `+ BaseOffset`) as the **inclusive last
-byte** of the referenced child node within the HSST buffer (0-indexed from
-the first byte of the HSST). The child's exclusive end = `childOffset + 1`;
-the reader then loads the child from the end the same way it loaded the root.
+For an intermediate node, each value is a 1..8 byte little-endian unsigned
+integer (Uniform; the byte width comes from `ValueSize`) interpreted (after
+`+ BaseOffset`) as the **inclusive last byte** of the referenced child node
+within the HSST buffer (0-indexed from the first byte of the HSST). The
+child's exclusive end = `childOffset + 1`; the reader then loads the child
+from the end the same way it loaded the root.
 
 ### Metadata-start pointers (leaves)
 
-For a leaf node, each value is a 4-byte little-endian `int` (after `+ BaseOffset`)
-giving the entry's `MetadataStart`, *relative to the start of the data region*
-(i.e. byte 0 of the HSST is the first byte of the data region).
+For a leaf node, each value is a 1..8 byte little-endian unsigned integer
+(after `+ BaseOffset`) giving the entry's `MetadataStart`, *relative to the
+start of the data region* (i.e. byte 0 of the HSST is the first byte of the
+data region).
 
 ## Constraints
 
@@ -393,9 +407,15 @@ giving the entry's `MetadataStart`, *relative to the start of the data region*
 - Maximum key length per entry: **255 bytes**, encoded as a single `u8`.
   Writers must reject longer keys.
 - `MetadataLength` is a single byte → metadata section ≤ 255 bytes.
-- All offsets *within* a node are encoded as 4-byte little-endian
-  integers, so a single HSST is capped at ≈2 GiB. There is no in-format
+- Per-entry value slots are 1..8 byte LE unsigned integers (width per
+  `ValueSize`). Combined with the optional 6-byte `BaseOffset`, a single
+  HSST can address up to 256 TiB. The variable-section internal offset
+  table (Variable key/value sections) remains a `u16` per entry, so a
+  single Variable section is still capped at 64 KiB. There is no in-format
   cap on a containing host file holding many HSSTs.
+- The `BTreeHashIndex` variant additionally requires every `MetadataStart`
+  to fit in a 4-byte unsigned slot (≤ 4 GiB); the writer rejects HSSTs
+  that exceed that limit. Use the plain `BTree` variant for larger HSSTs.
 
 ## Affected files
 

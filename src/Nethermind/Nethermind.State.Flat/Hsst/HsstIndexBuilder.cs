@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.State.Flat.BSearchIndex;
@@ -82,7 +82,7 @@ public ref struct HsstIndexBuilder<TWriter>
                 HsstBuilder<TWriter>.HsstEntry last = leafEntries[count - 1];
 
                 // childOffset = absolute last byte position of this node
-                int childOffset = (absoluteIndexStart + relativeStart + nodeLen) - 1;
+                ulong childOffset = (ulong)(absoluteIndexStart + relativeStart + nodeLen) - 1UL;
 
                 currentLevel[currentLevelCount++] = new NodeInfo(
                     childOffset,
@@ -111,7 +111,7 @@ public ref struct HsstIndexBuilder<TWriter>
                     NodeInfo first = children[0];
                     NodeInfo last = children[childCount - 1];
 
-                    int childOffset = (absoluteIndexStart + relativeStart + nodeLen) - 1;
+                    ulong childOffset = (ulong)(absoluteIndexStart + relativeStart + nodeLen) - 1UL;
 
                     nextLevel[nextLevelCount++] = new NodeInfo(
                         childOffset,
@@ -137,20 +137,23 @@ public ref struct HsstIndexBuilder<TWriter>
         int absoluteNodeStart,
         int globalStartIndex)
     {
-        // Compute BaseOffset from values
-        int baseOffset = 0;
-        if (entries.Length > 1)
+        // Compute BaseOffset from values, then pick the smallest 1..8 byte slot
+        // width that can encode (max - baseOffset).
+        ulong baseOffset = 0;
+        ulong maxVal = 0;
+        if (entries.Length > 0)
         {
-            int minVal = entries[0].MetadataStart;
-            int maxVal = minVal;
+            ulong minVal = entries[0].MetadataStart;
+            maxVal = minVal;
             for (int i = 1; i < entries.Length; i++)
             {
                 if (entries[i].MetadataStart < minVal) minVal = entries[i].MetadataStart;
                 if (entries[i].MetadataStart > maxVal) maxVal = entries[i].MetadataStart;
             }
-            if (minVal > 0 && minVal < maxVal)
+            if (entries.Length > 1 && minVal > 0 && minVal < maxVal)
                 baseOffset = minVal;
         }
+        int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
         // Decide CommonKeyPrefix and KeyType jointly against post-strip lengths.
         Span<int> sepOffsets = stackalloc int[entries.Length];
@@ -178,14 +181,16 @@ public ref struct HsstIndexBuilder<TWriter>
             KeyType = keyType,
             BaseOffset = baseOffset,
             KeySlotSize = keySlotSize,
+            ValueType = 1,
+            ValueSlotSize = valueSlotSize,
         }, keyBuf, commonPrefix);
 
-        Span<byte> valueBuf = stackalloc byte[4];
+        Span<byte> valueBuf = stackalloc byte[8];
         for (int i = 0; i < entries.Length; i++)
         {
             ReadOnlySpan<byte> sep = _separatorBuffer.Slice(entries[i].SepOffset, entries[i].SepLen);
-            BinaryPrimitives.WriteInt32LittleEndian(valueBuf, entries[i].MetadataStart - baseOffset);
-            indexWriter.AddKey(sep[prefixLen..], valueBuf);
+            WriteUInt64LE(valueBuf, entries[i].MetadataStart - baseOffset, valueSlotSize);
+            indexWriter.AddKey(sep[prefixLen..], valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
     }
@@ -225,15 +230,17 @@ public ref struct HsstIndexBuilder<TWriter>
             ? tempSepBuffer.Slice(sepOffsets[0], prefixLen)
             : default;
 
-        // Compute BaseOffset from child offsets
-        int minVal = children[0].ChildOffset;
-        int maxVal = minVal;
+        // Compute BaseOffset from child offsets, then choose the minimum byte width
+        // that fits the in-node delta range.
+        ulong minVal = children[0].ChildOffset;
+        ulong maxVal = minVal;
         for (int i = 1; i < childCount; i++)
         {
             if (children[i].ChildOffset < minVal) minVal = children[i].ChildOffset;
             if (children[i].ChildOffset > maxVal) maxVal = children[i].ChildOffset;
         }
-        int baseOffset = (minVal > 0 && minVal < maxVal) ? minVal : 0;
+        ulong baseOffset = (minVal > 0 && minVal < maxVal) ? minVal : 0;
+        int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
         // Key buffer: 2 bytes (u16 length) + post-strip suffix bytes per child.
         int keyBufSize = 2 * childCount + tempOffset - prefixLen * childCount;
@@ -245,16 +252,35 @@ public ref struct HsstIndexBuilder<TWriter>
             KeyType = keyType,
             BaseOffset = baseOffset,
             KeySlotSize = keySlotSize,
+            ValueType = 1,
+            ValueSlotSize = valueSlotSize,
         }, keyBuf, commonPrefix);
 
-        Span<byte> valueBuf = stackalloc byte[4];
+        Span<byte> valueBuf = stackalloc byte[8];
         for (int i = 0; i < childCount; i++)
         {
             ReadOnlySpan<byte> sep = tempSepBuffer.Slice(sepOffsets[i], sepLengths[i]);
-            BinaryPrimitives.WriteInt32LittleEndian(valueBuf, children[i].ChildOffset - baseOffset);
-            indexWriter.AddKey(sep[prefixLen..], valueBuf);
+            WriteUInt64LE(valueBuf, children[i].ChildOffset - baseOffset, valueSlotSize);
+            indexWriter.AddKey(sep[prefixLen..], valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
+    }
+
+    /// <summary>
+    /// Smallest 1..8 byte width that can encode <paramref name="value"/>. Returns 1 for 0.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int MinBytesFor(ulong value)
+    {
+        if (value == 0) return 1;
+        return ((BitOperations.Log2(value)) >> 3) + 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WriteUInt64LE(Span<byte> dest, ulong value, int width)
+    {
+        for (int i = 0; i < width; i++)
+            dest[i] = (byte)(value >> (i * 8));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -274,10 +300,10 @@ public ref struct HsstIndexBuilder<TWriter>
         return len;
     }
 
-    internal readonly struct NodeInfo(int childOffset, HsstBuilder<TWriter>.HsstEntry firstEntry, HsstBuilder<TWriter>.HsstEntry lastEntry)
+    internal readonly struct NodeInfo(ulong childOffset, HsstBuilder<TWriter>.HsstEntry firstEntry, HsstBuilder<TWriter>.HsstEntry lastEntry)
     {
         /// <summary>Absolute last byte position of this node in _data (= absoluteIndexStart + position + size - 1).</summary>
-        public readonly int ChildOffset = childOffset;
+        public readonly ulong ChildOffset = childOffset;
         public readonly HsstBuilder<TWriter>.HsstEntry FirstEntry = firstEntry;
         public readonly HsstBuilder<TWriter>.HsstEntry LastEntry = lastEntry;
     }

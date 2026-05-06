@@ -78,33 +78,37 @@ public class BSearchIndexTests
     private static IEnumerable<TestCaseData> UniformKeysTestCases()
     {
         // Single entry: separator=0x41 ('A'), value=100, keyLen=1
+        // BaseOffset is mandatory (6 bytes LE = 0 here because writer didn't pre-strip it).
         //
         // Expected binary layout (footer fields are fixed-width LE; no LEB128):
-        //   "64000000" - Values[0]: 100 as int32 LE
-        //   "41"       - Keys[0]: separator byte 0x41 (Uniform, 1 byte)
-        //   "0400"     - Metadata.ValueSize: 4 (u16 LE — fixed value slot size)
-        //   "0100"     - Metadata.KeySize: 1 (u16 LE — fixed key length)
-        //   "0100"     - Metadata.KeyCount: 1 (u16 LE)
-        //   "0A"       - Metadata.Flags: leaf(0)|KeyType=Uniform(02)|ValueType=Uniform(08)
+        //   "64000000"     - Values[0]: 100 as int32 LE (test passes ValueSlotSize=4)
+        //   "41"           - Keys[0]: separator byte 0x41 (Uniform, 1 byte)
+        //   "000000000000" - Metadata.BaseOffset: 0 (mandatory 6-byte LE)
+        //   "04"           - Metadata.ValueSize: 4 (u8 — fixed value slot size, 1..8)
+        //   "0100"         - Metadata.KeySize: 1 (u16 LE — fixed key length)
+        //   "0100"         - Metadata.KeyCount: 1 (u16 LE)
+        //   "0A"           - Metadata.Flags: leaf(0)|KeyType=Uniform(02)|ValueType=Uniform(08)
         yield return new TestCaseData(
             new[] { "41" }, new[] { 100 }, 1,
-            "64000000" + "41" + "0400" + "0100" + "0100" + "0A"
+            "64000000" + "41" + "000000000000" + "04" + "0100" + "0100" + "0A"
         ).SetName("Uniform_SingleEntry");
 
         // Three entries: separators=[0x41,0x43,0x45], values=[0,100,200], keyLen=1
-        // No BaseOffset because min=0 (useBaseOffset requires min > 0).
+        // BaseOffset = 0 here (writer didn't strip it; test exercises the BSearchIndexWriter
+        // with an explicit ValueSlotSize=4, so values stay 4-byte int32 LE).
         //
-        //   "00000000" - Values[0]: 0 as int32 LE
-        //   "64000000" - Values[1]: 100 as int32 LE
-        //   "C8000000" - Values[2]: 200 as int32 LE
-        //   "41 43 45" - Keys[0..2]
-        //   "0400"     - Metadata.ValueSize: 4
-        //   "0100"     - Metadata.KeySize: 1
-        //   "0300"     - Metadata.KeyCount: 3
-        //   "0A"       - Metadata.Flags: leaf, Uniform keys, Uniform values
+        //   "00000000"     - Values[0]: 0 as int32 LE
+        //   "64000000"     - Values[1]: 100 as int32 LE
+        //   "C8000000"     - Values[2]: 200 as int32 LE
+        //   "41 43 45"     - Keys[0..2]
+        //   "000000000000" - Metadata.BaseOffset: 0 (mandatory 6-byte LE)
+        //   "04"           - Metadata.ValueSize: 4 (u8)
+        //   "0100"         - Metadata.KeySize: 1
+        //   "0300"         - Metadata.KeyCount: 3
+        //   "0A"           - Metadata.Flags: leaf, Uniform keys, Uniform values
         yield return new TestCaseData(
             new[] { "41", "43", "45" }, new[] { 0, 100, 200 }, 1,
-            "00000000" + "64000000" + "C8000000" + "41" + "43" + "45" + "0400" + "0100" + "0300" + "0A"
+            "00000000" + "64000000" + "C8000000" + "41" + "43" + "45" + "000000000000" + "04" + "0100" + "0300" + "0A"
         ).SetName("Uniform_ThreeEntries");
     }
 
@@ -136,28 +140,29 @@ public class BSearchIndexTests
         {
             byte[] expectedSep = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
             Assert.That(index.GetKey(i).ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
-            Assert.That(index.GetIntValue(i), Is.EqualTo(values[i]), $"Entry {i} value mismatch");
+            Assert.That(index.GetUInt64Value(i), Is.EqualTo((ulong)values[i]), $"Entry {i} value mismatch");
         }
     }
 
     [Test]
     public void IndexBuilder_UniformKeys_WithBaseOffset()
     {
-        // Three entries with values=[100,200,300]: min=100>0 and min<max triggers BaseOffset.
-        // Caller computes baseOffset=100 and subtracts from values before Add.
+        // Three entries with values=[100,200,300]. Caller pre-subtracts baseOffset=100.
+        // BaseOffset is now mandatory (6 bytes LE), so the only difference vs the no-base
+        // case is that the BaseOffset field is non-zero. The flag bit 0x20 is gone.
         //
-        //   "00000000" - Values[0]: 100-100=0 as int32 LE
-        //   "64000000" - Values[1]: 200-100=100 as int32 LE
-        //   "C8000000" - Values[2]: 300-100=200 as int32 LE
-        //   "41 43 45" - Keys[0..2]
-        //   "64000000" - Metadata.BaseOffset: 100 (u32 LE — present because flag 0x20 set)
-        //   "0400"     - Metadata.ValueSize: 4
-        //   "0100"     - Metadata.KeySize: 1
-        //   "0300"     - Metadata.KeyCount: 3
-        //   "2A"       - Metadata.Flags: 0x0A|0x20 (HasBaseOffset bit set)
-        string expectedHex = "00000000" + "64000000" + "C8000000" + "41" + "43" + "45" + "64000000" + "0400" + "0100" + "0300" + "2A";
+        //   "00000000"     - Values[0]: 100-100=0 as int32 LE
+        //   "64000000"     - Values[1]: 200-100=100 as int32 LE
+        //   "C8000000"     - Values[2]: 300-100=200 as int32 LE
+        //   "41 43 45"     - Keys[0..2]
+        //   "640000000000" - Metadata.BaseOffset: 100 (mandatory 6-byte LE)
+        //   "04"           - Metadata.ValueSize: 4 (u8)
+        //   "0100"         - Metadata.KeySize: 1
+        //   "0300"         - Metadata.KeyCount: 3
+        //   "0A"           - Metadata.Flags: leaf, Uniform keys, Uniform values
+        string expectedHex = "00000000" + "64000000" + "C8000000" + "41" + "43" + "45" + "640000000000" + "04" + "0100" + "0300" + "0A";
 
-        int baseOffset = 100;
+        ulong baseOffset = 100;
         byte[] output = new byte[1024];
         Span<byte> keyBuf = stackalloc byte[3 * (2 + 1)]; // 3 entries, each key is 1 byte
         SpanBufferWriter bufWriter = new(output);
@@ -165,7 +170,7 @@ public class BSearchIndexTests
         Span<byte> valBuf = stackalloc byte[4];
         foreach ((string sepHex, int val) in new[] { ("41", 100), ("43", 200), ("45", 300) })
         {
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, val - baseOffset);
+            BinaryPrimitives.WriteInt32LittleEndian(valBuf, val - (int)baseOffset);
             writer.AddKey(Convert.FromHexString(sepHex), valBuf);
         }
         writer.FinalizeNode();
@@ -174,10 +179,10 @@ public class BSearchIndexTests
         Assert.That(Convert.ToHexString(output[..written]), Is.EqualTo(expectedHex));
 
         BSearchIndexReader index = BSearchIndexReader.ReadFromEnd(output, written);
-        Assert.That(index.Metadata.BaseOffset, Is.EqualTo(100));
-        Assert.That(index.GetIntValue(0), Is.EqualTo(100));
-        Assert.That(index.GetIntValue(1), Is.EqualTo(200));
-        Assert.That(index.GetIntValue(2), Is.EqualTo(300));
+        Assert.That(index.Metadata.BaseOffset, Is.EqualTo((ulong)100));
+        Assert.That(index.GetUInt64Value(0), Is.EqualTo((ulong)100));
+        Assert.That(index.GetUInt64Value(1), Is.EqualTo((ulong)200));
+        Assert.That(index.GetUInt64Value(2), Is.EqualTo((ulong)300));
     }
 
     // ===== HEX FIXTURE TESTS: VARIABLE KEYS =====
@@ -194,13 +199,13 @@ public class BSearchIndexTests
         //   "0000"     - SentinelOffsets[0]: 0 (u16 LE)  — entry 0 starts at 0
         //   "0000"     - SentinelOffsets[1]: 0 (u16 LE)  — entry 1 starts at 0 (entry 0 had length 0)
         //   "0300"     - SentinelOffsets[2]: 3 (u16 LE)  — sentinel; entry 1 length = 3 - 0 = 3
-        //   "0400"     - Metadata.ValueSize: 4
+        //   "04"       - Metadata.ValueSize: 4 (u8)
         //   "0900"     - Metadata.KeySize: 9 (3 data + 3*2 offsets)
         //   "0200"     - Metadata.KeyCount: 2
         //   "08"       - Metadata.Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)
         yield return new TestCaseData(
             new[] { "", "7A8B49" }, new[] { 0, 55 },
-            "00000000" + "37000000" + "7A8B49" + "0000" + "0000" + "0300" + "0400" + "0900" + "0200" + "08"
+            "00000000" + "37000000" + "7A8B49" + "0000" + "0000" + "0300" + "000000000000" + "04" + "0900" + "0200" + "08"
         ).SetName("Variable_EmptyAndThreeBytes");
 
         // Three entries with varying separator lengths: 1, 2, 3 bytes.
@@ -217,13 +222,13 @@ public class BSearchIndexTests
         //   "0100"       - SentinelOffsets[1]: 1
         //   "0300"       - SentinelOffsets[2]: 3
         //   "0600"       - SentinelOffsets[3]: 6 (sentinel)
-        //   "0400"       - Metadata.ValueSize: 4
+        //   "04"         - Metadata.ValueSize: 4 (u8)
         //   "0E00"       - Metadata.KeySize: 14 (1+2+3 data + 4*2 offsets)
         //   "0300"       - Metadata.KeyCount: 3
         //   "08"         - Metadata.Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)
         yield return new TestCaseData(
             new[] { "41", "4243", "444546" }, new[] { 0, 100, 200 },
-            "0000000064000000C8000000" + "41" + "4243" + "444546" + "0000" + "0100" + "0300" + "0600" + "0400" + "0E00" + "0300" + "08"
+            "0000000064000000C8000000" + "41" + "4243" + "444546" + "0000" + "0100" + "0300" + "0600" + "000000000000" + "04" + "0E00" + "0300" + "08"
         ).SetName("Variable_VaryingSeparators");
     }
 
@@ -301,13 +306,13 @@ public class BSearchIndexTests
         //   "000000"   - Slot[0]: empty key (padded), length=0
         //   "AABB02"   - Slot[1]: key=AABB, length=2
         //   "CCDD02"   - Slot[2]: key=CCDD, length=2
-        //   "0400"     - Metadata.ValueSize: 4
+        //   "04"       - Metadata.ValueSize: 4 (u8)
         //   "0300"     - Metadata.KeySize: 3 (slot size)
         //   "0300"     - Metadata.KeyCount: 3
         //   "0D"       - Metadata.Flags: intermediate(01)|KeyType=UniformWithLen(04)|ValueType=Uniform(08)
         yield return new TestCaseData(
             new[] { "", "AABB", "CCDD" }, new[] { 0, 100, 200 }, 3, true,
-            "00000000" + "64000000" + "C8000000" + "000000" + "AABB02" + "CCDD02" + "0400" + "0300" + "0300" + "0D"
+            "00000000" + "64000000" + "C8000000" + "000000" + "AABB02" + "CCDD02" + "000000000000" + "04" + "0300" + "0300" + "0D"
         ).SetName("UniformWithLen_ThreeIntermediateEntries");
     }
 

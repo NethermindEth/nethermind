@@ -30,7 +30,7 @@ public readonly ref struct HsstIndex
 
     public ReadOnlySpan<byte> GetKey(int index) => _inner.GetKey(index);
     public ReadOnlySpan<byte> GetValue(int index) => _inner.GetValue(index);
-    public int GetIntValue(int index) => _inner.GetIntValue(index);
+    public ulong GetUInt64Value(int index) => _inner.GetUInt64Value(index);
     public int FindFloorIndex(ReadOnlySpan<byte> key) => _inner.FindFloorIndex(key);
     public int GetFullKey(int index, Span<byte> dest) => _inner.GetFullKey(index, dest);
 

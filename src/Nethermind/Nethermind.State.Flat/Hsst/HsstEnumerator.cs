@@ -199,7 +199,7 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 
         if (_depth < 0)
         {
-            // Root node ends just before the trailing IndexType byte (BTree/Inline)
+            // Root node ends just before the trailing IndexType byte (BTree)
             // or just before the appended hash table (BTreeHashIndex).
             return DescendToLeaf(_rootAbsEnd);
         }
@@ -263,8 +263,8 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
             using (pin)
             {
                 ReadOnlySpan<byte> childValueBytes = node.GetValue(0);
-                int childOffset = BinaryPrimitives.ReadInt32LittleEndian(childValueBytes) + node.Metadata.BaseOffset;
-                currentEnd = _hsstStart + childOffset + 1;
+                ulong childOffset = BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + node.Metadata.BaseOffset;
+                currentEnd = _hsstStart + (long)childOffset + 1;
             }
             depth++;
         }
@@ -294,8 +294,8 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
                     continue;
                 }
                 ReadOnlySpan<byte> childValueBytes = parent.GetValue(anc.LastIdx);
-                int childOffset = BinaryPrimitives.ReadInt32LittleEndian(childValueBytes) + parent.Metadata.BaseOffset;
-                childEnd = _hsstStart + childOffset + 1;
+                ulong childOffset = BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + parent.Metadata.BaseOffset;
+                childEnd = _hsstStart + (long)childOffset + 1;
             }
             _depth++;
             return DescendToLeaf(childEnd);
@@ -314,8 +314,8 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         // Leaf value is a metaStart pointer into the data region.
         ReadOnlySpan<byte> metaBytes = _leafNode.GetValue(_leafIdx);
-        int metaStart = BinaryPrimitives.ReadInt32LittleEndian(metaBytes) + _leafNode.Metadata.BaseOffset;
-        long absMetaStart = _hsstStart + metaStart;
+        ulong metaStart = BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + _leafNode.Metadata.BaseOffset;
+        long absMetaStart = _hsstStart + (long)metaStart;
 
         // Read ValueLength (LEB128, ≤5 bytes) + KeyLength (u8, 1 byte). This is the leading
         // sequential read for each entry during enumeration, so use the readahead variant —
@@ -340,12 +340,12 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         nodeAbsStart = 0;
         pin = default;
 
-        if (absEnd < 7) return false;
+        if (absEnd < 12) return false;
 
         // BSearchIndex node footer is fixed-width; pin a bounded window covering
-        // the worst-case footer (7 base bytes + optional baseOffset + optional
+        // the worst-case footer (6 base bytes + mandatory 6-byte baseOffset + optional
         // common-prefix block ≤ 128 bytes) and parse backwards from the flags byte.
-        const int MaxFooterBytes = 7 + 1 + 128 + 4;
+        const int MaxFooterBytes = 6 + 1 + 128 + 6;
         long footerStart = Math.Max(0, absEnd - MaxFooterBytes);
         int footerLen = (int)(absEnd - footerStart);
 
@@ -354,19 +354,17 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         {
             ReadOnlySpan<byte> metaSpan = metaPin.Buffer;
             byte flags = metaSpan[footerLen - 1];
-            int valueSize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 7)..]);
+            int valueSize = metaSpan[footerLen - 6];
             int keySize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 5)..]);
             int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 3)..]);
             int keyType = (flags >> 1) & 0x03;
             int valueType = (flags >> 3) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
             int valueSectionSize = valueType switch { 0 => valueSize, _ => keyCount * valueSize };
-            int extraFooter = 0;
+            int extraFooter = 6; // mandatory BaseOffset
             if ((flags & 0x40) != 0)
-                extraFooter += 1 + metaSpan[footerLen - 8];
-            if ((flags & 0x20) != 0)
-                extraFooter += 4;
-            totalNodeSize = valueSectionSize + keySectionSize + 7 + extraFooter;
+                extraFooter += 1 + metaSpan[footerLen - 7];
+            totalNodeSize = valueSectionSize + keySectionSize + 6 + extraFooter;
         }
 
         nodeAbsStart = absEnd - totalNodeSize;

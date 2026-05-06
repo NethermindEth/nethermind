@@ -52,14 +52,16 @@ public ref struct HsstBuilder<TWriter>
     // Hash index entry hashes (only allocated when UseHashIndex)
     private NativeMemoryListRef<uint> _entryHashes;
 
-    public readonly struct HsstEntry(int sepOffset, int sepLen, int metadataStart)
+    public readonly struct HsstEntry(int sepOffset, int sepLen, ulong metadataStart)
     {
         public readonly int SepOffset = sepOffset;
         public readonly int SepLen = sepLen;
         /// <summary>
         /// Offset within the HSST (relative to byte 0) where value metadata starts.
+        /// Stored as ulong so the B-tree value section can address up to 2^48 bytes
+        /// (limit is the 6-byte BaseOffset footer field, not this type).
         /// </summary>
-        public readonly int MetadataStart = metadataStart;
+        public readonly ulong MetadataStart = metadataStart;
     }
 
     /// <summary>
@@ -127,7 +129,7 @@ public ref struct HsstBuilder<TWriter>
 
         int actualLen = _writer.Written - _writtenBeforeValue;
         // metadataStart stored in index is relative to byte 0 of this HSST.
-        int metadataStart = _writer.Written - _baseOffset;
+        ulong metadataStart = (ulong)(_writer.Written - _baseOffset);
 
         // Compute separator eagerly
         int sepLen = ComputeSeparatorLength(
@@ -233,7 +235,11 @@ public ref struct HsstBuilder<TWriter>
             uint slot = HsstHash.Slot(hashes[i], tableSize);
             if (slots[(int)slot] == Empty)
             {
-                slots[(int)slot] = (uint)entries[i].MetadataStart;
+                ulong meta = entries[i].MetadataStart;
+                if (meta > uint.MaxValue)
+                    throw new InvalidOperationException(
+                        $"BTreeHashIndex MetadataStart {meta} exceeds 4 GiB; use plain BTree variant for >4 GiB HSSTs.");
+                slots[(int)slot] = (uint)meta;
             }
             else
             {
