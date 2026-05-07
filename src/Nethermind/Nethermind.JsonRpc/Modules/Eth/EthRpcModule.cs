@@ -426,8 +426,7 @@ public partial class EthRpcModule(
 
     private int ResolveSyncTimeoutMs(ulong? requestedMs)
     {
-        // Clamp config to >0 so a misconfiguration (e.g. negative max) cannot wrap into a huge ulong
-        // and overflow back to a negative CancellationTokenSource delay.
+        // Clamp >0 so a negative max can't wrap to a huge ulong and overflow back to a negative delay.
         int max = Math.Max(1, _rpcConfig.RpcTxSyncMaxTimeoutMs);
         if (requestedMs is { } req && req > 0)
         {
