@@ -77,20 +77,20 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     {
         using GetReceiptsMessage70 message = getReceiptsMessage;
         ReceiptsResponse response = await FulfillReceiptsRequest(message, cancellationToken);
-        return new ReceiptsMessage70(message.RequestId, new(response.TxReceipts), response.LastBlockIncomplete);
+        return new ReceiptsMessage70(message.RequestId, response.TxReceipts, response.LastBlockIncomplete);
     }
 
     private Task<ReceiptsResponse> FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
-        ArrayPoolList<TxReceipt[]> txReceipts = new(getReceiptsMessage.EthMessage.Hashes.Count);
+        ArrayPoolList<TxReceipt[]> txReceipts = new(getReceiptsMessage.Hashes.Count);
         bool lastBlockIncomplete = false;
 
         try
         {
             ulong sizeEstimate = 0;
-            for (int blockIndex = 0; blockIndex < getReceiptsMessage.EthMessage.Hashes.Count; blockIndex++)
+            for (int blockIndex = 0; blockIndex < getReceiptsMessage.Hashes.Count; blockIndex++)
             {
-                Hash256 blockHash = getReceiptsMessage.EthMessage.Hashes[blockIndex];
+                Hash256 blockHash = getReceiptsMessage.Hashes[blockIndex];
                 if (SyncServer.FindHeader(blockHash) is null)
                 {
                     break;
@@ -194,7 +194,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 {
                     totalResponseSize += size;
 
-                    if (response.EthMessage.TxReceipts.Count == 0)
+                    if (response.TxReceipts.Count == 0)
                     {
                         if (response.LastBlockIncomplete || firstBlockReceiptIndex > 0)
                         {
@@ -204,7 +204,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         break;
                     }
 
-                    if (response.EthMessage.TxReceipts.Count > blockHashes.Count - blockIndex)
+                    if (response.TxReceipts.Count > blockHashes.Count - blockIndex)
                     {
                         throw new SubprotocolException("Received more receipts than requested in eth/70 response");
                     }
@@ -214,7 +214,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                         throw new SubprotocolException($"Received partial receipts response below minimum size ({size} bytes < {SoftOutgoingMessageSizeLimit / 4} bytes)");
                     }
 
-                    IOwnedReadOnlyList<TxReceipt[]?> txReceipts = response.EthMessage.TxReceipts;
+                    IOwnedReadOnlyList<TxReceipt[]?> txReceipts = response.TxReceipts;
 
                     for (int i = 0; i < txReceipts.Count; i++)
                     {
@@ -301,11 +301,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             remainingHashes.Add(blockHashes[i]);
         }
 
-        return new GetReceiptsMessage70
-        {
-            FirstBlockReceiptIndex = firstReceiptIndex,
-            EthMessage = new(remainingHashes)
-        };
+        return new GetReceiptsMessage70(remainingHashes, firstReceiptIndex);
     }
 
     private async Task<(ReceiptsMessage70 response, ulong size)> SendRequest(GetReceiptsMessage70 message, CancellationToken token)
