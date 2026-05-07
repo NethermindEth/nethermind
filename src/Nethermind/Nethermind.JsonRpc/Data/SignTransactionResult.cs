@@ -9,8 +9,8 @@ namespace Nethermind.JsonRpc.Data;
 public class SignTransactionResult
 {
     [JsonPropertyName("raw")]
-    public byte[] Raw { get; init; } = null!;
+    public required byte[] Raw { get; init; }
 
     [JsonPropertyName("tx")]
-    public TransactionForRpc Tx { get; init; } = null!;
+    public required TransactionForRpc Tx { get; init; }
 }
