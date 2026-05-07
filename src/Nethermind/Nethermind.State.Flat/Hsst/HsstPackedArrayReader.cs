@@ -14,8 +14,17 @@ internal static class HsstPackedArrayReader
 {
     /// <summary>
     /// Parsed footer of a PackedArray HSST: section starts and per-level summary geometry.
-    /// <see cref="LevelStarts"/> entries are int offsets relative to <see cref="DataStart"/>
-    /// (= start of the HSST). The HSST is capped at ≈2 GiB so 32-bit offsets are sufficient.
+    /// <see cref="LevelStarts"/> entries are <see cref="long"/> offsets relative to
+    /// <see cref="DataStart"/> (= start of the HSST), so the in-memory layout imposes
+    /// no per-HSST size ceiling beyond what <see cref="long"/> can address.
+    ///
+    /// Implied limits (non-empty HSST, i.e. Depth ≥ 1):
+    /// - <see cref="EntryCount"/> ≤ <see cref="int.MaxValue"/> (LEB128-decoded into int).
+    /// - <see cref="LevelCounts"/>[i] ≤ <see cref="int.MaxValue"/> per level (same).
+    /// Empty (Depth = 0) HSSTs carry no summary, so depth-dependent invariants don't apply.
+    ///
+    /// The on-disk format does not store offsets — only LEB128 counts and sizes — so widening
+    /// or narrowing this struct has no format impact.
     /// </summary>
     internal ref struct Layout
     {
@@ -27,19 +36,25 @@ internal static class HsstPackedArrayReader
         public int EntriesPerCkLevel0Log2;
         public int RecordsPerCkHigherLog2;
         // Inline arrays sized to MaxSummaryDepth. Only [0..Depth) are valid.
-        // Stored as int offsets / counts to keep the struct small (~32 B per array,
-        // vs 64 B for long); 64 B per lookup saved on the always-allocated stack frame.
-        public InlineLevelArray LevelStarts;
-        public InlineLevelArray LevelCounts;
+        // LevelStarts uses long offsets; LevelCounts is int because per-level counts
+        // are LEB128-decoded into int (~2.1 B per level — independent of total HSST size).
+        public InlineLongLevelArray LevelStarts;
+        public InlineIntLevelArray LevelCounts;
 
         public int EntryStride => KeySize + ValueSize;
         public long EntryAbsStart(int entryIdx) => DataStart + (long)entryIdx * EntryStride;
         public long ValueAbsStart(int entryIdx) => EntryAbsStart(entryIdx) + KeySize;
-        public long LevelAbsStart(int level) => DataStart + (uint)LevelStarts[level];
+        public long LevelAbsStart(int level) => DataStart + LevelStarts[level];
     }
 
     [System.Runtime.CompilerServices.InlineArray(HsstPackedArrayLayout.MaxSummaryDepth)]
-    internal struct InlineLevelArray
+    internal struct InlineLongLevelArray
+    {
+        private long _e0;
+    }
+
+    [System.Runtime.CompilerServices.InlineArray(HsstPackedArrayLayout.MaxSummaryDepth)]
+    internal struct InlineIntLevelArray
     {
         private int _e0;
     }
@@ -133,14 +148,15 @@ internal static class HsstPackedArrayReader
         }
 
         // Summaries lie immediately before the metadata. Each record is exactly KeySize bytes.
-        // Stored as offsets from hsstStart so the inline array can be int-typed.
+        // Stored as long offsets from hsstStart — see Layout's type doc for why this isn't
+        // truncating, and for the on-disk format's lack of any persisted offset.
         long cursor = metaAbsStart;
         for (int lvl = depth - 1; lvl >= 0; lvl--)
         {
             long lvlBytes = (long)counts[lvl] * keySize;
             long lvlStart = cursor - lvlBytes;
             if (lvlStart < hsstStart) return false;
-            layout.LevelStarts[lvl] = (int)(lvlStart - hsstStart);
+            layout.LevelStarts[lvl] = lvlStart - hsstStart;
             cursor = lvlStart;
         }
 
