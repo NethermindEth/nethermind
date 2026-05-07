@@ -96,10 +96,10 @@ public abstract class TransactionForRpc
     {
         if (!IsTypeDefaulted) return this;
         // EIP-1559, Blob, and SetCode all derive from AccessListTransactionForRpc, so this single
-        // check excludes the absolute-default path (which produces EIP1559) and any future
-        // typed subclass; the remainder is guaranteed to be the gasPrice-routed Legacy.
+        // check excludes the absolute-default path (which produces EIP1559) and any future typed
+        // subclass that lands above Legacy.
         if (this is AccessListTransactionForRpc) return this;
-        LegacyTransactionForRpc legacy = (LegacyTransactionForRpc)this;
+        if (this is not LegacyTransactionForRpc legacy) return this;
 
         return new EIP1559TransactionForRpc
         {
