@@ -601,7 +601,6 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        // Cast Length to uint so the comparison works for empty blocks (Length-1 wraps in UInt256).
         if (positionIndex >= (uint)block.Transactions.Length)
         {
             return ResultWrapper<string?>.Success(null);
@@ -622,7 +621,7 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+        if (positionIndex >= (uint)block.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
@@ -656,7 +655,7 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex < 0 || positionIndex > block.Uncles.Length - 1)
+        if (positionIndex >= (uint)block.Uncles.Length)
         {
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
