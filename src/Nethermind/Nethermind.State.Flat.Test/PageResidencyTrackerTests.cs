@@ -25,6 +25,36 @@ public class PageResidencyTrackerTests
     }
 
     /// <summary>
+    /// Minimal <see cref="IArenaManager"/> stub for <see cref="ArenaByteReader"/> tests:
+    /// forwards <see cref="IArenaManager.TouchPage"/> into the supplied tracker + handler so
+    /// test assertions on tracker state and recorded evictions still work after the reader
+    /// stopped depending on those primitives directly.
+    /// </summary>
+    private sealed unsafe class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler) : IArenaManager
+    {
+        public void TouchPage(int arenaId, int pageIdx)
+        {
+            if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx))
+                handler.OnPageEvicted(evictedArenaId, evictedPageIdx);
+        }
+        public int ArenaFileCount => 0;
+        public long ArenaMappedBytes => 0;
+        public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
+        public ArenaWriter CreateWriter(long estimatedSize, string tag) => throw new NotSupportedException();
+        public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag) => throw new NotSupportedException();
+        public void CancelWrite(int arenaId, long startOffset) => throw new NotSupportedException();
+        public ArenaReservation Open(in SnapshotLocation location, string tag) => throw new NotSupportedException();
+        public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) => throw new NotSupportedException();
+        public IArenaWholeView OpenWholeView(ArenaReservation reservation) => throw new NotSupportedException();
+        public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size) => throw new NotSupportedException();
+        public void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size) => throw new NotSupportedException();
+        public void MarkDead(in SnapshotLocation location) => throw new NotSupportedException();
+        public void AdviseDontNeed(ArenaReservation reservation) => throw new NotSupportedException();
+        public void Touch(ArenaReservation reservation, long subOffset, long size) => throw new NotSupportedException();
+        public void Dispose() { }
+    }
+
+    /// <summary>
     /// Touch wrapper used by tests that exercise the tracker directly: pumps any displaced
     /// key into <paramref name="handler"/>, mirroring what <see cref="ArenaByteReader"/>
     /// does in production now that eviction dispatch lives at the call site.
@@ -130,7 +160,7 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 2];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, tracker, NoopHandler.Instance, arenaId: 9, baseOffset: baseOffset);
+            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 9, baseOffset: baseOffset);
 
             Span<byte> sink = stackalloc byte[16];
             reader.TryRead(0, sink).Should().BeTrue();
@@ -151,7 +181,7 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 3];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, tracker, NoopHandler.Instance, arenaId: 1, baseOffset: 0);
+            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 1, baseOffset: 0);
 
             using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
             pin.Buffer.Length.Should().Be(pageSize * 2 + 1);
@@ -171,7 +201,7 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 2];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, tracker, handler, arenaId: 5, baseOffset: 0);
+            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, handler), arenaId: 5, baseOffset: 0);
 
             Span<byte> b = stackalloc byte[1];
             reader.TryRead(0, b).Should().BeTrue();           // primes (5,0)
@@ -194,7 +224,7 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 2];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, tracker, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
+            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 0, baseOffset: 0);
 
             Span<byte> b = stackalloc byte[1];
 
@@ -232,7 +262,7 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[64];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, disabled, NoopHandler.Instance, arenaId: 0, baseOffset: 0);
+            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(disabled, NoopHandler.Instance), arenaId: 0, baseOffset: 0);
             Span<byte> sink = stackalloc byte[8];
             reader.TryRead(4, sink).Should().BeTrue();
             using NoOpPin pin = reader.PinBuffer(0, 16);

@@ -9,9 +9,9 @@ namespace Nethermind.State.Flat.Hsst;
 /// <summary>
 /// Pointer-backed <see cref="IHsstByteReader{TPin}"/> over an arena-mmap region. On every
 /// read or pin computes which OS page(s) the access spans (in arena-absolute terms) and
-/// reports them to a <see cref="PageResidencyTracker"/>; on eviction dispatches via
-/// <see cref="IPageEvictionHandler"/>. Page math:
-/// <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
+/// reports them to the owning <see cref="IArenaManager"/> via <see cref="IArenaManager.TouchPage"/>,
+/// which folds residency tracking and per-page <c>madvise</c> dispatch behind a single call.
+/// Page math: <c>pageIdx = (baseOffset + localOffset) / Environment.SystemPageSize</c>.
 /// Holds a raw <c>byte*</c> + <see cref="long"/> length so the addressed region can exceed
 /// 2 GiB (each individual pin still materialises an int-sized <see cref="ReadOnlySpan{T}"/>).
 /// </summary>
@@ -19,8 +19,7 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 {
     private readonly byte* _basePtr;
     private readonly long _length;
-    private readonly PageResidencyTracker _tracker;
-    private readonly IPageEvictionHandler _evictionHandler;
+    private readonly IArenaManager _arenaManager;
     private readonly int _arenaId;
     private readonly long _baseOffset;
     // OS page size is a power of two — use shift for division and mask for modulo.
@@ -32,14 +31,12 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
     // bytes within one node.
     private long _lastPageBase;
 
-    public ArenaByteReader(byte* basePtr, long length, PageResidencyTracker tracker, IPageEvictionHandler evictionHandler, int arenaId, long baseOffset)
+    public ArenaByteReader(byte* basePtr, long length, IArenaManager arenaManager, int arenaId, long baseOffset)
     {
-        ArgumentNullException.ThrowIfNull(tracker);
-        ArgumentNullException.ThrowIfNull(evictionHandler);
+        ArgumentNullException.ThrowIfNull(arenaManager);
         _basePtr = basePtr;
         _length = length;
-        _tracker = tracker;
-        _evictionHandler = evictionHandler;
+        _arenaManager = arenaManager;
         _arenaId = arenaId;
         _baseOffset = baseOffset;
         int pageSize = Environment.SystemPageSize;
@@ -83,9 +80,6 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
         int firstPage = (int)(absStart >> _pageShift);
         int lastPage = (int)(absEnd >> _pageShift);
         for (int p = firstPage; p <= lastPage; p++)
-        {
-            if (_tracker.TryTouch(_arenaId, p, out int evictedArenaId, out int evictedPageIdx))
-                _evictionHandler.OnPageEvicted(evictedArenaId, evictedPageIdx);
-        }
+            _arenaManager.TouchPage(_arenaId, p);
     }
 }

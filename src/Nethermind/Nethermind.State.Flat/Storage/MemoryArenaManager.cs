@@ -117,9 +117,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Touch(ArenaReservation reservation, long subOffset, long size) { }
 
-    public void AdviseDontNeedPage(int arenaId, int pageIdx) { }
-
-    void IPageEvictionHandler.OnPageEvicted(int arenaId, int pageIdx) { }
+    public void TouchPage(int arenaId, int pageIdx) { }
 
     public PageResidencyTracker PageTracker { get; } = new(0);
 

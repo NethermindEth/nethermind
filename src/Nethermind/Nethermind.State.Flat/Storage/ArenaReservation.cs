@@ -56,7 +56,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     public unsafe ArenaByteReader CreateReader()
     {
         _arenaManager.GetReservationPointer(this, out byte* dataPtr, out long size);
-        return new ArenaByteReader(dataPtr, size, _arenaManager.PageTracker, _arenaManager, ArenaId, Offset);
+        return new ArenaByteReader(dataPtr, size, _arenaManager, ArenaId, Offset);
     }
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);

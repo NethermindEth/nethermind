@@ -3,7 +3,7 @@
 
 namespace Nethermind.State.Flat.Storage;
 
-public unsafe interface IArenaManager : IDisposable, IPageEvictionHandler
+public unsafe interface IArenaManager : IDisposable
 {
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
     ArenaWriter CreateWriter(long estimatedSize, string tag);
@@ -37,19 +37,15 @@ public unsafe interface IArenaManager : IDisposable, IPageEvictionHandler
     void Touch(ArenaReservation reservation, long subOffset, long size);
 
     /// <summary>
-    /// MADV_DONTNEED a single OS page within <paramref name="arenaId"/>. Used by
-    /// <see cref="PageResidencyTracker"/>'s eviction callback. <paramref name="pageIdx"/> is the
+    /// Record that a reader has just accessed OS page <paramref name="pageIdx"/> of arena
+    /// <paramref name="arenaId"/>. The manager forwards this to its
+    /// <see cref="PageResidencyTracker"/>; if the tracker's hashed slot was already occupied by a
+    /// different page, the displaced page is dropped from RAM via <c>madvise(MADV_DONTNEED)</c>
+    /// (and optionally <c>posix_fadvise</c>). Implementations that have nothing to advise
+    /// (e.g. the in-memory test arena) treat this as a no-op. <paramref name="pageIdx"/> is the
     /// arena-absolute page index (<c>offset / Environment.SystemPageSize</c>).
     /// </summary>
-    void AdviseDontNeedPage(int arenaId, int pageIdx);
-
-    /// <summary>
-    /// Direct-mapped page residency tracker used by readers to record recent OS-page touches
-    /// and trigger per-page <c>MADV_DONTNEED</c> on eviction. Implementations that have nothing
-    /// to advise (e.g. the in-memory test arena) return a 0-capacity tracker whose
-    /// <see cref="PageResidencyTracker.TryTouch"/> is a no-op.
-    /// </summary>
-    PageResidencyTracker PageTracker { get; }
+    void TouchPage(int arenaId, int pageIdx);
 
     /// <summary>
     /// Number of arena files currently held by this manager.

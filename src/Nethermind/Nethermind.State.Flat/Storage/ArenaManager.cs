@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Globalization;
 
 namespace Nethermind.State.Flat.Storage;
@@ -10,7 +11,7 @@ namespace Nethermind.State.Flat.Storage;
 /// reading, and dead space tracking. Writes go through <see cref="ArenaWriter"/>
 /// backed by FileStream; reads use mmap.
 /// </summary>
-public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
+public sealed class ArenaManager : IArenaManager
 {
     private const string ArenaFilePrefix = "arena_";
     private const string DedicatedArenaFilePrefix = "dedicated_";
@@ -21,7 +22,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
     private readonly long _maxArenaSize;
     private readonly bool _fadviseOnEviction;
     // Make it prefer earlier arena.
-    private readonly Dictionary<int, ArenaFile> _arenas = [];
+    private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
     private readonly Dictionary<int, long> _frontiers = [];
     private readonly Dictionary<int, long> _deadBytes = [];
     private readonly HashSet<int> _reservedArenas = [];
@@ -46,7 +47,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             lock (_lock)
             {
                 long sum = 0;
-                foreach (ArenaFile arena in _arenas.Values) sum += arena.MappedSize;
+                foreach (KeyValuePair<int, ArenaFile> kv in _arenas) sum += kv.Value.MappedSize;
                 return sum;
             }
         }
@@ -164,7 +165,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             if (_standaloneFiles.Contains(arenaId))
             {
                 _standaloneFiles.Remove(arenaId);
-                if (_arenas.Remove(arenaId, out ArenaFile? file))
+                if (_arenas.TryRemove(arenaId, out ArenaFile? file))
                 {
                     file.Dispose();
                     File.Delete(file.Path);
@@ -235,7 +236,7 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
                 // All data is dead: dispose and delete the file
                 _standaloneFiles.Remove(location.ArenaId);
                 _mutableArenas.Remove(location.ArenaId);
-                if (_arenas.Remove(location.ArenaId, out ArenaFile? file))
+                if (_arenas.TryRemove(location.ArenaId, out ArenaFile? file))
                 {
                     file.Dispose();
                     File.Delete(file.Path);
@@ -267,17 +268,13 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
             arena.Touch(reservation.Offset + subOffset, size);
     }
 
-    void IPageEvictionHandler.OnPageEvicted(int arenaId, int pageIdx) => AdviseDontNeedPage(arenaId, pageIdx);
-
-    public void AdviseDontNeedPage(int arenaId, int pageIdx)
+    public void TouchPage(int arenaId, int pageIdx)
     {
+        if (!_pageTracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx))
+            return;
+        if (!_arenas.TryGetValue(evictedArenaId, out ArenaFile? arena)) return;
         int pageSize = Environment.SystemPageSize;
-        long offset = (long)pageIdx * pageSize;
-        ArenaFile? arena;
-        lock (_lock)
-        {
-            if (!_arenas.TryGetValue(arenaId, out arena)) return;
-        }
+        long offset = (long)evictedPageIdx * pageSize;
         arena.AdviseDontNeed(offset, pageSize);
         if (_fadviseOnEviction)
             arena.FadviseDontNeed(offset, pageSize);
@@ -338,8 +335,8 @@ public sealed class ArenaManager : IArenaManager, IPageEvictionHandler
         lock (_lock)
         {
             _disposed = true;
-            foreach (ArenaFile arena in _arenas.Values)
-                arena.Dispose();
+            foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
+                kv.Value.Dispose();
             _arenas.Clear();
             // _pageTracker is injected — caller owns disposal.
         }
