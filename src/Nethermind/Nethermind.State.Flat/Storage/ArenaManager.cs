@@ -147,7 +147,8 @@ public sealed class ArenaManager : IArenaManager
             _frontiers[arenaId] = startOffset + actualSize;
             _reservedArenas.Remove(arenaId);
             SnapshotLocation location = new(arenaId, startOffset, actualSize);
-            ArenaReservation reservation = new(this, arenaId, startOffset, actualSize, tag);
+            _arenas.TryGetValue(arenaId, out ArenaFile? arenaFile);
+            ArenaReservation reservation = new(this, arenaFile, arenaId, startOffset, actualSize, tag);
             return (location, reservation);
         }
     }
@@ -179,8 +180,11 @@ public sealed class ArenaManager : IArenaManager
     /// <summary>
     /// Open an existing snapshot location as an <see cref="ArenaReservation"/> for zero-copy reads.
     /// </summary>
-    public ArenaReservation Open(in SnapshotLocation location, string tag) =>
-        new(this, location.ArenaId, location.Offset, location.Size, tag);
+    public ArenaReservation Open(in SnapshotLocation location, string tag)
+    {
+        _arenas.TryGetValue(location.ArenaId, out ArenaFile? arenaFile);
+        return new(this, arenaFile, location.ArenaId, location.Offset, location.Size, tag);
+    }
 
     /// <summary>
     /// Get a read-only span for the reservation's data region.
@@ -268,13 +272,11 @@ public sealed class ArenaManager : IArenaManager
             arena.Touch(reservation.Offset + subOffset, size);
     }
 
-    public void TouchPage(int arenaId, int pageIdx)
+    public void AdviseDontNeedPage(int arenaId, int pageIdx)
     {
-        if (!_pageTracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx))
-            return;
-        if (!_arenas.TryGetValue(evictedArenaId, out ArenaFile? arena)) return;
+        if (!_arenas.TryGetValue(arenaId, out ArenaFile? arena)) return;
         int pageSize = Environment.SystemPageSize;
-        long offset = (long)evictedPageIdx * pageSize;
+        long offset = (long)pageIdx * pageSize;
         arena.AdviseDontNeed(offset, pageSize);
         if (_fadviseOnEviction)
             arena.FadviseDontNeed(offset, pageSize);

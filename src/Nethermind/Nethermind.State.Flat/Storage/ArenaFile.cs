@@ -18,6 +18,7 @@ public sealed unsafe class ArenaFile : IDisposable
     private const int MADV_NORMAL = 0;
     private const int MADV_RANDOM = 1;
     private const int MADV_DONTNEED = 4;
+    private const int MADV_POPULATE_READ = 22;
     private const int POSIX_FADV_DONTNEED = 4;
     private static readonly nuint PageSize = (nuint)Environment.SystemPageSize;
 
@@ -109,6 +110,23 @@ public sealed unsafe class ArenaFile : IDisposable
         if (end <= start) return;
 
         Madvise(_basePtr + start, end - start, MADV_DONTNEED);
+    }
+
+    /// <summary>
+    /// madvise(MADV_POPULATE_READ) on the page-aligned subrange. On Linux ≥ 5.14 the kernel
+    /// pre-faults the pages so the next read does not block on a page fault. On older kernels
+    /// the call returns EINVAL, which is benign and ignored.
+    /// </summary>
+    public void PopulateRead(long offset, long size)
+    {
+        if (!OperatingSystem.IsLinux()) return;
+
+        nuint pageSize = PageSize;
+        nuint start = ((nuint)offset + pageSize - 1) & ~(pageSize - 1);
+        nuint end = ((nuint)offset + (nuint)size) & ~(pageSize - 1);
+        if (end <= start) return;
+
+        Madvise(_basePtr + start, end - start, MADV_POPULATE_READ);
     }
 
     /// <summary>

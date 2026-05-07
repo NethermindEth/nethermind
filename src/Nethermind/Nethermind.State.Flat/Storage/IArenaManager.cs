@@ -37,15 +37,24 @@ public unsafe interface IArenaManager : IDisposable
     void Touch(ArenaReservation reservation, long subOffset, long size);
 
     /// <summary>
-    /// Record that a reader has just accessed OS page <paramref name="pageIdx"/> of arena
-    /// <paramref name="arenaId"/>. The manager forwards this to its
-    /// <see cref="PageResidencyTracker"/>; if the tracker's hashed slot was already occupied by a
-    /// different page, the displaced page is dropped from RAM via <c>madvise(MADV_DONTNEED)</c>
-    /// (and optionally <c>posix_fadvise</c>). Implementations that have nothing to advise
-    /// (e.g. the in-memory test arena) treat this as a no-op. <paramref name="pageIdx"/> is the
-    /// arena-absolute page index (<c>offset / Environment.SystemPageSize</c>).
+    /// Drop a single OS page of <paramref name="arenaId"/> from RAM via
+    /// <c>madvise(MADV_DONTNEED)</c> (and optionally <c>posix_fadvise(POSIX_FADV_DONTNEED)</c>).
+    /// Used by <see cref="ArenaReservation.TouchPage"/> only for the cross-arena eviction case;
+    /// same-arena evictions go directly through the reservation's captured
+    /// <see cref="ArenaFile"/> reference and never call this. Implementations that have no
+    /// per-page mapping (e.g. the in-memory test arena) treat this as a no-op.
+    /// <paramref name="pageIdx"/> is the arena-absolute page index
+    /// (<c>offset / Environment.SystemPageSize</c>).
     /// </summary>
-    void TouchPage(int arenaId, int pageIdx);
+    void AdviseDontNeedPage(int arenaId, int pageIdx);
+
+    /// <summary>
+    /// Direct-mapped page residency tracker shared across readers of this manager. Reservations
+    /// call <see cref="PageResidencyTracker.TryTouch"/> directly to record per-page accesses.
+    /// Implementations with nothing to track (e.g. the in-memory test arena) return a
+    /// 0-capacity tracker whose <c>TryTouch</c> is a no-op.
+    /// </summary>
+    PageResidencyTracker PageTracker { get; }
 
     /// <summary>
     /// Number of arena files currently held by this manager.

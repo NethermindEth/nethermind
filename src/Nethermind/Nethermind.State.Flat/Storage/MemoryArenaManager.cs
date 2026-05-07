@@ -47,7 +47,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
         _frontiers[arenaId] = startOffset + actualSize;
         SnapshotLocation location = new(arenaId, startOffset, actualSize);
-        ArenaReservation reservation = new(this, arenaId, startOffset, actualSize, tag);
+        ArenaReservation reservation = new(this, arenaFile: null, arenaId, startOffset, actualSize, tag);
         return (location, reservation);
     }
 
@@ -55,7 +55,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
         _pendingStreams.Remove((arenaId, startOffset));
 
     public ArenaReservation Open(in SnapshotLocation location, string tag) =>
-        new(this, location.ArenaId, location.Offset, location.Size, tag);
+        new(this, arenaFile: null, location.ArenaId, location.Offset, location.Size, tag);
 
     public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
         _arenas[reservation.ArenaId].AsSpan(checked((int)reservation.Offset), checked((int)reservation.Size));
@@ -117,7 +117,7 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Touch(ArenaReservation reservation, long subOffset, long size) { }
 
-    public void TouchPage(int arenaId, int pageIdx) { }
+    public void AdviseDontNeedPage(int arenaId, int pageIdx) { }
 
     public PageResidencyTracker PageTracker { get; } = new(0);
 

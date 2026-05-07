@@ -19,6 +19,21 @@ public interface IPageEvictionHandler
 }
 
 /// <summary>
+/// Outcome of a <see cref="PageResidencyTracker.TryTouch"/> call. Lets the caller distinguish
+/// "page is already cached residency-wise" (do nothing) from "page is newly tracked"
+/// (e.g. pre-fault it) and "page displaced an unrelated occupant" (drop the displaced page).
+/// </summary>
+public enum TouchOutcome
+{
+    /// <summary>The hashed slot already held this exact <c>(arenaId, pageIdx)</c>.</summary>
+    Hit,
+    /// <summary>The hashed slot was empty and now holds <c>(arenaId, pageIdx)</c>.</summary>
+    Inserted,
+    /// <summary>The hashed slot held a different page; the out parameters carry the displaced key.</summary>
+    Evicted,
+}
+
+/// <summary>
 /// Direct-mapped page residency tracker for arena-backed mmap regions. Each slot occupies a full
 /// 64-byte cache line; the slot value packs <c>(arenaId &lt;&lt; 32) | pageIdx</c> with
 /// <c>-1L</c> as the empty sentinel. <see cref="TryTouch"/> hashes the key to a slot and
@@ -95,42 +110,33 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     }
 
     /// <summary>
-    /// Records <paramref name="arenaId"/>/<paramref name="pageIdx"/> as recently touched. If the
-    /// hashed slot already held a different page, returns <c>true</c> and emits the displaced
-    /// key via the out parameters; otherwise returns <c>false</c> with the outs zeroed. Disabled
-    /// trackers (<see cref="MaxCapacity"/> == 0) always return <c>false</c>.
+    /// Records <paramref name="arenaId"/>/<paramref name="pageIdx"/> as recently touched and
+    /// returns the slot transition: <see cref="TouchOutcome.Hit"/> when the slot already held
+    /// this exact key, <see cref="TouchOutcome.Inserted"/> when it was empty, or
+    /// <see cref="TouchOutcome.Evicted"/> when it held a different page (the out parameters
+    /// then carry the displaced key). Disabled trackers (<see cref="MaxCapacity"/> == 0) always
+    /// return <see cref="TouchOutcome.Hit"/>.
     /// </summary>
-    public bool TryTouch(int arenaId, int pageIdx, out int evictedArenaId, out int evictedPageIdx)
+    public TouchOutcome TryTouch(int arenaId, int pageIdx, out int evictedArenaId, out int evictedPageIdx)
     {
-        if (_slotCount == 0)
-        {
-            evictedArenaId = 0;
-            evictedPageIdx = 0;
-            return false;
-        }
+        evictedArenaId = 0;
+        evictedPageIdx = 0;
+
+        if (_slotCount == 0) return TouchOutcome.Hit;
 
         long packed = Pack(arenaId, pageIdx);
         int idx = (int)(Mix(packed) & (uint)_mask);
         ref long slot = ref SlotRef(idx);
 
         // A relaxed read first lets the common no-op-on-hit path skip the bus-locking exchange.
-        if (Volatile.Read(ref slot) == packed)
-        {
-            evictedArenaId = 0;
-            evictedPageIdx = 0;
-            return false;
-        }
+        if (Volatile.Read(ref slot) == packed) return TouchOutcome.Hit;
 
         long prev = Interlocked.Exchange(ref slot, packed);
-        if (prev == EmptySlot || prev == packed)
-        {
-            evictedArenaId = 0;
-            evictedPageIdx = 0;
-            return false;
-        }
+        if (prev == EmptySlot) return TouchOutcome.Inserted;
+        if (prev == packed) return TouchOutcome.Hit; // raced with self — same key won
         evictedArenaId = (int)(prev >> 32);
         evictedPageIdx = (int)prev;
-        return true;
+        return TouchOutcome.Evicted;
     }
 
     internal bool ContainsPage(int arenaId, int pageIdx)

@@ -26,17 +26,17 @@ public class PageResidencyTrackerTests
 
     /// <summary>
     /// Minimal <see cref="IArenaManager"/> stub for <see cref="ArenaByteReader"/> tests:
-    /// forwards <see cref="IArenaManager.TouchPage"/> into the supplied tracker + handler so
-    /// test assertions on tracker state and recorded evictions still work after the reader
-    /// stopped depending on those primitives directly.
+    /// exposes the supplied tracker via <see cref="PageTracker"/> so an
+    /// <see cref="ArenaReservation"/> can call into it directly, and forwards
+    /// <see cref="IArenaManager.AdviseDontNeedPage"/> into <paramref name="handler"/> so test
+    /// assertions on cross-arena evictions still work. Same-arena evictions skip this stub
+    /// entirely (the reservation handles them directly off its captured ArenaFile, which is
+    /// null in tests so they no-op silently).
     /// </summary>
     private sealed unsafe class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler) : IArenaManager
     {
-        public void TouchPage(int arenaId, int pageIdx)
-        {
-            if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx))
-                handler.OnPageEvicted(evictedArenaId, evictedPageIdx);
-        }
+        public PageResidencyTracker PageTracker => tracker;
+        public void AdviseDontNeedPage(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
         public int ArenaFileCount => 0;
         public long ArenaMappedBytes => 0;
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
@@ -48,9 +48,10 @@ public class PageResidencyTrackerTests
         public IArenaWholeView OpenWholeView(ArenaReservation reservation) => throw new NotSupportedException();
         public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size) => throw new NotSupportedException();
         public void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size) => throw new NotSupportedException();
-        public void MarkDead(in SnapshotLocation location) => throw new NotSupportedException();
-        public void AdviseDontNeed(ArenaReservation reservation) => throw new NotSupportedException();
-        public void Touch(ArenaReservation reservation, long subOffset, long size) => throw new NotSupportedException();
+        // No-op so reservation disposal doesn't blow up in tests.
+        public void MarkDead(in SnapshotLocation location) { }
+        public void AdviseDontNeed(ArenaReservation reservation) { }
+        public void Touch(ArenaReservation reservation, long subOffset, long size) { }
         public void Dispose() { }
     }
 
@@ -61,7 +62,7 @@ public class PageResidencyTrackerTests
     /// </summary>
     private static void Touch(PageResidencyTracker tracker, int arenaId, int pageIdx, IPageEvictionHandler? handler = null)
     {
-        if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx))
+        if (tracker.TryTouch(arenaId, pageIdx, out int evictedArenaId, out int evictedPageIdx) == TouchOutcome.Evicted)
             handler?.OnPageEvicted(evictedArenaId, evictedPageIdx);
     }
 
@@ -101,17 +102,20 @@ public class PageResidencyTrackerTests
     }
 
     [Test]
-    public void TryTouch_ReturnsDisplacedKeyDirectly()
+    public void TryTouch_ReturnsOutcomeAndDisplacedKey()
     {
         PageResidencyTracker tracker = new(maxCapacity: 1);
 
-        tracker.TryTouch(0, 0, out _, out _).Should().BeFalse();
-        tracker.TryTouch(0, 1, out int evictedArenaId, out int evictedPageIdx).Should().BeTrue();
+        // Empty slot: Inserted, no displaced key.
+        tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Inserted);
+
+        // Different key on the same slot: Evicted, with displaced key surfaced.
+        tracker.TryTouch(0, 1, out int evictedArenaId, out int evictedPageIdx).Should().Be(TouchOutcome.Evicted);
         evictedArenaId.Should().Be(0);
         evictedPageIdx.Should().Be(0);
 
-        // Re-touching the current occupant must NOT report itself as evicted.
-        tracker.TryTouch(0, 1, out _, out _).Should().BeFalse();
+        // Re-touching the current occupant: Hit.
+        tracker.TryTouch(0, 1, out _, out _).Should().Be(TouchOutcome.Hit);
     }
 
     [Test]
@@ -151,6 +155,9 @@ public class PageResidencyTrackerTests
         handler.Evictions.Should().BeEmpty();
     }
 
+    private static ArenaReservation MakeReservation(IArenaManager manager, int arenaId, long offset, long size, string tag = "test") =>
+        new(manager, arenaFile: null, arenaId, offset, size, tag);
+
     [Test]
     public unsafe void ArenaByteReader_TryRead_TouchesAllSpannedPages()
     {
@@ -160,7 +167,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 2];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 9, baseOffset: baseOffset);
+            using ArenaReservation reservation = MakeReservation(
+                new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 9, offset: baseOffset, size: data.Length);
+            ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             Span<byte> sink = stackalloc byte[16];
             reader.TryRead(0, sink).Should().BeTrue();
@@ -181,7 +190,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 3];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 1, baseOffset: 0);
+            using ArenaReservation reservation = MakeReservation(
+                new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 1, offset: 0, size: data.Length);
+            ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
             pin.Buffer.Length.Should().Be(pageSize * 2 + 1);
@@ -192,20 +203,28 @@ public class PageResidencyTrackerTests
     }
 
     [Test]
-    public unsafe void ArenaByteReader_DispatchesEvictionsToHandler()
+    public unsafe void ArenaByteReader_DispatchesCrossArenaEvictionsToHandler()
     {
-        // maxCapacity=1 forces every Touch to evict whatever was there.
+        // maxCapacity=1 → every distinct (arenaId, pageIdx) collides on the only slot.
+        // Use two arenas (5 and 6) on the same shared tracker so the eviction crosses arenas:
+        // the only path that surfaces evictions to the handler now that same-arena evictions
+        // go directly through the reservation's ArenaFile reference (null in tests, so silently
+        // skipped).
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(maxCapacity: 1);
+        StubArenaManager manager = new(tracker, handler);
         int pageSize = Environment.SystemPageSize;
-        byte[] data = new byte[pageSize * 2];
+        byte[] data = new byte[pageSize];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, handler), arenaId: 5, baseOffset: 0);
+            using ArenaReservation r5 = MakeReservation(manager, arenaId: 5, offset: 0, size: data.Length, tag: "r5");
+            using ArenaReservation r6 = MakeReservation(manager, arenaId: 6, offset: 0, size: data.Length, tag: "r6");
+            ArenaByteReader reader5 = new(dataPtr, data.Length, r5);
+            ArenaByteReader reader6 = new(dataPtr, data.Length, r6);
 
             Span<byte> b = stackalloc byte[1];
-            reader.TryRead(0, b).Should().BeTrue();           // primes (5,0)
-            reader.TryRead(pageSize, b).Should().BeTrue();    // crosses to page 1 → evicts (5,0)
+            reader5.TryRead(0, b).Should().BeTrue();   // primes (5, 0)
+            reader6.TryRead(0, b).Should().BeTrue();   // collides → evicts (5, 0); cross-arena → handler
 
             handler.Evictions.Should().ContainSingle().Which.Should().Be((5, 0));
         }
@@ -224,7 +243,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 2];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 0, baseOffset: 0);
+            using ArenaReservation reservation = MakeReservation(
+                new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 0, offset: 0, size: data.Length);
+            ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             Span<byte> b = stackalloc byte[1];
 
@@ -262,7 +283,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[64];
         fixed (byte* dataPtr = data)
         {
-            ArenaByteReader reader = new(dataPtr, data.Length, new StubArenaManager(disabled, NoopHandler.Instance), arenaId: 0, baseOffset: 0);
+            using ArenaReservation reservation = MakeReservation(
+                new StubArenaManager(disabled, NoopHandler.Instance), arenaId: 0, offset: 0, size: data.Length);
+            ArenaByteReader reader = new(dataPtr, data.Length, reservation);
             Span<byte> sink = stackalloc byte[8];
             reader.TryRead(4, sink).Should().BeTrue();
             using NoOpPin pin = reader.PinBuffer(0, 16);

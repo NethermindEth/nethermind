@@ -12,6 +12,9 @@ namespace Nethermind.State.Flat.Storage;
 public sealed class ArenaReservation : RefCountingDisposable
 {
     private readonly IArenaManager _arenaManager;
+    // Captured at construction so per-page touches and same-arena evictions skip the
+    // manager's id → ArenaFile lookup. Null for in-memory test arenas with no per-page mapping.
+    private readonly ArenaFile? _arenaFile;
     private readonly long _initialSize;
 
     internal int ArenaId { get; }
@@ -19,10 +22,12 @@ public sealed class ArenaReservation : RefCountingDisposable
     public long Size { get; internal set; }
     public string Tag { get; }
 
-    public ArenaReservation(IArenaManager arenaManager, int arenaId, long offset, long size, string tag)
+    public ArenaReservation(IArenaManager arenaManager, ArenaFile? arenaFile,
+                            int arenaId, long offset, long size, string tag)
         : base(1)
     {
         _arenaManager = arenaManager;
+        _arenaFile = arenaFile;
         ArenaId = arenaId;
         Offset = offset;
         Size = size;
@@ -30,6 +35,39 @@ public sealed class ArenaReservation : RefCountingDisposable
         _initialSize = size;
         Metrics.ArenaReservationCountByTag.AddOrUpdate(tag, 1L, static (_, c) => c + 1);
         Metrics.ArenaReservationBytesByTag.AddOrUpdate(tag, static (_, s) => s, static (_, b, s) => b + s, size);
+    }
+
+    /// <summary>
+    /// Record a single OS-page access by a reader of this reservation. Records the page in the
+    /// shared <see cref="PageResidencyTracker"/>; on a fresh insertion or displacement, pre-faults
+    /// the local page via <see cref="ArenaFile.PopulateRead"/> directly. On displacement, drops
+    /// the evicted page: same-arena evictions go straight through this reservation's captured
+    /// <see cref="ArenaFile"/> reference (no dictionary lookup), cross-arena evictions fall back
+    /// through <see cref="IArenaManager.AdviseDontNeedPage"/>.
+    /// </summary>
+    /// <remarks>
+    /// The same-arena fast path mirrors <see cref="ArenaFile.AdviseDontNeed"/> only — fadvise
+    /// (when enabled on the manager) only fires on the cross-arena path. The reservation does
+    /// not see the manager's <c>fadviseOnEviction</c> flag, and historically same-arena fadvise
+    /// was never issued; preserving that behavior.
+    /// </remarks>
+    internal void TouchPage(int pageIdx)
+    {
+        TouchOutcome outcome = _arenaManager.PageTracker.TryTouch(ArenaId, pageIdx,
+            out int evictedArenaId, out int evictedPageIdx);
+        if (outcome == TouchOutcome.Hit) return;
+
+        int pageSize = Environment.SystemPageSize;
+
+        // Pre-fault the freshly tracked local page so the next read does not block on a fault.
+        _arenaFile?.PopulateRead((long)pageIdx * pageSize, pageSize);
+
+        if (outcome != TouchOutcome.Evicted) return;
+
+        if (evictedArenaId == ArenaId)
+            _arenaFile?.AdviseDontNeed((long)evictedPageIdx * pageSize, pageSize);
+        else
+            _arenaManager.AdviseDontNeedPage(evictedArenaId, evictedPageIdx);
     }
 
     /// <summary>
@@ -56,7 +94,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     public unsafe ArenaByteReader CreateReader()
     {
         _arenaManager.GetReservationPointer(this, out byte* dataPtr, out long size);
-        return new ArenaByteReader(dataPtr, size, _arenaManager, ArenaId, Offset);
+        return new ArenaByteReader(dataPtr, size, this);
     }
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
