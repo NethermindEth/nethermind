@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -33,6 +34,8 @@ public partial class BlockProcessor
         private readonly IncrementalValidationWorkItem _incrementalValidationWorkItem = new();
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
+        private int[] _txExecutionOrder = [];
+        private TxExecutionSortKey[] _txExecutionSortKeys = [];
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -112,6 +115,7 @@ public partial class BlockProcessor
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem;
             incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
+            BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
             {
@@ -123,7 +127,7 @@ public partial class BlockProcessor
                         len + 1,
                         ParallelUnbalancedWork.DefaultOptions,
                         (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider,
-                            txs: block.Transactions, isBlockProcessingThread),
+                            txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread),
                         static (i, state) =>
                         {
                             bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
@@ -139,18 +143,18 @@ public partial class BlockProcessor
                                     return state;
                                 }
 
-                                int txIndex = i - 1;
+                                int txIndex = state.txExecutionOrder[i - 1];
                                 Transaction tx = state.txs[txIndex];
                                 IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
                                 try
                                 {
                                     intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, state.specProvider.GetSpec(state.block.Header), state.block.Header.GasLimit);
 
-                                    // The using block detaches the worker's BAL into _perTxBal[i] and
+                                    // The using block detaches the worker's BAL into _perTxBal[txIndex + 1] and
                                     // recycles the pool slot via Dispose BEFORE we signal the gas result,
-                                    // so the validator finds _perTxBal[i] populated when it awaits
-                                    // gasResults[i-1] — even if ProcessTransaction throws.
-                                    using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)i))
+                                    // so the validator finds the canonical BAL slot populated when it awaits
+                                    // gasResults[txIndex] — even if ProcessTransaction throws.
+                                    using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(txIndex + 1)))
                                     {
                                         ProcessTransaction(
                                             lease.Adapter,
@@ -193,6 +197,8 @@ public partial class BlockProcessor
                 }
                 catch
                 {
+                    CancelIncompleteGasResults(gasResults, len);
+
                     // Observe the background task before propagating, so its exception isn't lost
                     // as an unobserved task exception. The worker's TrySetCanceled above guarantees
                     // IncrementalValidation will unblock and complete.
@@ -238,10 +244,59 @@ public partial class BlockProcessor
             int newLength = Math.Max(length, currentLength == 0 ? 4 : currentLength * 2);
             Array.Resize(ref _receiptsTracerPool, newLength);
             Array.Resize(ref _gasResultPool, newLength);
+            Array.Resize(ref _txExecutionOrder, newLength);
+            Array.Resize(ref _txExecutionSortKeys, newLength);
             for (int i = currentLength; i < newLength; i++)
             {
                 _receiptsTracerPool[i] = new BlockReceiptsTracer(true);
                 _gasResultPool[i] = new GasValidationResultSlot();
+            }
+        }
+
+        internal static int GetCanonicalExecutionLead(int txCount)
+        {
+            int lead = Math.Max(8, Nethermind.Core.Cpu.RuntimeInformation.ProcessorCount * 2);
+            return Math.Min(txCount, lead);
+        }
+
+        internal static void BuildTxExecutionOrder(Transaction[] txs, int[] txExecutionOrder, int canonicalLead)
+        {
+            TxExecutionSortKey[] sortKeys = new TxExecutionSortKey[txs.Length];
+            BuildTxExecutionOrder(txs, txExecutionOrder, sortKeys, canonicalLead);
+        }
+
+        private static void BuildTxExecutionOrder(
+            Transaction[] txs,
+            int[] txExecutionOrder,
+            TxExecutionSortKey[] sortKeys,
+            int canonicalLead)
+        {
+            int len = txs.Length;
+            for (int i = 0; i < len; i++)
+            {
+                txExecutionOrder[i] = i;
+            }
+
+            int lead = Math.Clamp(canonicalLead, 0, len);
+            int sortCount = len - lead;
+            if (sortCount <= 1)
+            {
+                return;
+            }
+
+            for (int i = lead; i < len; i++)
+            {
+                sortKeys[i] = new(txs[i], i);
+            }
+
+            Array.Sort(sortKeys, txExecutionOrder, lead, sortCount);
+        }
+
+        internal static void CancelIncompleteGasResults(GasValidationResultSlot[] gasResults, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                gasResults[i].TrySetCanceled();
             }
         }
 
@@ -304,6 +359,47 @@ public partial class BlockProcessor
         {
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+        }
+
+        private readonly struct TxExecutionSortKey(Transaction tx, int index) : IComparable<TxExecutionSortKey>
+        {
+            private readonly long _gasLimit = tx.GasLimit;
+            private readonly int _dataLength = tx.DataLength;
+            private readonly int _authorizationCount = tx.AuthorizationList?.Length ?? 0;
+            private readonly int _accessListItems = GetAccessListItemCount(tx.AccessList);
+            private readonly int _contractCreation = tx.IsContractCreation ? 1 : 0;
+            private readonly int _index = index;
+
+            public int CompareTo(TxExecutionSortKey other)
+            {
+                int comparison = other._gasLimit.CompareTo(_gasLimit);
+                if (comparison != 0) return comparison;
+
+                comparison = other._dataLength.CompareTo(_dataLength);
+                if (comparison != 0) return comparison;
+
+                comparison = other._authorizationCount.CompareTo(_authorizationCount);
+                if (comparison != 0) return comparison;
+
+                comparison = other._accessListItems.CompareTo(_accessListItems);
+                if (comparison != 0) return comparison;
+
+                comparison = other._contractCreation.CompareTo(_contractCreation);
+                if (comparison != 0) return comparison;
+
+                return _index.CompareTo(other._index);
+            }
+
+            private static int GetAccessListItemCount(AccessList? accessList)
+            {
+                if (accessList is null)
+                {
+                    return 0;
+                }
+
+                (int addressesCount, int storageKeysCount) = accessList.Count;
+                return addressesCount + storageKeysCount;
+            }
         }
 
         private sealed class IncrementalValidationWorkItem : IThreadPoolWorkItem
