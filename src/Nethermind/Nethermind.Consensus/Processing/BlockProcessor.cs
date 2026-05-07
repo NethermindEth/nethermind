@@ -260,6 +260,7 @@ public partial class BlockProcessor(
 
         Block block = suggestedBlock.WithReplacedHeader(headerForProcessing);
         block.BlockAccessList = suggestedBlock.BlockAccessList;
+        block.EncodedBlockAccessList = suggestedBlock.EncodedBlockAccessList;
 
         return block;
     }
