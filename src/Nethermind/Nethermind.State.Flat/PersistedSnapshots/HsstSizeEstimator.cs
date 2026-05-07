@@ -172,6 +172,45 @@ internal static class HsstSizeEstimator
     }
 
     /// <summary>
+    /// Estimates the serialized size of the storage nodes top column (nested).
+    /// Outer HSST: Hash256Prefix(20) → inner HSST(TreePath(3) → TrieNode), path length 0-5
+    /// </summary>
+    public static int EstimateStorageNodesTopColumnSize(Snapshot snapshot)
+    {
+        int nodeCount = 0;
+        int distinctHashes = 0;
+        HashSet<Hash256> seenHashes = new();
+
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
+        {
+            if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown)
+                continue;
+            if (kv.Key.Key.Item2.Length <= TopPathThreshold)
+            {
+                nodeCount++;
+                if (seenHashes.Add(kv.Key.Key.Item1))
+                    distinctHashes++;
+            }
+        }
+
+        if (nodeCount == 0)
+            return 2; // Minimal HSST
+
+        int totalInnerSize = 0;
+        int nodesPerHash = nodeCount / distinctHashes;
+
+        int avgPathSeparatorLen = 2; // 3-byte top paths have ~2-byte separators
+        for (int i = 0; i < distinctHashes; i++)
+        {
+            totalInnerSize += EstimateSimpleHsstSize(nodesPerHash, avgPathSeparatorLen, avgPathSeparatorLen, 650);
+        }
+
+        int avgHashSeparatorLen = 10; // 20-byte hash prefixes have ~10-byte separators
+        int avgOuterValueSize = totalInnerSize / distinctHashes;
+        return EstimateSimpleHsstSize(distinctHashes, avgHashSeparatorLen, avgHashSeparatorLen, avgOuterValueSize) + totalInnerSize;
+    }
+
+    /// <summary>
     /// Estimates the serialized size of the storage nodes compact column (nested).
     /// Outer HSST: Hash256Prefix(20) → inner HSST(TreePath(8) → TrieNode), path length 6-15
     /// </summary>
@@ -185,7 +224,8 @@ internal static class HsstSizeEstimator
         {
             if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown)
                 continue;
-            if (kv.Key.Key.Item2.Length <= CompactPathThreshold)
+            int len = kv.Key.Key.Item2.Length;
+            if (len > TopPathThreshold && len <= CompactPathThreshold)
             {
                 nodeCount++;
                 if (seenHashes.Add(kv.Key.Key.Item1))

@@ -318,7 +318,7 @@ internal static class PersistedSnapshotUtils
                         addrKey.CopyTo(address.BytesAsSpan);
                         ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
 
-                        // Validate account sub-tag (0x04). Presence-marker encoding under
+                        // Validate account sub-tag (0x05). Presence-marker encoding under
                         // DenseByteIndex: length 0 = absent (gap-filled), [0x00] = deleted,
                         // RLP-bytes = present. With column 0x01 keyed by address-hash we
                         // can no longer go through the Address-keyed bundle helpers; walk
@@ -355,7 +355,7 @@ internal static class PersistedSnapshotUtils
                             }
                         }
 
-                        // Validate self-destruct sub-tag (0x02). Presence-marker encoding:
+                        // Validate self-destruct sub-tag (0x06). Presence-marker encoding:
                         // length 0 = absent, [0x00] = destructed, [0x01] = new account.
                         if (TryGet(perAddrSpan, PersistedSnapshot.SelfDestructSubTag, out ReadOnlySpan<byte> sdValue)
                             && sdValue.Length > 0)
@@ -379,7 +379,7 @@ internal static class PersistedSnapshotUtils
                                 throw new InvalidOperationException($"SelfDestruct {address}: expected={expected.Value}, actual={actual}");
                         }
 
-                        // Validate storage sub-tag (0x03). Slots are nested HSST(prefix(31)
+                        // Validate storage sub-tag (0x04). Slots are nested HSST(prefix(31)
                         // → ByteTagMap(suffix(1) → SlotValue)).
                         if (TryGetBound(perAddrSpan, PersistedSnapshot.SlotSubTag, out int slotOff, out int slotLen))
                         {
@@ -513,9 +513,9 @@ internal static class PersistedSnapshotUtils
                 }
             }
 
-            // Storage-trie nodes are validated as part of the unified column 0x01 loop
-            // above (sub-tags 0x01 compact, 0x02 fallback). No standalone columns 0x07/0x08
-            // exist in the new on-disk layout.
+            // Storage-trie nodes live under the unified column 0x01 (sub-tags 0x01 top,
+            // 0x02 compact, 0x03 fallback). No standalone columns 0x07/0x08 exist in the
+            // current on-disk layout.
         }
         catch (InvalidOperationException ex)
         {

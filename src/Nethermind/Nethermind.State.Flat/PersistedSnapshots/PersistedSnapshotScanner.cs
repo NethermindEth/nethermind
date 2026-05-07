@@ -415,9 +415,12 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             {
                 using NoOpPin pin = Pin(in _reader, _pathKey);
                 ReadOnlySpan<byte> k = pin.Buffer;
-                return _stage == 0
-                    ? PersistedSnapshotReader.DecodeCompactTreePath(k)
-                    : new(new ValueHash256(k[..32]), k[32]);
+                return _stage switch
+                {
+                    0 => TreePath.DecodeWith3Byte(k),
+                    1 => PersistedSnapshotReader.DecodeCompactTreePath(k),
+                    _ => new(new ValueHash256(k[..32]), k[32]),
+                };
             }
         }
         public ReadOnlySpan<byte> Rlp => _snapshot.ResolveValueAt(_value);
@@ -435,12 +438,14 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private readonly PersistedSnapshot _snapshot;
         private readonly WholeReadSessionReader _reader;
         // Walks the unified column 0x01 (per-address). For each address-hash we open
-        // the inner storage-trie sub-tags in order: compact (0x01) then fallback (0x02).
+        // the inner storage-trie sub-tags in order: top (0x01), compact (0x02), then
+        // fallback (0x03).
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
-        // _stage: 0 = current address-hash's compact sub-tag, 1 = its fallback sub-tag.
-        // Reported back to StorageNodeEntry for path-key decoding (compact 8 bytes vs.
-        // fallback 33 bytes), so it doubles as the on-disk path-encoding selector.
+        // _stage: 0 = current address-hash's top sub-tag, 1 = its compact sub-tag,
+        // 2 = its fallback sub-tag. Reported back to StorageNodeEntry for path-key
+        // decoding (top 3 bytes / compact 8 bytes / fallback 33 bytes), so it doubles
+        // as the on-disk path-encoding selector.
         private byte _stage;
         private byte _level;  // 0=need new addr, 1=have pathEnum
         private Bound _addrInnerBound;
@@ -497,10 +502,16 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     }
                     _pathEnum.Dispose();
                     _pathEnum = default;
-                    // Try the fallback sub-tag for the same address-hash.
+                    // Advance through the storage sub-tag chain: top → compact → fallback.
                     if (_stage == 0)
                     {
                         _stage = 1;
+                        if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageCompactSubTag, out _pathEnum))
+                            continue;
+                    }
+                    if (_stage == 1)
+                    {
+                        _stage = 2;
                         if (TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageFallbackSubTag, out _pathEnum))
                             continue;
                     }
@@ -512,11 +523,15 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 KeyValueEntry addrEntry = _addrEnum.Current;
                 _addrInnerBound = addrEntry.ValueBound;
                 _stage = 0;
-                if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageCompactSubTag, out _pathEnum))
+                if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageTopSubTag, out _pathEnum))
                 {
                     _stage = 1;
-                    if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageFallbackSubTag, out _pathEnum))
-                        continue;
+                    if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageCompactSubTag, out _pathEnum))
+                    {
+                        _stage = 2;
+                        if (!TryOpenSubTag(in _reader, _addrInnerBound, PersistedSnapshot.StorageFallbackSubTag, out _pathEnum))
+                            continue;
+                    }
                 }
                 _curHash = default;
                 using (NoOpPin pin = Pin(in _reader, addrEntry.KeyBound))

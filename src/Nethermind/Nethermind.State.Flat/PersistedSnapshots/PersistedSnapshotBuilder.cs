@@ -130,7 +130,7 @@ public static class PersistedSnapshotBuilder
     {
         // Declare mutable locals populated by the parallel jobs below.
         ArrayPoolList<(TreePath Path, TrieNode Node)> stateTop = null!, stateCompact = null!, stateFallback = null!;
-        ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storCompact = null!, storFallback = null!;
+        ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storTop = null!, storCompact = null!, storFallback = null!;
         ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages = null!;
         // Per-address bookkeeping for the unified column 0x01:
         //   uniqueAddresses: every Address that has any of (account, slot, SD, storage-trie
@@ -169,22 +169,25 @@ public static class PersistedSnapshotBuilder
             },
             () =>
             {
-                // Job B: storage trie nodes — partition into compact/fallback, then sort.
+                // Job B: storage trie nodes — partition into top/compact/fallback, then sort.
+                ArrayPoolList<((Hash256, TreePath), TrieNode)> top = new(0);
                 ArrayPoolList<((Hash256, TreePath), TrieNode)> compact = new(snapshot.StorageNodesCount);
                 ArrayPoolList<((Hash256, TreePath), TrieNode)> fallback = new(0);
                 foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kv in snapshot.StorageNodes)
                 {
                     if (kv.Value.FullRlp.Length == 0 && kv.Value.NodeType == NodeType.Unknown) continue;
                     (Hash256 addr, TreePath path) = kv.Key.Key;
-                    if (path.Length <= CompactPathThreshold) compact.Add(((addr, path), kv.Value));
+                    if (path.Length <= TopPathThreshold) top.Add(((addr, path), kv.Value));
+                    else if (path.Length <= CompactPathThreshold) compact.Add(((addr, path), kv.Value));
                     else fallback.Add(((addr, path), kv.Value));
                     kv.Value.IsPersisted = true;
                     kv.Value.PrunePersistedRecursively(1);
                 }
                 Parallel.Invoke(
+                    () => top.Sort(StorageNodeComparer),
                     () => compact.Sort(StorageNodeComparer),
                     () => fallback.Sort(StorageNodeComparer));
-                storCompact = compact; storFallback = fallback;
+                storTop = top; storCompact = compact; storFallback = fallback;
             },
             () =>
             {
@@ -249,7 +252,7 @@ public static class PersistedSnapshotBuilder
             foreach (ValueHash256 h in uniqueAddressHashes)
                 existingHashes.Add(h);
 
-            ArrayPoolList<(Address? Addr, ValueHash256 Hash)> combined = new(uniqueAddresses.Count + storCompact.Count + storFallback.Count);
+            ArrayPoolList<(Address? Addr, ValueHash256 Hash)> combined = new(uniqueAddresses.Count + storTop.Count + storCompact.Count + storFallback.Count);
             for (int i = 0; i < uniqueAddresses.Count; i++)
                 combined.Add((uniqueAddresses[i], uniqueAddressHashes[i]));
 
@@ -259,6 +262,7 @@ public static class PersistedSnapshotBuilder
                 if (existingHashes.Add(v))
                     combined.Add((null, v));
             }
+            for (int i = 0; i < storTop.Count; i++) AddTrieOnly(storTop[i]);
             for (int i = 0; i < storCompact.Count; i++) AddTrieOnly(storCompact[i]);
             for (int i = 0; i < storFallback.Count; i++) AddTrieOnly(storFallback[i]);
 
@@ -284,10 +288,11 @@ public static class PersistedSnapshotBuilder
             // Column 0x00: Metadata
             WriteMetadataColumn(ref outer, snapshot);
 
-            // Column 0x01: Unified per-address column. Sub-tags 0x01 (storage trie compact),
-            // 0x02 (storage trie fallback), 0x03 (slots), 0x04 (account RLP), 0x05 (SD).
+            // Column 0x01: Unified per-address column. Sub-tags 0x01 (storage trie top),
+            // 0x02 (storage trie compact), 0x03 (storage trie fallback), 0x04 (slots),
+            // 0x05 (account RLP), 0x06 (SD).
             WriteAccountColumn(ref outer, snapshot, sortedStorages, uniqueAddresses, uniqueAddressHashes,
-                storCompact, storFallback, bloom, trieBloom);
+                storTop, storCompact, storFallback, bloom, trieBloom);
 
             // Column 0x03: State nodes (compact, path length 6-15)
             WriteStateNodesColumnCompact(ref outer, stateCompact, trieBloom);
@@ -309,6 +314,7 @@ public static class PersistedSnapshotBuilder
             stateTop?.Dispose();
             stateCompact?.Dispose();
             stateFallback?.Dispose();
+            storTop?.Dispose();
             storCompact?.Dispose();
             storFallback?.Dispose();
         }
@@ -354,6 +360,7 @@ public static class PersistedSnapshotBuilder
         ArrayPoolList<((Address Addr, UInt256 Slot) Key, SlotValue? Value)> sortedStorages,
         ArrayPoolList<Address> uniqueAddresses,
         ArrayPoolList<ValueHash256> uniqueAddressHashes,
+        ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storTop,
         ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storCompact,
         ArrayPoolList<((Hash256 Addr, TreePath Path) Key, TrieNode Node)> storFallback,
         BloomFilter? bloom = null,
@@ -371,9 +378,11 @@ public static class PersistedSnapshotBuilder
         RlpStream rlpStream = new(rlpBuffer);
         Span<byte> slotKey = stackalloc byte[32];
         Span<byte> currentPrefixBuf = stackalloc byte[slotPrefixLength];
+        Span<byte> topPathKey = stackalloc byte[3];
         Span<byte> compactPathKey = stackalloc byte[8];
         Span<byte> fallbackPathKey = stackalloc byte[33];
         int storageIdx = 0;
+        int storTopIdx = 0;
         int storCompactIdx = 0;
         int storFallbackIdx = 0;
 
@@ -393,20 +402,43 @@ public static class PersistedSnapshotBuilder
                 bloom.Add(addrBloomKey);
             }
 
-            // Begin per-address HSST. Up to 5 sub-tags 0x01..0x05; DenseByteIndex addresses
+            // Begin per-address HSST. Up to 6 sub-tags 0x01..0x06; DenseByteIndex addresses
             // entries by tag-byte directly and gap-fills missing positions with length-0
             // values. Sub-tag value-presence semantics:
-            //   0x01 storage compact: nested HSST(8-byte path → RLP)
-            //   0x02 storage fallback: nested HSST(33-byte path → RLP)
-            //   0x03 slots: nested HSST(SlotPrefix(31) → ByteTagMap)
-            //   0x04 account: [] absent / [0x00] deleted / RLP-bytes present
-            //   0x05 SD: [] absent / [0x00] destructed / [0x01] new account
+            //   0x01 storage top: nested HSST(3-byte path → RLP)
+            //   0x02 storage compact: nested HSST(8-byte path → RLP)
+            //   0x03 storage fallback: nested HSST(33-byte path → RLP)
+            //   0x04 slots: nested HSST(SlotPrefix(31) → ByteTagMap)
+            //   0x05 account: [] absent / [0x00] deleted / RLP-bytes present
+            //   0x06 SD: [] absent / [0x00] destructed / [0x01] new account
             ref TWriter perAddrWriter = ref addressLevel.BeginValueWrite();
             using HsstDenseByteIndexBuilder<TWriter> perAddr = new(ref perAddrWriter);
 
-            // Sub-tag 0x01: Storage trie nodes (compact, 8-byte path keys). Storage-trie
-            // partitions are pre-sorted by address-hash prefix and path so a single advance
-            // through storCompact / storFallback covers the run for this address-hash.
+            // Sub-tag 0x01: Storage trie nodes (top, 3-byte path keys, length 0-5).
+            // Storage-trie partitions are pre-sorted by address-hash prefix and path so a
+            // single advance through storTop / storCompact / storFallback covers the run
+            // for this address-hash.
+            int topStart = storTopIdx;
+            while (storTopIdx < storTop.Count &&
+                storTop[storTopIdx].Key.Addr.Bytes[..StorageHashPrefixLength].SequenceEqual(addressHashPrefix))
+                storTopIdx++;
+            if (topStart < storTopIdx)
+            {
+                ref TWriter topWriter = ref perAddr.BeginValueWrite();
+                using HsstBuilder<TWriter> topLevel = new(ref topWriter, new HsstBTreeOptions { MinSeparatorLength = 3 },
+                    expectedKeyCount: storTopIdx - topStart);
+                for (int i = topStart; i < storTopIdx; i++)
+                {
+                    ((Hash256 _, TreePath path) k, TrieNode node) = storTop[i];
+                    k.path.EncodeWith3Byte(topPathKey);
+                    topLevel.Add(topPathKey, node.FullRlp.AsSpan());
+                    trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in k.path));
+                }
+                topLevel.Build();
+                perAddr.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
+            }
+
+            // Sub-tag 0x02: Storage trie nodes (compact, 8-byte path keys, length 6-15).
             int compactStart = storCompactIdx;
             while (storCompactIdx < storCompact.Count &&
                 storCompact[storCompactIdx].Key.Addr.Bytes[..StorageHashPrefixLength].SequenceEqual(addressHashPrefix))
@@ -427,7 +459,7 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
             }
 
-            // Sub-tag 0x02: Storage trie nodes (fallback, 33-byte path keys).
+            // Sub-tag 0x03: Storage trie nodes (fallback, 33-byte path keys, length 16+).
             int fallbackStart = storFallbackIdx;
             while (storFallbackIdx < storFallback.Count &&
                 storFallback[storFallbackIdx].Key.Addr.Bytes[..StorageHashPrefixLength].SequenceEqual(addressHashPrefix))
@@ -448,7 +480,7 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
             }
 
-            // Sub-tag 0x03: Slots — skipped when no Address is known for this hash key.
+            // Sub-tag 0x04: Slots — skipped when no Address is known for this hash key.
             bool hasStorage = address is not null && storageIdx < sortedStorages.Count &&
                 sortedStorages[storageIdx].Key.Addr.Bytes.SequenceEqual(address.Bytes);
             if (hasStorage)
@@ -503,7 +535,7 @@ public static class PersistedSnapshotBuilder
                 perAddr.FinishValueWrite(PersistedSnapshot.SlotSubTag);
             }
 
-            // Sub-tag 0x04: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
+            // Sub-tag 0x05: Account. Present-marker encoding: [0x00] deleted, RLP-bytes
             // present; length 0 = absent (gap-filled). Slim account RLP starts with a
             // list header (0xc0+) so 0x00 first-byte is unambiguous.
             if (address is not null && snapshot.TryGetAccount(address, out Account? account))
@@ -521,7 +553,7 @@ public static class PersistedSnapshotBuilder
                 }
             }
 
-            // Sub-tag 0x05: Self-destruct. Present-marker encoding: [0x00] destructed,
+            // Sub-tag 0x06: Self-destruct. Present-marker encoding: [0x00] destructed,
             // [0x01] new account; length 0 = absent (gap-filled by DenseByteIndex).
             if (address is not null && snapshot.Content.SelfDestructedStorageAddresses.TryGetValue(address, out bool sdValue))
             {
@@ -724,10 +756,11 @@ public static class PersistedSnapshotBuilder
     /// <summary>
     /// Convert column 0x01 (per-address) for a Full→Linked rewrite. Outer (BTree on
     /// 20-byte address-hash prefix) and inner DenseByteIndex layouts are preserved;
-    /// only the storage-trie sub-tags (0x01 compact, 0x02 fallback) have their inner
-    /// HSST values rewritten as NodeRefs pointing back into the source Full snapshot's
-    /// column 0x01 region. Sub-tags 0x03 (slots) / 0x04 (account RLP) / 0x05 (SD) are
-    /// copied as-is — they're small inline values and aren't shared across snapshots.
+    /// only the storage-trie sub-tags (0x01 top, 0x02 compact, 0x03 fallback) have their
+    /// inner HSST values rewritten as NodeRefs pointing back into the source Full
+    /// snapshot's column 0x01 region. Sub-tags 0x04 (slots) / 0x05 (account RLP) / 0x06
+    /// (SD) are copied as-is — they're small inline values and aren't shared across
+    /// snapshots.
     /// </summary>
     private static void ConvertAccountColumnToNodeRefs<TWriter>(
         ReadOnlySpan<byte> column, int columnOffsetInSnapshot, ref TWriter writer,
@@ -747,8 +780,18 @@ public static class PersistedSnapshotBuilder
             ref TWriter perAddrWriter = ref outerBuilder.BeginValueWrite();
             using HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref perAddrWriter);
 
-            // Sub-tag 0x01: storage trie compact. Inner HSST values become NodeRefs.
-            if (TryGetBound(perAddrSpan, PersistedSnapshot.StorageCompactSubTag, out int subOff, out int subLen) && subLen > 0)
+            // Sub-tag 0x01: storage trie top. Inner HSST values become NodeRefs.
+            if (TryGetBound(perAddrSpan, PersistedSnapshot.StorageTopSubTag, out int subOff, out int subLen) && subLen > 0)
+            {
+                ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
+                ConvertStorageTrieSubTagToNodeRefs(
+                    column, perAddrOffInColumn + subOff, subLen, columnOffsetInSnapshot,
+                    ref subWriter, snapshotId, innerKeySize: 3);
+                perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
+            }
+
+            // Sub-tag 0x02: storage trie compact. Same conversion, 8-byte path keys.
+            if (TryGetBound(perAddrSpan, PersistedSnapshot.StorageCompactSubTag, out subOff, out subLen) && subLen > 0)
             {
                 ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
                 ConvertStorageTrieSubTagToNodeRefs(
@@ -757,7 +800,7 @@ public static class PersistedSnapshotBuilder
                 perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
             }
 
-            // Sub-tag 0x02: storage trie fallback. Same conversion, 33-byte path keys.
+            // Sub-tag 0x03: storage trie fallback. Same conversion, 33-byte path keys.
             if (TryGetBound(perAddrSpan, PersistedSnapshot.StorageFallbackSubTag, out subOff, out subLen) && subLen > 0)
             {
                 ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
@@ -767,15 +810,15 @@ public static class PersistedSnapshotBuilder
                 perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
             }
 
-            // Sub-tag 0x03: slots — copy bytes as-is. Slot values are inline, not NodeRefs.
+            // Sub-tag 0x04: slots — copy bytes as-is. Slot values are inline, not NodeRefs.
             if (TryGetBound(perAddrSpan, PersistedSnapshot.SlotSubTag, out subOff, out subLen) && subLen > 0)
                 perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, perAddrSpan.Slice(subOff, subLen));
 
-            // Sub-tag 0x04: account RLP — inline.
+            // Sub-tag 0x05: account RLP — inline.
             if (TryGetBound(perAddrSpan, PersistedSnapshot.AccountSubTag, out subOff, out subLen) && subLen > 0)
                 perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, perAddrSpan.Slice(subOff, subLen));
 
-            // Sub-tag 0x05: self-destruct flag — inline.
+            // Sub-tag 0x06: self-destruct flag — inline.
             if (TryGetBound(perAddrSpan, PersistedSnapshot.SelfDestructSubTag, out subOff, out subLen) && subLen > 0)
                 perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, perAddrSpan.Slice(subOff, subLen));
 
@@ -1542,12 +1585,13 @@ public static class PersistedSnapshotBuilder
     /// <summary>
     /// N-way merge of per-address HSSTs from M sources (oldest-first by matchingSources order).
     /// Sub-tags emitted in ascending byte order so the DenseByteIndex builder accepts them:
-    /// - 0x01 StorageCompact: streaming merge of inner (8-byte path → NodeRef) PackedArrays.
+    /// - 0x01 StorageTop: streaming merge of inner (3-byte path → NodeRef) PackedArrays.
     ///   No destruct barrier — orphan nodes are unreachable from the new storage root.
-    /// - 0x02 StorageFallback: same as 0x01 with 33-byte path keys.
-    /// - 0x03 Slots: find newest destruct barrier, merge slots from barrier..M-1 via nested streaming merge
-    /// - 0x04 Account: newest wins (walk M-1..0, first with AccountSubTag)
-    /// - 0x05 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
+    /// - 0x02 StorageCompact: same as 0x01 with 8-byte path keys.
+    /// - 0x03 StorageFallback: same as 0x01 with 33-byte path keys.
+    /// - 0x04 Slots: find newest destruct barrier, merge slots from barrier..M-1 via nested streaming merge
+    /// - 0x05 Account: newest wins (walk M-1..0, first with AccountSubTag)
+    /// - 0x06 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
     /// </summary>
     private static void NWayMergePerAddressHsst<TWriter>(
         HsstEnumerator[] outerEnums, int[] matchingSources, int matchCount,
@@ -1573,11 +1617,13 @@ public static class PersistedSnapshotBuilder
         try
         {
 
-        // Sub-tags 0x01 / 0x02: storage trie compact / fallback. Each source carries an
-        // inner HSST keyed by encoded TreePath; values are NodeRefs (since NWayMerge
-        // converts Full→Linked first). N-way streaming merge per sub-tag with newest-
-        // wins on key collision; no destruct barrier since orphan nodes are unreachable
-        // from the new storage root.
+        // Sub-tags 0x01 / 0x02 / 0x03: storage trie top / compact / fallback. Each source
+        // carries an inner HSST keyed by encoded TreePath; values are NodeRefs (since
+        // NWayMerge converts Full→Linked first). N-way streaming merge per sub-tag with
+        // newest-wins on key collision; no destruct barrier since orphan nodes are
+        // unreachable from the new storage root.
+        MergeStorageTrieSubTag(matchingSources, matchCount, sessions, perAddrBounds,
+            ref perAddrBuilder, PersistedSnapshot.StorageTopSubTag, innerKeySize: 3);
         MergeStorageTrieSubTag(matchingSources, matchCount, sessions, perAddrBounds,
             ref perAddrBuilder, PersistedSnapshot.StorageCompactSubTag, innerKeySize: 8);
         MergeStorageTrieSubTag(matchingSources, matchCount, sessions, perAddrBounds,
@@ -1596,7 +1642,7 @@ public static class PersistedSnapshotBuilder
                 destructBarrier = j;
         }
 
-        // Sub-tag 0x01: Slots
+        // Sub-tag 0x04: Slots
         // Merge slots only from max(0, destructBarrier)..matchCount-1
         int slotStart = Math.Max(0, destructBarrier);
 
@@ -1669,7 +1715,7 @@ public static class PersistedSnapshotBuilder
             }
         }
 
-        // Sub-tag 0x04: Account — newest wins (walk M-1..0, first present (length>0)).
+        // Sub-tag 0x05: Account — newest wins (walk M-1..0, first present (length>0)).
         {
             for (int j = matchCount - 1; j >= 0; j--)
             {
@@ -1683,7 +1729,7 @@ public static class PersistedSnapshotBuilder
             }
         }
 
-        // Sub-tag 0x05: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
+        // Sub-tag 0x06: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
         // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
         // filled length 0 under DenseByteIndex) are ignored. Track the winning bound
         // snapshot-absolute so we can re-pin at the end without holding a span across
@@ -1735,7 +1781,7 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// Merge a single storage-trie sub-tag (0x01 compact or 0x02 fallback) across the M
+    /// Merge a single storage-trie sub-tag (0x01 top, 0x02 compact, or 0x03 fallback) across the M
     /// matching per-address sources into <paramref name="perAddrBuilder"/>. Each source's
     /// sub-tag value is an inner HSST(BTree) keyed by encoded TreePath; values are
     /// NodeRefs (NWayMergeSnapshots converts every Full input to Linked first). When

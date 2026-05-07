@@ -141,7 +141,8 @@ public static class PersistedSnapshotReader
     /// <summary>
     /// Look up a storage-trie node within an already-positioned per-address inner HSST
     /// (produced by <see cref="TryGetAddressHsstBound"/> and cached on the snapshot).
-    /// Walks sub-tag <c>StorageCompactSubTag</c> for compact paths and
+    /// Walks sub-tag <c>StorageTopSubTag</c> for top paths (length 0-5),
+    /// <c>StorageCompactSubTag</c> for compact paths (length 6-15), and
     /// <c>StorageFallbackSubTag</c> for paths past the compact threshold.
     /// </summary>
     internal static bool TryLoadStorageNodeRlpInBound<TReader, TPin>(scoped in TReader reader, Bound addressBound, in TreePath path, out Bound bound)
@@ -149,6 +150,20 @@ public static class PersistedSnapshotReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         using HsstReader<TReader, TPin> r = new(in reader, addressBound);
+        if (path.Length <= TopPathThreshold)
+        {
+            Span<byte> key = stackalloc byte[3];
+            path.EncodeWith3Byte(key);
+            if (!r.TrySeek(PersistedSnapshot.StorageTopSubTag, out _) ||
+                !r.TrySeek(key, out _))
+            {
+                bound = default;
+                return false;
+            }
+            bound = r.GetBound();
+            if (bound.Length == 0) { bound = default; return false; }
+            return true;
+        }
         if (path.Length <= CompactPathThreshold)
         {
             Span<byte> key = stackalloc byte[8];

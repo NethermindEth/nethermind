@@ -19,11 +19,12 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Inner HSST keys are the entity keys without the tag prefix:
 ///   Column 0x00: Metadata — String key → version, block range, state root values
 ///   Column 0x01: AddressHash (20 bytes, keccak256(address)[..20]) → per-address HSST {
-///       0x01 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → Storage trie node RLP, path length 6-15)
-///       0x02 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → Storage trie node RLP, path length 16+)
-///       0x03 (SlotSubTag):            nested HSST (SlotPrefix(31) → nested ByteTagMap(SlotSuffix(1 byte) → SlotValue))
-///       0x04 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
-///       0x05 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
+///       0x01 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → Storage trie node RLP, path length 0-5)
+///       0x02 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → Storage trie node RLP, path length 6-15)
+///       0x03 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → Storage trie node RLP, path length 16+)
+///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(31) → nested ByteTagMap(SlotSuffix(1 byte) → SlotValue))
+///       0x05 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
+///       0x06 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
 ///   }
 ///   Column 0x03: TreePath (8 bytes compact) → State trie node RLP (path length 6-15)
 ///   Column 0x05: TreePath (3 bytes: PathByte0, PathByte1, Length) → State trie node RLP (path length 0-5)
@@ -40,11 +41,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     // Sub-tags within per-address HSST (sorted byte order). Storage trie nodes come
     // first so unchanged accounts keep their account/SD entries at low offsets.
-    internal static readonly byte[] StorageCompactSubTag = [0x01];
-    internal static readonly byte[] StorageFallbackSubTag = [0x02];
-    internal static readonly byte[] SlotSubTag = [0x03];
-    internal static readonly byte[] AccountSubTag = [0x04];
-    internal static readonly byte[] SelfDestructSubTag = [0x05];
+    internal static readonly byte[] StorageTopSubTag = [0x01];
+    internal static readonly byte[] StorageCompactSubTag = [0x02];
+    internal static readonly byte[] StorageFallbackSubTag = [0x03];
+    internal static readonly byte[] SlotSubTag = [0x04];
+    internal static readonly byte[] AccountSubTag = [0x05];
+    internal static readonly byte[] SelfDestructSubTag = [0x06];
 
     // Tiny per-snapshot seqlock cache that skips the outer-column + address-hash seek on
     // repeat lookups. The cached Bound is the per-address inner-HSST bound after seeking

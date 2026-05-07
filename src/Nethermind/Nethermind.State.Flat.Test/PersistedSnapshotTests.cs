@@ -106,6 +106,13 @@ public class PersistedSnapshotTests
         yield return new TestCaseData((Action<SnapshotContent>)(c =>
         {
             Hash256 address = Keccak.Compute("address");
+            TreePath path = new(Keccak.Compute("path"), 4);
+            c.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, [0xC1, 0x80]);
+        })).SetName("StorageNode_TopPath");
+
+        yield return new TestCaseData((Action<SnapshotContent>)(c =>
+        {
+            Hash256 address = Keccak.Compute("address");
             TreePath path = new(Keccak.Compute("path"), 6);
             c.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, [0xC1, 0x80]);
         })).SetName("StorageNode_CompactPath");
@@ -146,6 +153,9 @@ public class PersistedSnapshotTests
             c.StateNodes[longStatePath] = new TrieNode(NodeType.Extension, [0xC2, 0x80, 0x81]);
 
             Hash256 storageAddr = Keccak.Compute("storageAddr");
+            TreePath topStoragePath = new(Keccak.Compute("tsp"), 3);
+            c.StorageNodes[(storageAddr, topStoragePath)] = new TrieNode(NodeType.Leaf, [0xBE, 0x80]);
+
             TreePath shortStoragePath = new(Keccak.Compute("ssp"), 6);
             c.StorageNodes[(storageAddr, shortStoragePath)] = new TrieNode(NodeType.Branch, [0xC1, 0x80]);
 
