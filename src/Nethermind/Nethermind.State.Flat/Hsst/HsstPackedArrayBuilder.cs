@@ -35,8 +35,8 @@ namespace Nethermind.State.Flat.Hsst;
 public ref struct HsstPackedArrayBuilder<TWriter>
     where TWriter : IByteBufferWriter
 {
-    /// <summary>Default checkpoint stride: emit a binary-index entry every ~1 KiB of (key+value).</summary>
-    public const int DefaultBinaryIndexStrideBytes = 1024;
+    /// <summary>Default checkpoint stride: emit a binary-index entry every ~2 KiB of (key+value).</summary>
+    public const int DefaultBinaryIndexStrideBytes = 2048;
 
     private ref TWriter _writer;
     private readonly long _baseOffset;
@@ -212,7 +212,14 @@ public ref struct HsstPackedArrayBuilder<TWriter>
                 }
 
                 if (levelCounts.Count >= HsstPackedArrayLayout.MaxSummaryDepth)
-                    throw new InvalidOperationException($"PackedArray summary depth exceeded {HsstPackedArrayLayout.MaxSummaryDepth}.");
+                {
+                    // Cap reached: discard the would-be overflow level and stop summarizing.
+                    // The previous (current top) level stays final — its slabs are wider than
+                    // the recurrence implies, but the descent's binary search handles any
+                    // top-level size correctly.
+                    higherLevelsKeys.Truncate(newLevelStartRec * _keySize);
+                    break;
+                }
 
                 higherLevelStartRec.Add(newLevelStartRec);
                 levelCounts.Add(newCount);

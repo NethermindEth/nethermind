@@ -224,9 +224,9 @@ public class HsstPackedArrayTests
     [Test]
     public void RecursiveSummary_MultiLevel_RoundTrips()
     {
-        // 5000 entries × 24 bytes = 120 000 data bytes. With a small 128-byte stride this
-        // forces ~937 level-0 checkpoints, ~146 level-1, ~22 level-2, ~3 level-3, etc. —
-        // enough to exercise depth ≥ 3 in the recursive descent.
+        // 5000 entries × 24 bytes = 120 000 data bytes. With a 128-byte stride this yields
+        // N=4, M=8 → counts 1250 / 157 / 20 / 3, capped at MaxSummaryDepth=4 (the would-be
+        // 5th level is dropped; the top level binary-searches its 3 records directly).
         const int count = 5000;
         (byte[][] keys, byte[][] values) = MakeSortedKeys(count, seed: 71);
         byte[] data = BuildFlat(keys, values, strideBytes: 128);
