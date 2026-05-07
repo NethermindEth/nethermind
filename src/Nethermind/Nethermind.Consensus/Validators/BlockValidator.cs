@@ -494,7 +494,7 @@ public class BlockValidator(
         return true;
     }
 
-    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, IList<T> changes, uint maxAllowed, ref string? error)
+    private bool ValidateBlockLevelAccessListIndexBounds<T>(Block block, IReadOnlyList<T> changes, uint maxAllowed, ref string? error)
         where T : IIndexedChange
     {
         for (int i = 0; i < changes.Count; i++)

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
@@ -29,13 +31,13 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             // list (RLP 0xc0) is rejected by DecodeArray as defaultElement -> null.
             if (a is null)
             {
-                throw new RlpException("Empty AccountChanges entry; EIP-7928 requires a 6-field sequence.");
+                ThrowEmptyAccountChanges();
             }
 
             Address address = a.Address;
             if (lastAddress is not null && address.CompareTo(lastAddress) <= 0)
             {
-                throw new RlpException("Account changes were in incorrect order.");
+                ThrowAccountChangesOutOfOrder();
             }
             lastAddress = address;
 
@@ -65,4 +67,12 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
 
         return contentLength;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyAccountChanges() =>
+        throw new RlpException("Empty AccountChanges entry; EIP-7928 requires a 6-field sequence.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowAccountChangesOutOfOrder() =>
+        throw new RlpException("Account changes were in incorrect order.");
 }

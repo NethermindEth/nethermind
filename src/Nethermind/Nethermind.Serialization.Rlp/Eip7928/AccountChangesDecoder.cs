@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -33,7 +35,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             UInt256 slot = slotChange.Key;
             if (lastSlot is not null && slot <= lastSlot)
             {
-                throw new RlpException("Storage changes were in incorrect order.");
+                ThrowStorageChangesOutOfOrder();
             }
             lastSlot = slot;
             slotChangesList.Add(slot, slotChange);
@@ -46,31 +48,31 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         {
             if (lastRead is not null && storageRead.CompareTo(lastRead.Value) <= 0)
             {
-                throw new RlpException("Storage reads were in incorrect order.");
+                ThrowStorageReadsOutOfOrder();
             }
             if (slotChangesList.ContainsKey(storageRead))
             {
-                throw new RlpException("Invalid storage read, already in storage changes.");
+                ThrowInvalidStorageRead();
             }
             storageReadsList.Add(storageRead);
             lastRead = storageRead;
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<uint, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
+        IndexedChanges<BalanceChange> balanceChangesList = ToIndexedChanges(balanceChanges, "Balance");
 
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<uint, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
+        IndexedChanges<NonceChange> nonceChangesList = ToIndexedChanges(nonceChanges, "Nonce");
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<uint, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
+        IndexedChanges<CodeChange> codeChangesList = ToIndexedChanges(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
             ctx.Check(check);
         }
 
-        return new(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
+        return AccountChanges.FromIndexedChanges(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
@@ -104,22 +106,37 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         return Rlp.LengthOfSequence(length);
     }
 
-    private static SortedList<uint, T> ToSortedByIndex<T>(T[] items, string changeName)
+    private static IndexedChanges<T> ToIndexedChanges<T>(T[] items, string changeName)
         where T : struct, IIndexedChange
     {
         uint? lastIndex = null;
-        // Allows prestate entries to be grafted into decoded BALs while preserving order.
-        SortedList<uint, T> sorted = new(items.Length, PrestateAwareIndexComparer.Instance);
+        IndexedChanges<T> indexed = new(items.Length);
         foreach (T item in items)
         {
             uint index = item.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
-                throw new RlpException($"{changeName} changes were in incorrect order.");
+                ThrowIndexedChangesOutOfOrder(changeName);
             }
             lastIndex = index;
-            sorted.Add(index, item);
+            indexed.Add(item);
         }
-        return sorted;
+        return indexed;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageChangesOutOfOrder() =>
+        throw new RlpException("Storage changes were in incorrect order.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageReadsOutOfOrder() =>
+        throw new RlpException("Storage reads were in incorrect order.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidStorageRead() =>
+        throw new RlpException("Invalid storage read, already in storage changes.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowIndexedChangesOutOfOrder(string changeName) =>
+        throw new RlpException($"{changeName} changes were in incorrect order.");
 }

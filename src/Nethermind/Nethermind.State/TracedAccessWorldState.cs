@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -379,7 +378,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
         if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
         {
-            IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+            IndexedChangeValues<CodeChange> codeChanges = accountChanges.CodeChanges;
             if (codeChanges[codeChanges.Count - 1].Code.Length != 0)
             {
                 return true;

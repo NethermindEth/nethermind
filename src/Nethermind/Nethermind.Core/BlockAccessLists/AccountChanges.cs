@@ -4,10 +4,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -29,13 +29,13 @@ public class AccountChanges : IEquatable<AccountChanges>
     public SortedSet<UInt256> StorageReads => _storageReads;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IList<BalanceChange> BalanceChanges => _balanceChanges.Values;
+    public IndexedChangeValues<BalanceChange> BalanceChanges => _balanceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IList<NonceChange> NonceChanges => _nonceChanges.Values;
+    public IndexedChangeValues<NonceChange> NonceChanges => _nonceChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IList<CodeChange> CodeChanges => _codeChanges.Values;
+    public IndexedChangeValues<CodeChange> CodeChanges => _codeChanges.Values;
 
     [JsonIgnore]
     public bool ExistedBeforeBlock { get; set; }
@@ -46,18 +46,18 @@ public class AccountChanges : IEquatable<AccountChanges>
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedList<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<UInt256> _storageReads;
-    private readonly SortedList<uint, BalanceChange> _balanceChanges;
-    private readonly SortedList<uint, NonceChange> _nonceChanges;
-    private readonly SortedList<uint, CodeChange> _codeChanges;
+    private readonly IndexedChanges<BalanceChange> _balanceChanges;
+    private readonly IndexedChanges<NonceChange> _nonceChanges;
+    private readonly IndexedChanges<CodeChange> _codeChanges;
 
     public AccountChanges()
     {
         Address = Address.Zero;
         _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
         _storageReads = new(GenericComparer.GetOptimized<UInt256>());
-        _balanceChanges = new(PrestateAwareIndexComparer.Instance);
-        _nonceChanges = new(PrestateAwareIndexComparer.Instance);
-        _codeChanges = new(PrestateAwareIndexComparer.Instance);
+        _balanceChanges = new();
+        _nonceChanges = new();
+        _codeChanges = new();
     }
 
     public AccountChanges(Address address)
@@ -65,12 +65,25 @@ public class AccountChanges : IEquatable<AccountChanges>
         Address = address;
         _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
         _storageReads = new(GenericComparer.GetOptimized<UInt256>());
-        _balanceChanges = new(PrestateAwareIndexComparer.Instance);
-        _nonceChanges = new(PrestateAwareIndexComparer.Instance);
-        _codeChanges = new(PrestateAwareIndexComparer.Instance);
+        _balanceChanges = new();
+        _nonceChanges = new();
+        _codeChanges = new();
     }
 
     public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, SortedList<uint, BalanceChange> balanceChanges, SortedList<uint, NonceChange> nonceChanges, SortedList<uint, CodeChange> codeChanges)
+    {
+        Address = address;
+        _storageChanges = storageChanges;
+        _storageReads = storageReads;
+        _balanceChanges = IndexedChanges<BalanceChange>.FromSortedList(balanceChanges);
+        _nonceChanges = IndexedChanges<NonceChange>.FromSortedList(nonceChanges);
+        _codeChanges = IndexedChanges<CodeChange>.FromSortedList(codeChanges);
+    }
+
+    public static AccountChanges FromIndexedChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges) =>
+        new(address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
+
+    private AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = storageChanges;
@@ -198,28 +211,28 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     public void AddBalanceChange(BalanceChange balanceChange)
-        => _balanceChanges[balanceChange.Index] = balanceChange;
+        => _balanceChanges.Set(balanceChange);
 
     internal bool TryPopBalanceChange(uint index, out BalanceChange balanceChange)
-        => PopChange(_balanceChanges, index, out balanceChange);
+        => _balanceChanges.TryPopLast(index, out balanceChange);
 
     public BalanceChange? BalanceChangeAtIndex(uint index)
         => _balanceChanges.TryGetValue(index, out BalanceChange balanceChange) ? balanceChange : null;
 
     public void AddNonceChange(NonceChange nonceChange)
-        => _nonceChanges.Add(nonceChange.Index, nonceChange);
+        => _nonceChanges.Add(nonceChange);
 
     internal bool TryPopNonceChange(uint index, out NonceChange nonceChange)
-        => PopChange(_nonceChanges, index, out nonceChange);
+        => _nonceChanges.TryPopLast(index, out nonceChange);
 
     public NonceChange? NonceChangeAtIndex(uint index)
         => _nonceChanges.TryGetValue(index, out NonceChange nonceChange) ? nonceChange : null;
 
     public void AddCodeChange(CodeChange codeChange)
-        => _codeChanges.Add(codeChange.Index, codeChange);
+        => _codeChanges.Add(codeChange);
 
     internal bool TryPopCodeChange(uint index, out CodeChange codeChange)
-        => PopChange(_codeChanges, index, out codeChange);
+        => _codeChanges.TryPopLast(index, out codeChange);
 
     public CodeChange? CodeChangeAtIndex(uint index)
         => _codeChanges.TryGetValue(index, out CodeChange codeChange) ? codeChange : null;
@@ -241,17 +254,15 @@ public class AccountChanges : IEquatable<AccountChanges>
         return sb.ToString();
     }
 
-    public UInt256? GetNonce(uint blockAccessIndex)
-    {
-        int changeIndex = FindFirstRealIndexAtOrAfter(_nonceChanges.Keys, blockAccessIndex);
-        return changeIndex == 0 ? null : _nonceChanges.Values[changeIndex - 1].Value;
-    }
+    public UInt256? GetNonce(uint blockAccessIndex) =>
+        _nonceChanges.TryGetLastBeforeOrPrestate(blockAccessIndex, out NonceChange nonceChange)
+            ? nonceChange.Value
+            : null;
 
-    public UInt256? GetBalance(uint blockAccessIndex)
-    {
-        int changeIndex = FindFirstRealIndexAtOrAfter(_balanceChanges.Keys, blockAccessIndex);
-        return changeIndex == 0 ? null : _balanceChanges.Values[changeIndex - 1].Value;
-    }
+    public UInt256? GetBalance(uint blockAccessIndex) =>
+        _balanceChanges.TryGetLastBeforeOrPrestate(blockAccessIndex, out BalanceChange balanceChange)
+            ? balanceChange.Value
+            : null;
 
     public byte[] GetCode(uint blockAccessIndex)
     {
@@ -311,59 +322,19 @@ public class AccountChanges : IEquatable<AccountChanges>
             return ExistedBeforeBlock;
         }
 
-        foreach (KeyValuePair<uint, NonceChange> change in _nonceChanges)
+        if (_nonceChanges.HasRealBefore(blockAccessIndex))
         {
-            if (change.Key == Eip7928Constants.PrestateIndex)
-            {
-                continue;
-            }
-
-            if (change.Key < blockAccessIndex)
-            {
-                return true;
-            }
-            else if (change.Key >= blockAccessIndex)
-            {
-                break;
-            }
+            return true;
         }
 
-        foreach (KeyValuePair<uint, BalanceChange> change in _balanceChanges)
+        if (_balanceChanges.HasRealBefore(blockAccessIndex))
         {
-            if (change.Key == Eip7928Constants.PrestateIndex)
-            {
-                continue;
-            }
-
-            if (change.Key < blockAccessIndex)
-            {
-                return true;
-            }
-            else if (change.Key >= blockAccessIndex)
-            {
-                break;
-            }
+            return true;
         }
 
-        CodeChange? lastCodeChange = null;
-        foreach (KeyValuePair<uint, CodeChange> change in _codeChanges)
+        if (_codeChanges.TryGetLastRealBefore(blockAccessIndex, out CodeChange lastCodeChange))
         {
-            if (change.Key == Eip7928Constants.PrestateIndex)
-            {
-                continue;
-            }
-
-            if (change.Key >= blockAccessIndex)
-            {
-                break;
-            }
-
-            lastCodeChange = change.Value;
-        }
-
-        if (lastCodeChange is not null)
-        {
-            return lastCodeChange.Value.Code.Length != 0;
+            return lastCodeChange.Code.Length != 0;
         }
 
         return false;
@@ -376,11 +347,10 @@ public class AccountChanges : IEquatable<AccountChanges>
     public bool AccountChanged => _wasChanged;
     private bool _wasChanged = false;
 
-    private void GetCodeChange(uint blockAccessIndex, out CodeChange? codeChange)
-    {
-        int changeIndex = FindFirstRealIndexAtOrAfter(_codeChanges.Keys, blockAccessIndex);
-        codeChange = changeIndex == 0 ? null : _codeChanges.Values[changeIndex - 1];
-    }
+    private void GetCodeChange(uint blockAccessIndex, out CodeChange? codeChange) =>
+        codeChange = _codeChanges.TryGetLastBeforeOrPrestate(blockAccessIndex, out CodeChange change)
+            ? change
+            : null;
 
     public bool SlotChangesAtIndexEqual(AccountChanges other, uint index)
     {
@@ -426,30 +396,24 @@ public class AccountChanges : IEquatable<AccountChanges>
         return builder.ToString();
     }
 
-    private static int FindFirstRealIndexAtOrAfter(IList<uint> keys, uint blockAccessIndex)
-    {
-        int low = 0;
-        int high = keys.Count;
-        while (low < high)
-        {
-            int mid = low + ((high - low) >> 1);
-            uint key = keys[mid];
-            if (key == Eip7928Constants.PrestateIndex || key < blockAccessIndex)
-            {
-                low = mid + 1;
-            }
-            else
-            {
-                high = mid;
-            }
-        }
-
-        return low;
-    }
-
-    [DoesNotReturn]
+    [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingCodeChange(uint blockAccessIndex)
         => throw new InvalidOperationException($"No code change found for {Address} at or before index {blockAccessIndex}. Was BAL prestate loaded?");
+
+    private static bool ListEquals<T>(IReadOnlyList<T> left, IReadOnlyList<T> right)
+        where T : IEquatable<T>
+    {
+        if (left.Count != right.Count)
+            return false;
+
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!left[i].Equals(right[i]))
+                return false;
+        }
+
+        return true;
+    }
 
     private static bool ListEquals<T>(IList<T> left, IList<T> right)
         where T : IEquatable<T>
@@ -469,21 +433,4 @@ public class AccountChanges : IEquatable<AccountChanges>
     private static bool SetEquals<T>(SortedSet<T> left, SortedSet<T> right)
         => left.Count == right.Count && left.SetEquals(right);
 
-    private static bool PopChange<T>(SortedList<uint, T> changes, uint index, out T change) where T : struct, IIndexedChange
-    {
-        int count = changes.Count;
-        if (count != 0)
-        {
-            count--;
-            IList<uint> keys = changes.Keys;
-            if (keys[count] == index)
-            {
-                change = changes.Values[count];
-                changes.RemoveAt(count);
-                return true;
-            }
-        }
-        change = default;
-        return false;
-    }
 }

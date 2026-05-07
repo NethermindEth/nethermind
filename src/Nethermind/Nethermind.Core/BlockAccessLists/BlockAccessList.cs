@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -276,15 +277,16 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         // Push ALL changes per slot in reverse order so they restore in correct order (LIFO).
         foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
         {
-            // Push changes in reverse order so they restore in original order
-            foreach (KeyValuePair<uint, StorageChange> change in slotChanges.Changes)
+            IndexedChangeValues<StorageChange> storageChanges = slotChanges.Changes.Values;
+            for (int i = storageChanges.Count - 1; i >= 0; i--)
             {
-                PushStorageChangeDetails(address, slotChanges.Key, hasPrevious: true, change.Value, default);
+                StorageChange change = storageChanges[i];
+                PushStorageChangeDetails(address, slotChanges.Key, hasPrevious: true, in change, default);
             }
         }
 
         // Push revertible changes for nonce changes (reverse order for correct restore)
-        IList<NonceChange> nonceChanges = accountChanges.NonceChanges;
+        IndexedChangeValues<NonceChange> nonceChanges = accountChanges.NonceChanges;
         int nonceCount = nonceChanges.Count;
         for (int i = nonceCount - 1; i >= 0; i--)
         {
@@ -293,7 +295,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         }
 
         // Push revertible changes for code changes (reverse order for correct restore)
-        IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+        IndexedChangeValues<CodeChange> codeChanges = accountChanges.CodeChanges;
         int codeCount = codeChanges.Count;
         for (int i = codeCount - 1; i >= 0; i--)
         {
@@ -433,7 +435,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     private bool HasBalanceChangedDuringTx(AccountChanges accountChanges, Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
-        IList<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
+        IndexedChangeValues<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
         int count = balanceChanges.Count;
 
         // todo: these methods will also change with new generatingBAL structure
@@ -468,12 +470,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         }
 
         // should never happen
-        throw new InvalidOperationException("Error calculating pre tx balance");
+        return ThrowPreTxBalanceError();
     }
 
     private bool HasStorageChangedDuringTx(AccountChanges accountChanges, SlotChanges slotChanges, UInt256 key, in UInt256 beforeInstr, in UInt256 afterInstr)
     {
-        IList<StorageChange> values = slotChanges.Changes.Values;
+        IndexedChangeValues<StorageChange> values = slotChanges.Changes.Values;
         int count = values.Count;
         if (count == 0)
         {
@@ -510,12 +512,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         }
 
         // should never happen
-        throw new InvalidOperationException("Error calculating pre tx storage");
+        return ThrowPreTxStorageError();
     }
 
     private bool HasCodeChangedDuringTx(AccountChanges accountChanges, in ReadOnlySpan<byte> beforeInstr, in ReadOnlySpan<byte> afterInstr)
     {
-        IList<CodeChange> codeChanges = accountChanges.CodeChanges;
+        IndexedChangeValues<CodeChange> codeChanges = accountChanges.CodeChanges;
         int count = codeChanges.Count;
 
         if (count == 0)
@@ -550,8 +552,20 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         }
 
         // should never happen
-        throw new InvalidOperationException("Error calculating pre tx code");
+        return ThrowPreTxCodeError();
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static bool ThrowPreTxBalanceError() =>
+        throw new InvalidOperationException("Error calculating pre tx balance");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static bool ThrowPreTxStorageError() =>
+        throw new InvalidOperationException("Error calculating pre tx storage");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static bool ThrowPreTxCodeError() =>
+        throw new InvalidOperationException("Error calculating pre tx code");
 
     private AccountChanges GetOrAddAccountChanges(Address address)
     {

@@ -8,9 +8,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public record SlotChanges(UInt256 Key, SortedList<uint, StorageChange> Changes)
+public record SlotChanges(UInt256 Key, IndexedChanges<StorageChange> Changes)
 {
-    public SlotChanges(UInt256 slot) : this(slot, new(PrestateAwareIndexComparer.Instance)) { }
+    public SlotChanges(UInt256 slot) : this(slot, new IndexedChanges<StorageChange>()) { }
+
+    public SlotChanges(UInt256 slot, SortedList<uint, StorageChange> changes) : this(slot, IndexedChanges<StorageChange>.FromSortedList(changes)) { }
 
     public virtual bool Equals(SlotChanges? other)
     {
@@ -36,32 +38,13 @@ public record SlotChanges(UInt256 Key, SortedList<uint, StorageChange> Changes)
 
 
     public void Merge(SlotChanges other)
-    {
-        foreach (KeyValuePair<uint, StorageChange> kv in other.Changes)
-        {
-            Changes[kv.Key] = kv.Value;
-        }
-    }
+        => Changes.SetRange(other.Changes);
 
     public void AddStorageChange(StorageChange storageChange)
-        => Changes.Add(storageChange.Index, storageChange);
+        => Changes.Add(storageChange);
 
     internal bool TryPopStorageChangeDirect(uint index, out StorageChange storageChange)
-    {
-        int c = Changes.Count;
-        if (c != 0)
-        {
-            StorageChange last = Changes.Values[c - 1];
-            if (last.Index == index)
-            {
-                Changes.RemoveAt(c - 1);
-                storageChange = last;
-                return true;
-            }
-        }
-        storageChange = default;
-        return false;
-    }
+        => Changes.TryPopLast(index, out storageChange);
 
     public byte[] Get(uint blockAccessIndex)
     {

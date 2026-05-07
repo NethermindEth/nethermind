@@ -891,7 +891,7 @@ public partial class EngineModuleTests
             foreach (KeyValuePair<uint, StorageChange> kvp in sc.Changes)
                 changes.Add(kvp.Key, kvp.Value);
 
-            storageChanges.Add(sc.Key, sc with { Changes = changes });
+            storageChanges.Add(sc.Key, new SlotChanges(sc.Key, changes));
         }
 
         SortedSet<UInt256> storageReads = new(ac.StorageReads);

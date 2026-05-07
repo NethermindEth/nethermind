@@ -508,20 +508,29 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_balance_changes_throws()
     {
-        SortedList<uint, BalanceChange> balanceChanges = new(DescendingComparer<uint>())
-        {
-            { 1, new(1, UInt256.One) },
-            { 2, new(2, UInt256.Zero) }
-        };
-        AccountChanges accountChanges = new(
+        byte[] encoded = EncodeAccountChanges(
             TestItem.AddressA,
             [],
             [],
-            balanceChanges,
+            [new(2, UInt256.Zero), new(1, UInt256.One)],
             [],
             []);
 
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+        Assert.That(
+            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Balance changes were in incorrect order."));
+    }
+
+    [Test]
+    public void Decoding_account_changes_with_duplicate_balance_change_indices_throws()
+    {
+        byte[] encoded = EncodeAccountChanges(
+            TestItem.AddressA,
+            [],
+            [],
+            [new(1, UInt256.One), new(1, UInt256.Zero)],
+            [],
+            []);
 
         Assert.That(
             () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
@@ -531,20 +540,13 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
     {
-        SortedList<uint, NonceChange> nonceChanges = new(DescendingComparer<uint>())
-        {
-            { 1, new(1, 1) },
-            { 2, new(2, 2) }
-        };
-        AccountChanges accountChanges = new(
+        byte[] encoded = EncodeAccountChanges(
             TestItem.AddressA,
             [],
             [],
             [],
-            nonceChanges,
+            [new(2, 2), new(1, 1)],
             []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
             () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
@@ -554,20 +556,13 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_code_changes_throws()
     {
-        SortedList<uint, CodeChange> codeChanges = new(DescendingComparer<uint>())
-        {
-            { 1, new(1, [0x01]) },
-            { 2, new(2, [0x02]) }
-        };
-        AccountChanges accountChanges = new(
+        byte[] encoded = EncodeAccountChanges(
             TestItem.AddressA,
             [],
             [],
             [],
             [],
-            codeChanges);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+            [new(2, [0x02]), new(1, [0x01])]);
 
         Assert.That(
             () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
@@ -577,13 +572,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_slot_changes_with_unsorted_storage_changes_throws()
     {
-        SortedList<uint, StorageChange> storageChanges = new(DescendingComparer<uint>())
-        {
-            { 1, new(1, UInt256.One) },
-            { 2, new(2, UInt256.Zero) }
-        };
-        SlotChanges slotChanges = new(UInt256.One, storageChanges);
-        byte[] encoded = Rlp.Encode(slotChanges, RlpBehaviors.None).Bytes;
+        byte[] encoded = EncodeSlotChanges(UInt256.One, [new(2, UInt256.Zero), new(1, UInt256.One)]);
 
         Assert.That(
             () => Rlp.Decode<SlotChanges>(encoded, RlpBehaviors.None),
@@ -710,6 +699,68 @@ public class BlockAccessListDecoderTests
         }
 
         return stream.Data.ToArray()!;
+    }
+
+    private static byte[] EncodeAccountChanges(
+        Address address,
+        SlotChanges[] storageChanges,
+        UInt256[] storageReads,
+        BalanceChange[] balanceChanges,
+        NonceChange[] nonceChanges,
+        CodeChange[] codeChanges)
+    {
+        int contentLength = Rlp.LengthOfAddressRlp
+            + GetArrayLength(storageChanges, SlotChangesDecoder.Instance)
+            + GetArrayLength(storageReads, UInt256Decoder.Instance)
+            + GetArrayLength(balanceChanges, BalanceChangeDecoder.Instance)
+            + GetArrayLength(nonceChanges, NonceChangeDecoder.Instance)
+            + GetArrayLength(codeChanges, CodeChangeDecoder.Instance);
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(address);
+        EncodeArray(stream, storageChanges, SlotChangesDecoder.Instance);
+        EncodeArray(stream, storageReads, UInt256Decoder.Instance);
+        EncodeArray(stream, balanceChanges, BalanceChangeDecoder.Instance);
+        EncodeArray(stream, nonceChanges, NonceChangeDecoder.Instance);
+        EncodeArray(stream, codeChanges, CodeChangeDecoder.Instance);
+        return stream.Data.ToArray()!;
+    }
+
+    private static byte[] EncodeSlotChanges(UInt256 slot, StorageChange[] changes)
+    {
+        int contentLength = Rlp.LengthOf(slot) + GetArrayLength(changes, StorageChangeDecoder.Instance);
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(in slot);
+        EncodeArray(stream, changes, StorageChangeDecoder.Instance);
+        return stream.Data.ToArray()!;
+    }
+
+    private static int GetArrayLength<T>(T[] items, IRlpStreamEncoder<T> encoder)
+    {
+        int contentLength = 0;
+        for (int i = 0; i < items.Length; i++)
+        {
+            contentLength += encoder.GetLength(items[i], RlpBehaviors.None);
+        }
+
+        return Rlp.LengthOfSequence(contentLength);
+    }
+
+    private static void EncodeArray<T>(RlpStream stream, T[] items, IRlpStreamEncoder<T> encoder)
+    {
+        int contentLength = 0;
+        for (int i = 0; i < items.Length; i++)
+        {
+            contentLength += encoder.GetLength(items[i], RlpBehaviors.None);
+        }
+
+        stream.StartSequence(contentLength);
+        for (int i = 0; i < items.Length; i++)
+        {
+            encoder.Encode(stream, items[i], RlpBehaviors.None);
+        }
     }
 
     private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>

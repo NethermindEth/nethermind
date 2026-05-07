@@ -67,6 +67,44 @@ public class BlockAccessListJournalTests
         Assert.That(slotChanges!.Changes[Eip7928Constants.PrestateIndex].Value, Is.EqualTo((UInt256)77));
     }
 
+    [Test]
+    public void Restore_after_delete_account_restores_prestate_then_real_indices()
+    {
+        UInt256 slot = 9;
+        BlockAccessList bal = CreateBalWithPrestate(TestItem.AddressA, slot, [0x60, 0x00]);
+        AccountChanges accountChanges = bal.GetAccountChanges(TestItem.AddressA)!;
+        accountChanges.AddBalanceChange(new(0u, 101));
+        accountChanges.AddNonceChange(new(0u, 6));
+        accountChanges.AddCodeChange(new(0u, [0x60, 0x01]));
+        accountChanges.GetOrAddSlotChanges(slot).AddStorageChange(new(0u, 88));
+        accountChanges.AddBalanceChange(new(2u, 102));
+        accountChanges.AddNonceChange(new(2u, 7));
+        accountChanges.AddCodeChange(new(2u, [0x60, 0x02]));
+        accountChanges.GetOrAddSlotChanges(slot).AddStorageChange(new(2u, 99));
+        bal.Index = 3;
+
+        int snapshot = bal.TakeSnapshot();
+
+        bal.DeleteAccount(TestItem.AddressA, oldBalance: 102);
+        bal.Restore(snapshot);
+
+        Assert.That(accountChanges.BalanceChanges[0].Index, Is.EqualTo(Eip7928Constants.PrestateIndex));
+        Assert.That(accountChanges.BalanceChanges[1].Index, Is.EqualTo(0u));
+        Assert.That(accountChanges.BalanceChanges[2].Index, Is.EqualTo(2u));
+        Assert.That(accountChanges.NonceChanges[0].Index, Is.EqualTo(Eip7928Constants.PrestateIndex));
+        Assert.That(accountChanges.NonceChanges[1].Index, Is.EqualTo(0u));
+        Assert.That(accountChanges.NonceChanges[2].Index, Is.EqualTo(2u));
+        Assert.That(accountChanges.CodeChanges[0].Index, Is.EqualTo(Eip7928Constants.PrestateIndex));
+        Assert.That(accountChanges.CodeChanges[1].Index, Is.EqualTo(0u));
+        Assert.That(accountChanges.CodeChanges[2].Index, Is.EqualTo(2u));
+
+        Assert.That(accountChanges.TryGetSlotChanges(slot, out SlotChanges? slotChanges), Is.True);
+        Assert.That(slotChanges!.Changes.Keys[0], Is.EqualTo(Eip7928Constants.PrestateIndex));
+        Assert.That(slotChanges.Changes.Keys[1], Is.EqualTo(0u));
+        Assert.That(slotChanges.Changes.Keys[2], Is.EqualTo(2u));
+        Assert.That(slotChanges.Changes.Values[2].Value, Is.EqualTo((UInt256)99));
+    }
+
     private static BlockAccessList CreateBalWithPrestate(Address address, UInt256 slot, byte[] prestateCode)
     {
         AccountChanges accountChanges = new(address);

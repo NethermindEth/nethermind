@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -28,21 +29,20 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         // A slot with zero changes belongs in storage_reads instead.
         if (changes.Length == 0)
         {
-            throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+            ThrowEmptyStorageChanges();
         }
 
         uint? lastIndex = null;
-        // Allows prestate entries to be grafted into decoded BALs while preserving order.
-        SortedList<uint, StorageChange> changesList = new(changes.Length, PrestateAwareIndexComparer.Instance);
+        IndexedChanges<StorageChange> changesList = new(changes.Length);
         foreach (StorageChange s in changes)
         {
             uint index = s.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
-                throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
+                ThrowStorageChangesOutOfOrder(index, lastIndex.Value);
             }
             lastIndex = index;
-            changesList.Add(index, s);
+            changesList.Add(s);
         }
         SlotChanges slotChanges = new(slot, changesList);
 
@@ -76,4 +76,12 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
 
         return storageChangesLen + Rlp.LengthOf(item.Key);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyStorageChanges() =>
+        throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageChangesOutOfOrder(uint index, uint lastIndex) =>
+        throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
 }

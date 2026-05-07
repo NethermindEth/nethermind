@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
@@ -24,7 +26,7 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
         T result = DecodeFields(ref ctx);
         if (result.Index == Eip7928Constants.PrestateIndex)
         {
-            throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is reserved for internal prestate tracking.");
+            ThrowPrestateIndexReserved();
         }
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
@@ -39,7 +41,7 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     {
         if (item.Index == Eip7928Constants.PrestateIndex)
         {
-            throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is reserved for internal prestate tracking.");
+            ThrowPrestateIndexReserved();
         }
 
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
@@ -58,4 +60,8 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
 
     /// <summary>Return the RLP length of the value field.</summary>
     protected abstract int GetValueLength(T item);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowPrestateIndexReserved() =>
+        throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is reserved for internal prestate tracking.");
 }
