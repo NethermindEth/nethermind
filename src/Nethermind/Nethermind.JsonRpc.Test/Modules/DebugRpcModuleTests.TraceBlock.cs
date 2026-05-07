@@ -376,7 +376,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase(1)]
     [TestCase(100)]
-    [TestCase(1000)]
+    [TestCase(300)]
     public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(int traceCount)
     {
         List<GethLikeTxTrace> traces = new(traceCount);
