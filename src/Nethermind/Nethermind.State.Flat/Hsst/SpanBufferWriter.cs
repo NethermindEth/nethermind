@@ -33,6 +33,14 @@ public interface IByteBufferWriter
 /// Implementations whose backing buffer can be relocated by later <c>GetSpan</c>
 /// calls (e.g. <see cref="PooledByteBufferWriter.Writer"/>) must return a reader
 /// that re-resolves the buffer pointer per access.
+///
+/// Only one reader is allowed at a time per writer. The reader is a borrow over
+/// writer-owned state (and may be a freely-copyable ref struct), so the writer
+/// holds the underlying resource and there is no per-reader Dispose. Implementations
+/// that own an OS resource for the read window (e.g. an mmap view) must therefore
+/// reject a second <see cref="OpenReader"/> while a prior view is still active —
+/// the caller must finish using the previous reader before opening another, and
+/// the writer releases the view on its own <c>Dispose</c>.
 /// </summary>
 public interface IByteBufferWriterWithReader<TReader, TPin> : IByteBufferWriter
     where TReader : IHsstByteReader<TPin>, allows ref struct
@@ -40,6 +48,15 @@ public interface IByteBufferWriterWithReader<TReader, TPin> : IByteBufferWriter
 {
     [UnscopedRef]
     TReader OpenReader(long pastSize);
+
+    /// <summary>
+    /// Release the view opened by the most recent <see cref="OpenReader"/> call.
+    /// Implementations that hold no per-reader resource may treat this as a no-op.
+    /// Callers must invoke this once they are done with the reader so the writer
+    /// can re-open another (the single-reader-at-a-time contract above) and so
+    /// any underlying OS resource is released eagerly rather than at writer dispose.
+    /// </summary>
+    void DisposeActiveReader();
 }
 
 public unsafe struct SpanBufferWriter(Span<byte> buffer) : IByteBufferWriterWithReader<SpanByteReader, NoOpPin>
@@ -54,4 +71,6 @@ public unsafe struct SpanBufferWriter(Span<byte> buffer) : IByteBufferWriterWith
 
     public readonly SpanByteReader OpenReader(long pastSize)
         => new(new ReadOnlySpan<byte>(_buffer + (_written - pastSize), checked((int)pastSize)));
+
+    public readonly void DisposeActiveReader() { }
 }

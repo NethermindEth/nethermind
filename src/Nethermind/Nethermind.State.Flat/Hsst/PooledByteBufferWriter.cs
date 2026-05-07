@@ -50,6 +50,8 @@ public sealed class PooledByteBufferWriter(int initialCapacity) : IDisposable
         public WriterReader OpenReader(long pastSize)
             => new(ref this, _written - checked((int)pastSize), checked((int)pastSize));
 
+        public void DisposeActiveReader() { }
+
         private void Grow(int sizeHint)
         {
             int needed = _written + sizeHint;

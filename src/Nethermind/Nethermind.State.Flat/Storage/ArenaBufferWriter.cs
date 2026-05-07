@@ -55,19 +55,34 @@ public unsafe struct ArenaBufferWriter(Stream stream, ArenaBufferWriter.OpenView
     /// bytes via <see cref="IArenaManager.OpenPendingView"/>. The returned reader's
     /// offset 0 corresponds to byte (Written − pastSize) of this writer's data.
     ///
-    /// The view is owned by this writer — it is released on the next call to
-    /// <see cref="OpenReader"/> or on <see cref="Dispose"/>. Subsequent writes
+    /// The view is owned by this writer and released on <see cref="Dispose"/>.
+    /// Only one reader may be active at a time: calling <see cref="OpenReader"/>
+    /// while a prior view is still active throws — the caller must finish using
+    /// the previous reader (and let the writer go out of scope, or call
+    /// <see cref="DisposeActiveReader"/>) before opening another. Subsequent writes
     /// do not extend the reader's window.
     /// </summary>
     [UnscopedRef]
     public ArenaBufferReader OpenReader(long pastSize)
     {
+        if (_activeView is not null)
+            throw new InvalidOperationException(
+                "ArenaBufferWriter already has an active reader; only one reader is allowed at a time.");
         Flush();
-        // Release any prior view from a previous OpenReader call on this writer.
-        _activeView?.Dispose();
         long writerWindowStart = Written - pastSize;
         _activeView = _openView(writerWindowStart, pastSize);
         return new ArenaBufferReader(_activeView.DataPtr, pastSize);
+    }
+
+    /// <summary>
+    /// Release the view opened by the most recent <see cref="OpenReader"/> call.
+    /// Any outstanding <see cref="ArenaBufferReader"/> borrowed from this writer
+    /// must no longer be used after this returns.
+    /// </summary>
+    public void DisposeActiveReader()
+    {
+        _activeView?.Dispose();
+        _activeView = null;
     }
 
     public void Flush()

@@ -137,11 +137,23 @@ public ref struct HsstBuilder<TWriter, TReader, TPin>
         long dataSectionSize = _writer.Written - _baseOffset;
         long absoluteIndexStart = dataSectionSize;
         TReader reader = _writer.OpenReader(dataSectionSize);
+        try
+        {
+            HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
+                ref _writer, reader, _entryPositions.AsSpan(), _options.MinSeparatorLength);
 
-        HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-            ref _writer, reader, _entryPositions.AsSpan(), _options.MinSeparatorLength);
-
-        indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
+            indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
+        }
+        finally
+        {
+            // Release the data-section view eagerly. The writer can outlive this Build()
+            // call and host further HSSTs whose data sections will need to OpenReader on
+            // the same writer; the single-reader-at-a-time contract requires the prior
+            // view to be released first. On Linux this also applies MADV_DONTNEED to the
+            // just-swept range right when sweeping ends, instead of waiting until the
+            // writer itself is disposed.
+            _writer.DisposeActiveReader();
+        }
 
         // Trailing IndexType byte (last byte of the HSST).
         Span<byte> tail = _writer.GetSpan(1);
