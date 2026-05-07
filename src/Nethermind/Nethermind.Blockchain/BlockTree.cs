@@ -486,8 +486,10 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
+                byte[]? encodedBlockAccessList = block.EncodedBlockAccessList;
                 _blockStore.Insert(block);
                 _balStore.InsertFromBlock(block);
+                block.EncodedBlockAccessList = encodedBlockAccessList;
             }
 
             if (!isKnown)
@@ -952,6 +954,9 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
+                block.GeneratedBlockAccessList = null;
+                block.EncodedBlockAccessList = null;
+
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
