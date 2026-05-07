@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -88,8 +89,37 @@ public partial class EthRpcModuleTests
 
         string response = await SignTransaction(rpcTx);
 
-        response.Should().Contain("blobs, commitments and proofs must all be provided",
+        response.Should().Contain("commitments must be provided alongside blobs",
             "blob signing without commitments must surface a precise error so callers know what to add");
+    }
+
+    [TestCase(false, typeof(EIP1559TransactionForRpc), TestName = "WithoutExplicitType_PromotedToEip1559")]
+    [TestCase(true, typeof(LegacyTransactionForRpc), TestName = "WithExplicitLegacyType_StaysLegacy")]
+    public async Task SignTransaction_LegacyShapeJson_RespectsExplicitTypePinning(bool withExplicitType, Type expectedEchoType)
+    {
+        // Bypasses BuildTx because constructed C# instances always serialize the `type` field;
+        // we need raw JSON that omits it to drive HasExplicitType=false on the server.
+        string typeLine = withExplicitType ? "\"type\": \"0x0\"," : "";
+        string txJson = $$"""
+            {
+                {{typeLine}}
+                "from": "{{UnlockedTestAccount}}",
+                "to": "0x2d44c0e097f6cd0f514edac633d82e01280b4a5c",
+                "value": "0x9184e72a",
+                "gas": "0x76c0",
+                "gasPrice": "0x9184e72a000",
+                "nonce": "0x0"
+            }
+            """;
+        JsonElement param = JsonSerializer.Deserialize<JsonElement>(txJson);
+
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", param);
+        JsonRpcResponse<SignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<SignTransactionResult>>(serialized)!;
+        response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
+
+        response.Result!.Tx.Should().BeOfType(expectedEchoType,
+            "no-type input must auto-promote to EIP-1559; explicit type must be preserved");
     }
 
     [TestCase(TxType.Legacy, typeof(LegacyTransactionForRpc), TestName = "Legacy")]

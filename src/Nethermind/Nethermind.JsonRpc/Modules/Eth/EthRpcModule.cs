@@ -374,7 +374,7 @@ public partial class EthRpcModule(
         if (!_wallet.IsUnlocked(from))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
 
-        rpcTx = PromoteToEip1559IfDefaultLegacy(rpcTx);
+        rpcTx = PromoteLegacyToEip1559IfTypeImplicit(rpcTx);
 
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
         if (!txResult.Success(out Transaction tx, out string error))
@@ -427,9 +427,12 @@ public partial class EthRpcModule(
         return rpcTx is LegacyTransactionForRpc legacy && legacy.GasPrice is not null;
     }
 
-    private static TransactionForRpc PromoteToEip1559IfDefaultLegacy(TransactionForRpc rpcTx)
+    private static TransactionForRpc PromoteLegacyToEip1559IfTypeImplicit(TransactionForRpc rpcTx)
     {
-        if (!rpcTx.IsTypeDefaulted) return rpcTx;
+        // When the JSON request omits "type", the spec-style behavior is to auto-promote a
+        // legacy-shape request (gasPrice only) to EIP-1559 with maxFeePerGas == maxPriorityFeePerGas == gasPrice.
+        // Explicit type pinning is preserved verbatim.
+        if (rpcTx.HasExplicitType) return rpcTx;
         if (rpcTx is AccessListTransactionForRpc or EIP1559TransactionForRpc) return rpcTx;
         if (rpcTx is not LegacyTransactionForRpc legacy) return rpcTx;
 
@@ -452,6 +455,8 @@ public partial class EthRpcModule(
         ulong cap = _rpcConfig.RpcTxFeeCap;
         if (cap == 0) return null;
 
+        // Cap covers execution gas only (maxFeePerGas * gasLimit). Blob gas (4844) is intentionally
+        // excluded — keeps parity with the reference implementation.
         UInt256 perGas = tx.Type >= TxType.EIP1559 ? tx.MaxFeePerGas : tx.GasPrice;
         UInt256 totalFee = perGas * (UInt256)tx.GasLimit;
         UInt256 capWei = cap;
@@ -475,8 +480,10 @@ public partial class EthRpcModule(
     {
         if (blobTx.Blobs is null || blobTx.Blobs.Length == 0)
             return "blob transaction requires non-empty blobs";
-        if (blobTx.Commitments is null || blobTx.Proofs is null)
-            return "blobs, commitments and proofs must all be provided";
+        if (blobTx.Commitments is null)
+            return "commitments must be provided alongside blobs";
+        if (blobTx.Proofs is null)
+            return "proofs must be provided alongside blobs";
 
         BlockHeader? head = _blockFinder.Head?.Header;
         ProofVersion version = head is null

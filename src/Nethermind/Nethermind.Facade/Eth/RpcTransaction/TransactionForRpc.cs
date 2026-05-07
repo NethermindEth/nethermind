@@ -52,12 +52,20 @@ public abstract class TransactionForRpc
     /// <summary>
     /// True when the transaction type was inferred by <see cref="TransactionJsonConverter"/> rather than
     /// explicitly provided in the JSON request. When set, <see cref="ToTransaction"/> can resolve
-    /// the type to match the target block's fork rules. The setter is internal so only the converter
-    /// can mutate it; the getter is public so cross-assembly consumers (RPC modules) can read it
-    /// when deciding whether to apply default-type semantics.
+    /// the type to match the target block's fork rules.
     /// </summary>
     [JsonIgnore]
-    public bool IsTypeDefaulted { get; internal set; }
+    internal bool IsTypeDefaulted { get; set; }
+
+    /// <summary>
+    /// True when the JSON request contained an explicit <c>type</c> field. Distinct from
+    /// <see cref="IsTypeDefaulted"/>: this flag tracks whether the caller pinned a type, even
+    /// when discriminator-based routing (e.g. presence of <c>gasPrice</c>) would have picked the
+    /// same type. Consumers use this to decide whether to apply spec-style auto-promotion to
+    /// newer tx types.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasExplicitType { get; internal set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }
@@ -142,24 +150,30 @@ public abstract class TransactionForRpc
             Utf8JsonReader txTypeReader = reader;
             JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted);
+            Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted, out bool hasExplicitType);
 
             TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
-            result?.IsTypeDefaulted = isDefaulted;
+            if (result is not null)
+            {
+                result.IsTypeDefaulted = isDefaulted;
+                result.HasExplicitType = hasExplicitType;
+            }
             return result;
         }
 
-        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options, out bool isDefaulted)
+        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options, out bool isDefaulted, out bool hasExplicitType)
         {
             const string gasPriceFieldKey = nameof(LegacyTransactionForRpc.GasPrice);
             const string typeFieldKey = nameof(TransactionForRpc.Type);
             isDefaulted = false;
+            hasExplicitType = false;
 
             if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
             {
                 TxType? setType = node.Deserialize<TxType?>(options);
                 if (setType is not null)
                 {
+                    hasExplicitType = true;
                     return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ?? throw new JsonException("Unknown transaction type");
                 }
             }
