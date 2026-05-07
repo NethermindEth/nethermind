@@ -577,6 +577,7 @@ internal static class TestRpcBlockchainExt
             blockchain.RpcConfig,
             blockchain.Bridge,
             blockchain.BlockFinder,
+            blockchain.BlockTree,
             blockchain.ReceiptFinder,
             blockchain.StateReader,
             blockchain.TxPool,
