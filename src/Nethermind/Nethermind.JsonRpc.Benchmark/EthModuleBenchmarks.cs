@@ -69,6 +69,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 _container.Resolve<IJsonRpcConfig>(),
                 bridge,
                 blockTree,
+                blockTree,
                 _container.Resolve<IReceiptFinder>(),
                 _container.Resolve<IStateReader>(),
                 NullTxPool.Instance,

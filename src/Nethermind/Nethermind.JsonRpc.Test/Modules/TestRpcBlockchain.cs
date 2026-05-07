@@ -168,6 +168,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.RpcConfig,
             @this.Bridge,
             @this.BlockFinder,
+            @this.BlockTree,
             @this.ReceiptFinder,
             @this.StateReader,
             @this.TxPool,

@@ -57,6 +57,7 @@ public partial class EthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
+    IBlockTree blockTree,
     IReceiptFinder receiptFinder,
     IStateReader stateReader,
     ITxPool txPool,
@@ -78,8 +79,7 @@ public partial class EthRpcModule(
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
     protected readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-    private readonly IBlockTree _blockTree = blockFinder as IBlockTree
-        ?? throw new ArgumentException($"Expected {nameof(IBlockTree)}, got {blockFinder?.GetType().Name}", nameof(blockFinder));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     protected readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     protected readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     protected readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -426,10 +426,15 @@ public partial class EthRpcModule(
 
     private int ResolveSyncTimeoutMs(ulong? requestedMs)
     {
-        int max = _rpcConfig.RpcTxSyncMaxTimeoutMs;
-        return requestedMs is { } req && req > 0
-            ? (int)Math.Min(req, (ulong)max)
-            : _rpcConfig.RpcTxSyncDefaultTimeoutMs;
+        // Clamp config to >0 so a misconfiguration (e.g. negative max) cannot wrap into a huge ulong
+        // and overflow back to a negative CancellationTokenSource delay.
+        int max = Math.Max(1, _rpcConfig.RpcTxSyncMaxTimeoutMs);
+        if (requestedMs is { } req && req > 0)
+        {
+            return (int)Math.Min(req, (ulong)max);
+        }
+        int @default = _rpcConfig.RpcTxSyncDefaultTimeoutMs;
+        return @default > 0 ? Math.Min(@default, max) : max;
     }
 
     private ReceiptForRpc? TryGetReceipt(Hash256 txHash)
@@ -576,10 +581,18 @@ public partial class EthRpcModule(
     }
 
     public ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
-        => GetRawTransactionByBlockAndIndex(new BlockParameter(blockHash), positionIndex);
+    {
+        ResultWrapper<string?> result = GetRawTransactionByBlockAndIndex(new BlockParameter(blockHash), positionIndex);
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result length: {result.Data?.Length ?? 0}");
+        return result;
+    }
 
     public ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
-        => GetRawTransactionByBlockAndIndex(blockParameter, positionIndex);
+    {
+        ResultWrapper<string?> result = GetRawTransactionByBlockAndIndex(blockParameter, positionIndex);
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result length: {result.Data?.Length ?? 0}");
+        return result;
+    }
 
     private ResultWrapper<string?> GetRawTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
@@ -590,12 +603,14 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+        // Cast Length to uint so the comparison works for empty blocks (Length-1 wraps in UInt256).
+        if (positionIndex >= (uint)block.Transactions.Length)
         {
             return ResultWrapper<string?>.Success(null);
         }
 
         Transaction transaction = block.Transactions[(int)positionIndex];
+        // Block-stored txs never carry a sidecar (blob commitments live separately), so consensus form only.
         using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
         return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }

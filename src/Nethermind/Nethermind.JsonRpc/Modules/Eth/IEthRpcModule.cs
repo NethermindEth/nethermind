@@ -158,7 +158,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Submits a raw transaction and waits for inclusion in a block, returning the receipt or a timeout error.",
             IsSharable = false)]
-        Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null);
+        Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(
+            [JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction,
+            ulong? timeoutMs = null);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a tx call (does not create a transaction)",
@@ -241,12 +243,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction RLP by block hash and index",
             IsSharable = true)]
-        ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex);
+        ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(
+            [JsonRpcParameter(ExampleValue = "[\"0xfe47fb3539ccce9d19a032473effdd6ce19e3c921bbae2746152ccf82ceef48e\",\"0x2\"]")] Hash256 blockHash,
+            UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction RLP by block number and index",
             IsSharable = true)]
-        ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex);
+        ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(
+            [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]")] BlockParameter blockParameter,
+            UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction receipt by tx hash",

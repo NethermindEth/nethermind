@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
@@ -41,6 +42,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
     private readonly IBlockFinder _blockFinder;
+    private readonly IBlockTree _blockTree;
     private readonly IReceiptFinder _receiptFinder;
     private readonly IOptimismSpecHelper _opSpecHelper;
     private readonly IProtocolsManager _protocolsManager;
@@ -52,6 +54,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
         IBlockFinder blockFinder,
+        IBlockTree blockTree,
         IReceiptFinder receiptFinder,
         IStateReader stateReader,
         ITxPool txPool,
@@ -87,6 +90,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _feeHistoryOracle = feeHistoryOracle;
         _ecdsa = ecdsa;
         _blockFinder = blockFinder;
+        _blockTree = blockTree;
         _receiptFinder = receiptFinder;
         _opSpecHelper = opSpecHelper;
         _protocolsManager = protocolsManager;
@@ -112,6 +116,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _rpcConfig,
             _blockchainBridgeFactory.CreateBlockchainBridge(),
             _blockFinder,
+            _blockTree,
             _receiptFinder,
             _stateReader,
             _txPool,
