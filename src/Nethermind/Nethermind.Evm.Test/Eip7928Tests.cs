@@ -1112,6 +1112,61 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     [Test]
+    public void CacheCodeInfoRepository_reads_prior_code_change_from_bal_world_state()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] priorCode = [(byte)Instruction.STOP];
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+        AccountChanges accountChanges = suggestedBal.GetAccountChanges(TestItem.AddressA)!;
+        accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex, []));
+        accountChanges.AddCodeChange(new(0, priorCode));
+
+        BlockAccessListBasedWorldState balWorldState = new(TestState, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(1);
+        balWorldState.SetParentReader(TestState);
+        balWorldState.Setup(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject);
+
+        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressA, false, Amsterdam.Instance, out Address? delegationAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.Null);
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(priorCode));
+        }
+    }
+
+    [Test]
+    public void CacheCodeInfoRepository_falls_back_to_parent_code_by_address_after_bal_hash_miss()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] parentCode = [(byte)Instruction.STOP];
+        TestState.CreateAccount(TestItem.AddressA, 0);
+        TestState.InsertCode(TestItem.AddressA, parentCode, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+
+        BlockAccessListBasedWorldState balWorldState = new(TestState, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(0);
+        balWorldState.SetParentReader(TestState);
+        balWorldState.Setup(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject);
+
+        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressA, false, Amsterdam.Instance, out Address? delegationAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.Null);
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(parentCode));
+        }
+    }
+
+    [Test]
     public void CacheCodeInfoRepository_tracing_records_account_read_in_bal()
     {
         CacheCodeInfoRepository.Clear();

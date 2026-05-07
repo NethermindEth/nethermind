@@ -57,7 +57,7 @@ public class AccountChangesPrestateTests
 
         InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(() => ac.GetCode(0));
 
-        Assert.That(exception!.Message, Does.Contain("Was BAL prestate loaded?"));
+        Assert.That(exception!.Message, Does.Contain("prior code change or prestate journal entry"));
     }
 
     [Test]
@@ -67,11 +67,11 @@ public class AccountChangesPrestateTests
 
         InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(() => ac.GetCodeHash(0));
 
-        Assert.That(exception!.Message, Does.Contain("Was BAL prestate loaded?"));
+        Assert.That(exception!.Message, Does.Contain("prior code change or prestate journal entry"));
     }
 
     [Test]
-    public void Last_balance_change_is_real_when_post_state_change_recorded()
+    public void Last_balance_change_ignores_prestate_when_post_state_change_recorded()
     {
         // Pattern used by BlockAccessListManager.ApplyStateChanges — writes state only when
         // [^1].Index != PrestateIndex. Verifies prestate doesn't poison the [^1] check.
@@ -94,7 +94,7 @@ public class AccountChangesPrestateTests
     }
 
     [Test]
-    public void Prestate_entries_are_enumerated_before_real_changes_when_grafted_last()
+    public void Prestate_entries_are_enumerated_before_changes_when_grafted_last()
     {
         AccountChanges ac = new(TestItem.AddressA);
         ac.AddBalanceChange(new BalanceChange(0u, 200));
@@ -120,10 +120,10 @@ public class AccountChangesPrestateTests
     }
 
     [Test]
-    public void AccountExists_returns_true_when_real_change_at_lower_index()
+    public void AccountExists_returns_true_when_change_at_lower_index()
     {
         // AccountExists iterates ascending and breaks when change.Key >= blockAccessIndex.
-        // With prestate sorted first, real changes at index 0 are reached before the break.
+        // With prestate sorted first, changes at index 0 are reached before the break.
         AccountChanges ac = new(TestItem.AddressA);
         ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 0));
         ac.AddNonceChange(new NonceChange(0u, 1));
@@ -150,7 +150,7 @@ public class AccountChangesPrestateTests
     }
 
     [Test]
-    public void Merge_appends_real_indices_and_preserves_grafted_prestate_first()
+    public void Merge_appends_block_access_indices_and_preserves_grafted_prestate_first()
     {
         AccountChanges left = new(TestItem.AddressA);
         left.AddBalanceChange(new BalanceChange(0u, 10));

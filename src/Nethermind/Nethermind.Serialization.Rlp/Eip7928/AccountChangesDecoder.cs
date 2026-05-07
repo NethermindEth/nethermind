@@ -150,10 +150,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             encoder.Encode(stream, items.Prestate, rlpBehaviors);
         }
 
-        ReadOnlySpan<T> realChanges = items.RealChanges;
-        for (int i = 0; i < realChanges.Length; i++)
+        ReadOnlySpan<T> blockAccessChanges = items.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
         {
-            encoder.Encode(stream, realChanges[i], rlpBehaviors);
+            encoder.Encode(stream, blockAccessChanges[i], rlpBehaviors);
         }
     }
 
@@ -170,10 +170,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             length += encoder.GetLength(items.Prestate, rlpBehaviors);
         }
 
-        ReadOnlySpan<T> realChanges = items.RealChanges;
-        for (int i = 0; i < realChanges.Length; i++)
+        ReadOnlySpan<T> blockAccessChanges = items.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
         {
-            length += encoder.GetLength(realChanges[i], rlpBehaviors);
+            length += encoder.GetLength(blockAccessChanges[i], rlpBehaviors);
         }
 
         return length;

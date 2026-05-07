@@ -294,10 +294,19 @@ public class AccountChanges : IEquatable<AccountChanges>
             ? nonceChange.Value
             : null;
 
+    public bool TryGetLastNonceChangeBefore(uint blockAccessIndex, out NonceChange nonceChange)
+        => _nonceChanges.TryGetLastBefore(blockAccessIndex, out nonceChange);
+
     public UInt256? GetBalance(uint blockAccessIndex) =>
         _balanceChanges.TryGetLastBeforeOrPrestate(blockAccessIndex, out BalanceChange balanceChange)
             ? balanceChange.Value
             : null;
+
+    public bool TryGetLastBalanceChangeBefore(uint blockAccessIndex, out BalanceChange balanceChange)
+        => _balanceChanges.TryGetLastBefore(blockAccessIndex, out balanceChange);
+
+    public bool TryGetLastCodeChangeBefore(uint blockAccessIndex, out CodeChange codeChange)
+        => _codeChanges.TryGetLastBefore(blockAccessIndex, out codeChange);
 
     public byte[] GetCode(uint blockAccessIndex)
     {
@@ -359,17 +368,17 @@ public class AccountChanges : IEquatable<AccountChanges>
             return ExistedBeforeBlock;
         }
 
-        if (_nonceChanges.HasRealBefore(blockAccessIndex))
+        if (_nonceChanges.HasBefore(blockAccessIndex))
         {
             return true;
         }
 
-        if (_balanceChanges.HasRealBefore(blockAccessIndex))
+        if (_balanceChanges.HasBefore(blockAccessIndex))
         {
             return true;
         }
 
-        if (_codeChanges.TryGetLastRealBefore(blockAccessIndex, out CodeChange lastCodeChange))
+        if (_codeChanges.TryGetLastBefore(blockAccessIndex, out CodeChange lastCodeChange))
         {
             return lastCodeChange.Code.Length != 0;
         }
@@ -377,12 +386,32 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
-    // assumes prestate not loaded
-    public void CheckWasChanged() => _wasChanged = _balanceChanges.Count > 0 || _nonceChanges.Count > 0 || _codeChanges.Count > 0 || _storageChanges.Count > 0;
+    [JsonIgnore]
+    public bool HasStateChanges
+    {
+        get
+        {
+            if (_balanceChanges.HasChanges || _nonceChanges.HasChanges || _codeChanges.HasChanges)
+            {
+                return true;
+            }
+
+            foreach (SlotChanges slotChanges in _storageChanges.Values)
+            {
+                if (slotChanges.HasChanges)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    public void CheckWasChanged() { }
 
     [JsonIgnore]
-    public bool AccountChanged => _wasChanged;
-    private bool _wasChanged = false;
+    public bool AccountChanged => HasStateChanges;
 
     private void GetCodeChange(uint blockAccessIndex, out CodeChange? codeChange) =>
         codeChange = _codeChanges.TryGetLastBeforeOrPrestate(blockAccessIndex, out CodeChange change)
@@ -523,7 +552,7 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingCodeChange(uint blockAccessIndex)
-        => throw new InvalidOperationException($"No code change found for {Address} at or before index {blockAccessIndex}. Was BAL prestate loaded?");
+        => throw new InvalidOperationException($"No code change found for {Address} at or before index {blockAccessIndex}. Was a prior code change or prestate journal entry recorded?");
 
     private static bool ListEquals<T>(IReadOnlyList<T> left, IReadOnlyList<T> right)
         where T : IEquatable<T>

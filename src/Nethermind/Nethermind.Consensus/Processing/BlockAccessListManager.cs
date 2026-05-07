@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using System.Collections.Concurrent;
@@ -40,26 +42,23 @@ public class BlockAccessListManager(
     IBlockhashProvider blockHashProvider,
     ILogManager logManager,
     IBlocksConfig blocksConfig,
-    IWithdrawalProcessorFactory withdrawalProcessorFactory)
-    : IBlockAccessListManager
+    IWithdrawalProcessorFactory withdrawalProcessorFactory,
+    PrewarmerEnvFactory? prewarmerEnvFactory = null,
+    PreBlockCaches? preBlockCaches = null,
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+    : IBlockAccessListManager, IDisposable
 {
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
-    // Cache key guarding LoadPreStateToSuggestedBlockAccessList against double-mutation of the
-    // suggested block's BAL: that method appends -1 (pre-state) entries in place, so calling it
-    // twice for the same Block instance corrupts the BAL. PrepareForProcessing can be invoked
-    // more than once per block within the same DI scope (the manager is scoped to the main
-    // processing context, not per block) — e.g. on retry — so we skip the load when the hash
-    // matches the most recently loaded one.
-    private Hash256 _lastLoadedBal = Hash256.Zero;
+    private Hash256? _parentStateRoot;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -89,13 +88,15 @@ public class BlockAccessListManager(
         {
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
+            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
+        }
+    }
 
-            // See _lastLoadedBal field comment — skip when the same block is re-prepared.
-            if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
-            {
-                _lastLoadedBal = suggestedBlock.Hash;
-                LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
-            }
+    public void Dispose()
+    {
+        if (_parallelTxProcessorWithWorldStateManager.IsValueCreated)
+        {
+            _parallelTxProcessorWithWorldStateManager.Value.Dispose();
         }
     }
 
@@ -105,7 +106,7 @@ public class BlockAccessListManager(
         {
             _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager.Value : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
         }
     }
 
@@ -270,11 +271,14 @@ public class BlockAccessListManager(
     {
         foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChangesByAddress)
         {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[^1].Index != Eip7928Constants.PrestateIndex)
+            if (accountChanges.TryGetLastBalanceChangeBefore(Eip7928Constants.PrestateIndex, out BalanceChange balanceChange))
             {
+                UInt256 oldBalance = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account)
+                    ? account.Balance
+                    : UInt256.Zero;
+
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
-                UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
+                UInt256 newBalance = balanceChange.Value;
                 if (newBalance > oldBalance)
                 {
                     stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
@@ -285,25 +289,24 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[^1].Index != Eip7928Constants.PrestateIndex)
+            if (accountChanges.TryGetLastNonceChangeBefore(Eip7928Constants.PrestateIndex, out NonceChange nonceChange))
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[^1].Value);
+                stateProvider.SetNonce(accountChanges.Address, nonceChange.Value);
             }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[^1].Index != Eip7928Constants.PrestateIndex)
+            if (accountChanges.TryGetLastCodeChangeBefore(Eip7928Constants.PrestateIndex, out CodeChange codeChange))
             {
-                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[^1].Code, spec);
+                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                stateProvider.InsertCode(accountChanges.Address, codeChange.CodeHash, codeChange.Code, spec);
             }
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
             {
-                StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
-                // could be empty since prestate loaded
-                int slotCount = slotChange.Changes.Count;
-                if (slotCount > 0 && slotChange.Changes.Keys[slotCount - 1] != Eip7928Constants.PrestateIndex)
+                if (slotChange.Changes.TryGetLastBefore(Eip7928Constants.PrestateIndex, out StorageChange storageChange))
                 {
-                    stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].Value.ToBigEndian().WithoutLeadingZeros()]);
+                    StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
+                    stateProvider.Set(storageCell, [.. storageChange.Value.ToBigEndian().WithoutLeadingZeros()]);
                 }
             }
         }
@@ -572,39 +575,6 @@ public class BlockAccessListManager(
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
-    private void LoadPreStateToSuggestedBlockAccessList(BlockAccessList bal)
-    {
-        // Wire BAL validation must run before this method: it appends local-only
-        // PrestateIndex entries that are sorted before real tx indices and must not be
-        // subjected to block-level wire index-bounds validation.
-        foreach (AccountChanges accountChanges in bal.AccountChangesByAddress)
-        {
-            // check if changed before loading prestate
-            accountChanges.CheckWasChanged();
-
-            bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
-            accountChanges.ExistedBeforeBlock = exists;
-            accountChanges.EmptyBeforeBlock = !account.HasStorage;
-
-            accountChanges.AddBalanceChange(new(Eip7928Constants.PrestateIndex, account.Balance));
-            accountChanges.AddNonceChange(new(Eip7928Constants.PrestateIndex, (ulong)account.Nonce));
-            accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex, stateProvider.GetCode(accountChanges.Address)));
-
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                StorageCell storageCell = new(accountChanges.Address, slotChanges.Key);
-                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex, new(stateProvider.Get(storageCell), true)));
-            }
-
-            foreach (UInt256 storageRead in accountChanges.StorageReads)
-            {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead);
-                StorageCell storageCell = new(accountChanges.Address, storageRead);
-                slotChanges.AddStorageChange(new(Eip7928Constants.PrestateIndex, new(stateProvider.Get(storageCell), true)));
-            }
-        }
-    }
-
     private static bool HasNoChanges(in ChangeAtIndex c)
         => c.BalanceChange is null &&
             c.NonceChange is null &&
@@ -629,16 +599,17 @@ public class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
+        _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
     }
 
-    [DoesNotReturn]
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowNotInitialized(string fieldName)
         => throw new InvalidOperationException($"{fieldName} was not initialized.");
 
     private interface ITxProcessorWithWorldStateManager
     {
-        void Setup(Block block, BlockExecutionContext blockExecutionContext);
+        void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot);
         TxProcessorWithWorldState Get(uint? balIndex = null);
         TxProcessorWithWorldState GetPreExecution() => Get(0);
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
@@ -647,7 +618,7 @@ public class BlockAccessListManager(
         void MergeAndReturnBal(uint balIndex, BlockAccessList target);
     }
 
-    private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
+    private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager, IDisposable
     {
         private const int DefaultTxCount = 10000;
         private static readonly int ProcessorPoolSize = RuntimeInformation.ProcessorCount;
@@ -680,18 +651,24 @@ public class BlockAccessListManager(
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _stateProvider;
         private readonly ILogManager _logManager;
+        private readonly ObjectPool<IReadOnlyTxProcessorSource>? _parentReaderEnvPool;
         private int _processorCount;
+        private BlockHeader? _parentStateHeader;
 
         public ParallelTxProcessorWithWorldStateManager(
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            PrewarmerEnvFactory? prewarmerEnvFactory,
+            PreBlockCaches? preBlockCaches,
+            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory)
         {
             _blockHashProvider = blockHashProvider;
             _specProvider = specProvider;
             _stateProvider = stateProvider;
             _logManager = logManager;
+            _parentReaderEnvPool = CreateParentReaderEnvPool(prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory);
             for (int i = 0; i < ProcessorPoolSize; i++)
             {
                 _processors.Enqueue(NewProcessor());
@@ -699,10 +676,20 @@ public class BlockAccessListManager(
             }
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot)
         {
             _currentBlock = block;
             _currentCtx = blockExecutionContext;
+            _parentStateHeader = null;
+            if (_parentReaderEnvPool is not null)
+            {
+                if (parentStateRoot is null)
+                {
+                    ThrowNotInitialized(nameof(parentStateRoot));
+                }
+
+                _parentStateHeader = CreateParentStateHeader(block, parentStateRoot);
+            }
 
             int previousSize = (int)_lastBalIndex + 1;
             uint newLastBalIndex = (uint)block.Transactions.Length + 1;
@@ -730,12 +717,27 @@ public class BlockAccessListManager(
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
+            ParentReaderLease? parentReader = RentParentReader();
 
-            // Install a fresh BAL before Setup so the worker has somewhere to record changes.
-            processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessList>.Rent());
-            processor.Setup(_currentBlock, _currentCtx, balIndex.Value);
-            _inUse[balIndex.Value] = processor;
-            return processor;
+            try
+            {
+                // Install a fresh BAL before Setup so the worker has somewhere to record changes.
+                processor.WorldState.SetGeneratingBlockAccessList(StaticPool<BlockAccessList>.Rent());
+                processor.Setup(_currentBlock, _currentCtx, balIndex.Value, parentReader);
+                _inUse[balIndex.Value] = processor;
+                return processor;
+            }
+            catch
+            {
+                parentReader?.Dispose();
+                if (processor.WorldState.GetGeneratingBlockAccessList() is { } generatedBal)
+                {
+                    StaticPool<BlockAccessList>.Return(generatedBal);
+                }
+                processor.WorldState.SetGeneratingBlockAccessList(null);
+                ReturnProcessor(processor);
+                throw;
+            }
         }
 
         /// <summary>Detaches the worker's populated BAL into the per-tx slot and recycles
@@ -749,6 +751,7 @@ public class BlockAccessListManager(
 
             _perTxBal[balIndex] = processor.WorldState.GetGeneratingBlockAccessList();
             processor.WorldState.SetGeneratingBlockAccessList(null);
+            processor.ClearParentReader();
             _inUse[balIndex] = null;
             ReturnProcessor(processor);
         }
@@ -780,6 +783,64 @@ public class BlockAccessListManager(
         private TxProcessorWithWorldState NewProcessor()
             => new(true, _blockHashProvider, _specProvider, _stateProvider, _logManager);
 
+        private ParentReaderLease? RentParentReader()
+        {
+            if (_parentReaderEnvPool is null)
+            {
+                return null;
+            }
+
+            if (_parentStateHeader is null)
+            {
+                ThrowNotInitialized(nameof(_parentStateHeader));
+            }
+
+            IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
+            try
+            {
+                return new ParentReaderLease(source, _parentReaderEnvPool, source.Build(_parentStateHeader));
+            }
+            catch
+            {
+                _parentReaderEnvPool.Return(source);
+                throw;
+            }
+        }
+
+        private static ObjectPool<IReadOnlyTxProcessorSource>? CreateParentReaderEnvPool(
+            PrewarmerEnvFactory? prewarmerEnvFactory,
+            PreBlockCaches? preBlockCaches,
+            IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory)
+        {
+            DefaultObjectPoolProvider provider = new() { MaximumRetained = ProcessorPoolSize };
+            if (prewarmerEnvFactory is not null && preBlockCaches is not null)
+            {
+                return provider.Create(new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(prewarmerEnvFactory, preBlockCaches));
+            }
+
+            return readOnlyTxProcessingEnvFactory is not null
+                ? provider.Create(new ReadOnlyTxProcessingEnvPooledObjectPolicy(readOnlyTxProcessingEnvFactory))
+                : null;
+        }
+
+        private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)
+        {
+            Hash256 parentHash = block.ParentHash ?? Keccak.Zero;
+            BlockHeader parentStateHeader = new(
+                parentHash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                UInt256.Zero,
+                block.Number - 1,
+                block.GasLimit,
+                0,
+                []);
+
+            parentStateHeader.Hash = parentHash;
+            parentStateHeader.StateRoot = stateRoot;
+            return parentStateHeader;
+        }
+
         private TxProcessorWithWorldState RentProcessor()
         {
             if (Volatile.Read(ref _processorCount) > 0 && _processors.TryDequeue(out TxProcessorWithWorldState? p))
@@ -792,6 +853,7 @@ public class BlockAccessListManager(
 
         private void ReturnProcessor(TxProcessorWithWorldState p)
         {
+            p.ClearParentReader();
             if (Interlocked.Increment(ref _processorCount) > ProcessorPoolSize)
             {
                 Interlocked.Decrement(ref _processorCount);
@@ -820,6 +882,13 @@ public class BlockAccessListManager(
                 Array.Resize(ref _perTxBal, Math.Max(2 * _perTxBal.Length, size));
         }
 
+        public void Dispose()
+        {
+            int previousSize = (int)_lastBalIndex + 1;
+            ReclaimAndResize(_inUse.Length, previousSize);
+            (_parentReaderEnvPool as IDisposable)?.Dispose();
+        }
+
     }
 
     private class SequentialTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -836,8 +905,8 @@ public class BlockAccessListManager(
             _txProcessorWithWorldState.WorldState.SetGeneratingBlockAccessList(new());
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext)
-            => _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0);
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, Hash256? parentStateRoot)
+            => _txProcessorWithWorldState.Setup(block, blockExecutionContext, 0, null);
 
         public TxProcessorWithWorldState Get(uint? _)
             => _txProcessorWithWorldState;
@@ -860,6 +929,7 @@ public class BlockAccessListManager(
         public readonly TransactionProcessor<EthereumGasPolicy> TxProcessor;
         public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
         private readonly BlockAccessListBasedWorldState? _balWorldState;
+        private ParentReaderLease? _parentReader;
 
         public TxProcessorWithWorldState(
             bool parallel,
@@ -882,13 +952,80 @@ public class BlockAccessListManager(
             TxProcessorAdapter = new(TxProcessor);
         }
 
-        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex)
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext, uint balIndex, ParentReaderLease? parentReader)
         {
+            if (_parentReader is not null)
+            {
+                ThrowParentReaderStillAttached();
+            }
+
+            _parentReader = parentReader;
             WorldState.Clear();
             WorldState.SetIndex(balIndex);
             _balWorldState?.SetBlockAccessIndex(balIndex);
             TxProcessorAdapter.SetBlockExecutionContext(blockExecutionContext);
-            _balWorldState?.Setup(block);
+            if (_balWorldState is not null)
+            {
+                if (parentReader is null)
+                {
+                    ThrowParentReaderUnavailable();
+                }
+
+                _balWorldState.SetParentReader(parentReader.WorldState);
+                _balWorldState.Setup(block);
+            }
+        }
+
+        public void ClearParentReader()
+        {
+            _balWorldState?.ClearParentReader();
+            _parentReader?.Dispose();
+            _parentReader = null;
         }
     }
+
+    private sealed class ParentReaderLease(
+        IReadOnlyTxProcessorSource source,
+        ObjectPool<IReadOnlyTxProcessorSource> envPool,
+        IReadOnlyTxProcessingScope scope) : IDisposable
+    {
+        private IReadOnlyTxProcessorSource? _source = source;
+        private IReadOnlyTxProcessingScope? _scope = scope;
+
+        public IWorldState WorldState => _scope?.WorldState ?? ThrowDisposed();
+
+        public void Dispose()
+        {
+            IReadOnlyTxProcessorSource? source = _source;
+            IReadOnlyTxProcessingScope? scope = _scope;
+            if (source is null || scope is null)
+            {
+                return;
+            }
+
+            _source = null;
+            _scope = null;
+            scope.Dispose();
+            envPool.Return(source);
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static IWorldState ThrowDisposed()
+            => throw new ObjectDisposedException(nameof(ParentReaderLease));
+    }
+
+    private sealed class ReadOnlyTxProcessingEnvPooledObjectPolicy(IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create();
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowParentReaderStillAttached()
+        => throw new InvalidOperationException("A parent state reader is already attached to the pooled BAL transaction processor.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowParentReaderUnavailable()
+        => throw new InvalidOperationException("Parallel BAL validation requires a parent state reader. Construct BlockAccessListManager through DI or pass an IReadOnlyTxProcessingEnvFactory.");
 }

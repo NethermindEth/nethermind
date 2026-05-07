@@ -191,10 +191,8 @@ public class BlockAccessListDecoderTests
     public void Decoded_slot_changes_uses_prestate_aware_comparer()
     {
         // Wire path: AccountChangesDecoder/SlotChangesDecoder build SortedLists with
-        // PrestateAwareIndexComparer so that LoadPreStateToSuggestedBlockAccessList grafting
-        // a PrestateIndex entry afterwards keeps it sorted first. Decoded entries are real
-        // ascending uints, behaviorally identical to plain ascending — but the comparer must
-        // be the prestate-aware one for the later graft to behave correctly.
+        // PrestateAwareIndexComparer so internal generated-BAL journaling can graft a
+        // PrestateIndex entry afterwards and keep it sorted first.
         StorageChange change = new(0, 0xCC);
         SlotChanges seed = new(7u, new SortedList<uint, StorageChange>(PrestateAwareIndexComparer.Instance) { { 0, change } });
         byte[] rlp = Rlp.Encode(seed).Bytes;
@@ -202,7 +200,7 @@ public class BlockAccessListDecoderTests
         Rlp.ValueDecoderContext ctx = new(rlp);
         SlotChanges decoded = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
 
-        // Graft a prestate entry as LoadPreState would, then verify it lands first.
+        // Graft a prestate entry as generated-BAL journaling does, then verify it lands first.
         decoded.AddStorageChange(new StorageChange(Eip7928Constants.PrestateIndex, 0xAA));
         Assert.That(decoded.Changes.Keys[0], Is.EqualTo(Eip7928Constants.PrestateIndex));
     }

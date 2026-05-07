@@ -53,7 +53,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     /// <summary>
     /// Sentinel meaning "no in-block predecessor at this address/slot". Distinct from
-    /// <see cref="Eip7928Constants.PrestateIndex"/>, which is a real prior index after prestate load.
+    /// <see cref="Eip7928Constants.PrestateIndex"/>, which is reserved for internal
+    /// generated-BAL journal entries.
     /// </summary>
     private const long NoPreviousBlockAccessIndex = -1;
 

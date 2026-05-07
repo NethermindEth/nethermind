@@ -79,10 +79,10 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
             StorageChangeDecoder.Instance.Encode(stream, changes.Prestate, rlpBehaviors);
         }
 
-        ReadOnlySpan<StorageChange> realChanges = changes.RealChanges;
-        for (int i = 0; i < realChanges.Length; i++)
+        ReadOnlySpan<StorageChange> blockAccessChanges = changes.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
         {
-            StorageChangeDecoder.Instance.Encode(stream, realChanges[i], rlpBehaviors);
+            StorageChangeDecoder.Instance.Encode(stream, blockAccessChanges[i], rlpBehaviors);
         }
     }
 
@@ -94,10 +94,10 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
             length += StorageChangeDecoder.Instance.GetLength(changes.Prestate, rlpBehaviors);
         }
 
-        ReadOnlySpan<StorageChange> realChanges = changes.RealChanges;
-        for (int i = 0; i < realChanges.Length; i++)
+        ReadOnlySpan<StorageChange> blockAccessChanges = changes.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
         {
-            length += StorageChangeDecoder.Instance.GetLength(realChanges[i], rlpBehaviors);
+            length += StorageChangeDecoder.Instance.GetLength(blockAccessChanges[i], rlpBehaviors);
         }
 
         return length;

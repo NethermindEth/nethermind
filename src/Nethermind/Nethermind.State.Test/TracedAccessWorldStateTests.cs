@@ -160,6 +160,7 @@ public class TracedAccessWorldStateTests(bool parallel)
 
         BlockAccessListBasedWorldState balWorldState = new(inner, LimboLogs.Instance);
         balWorldState.SetBlockAccessIndex(0);
+        balWorldState.SetParentReader(inner);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
         balWorldState.Setup(block);
 

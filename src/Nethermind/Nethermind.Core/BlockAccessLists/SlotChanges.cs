@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -43,9 +45,16 @@ public record SlotChanges(UInt256 Key, IndexedChanges<StorageChange> Changes)
     public void AddStorageChange(StorageChange storageChange)
         => Changes.Add(storageChange);
 
+    [JsonIgnore]
+    public bool HasChanges => Changes.HasChanges;
+
+    public bool TryGetLastBefore(uint blockAccessIndex, out StorageChange storageChange)
+        => Changes.TryGetLastBefore(blockAccessIndex, out storageChange);
+
     internal bool TryPopStorageChangeDirect(uint index, out StorageChange storageChange)
         => Changes.TryPopLast(index, out storageChange);
 
+    [SkipLocalsInit]
     public byte[] Get(uint blockAccessIndex)
     {
         Span<byte> tmp = stackalloc byte[32];

@@ -14,20 +14,22 @@ namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
 /// Stores EIP-7928 changes by block access index with the internal prestate sentinel
-/// kept outside the append-only real-index lane.
+/// kept outside the append-only block-access-index lane.
 /// </summary>
 [JsonConverter(typeof(IndexedChangesJsonConverterFactory))]
 public sealed class IndexedChanges<T> where T : struct, IIndexedChange
 {
     private bool _hasPrestate;
     private T _prestate;
-    private readonly List<T> _realChanges;
+    private readonly List<T> _changes;
 
-    public IndexedChanges() => _realChanges = [];
+    public IndexedChanges() => _changes = [];
 
-    public IndexedChanges(int capacity) => _realChanges = capacity == 0 ? [] : new(capacity);
+    public IndexedChanges(int capacity) => _changes = capacity == 0 ? [] : new(capacity);
 
-    public int Count => _realChanges.Count + (_hasPrestate ? 1 : 0);
+    public int Count => _changes.Count + (_hasPrestate ? 1 : 0);
+
+    public bool HasChanges => _changes.Count != 0;
 
     internal bool HasPrestate => _hasPrestate;
 
@@ -96,9 +98,9 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
             return;
         }
 
-        if (_realChanges.Count != 0)
+        if (_changes.Count != 0)
         {
-            uint lastIndex = _realChanges[^1].Index;
+            uint lastIndex = _changes[^1].Index;
             if (index <= lastIndex)
             {
                 if (index == lastIndex)
@@ -110,7 +112,7 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
             }
         }
 
-        _realChanges.Add(change);
+        _changes.Add(change);
     }
 
     public void Set(T change)
@@ -123,30 +125,30 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
             return;
         }
 
-        int count = _realChanges.Count;
+        int count = _changes.Count;
         if (count == 0)
         {
-            _realChanges.Add(change);
+            _changes.Add(change);
             return;
         }
 
-        uint lastIndex = _realChanges[count - 1].Index;
+        uint lastIndex = _changes[count - 1].Index;
         if (index > lastIndex)
         {
-            _realChanges.Add(change);
+            _changes.Add(change);
             return;
         }
 
         if (index == lastIndex)
         {
-            _realChanges[count - 1] = change;
+            _changes[count - 1] = change;
             return;
         }
 
-        int existingIndex = FindRealIndex(index);
+        int existingIndex = FindIndex(index);
         if (existingIndex >= 0)
         {
-            _realChanges[existingIndex] = change;
+            _changes[existingIndex] = change;
             return;
         }
 
@@ -160,11 +162,11 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
             Add(other._prestate);
         }
 
-        ReadOnlySpan<T> otherRealChanges = other.RealChanges;
-        _realChanges.EnsureCapacity(_realChanges.Count + otherRealChanges.Length);
-        for (int i = 0; i < otherRealChanges.Length; i++)
+        ReadOnlySpan<T> otherChanges = other.BlockAccessChanges;
+        _changes.EnsureCapacity(_changes.Count + otherChanges.Length);
+        for (int i = 0; i < otherChanges.Length; i++)
         {
-            Add(otherRealChanges[i]);
+            Add(otherChanges[i]);
         }
     }
 
@@ -175,11 +177,11 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
             Set(other._prestate);
         }
 
-        ReadOnlySpan<T> otherRealChanges = other.RealChanges;
-        _realChanges.EnsureCapacity(_realChanges.Count + otherRealChanges.Length);
-        for (int i = 0; i < otherRealChanges.Length; i++)
+        ReadOnlySpan<T> otherChanges = other.BlockAccessChanges;
+        _changes.EnsureCapacity(_changes.Count + otherChanges.Length);
+        for (int i = 0; i < otherChanges.Length; i++)
         {
-            Set(otherRealChanges[i]);
+            Set(otherChanges[i]);
         }
     }
 
@@ -193,10 +195,10 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
             return _hasPrestate;
         }
 
-        int realIndex = FindRealIndex(index);
-        if (realIndex >= 0)
+        int changeIndex = FindIndex(index);
+        if (changeIndex >= 0)
         {
-            change = _realChanges[realIndex];
+            change = _changes[changeIndex];
             return true;
         }
 
@@ -206,13 +208,13 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
 
     public bool TryPopLast(uint index, out T change)
     {
-        int count = _realChanges.Count;
+        int count = _changes.Count;
         if (count != 0)
         {
-            T last = _realChanges[count - 1];
+            T last = _changes[count - 1];
             if (last.Index == index)
             {
-                _realChanges.RemoveAt(count - 1);
+                _changes.RemoveAt(count - 1);
                 change = last;
                 return true;
             }
@@ -231,30 +233,30 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
 
     public void RemoveAt(int index)
     {
-        int realIndex = ToRealOrdinal(index);
-        if (realIndex < 0)
+        int changeIndex = ToChangeOrdinal(index);
+        if (changeIndex < 0)
         {
             _prestate = default;
             _hasPrestate = false;
             return;
         }
 
-        _realChanges.RemoveAt(realIndex);
+        _changes.RemoveAt(changeIndex);
     }
 
     public void Clear()
     {
         _prestate = default;
         _hasPrestate = false;
-        _realChanges.Clear();
+        _changes.Clear();
     }
 
     public bool TryGetLast([NotNullWhen(true)] out T change)
     {
-        int count = _realChanges.Count;
+        int count = _changes.Count;
         if (count != 0)
         {
-            change = _realChanges[count - 1];
+            change = _changes[count - 1];
             return true;
         }
 
@@ -270,10 +272,10 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
 
     public bool TryGetLastBeforeOrPrestate(uint blockAccessIndex, out T change)
     {
-        int realIndex = FindFirstRealIndexAtOrAfter(blockAccessIndex);
-        if (realIndex != 0)
+        int changeIndex = FindFirstIndexAtOrAfter(blockAccessIndex);
+        if (changeIndex != 0)
         {
-            change = _realChanges[realIndex - 1];
+            change = _changes[changeIndex - 1];
             return true;
         }
 
@@ -287,12 +289,12 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
         return false;
     }
 
-    public bool TryGetLastRealBefore(uint blockAccessIndex, out T change)
+    public bool TryGetLastBefore(uint blockAccessIndex, out T change)
     {
-        int realIndex = FindFirstRealIndexAtOrAfter(blockAccessIndex);
-        if (realIndex != 0)
+        int changeIndex = FindFirstIndexAtOrAfter(blockAccessIndex);
+        if (changeIndex != 0)
         {
-            change = _realChanges[realIndex - 1];
+            change = _changes[changeIndex - 1];
             return true;
         }
 
@@ -300,21 +302,21 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
         return false;
     }
 
-    public bool HasRealBefore(uint blockAccessIndex) => FindFirstRealIndexAtOrAfter(blockAccessIndex) != 0;
+    public bool HasBefore(uint blockAccessIndex) => FindFirstIndexAtOrAfter(blockAccessIndex) != 0;
 
     public Enumerator GetEnumerator() => new(this);
 
-    internal ReadOnlySpan<T> RealChanges => CollectionsMarshal.AsSpan(_realChanges);
+    internal ReadOnlySpan<T> BlockAccessChanges => CollectionsMarshal.AsSpan(_changes);
 
     internal T GetAt(int index)
     {
-        int realIndex = ToRealOrdinal(index);
-        return realIndex < 0 ? _prestate : _realChanges[realIndex];
+        int changeIndex = ToChangeOrdinal(index);
+        return changeIndex < 0 ? _prestate : _changes[changeIndex];
     }
 
     internal uint GetKeyAt(int index) => GetAt(index).Index;
 
-    private int ToRealOrdinal(int index)
+    private int ToChangeOrdinal(int index)
     {
         if ((uint)index >= (uint)Count)
         {
@@ -334,9 +336,9 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
         return index;
     }
 
-    private int FindRealIndex(uint index)
+    private int FindIndex(uint index)
     {
-        ReadOnlySpan<T> changes = RealChanges;
+        ReadOnlySpan<T> changes = BlockAccessChanges;
         int low = 0;
         int high = changes.Length - 1;
         while (low <= high)
@@ -361,9 +363,9 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
         return ~low;
     }
 
-    private int FindFirstRealIndexAtOrAfter(uint blockAccessIndex)
+    private int FindFirstIndexAtOrAfter(uint blockAccessIndex)
     {
-        ReadOnlySpan<T> changes = RealChanges;
+        ReadOnlySpan<T> changes = BlockAccessChanges;
         int low = 0;
         int high = changes.Length;
         while (low < high)
