@@ -358,7 +358,7 @@ public partial class EthRpcModule(
         }
     }
 
-    public virtual async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
+    public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
     {
         Transaction tx;
         try
