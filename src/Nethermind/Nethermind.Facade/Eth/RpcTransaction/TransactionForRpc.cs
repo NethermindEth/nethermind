@@ -5,12 +5,15 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -62,10 +65,18 @@ public abstract class TransactionForRpc
     /// <see cref="IsTypeDefaulted"/>: this flag tracks whether the caller pinned a type, even
     /// when discriminator-based routing (e.g. presence of <c>gasPrice</c>) would have picked the
     /// same type. Consumers use this to decide whether to apply spec-style auto-promotion to
-    /// newer tx types.
+    /// newer tx types. Internal so it does not participate in public-property equivalency checks
+    /// or JSON serialization; cross-assembly access is granted via <c>InternalsVisibleTo</c>.
     /// </summary>
+    /// <remarks>
+    /// Only set during JSON deserialization. Always <c>false</c> for programmatically constructed
+    /// instances — consumers that build a <see cref="TransactionForRpc"/> in code and then route
+    /// it through an RPC method that consults this flag will be treated as "no explicit type" and
+    /// may be auto-promoted. Test fixtures must therefore exercise the JSON-deserialization path
+    /// to validate type-pinning behavior.
+    /// </remarks>
     [JsonIgnore]
-    public bool HasExplicitType { get; internal set; }
+    internal bool HasExplicitType { get; set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }

@@ -433,7 +433,7 @@ public partial class EthRpcModule(
         // legacy-shape request (gasPrice only) to EIP-1559 with maxFeePerGas == maxPriorityFeePerGas == gasPrice.
         // Explicit type pinning is preserved verbatim.
         if (rpcTx.HasExplicitType) return rpcTx;
-        if (rpcTx is AccessListTransactionForRpc or EIP1559TransactionForRpc) return rpcTx;
+        if (rpcTx is AccessListTransactionForRpc) return rpcTx;
         if (rpcTx is not LegacyTransactionForRpc legacy) return rpcTx;
 
         return new EIP1559TransactionForRpc
