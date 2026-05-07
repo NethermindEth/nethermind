@@ -142,10 +142,6 @@ namespace Nethermind.State
         {
         }
 
-        public void HintSet(in UInt256 index, byte[]? value)
-        {
-        }
-
         public byte[] Get(in ValueHash256 hash) => GetArray(in hash, null);
 
         [SkipLocalsInit]
