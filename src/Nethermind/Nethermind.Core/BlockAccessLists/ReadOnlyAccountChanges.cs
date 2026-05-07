@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -32,11 +33,27 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public Address Address { get; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public ReadOnlySlotChanges[] StorageChanges => _orderedStorageChanges;
+    public ReadOnlySlotChanges[] StorageChanges
+    {
+        get
+        {
+            WaitForPrestate();
+            EnsureSorted();
+            return _orderedStorageChanges;
+        }
+    }
 
     /// <summary>Slot keys, sorted ascending — exposed as <see cref="IList{T}"/> for indexed access.</summary>
     [JsonIgnore]
-    public IList<UInt256> ChangedSlots => _changedSlots;
+    public IList<UInt256> ChangedSlots
+    {
+        get
+        {
+            WaitForPrestate();
+            EnsureSorted();
+            return _changedSlots;
+        }
+    }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public UInt256[] StorageReads => _storageReads;
@@ -66,6 +83,13 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     private BalanceChange[] _balanceChanges;
     private NonceChange[] _nonceChanges;
     private CodeChange[] _codeChanges;
+
+    // Set by LoadPreStateStorage when it adds a new slot to _storageChanges; cleared by
+    // EnsureSorted under _sortLock after a single Array.Sort rebuild populates the parallel
+    // sorted arrays. Volatile-paired with the array writes so a reader observing dirty=false
+    // also sees the new array references.
+    private bool _sortedDirty;
+    private readonly object _sortLock = new();
 
     /// <summary>
     /// Per-account gate that lets parallel transaction workers wait for prestate loading to
@@ -133,8 +157,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     public bool HasSlotChangesAtIndex(uint index)
     {
-        WaitForPrestate();
-        foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
+        foreach (ReadOnlySlotChanges slotChanges in StorageChanges)
         {
             if (HasExactIndex(slotChanges.Changes, index)) return true;
         }
@@ -143,8 +166,7 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     public IEnumerable<SlotChangeAtIndex> SlotChangesAtIndex(uint index)
     {
-        WaitForPrestate();
-        foreach (ReadOnlySlotChanges slotChanges in _orderedStorageChanges)
+        foreach (ReadOnlySlotChanges slotChanges in StorageChanges)
         {
             StorageChange? change = GetExact(slotChanges.Changes, index);
             if (change is not null)
@@ -278,7 +300,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         {
             slotChanges = new ReadOnlySlotChanges(slot);
             _storageChanges.Add(slot, slotChanges);
-            InsertSorted(slot, slotChanges);
+            // Defer sorting: a single Array.Sort on first read is O(n log n) vs the prior
+            // per-insert O(n) shifting that became O(n²) over many prestate loads.
+            _sortedDirty = true;
         }
         slotChanges.LoadPreStateChange(new StorageChange(Eip7928Constants.PrestateIndex, value));
     }
@@ -317,25 +341,32 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
         }
     }
 
-    /// <summary>Inserts a newly-added slot into the parallel sorted arrays at its correct position.</summary>
-    private void InsertSorted(UInt256 slot, ReadOnlySlotChanges slotChanges)
+    /// <summary>Rebuilds the parallel sorted arrays from <see cref="_storageChanges"/> in a single
+    /// O(n log n) pass. Double-checked under <see cref="_sortLock"/> so that concurrent readers
+    /// (post-prestate-gate) see exactly one rebuild. The trailing <see cref="Volatile.Write"/> on
+    /// <see cref="_sortedDirty"/> publishes the new array references with release semantics, so
+    /// any reader observing dirty=false also sees the updated arrays.</summary>
+    private void EnsureSorted()
     {
-        ReadOnlySpan<UInt256> keys = _changedSlots;
-        int idx = keys.BinarySearch(slot);
-        // BinarySearch returns ~insertionIndex on miss; for new slots, this should always miss.
-        int insertAt = idx >= 0 ? idx : ~idx;
-
-        UInt256[] newKeys = new UInt256[_changedSlots.Length + 1];
-        Array.Copy(_changedSlots, 0, newKeys, 0, insertAt);
-        newKeys[insertAt] = slot;
-        Array.Copy(_changedSlots, insertAt, newKeys, insertAt + 1, _changedSlots.Length - insertAt);
-        _changedSlots = newKeys;
-
-        ReadOnlySlotChanges[] newOrdered = new ReadOnlySlotChanges[_orderedStorageChanges.Length + 1];
-        Array.Copy(_orderedStorageChanges, 0, newOrdered, 0, insertAt);
-        newOrdered[insertAt] = slotChanges;
-        Array.Copy(_orderedStorageChanges, insertAt, newOrdered, insertAt + 1, _orderedStorageChanges.Length - insertAt);
-        _orderedStorageChanges = newOrdered;
+        if (!Volatile.Read(ref _sortedDirty)) return;
+        lock (_sortLock)
+        {
+            if (!_sortedDirty) return;
+            int count = _storageChanges.Count;
+            UInt256[] keys = new UInt256[count];
+            ReadOnlySlotChanges[] ordered = new ReadOnlySlotChanges[count];
+            int i = 0;
+            foreach (KeyValuePair<UInt256, ReadOnlySlotChanges> kv in _storageChanges)
+            {
+                keys[i] = kv.Key;
+                ordered[i] = kv.Value;
+                i++;
+            }
+            Array.Sort(keys, ordered);
+            _changedSlots = keys;
+            _orderedStorageChanges = ordered;
+            Volatile.Write(ref _sortedDirty, false);
+        }
     }
 
     /// <summary>Returns the change with <c>Index == index</c> if any; otherwise null.</summary>
