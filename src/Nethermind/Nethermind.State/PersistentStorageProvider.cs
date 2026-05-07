@@ -453,6 +453,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 valueChanges = new StorageChangeTrace(valueChanges.Before, value);
             }
+
+            if (!storageCell.IsHash)
+            {
+                EnsureStorageTree();
+                _backend.HintSet(storageCell.Index, value);
+            }
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
