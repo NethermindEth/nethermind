@@ -96,11 +96,12 @@ internal static class HsstBTreeReader
     }
 
     /// <summary>
-    /// Speculative pin window. Covers every intermediate node (capped at
-    /// <see cref="HsstBTreeOptions.DefaultMaxIntermediateBytes"/> = 2 KiB) and most leaves
-    /// in one read. Larger leaves fall back to a precise re-pin.
+    /// Speculative pin window. Sized to cover the worst-case footer (≤ 141 B) plus a
+    /// typical small leaf body in one read; nodes aren't page-aligned so there's no
+    /// gain from rounding up further. Larger leaves and intermediates fall back to a
+    /// precise re-pin.
     /// </summary>
-    private const int SpeculativePinSize = 4096;
+    private const int SpeculativePinSize = 1024;
 
     /// <summary>
     /// Load the index node whose exclusive end is <paramref name="absEnd"/> via the reader's
