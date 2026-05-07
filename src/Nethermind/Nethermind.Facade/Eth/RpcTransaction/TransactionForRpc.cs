@@ -49,17 +49,8 @@ public abstract class TransactionForRpc
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
 
-    /// <summary>
-    /// True when the runtime type was selected by a fallback rather than an explicit signal —
-    /// either the legacy <c>gasPrice</c>-only routing rule or the absolute default. Discriminator
-    /// fields (<c>accessList</c>, <c>maxFeePerGas</c>, etc.) and an explicit <c>type</c> field
-    /// count as signals and leave this flag <c>false</c>.
-    /// </summary>
-    /// <remarks>
-    /// Only set during JSON deserialization. Always <c>false</c> for programmatically constructed
-    /// instances — code paths that need to assert defaulting behavior must exercise the
-    /// JSON-deserialization path.
-    /// </remarks>
+    // True when type came from a fallback (gasPrice-only or absolute default), not from an
+    // explicit `type` field or a discriminator. Set only during JSON deserialization.
     [JsonIgnore]
     internal bool IsTypeDefaulted { get; set; }
 
@@ -80,24 +71,15 @@ public abstract class TransactionForRpc
 
     private TxType ResolveType(IReleaseSpec? spec)
     {
-        // Pre-Berlin specs only know Legacy txs; downgrade any defaulted-type request to Legacy
-        // rather than producing a typed tx that the EVM at that height would reject outright.
+        // Pre-Berlin only knows Legacy; defaulted-type requests downgrade to avoid EVM rejection.
         TxType type = Type ?? default;
         return spec is not null && !spec.IsEip2930Enabled && IsTypeDefaulted ? TxType.Legacy : type;
     }
 
-    /// <summary>
-    /// Returns an EIP-1559 form of this request when the JSON omitted the <c>type</c> field and
-    /// the request shape is plain Legacy (gasPrice only, no access list, no 1559/blob/setcode
-    /// fields). Otherwise returns <c>this</c> unchanged. The original <c>gasPrice</c> becomes
-    /// both <c>maxFeePerGas</c> and <c>maxPriorityFeePerGas</c>.
-    /// </summary>
     public TransactionForRpc PromoteToEip1559IfTypeDefaulted()
     {
         if (!IsTypeDefaulted) return this;
-        // EIP-1559, Blob, and SetCode all derive from AccessListTransactionForRpc, so this single
-        // check excludes the absolute-default path (which produces EIP1559) and any future typed
-        // subclass that lands above Legacy.
+        // AccessList and its descendants (EIP1559/Blob/SetCode) are already typed — only plain Legacy promotes.
         if (this is AccessListTransactionForRpc) return this;
         if (this is not LegacyTransactionForRpc legacy) return this;
 
@@ -202,14 +184,13 @@ public abstract class TransactionForRpc
                 }
             }
 
-            // No explicit "type" field. gasPrice-only and the absolute fallback are "defaulted";
-            // a discriminator field (accessList, maxFeePerGas, ...) is a strong signal and is not.
             if (untyped.ContainsKey(gasPriceFieldKey))
             {
                 isDefaulted = true;
                 return typeof(LegacyTransactionForRpc);
             }
 
+            // Discriminator field is a strong signal — not a default.
             Type? viaDiscriminator = _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type;
             if (viaDiscriminator is not null)
             {
