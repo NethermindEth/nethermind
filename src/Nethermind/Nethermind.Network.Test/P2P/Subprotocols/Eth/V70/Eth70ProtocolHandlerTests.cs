@@ -480,13 +480,13 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_reject_when_logs_gas_exceeds_block_gas()
+    public async Task Should_accept_when_logs_gas_exceeds_post_refund_gas_used()
     {
         TxReceipt[] receipts =
         [
             new()
             {
-                GasUsedTotal = 500,
+                GasUsedTotal = GasCostOf.Transaction,
                 Logs = [new LogEntry(TestItem.AddressA, new byte[100], Array.Empty<Hash256>())]
             }
         ];
@@ -494,23 +494,148 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), true);
+            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
-        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
     }
 
     [Test]
-    public void Should_throw_subprotocol_exception_when_logs_gas_overflows()
+    public async Task Should_accept_receipts_when_transaction_count_and_size_bounds_match()
     {
-        SubprotocolException? exception = Assert.Throws<SubprotocolException>(() =>
-            Eth70ProtocolHandler.AddLogGas(long.MaxValue, topics: 1, dataLength: 0));
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts = BuildSequentialReceipts(2);
+        SetupBlockMetadata(blockHash, 1_000_000, GasCostOf.Transaction * 2, 100_000, 100_000);
 
-        Assert.That(exception?.Message, Is.EqualTo("Logs gas overflows long for a single receipt"));
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+    }
+
+    [Test]
+    public async Task Should_skip_transaction_metadata_validation_when_block_body_is_missing()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithGasLimit(1_000_000)
+            .WithGasUsed(GasCostOf.Transaction)
+            .WithTransactionsRoot(TestItem.KeccakB)
+            .TestObject;
+        Block blockWithMissingBody = new(header);
+
+        _syncManager.FindHeader(blockHash).Returns(header);
+        _syncManager.Find(blockHash).Returns(blockWithMissingBody);
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+    }
+
+    [Test]
+    public void Should_reject_receipts_when_transaction_count_mismatches()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+        SetupBlockMetadata(blockHash, 1_000_000, GasCostOf.Transaction, 100_000, 100_000);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Receipt count mismatch with block transactions count"));
+    }
+
+    [Test]
+    public void Should_reject_receipt_larger_than_transaction_gas_limit_allows()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            BuildReceiptWithLogData(GasCostOf.Transaction, logDataSize: 3_000)
+        ];
+        SetupBlockMetadata(blockHash, 1_000_000, GasCostOf.Transaction, GasCostOf.Transaction);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Receipt size exceeds transaction gas limit allowance"));
+    }
+
+    [Test]
+    public void Should_reject_paginated_receipts_when_total_size_exceeds_block_gas_limit_allowance()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 16_000;
+
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            BuildReceiptWithLogData(GasCostOf.Transaction, logDataSize: 5_000),
+            BuildReceiptWithLogData(GasCostOf.Transaction * 2, logDataSize: 5_000)
+        ];
+        SetupBlockMetadata(blockHash, 80_000, GasCostOf.Transaction * 2, 1_000_000, 1_000_000);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            TxReceipt[] payload = sent.FirstBlockReceiptIndex == 0
+                ? [receipts[0]]
+                : [receipts[1]];
+
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { payload }.ToPooledList(), sent.FirstBlockReceiptIndex == 0);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Block receipts size exceeds block gas limit allowance"));
     }
 
     [Test]
@@ -883,6 +1008,33 @@ public class Eth70ProtocolHandlerTests
         return receipts;
     }
 
+    private static TxReceipt BuildReceiptWithLogData(long gasUsedTotal, int logDataSize) =>
+        new()
+        {
+            GasUsedTotal = gasUsedTotal,
+            Logs = [new LogEntry(TestItem.AddressA, new byte[logDataSize], [])]
+        };
+
+    private void SetupBlockMetadata(Hash256 blockHash, long gasLimit, long gasUsed, params long[] txGasLimits)
+    {
+        Transaction[] transactions = new Transaction[txGasLimits.Length];
+        for (int i = 0; i < txGasLimits.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithGasLimit(txGasLimits[i]).TestObject;
+        }
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithGasLimit(gasLimit)
+            .WithGasUsed(gasUsed)
+            .TestObject;
+        Block block = new(header, transactions, []);
+
+        _syncManager.FindHeader(blockHash).Returns(header);
+        _syncManager.Find(blockHash).Returns(block);
+    }
+
     private sealed class CountingReadOnlyList<T>(IReadOnlyList<T> inner) : IReadOnlyList<T>
     {
         public int Count => inner.Count;
@@ -925,34 +1077,6 @@ public class Eth70ProtocolHandlerTests
 
     private static IEnumerable<TestCaseData> InvalidPartialContinuationCases()
     {
-        TxReceipt[] firstPageWithLogGas =
-        [
-            new() { GasUsedTotal = 30_000, Logs = [] }
-        ];
-
-        TxReceipt[] pageWithTooMuchLogGas =
-        [
-            new() { GasUsedTotal = 52_000, Logs = [new LogEntry(TestItem.AddressA, new byte[200], [])] }
-        ];
-
-        TxReceipt[] finalPage =
-        [
-            new() { GasUsedTotal = 80_000, Logs = [] }
-        ];
-
-        yield return new TestCaseData(new InvalidPartialContinuationCase(
-            [Keccak.Zero],
-            new Dictionary<long, ReceiptsPageResponse>
-            {
-                [0] = new([firstPageWithLogGas], LastBlockIncomplete: true),
-                [1] = new([pageWithTooMuchLogGas], LastBlockIncomplete: true),
-                [2] = new([finalPage], LastBlockIncomplete: false)
-            },
-            FirstBlockGasUsed: 80_000,
-            SecondBlockGasUsed: null,
-            ExpectedExceptionMessage: "Logs gas exceeds block gas used"))
-            .SetName("Rejects partial continuation when receipt logs exceed remaining gas");
-
         TxReceipt[] firstShortPage =
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
