@@ -267,6 +267,64 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         worldState.RecalculateStateRoot();
     }
 
+    /// <summary>
+    /// Regression for the perf optimization in <c>cea517aa20</c>: when an outer CALL into an
+    /// EIP-7702-delegated EOA OOGs at the cold-access gas charge for the delegation target,
+    /// the delegation target's address must NOT appear in the BAL — only the call target
+    /// (the EOA itself). The optimization had moved <c>GetCachedCodeInfo</c> (which loads the
+    /// delegation target's code via <c>GetCodeHash</c>, recording it as a BAL account-read)
+    /// before the cold-access OOG check, so the target ended up recorded even when the CALL
+    /// frame never executed. Mirrors EELS's
+    /// <c>test_bal_call_7702_delegation_and_oog[…oog_after_target_access]</c> family.
+    /// </summary>
+    [Test]
+    public void Call_into_7702_delegated_eoa_oog_at_delegation_cold_access_does_not_record_delegation_target()
+    {
+        InitWorldState(TestState);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        Block block = Build.A.Block.TestObject;
+
+        byte[] code = Prepare.EvmCode
+            .Call(_callTargetAddress, 20_000)
+            .Done;
+
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .TestObject;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
+        // Enough gas to push CALL operands and reach the cold-access charge for the EOA, but
+        // 1 gas short of the cold-access charge for its delegation target. CALL pushes 7 stack
+        // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then ConsumeAccountAccessGas
+        // for codeSource (cold), then for delegated (cold) — we cap at codeSource cold + 1 short.
+        long pushOperandsCost = 7 * GasCostOf.VeryLow;
+        long executionGas = pushOperandsCost + GasCostOf.Call + GasCostOf.ColdAccountAccess + GasCostOf.WarmStateRead - 1;
+
+        Transaction tx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(intrinsicGas + executionGas)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        CallOutputTracer tracer = new();
+        TransactionResult res = processor.Execute(tx, tracer);
+        BlockAccessListAtIndex bal = tracedState.GetGeneratingBlockAccessList()!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted);
+            // The CALL target (the delegated EOA itself) was loaded to resolve delegation,
+            // so it IS in the BAL.
+            Assert.That(bal.GetAccountChanges(_callTargetAddress), Is.Not.Null,
+                "EIP-7702 delegated EOA must be recorded as the CALL target");
+            // The delegation target was NEVER fully loaded — the CALL OOG'd at the cold-access
+            // gas charge before GetCachedCodeInfo could load its code. It must not appear.
+            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null,
+                "EIP-7702 delegation target must not be recorded when CALL OOGs before its code is loaded");
+        }
+    }
+
     [TestCase(120_000_000L, 30_000_000L, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
     [TestCase(120_000_000L, 30_000L, false, TestName = "EIP2935_system_call_records_only_read_when_state_gas_not_affordable")]
     public void Eip2935_system_call_bal_respects_eip8037_state_gas(long blockGasLimit, long systemCallGasLimit, bool shouldStoreParentHash)
