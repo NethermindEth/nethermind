@@ -9,7 +9,7 @@ namespace Nethermind.Synchronization.Peers
 {
     /// <summary>
     /// Bit math for the per-peer weakness counter — a packed <see cref="uint"/> with one 4-bit nibble
-    /// per tracked context (the six single-bit contexts plus the composite <see cref="AllocationContexts.Blocks"/>).
+    /// per tracked context (single-bit contexts plus the composite <see cref="AllocationContexts.Blocks"/>).
     /// Each nibble counts consecutive weak responses for that context, saturating at
     /// <see cref="WeaknessNibbleMask"/>; once it reaches <c>SleepThreshold</c> the peer is put to sleep
     /// for that context. <see cref="PeerInfo"/> holds the storage; the math lives here.
@@ -17,7 +17,7 @@ namespace Nethermind.Synchronization.Peers
     internal static class WeaknessTracking
     {
         /// <summary>Number of contexts that have a weakness counter (single-bit + Blocks composite).</summary>
-        public const int TrackedContextCount = 7;
+        public const int TrackedContextCount = 8;
 
         /// <summary>Bits per nibble in the packed weakness word.</summary>
         public const int WeaknessBits = 4;
@@ -27,8 +27,9 @@ namespace Nethermind.Synchronization.Peers
 
         /// <summary>
         /// Tracked contexts indexed by their nibble position 0..<see cref="TrackedContextCount"/>-1.
-        /// First six entries match <see cref="AllocationAllowances.OrderedSingleContexts"/>; the trailing
-        /// entry is <see cref="AllocationContexts.Blocks"/>, which has no slot but participates in weakness.
+        /// First six entries match <see cref="AllocationAllowances.OrderedSingleContexts"/>;
+        /// <see cref="AllocationContexts.BlockAccessLists"/> and <see cref="AllocationContexts.Blocks"/>
+        /// have no allocation slot but participate in weakness.
         /// </summary>
         public static readonly AllocationContexts[] OrderedTrackedContexts =
         [
@@ -38,6 +39,7 @@ namespace Nethermind.Synchronization.Peers
             AllocationContexts.State,
             AllocationContexts.Snap,
             AllocationContexts.ForwardHeader,
+            AllocationContexts.BlockAccessLists,
             AllocationContexts.Blocks,
         ];
 
