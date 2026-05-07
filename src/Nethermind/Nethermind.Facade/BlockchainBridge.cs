@@ -245,9 +245,13 @@ namespace Nethermind.Facade
         {
             // Loop-invariant: the addresses to filter from the discovered AL depend only on header
             // and tx, neither of which change between iterations. Compute once and reuse.
-            Address[] addressesToOptimize = BuildAddressesToOptimize(header, tx, optimize);
+            FrozenSet<AddressAsKey> precompiles = specProvider.GetSpec(header).Precompiles;
+            int bufferSize = (optimize ? 3 : 1) + precompiles.Count;
+            Address[] addressBuffer = new Address[bufferSize];
+            FillAddressesToOptimize(addressBuffer, header, tx, optimize, precompiles);
+
             AccessList? previousAccessList = tx.AccessList;
-            AccessTxTracer accessTracer = new(addressesToOptimize);
+            AccessTxTracer accessTracer = new(addressBuffer);
             CallOutputTracer outputTracer = new();
             CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken);
             TransactionResult result;
@@ -274,33 +278,27 @@ namespace Nethermind.Facade
             };
         }
 
-        private Address[] BuildAddressesToOptimize(BlockHeader header, Transaction tx, bool optimize)
+        private void FillAddressesToOptimize(Span<Address> buffer, BlockHeader header, Transaction tx, bool optimize, FrozenSet<AddressAsKey> precompiles)
         {
-            FrozenSet<AddressAsKey> precompiles = specProvider.GetSpec(header).Precompiles;
-            int precompileCount = precompiles.Count;
-
+            int idx;
             if (!optimize)
             {
-                Address[] result = new Address[1 + precompileCount];
-                result[0] = header.GasBeneficiary;
-                int i = 1;
-                foreach (AddressAsKey p in precompiles)
-                    result[i++] = p.Value;
-                return result;
+                buffer[0] = header.GasBeneficiary;
+                idx = 1;
+            }
+            else
+            {
+                // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
+                // so excluding them keeps the returned access list minimal.
+                UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
+                buffer[0] = tx.SenderAddress;
+                buffer[1] = tx.GetRecipient(senderNonce);
+                buffer[2] = header.GasBeneficiary;
+                idx = 3;
             }
 
-            // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
-            // so excluding them keeps the returned access list minimal.
-            UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
-            Address recipient = tx.GetRecipient(senderNonce);
-            Address[] resultOpt = new Address[3 + precompileCount];
-            resultOpt[0] = tx.SenderAddress;
-            resultOpt[1] = recipient;
-            resultOpt[2] = header.GasBeneficiary;
-            int j = 3;
             foreach (AddressAsKey p in precompiles)
-                resultOpt[j++] = p.Value;
-            return resultOpt;
+                buffer[idx++] = p.Value;
         }
 
         private static bool HasConverged(AccessList? previous, AccessList? discovered)
