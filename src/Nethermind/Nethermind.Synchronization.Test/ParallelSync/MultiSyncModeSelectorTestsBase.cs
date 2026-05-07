@@ -12,7 +12,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             None,
             FinishedHeaders,
             FinishedBodies,
-            FinishedReceipts
+            FinishedReceipts,
+            FinishedBlockAccessLists
         }
 
         protected readonly bool _needToWaitForHeaders = needToWaitForHeaders;

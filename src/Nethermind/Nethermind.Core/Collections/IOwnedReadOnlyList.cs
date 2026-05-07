@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace Nethermind.Core.Collections;
@@ -18,8 +19,32 @@ namespace Nethermind.Core.Collections;
 /// <typeparam name="T"></typeparam>
 public interface IOwnedReadOnlyList<T> : IReadOnlyList<T>, IDisposable
 {
+    static IOwnedReadOnlyList<T> Empty => EmptyOwnedReadOnlyList.Instance;
+
     ReadOnlySpan<T> AsSpan();
+
+
+    private sealed class EmptyOwnedReadOnlyList : IOwnedReadOnlyList<T>
+    {
+        public static EmptyOwnedReadOnlyList Instance { get; } = new();
+
+        public int Count => 0;
+
+        public T this[int index] => throw new ArgumentOutOfRangeException(nameof(index));
+
+        public ReadOnlySpan<T> AsSpan() => [];
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            yield break;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public void Dispose() { }
+    }
 }
+
 
 public static class OwnedReadOnlyListExtensions
 {

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -182,7 +183,8 @@ public class HistoryPrunerTests
         TestDelegate action = () => new HistoryPruner(
             Substitute.For<IBlockTree>(),
             Substitute.For<IReceiptStorage>(),
-            specProvider ?? Substitute.For<ISpecProvider>(),
+            Substitute.For<IBlockAccessListStore>(),
+            specProvider,
             Substitute.For<IChainLevelInfoRepository>(),
             dbProvider,
             historyConfig,
