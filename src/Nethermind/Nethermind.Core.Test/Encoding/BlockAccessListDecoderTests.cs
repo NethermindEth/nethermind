@@ -198,6 +198,17 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void Decode_slot_changes_rejects_storage_change_count_above_max_txs()
+    {
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(Eip7928Constants.MaxTxs + 1);
+
+        Assert.That(
+            () => Rlp.Decode<SlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpLimitException>()
+                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
+    }
+
+    [Test]
     public void Decoded_slot_changes_uses_prestate_aware_comparer()
     {
         // Wire path: AccountChangesDecoder/SlotChangesDecoder build SortedLists with
@@ -779,6 +790,22 @@ public class BlockAccessListDecoderTests
         stream.StartSequence(contentLength);
         stream.Encode(in slot);
         EncodeArray(stream, changes, StorageChangeDecoder.Instance);
+        return stream.Data.ToArray()!;
+    }
+
+    private static byte[] EncodeSlotChangesWithEmptyStorageChangeEntries(int count)
+    {
+        int changesContentLength = count * Rlp.OfEmptyList.Length;
+        int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(UInt256.Zero);
+        stream.StartSequence(changesContentLength);
+        for (int i = 0; i < count; i++)
+        {
+            stream.Encode(Rlp.OfEmptyList);
+        }
+
         return stream.Data.ToArray()!;
     }
 
