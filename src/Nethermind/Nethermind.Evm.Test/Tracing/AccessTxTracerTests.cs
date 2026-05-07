@@ -111,7 +111,6 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(sut.AccessList.Select(static x => x.StorageKeys), Has.Exactly(1).Contains(new UInt256(1)));
         }
 
-
         [Test]
         public void Reverted_call_target_address_is_still_captured_in_access_list()
         {
@@ -123,13 +122,9 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.REVERT)
                 .Done;
 
-            (Block block, Transaction tx) = PrepareTx(BlockNumber, 100000, code, SenderRecipientAndMiner.Default);
-            AccessTxTracer tracer = new(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, SenderRecipientAndMiner.Default.Miner);
-            _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+            AccessList list = ExecuteRevertedFrameScenario(code);
 
-            Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
-            // AddressC must appear even though the outer frame reverts after the CALL returns
-            addresses.Should().Contain(TestItem.AddressC,
+            list.Select(static t => t.Address).Should().Contain(TestItem.AddressC,
                 because: "addresses accessed inside reverted frames must survive for eth_createAccessList");
         }
 
@@ -156,11 +151,8 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            (Block block, Transaction tx) = PrepareTx(BlockNumber, 100000, recipientCode, SenderRecipientAndMiner.Default);
-            AccessTxTracer tracer = new(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, SenderRecipientAndMiner.Default.Miner);
-            _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+            AccessList list = ExecuteRevertedFrameScenario(recipientCode);
 
-            AccessList list = tracer.AccessList!;
             // AddressC slot 7 must appear despite the REVERT inside AddressC's sub-frame
             list.Should().ContainSingle(e => e.Address == TestItem.AddressC)
                 .Which.StorageKeys.Should().Contain(new UInt256(7),
@@ -170,12 +162,8 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Outer_committed_and_inner_reverted_call_both_captured_in_access_list()
         {
-            byte[] addressECode = Prepare.EvmCode
-                .Op(Instruction.STOP)
-                .Done;
-
             TestState.CreateAccount(TestItem.AddressE, 0);
-            TestState.InsertCode(TestItem.AddressE, addressECode, SpecProvider.GenesisSpec);
+            TestState.InsertCode(TestItem.AddressE, Prepare.EvmCode.Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
 
             // AddressC code: CALL AddressE then REVERT
             byte[] addressCCode = Prepare.EvmCode
@@ -190,17 +178,15 @@ namespace Nethermind.Evm.Test.Tracing
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
-            // Recipient code: CALL AddressC (this succeeds at the EVM level but AddressC reverts internally)
+            // Recipient code: CALL AddressC (succeeds at EVM level but AddressC reverts internally)
             byte[] recipientCode = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
-            (Block block, Transaction tx) = PrepareTx(BlockNumber, 100000, recipientCode, SenderRecipientAndMiner.Default);
-            AccessTxTracer tracer = new(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, SenderRecipientAndMiner.Default.Miner);
-            _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+            AccessList list = ExecuteRevertedFrameScenario(recipientCode);
 
-            Address[] addresses = tracer.AccessList!.Select(static t => t.Address).ToArray();
+            Address[] addresses = list.Select(static t => t.Address).ToArray();
             addresses.Should().Contain(TestItem.AddressC, because: "committed outer CALL target must be in access list");
             addresses.Should().Contain(TestItem.AddressE, because: "address accessed inside inner reverted frame must still be in access list");
         }
@@ -213,6 +199,14 @@ namespace Nethermind.Evm.Test.Tracing
             AccessTxTracer tracer = new();
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
             return (tracer, block, transaction);
+        }
+
+        private AccessList ExecuteRevertedFrameScenario(byte[] recipientCode)
+        {
+            (Block block, Transaction tx) = PrepareTx(BlockNumber, 100000, recipientCode, SenderRecipientAndMiner.Default);
+            AccessTxTracer tracer = new(SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, SenderRecipientAndMiner.Default.Miner);
+            _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
+            return tracer.AccessList!;
         }
     }
 }
