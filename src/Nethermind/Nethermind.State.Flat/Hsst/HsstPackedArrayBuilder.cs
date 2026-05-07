@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
@@ -18,8 +19,10 @@ namespace Nethermind.State.Flat.Hsst;
 ///   [Summary L1: Count_1 * KeySize]
 ///   ...
 ///   [Summary L(D-1): Count_{D-1} * KeySize]
-///   [Metadata: KeySize, ValueSize, EntryCount, EntriesPerCkLevel0,
-///              RecordsPerCkHigher, Depth, Count_0..Count_{D-1} as LEB128]
+///   [Metadata (fixed 9 B): KeySize (u8), ValueSize (u8), EntryCount (u32 LE),
+///              EntriesPerCkLevel0Log2 (u8), RecordsPerCkHigherLog2 (u8), Depth (u8)]
+/// Per-level record counts are derivable: Count_0 = ceil(EntryCount / 1<<L0),
+/// Count_{k+1} = ceil(Count_k / 1<<Lh) — the reader recomputes them on parse.
 ///   [MetadataLength: u8]
 ///   [IndexType: u8 = 0x02]
 ///
@@ -62,6 +65,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         ArgumentOutOfRangeException.ThrowIfNegative(keySize);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keySize, 255);
         ArgumentOutOfRangeException.ThrowIfNegative(valueSize);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(valueSize, 255);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(binaryIndexStrideBytes, 0);
 
         _writer = ref writer;
@@ -249,13 +253,18 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         }
 
         long metaStart = _writer.Written;
-        WriteLeb128(_keySize);
-        WriteLeb128(_valueSize);
-        WriteLeb128(_entryCount);
-        WriteLeb128(_entriesPerCkLevel0Log2);
-        WriteLeb128(recordsPerCkHigherLog2);
-        WriteLeb128(depth);
-        for (int i = 0; i < depth; i++) WriteLeb128(levelCounts[i]);
+        // Fixed prefix (9 B): KeySize / ValueSize bounded to [0, 255]; EntryCount bounded
+        // to int.MaxValue (the int-indexed checkpoint staging buffers would overflow long
+        // before EntryCount could exceed it); the two log2 shifts are clamped to ≤ 30 by
+        // construction; Depth is capped at MaxSummaryDepth (8). All fit in u8.
+        Span<byte> hdr = _writer.GetSpan(2 + 4 + 3);
+        hdr[0] = (byte)_keySize;
+        hdr[1] = (byte)_valueSize;
+        BinaryPrimitives.WriteUInt32LittleEndian(hdr[2..], checked((uint)_entryCount));
+        hdr[6] = (byte)_entriesPerCkLevel0Log2;
+        hdr[7] = (byte)recordsPerCkHigherLog2;
+        hdr[8] = (byte)depth;
+        _writer.Advance(2 + 4 + 3);
         int metaLen = checked((int)(_writer.Written - metaStart));
         if (metaLen > 255)
             throw new InvalidOperationException("PackedArray metadata exceeds 255 bytes.");
