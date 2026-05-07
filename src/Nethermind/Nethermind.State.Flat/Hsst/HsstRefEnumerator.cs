@@ -28,17 +28,17 @@ public ref struct HsstRefEnumerator<TReader, TPin>(scoped in TReader reader, Bou
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
     private TReader _reader = reader;
-    private readonly HsstEnumerator<TReader, TPin> _inner = new(in reader, bound);
+    private HsstEnumerator<TReader, TPin> _inner = new(in reader, bound);
 
-    // Callers (e.g. PersistedSnapshotScanner.StorageEnumerator) park enumerators as
-    // zero-initialised struct fields and reset them with `= default` between uses, so
-    // _inner can be null. Treat that as an exhausted enumerator.
-    public bool MoveNext() => _inner is not null && _inner.MoveNext(in _reader);
+    // _inner is a struct now: default(HsstRefEnumerator) gives default(HsstEnumerator)
+    // whose _kind is Empty, so MoveNext returns false and Current is empty — which is
+    // the behaviour callers like PersistedSnapshotScanner.StorageEnumerator rely on
+    // when they reset the field to `default` between uses.
+    public bool MoveNext() => _inner.MoveNext(in _reader);
 
-    public readonly KeyValueEntry Current =>
-        _inner is null ? default : new(_inner.CurrentKey, _inner.CurrentValue);
+    public readonly KeyValueEntry Current => new(_inner.CurrentKey, _inner.CurrentValue);
 
-    public void Dispose() => _inner?.Dispose();
+    public void Dispose() => _inner.Dispose();
 }
 
 /// <summary>

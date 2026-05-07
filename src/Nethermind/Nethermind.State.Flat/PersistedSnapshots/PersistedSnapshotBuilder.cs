@@ -978,7 +978,7 @@ public static class PersistedSnapshotBuilder
         }
         finally
         {
-            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) enums[i].Dispose();
             for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
@@ -1107,7 +1107,7 @@ public static class PersistedSnapshotBuilder
         }
         finally
         {
-            for (int j = 0; j < matchCount; j++) innerEnums[j]?.Dispose();
+            for (int j = 0; j < matchCount; j++) innerEnums[j].Dispose();
         }
     }
 
@@ -1231,7 +1231,7 @@ public static class PersistedSnapshotBuilder
         }
         finally
         {
-            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) enums[i].Dispose();
             for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
@@ -1333,7 +1333,7 @@ public static class PersistedSnapshotBuilder
         }
         finally
         {
-            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) enums[i].Dispose();
             for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
@@ -1413,7 +1413,7 @@ public static class PersistedSnapshotBuilder
         }
         finally
         {
-            for (int j = 0; j < matchCount; j++) innerEnums[j]?.Dispose();
+            for (int j = 0; j < matchCount; j++) innerEnums[j].Dispose();
         }
     }
 
@@ -1534,7 +1534,7 @@ public static class PersistedSnapshotBuilder
         }
         finally
         {
-            for (int i = 0; i < n; i++) enums[i]?.Dispose();
+            for (int i = 0; i < n; i++) enums[i].Dispose();
             for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
@@ -1664,7 +1664,7 @@ public static class PersistedSnapshotBuilder
                 }
                 finally
                 {
-                    for (int j = 0; j < slotSourceCount; j++) slotEnums[j]?.Dispose();
+                    for (int j = 0; j < slotSourceCount; j++) slotEnums[j].Dispose();
                 }
             }
         }
@@ -1848,7 +1848,7 @@ public static class PersistedSnapshotBuilder
         }
         finally
         {
-            for (int j = 0; j < active; j++) innerEnums[j]?.Dispose();
+            for (int j = 0; j < active; j++) innerEnums[j].Dispose();
         }
     }
 

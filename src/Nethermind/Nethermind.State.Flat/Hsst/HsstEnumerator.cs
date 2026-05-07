@@ -33,22 +33,24 @@ namespace Nethermind.State.Flat.Hsst;
 /// materialise a pinned span (no decode). The enumerator stores only integer offsets,
 /// never key/value bytes.
 /// </summary>
-public sealed class HsstEnumerator<TReader, TPin> : IDisposable
+public struct HsstEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
     private enum VariantKind : byte { Empty, PackedArray, ByteTagMap, BTree }
 
-    private readonly Bound _scope;
+    // Struct envelope: only thing that needs to live on the value is the
+    // discriminator and the three nullable variant references. All mutable
+    // iteration state lives on the heap-allocated variant objects, so copies
+    // of this struct (e.g. via ArrayPoolList<T>'s by-value indexer) still
+    // observe / advance the same underlying cursor.
     private readonly VariantKind _kind;
     private readonly PackedArrayVariant? _packed;
     private readonly ByteTagMapVariant? _byteTag;
     private readonly BTreeVariant? _btree;
-    private bool _disposed;
 
     public HsstEnumerator(scoped in TReader reader, Bound scope)
     {
-        _scope = scope;
         if (scope.Length < 2)
         {
             _kind = VariantKind.Empty;
@@ -145,12 +147,11 @@ public sealed class HsstEnumerator<TReader, TPin> : IDisposable
         _ => 0,
     };
 
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        _btree?.Dispose();
-    }
+    // Variants currently hold no resources that need release (BTreeVariant's
+    // leaf buffer is plain managed memory). Kept on IDisposable so callers
+    // can stay on `using` without rewriting; if a variant later acquires
+    // resources, plumb the release through here.
+    public void Dispose() { }
 
     // -----------------------------------------------------------------------
     // PackedArray: fixed key/value stride. No offset table — compute on the fly.
@@ -285,7 +286,7 @@ public sealed class HsstEnumerator<TReader, TPin> : IDisposable
     // worth of long offsets (typically a few hundred at most).
     // -----------------------------------------------------------------------
 
-    private sealed class BTreeVariant : IDisposable
+    private sealed class BTreeVariant
     {
         private const int MaxDepth = 16;
 
@@ -348,8 +349,6 @@ public sealed class HsstEnumerator<TReader, TPin> : IDisposable
         public Bound CurrentKey => new(_currentKeyOffset, _currentKeyLength);
         public Bound CurrentValue => new(_currentValueOffset, _currentValueLength);
         public long CurrentMetadataStart => _currentMetaStart;
-
-        public void Dispose() { /* No long-lived state to release. */ }
 
         /// <summary>
         /// Descend leftmost from the node ending at <paramref name="absEnd"/> down to a leaf,
