@@ -42,6 +42,7 @@ using Nethermind.Evm;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -582,6 +583,86 @@ public class BlockProcessorTests
         balManager.GeneratedBlockAccessList.AddBalanceChange(highAddress, before: 0, after: 2);
 
         Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+    }
+
+    [Test]
+    public void SetBlockAccessList_uses_suggested_encoded_bal_after_validation()
+    {
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+        suggestedBal.AddStorageRead(TestItem.AddressA, 1);
+        byte[] encodedBal = Rlp.Encode(suggestedBal).Bytes;
+        Hash256 expectedHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(Eip7928Constants.ItemCost)
+            .WithTransactions([])
+            .WithBlockAccessList(suggestedBal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        balManager.SetBlockAccessList(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.EncodedBlockAccessList, Is.SameAs(encodedBal));
+            Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(expectedHash));
+        }
+    }
+
+    [Test]
+    public void SetBlockAccessList_validates_post_execution_index_before_using_suggested_encoding()
+    {
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        BlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges(new BalanceChange(1, 1))
+                    .TestObject)
+            .TestObject;
+        byte[] encodedBal = Rlp.Encode(suggestedBal).Bytes;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions([])
+            .WithBlockAccessList(suggestedBal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        balManager.Setup(block);
+
+        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException? thrown =
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => balManager.SetBlockAccessList(block));
+
+        Assert.That(thrown!.Message, Does.Contain("index 1"));
+    }
+
+    [Test]
+    public void PrepareBlockForProcessing_preserves_encoded_bal_sidecar()
+    {
+        BlockAccessList suggestedBal = new();
+        byte[] encodedBal = Rlp.Encode(suggestedBal).Bytes;
+        Block suggestedBlock = Build.A.Block
+            .WithBlockAccessList(suggestedBal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .TestObject;
+        TestableBlockProcessor processor = new();
+
+        Block preparedBlock = processor.Prepare(suggestedBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preparedBlock.BlockAccessList, Is.SameAs(suggestedBal));
+            Assert.That(preparedBlock.EncodedBlockAccessList, Is.SameAs(encodedBal));
+        }
     }
 
     [TestCase(1)]
@@ -1125,6 +1206,28 @@ public class BlockProcessorTests
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             new ParallelTestBlockAccessListManager(transactionProcessor),
             LimboLogs.Instance);
+    }
+
+    private sealed class TestableBlockProcessor : BlockProcessor
+    {
+        public TestableBlockProcessor()
+            : base(
+                new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+                Substitute.For<IWorldState>(),
+                NullReceiptStorage.Instance,
+                Substitute.For<IBeaconBlockRootHandler>(),
+                Substitute.For<IBlockhashStore>(),
+                LimboLogs.Instance,
+                Substitute.For<IWithdrawalProcessor>(),
+                Substitute.For<IExecutionRequestsProcessor>(),
+                Substitute.For<IBlockAccessListManager>())
+        {
+        }
+
+        public Block Prepare(Block suggestedBlock) => PrepareBlockForProcessing(suggestedBlock);
     }
 
     private sealed class TrackingReadOnlyTxProcessingEnvFactory : IReadOnlyTxProcessingEnvFactory

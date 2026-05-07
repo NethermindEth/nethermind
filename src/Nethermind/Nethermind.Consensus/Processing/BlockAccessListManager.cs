@@ -65,6 +65,7 @@ public class BlockAccessListManager(
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
     private bool _hasGeneratedRequiredReadAccountMismatch;
+    private bool _canUseSuggestedEncodedBlockAccessList;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -94,6 +95,12 @@ public class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
+            _canUseSuggestedEncodedBlockAccessList =
+                !_isBuilding &&
+                !options.ContainsFlag(ProcessingOptions.NoValidation) &&
+                suggestedBlock.BlockAccessList is not null &&
+                suggestedBlock.EncodedBlockAccessList is { Length: > 0 };
+
             if (suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
@@ -360,6 +367,15 @@ public class BlockAccessListManager(
 
             MergeAndReturnBal(uint.MaxValue);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+
+            if (CanUseSuggestedEncodedBlockAccessList(block))
+            {
+                ValidateBlockAccessList(block, (uint)block.Transactions.Length + 1);
+                byte[] encodedBlockAccessList = block.EncodedBlockAccessList!;
+                block.Header.BlockAccessListHash = new(ValueKeccak.Compute(encodedBlockAccessList).Bytes);
+                return;
+            }
+
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
         }
@@ -568,6 +584,11 @@ public class BlockAccessListManager(
         _generatedChargeableStorageReads += chargeableStorageReadDelta;
     }
 
+    private bool CanUseSuggestedEncodedBlockAccessList(Block block) =>
+        _canUseSuggestedEncodedBlockAccessList &&
+        block.BlockAccessList is not null &&
+        block.EncodedBlockAccessList is { Length: > 0 };
+
     private void RegisterGeneratedDelta(BlockAccessList blockAccessList)
     {
         _generatedValidationIndex?.Add(blockAccessList);
@@ -689,6 +710,7 @@ public class BlockAccessListManager(
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
         _hasGeneratedRequiredReadAccountMismatch = false;
+        _canUseSuggestedEncodedBlockAccessList = false;
         GeneratedBlockAccessList.Reset();
     }
 
