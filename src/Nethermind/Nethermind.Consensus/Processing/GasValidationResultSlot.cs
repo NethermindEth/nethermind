@@ -6,7 +6,6 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Consensus.Processing;
