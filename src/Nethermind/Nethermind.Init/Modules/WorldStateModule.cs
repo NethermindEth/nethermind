@@ -33,12 +33,17 @@ public class WorldStateModule(IInitConfig initConfig) : Module
                 DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
-                return new FullPruningDb(
+                FullPruningDb db = new(
                     stateDbSettings,
                     dbFactory is not MemDbFactory
                         ? new FullPruningInnerDbFactory(dbFactory, fileSystem, stateDbSettings.DbPath)
                         : dbFactory,
                     () => Interlocked.Increment(ref Nethermind.Db.Metrics.StateDbInPruningWrites));
+                // Register the outer wrapper so GatherMetric() always reflects the currently active
+                // inner DB, even across full-pruning cycles. Inner DBs are excluded from tracking
+                // via SkipMetricsTracking (set by FullPruningInnerDbFactory) to avoid stale entries.
+                ctx.ResolveOptional<DbMonitoringModule.DbTracker>()?.AddDb(stateDbSettings.DbName, db);
+                return db;
             })
 
             .AddSingleton<INodeStorageFactory>(ctx =>

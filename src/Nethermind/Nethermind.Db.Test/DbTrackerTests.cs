@@ -77,6 +77,73 @@ public class DbTrackerTests
         Assert.That(Metrics.DbReads["TestDb"], isProcessing ? Is.EqualTo(0) : Is.EqualTo(10));
     }
 
+    [Test]
+    public void TestSkipMetricsTracking()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddSingleton<DbMonitoringModule.DbTracker>()
+            .AddSingleton<IDbConfig>(new DbConfig())
+            .AddSingleton<HyperClockCacheWrapper>()
+            .AddSingleton<IMetricsConfig>(new MetricsConfig())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IMonitoringService>(NoopMonitoringService.Instance)
+            .AddDecorator<IDbFactory, DbMonitoringModule.DbTracker.DbFactoryInterceptor>()
+            .AddSingleton<IDbFactory, MemDbFactory>()
+            .Build();
+
+        IDbFactory dbFactory = container.Resolve<IDbFactory>();
+        DbMonitoringModule.DbTracker tracker = container.Resolve<DbMonitoringModule.DbTracker>();
+
+        DbSettings skipped = new("SkippedDb", "SkippedDb") { SkipMetricsTracking = true };
+        DbSettings tracked = new("TrackedDb", "TrackedDb");
+
+        dbFactory.CreateDb(skipped);
+        dbFactory.CreateDb(tracked);
+
+        tracker.GetAllDbMeta().Count().Should().Be(1);
+        tracker.GetAllDbMeta().First().Key.Should().Be("TrackedDb");
+    }
+
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void ExceptionInGatherMetricDoesNotAbortOtherDbs()
+    {
+        IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
+        Action updateAction = null!;
+        monitoringService
+            .When(m => m.AddMetricsUpdateAction(Arg.Any<Action>()))
+            .Do(c => updateAction = (Action)c[0]);
+
+        IDbFactory fakeDbFactory = Substitute.For<IDbFactory>();
+
+        using IContainer container = new ContainerBuilder()
+            .AddSingleton<DbMonitoringModule.DbTracker>()
+            .AddSingleton<IDbConfig>(new DbConfig())
+            .AddSingleton<HyperClockCacheWrapper>()
+            .AddSingleton<IMetricsConfig>(new MetricsConfig())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IMonitoringService>(monitoringService)
+            .AddDecorator<IDbFactory, DbMonitoringModule.DbTracker.DbFactoryInterceptor>()
+            .AddSingleton<IDbFactory>(fakeDbFactory)
+            .Build();
+
+        ThrowingDb throwingDb = new();
+        FakeDb goodDb = new(new IDbMeta.DbMetric { TotalReads = 42 });
+        fakeDbFactory.CreateDb(Arg.Is<DbSettings>(s => s.DbName == "ThrowingDb")).Returns(throwingDb);
+        fakeDbFactory.CreateDb(Arg.Is<DbSettings>(s => s.DbName == "GoodDb")).Returns(goodDb);
+
+        IDbFactory intercepted = container.Resolve<IDbFactory>();
+        intercepted.CreateDb(new DbSettings("ThrowingDb", "ThrowingDb"));
+        intercepted.CreateDb(new DbSettings("GoodDb", "GoodDb"));
+
+        Metrics.DbReads["GoodDb"] = 0;
+
+        updateAction!();
+
+        Assert.That(Metrics.DbReads.ContainsKey("GoodDb"), Is.True);
+        Assert.That(Metrics.DbReads["GoodDb"], Is.EqualTo(42));
+    }
+
     [Parallelizable(ParallelScope.None)]
     [Test]
     public void DoesNotUpdateIfIntervalHasNotPassed()
@@ -148,5 +215,10 @@ public class DbTrackerTests
         public override IDbMeta.DbMetric GatherMetric() => _metric;
 
         internal void SetMetric(IDbMeta.DbMetric metric) => _metric = metric;
+    }
+
+    private class ThrowingDb : TestMemDb, IDbMeta
+    {
+        public override IDbMeta.DbMetric GatherMetric() => throw new InvalidOperationException("Simulated GatherMetric failure");
     }
 }

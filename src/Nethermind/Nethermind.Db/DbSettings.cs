@@ -12,6 +12,7 @@ namespace Nethermind.Db
 
         public bool DeleteOnStart { get; set; }
         public bool CanDeleteFolder { get; set; } = true;
+        public bool SkipMetricsTracking { get; set; }
 
         public IMergeOperator? MergeOperator { get; set; }
         public Dictionary<string, IMergeOperator>? ColumnsMergeOperators { get; set; }

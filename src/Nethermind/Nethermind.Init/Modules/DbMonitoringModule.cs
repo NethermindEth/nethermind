@@ -84,14 +84,21 @@ public class DbMonitoringModule : Module
 
                 foreach (KeyValuePair<string, IDbMeta> kv in GetAllDbMeta())
                 {
-                    // Note: At the moment, the metric for a columns db is combined across column.
-                    IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric();
-                    Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
-                    Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
-                    Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
-                    Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
-                    Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
-                    Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
+                    try
+                    {
+                        // Note: At the moment, the metric for a columns db is combined across column.
+                        IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric();
+                        Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
+                        Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
+                        Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
+                        Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
+                        Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
+                        Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Failed to gather metrics for DB '{kv.Key}': {e}");
+                    }
                 }
 
                 Db.Metrics.DbBlockCacheSize["Shared"] = _sharedBlockCache.Value.GetUsage();
@@ -109,7 +116,7 @@ public class DbMonitoringModule : Module
             public IDb CreateDb(DbSettings dbSettings)
             {
                 IDb db = baseFactory.CreateDb(dbSettings);
-                if (db is IDbMeta dbMeta)
+                if (!dbSettings.SkipMetricsTracking && db is IDbMeta dbMeta)
                 {
                     tracker.AddDb(dbSettings.DbName, dbMeta);
                 }
@@ -119,7 +126,7 @@ public class DbMonitoringModule : Module
             public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
             {
                 IColumnsDb<T> db = baseFactory.CreateColumnsDb<T>(dbSettings);
-                if (db is IDbMeta dbMeta)
+                if (!dbSettings.SkipMetricsTracking && db is IDbMeta dbMeta)
                 {
                     tracker.AddDb(dbSettings.DbName, dbMeta);
                 }
