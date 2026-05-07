@@ -61,6 +61,11 @@ internal static class HsstDenseByteIndexReader
     /// Exact-match or floor lookup over a DenseByteIndex HSST. The <paramref name="key"/>
     /// must be a single byte (multi-byte/empty rejects). Floor semantics: largest tag
     /// index <c>≤ key[0]</c> whose entry length is non-zero (gap entries are skipped).
+    ///
+    /// Pins the entire <c>Ends</c> array once (≤ Count·OffsetSize bytes ≤ 1.5 KiB) and
+    /// resolves entry bounds locally. Avoids the previous per-entry <c>TryRead</c> for
+    /// gap-skipping floor walks, where sparse maps could pay one read per zero-length
+    /// entry.
     /// </summary>
     public static bool TrySeek<TReader, TPin>(
         scoped in TReader reader, Bound bound, scoped ReadOnlySpan<byte> key,
@@ -75,18 +80,23 @@ internal static class HsstDenseByteIndexReader
         if (key.Length != 1) return false;
         int target = key[0];
 
+        long endsTotal = (long)L.Count * L.OffsetSize;
+        if (endsTotal > int.MaxValue) return false;
+        using TPin endsPin = reader.PinBuffer(L.EndsStart, endsTotal);
+        ReadOnlySpan<byte> ends = endsPin.Buffer;
+
         if (exactMatch)
         {
             if ((uint)target >= (uint)L.Count) return false;
-            return ResolveEntryBound<TReader, TPin>(in reader, L, target, out resultBound);
+            return TryResolveLocal(L, ends, target, out resultBound);
         }
 
         // Floor: walk back from min(target, Count − 1) and skip zero-length entries.
+        // Reads are now span slices — no IO per gap.
         int idx = target < L.Count ? target : L.Count - 1;
         while (idx >= 0)
         {
-            if (!ResolveEntryBound<TReader, TPin>(in reader, L, idx, out Bound b))
-                return false;
+            if (!TryResolveLocal(L, ends, idx, out Bound b)) return false;
             if (b.Length > 0)
             {
                 resultBound = b;
@@ -97,26 +107,11 @@ internal static class HsstDenseByteIndexReader
         return false;
     }
 
-    private static bool ResolveEntryBound<TReader, TPin>(scoped in TReader reader, Layout L, int idx, out Bound entryBound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
+    private static bool TryResolveLocal(Layout L, ReadOnlySpan<byte> ends, int idx, out Bound entryBound)
     {
         entryBound = default;
-        Span<byte> endsBuf = stackalloc byte[16]; // covers 2 · max(OffsetSize=6).
-        long prevEnd, thisEnd;
-        if (idx == 0)
-        {
-            if (!reader.TryRead(L.EndsStart, endsBuf[..L.OffsetSize])) return false;
-            prevEnd = 0;
-            thisEnd = ReadEnd(endsBuf, 0, L.OffsetSize);
-        }
-        else
-        {
-            int span = 2 * L.OffsetSize;
-            if (!reader.TryRead(L.EndsStart + (long)(idx - 1) * L.OffsetSize, endsBuf[..span])) return false;
-            prevEnd = ReadEnd(endsBuf, 0, L.OffsetSize);
-            thisEnd = ReadEnd(endsBuf, L.OffsetSize, L.OffsetSize);
-        }
+        long prevEnd = idx == 0 ? 0 : ReadEnd(ends, (idx - 1) * L.OffsetSize, L.OffsetSize);
+        long thisEnd = ReadEnd(ends, idx * L.OffsetSize, L.OffsetSize);
         if (thisEnd < prevEnd) return false;
         long valueLen = thisEnd - prevEnd;
         if (valueLen > int.MaxValue) return false;

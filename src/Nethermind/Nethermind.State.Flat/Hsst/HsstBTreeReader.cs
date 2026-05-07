@@ -96,10 +96,22 @@ internal static class HsstBTreeReader
     }
 
     /// <summary>
+    /// Speculative pin window. Covers every intermediate node (capped at
+    /// <see cref="HsstBTreeOptions.DefaultMaxIntermediateBytes"/> = 2 KiB) and most leaves
+    /// in one read. Larger leaves fall back to a precise re-pin.
+    /// </summary>
+    private const int SpeculativePinSize = 4096;
+
+    /// <summary>
     /// Load the index node whose exclusive end is <paramref name="absEnd"/> via the reader's
     /// <see cref="IHsstByteReader{TPin}.PinBuffer"/>. On success outs the parsed <see cref="HsstIndex"/>,
     /// the node's absolute start offset, and the pin (whose <see cref="IBufferPin.Buffer"/> backs
     /// <paramref name="node"/>). The caller must dispose the pin once it's done with the node.
+    ///
+    /// Issues a single speculative pin sized to <see cref="SpeculativePinSize"/> in the common
+    /// case: the trailing footer is parsed to compute totalNodeSize, and when the node fits
+    /// inside the speculative window we keep that pin instead of re-pinning precisely. Cold
+    /// path (oversized leaves) disposes the speculative pin and re-pins exactly.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryLoadNode<TReader, TPin>(
@@ -117,21 +129,21 @@ internal static class HsstBTreeReader
         // BSearchIndex footer is fixed-width; its tail is 6 bytes
         //   [valueSize u8][keySize u16][keyCount u16][flags u8]
         // preceded by a mandatory 6-byte BaseOffset and an optional
-        // [common-prefix bytes][prefixLen u8]. Common-prefix is capped at 128
-        // bytes by the layout planner; pin a bounded window covering the
-        // worst-case footer so the entire block is in one read.
-        const int MaxFooterBytes = 6 + 1 + 128 + 6;
-        long footerStart = Math.Max(0, absEnd - MaxFooterBytes);
-        int footerLen = (int)(absEnd - footerStart);
+        // [common-prefix bytes][prefixLen u8]. Speculative window covers the worst-case
+        // footer plus the whole node body for typical sizes.
+        long winStart = Math.Max(0, absEnd - SpeculativePinSize);
+        int winLen = (int)(absEnd - winStart);
 
-        int totalNodeSize;
-        using (TPin metaPin = reader.PinBuffer(footerStart, footerLen))
+        int totalNodeSize = 0;
+        TPin speculativePin = reader.PinBuffer(winStart, winLen);
+        bool keepSpeculative = false;
+        try
         {
-            ReadOnlySpan<byte> metaSpan = metaPin.Buffer;
-            byte flags = metaSpan[footerLen - 1];
-            int valueSize = metaSpan[footerLen - 6];
-            int keySize = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 5)..]);
-            int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(metaSpan[(footerLen - 3)..]);
+            ReadOnlySpan<byte> win = speculativePin.Buffer;
+            byte flags = win[winLen - 1];
+            int valueSize = win[winLen - 6];
+            int keySize = BinaryPrimitives.ReadUInt16LittleEndian(win[(winLen - 5)..]);
+            int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(win[(winLen - 3)..]);
             int keyType = (flags >> 1) & 0x03;
             int valueType = (flags >> 3) & 0x03;
             int keySectionSize = keyType switch { 0 => keySize, _ => keyCount * keySize };
@@ -139,15 +151,32 @@ internal static class HsstBTreeReader
             int extraFooter = 6; // mandatory BaseOffset
             if ((flags & 0x40) != 0)
             {
-                int prefixLen = metaSpan[footerLen - 7];
+                int prefixLen = win[winLen - 7];
                 extraFooter += 1 + prefixLen;
             }
             totalNodeSize = valueSectionSize + keySectionSize + 6 + extraFooter;
+
+            nodeAbsStart = absEnd - totalNodeSize;
+            if (nodeAbsStart < 0) return false;
+
+            if (totalNodeSize <= winLen)
+            {
+                // Hot path: node fits in the speculative window. ReadFromEnd parses the
+                // footer at win[winLen - …] and slices keys/values backwards within the
+                // node range; bytes earlier in the window (before nodeAbsStart) are
+                // never read.
+                node = HsstIndex.ReadFromEnd(win, winLen);
+                pin = speculativePin;
+                keepSpeculative = true;
+                return true;
+            }
+        }
+        finally
+        {
+            if (!keepSpeculative) speculativePin.Dispose();
         }
 
-        nodeAbsStart = absEnd - totalNodeSize;
-        if (nodeAbsStart < 0) return false;
-
+        // Cold path: node larger than the speculative window. Pin precisely.
         pin = reader.PinBuffer(nodeAbsStart, totalNodeSize);
         node = HsstIndex.ReadFromEnd(pin.Buffer, totalNodeSize);
         return true;
