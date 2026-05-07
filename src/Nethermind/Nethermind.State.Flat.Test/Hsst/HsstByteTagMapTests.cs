@@ -47,7 +47,7 @@ public class HsstByteTagMapTests
     {
         List<(byte, byte[])> entries = [];
         SpanByteReader reader = new(data);
-        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
         while (e.MoveNext())
         {
             Bound kb = e.Current.KeyBound;

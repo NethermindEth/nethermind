@@ -231,7 +231,7 @@ public class HsstLargeBuildTests
         {
             byte* dataPtr = ptr + accessor.PointerOffset;
             MmapByteReader reader = new(dataPtr, size);
-            using HsstEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
+            using HsstRefEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
             Span<byte> expectedKey = stackalloc byte[8];
             Span<byte> expectedValue = stackalloc byte[PackedValueSize];
             long i = 0;
@@ -288,7 +288,7 @@ public class HsstLargeBuildTests
             {
                 case IndexType.ByteTagMap:
                 {
-                    using HsstEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
+                    using HsstRefEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
                     int i = 0;
                     while (e.MoveNext())
                     {
@@ -309,7 +309,7 @@ public class HsstLargeBuildTests
                 }
                 case IndexType.DenseByteIndex:
                 {
-                    // DenseByteIndex has no HsstEnumerator support — it's point-lookup only.
+                    // DenseByteIndex has no HsstRefEnumerator support — it's point-lookup only.
                     // Verify every tag 0..ByteKeyEntryCount-1 round-trips via HsstReader.TrySeek.
                     Span<byte> keyBuf = stackalloc byte[1];
                     for (int i = 0; i < ByteKeyEntryCount; i++)
@@ -361,8 +361,8 @@ public class HsstLargeBuildTests
             MmapByteReader rA = new(dataA, sizeA);
             MmapByteReader rB = new(dataB, sizeB);
 
-            using HsstMergeEnumerator<MmapByteReader, NoOpPin> eA = new(in rA, new Bound(0, sizeA));
-            using HsstMergeEnumerator<MmapByteReader, NoOpPin> eB = new(in rB, new Bound(0, sizeB));
+            using HsstEnumerator<MmapByteReader, NoOpPin> eA = new(in rA, new Bound(0, sizeA));
+            using HsstEnumerator<MmapByteReader, NoOpPin> eB = new(in rB, new Bound(0, sizeB));
             bool moreA = eA.MoveNext(in rA);
             bool moreB = eB.MoveNext(in rB);
 
@@ -451,8 +451,8 @@ public class HsstLargeBuildTests
 
     private static int ComparePins(
         scoped in MmapByteReader rA, scoped in MmapByteReader rB,
-        scoped in HsstMergeEnumerator<MmapByteReader, NoOpPin> eA,
-        scoped in HsstMergeEnumerator<MmapByteReader, NoOpPin> eB,
+        scoped in HsstEnumerator<MmapByteReader, NoOpPin> eA,
+        scoped in HsstEnumerator<MmapByteReader, NoOpPin> eB,
         bool moreA, bool moreB)
     {
         if (!moreA) return 1;

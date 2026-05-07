@@ -75,7 +75,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     public ref struct SelfDestructEnumerator : IDisposable
     {
         private readonly WholeReadSessionReader _reader;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         private Bound _curKey;
         private Bound _curValue;
 
@@ -84,7 +84,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _reader = reader;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
-            _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
+            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
         public bool MoveNext()
@@ -151,7 +151,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     public ref struct AccountEnumerator : IDisposable
     {
         private readonly WholeReadSessionReader _reader;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         private Bound _curKey;
         private Bound _curRlp;
 
@@ -160,7 +160,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _reader = reader;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
-            _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
+            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
         public bool MoveNext()
@@ -229,9 +229,9 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     public ref struct StorageEnumerator : IDisposable
     {
         private readonly WholeReadSessionReader _reader;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _prefixEnum;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _suffixEnum;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _prefixEnum;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _suffixEnum;
         private byte _level; // 0=need new addr, 1=have prefixEnum, 2=have suffixEnum
         private ValueHash256 _curAddrHash;
         private Bound _curPrefix;
@@ -243,7 +243,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _reader = reader;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
-            _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
+            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
             _level = 0;
             _curAddrHash = default;
         }
@@ -271,7 +271,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     {
                         KeyValueEntry prefixEntry = _prefixEnum.Current;
                         _curPrefix = prefixEntry.KeyBound;
-                        _suffixEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, prefixEntry.ValueBound);
+                        _suffixEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, prefixEntry.ValueBound);
                         _level = 2;
                         continue;
                     }
@@ -296,7 +296,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 _curAddrHash = default;
                 using (NoOpPin addrPin = Pin(in _reader, addrEntry.KeyBound))
                     addrPin.Buffer.CopyTo(_curAddrHash.BytesAsSpan);
-                _prefixEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound);
+                _prefixEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound);
                 _level = 1;
             }
         }
@@ -350,7 +350,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     {
         private readonly PersistedSnapshot _snapshot;
         private readonly WholeReadSessionReader _reader;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _inner;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _inner;
         private byte _stage; // 0=TopNodes, 1=CompactNodes, 2=Fallback, 3=done
         private Bound _curKey;
         private Bound _curValue;
@@ -363,11 +363,11 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _inner = OpenColumn(in _reader, PersistedSnapshot.StateTopNodesTag);
         }
 
-        private static HsstEnumerator<WholeReadSessionReader, NoOpPin> OpenColumn(scoped in WholeReadSessionReader reader, byte[] tag)
+        private static HsstRefEnumerator<WholeReadSessionReader, NoOpPin> OpenColumn(scoped in WholeReadSessionReader reader, byte[] tag)
         {
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader);
             Bound b = r.TrySeek(tag, out _) ? r.GetBound() : default;
-            return new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
+            return new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
         }
 
         public bool MoveNext()
@@ -436,8 +436,8 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private readonly WholeReadSessionReader _reader;
         // Walks the unified column 0x01 (per-address). For each address-hash we open
         // the inner storage-trie sub-tags in order: compact (0x01) then fallback (0x02).
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
-        private HsstEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
+        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _pathEnum;
         // _stage: 0 = current address-hash's compact sub-tag, 1 = its fallback sub-tag.
         // Reported back to StorageNodeEntry for path-key decoding (compact 8 bytes vs.
         // fallback 33 bytes), so it doubles as the on-disk path-encoding selector.
@@ -457,12 +457,12 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _curHash = default;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
-            _addrEnum = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
+            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
         private static bool TryOpenSubTag(
             scoped in WholeReadSessionReader reader, Bound addrInner, byte[] subTag,
-            out HsstEnumerator<WholeReadSessionReader, NoOpPin> e)
+            out HsstRefEnumerator<WholeReadSessionReader, NoOpPin> e)
         {
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader, addrInner);
             if (!r.TrySeek(subTag, out _))
@@ -478,7 +478,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 e = default;
                 return false;
             }
-            e = new HsstEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
+            e = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
             return true;
         }
 

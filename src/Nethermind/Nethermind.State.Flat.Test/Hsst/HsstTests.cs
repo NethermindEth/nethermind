@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class HsstTests
 {
-    // ----- Helpers wrapping HsstReader/HsstEnumerator so the original test
+    // ----- Helpers wrapping HsstReader/HsstRefEnumerator so the original test
     //       bodies stay close to their pre-migration shape.
 
     /// <summary>Exact-match lookup. Returns false when <paramref name="key"/> isn't present.</summary>
@@ -32,7 +32,7 @@ public class HsstTests
     {
         List<(byte[] Key, byte[] Value)> entries = [];
         SpanByteReader reader = new(data);
-        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
         while (e.MoveNext())
         {
             Bound kb = e.Current.KeyBound;

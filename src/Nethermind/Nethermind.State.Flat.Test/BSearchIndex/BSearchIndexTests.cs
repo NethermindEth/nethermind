@@ -396,7 +396,7 @@ public class BSearchIndexTests
         SpanByteReader reader = new(data);
         // Count entries via the new enumerator and verify each key is reachable via TrySeek.
         int actualCount = 0;
-        using (HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
+        using (HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length)))
         {
             while (e.MoveNext()) actualCount++;
         }

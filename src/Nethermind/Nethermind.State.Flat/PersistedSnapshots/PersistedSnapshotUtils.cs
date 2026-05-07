@@ -307,7 +307,7 @@ internal static class PersistedSnapshotUtils
                 {
                     Span<byte> slotBytes = stackalloc byte[32];
                     Bound accountColumnBound = outerReader.GetBound();
-                    using HsstEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
+                    using HsstRefEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
                     while (addrEnum.MoveNext())
                     {
                         // Column 0x01 keys are the 20-byte address-hash prefix (keccak256(address)[..20]).
@@ -386,13 +386,13 @@ internal static class PersistedSnapshotUtils
                             // slotOff/slotLen are relative to perAddrSpan; reframe to compactedData
                             long perAddrAbs = addrEnum.Current.ValueBound.Offset;
                             Bound slotBound = new(perAddrAbs + slotOff, slotLen);
-                            using HsstEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
+                            using HsstRefEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
                             while (prefixEnum.MoveNext())
                             {
                                 ReadOnlySpan<byte> prefixKey = SliceFromBound(compactedData, prefixEnum.Current.KeyBound);
                                 Bound suffixBound = prefixEnum.Current.ValueBound;
 
-                                using HsstEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, suffixBound);
+                                using HsstRefEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, suffixBound);
                                 while (suffixEnum.MoveNext())
                                 {
                                     ReadOnlySpan<byte> suffixKey = SliceFromBound(compactedData, suffixEnum.Current.KeyBound);
@@ -458,7 +458,7 @@ internal static class PersistedSnapshotUtils
                 HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
                 if (r.TrySeek(PersistedSnapshot.StateTopNodesTag, out _))
                 {
-                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
                     while (e.MoveNext())
                     {
                         ReadOnlySpan<byte> key = SliceFromBound(compactedData, e.Current.KeyBound);
@@ -478,7 +478,7 @@ internal static class PersistedSnapshotUtils
                 HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
                 if (r.TrySeek(PersistedSnapshot.StateNodeTag, out _))
                 {
-                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
                     while (e.MoveNext())
                     {
                         ReadOnlySpan<byte> key = SliceFromBound(compactedData, e.Current.KeyBound);
@@ -498,7 +498,7 @@ internal static class PersistedSnapshotUtils
                 HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
                 if (r.TrySeek(PersistedSnapshot.StateNodeFallbackTag, out _))
                 {
-                    using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
                     while (e.MoveNext())
                     {
                         ReadOnlySpan<byte> key = SliceFromBound(compactedData, e.Current.KeyBound);

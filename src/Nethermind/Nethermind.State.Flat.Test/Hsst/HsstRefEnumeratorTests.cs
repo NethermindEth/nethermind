@@ -10,14 +10,14 @@ using NUnit.Framework;
 namespace Nethermind.State.Flat.Test;
 
 [TestFixture]
-public class HsstEnumeratorTests
+public class HsstRefEnumeratorTests
 {
     [Test]
     public void Enumerate_Empty_ReturnsNothing()
     {
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) => { });
         SpanByteReader reader = new(data);
-        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
         Assert.That(e.MoveNext(), Is.False);
     }
 
@@ -27,7 +27,7 @@ public class HsstEnumeratorTests
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer> builder) =>
             builder.Add("key1"u8, "value1"u8));
         SpanByteReader reader = new(data);
-        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
 
         Assert.That(e.MoveNext(), Is.True);
         Bound k = e.Current.KeyBound;
@@ -58,7 +58,7 @@ public class HsstEnumeratorTests
         entries.Sort((a, b) => string.Compare(a.Key, b.Key, StringComparison.Ordinal));
 
         SpanByteReader reader = new(data);
-        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
 
         int idx = 0;
         while (e.MoveNext())
@@ -106,7 +106,7 @@ public class HsstEnumeratorTests
         }, maxLeafEntries);
 
         SpanByteReader reader = new(data);
-        using HsstEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
 
         int idx = 0;
         while (e.MoveNext())
@@ -141,7 +141,7 @@ public class HsstEnumeratorTests
         });
 
         SpanByteReader reader = new(outer);
-        using HsstEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, outer.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, outer.Length));
 
         List<string> seenAddrs = [];
         Dictionary<string, List<string>> seenSubtags = [];
@@ -152,7 +152,7 @@ public class HsstEnumeratorTests
             seenAddrs.Add(addr);
             List<string> subs = [];
 
-            using HsstEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, outerEnum.Current.ValueBound);
+            using HsstRefEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, outerEnum.Current.ValueBound);
             while (innerEnum.MoveNext())
             {
                 Bound sk = innerEnum.Current.KeyBound;
