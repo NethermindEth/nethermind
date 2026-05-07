@@ -57,6 +57,7 @@ public partial class EthRpcModuleTests
     private const string SecondaryTestAddress = "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24";
     private const string BalanceOfCallData = "0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160";
     private const string CreateAccessListSender = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
+    private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
 
     private static readonly Address TestAccount = new(TestAccountAddress);
 
@@ -168,6 +169,27 @@ public partial class EthRpcModuleTests
         Transaction tx = null!;
         Assert.DoesNotThrow(() => tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm));
         Assert.That(tx.IsInMempoolForm());
+    }
+
+    [TestCase(true, TestName = "ByHash")]
+    [TestCase(false, TestName = "ByNumber")]
+    public async Task EthGetRawTransactionByBlockAndIndex_WhenValidIndex_ReturnsRlpHex(bool byHash)
+    {
+        using Context ctx = await Context.Create();
+        string method = byHash ? "eth_getRawTransactionByBlockHashAndIndex" : "eth_getRawTransactionByBlockNumberAndIndex";
+        string blockArg = byHash ? ctx.Test.BlockTree.FindHeadBlock()!.Hash!.ToString() : "latest";
+        string serialized = await ctx.Test.TestEthRpc(method, blockArg, "1");
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{ExpectedHeadTxRawAtIndex1}\",\"id\":67}}"));
+    }
+
+    [TestCase("eth_getRawTransactionByBlockHashAndIndex", null, "99", TestName = "IndexOutOfRange")]
+    [TestCase("eth_getRawTransactionByBlockNumberAndIndex", "0x9999999", "0", TestName = "BlockUnknown")]
+    public async Task EthGetRawTransactionByBlockAndIndex_WhenLookupFails_ReturnsNull(string method, string? blockOverride, string index)
+    {
+        using Context ctx = await Context.Create();
+        string blockArg = blockOverride ?? ctx.Test.BlockTree.FindHeadBlock()!.Hash!.ToString();
+        string serialized = await ctx.Test.TestEthRpc(method, blockArg, index);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
 
@@ -1311,6 +1333,35 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", "c0");
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
+    }
+
+    [TestCaseSource(nameof(SendRawTransactionSyncFailureCases))]
+    public async Task EthSendRawTransactionSync_WhenSubmitFailsOrTimesOut_ReturnsExpectedError(
+        string rawTxHex, string? timeoutMs, int expectedCode, string expectedMessageFragment)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = timeoutMs is null
+            ? await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex)
+            : await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex, timeoutMs);
+
+        serialized.Should().Contain($"\"code\":{expectedCode}");
+        serialized.Should().Contain(expectedMessageFragment);
+    }
+
+    private static IEnumerable<TestCaseData> SendRawTransactionSyncFailureCases()
+    {
+        yield return new TestCaseData("c0", null, ErrorCodes.TransactionRejected, "Invalid RLP")
+            .SetName("InvalidRlp");
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(3)
+            .WithGasLimit(21_000)
+            .WithGasPrice(20.GWei)
+            .To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        yield return new TestCaseData(raw, "100", ErrorCodes.Timeout, "not included within 100ms")
+            .SetName("Timeout");
     }
 
     [Test]

@@ -156,6 +156,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction);
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Submits a raw transaction and waits for inclusion in a block, returning the receipt or a timeout error.",
+            IsSharable = false)]
+        Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null);
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Executes a tx call (does not create a transaction)",
             IsSharable = false,
             ExampleResponse = "0x")]
@@ -232,6 +237,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "{\"hash\":\"0xfd320a4949990929f64b52041c58a74c8ce13289b3d6853bd8073b0580aa031a\",\"nonce\":\"0x5b\",\"blockHash\":\"0xd779e1a5ce8f34544d66d219bb3e5331a7b280fae89a36d7d52813a23e1ca1e3\",\"blockNumber\":\"0x4dfdd8\",\"transactionIndex\":\"0x8\",\"from\":\"0xadb540569e2db497bd973c141b0b63be98461e40\",\"to\":\"0x074b24cef703f17fe123fa1b82081055775b7004\",\"value\":\"0x0\",\"gasPrice\":\"0x12a05f200\",\"gas\":\"0x927c0\",\"data\":\"0x428dc451000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000030000000000000000000000005d3c0f4ca5ee99f8e8f59ff9a5fab04f6a7e007f0000000000000000000000009d233a907e065855d2a9c7d4b552ea27fb2e5a36000000000000000000000000cbe56b00d173a26a5978ce90db2e33622fd95a28\",\"input\":\"0x428dc451000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000030000000000000000000000005d3c0f4ca5ee99f8e8f59ff9a5fab04f6a7e007f0000000000000000000000009d233a907e065855d2a9c7d4b552ea27fb2e5a36000000000000000000000000cbe56b00d173a26a5978ce90db2e33622fd95a28\",\"type\":\"0x0\",\"v\":\"0x2e\",\"s\":\"0x37b90a929884787df717c87258f0434e2f115ce2fbb4bfc230322112fa9d5bbc\",\"r\":\"0x5222eff9e16b5c3e9e8901d9c45fc8e0f9cf774e8a56546a504025ef67ceefec\"}")]
         ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(
         [JsonRpcParameter(ExampleValue = "[\"5111256\",\"0x8\"]")] BlockParameter blockParameter, UInt256 positionIndex);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Retrieves a transaction RLP by block hash and index",
+            IsSharable = true)]
+        ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Retrieves a transaction RLP by block number and index",
+            IsSharable = true)]
+        ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Retrieves a transaction receipt by tx hash",

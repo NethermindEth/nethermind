@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -77,6 +78,8 @@ public partial class EthRpcModule(
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
     protected readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+    private readonly IBlockTree _blockTree = blockFinder as IBlockTree
+        ?? throw new ArgumentException($"Expected {nameof(IBlockTree)}, got {blockFinder?.GetType().Name}", nameof(blockFinder));
     protected readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     protected readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     protected readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -355,6 +358,88 @@ public partial class EthRpcModule(
         }
     }
 
+    public virtual async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
+    {
+        Transaction tx;
+        try
+        {
+            tx = TxDecoder.Instance.DecodeCompleteNotNull(transaction,
+                RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        }
+        catch (RlpException)
+        {
+            return ResultWrapper<ReceiptForRpc?>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+        }
+
+        int waitMs = ResolveSyncTimeoutMs(timeoutMs);
+        using CancellationTokenSource cts = new(waitMs);
+        // Coalescing signal — back-to-back blocks fold into a single Release (PeerManager pattern).
+        using SemaphoreSlim signal = new(0, 1);
+        void OnNewHead(object? sender, BlockEventArgs _)
+        {
+            if (signal.CurrentCount > 0) return;
+            lock (signal)
+            {
+                if (signal.CurrentCount > 0) return;
+                signal.Release();
+            }
+        }
+
+        // Subscribe before submit to avoid losing a fast inclusion to a race.
+        _blockTree.NewHeadBlock += OnNewHead;
+
+        try
+        {
+            ResultWrapper<Hash256> sendResult = await SendTx(tx);
+            if (sendResult.Result.ResultType != ResultType.Success)
+            {
+                return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
+            }
+            Hash256 hash = sendResult.Data;
+
+            // First iteration is the fast path — tx may already be mined.
+            while (true)
+            {
+                ReceiptForRpc? receipt = TryGetReceipt(hash);
+                if (receipt is not null)
+                {
+                    return ResultWrapper<ReceiptForRpc?>.Success(receipt);
+                }
+
+                try
+                {
+                    await signal.WaitAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return ResultWrapper<ReceiptForRpc?>.Fail(
+                        $"Transaction {hash} was added to the pool but not included within {waitMs}ms.",
+                        ErrorCodes.Timeout);
+                }
+            }
+        }
+        finally
+        {
+            _blockTree.NewHeadBlock -= OnNewHead;
+        }
+    }
+
+    private int ResolveSyncTimeoutMs(ulong? requestedMs)
+    {
+        int max = _rpcConfig.RpcTxSyncMaxTimeoutMs;
+        return requestedMs is { } req && req > 0
+            ? (int)Math.Min(req, (ulong)max)
+            : _rpcConfig.RpcTxSyncDefaultTimeoutMs;
+    }
+
+    private ReceiptForRpc? TryGetReceipt(Hash256 txHash)
+    {
+        (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
+        return receipt is null || gasInfo is null
+            ? null
+            : new ReceiptForRpc(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart);
+    }
+
     private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
         TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
     {
@@ -488,6 +573,31 @@ public partial class EthRpcModule(
         ResultWrapper<TransactionForRpc> result = GetTransactionByBlockAndIndex(blockParameter, positionIndex);
         if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {result.Data?.Hash}");
         return result;
+    }
+
+    public ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
+        => GetRawTransactionByBlockAndIndex(new BlockParameter(blockHash), positionIndex);
+
+    public ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+        => GetRawTransactionByBlockAndIndex(blockParameter, positionIndex);
+
+    private ResultWrapper<string?> GetRawTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<string?>.Success(null);
+        }
+
+        Block block = searchResult.Object!;
+        if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+        {
+            return ResultWrapper<string?>.Success(null);
+        }
+
+        Transaction transaction = block.Transactions[(int)positionIndex];
+        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
     }
 
     protected virtual ResultWrapper<TransactionForRpc?> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
