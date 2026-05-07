@@ -121,22 +121,38 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     public static bool operator !=(BlockAccessList left, BlockAccessList right) =>
         !(left == right);
 
-    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     public void Merge(BlockAccessList other)
+        => MergeCore(other, countChargeableStorageReads: false);
+
+    internal int MergeAndGetChargeableStorageReadCountDelta(BlockAccessList other)
+        => MergeCore(other, countChargeableStorageReads: true);
+
+    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
+    private int MergeCore(BlockAccessList other, bool countChargeableStorageReads)
     {
         _itemCount = null;
         _accountChanges.EnsureCapacity(_accountChanges.Count + other._accountChanges.Count);
         bool addedAccount = false;
+        int chargeableStorageReadDelta = 0;
         foreach (AccountChanges otherAccountChange in other.UnorderedAccountChanges)
         {
             if (_accountChanges.TryGetValue(otherAccountChange.Address, out AccountChanges? accountChange))
             {
+                int beforeChargeableStorageReads = countChargeableStorageReads ? CountChargeableStorageReads(accountChange) : 0;
                 accountChange.Merge(otherAccountChange);
+                if (countChargeableStorageReads)
+                {
+                    chargeableStorageReadDelta += CountChargeableStorageReads(accountChange) - beforeChargeableStorageReads;
+                }
             }
             else
             {
                 _accountChanges.Add(otherAccountChange.Address, otherAccountChange);
                 addedAccount = true;
+                if (countChargeableStorageReads)
+                {
+                    chargeableStorageReadDelta += CountChargeableStorageReads(otherAccountChange);
+                }
             }
         }
 
@@ -144,6 +160,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         {
             _sortedAccountChanges = null;
         }
+
+        return chargeableStorageReadDelta;
     }
 
     public AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
@@ -596,13 +614,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         return sortedAccountChanges;
     }
 
-    public static ChangeAtIndex CreateChangeAtIndex(AccountChanges accountChanges, uint index)
-    {
-        bool isSystemContract =
-            accountChanges.Address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
-            accountChanges.Address == Eip7251Constants.ConsolidationRequestPredeployAddress;
-
-        return new(
+    public static ChangeAtIndex CreateChangeAtIndex(AccountChanges accountChanges, uint index) =>
+        new(
             accountChanges.Address,
             accountChanges.BalanceChangeAtIndex(index),
             accountChanges.NonceChangeAtIndex(index),
@@ -610,8 +623,14 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
             accountChanges,
             index,
             accountChanges.HasSlotChangesAtIndex(index),
-            isSystemContract ? 0 : accountChanges.StorageReads.Count);
-    }
+            CountChargeableStorageReads(accountChanges));
+
+    internal static int CountChargeableStorageReads(AccountChanges accountChanges) =>
+        IsFreeStorageReadAccount(accountChanges.Address) ? 0 : accountChanges.StorageReads.Count;
+
+    internal static bool IsFreeStorageReadAccount(Address address) =>
+        address == Eip7002Constants.WithdrawalRequestPredeployAddress ||
+        address == Eip7251Constants.ConsolidationRequestPredeployAddress;
 
     private long CountItems()
     {

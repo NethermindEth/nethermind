@@ -59,6 +59,12 @@ public class BlockAccessListManager(
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
     private Hash256? _parentStateRoot;
+    private BlockAccessListValidationIndex? _suggestedValidationIndex;
+    private BlockAccessListValidationIndex? _generatedValidationIndex;
+    private int _suggestedChargeableStorageReads;
+    private int _generatedChargeableStorageReads;
+    private bool _hasGeneratedValidationIndexUpdates;
+    private bool _hasGeneratedRequiredReadAccountMismatch;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -88,6 +94,13 @@ public class BlockAccessListManager(
         if (Enabled)
         {
             Reset();
+            if (suggestedBlock.BlockAccessList is not null)
+            {
+                BlockAccessListValidationIndex.AddressIndex addressIndex = new();
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggestedBlock.BlockAccessList, suggestedBlock.Transactions.Length, addressIndex);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex);
+                _suggestedChargeableStorageReads = CountChargeableStorageReads(suggestedBlock.BlockAccessList);
+            }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
         }
@@ -131,7 +144,7 @@ public class BlockAccessListManager(
         if (Enabled)
         {
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+            MergeAndReturnBal(0);
             _txProcessorWithWorldStateManager.NextTransaction();
         }
     }
@@ -165,7 +178,7 @@ public class BlockAccessListManager(
 
         // Pre is held by main-thread system contract handlers — never went through Return,
         // so MergeAndReturnBal will detach it before merging.
-        _txProcessorWithWorldStateManager.MergeAndReturnBal(0, GeneratedBlockAccessList);
+        MergeAndReturnBal(0);
         ValidateBlockAccessList(block, 0);
 
         long totalRegularGas = 0;
@@ -209,7 +222,7 @@ public class BlockAccessListManager(
                 // the target now, in order, so incremental validation sees only data from
                 // txs 0..(j+1).
                 bool validateStorageReads = j == chunkEnd - 1;
-                _txProcessorWithWorldStateManager.MergeAndReturnBal((uint)(j + 1), GeneratedBlockAccessList);
+                MergeAndReturnBal((uint)(j + 1));
                 ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
             }
         }
@@ -345,7 +358,7 @@ public class BlockAccessListManager(
         {
             CheckInitialized();
 
-            _txProcessorWithWorldStateManager.MergeAndReturnBal(uint.MaxValue, GeneratedBlockAccessList);
+            MergeAndReturnBal(uint.MaxValue);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
@@ -361,6 +374,23 @@ public class BlockAccessListManager(
         }
 
         CheckInitialized();
+
+        if (_hasGeneratedValidationIndexUpdates &&
+            _generatedValidationIndex is not null &&
+            _suggestedValidationIndex is not null)
+        {
+            if (_hasGeneratedRequiredReadAccountMismatch ||
+                !_generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
+            {
+                ValidateBlockAccessListSlow(block, index, validateStorageReads);
+            }
+            else
+            {
+                ValidateSurplusStorageReads(block, validateStorageReads, _generatedChargeableStorageReads, _suggestedChargeableStorageReads);
+            }
+
+            return;
+        }
 
         if (!TryValidateBlockAccessListFast(block, suggestedBlockAccessList, index, validateStorageReads))
         {
@@ -532,6 +562,58 @@ public class BlockAccessListManager(
         }
     }
 
+    private void MergeAndReturnBal(uint balIndex)
+    {
+        int chargeableStorageReadDelta = _txProcessorWithWorldStateManager!.MergeAndReturnBal(balIndex, GeneratedBlockAccessList, RegisterGeneratedDelta);
+        _generatedChargeableStorageReads += chargeableStorageReadDelta;
+    }
+
+    private void RegisterGeneratedDelta(BlockAccessList blockAccessList)
+    {
+        _generatedValidationIndex?.Add(blockAccessList);
+        if (_suggestedValidationIndex is not null)
+        {
+            _hasGeneratedRequiredReadAccountMismatch |= HasRequiredReadAccountMissing(blockAccessList, _suggestedValidationIndex);
+        }
+
+        _hasGeneratedValidationIndexUpdates = true;
+    }
+
+    private static bool HasRequiredReadAccountMissing(BlockAccessList generatedDelta, BlockAccessListValidationIndex suggestedValidationIndex)
+    {
+        foreach (AccountChanges generatedAccountChanges in generatedDelta.UnorderedAccountChanges)
+        {
+            if (generatedAccountChanges.HasStateChanges)
+            {
+                continue;
+            }
+
+            ChangeAtIndex generated = BlockAccessList.CreateChangeAtIndex(generatedAccountChanges, generatedDelta.Index);
+            if (IsSystemAccountRead(generated, generatedDelta.Index) || HasOptionalStorageReads(generated))
+            {
+                continue;
+            }
+
+            if (!suggestedValidationIndex.HasAccount(generated.Address))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int CountChargeableStorageReads(BlockAccessList blockAccessList)
+    {
+        int storageReads = 0;
+        foreach (AccountChanges accountChanges in blockAccessList.UnorderedAccountChanges)
+        {
+            storageReads += BlockAccessList.CountChargeableStorageReads(accountChanges);
+        }
+
+        return storageReads;
+    }
+
     private static bool ChangesAtIndexEqual(in ChangeAtIndex generated, in ChangeAtIndex suggested, uint index) =>
         generated.BalanceChange == suggested.BalanceChange &&
         generated.NonceChange == suggested.NonceChange &&
@@ -601,6 +683,12 @@ public class BlockAccessListManager(
         _blockExecutionContext = null;
         _gasRemaining = null;
         _parentStateRoot = null;
+        _suggestedValidationIndex = null;
+        _generatedValidationIndex = null;
+        _suggestedChargeableStorageReads = 0;
+        _generatedChargeableStorageReads = 0;
+        _hasGeneratedValidationIndexUpdates = false;
+        _hasGeneratedRequiredReadAccountMismatch = false;
         GeneratedBlockAccessList.Reset();
     }
 
@@ -616,7 +704,7 @@ public class BlockAccessListManager(
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
         void NextTransaction();
         void Rollback();
-        void MergeAndReturnBal(uint balIndex, BlockAccessList target);
+        int MergeAndReturnBal(uint balIndex, BlockAccessList target, Action<BlockAccessList>? beforeMerge = null);
     }
 
     private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager, IDisposable
@@ -760,18 +848,20 @@ public class BlockAccessListManager(
         /// <summary>Merges the per-tx BAL into <paramref name="target"/> in caller-controlled
         /// order, then returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also
         /// detaches the BAL for pre/post callers that never went through Return.</summary>
-        public void MergeAndReturnBal(uint balIndex, BlockAccessList target)
+        public int MergeAndReturnBal(uint balIndex, BlockAccessList target, Action<BlockAccessList>? beforeMerge = null)
         {
             balIndex = ClampBalIndex(balIndex);
 
             Return(balIndex);
 
             BlockAccessList? source = _perTxBal[balIndex];
-            if (source is null) return;
+            if (source is null) return 0;
 
-            target.Merge(source);
+            beforeMerge?.Invoke(source);
+            int chargeableStorageReadDelta = target.MergeAndGetChargeableStorageReadCountDelta(source);
             _perTxBal[balIndex] = null;
             StaticPool<BlockAccessList>.Return(source);
+            return chargeableStorageReadDelta;
         }
 
         public void NextTransaction() { }
@@ -920,8 +1010,17 @@ public class BlockAccessListManager(
 
         public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
 
-        public void MergeAndReturnBal(uint _, BlockAccessList target)
-            => _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+        public int MergeAndReturnBal(uint _, BlockAccessList target, Action<BlockAccessList>? beforeMerge = null)
+        {
+            BlockAccessList? source = _txProcessorWithWorldState.WorldState.GetGeneratingBlockAccessList();
+            if (source is null)
+            {
+                return 0;
+            }
+
+            beforeMerge?.Invoke(source);
+            return target.MergeAndGetChargeableStorageReadCountDelta(source);
+        }
     }
 
     private class TxProcessorWithWorldState
