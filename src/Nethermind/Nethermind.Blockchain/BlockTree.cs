@@ -1028,6 +1028,8 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
+                _balStore.InsertFromBlock(block);
+
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);

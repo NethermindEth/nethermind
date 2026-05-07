@@ -11,19 +11,14 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         public IPeerAllocationStrategy Create(FastBlocksBatch request)
         {
-            TransferSpeedType speedType = TransferSpeedType.Latency;
-            if (request is HeadersSyncBatch)
+            TransferSpeedType speedType = request switch
             {
-                speedType = TransferSpeedType.Headers;
-            }
-            else if (request is BodiesSyncBatch)
-            {
-                speedType = TransferSpeedType.Bodies;
-            }
-            else if (request is ReceiptsSyncBatch)
-            {
-                speedType = TransferSpeedType.Receipts;
-            }
+                HeadersSyncBatch => TransferSpeedType.Headers,
+                BodiesSyncBatch => TransferSpeedType.Bodies,
+                ReceiptsSyncBatch => TransferSpeedType.Receipts,
+                BlockAccessListsSyncBatch => TransferSpeedType.BlockAccessLists,
+                _ => TransferSpeedType.Latency
+            };
 
             return new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized);
         }

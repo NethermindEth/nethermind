@@ -287,6 +287,28 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(DecodeContext, Throws.InstanceOf<RlpException>().With.Message.Contains(error).IgnoreCase);
         }
 
+        [Test]
+        public void Rejects_trailing_bytes_for_skip_typed_wrapping_transactions()
+        {
+            Transaction tx = BuildTypedTransaction();
+            byte[] malformed = AppendTrailingByte(_txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
+
+            Action decode = () => _txDecoder.DecodeGuardNotNull(malformed, RlpBehaviors.SkipTypedWrapping);
+
+            decode.Should().Throw<RlpException>();
+        }
+
+        [Test]
+        public void Rejects_trailing_bytes_for_wrapped_typed_transactions()
+        {
+            Transaction tx = BuildTypedTransaction();
+            byte[] malformedWrapped = Rlp.Encode(AppendTrailingByte(_txDecoder.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)).Bytes;
+
+            Action decode = () => _txDecoder.DecodeGuardNotNull(malformedWrapped, RlpBehaviors.InMempoolForm);
+
+            decode.Should().Throw<RlpException>();
+        }
+
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
         {
             yield return
@@ -407,6 +429,21 @@ namespace Nethermind.Core.Test.Encoding
                 Convert.ToHexString([0, .. _txDecoder.Encode(Build.A.Transaction.SignedAndResolved().TestObject).Bytes]),
                 "legacy"
             );
+        }
+
+        private static Transaction BuildTypedTransaction() => Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(TestItem.AddressA)
+            .SignedAndResolved(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA)
+            .TestObject;
+
+        private static byte[] AppendTrailingByte(byte[] encoded)
+        {
+            byte[] malformed = new byte[encoded.Length + 1];
+            encoded.CopyTo(malformed, 0);
+            malformed[^1] = Rlp.EmptyByteArrayByte;
+            return malformed;
         }
     }
 }
