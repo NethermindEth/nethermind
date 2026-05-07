@@ -185,4 +185,45 @@ public class AccountChangesPrestateTests
         byte[] result = slot.Get(0);
         Assert.That(result, Is.EqualTo(new byte[] { 0xAB }));
     }
+
+    [Test]
+    public void Storage_changes_enumerate_sorted_after_unsorted_writes()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+        ac.GetOrAddSlotChanges(9u).AddStorageChange(new StorageChange(0u, 0x99));
+        ac.GetOrAddSlotChanges(1u).AddStorageChange(new StorageChange(0u, 0x11));
+
+        Assert.That(ac.StorageChanges[0].Key, Is.EqualTo((UInt256)1u));
+        Assert.That(ac.StorageChanges[1].Key, Is.EqualTo((UInt256)9u));
+        Assert.That(ac.ChangedSlots[0], Is.EqualTo((UInt256)1u));
+        Assert.That(ac.ChangedSlots[1], Is.EqualTo((UInt256)9u));
+    }
+
+    [Test]
+    public void Storage_changes_sorted_cache_invalidates_when_new_slot_is_added()
+    {
+        AccountChanges ac = new(TestItem.AddressA);
+        ac.GetOrAddSlotChanges(9u).AddStorageChange(new StorageChange(0u, 0x99));
+
+        Assert.That(ac.StorageChanges[0].Key, Is.EqualTo((UInt256)9u));
+
+        ac.GetOrAddSlotChanges(1u).AddStorageChange(new StorageChange(0u, 0x11));
+
+        Assert.That(ac.StorageChanges[0].Key, Is.EqualTo((UInt256)1u));
+        Assert.That(ac.StorageChanges[1].Key, Is.EqualTo((UInt256)9u));
+    }
+
+    [Test]
+    public void Slot_changes_at_index_equal_is_independent_of_write_order()
+    {
+        AccountChanges left = new(TestItem.AddressA);
+        left.GetOrAddSlotChanges(9u).AddStorageChange(new StorageChange(0u, 0x99));
+        left.GetOrAddSlotChanges(1u).AddStorageChange(new StorageChange(0u, 0x11));
+
+        AccountChanges right = new(TestItem.AddressA);
+        right.GetOrAddSlotChanges(1u).AddStorageChange(new StorageChange(0u, 0x11));
+        right.GetOrAddSlotChanges(9u).AddStorageChange(new StorageChange(0u, 0x99));
+
+        Assert.That(left.SlotChangesAtIndexEqual(right, 0u), Is.True);
+    }
 }

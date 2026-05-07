@@ -314,11 +314,28 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     {
         Block = block;
         _currentIndex = 0;
+        CurrentTx = null;
+        _currentTxTracer = NullTxTracer.Instance;
         _txReceipts.Clear();
         _cumulativeBlockGasPerTx.Clear();
         _cumulativeReceiptGas = 0;
 
         _otherTracer.StartNewBlockTrace(block);
+    }
+
+    /// <summary>
+    /// Resets a pooled per-transaction tracer without sending block-start events to a
+    /// previously attached tracer. Parallel worker tracers attach the shared
+    /// parallel-safe tracer after reset, matching the old one-shot tracer setup.
+    /// </summary>
+    public void ResetForParallelTx(Block block, IBlockTracer otherTracer)
+    {
+        _otherTracer = NullBlockTracer.Instance;
+        StartNewBlockTrace(block);
+        if (otherTracer != NullBlockTracer.Instance)
+        {
+            SetOtherTracer(otherTracer);
+        }
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)

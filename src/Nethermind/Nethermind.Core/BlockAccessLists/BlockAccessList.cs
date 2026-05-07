@@ -15,6 +15,7 @@ using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Core.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Serialization.Rlp")]
 
 namespace Nethermind.Core.BlockAccessLists;
 
@@ -387,14 +388,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         CollectionsMarshal.SetCount(_storageDetails, storageDetailsCount);
     }
 
-    // todo: optimize early validation
-    public IEnumerable<ChangeAtIndex> GetChangesAtIndex(uint index)
-    {
-        foreach (AccountChanges accountChanges in GetSortedAccountChanges())
-        {
-            yield return CreateChangeAtIndex(accountChanges, index);
-        }
-    }
+    public ChangesAtIndexEnumerable GetChangesAtIndex(uint index) =>
+        new(GetSortedAccountChanges(), index);
 
     public override string ToString()
     {
@@ -622,7 +617,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         long count = _accountChanges.Count;
         foreach (AccountChanges accountChanges in _accountChanges.Values)
         {
-            count += accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;
+            count += accountChanges.StorageChangesCount + accountChanges.StorageReads.Count;
         }
         return count;
     }
@@ -797,6 +792,53 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         public readonly uint BlockAccessIndex = blockAccessIndex;
         public readonly long PreviousBlockAccessIndex = previousBlockAccessIndex;
         public readonly UInt256 PriorValue = priorValue;
+    }
+}
+
+public readonly struct ChangesAtIndexEnumerable
+{
+    private readonly AccountChanges[] _accountChanges;
+    private readonly uint _index;
+
+    internal ChangesAtIndexEnumerable(AccountChanges[] accountChanges, uint index)
+    {
+        _accountChanges = accountChanges;
+        _index = index;
+    }
+
+    public Enumerator GetEnumerator() => new(_accountChanges, _index);
+
+    public struct Enumerator
+    {
+        private readonly AccountChanges[] _accountChanges;
+        private readonly uint _index;
+        private int _position;
+        private ChangeAtIndex _current;
+
+        internal Enumerator(AccountChanges[] accountChanges, uint index)
+        {
+            _accountChanges = accountChanges;
+            _index = index;
+            _position = -1;
+            _current = default;
+        }
+
+        public readonly ChangeAtIndex Current => _current;
+
+        public bool MoveNext()
+        {
+            int next = _position + 1;
+            if (next >= _accountChanges.Length)
+            {
+                _position = _accountChanges.Length;
+                _current = default;
+                return false;
+            }
+
+            _position = next;
+            _current = BlockAccessList.CreateChangeAtIndex(_accountChanges[next], _index);
+            return true;
+        }
     }
 }
 

@@ -453,6 +453,21 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void Encoding_account_changes_orders_unsorted_generated_storage_changes()
+    {
+        AccountChanges accountChanges = new(TestItem.AddressA);
+        accountChanges.GetOrAddSlotChanges(9u).AddStorageChange(new StorageChange(0u, 0x99));
+        accountChanges.GetOrAddSlotChanges(1u).AddStorageChange(new StorageChange(0u, 0x11));
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+        AccountChanges decoded = Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None);
+
+        Assert.That(decoded.StorageChanges[0].Key, Is.EqualTo((UInt256)1u));
+        Assert.That(decoded.StorageChanges[1].Key, Is.EqualTo((UInt256)9u));
+        Assert.That(decoded, Is.EqualTo(accountChanges));
+    }
+
+    [Test]
     public void Decoding_account_changes_with_unsorted_storage_changes_throws()
     {
         UInt256 slot1 = UInt256.One;

@@ -29,6 +29,10 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
 
     public int Count => _realChanges.Count + (_hasPrestate ? 1 : 0);
 
+    internal bool HasPrestate => _hasPrestate;
+
+    internal ref readonly T Prestate => ref _prestate;
+
     public IndexedChangeKeys<T> Keys => new(this);
 
     public IndexedChangeValues<T> Values => new(this);

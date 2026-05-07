@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using System.Collections.Concurrent;
@@ -157,7 +156,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         CheckInitialized();
 
@@ -182,23 +181,23 @@ public class BlockAccessListManager(
             {
                 Transaction tx = block.Transactions[j];
 
-                (long blockGasUsed, long blockStateGasUsed, IntrinsicGas<EthereumGasPolicy> intrinsicGas, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                GasValidationResult gasResult = gasResults[j].GetResult();
                 // EIP-8037 per-tx 2D inclusion check (execution-specs PR 2703).
                 // totalRegularGas/totalStateGas reflect the cumulatives BEFORE this tx;
                 // the worst-case per-dimension contribution must fit the remaining budget.
                 // The worker precomputes intrinsic gas once and carries it here to avoid
                 // recalculating dynamic state-byte costs on the validation thread.
-                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in gasResult.IntrinsicGas);
 
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
                 // unlike the sequential path, which never reaches accounting on a rejected tx.
-                if (ex is not null)
-                    throw new ParallelExecutionException(ex);
+                if (gasResult.Exception is not null)
+                    throw new ParallelExecutionException(gasResult.Exception);
 
-                totalRegularGas += blockGasUsed;
-                totalStateGas += blockStateGasUsed;
-                SpendGas(blockGasUsed);
+                totalRegularGas += gasResult.BlockGasUsed;
+                totalStateGas += gasResult.BlockStateGasUsed;
+                SpendGas(gasResult.BlockGasUsed);
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 
@@ -429,8 +428,8 @@ public class BlockAccessListManager(
             return;
         }
 
-        IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
-        IEnumerator<ChangeAtIndex> suggestedChanges = block.BlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+        ChangesAtIndexEnumerable.Enumerator generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+        ChangesAtIndexEnumerable.Enumerator suggestedChanges = block.BlockAccessList.GetChangesAtIndex(index).GetEnumerator();
 
         ChangeAtIndex? generatedHead;
         ChangeAtIndex? suggestedHead;

@@ -20,10 +20,10 @@ public class AccountChanges : IEquatable<AccountChanges>
     public Address Address { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IList<SlotChanges> StorageChanges => _storageChanges.Values;
+    public IList<SlotChanges> StorageChanges => GetSortedStorageChanges();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
-    public IList<UInt256> ChangedSlots => _storageChanges.Keys;
+    public IList<UInt256> ChangedSlots => GetSortedChangedSlots();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public SortedSet<UInt256> StorageReads => _storageReads;
@@ -37,23 +37,32 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IndexedChangeValues<CodeChange> CodeChanges => _codeChanges.Values;
 
+    internal IndexedChanges<BalanceChange> BalanceChangeSet => _balanceChanges;
+
+    internal IndexedChanges<NonceChange> NonceChangeSet => _nonceChanges;
+
+    internal IndexedChanges<CodeChange> CodeChangeSet => _codeChanges;
+
+    internal int StorageChangesCount => _storageChanges.Count;
+
     [JsonIgnore]
     public bool ExistedBeforeBlock { get; set; }
 
     [JsonIgnore]
     public bool EmptyBeforeBlock { get; set; }
 
-    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
-    private readonly SortedList<UInt256, SlotChanges> _storageChanges;
+    private readonly Dictionary<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<UInt256> _storageReads;
     private readonly IndexedChanges<BalanceChange> _balanceChanges;
     private readonly IndexedChanges<NonceChange> _nonceChanges;
     private readonly IndexedChanges<CodeChange> _codeChanges;
+    private SlotChanges[]? _sortedStorageChanges;
+    private UInt256[]? _sortedChangedSlots;
 
     public AccountChanges()
     {
         Address = Address.Zero;
-        _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
+        _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
         _storageReads = new(GenericComparer.GetOptimized<UInt256>());
         _balanceChanges = new();
         _nonceChanges = new();
@@ -63,7 +72,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public AccountChanges(Address address)
     {
         Address = address;
-        _storageChanges = new(GenericComparer.GetOptimized<UInt256>());
+        _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
         _storageReads = new(GenericComparer.GetOptimized<UInt256>());
         _balanceChanges = new();
         _nonceChanges = new();
@@ -73,7 +82,8 @@ public class AccountChanges : IEquatable<AccountChanges>
     public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, SortedList<uint, BalanceChange> balanceChanges, SortedList<uint, NonceChange> nonceChanges, SortedList<uint, CodeChange> codeChanges)
     {
         Address = address;
-        _storageChanges = storageChanges;
+        _storageChanges = ToDictionary(storageChanges);
+        SeedSortedStorageCaches(storageChanges);
         _storageReads = storageReads;
         _balanceChanges = IndexedChanges<BalanceChange>.FromSortedList(balanceChanges);
         _nonceChanges = IndexedChanges<NonceChange>.FromSortedList(nonceChanges);
@@ -83,10 +93,30 @@ public class AccountChanges : IEquatable<AccountChanges>
     public static AccountChanges FromIndexedChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges) =>
         new(address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
 
+    public static AccountChanges FromSortedStorageChanges(Address address, SlotChanges[] storageChanges, SortedSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges) =>
+        new(address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
+
     private AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges)
     {
         Address = address;
-        _storageChanges = storageChanges;
+        _storageChanges = ToDictionary(storageChanges);
+        SeedSortedStorageCaches(storageChanges);
+        _storageReads = storageReads;
+        _balanceChanges = balanceChanges;
+        _nonceChanges = nonceChanges;
+        _codeChanges = codeChanges;
+    }
+
+    private AccountChanges(Address address, SlotChanges[] storageChanges, SortedSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges)
+    {
+        Address = address;
+        _storageChanges = new(storageChanges.Length, GenericEqualityComparer.GetOptimized<UInt256>());
+        for (int i = 0; i < storageChanges.Length; i++)
+        {
+            SlotChanges slotChanges = storageChanges[i];
+            _storageChanges.Add(slotChanges.Key, slotChanges);
+        }
+        _sortedStorageChanges = storageChanges;
         _storageReads = storageReads;
         _balanceChanges = balanceChanges;
         _nonceChanges = nonceChanges;
@@ -124,6 +154,7 @@ public class AccountChanges : IEquatable<AccountChanges>
             }
         }
 
+        bool addedStorageChange = false;
         foreach (KeyValuePair<UInt256, SlotChanges> kv in other._storageChanges)
         {
             if (_storageChanges.TryGetValue(kv.Key, out SlotChanges? existing))
@@ -133,10 +164,16 @@ public class AccountChanges : IEquatable<AccountChanges>
             else
             {
                 _storageChanges.Add(kv.Key, kv.Value);
+                addedStorageChange = true;
                 // When a new change is merged for a slot that previously only had a read,
                 // remove the now-redundant read. A change entry supersedes a read.
                 RemoveStorageRead(kv.Key);
             }
+        }
+
+        if (addedStorageChange)
+        {
+            InvalidateStorageOrder();
         }
 
         _balanceChanges.AddRange(other._balanceChanges);
@@ -156,6 +193,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
         {
             _storageChanges.Remove(key);
+            InvalidateStorageOrder();
             _storageReads.Add(key);
         }
     }
@@ -166,6 +204,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             SlotChanges slotChanges = new(key);
             _storageChanges.Add(key, slotChanges);
+            InvalidateStorageOrder();
             return slotChanges;
         }
         return existing;
@@ -173,24 +212,18 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public bool HasSlotChangesAtIndex(uint index)
     {
-        foreach (SlotChanges slotChanges in StorageChanges)
+        SlotChanges[] storageChanges = GetSortedStorageChanges();
+        for (int i = 0; i < storageChanges.Length; i++)
         {
+            SlotChanges slotChanges = storageChanges[i];
             if (slotChanges.Changes.ContainsKey(index))
                 return true;
         }
         return false;
     }
 
-    public IEnumerable<(SlotChanges SlotChanges, StorageChange StorageChange)> SlotChangePairsAtIndex(uint index)
-    {
-        foreach (SlotChanges slotChanges in StorageChanges)
-        {
-            if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
-            {
-                yield return (slotChanges, storageChange);
-            }
-        }
-    }
+    public SlotChangePairsAtIndexEnumerable SlotChangePairsAtIndex(uint index) =>
+        new(GetSortedStorageChanges(), index);
 
     public void AddStorageRead(UInt256 key)
         => _storageReads.Add(key);
@@ -200,12 +233,14 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public void SelfDestruct()
     {
-        foreach (UInt256 key in _storageChanges.Keys)
+        SlotChanges[] storageChanges = GetSortedStorageChanges();
+        for (int i = 0; i < storageChanges.Length; i++)
         {
-            AddStorageRead(key);
+            AddStorageRead(storageChanges[i].Key);
         }
 
         _storageChanges.Clear();
+        InvalidateStorageOrder();
         _nonceChanges.Clear();
         _codeChanges.Clear();
     }
@@ -289,8 +324,10 @@ public class AccountChanges : IEquatable<AccountChanges>
     public HashSet<UInt256> GetAllSlots(uint blockAccessIndex)
     {
         HashSet<UInt256> slots = [];
-        foreach (SlotChanges slotChange in _storageChanges.Values)
+        SlotChanges[] storageChanges = GetSortedStorageChanges();
+        for (int i = 0; i < storageChanges.Length; i++)
         {
+            SlotChanges slotChange = storageChanges[i];
             UInt256 lastValue = 0;
             foreach (StorageChange storageChange in slotChange.Changes.Values)
             {
@@ -352,10 +389,98 @@ public class AccountChanges : IEquatable<AccountChanges>
             ? change
             : null;
 
+    private SlotChanges[] GetSortedStorageChanges()
+    {
+        SlotChanges[]? sortedStorageChanges = _sortedStorageChanges;
+        if (sortedStorageChanges is not null)
+        {
+            return sortedStorageChanges;
+        }
+
+        if (_storageChanges.Count == 0)
+        {
+            _sortedStorageChanges = [];
+            return _sortedStorageChanges;
+        }
+
+        sortedStorageChanges = new SlotChanges[_storageChanges.Count];
+        _storageChanges.Values.CopyTo(sortedStorageChanges, 0);
+        Array.Sort(sortedStorageChanges, static (left, right) => left.Key.CompareTo(right.Key));
+        _sortedStorageChanges = sortedStorageChanges;
+        return sortedStorageChanges;
+    }
+
+    private UInt256[] GetSortedChangedSlots()
+    {
+        UInt256[]? sortedChangedSlots = _sortedChangedSlots;
+        if (sortedChangedSlots is not null)
+        {
+            return sortedChangedSlots;
+        }
+
+        SlotChanges[] storageChanges = GetSortedStorageChanges();
+        if (storageChanges.Length == 0)
+        {
+            _sortedChangedSlots = [];
+            return _sortedChangedSlots;
+        }
+
+        sortedChangedSlots = new UInt256[storageChanges.Length];
+        for (int i = 0; i < storageChanges.Length; i++)
+        {
+            sortedChangedSlots[i] = storageChanges[i].Key;
+        }
+        _sortedChangedSlots = sortedChangedSlots;
+        return sortedChangedSlots;
+    }
+
+    private void InvalidateStorageOrder()
+    {
+        _sortedStorageChanges = null;
+        _sortedChangedSlots = null;
+    }
+
+    private static Dictionary<UInt256, SlotChanges> ToDictionary(SortedList<UInt256, SlotChanges> storageChanges)
+    {
+        Dictionary<UInt256, SlotChanges> dictionary = new(storageChanges.Count, GenericEqualityComparer.GetOptimized<UInt256>());
+        IList<UInt256> keys = storageChanges.Keys;
+        IList<SlotChanges> values = storageChanges.Values;
+        for (int i = 0; i < storageChanges.Count; i++)
+        {
+            dictionary.Add(keys[i], values[i]);
+        }
+
+        return dictionary;
+    }
+
+    private void SeedSortedStorageCaches(SortedList<UInt256, SlotChanges> storageChanges)
+    {
+        int count = storageChanges.Count;
+        if (count == 0)
+        {
+            _sortedStorageChanges = [];
+            _sortedChangedSlots = [];
+            return;
+        }
+
+        SlotChanges[] sortedStorageChanges = new SlotChanges[count];
+        UInt256[] sortedChangedSlots = new UInt256[count];
+        IList<UInt256> keys = storageChanges.Keys;
+        IList<SlotChanges> values = storageChanges.Values;
+        for (int i = 0; i < count; i++)
+        {
+            sortedChangedSlots[i] = keys[i];
+            sortedStorageChanges[i] = values[i];
+        }
+
+        _sortedStorageChanges = sortedStorageChanges;
+        _sortedChangedSlots = sortedChangedSlots;
+    }
+
     public bool SlotChangesAtIndexEqual(AccountChanges other, uint index)
     {
-        using IEnumerator<(SlotChanges SlotChanges, StorageChange StorageChange)> left = SlotChangePairsAtIndex(index).GetEnumerator();
-        using IEnumerator<(SlotChanges SlotChanges, StorageChange StorageChange)> right = other.SlotChangePairsAtIndex(index).GetEnumerator();
+        SlotChangePairsAtIndexEnumerable.Enumerator left = SlotChangePairsAtIndex(index).GetEnumerator();
+        SlotChangePairsAtIndexEnumerable.Enumerator right = other.SlotChangePairsAtIndex(index).GetEnumerator();
 
         while (true)
         {
@@ -432,5 +557,55 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     private static bool SetEquals<T>(SortedSet<T> left, SortedSet<T> right)
         => left.Count == right.Count && left.SetEquals(right);
+
+    public readonly struct SlotChangePairsAtIndexEnumerable
+    {
+        private readonly SlotChanges[] _storageChanges;
+        private readonly uint _index;
+
+        internal SlotChangePairsAtIndexEnumerable(SlotChanges[] storageChanges, uint index)
+        {
+            _storageChanges = storageChanges;
+            _index = index;
+        }
+
+        public Enumerator GetEnumerator() => new(_storageChanges, _index);
+
+        public struct Enumerator
+        {
+            private readonly SlotChanges[] _storageChanges;
+            private readonly uint _index;
+            private int _slotIndex;
+            private (SlotChanges SlotChanges, StorageChange StorageChange) _current;
+
+            internal Enumerator(SlotChanges[] storageChanges, uint index)
+            {
+                _storageChanges = storageChanges;
+                _index = index;
+                _slotIndex = -1;
+                _current = default;
+            }
+
+            public readonly (SlotChanges SlotChanges, StorageChange StorageChange) Current => _current;
+
+            public bool MoveNext()
+            {
+                for (int i = _slotIndex + 1; i < _storageChanges.Length; i++)
+                {
+                    SlotChanges slotChanges = _storageChanges[i];
+                    if (slotChanges.Changes.TryGetValue(_index, out StorageChange storageChange))
+                    {
+                        _slotIndex = i;
+                        _current = (slotChanges, storageChange);
+                        return true;
+                    }
+                }
+
+                _slotIndex = _storageChanges.Length;
+                _current = default;
+                return false;
+            }
+        }
+    }
 
 }

@@ -61,20 +61,46 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Key);
-        stream.EncodeArray([.. item.Changes.Values], rlpBehaviors);
+        EncodeStorageChanges(stream, item.Changes, rlpBehaviors);
     }
 
     public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
-        int storageChangesLen = 0;
+        int storageChangesLength = StorageChangesContentLength(item.Changes, rlpBehaviors);
+        return Rlp.LengthOfSequence(storageChangesLength) + Rlp.LengthOf(item.Key);
+    }
 
-        foreach (StorageChange slotChange in item.Changes.Values)
+    private static void EncodeStorageChanges(RlpStream stream, IndexedChanges<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    {
+        int contentLength = StorageChangesContentLength(changes, rlpBehaviors);
+        stream.StartSequence(contentLength);
+        if (changes.HasPrestate)
         {
-            storageChangesLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
+            StorageChangeDecoder.Instance.Encode(stream, changes.Prestate, rlpBehaviors);
         }
-        storageChangesLen = Rlp.LengthOfSequence(storageChangesLen);
 
-        return storageChangesLen + Rlp.LengthOf(item.Key);
+        ReadOnlySpan<StorageChange> realChanges = changes.RealChanges;
+        for (int i = 0; i < realChanges.Length; i++)
+        {
+            StorageChangeDecoder.Instance.Encode(stream, realChanges[i], rlpBehaviors);
+        }
+    }
+
+    private static int StorageChangesContentLength(IndexedChanges<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        if (changes.HasPrestate)
+        {
+            length += StorageChangeDecoder.Instance.GetLength(changes.Prestate, rlpBehaviors);
+        }
+
+        ReadOnlySpan<StorageChange> realChanges = changes.RealChanges;
+        for (int i = 0; i < realChanges.Length; i++)
+        {
+            length += StorageChangeDecoder.Instance.GetLength(realChanges[i], rlpBehaviors);
+        }
+
+        return length;
     }
 
     [DoesNotReturn, StackTraceHidden]

@@ -29,7 +29,6 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         UInt256? lastSlot = null;
-        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length, GenericComparer.GetOptimized<UInt256>());
         foreach (SlotChanges slotChange in slotChanges)
         {
             UInt256 slot = slotChange.Key;
@@ -38,7 +37,6 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
                 ThrowStorageChangesOutOfOrder();
             }
             lastSlot = slot;
-            slotChangesList.Add(slot, slotChange);
         }
 
         UInt256[] storageReads = ctx.DecodeArray(UInt256Decoder.Instance, true, default, _storageLimit);
@@ -50,7 +48,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             {
                 ThrowStorageReadsOutOfOrder();
             }
-            if (slotChangesList.ContainsKey(storageRead))
+            if (ContainsStorageChange(slotChanges, storageRead))
             {
                 ThrowInvalidStorageRead();
             }
@@ -72,7 +70,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             ctx.Check(check);
         }
 
-        return AccountChanges.FromIndexedChanges(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
+        return AccountChanges.FromSortedStorageChanges(address, slotChanges, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
@@ -82,28 +80,103 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Address);
-        stream.EncodeArray([.. item.StorageChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
-        stream.EncodeArray([.. item.BalanceChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.NonceChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
+        EncodeSequence(stream, item.StorageChanges, SlotChangesDecoder.Instance, rlpBehaviors);
+        EncodeStorageReads(stream, item.StorageReads, rlpBehaviors);
+        EncodeIndexedChanges(stream, item.BalanceChangeSet, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexedChanges(stream, item.NonceChangeSet, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexedChanges(stream, item.CodeChangeSet, CodeChangeDecoder.Instance, rlpBehaviors);
     }
 
     public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfAddressRlp
             + SequenceLength(item.StorageChanges, SlotChangesDecoder.Instance, rlpBehaviors)
-            + SequenceLength(item.StorageReads, UInt256Decoder.Instance, rlpBehaviors)
-            + SequenceLength(item.BalanceChanges, BalanceChangeDecoder.Instance, rlpBehaviors)
-            + SequenceLength(item.NonceChanges, NonceChangeDecoder.Instance, rlpBehaviors)
-            + SequenceLength(item.CodeChanges, CodeChangeDecoder.Instance, rlpBehaviors);
+            + StorageReadsSequenceLength(item.StorageReads, rlpBehaviors)
+            + IndexedSequenceLength(item.BalanceChangeSet, BalanceChangeDecoder.Instance, rlpBehaviors)
+            + IndexedSequenceLength(item.NonceChangeSet, NonceChangeDecoder.Instance, rlpBehaviors)
+            + IndexedSequenceLength(item.CodeChangeSet, CodeChangeDecoder.Instance, rlpBehaviors);
 
-    private static int SequenceLength<T>(IEnumerable<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+    private static void EncodeSequence<T>(RlpStream stream, IList<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+    {
+        int contentLength = SequenceContentLength(items, encoder, rlpBehaviors);
+        stream.StartSequence(contentLength);
+        for (int i = 0; i < items.Count; i++)
+        {
+            encoder.Encode(stream, items[i], rlpBehaviors);
+        }
+    }
+
+    private static int SequenceLength<T>(IList<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOfSequence(SequenceContentLength(items, encoder, rlpBehaviors));
+
+    private static int SequenceContentLength<T>(IList<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
     {
         int length = 0;
-        foreach (T item in items)
+        for (int i = 0; i < items.Count; i++)
         {
-            length += encoder.GetLength(item, rlpBehaviors);
+            length += encoder.GetLength(items[i], rlpBehaviors);
         }
-        return Rlp.LengthOfSequence(length);
+        return length;
+    }
+
+    private static void EncodeStorageReads(RlpStream stream, SortedSet<UInt256> items, RlpBehaviors rlpBehaviors)
+    {
+        int contentLength = StorageReadsContentLength(items, rlpBehaviors);
+        stream.StartSequence(contentLength);
+        foreach (UInt256 item in items)
+        {
+            UInt256Decoder.Instance.Encode(stream, item, rlpBehaviors);
+        }
+    }
+
+    private static int StorageReadsSequenceLength(SortedSet<UInt256> items, RlpBehaviors rlpBehaviors) =>
+        Rlp.LengthOfSequence(StorageReadsContentLength(items, rlpBehaviors));
+
+    private static int StorageReadsContentLength(SortedSet<UInt256> items, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        foreach (UInt256 item in items)
+        {
+            length += UInt256Decoder.Instance.GetLength(item, rlpBehaviors);
+        }
+        return length;
+    }
+
+    private static void EncodeIndexedChanges<T>(RlpStream stream, IndexedChanges<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+        where T : struct, IIndexedChange
+    {
+        int contentLength = IndexedSequenceContentLength(items, encoder, rlpBehaviors);
+        stream.StartSequence(contentLength);
+        if (items.HasPrestate)
+        {
+            encoder.Encode(stream, items.Prestate, rlpBehaviors);
+        }
+
+        ReadOnlySpan<T> realChanges = items.RealChanges;
+        for (int i = 0; i < realChanges.Length; i++)
+        {
+            encoder.Encode(stream, realChanges[i], rlpBehaviors);
+        }
+    }
+
+    private static int IndexedSequenceLength<T>(IndexedChanges<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+        where T : struct, IIndexedChange =>
+        Rlp.LengthOfSequence(IndexedSequenceContentLength(items, encoder, rlpBehaviors));
+
+    private static int IndexedSequenceContentLength<T>(IndexedChanges<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+        where T : struct, IIndexedChange
+    {
+        int length = 0;
+        if (items.HasPrestate)
+        {
+            length += encoder.GetLength(items.Prestate, rlpBehaviors);
+        }
+
+        ReadOnlySpan<T> realChanges = items.RealChanges;
+        for (int i = 0; i < realChanges.Length; i++)
+        {
+            length += encoder.GetLength(realChanges[i], rlpBehaviors);
+        }
+
+        return length;
     }
 
     private static IndexedChanges<T> ToIndexedChanges<T>(T[] items, string changeName)
@@ -122,6 +195,32 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             indexed.Add(item);
         }
         return indexed;
+    }
+
+    private static bool ContainsStorageChange(SlotChanges[] sortedSlotChanges, UInt256 key)
+    {
+        int low = 0;
+        int high = sortedSlotChanges.Length - 1;
+        while (low <= high)
+        {
+            int mid = low + ((high - low) >> 1);
+            int compare = sortedSlotChanges[mid].Key.CompareTo(key);
+            if (compare == 0)
+            {
+                return true;
+            }
+
+            if (compare < 0)
+            {
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return false;
     }
 
     [DoesNotReturn, StackTraceHidden]
