@@ -205,8 +205,6 @@ public class PrewarmerScopeProvider(
             }
         }
 
-        public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
-
         public void HintSet(in UInt256 index, byte[]? value) => baseStorageTree.HintSet(in index, value);
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)

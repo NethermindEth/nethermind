@@ -138,10 +138,6 @@ namespace Nethermind.State
 
         public byte[] Get(in UInt256 index) => Get(index, null);
 
-        public void HintGet(in UInt256 index, byte[]? value)
-        {
-        }
-
         public void HintSet(in UInt256 index, byte[]? value)
         {
         }

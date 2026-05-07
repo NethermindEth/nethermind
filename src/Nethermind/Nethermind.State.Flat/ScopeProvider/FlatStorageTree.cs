@@ -86,10 +86,6 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
-    public void HintGet(in UInt256 index, byte[]? value)
-    {
-    }
-
     public void HintSet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
 
     private void WarmUpSlot(UInt256 index)
