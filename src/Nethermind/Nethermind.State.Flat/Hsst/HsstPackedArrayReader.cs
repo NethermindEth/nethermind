@@ -14,43 +14,39 @@ namespace Nethermind.State.Flat.Hsst;
 internal static class HsstPackedArrayReader
 {
     /// <summary>
-    /// Parsed footer of a PackedArray HSST: section starts and per-level summary geometry.
-    /// <see cref="LevelStarts"/> entries are <see cref="long"/> offsets relative to
-    /// <see cref="DataStart"/> (= start of the HSST), and <see cref="EntryCount"/> is
-    /// <see cref="long"/>, so the in-memory layout imposes no per-HSST size or count
-    /// ceiling beyond what <see cref="long"/> can address.
+    /// Parsed footer of a PackedArray HSST: scalar geometry only. Per-level record counts
+    /// and absolute level start offsets are NOT stored on Layout — the descent recomputes
+    /// them via <see cref="ComputeLevelGeometry"/> (≤ <see cref="HsstPackedArrayLayout.MaxSummaryDepth"/>
+    /// integer ops).
     ///
     /// On disk, <see cref="EntryCount"/> is a fixed <c>u32 LE</c> (the builder caps
     /// entry count at <see cref="int.MaxValue"/> — its checkpoint staging buffers are
-    /// byte-indexed by <see cref="int"/>); the remaining counts/sizes are LEB128.
+    /// byte-indexed by <see cref="int"/>); other fields are <c>u8</c>.
     /// </summary>
     internal ref struct Layout
     {
         public long DataStart;
+        /// <summary>End of the summary section / start of the metadata block. The descent
+        /// uses this as its starting cursor and walks backward through the levels.</summary>
+        public long SummaryEnd;
         public int KeySize;
         public int ValueSize;
         public long EntryCount;
         public int Depth;
         public int EntriesPerCkLevel0Log2;
         public int RecordsPerCkHigherLog2;
-        // LevelStarts: per-level byte offsets relative to DataStart. Only [0..Depth) are
-        // valid. Long because the Data region can exceed 2 GiB with large entries.
-        // Per-level record counts are NOT stored — they're recomputed via ComputeLevelCounts
-        // (the recurrence ceil(prev/stride) terminates in ≤ Depth ≤ MaxSummaryDepth steps).
-        public InlineLongLevelArray LevelStarts;
 
         public int EntryStride => KeySize + ValueSize;
         public long EntryAbsStart(long entryIdx) => DataStart + entryIdx * EntryStride;
         public long ValueAbsStart(long entryIdx) => EntryAbsStart(entryIdx) + KeySize;
-        public long LevelAbsStart(int level) => DataStart + LevelStarts[level];
     }
 
     /// <summary>
-    /// Reconstruct per-level record counts from Layout strides. Mirrors the builder:
-    ///   counts[0]   = ceil(EntryCount / (1 << EntriesPerCkLevel0Log2))
-    ///   counts[k+1] = ceil(counts[k]   / (1 << RecordsPerCkHigherLog2))
-    /// Writes <c>L.Depth</c> entries into <paramref name="counts"/>; returns false if the
-    /// recurrence produces a non-decreasing or non-positive value (corrupt header).
+    /// Reconstruct per-level record counts from the scalar Layout. Mirrors the builder:
+    ///   counts[0]   = ceil(EntryCount / (1 &lt;&lt; EntriesPerCkLevel0Log2))
+    ///   counts[k+1] = ceil(counts[k]   / (1 &lt;&lt; RecordsPerCkHigherLog2))
+    /// Writes <c>L.Depth</c> entries into <paramref name="counts"/>. Returns false if the
+    /// recurrence produces a non-decreasing or non-positive count (corrupt header).
     /// </summary>
     private static bool ComputeLevelCounts(in Layout L, Span<long> counts)
     {
@@ -68,12 +64,6 @@ internal static class HsstPackedArrayReader
             counts[i] = next;
         }
         return true;
-    }
-
-    [System.Runtime.CompilerServices.InlineArray(HsstPackedArrayLayout.MaxSummaryDepth)]
-    internal struct InlineLongLevelArray
-    {
-        private long _e0;
     }
 
     /// <summary>
@@ -150,6 +140,8 @@ internal static class HsstPackedArrayReader
         if (entriesPerCk0Log2 > 30 || recordsPerCkHigherLog2 > 30) return false;
         if (depth >= 2 && recordsPerCkHigherLog2 < 1) return false;
 
+        layout.DataStart = hsstStart;
+        layout.SummaryEnd = metaAbsStart;
         layout.KeySize = keySize;
         layout.ValueSize = valueSize;
         layout.EntryCount = entryCount;
@@ -157,25 +149,15 @@ internal static class HsstPackedArrayReader
         layout.EntriesPerCkLevel0Log2 = entriesPerCk0Log2;
         layout.RecordsPerCkHigherLog2 = recordsPerCkHigherLog2;
 
+#if DEBUG
+        // Self-consistency: scalar metadata must reproduce the bound's footprint exactly.
+        // Skipped in release — corrupt bounds surface naturally during TrySeek's reads.
         Span<long> counts = stackalloc long[HsstPackedArrayLayout.MaxSummaryDepth];
         if (!ComputeLevelCounts(in layout, counts)) return false;
-
-        // Summaries lie immediately before the metadata. Each record is exactly KeySize bytes.
-        // Stored as long offsets from hsstStart — see Layout's type doc for why this isn't
-        // truncating, and for the on-disk format's lack of any persisted offset.
-        long cursor = metaAbsStart;
-        for (int lvl = depth - 1; lvl >= 0; lvl--)
-        {
-            long lvlBytes = counts[lvl] * keySize;
-            long lvlStart = cursor - lvlBytes;
-            if (lvlStart < hsstStart) return false;
-            layout.LevelStarts[lvl] = lvlStart - hsstStart;
-            cursor = lvlStart;
-        }
-
-        long dataBytes = entryCount * (keySize + valueSize);
-        if (hsstStart + dataBytes != cursor) return false;
-        layout.DataStart = hsstStart;
+        long expectedSummaryEnd = layout.DataStart + entryCount * layout.EntryStride;
+        for (int i = 0; i < depth; i++) expectedSummaryEnd += counts[i] * keySize;
+        if (expectedSummaryEnd != layout.SummaryEnd) return false;
+#endif
 
         return true;
     }
@@ -215,10 +197,14 @@ internal static class HsstPackedArrayReader
         }
         else
         {
-            // Recompute per-level counts on the fly — they're not stored on Layout.
-            // Depth ≤ MaxSummaryDepth (8) so this is a handful of integer ops.
+            // Recompute per-level counts on the fly. Level start offsets aren't stored —
+            // a rolling cursor walks backward through the summary section, starting at its
+            // end (level Depth-1 is adjacent to the metadata block, level 0 sits right
+            // after Data). Depth ≤ MaxSummaryDepth (8), so this is a handful of integer ops.
             Span<long> counts = stackalloc long[HsstPackedArrayLayout.MaxSummaryDepth];
             if (!ComputeLevelCounts(in L, counts)) return false;
+
+            long cursor = L.SummaryEnd;
 
             long levelLo = 0;
             long levelHi = counts[L.Depth - 1] - 1;
@@ -227,8 +213,9 @@ internal static class HsstPackedArrayReader
             rangeEnd = -1;
             while (true)
             {
+                cursor -= counts[curLvl] * L.KeySize;
                 long ckIdx = SearchSummaryLevel<TReader, TPin>(
-                    in reader, L.LevelAbsStart(curLvl), L.KeySize, levelLo, levelHi + 1, key, out bool readOk);
+                    in reader, cursor, L.KeySize, levelLo, levelHi + 1, key, out bool readOk);
                 if (!readOk) return false;
 
                 if (ckIdx > levelHi)
