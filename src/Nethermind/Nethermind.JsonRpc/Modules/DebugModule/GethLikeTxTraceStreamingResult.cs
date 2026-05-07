@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO.Pipelines;
@@ -35,16 +34,13 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
-        writer.Write("["u8);
-
         using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
-        bool first = true;
+
+        jsonWriter.WriteStartArray();
+        jsonWriter.Flush();
 
         foreach (GethLikeTxTrace trace in traces)
         {
-            if (first) first = false;
-            else writer.Write(","u8);
-
             jsonWriter.WriteStartObject();
             jsonWriter.WritePropertyName("result"u8);
             JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
@@ -57,7 +53,8 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
             if (flushResult.IsCompleted || flushResult.IsCanceled) return;
         }
 
-        writer.Write("]"u8);
+        jsonWriter.WriteEndArray();
+        jsonWriter.Flush();
     }
 }
 
