@@ -128,6 +128,58 @@ public class PersistedSnapshotCompactorTests
     }
 
     [Test]
+    public void CompactPersistedSnapshots_WarmsAddressIndexInPageResidencyTracker()
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            // Disabled tracker on the base arena (we don't care about source-side residency);
+            // a real, sized tracker on the compacted arena so we can observe what
+            // WarmAddressIndex registers after AdviseDontNeed.
+            using PageResidencyTracker compactedTracker = new(maxCapacity: 1024);
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), compactedTracker, maxArenaSize: 64 * 1024);
+            using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
+            repo.LoadFromCatalog();
+
+            // Validation off so the post-compaction validate path doesn't itself populate the
+            // tracker via reads. Then any non-zero tracker count after DoCompactSnapshot must
+            // come from WarmAddressIndex.
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, ValidatePersistedSnapshot = false };
+            PersistedSnapshotCompactor compactor = new(repo, compactedArena, config, Nethermind.Logging.LimboLogs.Instance);
+
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int i = 1; i <= 8; i++)
+            {
+                StateId next = new(i, Keccak.Compute($"s{i}"));
+                SnapshotContent c = new();
+                c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing));
+                prev = next;
+            }
+
+            // Tracker may carry residency from setup writes' lookups (none on writes, but be
+            // defensive). Clear it so the count after compaction is attributable to the warm-up.
+            compactedTracker.Clear();
+            Assert.That(compactedTracker.Count, Is.Zero);
+
+            compactor.DoCompactSnapshot(prev);
+
+            Assert.That(compactedTracker.Count, Is.GreaterThan(0),
+                "WarmAddressIndex should register column-0x01 BTree index pages after compaction.");
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            compacted!.Dispose();
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
+
+    [Test]
     public void CompactedSnapshot_HasNodeRefsAndRefIds_InMetadata()
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);

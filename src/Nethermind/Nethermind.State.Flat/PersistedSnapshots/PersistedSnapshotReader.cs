@@ -242,4 +242,57 @@ public static class PersistedSnapshotReader
 
     internal static TreePath DecodeCompactTreePath(ReadOnlySpan<byte> key) =>
         TreePath.DecodeWith8Byte(key);
+
+    /// <summary>
+    /// Pre-touch outer column 0x01's BTree index nodes (the address-hash directory)
+    /// through the standard reader so each touched page is registered with the
+    /// arena's <see cref="PageResidencyTracker"/>. Caller is expected to have just
+    /// dropped the snapshot pages via <c>AdviseDontNeed</c>; this brings the index
+    /// region back warm without touching the per-address inner-HSST data region.
+    /// </summary>
+    /// <remarks>
+    /// Column 0x01 uses the BTree HSST layout (<c>[Data Region][Index Region][IndexType]</c>),
+    /// which has no length-of-data-region field — the data/index split can only be
+    /// discovered by walking the tree. So this DFS-walks every BTree node via
+    /// <see cref="HsstBTreeReader.TryLoadNode{TReader,TPin}"/>, whose <c>PinBuffer</c>
+    /// reads are what register pages with the tracker. Leaf entries are *not*
+    /// visited — visiting them would pin into the data region and warm pages that
+    /// belong to per-address inner HSSTs.
+    /// </remarks>
+    internal static void WarmAddressIndex<TReader, TPin>(scoped in TReader reader)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        Bound col;
+        using (HsstReader<TReader, TPin> outer = new(in reader))
+        {
+            if (!outer.TrySeek(PersistedSnapshot.AccountColumnTag, out _)) return;
+            col = outer.GetBound();
+        }
+        if (col.Length < 2) return;
+        WalkBTreeIndexNodes<TReader, TPin>(in reader, col, col.Offset + col.Length - 1);
+    }
+
+    private static void WalkBTreeIndexNodes<TReader, TPin>(
+        scoped in TReader reader, Bound scope, long absEnd)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, absEnd,
+                out HsstIndex node, out _, out TPin pin))
+            return;
+        using (pin)
+        {
+            // Leaf already faulted in by TryLoadNode's PinBuffer; do not descend
+            // into entries (their metaStart pointers sit in the data region).
+            if (!node.IsIntermediate) return;
+            int n = node.EntryCount;
+            for (int i = 0; i < n; i++)
+            {
+                long childRelEnd = (long)node.GetUInt64Value(i) + 1;
+                WalkBTreeIndexNodes<TReader, TPin>(
+                    in reader, scope, scope.Offset + childRelEnd);
+            }
+        }
+    }
 }

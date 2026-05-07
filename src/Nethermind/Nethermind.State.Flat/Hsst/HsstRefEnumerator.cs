@@ -15,8 +15,10 @@ namespace Nethermind.State.Flat.Hsst;
 /// Thin ref-struct wrapper around <see cref="HsstEnumerator{TReader,TPin}"/> that
 /// stores the reader so callers don't have to pass it on every <see cref="MoveNext"/>.
 /// All layout-specific iteration (PackedArray / ByteTagMap / BTree) lives on the merge
-/// enumerator's variants — for BTree this means eagerly collecting every leaf entry
-/// offset at construction time.
+/// enumerator's variants. Construction is cheap — for BTree it only records the scope
+/// bounds (<see cref="HsstEnumerator{TReader,TPin}"/>'s <c>BTreeVariant</c> ctor); the
+/// actual tree walk happens lazily on each <see cref="MoveNext"/>, descending one leaf
+/// at a time and buffering that leaf's metaStart pointers in a reusable array.
 ///
 /// Both <c>Current.KeyBound</c> and <c>Current.ValueBound</c> are absolute reader offsets;
 /// callers slice them out of their own data span (or pin them via the reader). Bounds

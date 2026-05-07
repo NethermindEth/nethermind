@@ -159,6 +159,17 @@ public class PersistedSnapshotCompactor(
         // reads will fault them back in on demand.
         reservation.AdviseDontNeed();
 
+        // Bring the address-index BTree (outer column 0x01) back through the standard reader
+        // so the PageResidencyTracker registers each index page. Bypassing via
+        // RandomAccess.Read would warm the kernel cache but leave the tracker blind, letting
+        // the next legitimate reader access collision-evict pages it never saw. The walk
+        // touches index nodes only — per-address inner HSSTs stay cold.
+        using (reservation.BeginWholeReadSession())
+        {
+            ArenaByteReader reader = reservation.CreateReader();
+            PersistedSnapshotReader.WarmAddressIndex<ArenaByteReader, NoOpPin>(in reader);
+        }
+
         Metrics.PersistedSnapshotCompactions++;
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
         Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
