@@ -137,7 +137,7 @@ internal class QuorumCertificateManager(
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
         _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         _ = _forensicsProcessor.ForensicsMonitoring([parentHeader, proposedBlockHeader], proposedQuorumCert);
-        //Mark grand parent as finalized
+        //Mark grandparent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;
         return true;

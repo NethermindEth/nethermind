@@ -5,7 +5,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System;
-using System.Linq;
 
 namespace Nethermind.Xdc.RLP;
 
@@ -23,9 +22,7 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
 
         ulong round = decoderContext.DecodeULong();
 
-        byte[][]? signatureBytes = decoderContext.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in timeout certificate.");
+        byte[][]? signatureBytes = decoderContext.DecodeByteArrays(innerSize: Signature.Size);
         Signature[]? signatures = null;
         if (signatureBytes is not null)
         {

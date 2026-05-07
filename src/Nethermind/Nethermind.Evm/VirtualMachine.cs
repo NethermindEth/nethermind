@@ -106,7 +106,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected Stack<VmState<TGasPolicy>> StateStack => _stateStack;
 
     private BlockExecutionContext _blockExecutionContext;
-    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
+    public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => _blockExecutionContext = blockExecutionContext;
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
     private TxExecutionContext _txExecutionContext;
@@ -318,7 +318,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     protected void PrepareCreateData(VmState<TGasPolicy> previousState, ref ZeroPaddedSpan previousCallOutput)
     {
-        _previousCallResult = previousState.Env.ExecutingAccount.Bytes;
+        _previousCallResult = previousState.Env.ExecutingAccount.Bytes.ToArray();
         _previousCallOutputDestination = UInt256.Zero;
         ReturnDataBuffer = Array.Empty<byte>();
         previousCallOutput = ZeroPaddedSpan.Empty;

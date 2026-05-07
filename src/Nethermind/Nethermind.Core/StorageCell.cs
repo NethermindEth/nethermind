@@ -65,8 +65,8 @@ namespace Nethermind.Core
             if (ReferenceEquals(a, b))
                 return true;
 
-            ref byte ab = ref MemoryMarshal.GetArrayDataReference(a.Bytes);
-            ref byte bb = ref MemoryMarshal.GetArrayDataReference(b.Bytes);
+            ref byte ab = ref MemoryMarshal.GetReference(a.Bytes);
+            ref byte bb = ref MemoryMarshal.GetReference(b.Bytes);
             return Unsafe.As<byte, Vector128<byte>>(ref ab) == Unsafe.As<byte, Vector128<byte>>(ref bb)
                 && Unsafe.As<byte, uint>(ref Unsafe.Add(ref ab, 16)) == Unsafe.As<byte, uint>(ref Unsafe.Add(ref bb, 16));
         }
