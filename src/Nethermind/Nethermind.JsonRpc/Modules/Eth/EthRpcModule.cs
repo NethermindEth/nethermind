@@ -373,16 +373,15 @@ public partial class EthRpcModule(
 
         int waitMs = ResolveSyncTimeoutMs(timeoutMs);
         using CancellationTokenSource cts = new(waitMs);
-        // Coalescing signal — back-to-back blocks fold into a single Release (PeerManager pattern).
+        // Coalescing signal — back-to-back blocks fold into a single Release; the catches handle
+        // both the at-capacity case and the in-flight-after-dispose race (event dispatch snapshots
+        // the invocation list, so an unsubscribe in finally cannot stop a handler already running).
         using SemaphoreSlim signal = new(0, 1);
         void OnNewHead(object? sender, BlockEventArgs _)
         {
-            if (signal.CurrentCount > 0) return;
-            lock (signal)
-            {
-                if (signal.CurrentCount > 0) return;
-                signal.Release();
-            }
+            try { signal.Release(); }
+            catch (SemaphoreFullException) { }
+            catch (ObjectDisposedException) { }
         }
 
         // Subscribe before submit to avoid losing a fast inclusion to a race.
