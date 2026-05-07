@@ -100,7 +100,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// dereferencing across snapshots when this snapshot stores NodeRefs. Reads via the
     /// reader abstraction (no GetSpan), copying directly into a heap-allocated byte[].
     /// </summary>
-    internal byte[] ResolveValueAt(Bound localBound)
+    internal byte[] ResolveTrieRlp(Bound localBound)
     {
         ArenaByteReader reader = _reservation.CreateReader();
         if (!HasNodeRefs || _referencedSnapshots is null)
@@ -230,7 +230,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             nodeRlp = null;
             return false;
         }
-        nodeRlp = ResolveValueAt(bound);
+        nodeRlp = ResolveTrieRlp(bound);
         return true;
     }
 
@@ -243,7 +243,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             nodeRlp = null;
             return false;
         }
-        nodeRlp = ResolveValueAt(bound);
+        nodeRlp = ResolveTrieRlp(bound);
         return true;
     }
 

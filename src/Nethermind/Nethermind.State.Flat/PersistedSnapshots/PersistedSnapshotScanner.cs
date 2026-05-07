@@ -336,7 +336,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 };
             }
         }
-        public ReadOnlySpan<byte> Rlp => _snapshot.ResolveValueAt(_value);
+        public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
     }
 
     public readonly ref struct StateNodeEnumerable(PersistedSnapshot snapshot, WholeReadSessionReader reader)
@@ -423,7 +423,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 };
             }
         }
-        public ReadOnlySpan<byte> Rlp => _snapshot.ResolveValueAt(_value);
+        public ReadOnlySpan<byte> Rlp => _snapshot.ResolveTrieRlp(_value);
     }
 
     public readonly ref struct StorageNodeEnumerable(PersistedSnapshot snapshot, WholeReadSessionReader reader)
