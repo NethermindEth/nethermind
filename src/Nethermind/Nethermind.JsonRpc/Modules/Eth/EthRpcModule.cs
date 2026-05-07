@@ -364,6 +364,8 @@ public partial class EthRpcModule(
         if (!HasFeeFields(rpcTx))
             return ResultWrapper<SignTransactionResult>.Fail("missing gasPrice or maxFeePerGas/maxPriorityFeePerGas", ErrorCodes.InvalidInput);
 
+        // All concrete tx subtypes (AccessList, EIP1559, Blob, SetCode) derive from LegacyTransactionForRpc,
+        // so this cast is total and Nonce/From are accessed via the base class properties.
         LegacyTransactionForRpc? legacy = rpcTx as LegacyTransactionForRpc;
         if (legacy?.Nonce is null)
             return ResultWrapper<SignTransactionResult>.Fail("nonce not specified", ErrorCodes.InvalidInput);
@@ -463,10 +465,8 @@ public partial class EthRpcModule(
 
     private static string FormatWeiAsEther(UInt256 wei)
     {
-        const ulong WeiPerEther = 1_000_000_000_000_000_000UL;
-        const ulong WeiPerCenti = 10_000_000_000_000_000UL;
-        UInt256 ether = wei / (UInt256)WeiPerEther;
-        UInt256 centiTotal = wei / (UInt256)WeiPerCenti;
+        UInt256 ether = wei / Unit.Ether;
+        UInt256 centiTotal = wei / (Unit.Ether / 100);
         UInt256.Mod(centiTotal, (UInt256)100, out UInt256 centi);
         return $"{ether}.{(ulong)centi:D2}";
     }
@@ -475,17 +475,22 @@ public partial class EthRpcModule(
     {
         if (blobTx.Blobs is null || blobTx.Blobs.Length == 0)
             return "blob transaction requires non-empty blobs";
-        if (blobTx.Commitments is null || blobTx.Commitments.Length != blobTx.Blobs.Length)
-            return "commitments must be provided alongside blobs (one per blob)";
-        if (blobTx.Proofs is null)
-            return "proofs must be provided alongside blobs";
+        if (blobTx.Commitments is null || blobTx.Proofs is null)
+            return "blobs, commitments and proofs must all be provided";
 
         BlockHeader? head = _blockFinder.Head?.Header;
         ProofVersion version = head is null
             ? ProofVersion.V0
             : _specProvider.GetSpec(head).BlobProofVersion;
 
-        tx.NetworkWrapper = new ShardBlobNetworkWrapper(blobTx.Blobs, blobTx.Commitments, blobTx.Proofs, version);
+        ShardBlobNetworkWrapper wrapper = new(blobTx.Blobs, blobTx.Commitments, blobTx.Proofs, version);
+        IBlobProofsManager manager = IBlobProofsManager.For(version);
+        if (!manager.ValidateLengths(wrapper))
+            return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
+        if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
+            return "blob commitments do not match the supplied blobVersionedHashes";
+
+        tx.NetworkWrapper = wrapper;
         return null;
     }
 

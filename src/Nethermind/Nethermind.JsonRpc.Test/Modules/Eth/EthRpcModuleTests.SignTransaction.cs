@@ -24,9 +24,12 @@ public partial class EthRpcModuleTests
 
     [TestCase(TxType.Legacy, "gas", "gas not specified", TestName = "GasMissing")]
     [TestCase(TxType.Legacy, "gasPrice", FeeFieldsMissingMessage, TestName = "LegacyFeesMissing")]
+    [TestCase(TxType.AccessList, "gasPrice", FeeFieldsMissingMessage, TestName = "AccessListFeesMissing")]
     [TestCase(TxType.EIP1559, "maxFeePerGas", FeeFieldsMissingMessage, TestName = "Eip1559MaxFeePerGasMissing")]
     [TestCase(TxType.EIP1559, "maxPriorityFeePerGas", FeeFieldsMissingMessage, TestName = "Eip1559MaxPriorityFeePerGasMissing")]
-    [TestCase(TxType.Legacy, "nonce", "nonce not specified", TestName = "NonceMissing")]
+    [TestCase(TxType.Legacy, "nonce", "nonce not specified", TestName = "LegacyNonceMissing")]
+    [TestCase(TxType.AccessList, "nonce", "nonce not specified", TestName = "AccessListNonceMissing")]
+    [TestCase(TxType.EIP1559, "nonce", "nonce not specified", TestName = "Eip1559NonceMissing")]
     public async Task SignTransaction_WhenRequiredFieldMissing_ReturnsInvalidInput(TxType type, string omitField, string expectedMessage)
     {
         TransactionForRpc rpcTx = BuildTx(type, omitField);
@@ -85,11 +88,12 @@ public partial class EthRpcModuleTests
 
         string response = await SignTransaction(rpcTx);
 
-        response.Should().Contain("commitments must be provided alongside blobs",
+        response.Should().Contain("blobs, commitments and proofs must all be provided",
             "blob signing without commitments must surface a precise error so callers know what to add");
     }
 
     [TestCase(TxType.Legacy, typeof(LegacyTransactionForRpc), TestName = "Legacy")]
+    [TestCase(TxType.AccessList, typeof(AccessListTransactionForRpc), TestName = "AccessList")]
     [TestCase(TxType.EIP1559, typeof(EIP1559TransactionForRpc), TestName = "Eip1559")]
     public async Task SignTransaction_WhenValid_RawRoundTripsAndTxEcho(TxType type, Type expectedEchoType)
     {
@@ -137,26 +141,39 @@ public partial class EthRpcModuleTests
         UInt256 value = 0x9184e72a;
         long gas = 0x76c0;
         UInt256 nonce = 0;
+        UInt256 gasPrice = 0x9184e72a000;
 
-        return type == TxType.EIP1559
-            ? new EIP1559TransactionForRpc
+        return type switch
+        {
+            TxType.EIP1559 => new EIP1559TransactionForRpc
             {
                 From = from,
                 To = to,
                 Value = value,
                 Gas = omitField == "gas" ? null : gas,
                 Nonce = omitField == "nonce" ? null : nonce,
-                MaxFeePerGas = omitField == "maxFeePerGas" ? null : (UInt256?)0x9184e72a000,
+                MaxFeePerGas = omitField == "maxFeePerGas" ? null : (UInt256?)gasPrice,
                 MaxPriorityFeePerGas = omitField == "maxPriorityFeePerGas" ? null : (UInt256?)0x3b9aca00,
-            }
-            : new LegacyTransactionForRpc
+            },
+            TxType.AccessList => new AccessListTransactionForRpc
             {
                 From = from,
                 To = to,
                 Value = value,
                 Gas = omitField == "gas" ? null : gas,
                 Nonce = omitField == "nonce" ? null : nonce,
-                GasPrice = omitField == "gasPrice" ? null : (UInt256?)0x9184e72a000,
-            };
+                GasPrice = omitField == "gasPrice" ? null : (UInt256?)gasPrice,
+                AccessList = new AccessListForRpc(),
+            },
+            _ => new LegacyTransactionForRpc
+            {
+                From = from,
+                To = to,
+                Value = value,
+                Gas = omitField == "gas" ? null : gas,
+                Nonce = omitField == "nonce" ? null : nonce,
+                GasPrice = omitField == "gasPrice" ? null : (UInt256?)gasPrice,
+            },
+        };
     }
 }

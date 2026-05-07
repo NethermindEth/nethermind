@@ -52,7 +52,9 @@ public abstract class TransactionForRpc
     /// <summary>
     /// True when the transaction type was inferred by <see cref="TransactionJsonConverter"/> rather than
     /// explicitly provided in the JSON request. When set, <see cref="ToTransaction"/> can resolve
-    /// the type to match the target block's fork rules.
+    /// the type to match the target block's fork rules. The setter is internal so only the converter
+    /// can mutate it; the getter is public so cross-assembly consumers (RPC modules) can read it
+    /// when deciding whether to apply default-type semantics.
     /// </summary>
     [JsonIgnore]
     public bool IsTypeDefaulted { get; internal set; }
