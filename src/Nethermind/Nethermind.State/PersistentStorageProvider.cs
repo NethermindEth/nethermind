@@ -511,11 +511,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void GetBatchValues(UInt256[] slots, UInt256[] results)
         {
             EnsureStorageTree();
-            for (int i = 0; i < slots.Length; i++)
-            {
-                byte[] raw = _backend.Get(slots[i]);
-                results[i] = raw is not null && raw.Length > 0 ? new UInt256(raw, true) : UInt256.Zero;
-            }
+            _backend.GetBatchValues(slots, results);
         }
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)

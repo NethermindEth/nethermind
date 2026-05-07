@@ -88,7 +88,6 @@ public sealed class ReadOnlySnapshotBundle(
     public void GetSlotBatch(Address address, UInt256[] slots, byte[][] outValues)
     {
         GuardDispose();
-        // Get raw SlotValues from persistence (one MultiGet call)
         SlotValue[] values = new SlotValue[slots.Length];
         persistenceReader.GetSlotBatch(address, slots, values);
         Span<byte> zero = stackalloc byte[32];
@@ -96,6 +95,24 @@ public sealed class ReadOnlySnapshotBundle(
         {
             ReadOnlySpan<byte> raw = values[i].AsReadOnlySpan;
             outValues[i] = raw.IsEmpty || raw.SequenceEqual(zero) ? [] : raw.ToArray();
+        }
+    }
+
+    public void GetSlotBatchValues(Address address, UInt256[] slots, UInt256[] outValues)
+    {
+        GuardDispose();
+        SlotValue[] values = System.Buffers.ArrayPool<SlotValue>.Shared.Rent(slots.Length);
+        try
+        {
+            persistenceReader.GetSlotBatch(address, slots, values);
+            for (int i = 0; i < slots.Length; i++)
+            {
+                outValues[i] = values[i].ToUInt256();
+            }
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<SlotValue>.Shared.Return(values);
         }
     }
 

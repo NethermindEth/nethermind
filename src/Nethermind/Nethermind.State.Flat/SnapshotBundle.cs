@@ -147,6 +147,12 @@ public sealed class SnapshotBundle : IDisposable
         _readOnlySnapshotBundle.GetSlotBatch(address, slots, outValues);
     }
 
+    public void GetSlotBatchValues(Address address, UInt256[] slots, UInt256[] outValues)
+    {
+        GuardDispose();
+        _readOnlySnapshotBundle.GetSlotBatchValues(address, slots, outValues);
+    }
+
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();

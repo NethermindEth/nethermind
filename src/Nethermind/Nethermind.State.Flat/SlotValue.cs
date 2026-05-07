@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.State.Flat;
 
@@ -67,5 +68,11 @@ public readonly struct SlotValue
     {
         if (_bytes == Vector256<byte>.Zero) return ZeroBytes;
         return AsReadOnlySpan.WithoutLeadingZeros().ToArray();
+    }
+
+    public UInt256 ToUInt256()
+    {
+        if (_bytes == Vector256<byte>.Zero) return UInt256.Zero;
+        return new UInt256(AsReadOnlySpan, isBigEndian: true);
     }
 }

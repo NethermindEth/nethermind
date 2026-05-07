@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
 using Nethermind.Blockchain.BeaconBlockRoot;
@@ -427,13 +428,18 @@ public class BlockAccessListManager(
             accountChanges.LoadPreStateNonce((ulong)account.Nonce);
             accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
 
-            // Batch read all storage slots via GetStorageBatch (uses RocksDB MultiGet)
-            UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
-            if (slotsToLoad.Length > 0)
+            IList<UInt256> changedSlots = accountChanges.ChangedSlots;
+            UInt256[] storageReads = accountChanges.StorageReads;
+            int totalSlots = changedSlots.Count + storageReads.Length;
+            if (totalSlots > 0)
             {
-                UInt256[] values = new UInt256[slotsToLoad.Length];
+                UInt256[] slotsToLoad = new UInt256[totalSlots];
+                for (int i = 0; i < changedSlots.Count; i++)
+                    slotsToLoad[i] = changedSlots[i];
+                storageReads.CopyTo(slotsToLoad, changedSlots.Count);
+                UInt256[] values = new UInt256[totalSlots];
                 stateProvider.GetStorageBatchValues(accountChanges.Address, slotsToLoad, values);
-                for (int i = 0; i < slotsToLoad.Length; i++)
+                for (int i = 0; i < totalSlots; i++)
                 {
                     accountChanges.LoadPreStateStorage(slotsToLoad[i], values[i]);
                 }

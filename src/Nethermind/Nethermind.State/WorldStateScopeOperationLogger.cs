@@ -75,6 +75,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void GetBatch(UInt256[] slots, byte[][] results) => storageTree.GetBatch(slots, results);
 
+        public void GetBatchValues(UInt256[] slots, UInt256[] results) => storageTree.GetBatchValues(slots, results);
+
         public void HintGet(in UInt256 index, byte[]? value) => storageTree.HintGet(in index, value);
 
         public byte[] Get(in ValueHash256 hash)

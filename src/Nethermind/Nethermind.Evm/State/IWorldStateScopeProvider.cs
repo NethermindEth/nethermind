@@ -83,6 +83,14 @@ public interface IWorldStateScopeProvider
 
         void GetBatch(UInt256[] slots, byte[][] results);
 
+        void GetBatchValues(UInt256[] slots, UInt256[] results)
+        {
+            byte[][] raw = new byte[slots.Length][];
+            GetBatch(slots, raw);
+            for (int i = 0; i < slots.Length; i++)
+                results[i] = raw[i] is not null && raw[i].Length > 0 ? new UInt256(raw[i], true) : UInt256.Zero;
+        }
+
         void HintGet(in UInt256 index, byte[]? value);
 
         /// <summary>

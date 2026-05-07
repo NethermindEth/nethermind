@@ -117,8 +117,9 @@ public static class BaseFlatPersistence
 
         public void GetStorageBatch(in ValueHash256 address, ValueHash256[] slotHashes, SlotValue[] outValues)
         {
-            byte[][] keys = new byte[slotHashes.Length][];
-            for (int i = 0; i < slotHashes.Length; i++)
+            int count = slotHashes.Length;
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < count; i++)
             {
                 byte[] key = new byte[StorageKeyLength];
                 EncodeStorageKeyHashedWithShortPrefix(key, address, slotHashes[i]);
@@ -126,7 +127,7 @@ public static class BaseFlatPersistence
             }
 
             KeyValuePair<byte[], byte[]?>[] results = storage.GetMany(keys);
-            for (int i = 0; i < results.Length; i++)
+            for (int i = 0; i < count; i++)
             {
                 byte[]? value = results[i].Value;
                 if (value is not null && value.Length > 0)

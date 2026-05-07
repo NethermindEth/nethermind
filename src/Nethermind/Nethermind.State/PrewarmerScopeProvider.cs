@@ -208,6 +208,8 @@ public class PrewarmerScopeProvider(
 
         public void GetBatch(UInt256[] slots, byte[][] results) => baseStorageTree.GetBatch(slots, results);
 
+        public void GetBatchValues(UInt256[] slots, UInt256[] results) => baseStorageTree.GetBatchValues(slots, results);
+
         public void HintGet(in UInt256 index, byte[]? value) => baseStorageTree.HintGet(in index, value);
 
         private byte[] LoadFromTreeStorage(in StorageCell storageCell)

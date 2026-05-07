@@ -329,13 +329,20 @@ public static class BasePersistence
         public void GetSlotBatch(Address address, UInt256[] slots, SlotValue[] outValues)
         {
             ValueHash256 addrHash = address.ToAccountPath;
-            ValueHash256[] slotHashes = new ValueHash256[slots.Length];
-            for (int i = 0; i < slots.Length; i++)
+            ValueHash256[] slotHashes = System.Buffers.ArrayPool<ValueHash256>.Shared.Rent(slots.Length);
+            try
             {
-                slotHashes[i] = ValueKeccak.Zero;
-                StorageTree.ComputeKeyWithLookup(slots[i], ref slotHashes[i]);
+                for (int i = 0; i < slots.Length; i++)
+                {
+                    slotHashes[i] = ValueKeccak.Zero;
+                    StorageTree.ComputeKeyWithLookup(slots[i], ref slotHashes[i]);
+                }
+                _flatReader.GetStorageBatch(addrHash, slotHashes, outValues);
             }
-            _flatReader.GetStorageBatch(addrHash, slotHashes, outValues);
+            finally
+            {
+                System.Buffers.ArrayPool<ValueHash256>.Shared.Return(slotHashes);
+            }
         }
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
