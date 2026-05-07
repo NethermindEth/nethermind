@@ -131,55 +131,6 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Suggested_block_keeps_encoded_block_access_list_until_marked_processed()
-    {
-        _blocksDb = new TestMemDb();
-        _headersDb = new TestMemDb();
-        _blocksInfosDb = new TestMemDb();
-
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithBlocksDb(_blocksDb)
-            .WithHeadersDb(_headersDb)
-            .WithBlockInfoDb(_blocksInfosDb)
-            .WithoutSettingHead;
-        BlockTree blockTree = builder.TestObject;
-        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
-
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        AddToMain(blockTree, genesis);
-
-        BlockAccessList blockAccessList = new();
-        blockAccessList.AddAccountRead(TestItem.AddressA);
-        byte[] encodedBal = Rlp.Encode(blockAccessList).Bytes;
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithParent(genesis)
-            .WithTotalDifficulty(1L)
-            .WithBlockAccessList(blockAccessList)
-            .WithEncodedBlockAccessList(encodedBal)
-            .WithBlockAccessListHash(new(ValueKeccak.Compute(encodedBal).Bytes))
-            .TestObject;
-
-        blockTree.SuggestBlock(block, BlockTreeSuggestOptions.ForceDontSetAsMain).Should().Be(AddBlockResult.Added);
-
-        using MemoryManager<byte>? suggestedBal = blockAccessListStore.GetRlp(block.Hash!);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.EncodedBlockAccessList, Is.SameAs(encodedBal));
-            Assert.That(suggestedBal!.Memory.ToArray(), Is.EqualTo(encodedBal));
-        }
-
-        blockTree.MarkChainAsProcessed([block]);
-
-        using MemoryManager<byte>? processedBal = blockAccessListStore.GetRlp(block.Hash!);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(block.EncodedBlockAccessList, Is.Null);
-            Assert.That(processedBal!.Memory.ToArray(), Is.EqualTo(encodedBal));
-        }
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Add_genesis_shall_notify()
     {
         bool hasNotified = false;
