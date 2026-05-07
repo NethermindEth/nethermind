@@ -15,15 +15,13 @@ namespace Nethermind.State
         ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index);
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);
-        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
-
         /// <summary>
-        /// Same as <see cref="RunTreeVisitor{TCtx}"/> but accumulates per-call lookup, cache-miss,
-        /// and depth counters into a fresh <see cref="ProofDiagnostics"/> and returns it.
-        /// Used by <c>proof_getProofWithMeta</c> to expose a client-agnostic measure of the work
-        /// the EL did to serve a single proof.
+        /// Run a tree visitor against the state at <paramref name="baseBlock"/>. When
+        /// <paramref name="diagnostics"/> is non-null, the resolver is wrapped with metering and
+        /// per-call lookup, cache-miss, and depth counters are accumulated into it (used by
+        /// <c>proof_getProofWithMeta</c>).
         /// </summary>
-        ProofDiagnostics RunTreeVisitorMetered<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
+        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, ProofDiagnostics? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 
         bool HasStateForBlock(BlockHeader? baseBlock);
     }
