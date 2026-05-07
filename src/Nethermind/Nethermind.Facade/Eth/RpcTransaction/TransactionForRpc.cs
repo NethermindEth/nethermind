@@ -50,14 +50,14 @@ public abstract class TransactionForRpc
     public long? Gas { get; set; }
 
     /// <summary>
-    /// True when the JSON request did not contain an explicit <c>type</c> field — the runtime
-    /// type was inferred from discriminator fields, the <c>gasPrice</c> routing rule, or the
-    /// default. Consumers use this to decide whether to apply spec-style auto-promotion to newer
-    /// tx types via <see cref="PromoteToEip1559IfTypeDefaulted"/>.
+    /// True when the runtime type was selected by a fallback rather than an explicit signal —
+    /// either the legacy <c>gasPrice</c>-only routing rule or the absolute default. Discriminator
+    /// fields (<c>accessList</c>, <c>maxFeePerGas</c>, etc.) and an explicit <c>type</c> field
+    /// count as signals and leave this flag <c>false</c>.
     /// </summary>
     /// <remarks>
     /// Only set during JSON deserialization. Always <c>false</c> for programmatically constructed
-    /// instances — code paths that need to assert promotion behavior must exercise the
+    /// instances — code paths that need to assert defaulting behavior must exercise the
     /// JSON-deserialization path.
     /// </remarks>
     [JsonIgnore]
@@ -201,12 +201,23 @@ public abstract class TransactionForRpc
                 }
             }
 
-            // No explicit "type" field — every branch below is "defaulted".
+            // No explicit "type" field. gasPrice-only and the absolute fallback are "defaulted";
+            // a discriminator field (accessList, maxFeePerGas, ...) is a strong signal and is not.
+            if (untyped.ContainsKey(gasPriceFieldKey))
+            {
+                isDefaulted = true;
+                return typeof(LegacyTransactionForRpc);
+            }
+
+            Type? viaDiscriminator = _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type;
+            if (viaDiscriminator is not null)
+            {
+                isDefaulted = false;
+                return viaDiscriminator;
+            }
+
             isDefaulted = true;
-            return untyped.ContainsKey(gasPriceFieldKey)
-                ? typeof(LegacyTransactionForRpc)
-                : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type
-                  ?? typeof(EIP1559TransactionForRpc);
+            return typeof(EIP1559TransactionForRpc);
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);
