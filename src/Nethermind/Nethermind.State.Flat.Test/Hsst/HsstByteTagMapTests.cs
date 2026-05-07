@@ -75,16 +75,18 @@ public class HsstByteTagMapTests
         for (int i = 0; i < n; i++)
         {
             tags[i] = n == 256 ? (byte)i : (byte)(i * 7 + 3);
-            int len = (i % 5 == 0) ? 0 : (i + 1) * 11;
+            // Bounded so that even at n=256 the cumulative values total stays under u16
+            // (the format's hard ceiling). With (i+1) max=256 and 256 entries:
+            // sum ≤ 256·257/2 ≈ 33 K, comfortably below 65 535.
+            int len = (i % 5 == 0) ? 0 : (i + 1);
             vals[i] = new byte[len];
             for (int k = 0; k < len; k++) vals[i][k] = (byte)((i * 17 + k * 13) & 0xff);
         }
 
         byte[] data = Build(tags, vals);
-        // Trailer: [..., Count = N-1, OffsetSize, IndexType].
+        // Trailer: [..., Count = N-1, IndexType].
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.ByteTagMap));
-        Assert.That(data[^2], Is.AnyOf(1, 2, 4, 6));
-        Assert.That(data[^3], Is.EqualTo((byte)(n - 1)));
+        Assert.That(data[^2], Is.EqualTo((byte)(n - 1)));
 
         // Hits.
         for (int i = 0; i < n; i++)
@@ -248,69 +250,39 @@ public class HsstByteTagMapTests
         // Three entries: tag 0x01 → "AB", tag 0x02 → "" (empty), tag 0x03 → "Z".
         byte[] data = Build([0x01, 0x02, 0x03], ["AB"u8.ToArray(), [], "Z"u8.ToArray()]);
 
-        // valuesTotal = 3 ≤ 255 → OffsetSize = 1.
-        // Expected layout: [Value_0=2][Value_1=0][Value_2=1][Ends: 3*1][Tags: 3][Count:1][OffsetSize:1][IndexType:1]
+        // Layout: [Value_0=2][Value_1=0][Value_2=1][Ends: 3·u16 LE][Tags: 3][Count:1][IndexType:1].
         // Ends: [2, 2, 3] (cumulative end offsets from byte 0 of HSST). Count stores N-1 = 2.
-        Assert.That(data.Length, Is.EqualTo(2 + 0 + 1 + 3 + 3 + 1 + 1 + 1));
+        Assert.That(data.Length, Is.EqualTo(2 + 0 + 1 + 6 + 3 + 1 + 1));
         Assert.That(data[^1], Is.EqualTo((byte)IndexType.ByteTagMap));
-        Assert.That(data[^2], Is.EqualTo((byte)1)); // OffsetSize
-        Assert.That(data[^3], Is.EqualTo((byte)2)); // Count = N - 1
+        Assert.That(data[^2], Is.EqualTo((byte)2)); // Count = N - 1
         // Tags adjacent to count.
-        Assert.That(data[^6..^3], Is.EqualTo(new byte[] { 0x01, 0x02, 0x03 }));
-        // Ends right before tags: 3 single-byte LE values.
-        ReadOnlySpan<byte> endsSpan = data.AsSpan(data.Length - 6 - 3, 3);
-        Assert.That(endsSpan[0], Is.EqualTo((byte)2));
-        Assert.That(endsSpan[1], Is.EqualTo((byte)2));
-        Assert.That(endsSpan[2], Is.EqualTo((byte)3));
+        Assert.That(data[^5..^2], Is.EqualTo(new byte[] { 0x01, 0x02, 0x03 }));
+        // Ends right before tags: 3 u16 LE values.
+        ReadOnlySpan<byte> endsSpan = data.AsSpan(data.Length - 5 - 6, 6);
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(endsSpan[0..]), Is.EqualTo(2));
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(endsSpan[2..]), Is.EqualTo(2));
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(endsSpan[4..]), Is.EqualTo(3));
         // Values up front.
         Assert.That(data[..2], Is.EqualTo("AB"u8.ToArray()));
         Assert.That(data[2], Is.EqualTo((byte)'Z'));
     }
 
     [Test]
-    public void OffsetSize_GrowsWithValuesTotal_AndRoundTripsCorrectly()
+    public void Build_RejectsValuesRegionExceedingU16()
     {
-        // For each target OffsetSize regime, build a small ByteTagMap whose cumulative
-        // values total falls into that bucket, then verify the trailer's OffsetSize byte
-        // and that every entry round-trips by lookup and by enumeration.
-        // OffsetSize = 6 would require >4 GiB of payload — skipped for cost reasons.
-        (int valLen, int expectedOffsetSize)[] cases =
-        [
-            (50, 1),     // 4 entries × 50 bytes = 200 ≤ 255
-            (300, 2),    // 4 entries × 300 = 1200 > 255 → OffsetSize 2
-            (20_000, 4), // 4 entries × 20000 = 80000 > 65535 → OffsetSize 4
-        ];
-
-        foreach ((int valLen, int expectedOffsetSize) in cases)
+        // ByteTagMap end offsets are fixed u16; valuesTotal > 65535 must throw at Build time.
+        bool threw = false;
+        using (PooledByteBufferWriter p = new(256 * 1024))
         {
-            byte[] tags = [0x10, 0x20, 0x40, 0x80];
-            byte[][] vals = new byte[4][];
-            for (int i = 0; i < 4; i++)
-            {
-                vals[i] = new byte[valLen];
-                for (int k = 0; k < valLen; k++) vals[i][k] = (byte)((i * 31 + k) & 0xff);
-            }
-
-            byte[] data = Build(tags, vals);
-            Assert.That(data[^1], Is.EqualTo((byte)IndexType.ByteTagMap));
-            Assert.That(data[^2], Is.EqualTo((byte)expectedOffsetSize),
-                $"valLen={valLen} expected OffsetSize {expectedOffsetSize} but trailer says {data[^2]}");
-            Assert.That(data[^3], Is.EqualTo((byte)3));
-
-            // Round-trip via lookup.
-            for (int i = 0; i < 4; i++)
-            {
-                Assert.That(TryGet(data, [tags[i]], out byte[] got), Is.True);
-                Assert.That(got, Is.EqualTo(vals[i]));
-            }
-            // Round-trip via enumeration.
-            List<(byte Tag, byte[] Value)> mat = Materialize(data);
-            Assert.That(mat.Count, Is.EqualTo(4));
-            for (int i = 0; i < 4; i++)
-            {
-                Assert.That(mat[i].Tag, Is.EqualTo(tags[i]));
-                Assert.That(mat[i].Value, Is.EqualTo(vals[i]));
-            }
+            using HsstByteTagMapBuilder<PooledByteBufferWriter.Writer> b = new(ref p.GetWriter());
+            // 4 × 20 000 = 80 000 > ushort.MaxValue (65 535).
+            byte[] big = new byte[20_000];
+            b.Add(0x10, big);
+            b.Add(0x20, big);
+            b.Add(0x40, big);
+            b.Add(0x80, big);
+            try { b.Build(); } catch (InvalidOperationException) { threw = true; }
         }
+        Assert.That(threw, Is.True, "valuesTotal > u16 must throw at Build");
     }
 }

@@ -206,42 +206,39 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
     private sealed class ByteTagMapVariant
     {
+        private const int OffsetSize = 2;
+
         private readonly long _scopeStart;
         private readonly int _count;
-        private readonly int _offsetSize;
         private readonly long _tagsStart;
         private readonly long _endsStart;
         private int _index = -1;
-        private long _prevEnd;
+        private int _prevEnd;
         private long _currentValStart;
         private long _currentValLen;
 
         public static ByteTagMapVariant? TryCreate(scoped in TReader reader, Bound scope)
         {
             // Trailer layout:
-            //   [Ends: N×OffsetSize LE][Tags: N×u8][Count: u8 = N - 1][OffsetSize: u8][IndexType: u8]
-            if (scope.Length < 3) return null;
+            //   [Ends: N×u16 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8]
+            if (scope.Length < 2) return null;
 
-            // Read [Count, OffsetSize] from positions [-3..-1) (IndexType at -1 was already verified).
-            int n, offsetSize;
-            using (TPin hdrPin = reader.PinBuffer(scope.Offset + scope.Length - 3, 2))
+            int n;
+            using (TPin hdrPin = reader.PinBuffer(scope.Offset + scope.Length - 2, 1))
             {
                 n = hdrPin.Buffer[0] + 1;
-                offsetSize = hdrPin.Buffer[1];
             }
-            if (!HsstOffset.IsValidOffsetSize(offsetSize)) return null;
-            long trailerLen = 3L + n + (long)n * offsetSize;
+            long trailerLen = 2L + n + (long)n * OffsetSize;
             if (trailerLen > scope.Length) return null;
-            long tagsStart = scope.Offset + scope.Length - 3 - n;
-            long endsStart = tagsStart - (long)n * offsetSize;
-            return new ByteTagMapVariant(scope.Offset, n, offsetSize, tagsStart, endsStart);
+            long tagsStart = scope.Offset + scope.Length - 2 - n;
+            long endsStart = tagsStart - (long)n * OffsetSize;
+            return new ByteTagMapVariant(scope.Offset, n, tagsStart, endsStart);
         }
 
-        private ByteTagMapVariant(long scopeStart, int count, int offsetSize, long tagsStart, long endsStart)
+        private ByteTagMapVariant(long scopeStart, int count, long tagsStart, long endsStart)
         {
             _scopeStart = scopeStart;
             _count = count;
-            _offsetSize = offsetSize;
             _tagsStart = tagsStart;
             _endsStart = endsStart;
             _currentValStart = scopeStart;
@@ -255,13 +252,10 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             if (next >= _count) return false;
             _index = next;
 
-            long thisEnd;
-            using (TPin endPin = reader.PinBuffer(_endsStart + (long)next * _offsetSize, _offsetSize))
+            int thisEnd;
+            using (TPin endPin = reader.PinBuffer(_endsStart + (long)next * OffsetSize, OffsetSize))
             {
-                Span<byte> wide = stackalloc byte[8];
-                wide.Clear();
-                endPin.Buffer.CopyTo(wide);
-                thisEnd = (long)BinaryPrimitives.ReadUInt64LittleEndian(wide);
+                thisEnd = BinaryPrimitives.ReadUInt16LittleEndian(endPin.Buffer);
             }
             // Ends are scope-relative offsets; convert to absolute.
             _currentValStart = _scopeStart + _prevEnd;

@@ -18,6 +18,9 @@ internal static class HsstByteTagMapReader
     // linear path; the ≤256 slot-suffix bucket takes the binary-search path.
     private const int BinarySearchThreshold = 16;
 
+    /// <summary>On-disk end-offset width: fixed 2 bytes (u16 LE), matching the builder.</summary>
+    private const int OffsetSize = 2;
+
     /// <summary>Parsed footer of a ByteTagMap HSST.</summary>
     internal struct Layout
     {
@@ -25,17 +28,15 @@ internal static class HsstByteTagMapReader
         public long DataStart;
         /// <summary>Number of entries.</summary>
         public int Count;
-        /// <summary>Per-end-offset width on disk: 1, 2, 4, or 6 bytes.</summary>
-        public int OffsetSize;
-        /// <summary>Absolute offset of the <c>Ends</c> array (<c>Count·OffsetSize</c> bytes).</summary>
+        /// <summary>Absolute offset of the <c>Ends</c> array (<c>Count·2</c> bytes, u16 LE).</summary>
         public long EndsStart;
         /// <summary>Absolute offset of the <c>Tags</c> array (Count bytes, adjacent to the trailer).</summary>
         public long TagsStart;
     }
 
     /// <summary>
-    /// Parse the ByteTagMap trailer. Returns false on truncation or invalid OffsetSize.
-    /// Caller must have already verified the trailing <see cref="IndexType"/> byte equals
+    /// Parse the ByteTagMap trailer. Returns false on truncation. Caller must have
+    /// already verified the trailing <see cref="IndexType"/> byte equals
     /// <see cref="IndexType.ByteTagMap"/>.
     /// </summary>
     public static bool TryReadLayout<TReader, TPin>(scoped in TReader reader, Bound bound, out Layout layout)
@@ -43,25 +44,21 @@ internal static class HsstByteTagMapReader
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
         layout = default;
-        if (bound.Length < 3) return false;
+        if (bound.Length < 2) return false;
 
-        // Read [Count, OffsetSize] from positions [-3..-1) relative to the trailer end.
-        // The IndexType byte at -1 was already verified by the dispatcher.
-        Span<byte> hdr = stackalloc byte[2];
-        if (!reader.TryRead(bound.Offset + bound.Length - 3, hdr)) return false;
+        // Read Count from position -2 (IndexType at -1 was already verified).
+        Span<byte> hdr = stackalloc byte[1];
+        if (!reader.TryRead(bound.Offset + bound.Length - 2, hdr)) return false;
         // Count byte stores N - 1; the empty map cannot be represented by this format.
         int count = hdr[0] + 1;
-        int offsetSize = hdr[1];
-        if (!HsstOffset.IsValidOffsetSize(offsetSize)) return false;
 
-        long trailerLen = 3L + count + (long)count * offsetSize;
+        long trailerLen = 2L + count + (long)count * OffsetSize;
         if (trailerLen > bound.Length) return false;
 
-        long tagsStart = bound.Offset + bound.Length - 3 - count;
-        long endsStart = tagsStart - (long)count * offsetSize;
+        long tagsStart = bound.Offset + bound.Length - 2 - count;
+        long endsStart = tagsStart - (long)count * OffsetSize;
         layout.DataStart = bound.Offset;
         layout.Count = count;
-        layout.OffsetSize = offsetSize;
         layout.EndsStart = endsStart;
         layout.TagsStart = tagsStart;
         return true;
@@ -142,37 +139,23 @@ internal static class HsstByteTagMapReader
 
         // Resolve the value bound from Ends. Read both Ends[idx-1] and Ends[idx] in one
         // call when idx > 0 so the common path is a single syscall/read.
-        Span<byte> endsBuf = stackalloc byte[16]; // 2 * max(OffsetSize) = 12, rounded up.
-        long prevEnd, thisEnd;
+        Span<byte> endsBuf = stackalloc byte[2 * OffsetSize];
+        int prevEnd, thisEnd;
         if (idx == 0)
         {
-            if (!reader.TryRead(L.EndsStart, endsBuf[..L.OffsetSize])) return false;
+            if (!reader.TryRead(L.EndsStart, endsBuf[..OffsetSize])) return false;
             prevEnd = 0;
-            thisEnd = ReadEnd(endsBuf, 0, L.OffsetSize);
+            thisEnd = BinaryPrimitives.ReadUInt16LittleEndian(endsBuf);
         }
         else
         {
-            int span = 2 * L.OffsetSize;
-            if (!reader.TryRead(L.EndsStart + (long)(idx - 1) * L.OffsetSize, endsBuf[..span])) return false;
-            prevEnd = ReadEnd(endsBuf, 0, L.OffsetSize);
-            thisEnd = ReadEnd(endsBuf, L.OffsetSize, L.OffsetSize);
+            if (!reader.TryRead(L.EndsStart + (long)(idx - 1) * OffsetSize, endsBuf)) return false;
+            prevEnd = BinaryPrimitives.ReadUInt16LittleEndian(endsBuf);
+            thisEnd = BinaryPrimitives.ReadUInt16LittleEndian(endsBuf[OffsetSize..]);
         }
         if (thisEnd < prevEnd) return false;
 
-        long valueAbsStart = L.DataStart + prevEnd;
-        long valueLen = thisEnd - prevEnd;
-        if (valueLen > int.MaxValue) return false;
-        resultBound = new Bound(valueAbsStart, (int)valueLen);
+        resultBound = new Bound(L.DataStart + prevEnd, thisEnd - prevEnd);
         return true;
-    }
-
-    /// <summary>Read a 1/2/4/6-byte LE end-offset from <paramref name="buf"/> at <paramref name="byteOffset"/>.</summary>
-    private static long ReadEnd(ReadOnlySpan<byte> buf, int byteOffset, int offsetSize)
-    {
-        // Pad to 8 bytes so we can use the fast 64-bit LE read regardless of OffsetSize.
-        Span<byte> wide = stackalloc byte[8];
-        wide.Clear();
-        buf.Slice(byteOffset, offsetSize).CopyTo(wide);
-        return (long)BinaryPrimitives.ReadUInt64LittleEndian(wide);
     }
 }

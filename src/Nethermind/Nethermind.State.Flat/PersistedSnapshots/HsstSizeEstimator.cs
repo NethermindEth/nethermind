@@ -64,7 +64,7 @@ internal static class HsstSizeEstimator
         int slotsPerAddress = storageCount / distinctAddresses;
 
         // Estimate suffix ByteTagMap sizes (SlotSuffix(1) → SlotValue, ~32 bytes avg value).
-        // Each distinct prefix group averages ~1 suffix entry; ByteTagMap trailer is 5·N + 2.
+        // Each distinct prefix group averages ~1 suffix entry; ByteTagMap trailer is 3·N + 2.
         int avgSuffixHsstSize = EstimateByteTagMapSize(slotsPerAddress, slotsPerAddress * 32);
 
         // Estimate prefix HSST sizes (SlotPrefix(31) → suffix ByteTagMap)
@@ -340,17 +340,15 @@ internal static class HsstSizeEstimator
     }
 
     /// <summary>
-    /// Exact size of a <c>ByteTagMap</c> HSST: trailer is
-    /// <c>(1 + OffsetSize)·N + 3</c> bytes (1 byte per tag + <c>OffsetSize</c> bytes
-    /// per end-offset + 1-byte Count + 1-byte OffsetSize + 1-byte IndexType), plus the
-    /// concatenated value bytes. <c>OffsetSize</c> is picked from <paramref name="sumValueBytes"/>.
-    /// No safety margin — the format has no hidden per-entry overhead.
+    /// Exact size of a <c>ByteTagMap</c> HSST: trailer is <c>3·N + 2</c> bytes
+    /// (1-byte tag + 2-byte u16 LE end-offset per entry + 1-byte Count + 1-byte
+    /// IndexType), plus the concatenated value bytes. End offsets are fixed at
+    /// 2 bytes; values total must fit in u16. No safety margin.
     /// </summary>
     internal static int EstimateByteTagMapSize(int entryCount, int sumValueBytes)
     {
-        if (entryCount <= 0) return 3;
-        int offsetSize = HsstOffset.ChooseOffsetSize(sumValueBytes);
-        return entryCount * (1 + offsetSize) + 3 + sumValueBytes;
+        if (entryCount <= 0) return 2;
+        return entryCount * 3 + 2 + sumValueBytes;
     }
 
     /// <summary>

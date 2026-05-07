@@ -9,19 +9,16 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Builds a tiny single-byte-keyed HSST. The output is concatenated values followed by a
-/// flat trailer: <c>[Ends: N×OffsetSize LE][Tags: N×u8][Count: u8 = N - 1][OffsetSize: u8][IndexType: u8 = 0x03]</c>.
-/// <c>OffsetSize</c> is chosen at <see cref="Build"/> time from the running values total
-/// (1, 2, 4, or 6 bytes — the same policy as <see cref="HsstOffset.ChooseOffsetSize"/>),
-/// so small maps pay 1 byte per cumulative end instead of a fixed 4.
-///
-/// Designed for the persisted-snapshot column container (≤7 entries), per-address
-/// sub-tag map (≤3 entries), and the slot-suffix bucket (≤256 entries) where the
-/// b-tree's fixed parse cost dominates.
+/// flat trailer: <c>[Ends: N×u16 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8 = 0x03]</c>.
+/// End offsets are fixed at 2 bytes — this matches the only production use (slot-suffix
+/// bucket with at most 256 × 32 B = 8192 B of values), so the variable OffsetSize byte
+/// has been dropped from the trailer.
 ///
 /// Tags must be added in strictly ascending order. <c>N</c> is capped at
 /// <see cref="MaxEntries"/> (256). The on-disk <c>Count</c> byte stores <c>N - 1</c>,
 /// so 0..255 cover all 256 possible entry counts; the empty map cannot be represented
-/// — callers must skip <see cref="Build"/> for empty maps.
+/// — callers must skip <see cref="Build"/> for empty maps. Values total is capped at
+/// <see cref="MaxValuesTotal"/> (65 535 B).
 /// </summary>
 public ref struct HsstByteTagMapBuilder<TWriter>
     where TWriter : IByteBufferWriter
@@ -31,6 +28,12 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     /// <c>N - 1</c>, so a single byte covers entry counts 1..256.
     /// </summary>
     public const int MaxEntries = 256;
+
+    /// <summary>On-disk end-offset width: fixed 2 bytes (u16 LE).</summary>
+    internal const int OffsetSize = 2;
+
+    /// <summary>Maximum cumulative values-region size (u16 max).</summary>
+    public const int MaxValuesTotal = ushort.MaxValue;
 
     private const int InitialCapacity = 16;
 
@@ -137,8 +140,9 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     }
 
     /// <summary>
-    /// Append the trailer (<c>[Ends][Tags][Count][OffsetSize][IndexType]</c>) to the writer.
-    /// The writer is already advanced through every value at this point.
+    /// Append the trailer (<c>[Ends][Tags][Count][IndexType]</c>) to the writer. End offsets
+    /// are fixed at 2 bytes; values total must fit in u16. The writer is already advanced
+    /// through every value at this point.
     /// </summary>
     public void Build()
     {
@@ -146,31 +150,25 @@ public ref struct HsstByteTagMapBuilder<TWriter>
         if (n == 0)
             throw new InvalidOperationException("ByteTagMap cannot encode an empty map; the caller must omit Build for zero-entry maps");
 
-        // Pick the smallest end-offset width that fits the cumulative max (= last entry's end).
         long valuesTotal = _ends![n - 1];
-        int offsetSize = HsstOffset.ChooseOffsetSize(valuesTotal);
+        if ((ulong)valuesTotal > MaxValuesTotal)
+            throw new InvalidOperationException($"ByteTagMap values-region size {valuesTotal} exceeds u16 ceiling {MaxValuesTotal}");
 
-        // Ends section, written at the chosen stride. Use an 8-byte scratch and slice
-        // off the low offsetSize bytes (LE).
-        Span<byte> endsSpan = _writer.GetSpan(n * offsetSize);
-        Span<byte> scratch = stackalloc byte[8];
+        // Ends section, fixed u16 LE.
+        Span<byte> endsSpan = _writer.GetSpan(n * OffsetSize);
         for (int i = 0; i < n; i++)
-        {
-            BinaryPrimitives.WriteUInt64LittleEndian(scratch, (ulong)_ends![i]);
-            scratch[..offsetSize].CopyTo(endsSpan[(i * offsetSize)..]);
-        }
-        _writer.Advance(n * offsetSize);
+            BinaryPrimitives.WriteUInt16LittleEndian(endsSpan[(i * OffsetSize)..], (ushort)_ends![i]);
+        _writer.Advance(n * OffsetSize);
 
         // Tags section (adjacent to Count so reader hits it on the same cache line).
         Span<byte> tagsSpan = _writer.GetSpan(n);
         for (int i = 0; i < n; i++) tagsSpan[i] = _tags![i];
         _writer.Advance(n);
 
-        // Trailer: Count (N - 1) + OffsetSize + IndexType.
-        Span<byte> trailer = _writer.GetSpan(3);
+        // Trailer: Count (N - 1) + IndexType.
+        Span<byte> trailer = _writer.GetSpan(2);
         trailer[0] = (byte)(n - 1);
-        trailer[1] = (byte)offsetSize;
-        trailer[2] = (byte)IndexType.ByteTagMap;
-        _writer.Advance(3);
+        trailer[1] = (byte)IndexType.ByteTagMap;
+        _writer.Advance(2);
     }
 }
