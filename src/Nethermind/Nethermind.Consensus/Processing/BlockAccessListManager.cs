@@ -428,21 +428,13 @@ public class BlockAccessListManager(
             accountChanges.LoadPreStateNonce((ulong)account.Nonce);
             accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
 
-            IList<UInt256> changedSlots = accountChanges.ChangedSlots;
-            UInt256[] storageReads = accountChanges.StorageReads;
-            int totalSlots = changedSlots.Count + storageReads.Length;
-            if (totalSlots > 0)
+            UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
+            if (slotsToLoad.Length > 0)
             {
-                UInt256[] slotsToLoad = new UInt256[totalSlots];
-                for (int i = 0; i < changedSlots.Count; i++)
-                    slotsToLoad[i] = changedSlots[i];
-                storageReads.CopyTo(slotsToLoad, changedSlots.Count);
-                UInt256[] values = new UInt256[totalSlots];
+                UInt256[] values = new UInt256[slotsToLoad.Length];
                 stateProvider.GetStorageBatchValues(accountChanges.Address, slotsToLoad, values);
-                for (int i = 0; i < totalSlots; i++)
-                {
+                for (int i = 0; i < slotsToLoad.Length; i++)
                     accountChanges.LoadPreStateStorage(slotsToLoad[i], values[i]);
-                }
             }
         }
     }
