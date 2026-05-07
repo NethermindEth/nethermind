@@ -584,27 +584,15 @@ public class BlockProcessorTests
         Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
     }
 
-    [Test]
-    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_multi_tx_blocks()
-    {
-        BlockAccessListManager balManager = CreateAmsterdamBalManager();
-
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithTransactions(2, Amsterdam.Instance)
-            .WithBlockAccessList(new BlockAccessList())
-            .TestObject;
-
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-
-        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
-    }
+    [TestCase(1)]
+    [TestCase(2)]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
+        WithScopedAmsterdamBalManager(balManager => AssertParallelBalExecutionEnabled(balManager, txCount));
 
     [Test]
-    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_single_tx_blocks()
+    public void PrepareForProcessing_disables_parallel_bal_execution_when_state_provider_is_not_scoped()
     {
-        BlockAccessListManager balManager = CreateAmsterdamBalManager();
-
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Block block = Build.A.Block
             .WithNumber(1)
             .WithTransactions(1, Amsterdam.Instance)
@@ -612,8 +600,13 @@ public class BlockProcessorTests
             .TestObject;
 
         balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
 
-        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balManager.ParallelExecutionEnabled, Is.False);
+            Assert.DoesNotThrow(() => balManager.Setup(block));
+        }
     }
 
     [Test]
@@ -998,13 +991,37 @@ public class BlockProcessorTests
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        return new(
+        return CreateAmsterdamBalManager(stateProvider);
+    }
+
+    private static BlockAccessListManager CreateAmsterdamBalManager(IWorldState stateProvider) =>
+        new(
             stateProvider,
             new TestSingleReleaseSpecProvider(Amsterdam.Instance),
             Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = true },
             new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+    private static void WithScopedAmsterdamBalManager(Action<BlockAccessListManager> action)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
+        action(balManager);
+    }
+
+    private static void AssertParallelBalExecutionEnabled(BlockAccessListManager balManager, int txCount)
+    {
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithTransactions(txCount, Amsterdam.Instance)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+
+        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
     }
 
     private static GasValidationResultSlot[] ResultsForCount(int count)

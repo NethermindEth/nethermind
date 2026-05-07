@@ -56,6 +56,16 @@ public class BlockAccessListDecoderTests
         Assert.That(() => Rlp.Decode<BlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
 
     [Test]
+    public void Decode_empty_slot_changes_entry_in_account_changes_throws_RlpException()
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptySlotChangesEntry(TestItem.AddressA);
+
+        Assert.That(
+            () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence."));
+    }
+
+    [Test]
     public void Decode_account_changes_without_changes_or_reads_roundtrips_as_account_read()
     {
         SortedDictionary<Address, AccountChanges> accountChanges = new()
@@ -737,6 +747,28 @@ public class BlockAccessListDecoderTests
         EncodeArray(stream, balanceChanges, BalanceChangeDecoder.Instance);
         EncodeArray(stream, nonceChanges, NonceChangeDecoder.Instance);
         EncodeArray(stream, codeChanges, CodeChangeDecoder.Instance);
+        return stream.Data.ToArray()!;
+    }
+
+    private static byte[] EncodeAccountChangesWithEmptySlotChangesEntry(Address address)
+    {
+        int storageChangesLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+        int contentLength = Rlp.LengthOfAddressRlp
+            + storageChangesLength
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length;
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(address);
+        stream.StartSequence(Rlp.OfEmptyList.Length);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
         return stream.Data.ToArray()!;
     }
 

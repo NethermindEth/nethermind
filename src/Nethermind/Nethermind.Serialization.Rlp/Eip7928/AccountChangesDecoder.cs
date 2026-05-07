@@ -31,6 +31,11 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         UInt256? lastSlot = null;
         foreach (SlotChanges slotChange in slotChanges)
         {
+            if (slotChange is null)
+            {
+                ThrowEmptySlotChanges();
+            }
+
             UInt256 slot = slotChange.Key;
             if (lastSlot is not null && slot <= lastSlot)
             {
@@ -222,6 +227,10 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         return false;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptySlotChanges() =>
+        throw new RlpException("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowStorageChangesOutOfOrder() =>
