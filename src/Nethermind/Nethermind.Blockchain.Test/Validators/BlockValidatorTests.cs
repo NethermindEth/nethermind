@@ -334,7 +334,7 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListIndexOutOfRange"));
+            Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
         }
     }
 
@@ -469,7 +469,7 @@ public class BlockValidatorTests
         Assert.That(isValid, Is.EqualTo(expectedValid));
         if (!expectedValid)
         {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListIndexOutOfRange"));
+            Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
         }
     }
 }

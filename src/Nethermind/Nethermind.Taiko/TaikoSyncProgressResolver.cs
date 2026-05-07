@@ -50,6 +50,7 @@ public sealed class TaikoSyncProgressResolver(
     public bool IsFastBlocksHeadersFinished() => inner.IsFastBlocksHeadersFinished();
     public bool IsFastBlocksBodiesFinished() => inner.IsFastBlocksBodiesFinished();
     public bool IsFastBlocksReceiptsFinished() => inner.IsFastBlocksReceiptsFinished();
+    public bool IsFastBlockAccessListsFinished() => inner.IsFastBlockAccessListsFinished();
     public bool IsLoadingBlocksFromDb() => inner.IsLoadingBlocksFromDb();
     public long FindBestProcessedBlock() => inner.FindBestProcessedBlock();
     public UInt256 ChainDifficulty => inner.ChainDifficulty;
