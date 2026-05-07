@@ -55,7 +55,7 @@ public abstract class TransactionForRpc
     /// the type to match the target block's fork rules.
     /// </summary>
     [JsonIgnore]
-    internal bool IsTypeDefaulted { get; set; }
+    public bool IsTypeDefaulted { get; internal set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }

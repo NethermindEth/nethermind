@@ -25,6 +25,12 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[][]? Blobs { get; set; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[][]? Commitments { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public byte[][]? Proofs { get; set; }
+
     [JsonConstructor]
     public BlobTransactionForRpc() { }
 

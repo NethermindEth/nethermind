@@ -169,6 +169,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
 
+    [ConfigItem(Description = "Maximum total tx fee (gasPrice * gasLimit, in wei) the node will sign in eth_signTransaction. 0 disables the cap. Default 1 ETH.", DefaultValue = "1000000000000000000")]
+    ulong RpcTxFeeCap { get; set; }
+
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 

@@ -68,6 +68,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
     public int EstimateErrorMargin { get; set; } = 150;
+    public ulong RpcTxFeeCap { get; set; } = 1_000_000_000_000_000_000UL;
     public string[] CorsOrigins { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 1;
     public int IpcProcessingConcurrency { get; set; } = 1;

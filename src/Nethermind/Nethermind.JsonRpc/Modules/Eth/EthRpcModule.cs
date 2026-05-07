@@ -44,6 +44,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Crypto;
 using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using ResultType = Nethermind.Core.ResultType;
@@ -353,6 +354,139 @@ public partial class EthRpcModule(
         {
             return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
         }
+    }
+
+    public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(TransactionForRpc rpcTx)
+    {
+        if (rpcTx.Gas is null)
+            return ResultWrapper<SignTransactionResult>.Fail("gas not specified", ErrorCodes.InvalidInput);
+
+        if (!HasFeeFields(rpcTx))
+            return ResultWrapper<SignTransactionResult>.Fail("missing gasPrice or maxFeePerGas/maxPriorityFeePerGas", ErrorCodes.InvalidInput);
+
+        LegacyTransactionForRpc? legacy = rpcTx as LegacyTransactionForRpc;
+        if (legacy?.Nonce is null)
+            return ResultWrapper<SignTransactionResult>.Fail("nonce not specified", ErrorCodes.InvalidInput);
+
+        Address from = legacy.From ?? Address.Zero;
+        if (!_wallet.IsUnlocked(from))
+            return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
+
+        rpcTx = PromoteToEip1559IfDefaultLegacy(rpcTx);
+
+        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        if (!txResult.Success(out Transaction tx, out string error))
+            return ResultWrapper<SignTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
+
+        ulong chainId = _blockchainBridge.GetChainId();
+        tx.ChainId = chainId;
+
+        ResultWrapper<SignTransactionResult>? feeCapError = CheckTxFeeCap(tx);
+        if (feeCapError is not null)
+            return feeCapError;
+
+        // Sidecar must be attached before encode; signing only sets tx.Signature so the wrapper survives.
+        if (rpcTx is BlobTransactionForRpc blobTx)
+        {
+            string? attachError = TryAttachBlobSidecar(tx, blobTx);
+            if (attachError is not null)
+                return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
+        }
+
+        try
+        {
+            _wallet.Sign(tx, chainId);
+        }
+        catch (SecurityException)
+        {
+            return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
+        }
+
+        tx.Hash = tx.CalculateHash();
+
+        byte[] raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes;
+
+        return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
+        {
+            Raw = raw,
+            Tx = TransactionForRpc.FromTransaction(tx)
+        });
+    }
+
+    private static bool HasFeeFields(TransactionForRpc rpcTx)
+    {
+        if (rpcTx is EIP1559TransactionForRpc eip1559
+            && eip1559.MaxFeePerGas is not null
+            && eip1559.MaxPriorityFeePerGas is not null)
+        {
+            return true;
+        }
+
+        return rpcTx is LegacyTransactionForRpc legacy && legacy.GasPrice is not null;
+    }
+
+    private static TransactionForRpc PromoteToEip1559IfDefaultLegacy(TransactionForRpc rpcTx)
+    {
+        if (!rpcTx.IsTypeDefaulted) return rpcTx;
+        if (rpcTx is AccessListTransactionForRpc or EIP1559TransactionForRpc) return rpcTx;
+        if (rpcTx is not LegacyTransactionForRpc legacy) return rpcTx;
+
+        return new EIP1559TransactionForRpc
+        {
+            From = legacy.From,
+            To = legacy.To,
+            Value = legacy.Value,
+            Gas = legacy.Gas,
+            Nonce = legacy.Nonce,
+            Input = legacy.Input,
+            ChainId = legacy.ChainId,
+            MaxFeePerGas = legacy.GasPrice,
+            MaxPriorityFeePerGas = legacy.GasPrice,
+        };
+    }
+
+    private ResultWrapper<SignTransactionResult>? CheckTxFeeCap(Transaction tx)
+    {
+        ulong cap = _rpcConfig.RpcTxFeeCap;
+        if (cap == 0) return null;
+
+        UInt256 perGas = tx.Type >= TxType.EIP1559 ? tx.MaxFeePerGas : tx.GasPrice;
+        UInt256 totalFee = perGas * (UInt256)tx.GasLimit;
+        UInt256 capWei = cap;
+
+        if (totalFee <= capWei) return null;
+
+        return ResultWrapper<SignTransactionResult>.Fail(
+            $"tx fee ({FormatWeiAsEther(totalFee)} ether) exceeds the configured cap ({FormatWeiAsEther(capWei)} ether)",
+            ErrorCodes.InvalidInput);
+    }
+
+    private static string FormatWeiAsEther(UInt256 wei)
+    {
+        const ulong WeiPerEther = 1_000_000_000_000_000_000UL;
+        const ulong WeiPerCenti = 10_000_000_000_000_000UL;
+        UInt256 ether = wei / (UInt256)WeiPerEther;
+        UInt256 centiTotal = wei / (UInt256)WeiPerCenti;
+        UInt256.Mod(centiTotal, (UInt256)100, out UInt256 centi);
+        return $"{ether}.{(ulong)centi:D2}";
+    }
+
+    private string? TryAttachBlobSidecar(Transaction tx, BlobTransactionForRpc blobTx)
+    {
+        if (blobTx.Blobs is null || blobTx.Blobs.Length == 0)
+            return "blob transaction requires non-empty blobs";
+        if (blobTx.Commitments is null || blobTx.Commitments.Length != blobTx.Blobs.Length)
+            return "commitments must be provided alongside blobs (one per blob)";
+        if (blobTx.Proofs is null)
+            return "proofs must be provided alongside blobs";
+
+        BlockHeader? head = _blockFinder.Head?.Header;
+        ProofVersion version = head is null
+            ? ProofVersion.V0
+            : _specProvider.GetSpec(head).BlobProofVersion;
+
+        tx.NetworkWrapper = new ShardBlobNetworkWrapper(blobTx.Blobs, blobTx.Commitments, blobTx.Proofs, version);
+        return null;
     }
 
     private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
