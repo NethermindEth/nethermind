@@ -270,12 +270,11 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetLastBeforeOrPrestate(uint blockAccessIndex, out T change)
     {
-        int changeIndex = FindFirstIndexAtOrAfter(blockAccessIndex);
-        if (changeIndex != 0)
+        if (TryGetLastBefore(blockAccessIndex, out change))
         {
-            change = _changes[changeIndex - 1];
             return true;
         }
 
@@ -289,20 +288,44 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
         return false;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetLastBefore(uint blockAccessIndex, out T change)
     {
-        int changeIndex = FindFirstIndexAtOrAfter(blockAccessIndex);
-        if (changeIndex != 0)
+        ReadOnlySpan<T> changes = BlockAccessChanges;
+        int length = changes.Length;
+        if (length != 0)
         {
-            change = _changes[changeIndex - 1];
-            return true;
+            // Fast path: target is past every recorded change (post-block reads, and any
+            // read where the slot was last touched before the current block-access index).
+            ref readonly T tail = ref changes[length - 1];
+            if (tail.Index < blockAccessIndex)
+            {
+                change = tail;
+                return true;
+            }
+
+            // Fall through to a binary search only when the interior could contain the
+            // boundary; if the first element is already at-or-after the target, no real
+            // change qualifies as "before".
+            if (changes[0].Index < blockAccessIndex)
+            {
+                change = changes[FindFirstIndexAtOrAfter(blockAccessIndex) - 1];
+                return true;
+            }
         }
 
         change = default;
         return false;
     }
 
-    public bool HasBefore(uint blockAccessIndex) => FindFirstIndexAtOrAfter(blockAccessIndex) != 0;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool HasBefore(uint blockAccessIndex)
+    {
+        // Monotonic Index ordering: at least one element is before the target iff the
+        // first element is. Avoids the O(log n) binary search the previous form did.
+        ReadOnlySpan<T> changes = BlockAccessChanges;
+        return changes.Length != 0 && changes[0].Index < blockAccessIndex;
+    }
 
     public Enumerator GetEnumerator() => new(this);
 

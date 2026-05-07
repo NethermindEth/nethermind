@@ -88,7 +88,7 @@ public class BlockAccessListManager(
         {
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
-            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
+            _parentStateRoot = ParallelExecutionEnabled && stateProvider.IsInScope ? stateProvider.StateRoot : null;
         }
     }
 
