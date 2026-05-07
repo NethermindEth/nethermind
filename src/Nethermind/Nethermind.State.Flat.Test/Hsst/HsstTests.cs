@@ -56,7 +56,11 @@ public class HsstTests
     [TestCase((long)int.MaxValue, 5)]
     [TestCase((long)int.MaxValue + 1, 5)]
     [TestCase(1L << 35, 6)]
-    [TestCase(long.MaxValue, 10)]
+    // long.MaxValue is 63 bits (top bit clear), so it encodes in ⌈63/7⌉=9 bytes.
+    // The 10-byte worst case is only reached when the 64th bit is set, e.g. -1L
+    // (whose ulong reinterpretation is all-ones).
+    [TestCase(long.MaxValue, 9)]
+    [TestCase(-1L, 10)]
     public void Leb128_RoundTrip(long value, int expectedSize)
     {
         Assert.That(Leb128.EncodedSize(value), Is.EqualTo(expectedSize));
