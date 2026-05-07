@@ -4,7 +4,7 @@
 namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
-/// Format/structural options for an HSST b-tree built by <see cref="HsstBuilder{TWriter}"/>.
+/// Format/structural options for an HSST b-tree built by <see cref="HsstBTreeBuilder{TWriter}"/>.
 /// Bundled into a single value so call sites read as a property bag rather than a wall of
 /// named arguments. Sizing hints (e.g. <c>expectedKeyCount</c>) and the writer remain
 /// separate parameters on the builder — they are not format options.

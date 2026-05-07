@@ -335,7 +335,7 @@ public static class PersistedSnapshotBuilder
     {
         // Metadata keys must be in sorted order (ASCII): "from_block" < "from_hash" < "to_block" < "to_hash" < "version"
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, expectedKeyCount: 5);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, expectedKeyCount: 5);
 
         Span<byte> blockNumBytes = stackalloc byte[8];
 
@@ -370,7 +370,7 @@ public static class PersistedSnapshotBuilder
 
         // Address-level HSST keyed by 20-byte address-hash prefix.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, new HsstBTreeOptions
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, new HsstBTreeOptions
         {
             MinSeparatorLength = 4,
         }, expectedKeyCount: uniqueAddresses.Count);
@@ -425,7 +425,7 @@ public static class PersistedSnapshotBuilder
             if (topStart < storTopIdx)
             {
                 ref TWriter topWriter = ref perAddr.BeginValueWrite();
-                using HsstBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, new HsstBTreeOptions { MinSeparatorLength = 3 },
+                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, new HsstBTreeOptions { MinSeparatorLength = 3 },
                     expectedKeyCount: storTopIdx - topStart);
                 for (int i = topStart; i < storTopIdx; i++)
                 {
@@ -446,7 +446,7 @@ public static class PersistedSnapshotBuilder
             if (compactStart < storCompactIdx)
             {
                 ref TWriter compactWriter = ref perAddr.BeginValueWrite();
-                using HsstBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, new HsstBTreeOptions { MinSeparatorLength = 8 },
+                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, new HsstBTreeOptions { MinSeparatorLength = 8 },
                     expectedKeyCount: storCompactIdx - compactStart);
                 for (int i = compactStart; i < storCompactIdx; i++)
                 {
@@ -467,7 +467,7 @@ public static class PersistedSnapshotBuilder
             if (fallbackStart < storFallbackIdx)
             {
                 ref TWriter fbWriter = ref perAddr.BeginValueWrite();
-                using HsstBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, expectedKeyCount: storFallbackIdx - fallbackStart);
+                using HsstBTreeBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, expectedKeyCount: storFallbackIdx - fallbackStart);
                 for (int i = fallbackStart; i < storFallbackIdx; i++)
                 {
                     ((Hash256 _, TreePath path) k, TrieNode node) = storFallback[i];
@@ -486,7 +486,7 @@ public static class PersistedSnapshotBuilder
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, new HsstBTreeOptions { MinSeparatorLength = 4 });
+                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.Addr.Bytes.SequenceEqual(address!.Bytes))
@@ -571,7 +571,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, new HsstBTreeOptions
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, new HsstBTreeOptions
         {
             MinSeparatorLength = 3,
         }, expectedKeyCount: stateNodes.Count);
@@ -590,7 +590,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, new HsstBTreeOptions
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, new HsstBTreeOptions
         {
             MinSeparatorLength = 8,
         }, expectedKeyCount: stateNodes.Count);
@@ -609,7 +609,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, ArrayPoolList<(TreePath Path, TrieNode Node)> stateNodes, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, expectedKeyCount: stateNodes.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, expectedKeyCount: stateNodes.Count);
         Span<byte> keyBuffer = stackalloc byte[33];
         foreach ((TreePath path, TrieNode node) in stateNodes)
         {
@@ -723,7 +723,7 @@ public static class PersistedSnapshotBuilder
         int outerMinSep = 0, int innerKeySize = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         SpanByteReader reader = new(column);
-        HsstBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
+        HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
         using HsstRefEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, column.Length));
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
 
@@ -766,7 +766,7 @@ public static class PersistedSnapshotBuilder
         int snapshotId) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         SpanByteReader reader = new(column);
-        using HsstBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
+        using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
         using HsstRefEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, column.Length));
 
         while (outerEnum.MoveNext())
@@ -1037,7 +1037,7 @@ public static class PersistedSnapshotBuilder
         int outerMinSep = 0, int innerMinSep = 0,
         bool innerByteTagMap = false) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        using HsstBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
         // Temp list for collecting matching source indices
         using ArrayPoolList<int> matchingSourcesList = new(n, n);
@@ -1195,7 +1195,7 @@ public static class PersistedSnapshotBuilder
         WholeReadSession[] sessions,
         ref TWriter writer, int minSeparatorLength) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        using HsstBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
         while (true)
         {
             int minIdx = PickMinIdx(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions);
@@ -1311,7 +1311,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(in r);
             }
 
-            using HsstBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
+            using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
             while (true)
             {
@@ -1491,7 +1491,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(in r);
             }
 
-            using HsstBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
+            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
             while (true)
             {
@@ -1937,7 +1937,7 @@ public static class PersistedSnapshotBuilder
             idx++;
         }
 
-        using HsstBuilder<TWriter, TReader, TPin> builder = new(ref writer);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer);
 
         // Emit all keys in sorted ASCII order:
         // "from_block" < "from_hash" < "noderefs" < "ref_ids" < "to_block" < "to_hash" < "version"

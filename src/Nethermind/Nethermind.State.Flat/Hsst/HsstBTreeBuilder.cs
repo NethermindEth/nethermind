@@ -31,7 +31,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// handed a reader over the just-written data section and recomputes separators
 /// on-demand from the flushed bytes.
 /// </summary>
-public ref struct HsstBuilder<TWriter, TReader, TPin>
+public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     where TWriter : IByteBufferWriterWithReader<TReader, TPin>
     where TReader : IHsstByteReader<TPin>, allows ref struct
     where TPin : struct, IBufferPin, allows ref struct
@@ -53,7 +53,7 @@ public ref struct HsstBuilder<TWriter, TReader, TPin>
     /// <paramref name="expectedKeyCount"/> sizes the entry-positions buffer up front;
     /// pass an estimate when known to avoid resize allocations. The buffer still grows on demand.
     /// </summary>
-    public HsstBuilder(ref TWriter writer, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
+    public HsstBTreeBuilder(ref TWriter writer, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
     {
         HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
 

@@ -137,7 +137,7 @@ public class HsstLargeBuildTests
             {
                 case IndexType.BTree:
                 {
-                    using HsstBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> hsst = new(ref writer, expectedKeyCount: checked((int)count));
+                    using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> hsst = new(ref writer, expectedKeyCount: checked((int)count));
                     Span<byte> keyBuf = stackalloc byte[8];
                     Span<byte> valueBuf = stackalloc byte[1];
                     valueBuf[0] = BTreeValueByte;
@@ -406,7 +406,7 @@ public class HsstLargeBuildTests
                 {
                     case IndexType.BTree:
                     {
-                        using HsstBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> outHsst = new(ref writer, expectedKeyCount: merged);
+                        using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> outHsst = new(ref writer, expectedKeyCount: merged);
                         while (moreA || moreB)
                         {
                             int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);

@@ -78,7 +78,7 @@ public class HsstTests
     [Test]
     public void Empty_Hsst_HasZeroEntries()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
 
         Assert.That(CountEntries(data), Is.EqualTo(0));
         Assert.That(TryGet(data, "hello"u8, out _), Is.False);
@@ -87,7 +87,7 @@ public class HsstTests
     [Test]
     public void IndexType_Byte_Is_BTree_At_Tail()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add("key"u8, "value"u8);
         });
@@ -98,7 +98,7 @@ public class HsstTests
     [Test]
     public void Single_Entry_RoundTrip()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add("key1"u8, "value1"u8);
         });
@@ -130,7 +130,7 @@ public class HsstTests
             expected.Add((key, value));
         }
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             foreach ((string key, string value) in expected)
             {
@@ -165,7 +165,7 @@ public class HsstTests
             entries.Add((key, value));
         }
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             foreach ((string key, string value) in entries)
             {
@@ -190,7 +190,7 @@ public class HsstTests
         byte[] longKey = new byte[255];
         for (int i = 0; i < longKey.Length; i++) longKey[i] = (byte)'c';
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add("a"u8, ReadOnlySpan<byte>.Empty);
             builder.Add("b"u8, longValue);
@@ -225,7 +225,7 @@ public class HsstTests
         }
         Array.Sort(entries, (a, b) => a.Key.AsSpan().SequenceCompareTo(b.Key));
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             foreach ((byte[] key, byte[] value) in entries)
             {
@@ -268,7 +268,7 @@ public class HsstTests
             ("9A3F37BBBE6820FE83BE2B55F78AC9B64FA4C24637B0A6A0B7203DA68728A5CC", "CB7EDAB045ACA26B99923FF2F17B9A8720E015B5603CD8EA9896049D2B79775A"),
         ];
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             foreach ((string key, string value) in hexEntries)
                 builder.Add(Convert.FromHexString(key), Convert.FromHexString(value));
@@ -320,7 +320,7 @@ public class HsstTests
             deduped.Add(entries[i]);
         }
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
@@ -370,7 +370,7 @@ public class HsstTests
             deduped.Add(entries[i]);
         }
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
@@ -430,7 +430,7 @@ public class HsstTests
             deduped.Add(entries[i]);
         }
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
@@ -469,7 +469,7 @@ public class HsstTests
     [Test]
     public void Duplicate_Keys_LastWriteWins()
     {
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add("key"u8, "value1"u8);
             builder.Add("key"u8, "value2"u8);
@@ -481,12 +481,12 @@ public class HsstTests
     [Test]
     public void NestedHsst_RoundTrip()
     {
-        byte[] innerData = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] innerData = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add([0x01, 0x02], [0xAA, 0xBB]);
         });
 
-        byte[] outerData = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] outerData = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add([0x00], innerData);
         });
@@ -510,14 +510,14 @@ public class HsstTests
         accountRlp[0] = 0xC0;
         for (int i = 1; i < 50; i++) accountRlp[i] = (byte)(i & 0xFF);
 
-        byte[] accountsInner = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] accountsInner = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add(addr, accountRlp);
         });
 
-        byte[] emptyInner = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
+        byte[] emptyInner = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) => { });
 
-        byte[] outerData = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] outerData = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add([0x00], accountsInner);
             builder.Add([0x01], emptyInner);
@@ -560,11 +560,11 @@ public class HsstTests
         // Outer HSST with one entry whose value is an inner HSST
         byte[] buffer = new byte[4096];
         SpanBufferWriter writer = new(buffer);
-        HsstBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
         try
         {
             ref SpanBufferWriter innerWriter = ref outer.BeginValueWrite();
-            using HsstBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter);
+            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter);
             inner.Add("key1"u8, "val1"u8);
             inner.Add("key2"u8, "val2"u8);
             inner.Build();
@@ -591,12 +591,12 @@ public class HsstTests
         // Outer HSST with 3 columns, each an inner HSST built via shared writer
         byte[] buffer = new byte[65536];
         SpanBufferWriter writer = new(buffer);
-        HsstBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
         try
         {
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
                 inner.Add("from"u8, "block0"u8);
                 inner.Add("to"u8, "block1"u8);
                 inner.Build();
@@ -604,7 +604,7 @@ public class HsstTests
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
                 byte[] addr = new byte[20]; addr[0] = 0xAB;
                 inner.Add(addr, [0xC0, 0x80]);
                 inner.Build();
@@ -612,7 +612,7 @@ public class HsstTests
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
                 inner.Build();
                 outer.FinishValueWrite([0x02]);
             }
@@ -643,7 +643,7 @@ public class HsstTests
         for (int i = 0; i < keyLength; i++) key[i] = (byte)(i & 0xFF);
         byte[] value = "v"u8.ToArray();
 
-        byte[] data = HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+        byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add(key, value);
         });
@@ -661,7 +661,7 @@ public class HsstTests
         byte[] value = "v"u8.ToArray();
 
         Assert.That(() =>
-            HsstTestUtil.BuildToArray((ref HsstBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
+            HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
             {
                 builder.Add(key, value);
             }),

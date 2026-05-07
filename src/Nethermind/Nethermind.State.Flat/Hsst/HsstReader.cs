@@ -7,7 +7,7 @@ namespace Nethermind.State.Flat.Hsst;
 
 /// <summary>
 /// Non-span HSST reader generic over <typeparamref name="TReader"/>. Symmetric to
-/// <see cref="HsstBuilder{TWriter}"/>: any byte source that implements
+/// <see cref="HsstBTreeBuilder{TWriter}"/>: any byte source that implements
 /// <see cref="IHsstByteReader"/> works — mmap, heap array, file handle, etc.
 ///
 /// Maintains an active <see cref="Bound"/> (absolute offset+length within the reader).

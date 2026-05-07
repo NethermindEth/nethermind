@@ -402,7 +402,7 @@ the layout and must be reviewed in lockstep with this document. If you
 add a new file that encodes or decodes HSST bytes, append it here.
 
 Writers / encoders:
-- `Hsst/HsstBuilder.cs` — top-level HSST builder; writes the data region,
+- `Hsst/HsstBTreeBuilder.cs` — top-level HSST builder; writes the data region,
   drives the index builder, appends the trailing `IndexType` byte.
 - `Hsst/HsstIndexBuilder.cs` — drives B-tree shape (leaf splitting,
   intermediate-node promotion).

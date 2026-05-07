@@ -118,7 +118,7 @@ public ref struct HsstByteTagMapBuilder<TWriter>
     }
 
     /// <summary>
-    /// Span overload for symmetry with <see cref="HsstBuilder{TWriter}.FinishValueWrite"/> —
+    /// Span overload for symmetry with <see cref="HsstBTreeBuilder{TWriter}.FinishValueWrite"/> —
     /// the tag must be a single byte; multi-byte spans throw.
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> tag)
