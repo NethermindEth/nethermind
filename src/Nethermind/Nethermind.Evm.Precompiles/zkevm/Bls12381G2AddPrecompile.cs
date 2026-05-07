@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -24,17 +25,14 @@ public partial class Bls12381G2AddPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        // TODO: consider matching error codes with std implementation
+        Accelerators.Status status = Accelerators.Bls12381G2Add(
+            decoded[..Eip2537.LenG2Trimmed], decoded[Eip2537.LenG2Trimmed..], output);
 
-        byte status = ZiskBindings.Crypto.bls12_381_g2_add_c(
-            output, decoded[..Eip2537.LenG2Trimmed], decoded[Eip2537.LenG2Trimmed..]);
-
-        if (status <= 1)
+        if (status == Accelerators.Status.OK)
         {
             byte[] encoded = new byte[Eip2537.LenG2];
 
-            if (status == 0)
-                Eip2537.EncodeG2(output, encoded);
+            Eip2537.EncodeG2(output, encoded);
 
             return encoded;
         }
