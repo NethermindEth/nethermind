@@ -71,6 +71,7 @@ public static class OwnedReadOnlyListExtensions
 
         public void Dispose()
         {
+            // The slice does not own the backing list; the caller disposes the original list.
         }
     }
 }

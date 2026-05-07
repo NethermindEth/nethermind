@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// ChatGPT generated sliced read only list
+/// A read-only view over a contiguous segment of an <see cref="IReadOnlyList{T}"/>.
 /// </summary>
 /// <typeparam name="T"></typeparam>
 public class SlicedReadOnlyList<T> : IReadOnlyList<T>
