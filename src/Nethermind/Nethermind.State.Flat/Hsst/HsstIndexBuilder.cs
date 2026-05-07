@@ -243,6 +243,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int naturalMax = 1;
         int commonLen = firstSepLen;
 
+        // Mirror WriteLeafIndexNode's per-leaf metadata-offset width selection so we
+        // stop before the next entry pushes every value slot up to a wider encoding.
+        long minVal = _entryPositions[entryIdx];
+        long maxVal = minVal;
+        int valueSlotSize = MinBytesFor(0);
+
         int count = 1;
         while (count < hardMax)
         {
@@ -270,12 +276,22 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 ? 0
                 : CommonPrefixLength(firstSep[..boundary], nextKey[..boundary]);
 
-            if (count >= minLeafEntries && (newMaxSepLen > maxSepLen || newCommonLen < commonLen))
+            long nextMd = _entryPositions[entryIdx + count];
+            long newMinVal = Math.Min(minVal, nextMd);
+            long newMaxVal = Math.Max(maxVal, nextMd);
+            long newBase = (newMinVal > 0 && newMinVal < newMaxVal) ? newMinVal : 0;
+            int newValueSlotSize = MinBytesFor(newMaxVal - newBase);
+
+            if (count >= minLeafEntries &&
+                (newMaxSepLen > maxSepLen || newCommonLen < commonLen || newValueSlotSize > valueSlotSize))
                 break;
 
             maxSepLen = newMaxSepLen;
             commonLen = newCommonLen;
             naturalMax = newNaturalMax;
+            minVal = newMinVal;
+            maxVal = newMaxVal;
+            valueSlotSize = newValueSlotSize;
 
             // Slide window: curr ← next; prevSep ← next's sep bytes.
             nextKey[..nextKeyLen].CopyTo(currKey);
