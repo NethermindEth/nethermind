@@ -376,7 +376,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase(1)]
     [TestCase(100)]
-    [TestCase(300)]
+    [TestCase(1000)]
     public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(int traceCount)
     {
         List<GethLikeTxTrace> traces = new(traceCount);
@@ -390,7 +390,8 @@ public partial class DebugRpcModuleTests
 
         using GethLikeTxTraceStreamingResult result = new(traces);
 
-        Pipe pipe = new();
+        // remove buffer limit hits from the equation by using an unbounded Pipe
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
         await result.WriteToAsync(pipe.Writer, CancellationToken.None);
         await pipe.Writer.CompleteAsync();
 
