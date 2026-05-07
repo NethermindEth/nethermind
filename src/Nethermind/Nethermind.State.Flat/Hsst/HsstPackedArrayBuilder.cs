@@ -46,8 +46,8 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     private NativeMemoryListRef<byte> _prevKeyBuffer;
     private NativeMemoryListRef<byte> _checkpointKeys;
 
-    private int _entryCount;
-    private int _level0Count;
+    private long _entryCount;
+    private long _level0Count;
 
     /// <summary>
     /// Create a builder writing via <paramref name="writer"/>. <paramref name="keySize"/> /
@@ -155,9 +155,14 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         }
 
         // Build all summary levels in memory first, then flush them in order to the writer.
+        // Per-level record counts are int-bounded in practice (level-0 count ≤
+        // _entryCount >> entriesPerCkLevel0Log2 — even a 2.6 GiB-of-entries HSST stays
+        // well under int.MaxValue at typical strides). Surface a violation via the
+        // checked cast on _level0Count below.
         using NativeMemoryListRef<int> levelCounts = new(HsstPackedArrayLayout.MaxSummaryDepth);
 
-        if (_level0Count > 0) levelCounts.Add(_level0Count);
+        int level0CountInt = checked((int)_level0Count);
+        if (level0CountInt > 0) levelCounts.Add(level0CountInt);
 
         // Higher levels staged into a single buffer + per-level (startRec) pointers.
         using NativeMemoryListRef<byte> higherLevelsKeys = new(64);
@@ -166,7 +171,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         // Track the previous level by (startRec, count, fromLevel0) so we re-fetch its span
         // each iteration — adding to higherLevelsKeys may move the underlying NativeMemory.
         int prevStartRec = -1;
-        int prevCount = _level0Count;
+        int prevCount = level0CountInt;
         bool prevIsLevel0 = true;
 
         if (recordsPerCkHigher >= 2)
@@ -219,10 +224,10 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         int depth = levelCounts.Count;
 
         // Flush level 0.
-        if (_level0Count > 0)
+        if (level0CountInt > 0)
         {
             ReadOnlySpan<byte> ckKeys = _checkpointKeys.AsSpan();
-            for (int i = 0; i < _level0Count; i++)
+            for (int i = 0; i < level0CountInt; i++)
             {
                 if (_keySize > 0)
                     IByteBufferWriter.Copy(ref _writer, ckKeys.Slice(i * _keySize, _keySize));
@@ -261,9 +266,9 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         _writer.Advance(2);
     }
 
-    private void WriteLeb128(int value)
+    private void WriteLeb128(long value)
     {
-        Span<byte> buf = _writer.GetSpan(5);
+        Span<byte> buf = _writer.GetSpan(10);
         int len = Leb128.Write(buf, 0, value);
         _writer.Advance(len);
     }

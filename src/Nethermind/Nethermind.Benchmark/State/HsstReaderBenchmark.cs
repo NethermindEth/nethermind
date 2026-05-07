@@ -163,13 +163,13 @@ public class HsstReaderBenchmark
             int metaStart = hsstEnd - 2 - metaLen;
             ReadOnlySpan<byte> meta = hsst.AsSpan(metaStart, metaLen);
             int p = 0;
-            int keySize = Leb128.Read(meta, ref p);
-            int valueSize = Leb128.Read(meta, ref p);
-            int entryCount = Leb128.Read(meta, ref p);
-            int e0log2 = Leb128.Read(meta, ref p);
-            int rhlog2 = Leb128.Read(meta, ref p);
-            int depth = Leb128.Read(meta, ref p);
-            int[] counts = new int[depth];
+            int keySize = checked((int)Leb128.Read(meta, ref p));
+            int valueSize = checked((int)Leb128.Read(meta, ref p));
+            long entryCount = Leb128.Read(meta, ref p);
+            int e0log2 = checked((int)Leb128.Read(meta, ref p));
+            int rhlog2 = checked((int)Leb128.Read(meta, ref p));
+            int depth = checked((int)Leb128.Read(meta, ref p));
+            long[] counts = new long[depth];
             for (int i = 0; i < depth; i++) counts[i] = Leb128.Read(meta, ref p);
 
             string line = $"{s},stride={stride},summary={summaryStride},keySize={keySize},entries={entryCount}," +

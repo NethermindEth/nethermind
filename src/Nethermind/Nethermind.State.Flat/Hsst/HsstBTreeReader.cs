@@ -63,16 +63,17 @@ internal static class HsstBTreeReader
                 ulong metaStart = BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset;
                 long absMetaStart = bound.Offset + (long)metaStart;
 
-                // Read up to 6 bytes from absMetaStart: enough for ValueLength (≤5)
-                // LEB128 + KeyLength (1 byte). KeyLength only consumed when exact-matching.
+                // Read up to 11 bytes from absMetaStart: enough for ValueLength (≤10
+                // for long LEB128) + KeyLength (1 byte). KeyLength only consumed when
+                // exact-matching.
                 long available = bound.Offset + bound.Length - absMetaStart;
                 if (available <= 0) return false;
-                Span<byte> lebBuf = stackalloc byte[6];
-                int lebRead = (int)Math.Min(6, available);
+                Span<byte> lebBuf = stackalloc byte[11];
+                int lebRead = (int)Math.Min(11, available);
                 if (!reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
 
                 int pos = 0;
-                int valueLength = Leb128.Read(lebBuf, ref pos);
+                long valueLength = Leb128.Read(lebBuf, ref pos);
 
                 if (exactMatch)
                 {

@@ -48,9 +48,9 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
     private readonly bool _isFlat;
     private readonly int _flatKeySize;
     private readonly int _flatValueSize;
-    private readonly int _flatEntryCount;
+    private readonly long _flatEntryCount;
     private readonly long _flatDataStart;
-    private int _flatIdx;
+    private long _flatIdx;
 
     // ByteTagMap state: tiny single-byte-keyed map; no b-tree walk. _tagIdx tracks next entry.
     private readonly bool _isTagMap;
@@ -152,11 +152,11 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
 
         if (_isFlat)
         {
-            int next = _flatIdx + 1;
-            if ((uint)next >= (uint)_flatEntryCount) return false;
+            long next = _flatIdx + 1;
+            if ((ulong)next >= (ulong)_flatEntryCount) return false;
             _flatIdx = next;
             int stride = _flatKeySize + _flatValueSize;
-            long entryAbsStart = _flatDataStart + (long)next * stride;
+            long entryAbsStart = _flatDataStart + next * stride;
             _currentKeyBound = new Bound(entryAbsStart, _flatKeySize);
             _currentValueBound = new Bound(entryAbsStart + _flatKeySize, _flatValueSize);
             return true;
@@ -298,14 +298,14 @@ public ref struct HsstEnumerator<TReader, TPin> : IDisposable
         ulong metaStart = BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + _leafNode.Metadata.BaseOffset;
         long absMetaStart = _hsstStart + (long)metaStart;
 
-        // Read ValueLength (LEB128, ≤5 bytes) + KeyLength (u8, 1 byte). This is the leading
-        // sequential read for each entry during enumeration, so use the readahead variant —
-        // paged/mmap readers can prefetch the next window here.
-        Span<byte> lebBuf = stackalloc byte[6];
-        int available = (int)Math.Min(6, _hsstEnd - absMetaStart);
+        // Read ValueLength (LEB128, ≤10 bytes for long) + KeyLength (u8, 1 byte). This is
+        // the leading sequential read for each entry during enumeration, so use the
+        // readahead variant — paged/mmap readers can prefetch the next window here.
+        Span<byte> lebBuf = stackalloc byte[11];
+        int available = (int)Math.Min(11, _hsstEnd - absMetaStart);
         if (available <= 0 || !_reader.TryReadWithReadahead(absMetaStart, lebBuf[..available])) return;
         int pos = 0;
-        int valueLength = Leb128.Read(lebBuf, ref pos);
+        long valueLength = Leb128.Read(lebBuf, ref pos);
         if (pos >= available) return;
         int keyLength = lebBuf[pos++];
         long keyAbsStart = absMetaStart + pos;

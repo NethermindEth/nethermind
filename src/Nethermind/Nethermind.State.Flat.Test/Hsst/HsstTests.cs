@@ -46,15 +46,18 @@ public class HsstTests
 
     private static int CountEntries(ReadOnlySpan<byte> data) => Materialize(data).Count;
 
-    [TestCase(0, 1)]
-    [TestCase(1, 1)]
-    [TestCase(127, 1)]
-    [TestCase(128, 2)]
-    [TestCase(255, 2)]
-    [TestCase(16383, 2)]
-    [TestCase(16384, 3)]
-    [TestCase(int.MaxValue, 5)]
-    public void Leb128_RoundTrip(int value, int expectedSize)
+    [TestCase(0L, 1)]
+    [TestCase(1L, 1)]
+    [TestCase(127L, 1)]
+    [TestCase(128L, 2)]
+    [TestCase(255L, 2)]
+    [TestCase(16383L, 2)]
+    [TestCase(16384L, 3)]
+    [TestCase((long)int.MaxValue, 5)]
+    [TestCase((long)int.MaxValue + 1, 5)]
+    [TestCase(1L << 35, 6)]
+    [TestCase(long.MaxValue, 10)]
+    public void Leb128_RoundTrip(long value, int expectedSize)
     {
         Assert.That(Leb128.EncodedSize(value), Is.EqualTo(expectedSize));
 
@@ -63,7 +66,7 @@ public class HsstTests
         Assert.That(endPos, Is.EqualTo(expectedSize));
 
         int readPos = 0;
-        int decoded = Leb128.Read(buffer, ref readPos);
+        long decoded = Leb128.Read(buffer, ref readPos);
         Assert.That(decoded, Is.EqualTo(value));
         Assert.That(readPos, Is.EqualTo(expectedSize));
     }

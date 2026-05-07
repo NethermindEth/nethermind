@@ -15,13 +15,9 @@ internal static class HsstPackedArrayReader
     /// <summary>
     /// Parsed footer of a PackedArray HSST: section starts and per-level summary geometry.
     /// <see cref="LevelStarts"/> entries are <see cref="long"/> offsets relative to
-    /// <see cref="DataStart"/> (= start of the HSST), so the in-memory layout imposes
-    /// no per-HSST size ceiling beyond what <see cref="long"/> can address.
-    ///
-    /// Implied limits (non-empty HSST, i.e. Depth ≥ 1):
-    /// - <see cref="EntryCount"/> ≤ <see cref="int.MaxValue"/> (LEB128-decoded into int).
-    /// - <see cref="LevelCounts"/>[i] ≤ <see cref="int.MaxValue"/> per level (same).
-    /// Empty (Depth = 0) HSSTs carry no summary, so depth-dependent invariants don't apply.
+    /// <see cref="DataStart"/> (= start of the HSST), and <see cref="EntryCount"/> /
+    /// <see cref="LevelCounts"/> are <see cref="long"/>, so the in-memory layout imposes
+    /// no per-HSST size or count ceiling beyond what <see cref="long"/> can address.
     ///
     /// The on-disk format does not store offsets — only LEB128 counts and sizes — so widening
     /// or narrowing this struct has no format impact.
@@ -31,19 +27,19 @@ internal static class HsstPackedArrayReader
         public long DataStart;
         public int KeySize;
         public int ValueSize;
-        public int EntryCount;
+        public long EntryCount;
         public int Depth;
         public int EntriesPerCkLevel0Log2;
         public int RecordsPerCkHigherLog2;
         // Inline arrays sized to MaxSummaryDepth. Only [0..Depth) are valid.
-        // LevelStarts uses long offsets; LevelCounts is int because per-level counts
-        // are LEB128-decoded into int (~2.1 B per level — independent of total HSST size).
+        // Both LevelStarts (byte offsets) and LevelCounts (per-level record counts)
+        // are long; LEB128 decode is now long-returning.
         public InlineLongLevelArray LevelStarts;
-        public InlineIntLevelArray LevelCounts;
+        public InlineLongLevelArray LevelCounts;
 
         public int EntryStride => KeySize + ValueSize;
-        public long EntryAbsStart(int entryIdx) => DataStart + (long)entryIdx * EntryStride;
-        public long ValueAbsStart(int entryIdx) => EntryAbsStart(entryIdx) + KeySize;
+        public long EntryAbsStart(long entryIdx) => DataStart + entryIdx * EntryStride;
+        public long ValueAbsStart(long entryIdx) => EntryAbsStart(entryIdx) + KeySize;
         public long LevelAbsStart(int level) => DataStart + LevelStarts[level];
     }
 
@@ -51,12 +47,6 @@ internal static class HsstPackedArrayReader
     internal struct InlineLongLevelArray
     {
         private long _e0;
-    }
-
-    [System.Runtime.CompilerServices.InlineArray(HsstPackedArrayLayout.MaxSummaryDepth)]
-    internal struct InlineIntLevelArray
-    {
-        private int _e0;
     }
 
     /// <summary>
@@ -117,12 +107,14 @@ internal static class HsstPackedArrayReader
         ReadOnlySpan<byte> metaBuf, long hsstStart, long metaAbsStart, ref Layout layout)
     {
         int p = 0;
-        int keySize = Leb128.Read(metaBuf, ref p);
-        int valueSize = Leb128.Read(metaBuf, ref p);
-        int entryCount = Leb128.Read(metaBuf, ref p);
-        int entriesPerCk0Log2 = Leb128.Read(metaBuf, ref p);
-        int recordsPerCkHigherLog2 = Leb128.Read(metaBuf, ref p);
-        int depth = Leb128.Read(metaBuf, ref p);
+        // KeySize ≤ 255, ValueSize / per-checkpoint shifts / depth all fit easily in int by
+        // construction (validated below) — checked-cast surfaces any future format violation.
+        int keySize = checked((int)Leb128.Read(metaBuf, ref p));
+        int valueSize = checked((int)Leb128.Read(metaBuf, ref p));
+        long entryCount = Leb128.Read(metaBuf, ref p);
+        int entriesPerCk0Log2 = checked((int)Leb128.Read(metaBuf, ref p));
+        int recordsPerCkHigherLog2 = checked((int)Leb128.Read(metaBuf, ref p));
+        int depth = checked((int)Leb128.Read(metaBuf, ref p));
         if (keySize < 0 || valueSize < 0 || entryCount < 0 ||
             entriesPerCk0Log2 < 0 || recordsPerCkHigherLog2 < 0 || depth < 0) return false;
         if (keySize > 255) return false;
@@ -138,10 +130,10 @@ internal static class HsstPackedArrayReader
         layout.EntriesPerCkLevel0Log2 = entriesPerCk0Log2;
         layout.RecordsPerCkHigherLog2 = recordsPerCkHigherLog2;
 
-        Span<int> counts = stackalloc int[HsstPackedArrayLayout.MaxSummaryDepth];
+        Span<long> counts = stackalloc long[HsstPackedArrayLayout.MaxSummaryDepth];
         for (int i = 0; i < depth; i++)
         {
-            int c = Leb128.Read(metaBuf, ref p);
+            long c = Leb128.Read(metaBuf, ref p);
             if (c <= 0) return false;
             counts[i] = c;
             layout.LevelCounts[i] = c;
@@ -153,14 +145,14 @@ internal static class HsstPackedArrayReader
         long cursor = metaAbsStart;
         for (int lvl = depth - 1; lvl >= 0; lvl--)
         {
-            long lvlBytes = (long)counts[lvl] * keySize;
+            long lvlBytes = counts[lvl] * keySize;
             long lvlStart = cursor - lvlBytes;
             if (lvlStart < hsstStart) return false;
             layout.LevelStarts[lvl] = lvlStart - hsstStart;
             cursor = lvlStart;
         }
 
-        long dataBytes = (long)entryCount * (keySize + valueSize);
+        long dataBytes = entryCount * (keySize + valueSize);
         if (hsstStart + dataBytes != cursor) return false;
         layout.DataStart = hsstStart;
 
@@ -192,8 +184,8 @@ internal static class HsstPackedArrayReader
         //   stride = (k == 0) ? EntriesPerCkLevel0 : RecordsPerCkHigher
         //   parentCount = (k == 0) ? EntryCount : Count_{k-1}
         //   childSlab = [c*stride, min((c+1)*stride - 1, parentCount - 1)]
-        int rangeStart;
-        int rangeEnd;
+        long rangeStart;
+        long rangeEnd;
 
         if (L.Depth == 0)
         {
@@ -202,14 +194,14 @@ internal static class HsstPackedArrayReader
         }
         else
         {
-            int levelLo = 0;
-            int levelHi = (int)L.LevelCounts[L.Depth - 1] - 1;
+            long levelLo = 0;
+            long levelHi = L.LevelCounts[L.Depth - 1] - 1;
             int curLvl = L.Depth - 1;
             rangeStart = 0;
             rangeEnd = -1;
             while (true)
             {
-                int ckIdx = SearchSummaryLevel<TReader, TPin>(
+                long ckIdx = SearchSummaryLevel<TReader, TPin>(
                     in reader, L.LevelAbsStart(curLvl), L.KeySize, levelLo, levelHi + 1, key, out bool readOk);
                 if (!readOk) return false;
 
@@ -220,9 +212,9 @@ internal static class HsstPackedArrayReader
                 }
 
                 int strideLog2 = (curLvl == 0) ? L.EntriesPerCkLevel0Log2 : L.RecordsPerCkHigherLog2;
-                int parentCount = (curLvl == 0) ? L.EntryCount : (int)L.LevelCounts[curLvl - 1];
-                int newLo = ckIdx << strideLog2;
-                int newHi = Math.Min(((ckIdx + 1) << strideLog2) - 1, parentCount - 1);
+                long parentCount = (curLvl == 0) ? L.EntryCount : L.LevelCounts[curLvl - 1];
+                long newLo = ckIdx << strideLog2;
+                long newHi = Math.Min(((ckIdx + 1) << strideLog2) - 1, parentCount - 1);
 
                 if (curLvl == 0)
                 {
@@ -238,11 +230,11 @@ internal static class HsstPackedArrayReader
 
         // Binary search [rangeStart, rangeEnd] in Data for the smallest entry whose key
         // is >= target.
-        int lo = rangeStart;
-        int hi = rangeEnd + 1;
+        long lo = rangeStart;
+        long hi = rangeEnd + 1;
         while (lo < hi)
         {
-            int mid = (int)(((uint)lo + (uint)hi) >> 1);
+            long mid = (long)(((ulong)lo + (ulong)hi) >> 1);
             if (!reader.TryRead(L.EntryAbsStart(mid), keyCmpSlice)) return false;
             if (keyCmpSlice.SequenceCompareTo(key) < 0) lo = mid + 1;
             else hi = mid;
@@ -260,7 +252,7 @@ internal static class HsstPackedArrayReader
 
         // Floor: take the previous entry (in absolute index space). Range boundaries don't
         // matter — the entry array is globally sorted.
-        int floorIdx = lo - 1;
+        long floorIdx = lo - 1;
         if (floorIdx < 0) return false;
         resultBound = new Bound(L.ValueAbsStart(floorIdx), L.ValueSize);
         return true;
@@ -271,9 +263,9 @@ internal static class HsstPackedArrayReader
     /// is &gt;= <paramref name="key"/>. Returns <c>hi</c> when no such checkpoint exists.
     /// Each summary record is exactly <paramref name="keySize"/> bytes (no trailing index).
     /// </summary>
-    private static int SearchSummaryLevel<TReader, TPin>(
+    private static long SearchSummaryLevel<TReader, TPin>(
         scoped in TReader reader, long levelStart, int keySize,
-        int lo, int hi, scoped ReadOnlySpan<byte> key, out bool readOk)
+        long lo, long hi, scoped ReadOnlySpan<byte> key, out bool readOk)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -283,8 +275,8 @@ internal static class HsstPackedArrayReader
         Span<byte> ckSlice = ckBuf[..keySize];
         while (lo < hi)
         {
-            int mid = (int)(((uint)lo + (uint)hi) >> 1);
-            long ckEntryStart = levelStart + (long)mid * keySize;
+            long mid = (long)(((ulong)lo + (ulong)hi) >> 1);
+            long ckEntryStart = levelStart + mid * keySize;
             if (!reader.TryRead(ckEntryStart, ckSlice))
             {
                 readOk = false;

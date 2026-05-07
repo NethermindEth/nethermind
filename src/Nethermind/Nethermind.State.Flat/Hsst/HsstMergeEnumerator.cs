@@ -91,7 +91,7 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         }
     }
 
-    public int Count => _kind switch
+    public long Count => _kind switch
     {
         VariantKind.PackedArray => _packed!.Count,
         VariantKind.ByteTagMap => _byteTag!.Count,
@@ -165,8 +165,8 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         private readonly int _keySize;
         private readonly int _valueSize;
         private readonly int _stride;
-        private readonly int _count;
-        private int _index = -1;
+        private readonly long _count;
+        private long _index = -1;
         private long _currentEntryStart;
 
         public static PackedArrayVariant? TryCreate(scoped in TReader reader, Bound scope)
@@ -187,12 +187,12 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
             _count = layout.EntryCount;
         }
 
-        public int Count => _count;
+        public long Count => _count;
 
         public bool MoveNext()
         {
             if (++_index >= _count) return false;
-            _currentEntryStart = _dataStart + (long)_index * _stride;
+            _currentEntryStart = _dataStart + _index * _stride;
             return true;
         }
 
@@ -291,9 +291,9 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
         private readonly long _scopeEnd;
         private int _index = -1;
         private long _currentKeyOffset;
-        private int _currentKeyLength;
+        private long _currentKeyLength;
         private long _currentValueOffset;
-        private int _currentValueLength;
+        private long _currentValueLength;
         private long _currentMetaStart;
         private bool _disposed;
 
@@ -325,13 +325,13 @@ public sealed class HsstMergeEnumerator<TReader, TPin> : IDisposable
             // Entry layout: [Value][ValueLength: LEB128][KeyLength: LEB128][FullKey].
             // metaStart points at the ValueLength LEB128 — value sits before, lengths + key after.
             // LEB128 has a forward-only terminator so it can't be reliably read backward.
-            // Each LEB128 is at most 5 bytes for an int; pin a 10-byte window covering both
+            // Each LEB128 is at most 10 bytes for a long; pin a 20-byte window covering both
             // length prefixes (the FullKey itself stays addressed by absolute offset).
-            const int LebPairMaxBytes = 10;
+            const int LebPairMaxBytes = 20;
             int lebWindow = (int)Math.Min(LebPairMaxBytes, _scopeEnd - metaStart);
             int pos;
-            int valueLength;
-            int keyLength;
+            long valueLength;
+            long keyLength;
             using (TPin lebPin = reader.PinBuffer(metaStart, lebWindow))
             {
                 ReadOnlySpan<byte> leb = lebPin.Buffer;
