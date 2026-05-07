@@ -4,7 +4,6 @@
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
@@ -25,10 +24,11 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
     public void Insert(Block block, BlockAccessList bal)
     {
         using NettyRlpStream rlp = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal);
-        _store.Write(block.Number, rlp.AsSpan());
+        if (!_store.Write(block.Number, rlp.AsSpan()))
+            if (_logger.IsDebug) _logger.Debug($"BAL slot for block {block.Number} already filled; skipping.");
     }
 
-    public BlockAccessList? Get(long blockNumber, Hash256 blockHash)
+    public BlockAccessList? Get(long blockNumber)
     {
         ReadState state = new() { Logger = _logger, BlockNumber = blockNumber };
         _store.TryRead(blockNumber, static (data, s) =>
@@ -45,14 +45,4 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
         public ILogger Logger;
         public long BlockNumber;
     }
-}
-
-public class NullRecordedBalStore : IRecordedBalStore
-{
-    public static NullRecordedBalStore Instance { get; } = new();
-    public void Insert(Block block, BlockAccessList bal) { }
-    public BlockAccessList? Get(long blockNumber, Hash256 blockHash) => null;
-    public bool ReplayEnabled => false;
-    public bool RecordingEnabled => false;
-    public void Dispose() { }
 }

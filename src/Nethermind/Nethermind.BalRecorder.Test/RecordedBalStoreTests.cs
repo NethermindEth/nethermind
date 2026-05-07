@@ -38,7 +38,7 @@ public class RecordedBalStoreTests
             Block block = Build.A.Block.WithNumber(100).TestObject;
 
             store.Insert(block, bal);
-            BlockAccessList? result = store.Get(100, block.Hash!);
+            BlockAccessList? result = store.Get(100);
 
             result.Should().NotBeNull();
             result!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
@@ -51,7 +51,7 @@ public class RecordedBalStoreTests
     public void Get_ReturnsNull_WhenFileDoesNotExist()
     {
         using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = TempDir() }, new InitConfig(), LimboLogs.Instance);
-        store.Get(999, TestItem.KeccakA).Should().BeNull();
+        store.Get(999).Should().BeNull();
     }
 
     [Test]
@@ -65,7 +65,7 @@ public class RecordedBalStoreTests
             store.Insert(block1, MakeBal(TestItem.AddressA));
 
             // block 1 is in the same era file but was never written
-            store.Get(1, TestItem.KeccakA).Should().BeNull();
+            store.Get(1).Should().BeNull();
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -85,8 +85,8 @@ public class RecordedBalStoreTests
             store.Insert(blockA, balA);
             store.Insert(blockB, balB);
 
-            BlockAccessList? resultA = store.Get(0, blockA.Hash!);
-            BlockAccessList? resultB = store.Get(1, blockB.Hash!);
+            BlockAccessList? resultA = store.Get(0);
+            BlockAccessList? resultB = store.Get(1);
 
             resultA!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
             resultA.GetAccountChanges(TestItem.AddressB).Should().BeNull();
@@ -114,8 +114,8 @@ public class RecordedBalStoreTests
 
             Directory.GetFiles(dir, "*.bal").Length.Should().Be(2);
 
-            store.Get(era0Block, block0.Hash!)!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
-            store.Get(era1Block, block1.Hash!)!.GetAccountChanges(TestItem.AddressB).Should().NotBeNull();
+            store.Get(era0Block)!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
+            store.Get(era1Block)!.GetAccountChanges(TestItem.AddressB).Should().NotBeNull();
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -132,14 +132,14 @@ public class RecordedBalStoreTests
             store.Insert(block, MakeBal(TestItem.AddressA));
             store.Insert(block, MakeBal(TestItem.AddressB)); // no-op
 
-            BlockAccessList? result = store.Get(42, block.Hash!);
+            BlockAccessList? result = store.Get(42);
             result!.GetAccountChanges(TestItem.AddressA).Should().NotBeNull();
         }
         finally { Directory.Delete(dir, true); }
     }
 
     [Test]
-    public void Get_IgnoresBlockHash()
+    public void Get_ByBlockNumber()
     {
         string dir = TempDir();
         try
@@ -147,9 +147,7 @@ public class RecordedBalStoreTests
             using RecordedBalStore store = new(new BalRecorderConfig { ReplayEnabled = true, RecordingEnabled = true, Path = dir }, new InitConfig(), LimboLogs.Instance);
             Block block = Build.A.Block.WithNumber(7).TestObject;
             store.Insert(block, MakeBal(TestItem.AddressA));
-
-            // retrieval with a different hash should still work (era format ignores hash)
-            store.Get(7, TestItem.KeccakB).Should().NotBeNull();
+            store.Get(7).Should().NotBeNull();
         }
         finally { Directory.Delete(dir, true); }
     }

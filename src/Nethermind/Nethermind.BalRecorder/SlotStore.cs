@@ -38,7 +38,7 @@ public class SlotStore(string directory, string extension = "bin") : IDisposable
         }
     }
 
-    public void Write(long blockNumber, ReadOnlySpan<byte> data)
+    public bool Write(long blockNumber, ReadOnlySpan<byte> data)
     {
         long era = blockNumber / SlotFile.SlotsPerFile;
         int slot = (int)(blockNumber % SlotFile.SlotsPerFile);
@@ -51,7 +51,7 @@ public class SlotStore(string directory, string extension = "bin") : IDisposable
                 _file = new SlotFile(FilePath(era));
                 _fileEra = era;
             }
-            _file!.TryWrite(slot, data);
+            return _file!.TryWrite(slot, data);
         }
     }
 

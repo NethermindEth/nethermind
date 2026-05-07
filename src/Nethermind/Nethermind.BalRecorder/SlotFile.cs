@@ -42,16 +42,21 @@ public sealed class SlotFile : IDisposable
 
     public bool TryRead<TArg>(int slot, ReadOnlySpanAction<byte, TArg> action, TArg arg)
     {
-        ReadOnlySpan<byte> entry = _header.AsSpan(slot * 8, 8);
-        uint offset = BinaryPrimitives.ReadUInt32BigEndian(entry);
-        if (offset == 0) return false;
+        uint offset, size;
+        lock (_writeLock)
+        {
+            ReadOnlySpan<byte> entry = _header.AsSpan(slot * 8, 8);
+            offset = BinaryPrimitives.ReadUInt32BigEndian(entry);
+            if (offset == 0) return false;
+            size = BinaryPrimitives.ReadUInt32BigEndian(entry[4..]);
+        }
+        if (size == 0 || size > 64 * 1024 * 1024) return false;
 
-        int size = (int)BinaryPrimitives.ReadUInt32BigEndian(entry[4..]);
-        byte[] rented = ArrayPool<byte>.Shared.Rent(size);
+        byte[] rented = ArrayPool<byte>.Shared.Rent((int)size);
         try
         {
-            RandomAccess.Read(_handle, rented.AsSpan(0, size), offset);
-            action(new ReadOnlySpan<byte>(rented, 0, size), arg);
+            RandomAccess.Read(_handle, rented.AsSpan(0, (int)size), offset);
+            action(new ReadOnlySpan<byte>(rented, 0, (int)size), arg);
             return true;
         }
         finally { ArrayPool<byte>.Shared.Return(rented); }

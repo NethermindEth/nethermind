@@ -24,8 +24,8 @@ public class BalRecordingBlockProcessor(
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
-        if (store.ReplayEnabled && suggestedBlock.BlockAccessList is null && suggestedBlock.Hash is not null)
-            suggestedBlock.BlockAccessList = store.Get(suggestedBlock.Number, suggestedBlock.Hash);
+        if (store.ReplayEnabled && suggestedBlock.BlockAccessList is null)
+            suggestedBlock.BlockAccessList = store.Get(suggestedBlock.Number);
 
         bool shouldFlip = ShouldFlip(suggestedBlock);
         if (shouldFlip) balSwitch.Enabled = true;
@@ -33,6 +33,8 @@ public class BalRecordingBlockProcessor(
         {
             (Block block, TxReceipt[] receipts) = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
             if (store.RecordingEnabled)
+                // GeneratedBlockAccessList is fully populated by this point:
+                // BlockProcessor calls SetBlockAccessList (which merges per-tx BALs) before returning.
                 store.Insert(block, balManager.GeneratedBlockAccessList);
             return (block, receipts);
         }

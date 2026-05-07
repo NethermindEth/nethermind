@@ -50,7 +50,7 @@ public class BalRecorderE2ETests
         string dir = Path.Combine(Path.GetTempPath(), $"bal-e2e-{Guid.NewGuid():N}");
         try
         {
-            List<(long Number, Hash256 Hash, byte[] EncodedBal)> recorded;
+            List<(long Number, byte[] EncodedBal)> recorded;
             await using (IContainer recorder = CreateNode(dir, recording: true, replay: false))
             {
                 BlockBuilder builder = recorder.Resolve<BlockBuilder>();
@@ -62,9 +62,9 @@ public class BalRecorderE2ETests
 
             await using IContainer replayContainer = CreateNode(dir, recording: false, replay: true);
             IRecordedBalStore store = replayContainer.Resolve<IRecordedBalStore>();
-            foreach ((long number, Hash256 hash, byte[] expected) in recorded)
+            foreach ((long number, byte[] expected) in recorded)
             {
-                BlockAccessList? reread = store.Get(number, hash);
+                BlockAccessList? reread = store.Get(number);
                 reread.Should().NotBeNull();
                 using NettyRlpStream reencoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(reread!);
                 reencoded.AsSpan().ToArray().Should().BeEquivalentTo(expected);
@@ -76,19 +76,19 @@ public class BalRecorderE2ETests
         }
     }
 
-    private static List<(long, Hash256, byte[])> CaptureRecordedBals(IContainer container, int count)
+    private static List<(long, byte[])> CaptureRecordedBals(IContainer container, int count)
     {
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IRecordedBalStore store = container.Resolve<IRecordedBalStore>();
-        List<(long, Hash256, byte[])> result = [];
+        List<(long, byte[])> result = [];
         for (long i = 1; i <= count; i++)
         {
             Block? block = blockTree.FindBlock(i);
             block.Should().NotBeNull();
-            BlockAccessList? bal = store.Get(block!.Number, block.Hash!);
+            BlockAccessList? bal = store.Get(block!.Number);
             bal.Should().NotBeNull($"block {i} should have a recorded BAL");
             using NettyRlpStream encoded = BlockAccessListDecoder.Instance.EncodeToNewNettyStream(bal!);
-            result.Add((block.Number, block.Hash!, encoded.AsSpan().ToArray()));
+            result.Add((block.Number, encoded.AsSpan().ToArray()));
         }
         return result;
     }
