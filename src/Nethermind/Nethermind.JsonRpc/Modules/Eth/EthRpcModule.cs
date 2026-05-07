@@ -374,7 +374,7 @@ public partial class EthRpcModule(
         if (!_wallet.IsUnlocked(from))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
 
-        rpcTx = PromoteLegacyToEip1559IfTypeImplicit(rpcTx);
+        rpcTx = rpcTx.PromoteToEip1559IfTypeDefaulted();
 
         Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
         if (!txResult.Success(out Transaction tx, out string error))
@@ -425,29 +425,6 @@ public partial class EthRpcModule(
         }
 
         return rpcTx is LegacyTransactionForRpc legacy && legacy.GasPrice is not null;
-    }
-
-    private static TransactionForRpc PromoteLegacyToEip1559IfTypeImplicit(TransactionForRpc rpcTx)
-    {
-        // When the JSON request omits "type", the spec-style behavior is to auto-promote a
-        // legacy-shape request (gasPrice only) to EIP-1559 with maxFeePerGas == maxPriorityFeePerGas == gasPrice.
-        // Explicit type pinning is preserved verbatim.
-        if (rpcTx.HasExplicitType) return rpcTx;
-        if (rpcTx is AccessListTransactionForRpc) return rpcTx;
-        if (rpcTx is not LegacyTransactionForRpc legacy) return rpcTx;
-
-        return new EIP1559TransactionForRpc
-        {
-            From = legacy.From,
-            To = legacy.To,
-            Value = legacy.Value,
-            Gas = legacy.Gas,
-            Nonce = legacy.Nonce,
-            Input = legacy.Input,
-            ChainId = legacy.ChainId,
-            MaxFeePerGas = legacy.GasPrice,
-            MaxPriorityFeePerGas = legacy.GasPrice,
-        };
     }
 
     private ResultWrapper<SignTransactionResult>? CheckTxFeeCap(Transaction tx)

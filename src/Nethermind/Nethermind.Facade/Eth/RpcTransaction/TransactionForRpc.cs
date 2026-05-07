@@ -5,15 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-
-[assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -53,30 +50,18 @@ public abstract class TransactionForRpc
     public long? Gas { get; set; }
 
     /// <summary>
-    /// True when the transaction type was inferred by <see cref="TransactionJsonConverter"/> rather than
-    /// explicitly provided in the JSON request. When set, <see cref="ToTransaction"/> can resolve
-    /// the type to match the target block's fork rules.
-    /// </summary>
-    [JsonIgnore]
-    internal bool IsTypeDefaulted { get; set; }
-
-    /// <summary>
-    /// True when the JSON request contained an explicit <c>type</c> field. Distinct from
-    /// <see cref="IsTypeDefaulted"/>: this flag tracks whether the caller pinned a type, even
-    /// when discriminator-based routing (e.g. presence of <c>gasPrice</c>) would have picked the
-    /// same type. Consumers use this to decide whether to apply spec-style auto-promotion to
-    /// newer tx types. Internal so it does not participate in public-property equivalency checks
-    /// or JSON serialization; cross-assembly access is granted via <c>InternalsVisibleTo</c>.
+    /// True when the JSON request did not contain an explicit <c>type</c> field — the runtime
+    /// type was inferred from discriminator fields, the <c>gasPrice</c> routing rule, or the
+    /// default. Consumers use this to decide whether to apply spec-style auto-promotion to newer
+    /// tx types via <see cref="PromoteToEip1559IfTypeDefaulted"/>.
     /// </summary>
     /// <remarks>
     /// Only set during JSON deserialization. Always <c>false</c> for programmatically constructed
-    /// instances — consumers that build a <see cref="TransactionForRpc"/> in code and then route
-    /// it through an RPC method that consults this flag will be treated as "no explicit type" and
-    /// may be auto-promoted. Test fixtures must therefore exercise the JSON-deserialization path
-    /// to validate type-pinning behavior.
+    /// instances — code paths that need to assert promotion behavior must exercise the
+    /// JSON-deserialization path.
     /// </remarks>
     [JsonIgnore]
-    internal bool HasExplicitType { get; set; }
+    internal bool IsTypeDefaulted { get; set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }
@@ -95,8 +80,38 @@ public abstract class TransactionForRpc
 
     private TxType ResolveType(IReleaseSpec? spec)
     {
+        // Pre-Berlin specs only know Legacy txs; downgrade any defaulted-type request to Legacy
+        // rather than producing a typed tx that the EVM at that height would reject outright.
         TxType type = Type ?? default;
         return spec is not null && !spec.IsEip2930Enabled && IsTypeDefaulted ? TxType.Legacy : type;
+    }
+
+    /// <summary>
+    /// Returns an EIP-1559 form of this request when the JSON omitted the <c>type</c> field and
+    /// the request shape is plain Legacy (gasPrice only, no access list, no 1559/blob/setcode
+    /// fields). Otherwise returns <c>this</c> unchanged. The original <c>gasPrice</c> becomes
+    /// both <c>maxFeePerGas</c> and <c>maxPriorityFeePerGas</c>.
+    /// </summary>
+    public TransactionForRpc PromoteToEip1559IfTypeDefaulted()
+    {
+        if (!IsTypeDefaulted) return this;
+        // EIP-1559, Blob, and SetCode all derive from AccessListTransactionForRpc, so this single
+        // check excludes everything that's already a typed (≥0x01) tx.
+        if (this is AccessListTransactionForRpc) return this;
+        if (this is not LegacyTransactionForRpc legacy) return this;
+
+        return new EIP1559TransactionForRpc
+        {
+            From = legacy.From,
+            To = legacy.To,
+            Value = legacy.Value,
+            Gas = legacy.Gas,
+            Nonce = legacy.Nonce,
+            Input = legacy.Input,
+            ChainId = legacy.ChainId,
+            MaxFeePerGas = legacy.GasPrice,
+            MaxPriorityFeePerGas = legacy.GasPrice,
+        };
     }
 
     public abstract bool ShouldSetBaseFee();
@@ -161,44 +176,37 @@ public abstract class TransactionForRpc
             Utf8JsonReader txTypeReader = reader;
             JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted, out bool hasExplicitType);
+            Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted);
 
             TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
             {
                 result.IsTypeDefaulted = isDefaulted;
-                result.HasExplicitType = hasExplicitType;
             }
             return result;
         }
 
-        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options, out bool isDefaulted, out bool hasExplicitType)
+        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options, out bool isDefaulted)
         {
             const string gasPriceFieldKey = nameof(LegacyTransactionForRpc.GasPrice);
             const string typeFieldKey = nameof(TransactionForRpc.Type);
-            isDefaulted = false;
-            hasExplicitType = false;
 
             if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
             {
                 TxType? setType = node.Deserialize<TxType?>(options);
                 if (setType is not null)
                 {
-                    hasExplicitType = true;
+                    isDefaulted = false;
                     return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ?? throw new JsonException("Unknown transaction type");
                 }
             }
 
+            // No explicit "type" field — every branch below is "defaulted".
+            isDefaulted = true;
             return untyped.ContainsKey(gasPriceFieldKey)
                 ? typeof(LegacyTransactionForRpc)
                 : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type
-                  ?? GetDefaultType(out isDefaulted);
-
-            static Type GetDefaultType(out bool isDefaulted)
-            {
-                isDefaulted = true;
-                return typeof(EIP1559TransactionForRpc);
-            }
+                  ?? typeof(EIP1559TransactionForRpc);
         }
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);

@@ -28,9 +28,11 @@ public partial class EthRpcModuleTests
     [TestCase(TxType.AccessList, "gasPrice", FeeFieldsMissingMessage, TestName = "AccessListFeesMissing")]
     [TestCase(TxType.EIP1559, "maxFeePerGas", FeeFieldsMissingMessage, TestName = "Eip1559MaxFeePerGasMissing")]
     [TestCase(TxType.EIP1559, "maxPriorityFeePerGas", FeeFieldsMissingMessage, TestName = "Eip1559MaxPriorityFeePerGasMissing")]
+    [TestCase(TxType.SetCode, "maxFeePerGas", FeeFieldsMissingMessage, TestName = "SetCodeMaxFeePerGasMissing")]
     [TestCase(TxType.Legacy, "nonce", "nonce not specified", TestName = "LegacyNonceMissing")]
     [TestCase(TxType.AccessList, "nonce", "nonce not specified", TestName = "AccessListNonceMissing")]
     [TestCase(TxType.EIP1559, "nonce", "nonce not specified", TestName = "Eip1559NonceMissing")]
+    [TestCase(TxType.SetCode, "nonce", "nonce not specified", TestName = "SetCodeNonceMissing")]
     public async Task SignTransaction_WhenRequiredFieldMissing_ReturnsInvalidInput(TxType type, string omitField, string expectedMessage)
     {
         TransactionForRpc rpcTx = BuildTx(type, omitField);
@@ -125,6 +127,7 @@ public partial class EthRpcModuleTests
     [TestCase(TxType.Legacy, typeof(LegacyTransactionForRpc), TestName = "Legacy")]
     [TestCase(TxType.AccessList, typeof(AccessListTransactionForRpc), TestName = "AccessList")]
     [TestCase(TxType.EIP1559, typeof(EIP1559TransactionForRpc), TestName = "Eip1559")]
+    [TestCase(TxType.SetCode, typeof(SetCodeTransactionForRpc), TestName = "SetCode")]
     public async Task SignTransaction_WhenValid_RawRoundTripsAndTxEcho(TxType type, Type expectedEchoType)
     {
         TransactionForRpc rpcTx = BuildTx(type);
@@ -184,6 +187,17 @@ public partial class EthRpcModuleTests
                 Nonce = omitField == "nonce" ? null : nonce,
                 MaxFeePerGas = omitField == "maxFeePerGas" ? null : (UInt256?)gasPrice,
                 MaxPriorityFeePerGas = omitField == "maxPriorityFeePerGas" ? null : (UInt256?)0x3b9aca00,
+            },
+            TxType.SetCode => new SetCodeTransactionForRpc
+            {
+                From = from,
+                To = to,
+                Value = value,
+                Gas = omitField == "gas" ? null : gas,
+                Nonce = omitField == "nonce" ? null : nonce,
+                MaxFeePerGas = omitField == "maxFeePerGas" ? null : (UInt256?)gasPrice,
+                MaxPriorityFeePerGas = omitField == "maxPriorityFeePerGas" ? null : (UInt256?)0x3b9aca00,
+                AuthorizationList = new AuthorizationListForRpc(),
             },
             TxType.AccessList => new AccessListTransactionForRpc
             {
