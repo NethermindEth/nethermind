@@ -101,18 +101,11 @@ public sealed class ReadOnlySnapshotBundle(
     public void GetSlotBatchValues(Address address, UInt256[] slots, UInt256[] outValues)
     {
         GuardDispose();
-        SlotValue[] values = System.Buffers.ArrayPool<SlotValue>.Shared.Rent(slots.Length);
-        try
+        SlotValue[] values = new SlotValue[slots.Length];
+        persistenceReader.GetSlotBatch(address, slots, values);
+        for (int i = 0; i < slots.Length; i++)
         {
-            persistenceReader.GetSlotBatch(address, slots, values);
-            for (int i = 0; i < slots.Length; i++)
-            {
-                outValues[i] = values[i].ToUInt256();
-            }
-        }
-        finally
-        {
-            System.Buffers.ArrayPool<SlotValue>.Shared.Return(values);
+            outValues[i] = values[i].ToUInt256();
         }
     }
 
