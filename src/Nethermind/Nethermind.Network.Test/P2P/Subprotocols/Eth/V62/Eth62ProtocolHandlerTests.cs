@@ -33,6 +33,10 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using DotNetty.Buffers;
+using DotNetty.Transport.Channels;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
@@ -444,6 +448,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(canGossipTransactions ? 3 : 0).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        /// <summary>
+        /// Calls <see cref="ZeroNettyP2PHandler.ExceptionCaught"/> with <see cref="RlpException"/> directly
+        /// (without testing the whole pipeline) and verifies disconnect was triggered.
+        /// </summary>
+        [Test]
+        public void Disconnects_peer_on_transaction_deserialization_exception()
+        {
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
+            IByteBuffer malformedTransactionsPacket = Unpooled.WrappedBuffer([0xc1, 0xc0]);
+
+            HandleIncomingStatusMessage();
+            RlpException exception = Assert.Throws<RlpException>(() => HandleZeroMessage(malformedTransactionsPacket, Eth62MessageCode.Transactions));
+
+            ZeroNettyP2PHandler zeroNettyP2PHandler = new(_session, LimboLogs.Instance);
+            zeroNettyP2PHandler.ExceptionCaught(Substitute.For<IChannelHandlerContext>(), exception!);
+
+            _session.Received().InitiateDisconnect(
+                DisconnectReason.Exception,
+                Arg.Is<string>(details => details.Contains("RlpException") && details.Contains("Transaction decoding returned null")));
+        }
+
         private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
@@ -671,6 +696,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
+
+        private void HandleZeroMessage(IByteBuffer msg, int messageCode) =>
+            _handler.HandleMessage(new ZeroPacket(msg) { PacketType = (byte)messageCode });
 
         private BlockBody?[] RequestBlockBodies(params Hash256[] hashes)
         {
