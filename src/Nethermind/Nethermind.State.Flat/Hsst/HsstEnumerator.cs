@@ -90,7 +90,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         }
     }
 
-    public int Count => _kind switch
+    public long Count => _kind switch
     {
         VariantKind.PackedArray => _packed!.Count,
         VariantKind.ByteTagMap => _byteTag!.Count,
@@ -163,8 +163,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         private readonly int _keySize;
         private readonly int _valueSize;
         private readonly int _stride;
-        private readonly int _count;
-        private int _index = -1;
+        private readonly long _count;
+        private long _index = -1;
         private long _currentEntryStart;
 
         public static PackedArrayVariant? TryCreate(scoped in TReader reader, Bound scope)
@@ -185,12 +185,12 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             _count = layout.EntryCount;
         }
 
-        public int Count => _count;
+        public long Count => _count;
 
         public bool MoveNext()
         {
             if (++_index >= _count) return false;
-            _currentEntryStart = _dataStart + (long)_index * _stride;
+            _currentEntryStart = _dataStart + _index * _stride;
             return true;
         }
 
@@ -247,7 +247,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             _currentValStart = scopeStart;
         }
 
-        public int Count => _count;
+        public long Count => _count;
 
         public bool MoveNext(scoped in TReader reader)
         {
@@ -306,9 +306,9 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
         // Current entry — populated by LoadCurrentEntry after positioning at a leaf.
         private long _currentKeyOffset;
-        private int _currentKeyLength;
+        private long _currentKeyLength;
         private long _currentValueOffset;
-        private int _currentValueLength;
+        private long _currentValueLength;
         private long _currentMetaStart;
 
         public BTreeVariant(scoped in TReader reader, Bound scope)
@@ -321,7 +321,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
         // Streaming variant: total entry count is unknown without a full walk. Not used by
         // any caller today — keep the property for variant-shape parity but return -1.
-        public int Count => -1;
+        public long Count => -1;
 
         public bool MoveNext(scoped in TReader reader)
         {
@@ -460,10 +460,12 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
             // Entry layout: [Value][ValueLength: LEB128][KeyLength: u8][FullKey].
             // metaStart points at the ValueLength LEB128 — value sits before, lengths + key after.
-            const int LenPrefixMaxBytes = 6;
+            // Long LEB128 occupies up to 10 bytes; KeyLength is a single u8, so the worst-case
+            // length-prefix window is 11 bytes.
+            const int LenPrefixMaxBytes = 11;
             int lebWindow = (int)Math.Min(LenPrefixMaxBytes, _scopeEnd - metaStart);
             int pos;
-            int valueLength;
+            long valueLength;
             int keyLength;
             using (TPin lebPin = reader.PinBuffer(metaStart, lebWindow))
             {
