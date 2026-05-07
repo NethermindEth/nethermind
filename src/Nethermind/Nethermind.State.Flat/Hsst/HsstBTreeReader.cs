@@ -41,10 +41,10 @@ internal static class HsstBTreeReader
                 {
                     if (!node.TryGetFloor(key, out _, out ReadOnlySpan<byte> childValueBytes))
                         return false;
-                    ulong childOffset = BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + node.Metadata.BaseOffset;
+                    long childOffset = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + node.Metadata.BaseOffset);
                     // childOffset is the inclusive last byte of the child node (0-indexed within the HSST).
                     // Exclusive end in reader-absolute terms = bound.Offset + childOffset + 1.
-                    currentAbsEnd = bound.Offset + (long)childOffset + 1;
+                    currentAbsEnd = bound.Offset + childOffset + 1;
                     continue;
                 }
 
@@ -60,8 +60,8 @@ internal static class HsstBTreeReader
                     if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
                 }
 
-                ulong metaStart = BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset;
-                long absMetaStart = bound.Offset + (long)metaStart;
+                long metaStart = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset);
+                long absMetaStart = bound.Offset + metaStart;
 
                 // Read up to 11 bytes from absMetaStart: enough for ValueLength (≤10
                 // for long LEB128) + KeyLength (1 byte). KeyLength only consumed when

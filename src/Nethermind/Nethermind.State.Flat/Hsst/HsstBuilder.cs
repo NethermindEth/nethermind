@@ -39,16 +39,16 @@ public ref struct HsstBuilder<TWriter>
     private NativeMemoryListRef<HsstEntry> _entriesBuffer;
     private NativeMemoryListRef<byte> _prevKeyBuffer;
 
-    public readonly struct HsstEntry(int sepOffset, int sepLen, ulong metadataStart)
+    public readonly struct HsstEntry(int sepOffset, int sepLen, long metadataStart)
     {
         public readonly int SepOffset = sepOffset;
         public readonly int SepLen = sepLen;
         /// <summary>
         /// Offset within the HSST (relative to byte 0) where value metadata starts.
-        /// Stored as ulong so the B-tree value section can address up to 2^48 bytes
-        /// (limit is the 6-byte BaseOffset footer field, not this type).
+        /// The B-tree value section can address up to 2^48 bytes (limit is the 6-byte
+        /// BaseOffset footer field, not this type).
         /// </summary>
-        public readonly ulong MetadataStart = metadataStart;
+        public readonly long MetadataStart = metadataStart;
     }
 
     /// <summary>
@@ -104,7 +104,7 @@ public ref struct HsstBuilder<TWriter>
 
         int actualLen = checked((int)(_writer.Written - _writtenBeforeValue));
         // metadataStart stored in index is relative to byte 0 of this HSST.
-        ulong metadataStart = checked((ulong)(_writer.Written - _baseOffset));
+        long metadataStart = _writer.Written - _baseOffset;
 
         // Compute separator eagerly
         int sepLen = ComputeSeparatorLength(
