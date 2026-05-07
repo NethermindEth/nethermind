@@ -208,18 +208,15 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Balance_change_roundtrips_with_max_uint32_index()
+    public void Balance_change_at_prestate_sentinel_index_is_rejected_by_encoder()
     {
-        // Upper bound of EIP-7928 BlockAccessIndex spec.
-        // (Eip7928Constants.PrestateIndex collides with this value but is internal-only and
-        // never appears on the wire.)
+        // Upper bound of EIP-7928 BlockAccessIndex spec collides with
+        // Eip7928Constants.PrestateIndex (internal-only); the encoder must reject any wire
+        // entry at that index so the sentinel can never round-trip through RLP.
         BalanceChange original = new(uint.MaxValue, 0x1);
 
-        Rlp encoded = Rlp.Encode(original);
-        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
-        BalanceChange decoded = BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-
-        Assert.That(decoded.Index, Is.EqualTo(uint.MaxValue));
+        Assert.That(() => Rlp.Encode(original),
+            Throws.TypeOf<RlpException>().With.Message.Contain("reserved for internal prestate tracking"));
     }
 
     [Test]

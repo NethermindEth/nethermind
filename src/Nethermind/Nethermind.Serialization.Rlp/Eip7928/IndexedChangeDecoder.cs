@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -21,6 +24,10 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
         int check = length + ctx.Position;
 
         T result = DecodeFields(ref ctx);
+        if (result.Index == Eip7928Constants.PrestateIndex)
+        {
+            ThrowPrestateIndexReserved();
+        }
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -32,6 +39,11 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
 
     public void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item.Index == Eip7928Constants.PrestateIndex)
+        {
+            ThrowPrestateIndexReserved();
+        }
+
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
         // PrestateIndex sentinel is never encoded — it's only added to the suggested BAL on
@@ -51,4 +63,8 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
 
     /// <summary>Return the RLP length of the value field.</summary>
     protected abstract int GetValueLength(T item);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowPrestateIndexReserved() =>
+        throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is reserved for internal prestate tracking.");
 }

@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -31,7 +33,7 @@ public class SlotChangesDecoder :
         // A slot with zero changes belongs in storage_reads instead.
         if (changes.Length == 0)
         {
-            throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+            ThrowEmptyStorageChanges();
         }
 
         uint? lastIndex = null;
@@ -40,7 +42,7 @@ public class SlotChangesDecoder :
             uint index = s.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
-                throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
+                ThrowStorageChangesOutOfOrder(index, lastIndex.Value);
             }
             lastIndex = index;
         }
@@ -97,4 +99,12 @@ public class SlotChangesDecoder :
         stream.StartSequence(len);
         foreach (StorageChange c in changes) StorageChangeDecoder.Instance.Encode(stream, c, rlpBehaviors);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyStorageChanges() =>
+        throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageChangesOutOfOrder(uint index, uint lastIndex) =>
+        throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
 }

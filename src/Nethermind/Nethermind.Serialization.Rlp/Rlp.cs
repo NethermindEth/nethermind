@@ -177,15 +177,15 @@ namespace Nethermind.Serialization.Rlp
 
                 return result;
             }
-            catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-            {
-                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
-                throw new RlpException($"Truncated or out-of-bounds RLP while decoding array of {typeof(T).Name}.", e);
-            }
-            catch
+            catch (RlpException)
             {
                 DisposeDecodedItemsAndList(result, result?.Count ?? 0);
                 throw;
+            }
+            catch (Exception e)
+            {
+                DisposeDecodedItemsAndList(result, result?.Count ?? 0);
+                throw new RlpException($"Error decoding array of {typeof(T).Name}.", e);
             }
         }
 
@@ -249,6 +249,15 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw new RlpException($"Truncated or out-of-bounds RLP while decoding {typeof(T).Name}.", e);
             }
+            catch (RlpException)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                throw new RlpException($"Error decoding {typeof(T).Name}.", e);
+            }
+
             return result;
         }
 
@@ -1517,10 +1526,15 @@ namespace Nethermind.Serialization.Rlp
 
                     return result;
                 }
-                catch
+                catch (RlpException)
                 {
                     DisposeDecodedItemsAndList(result, i);
                     throw;
+                }
+                catch (Exception e)
+                {
+                    DisposeDecodedItemsAndList(result, i);
+                    throw new RlpException($"Error decoding array of {typeof(T).Name}.", e);
                 }
             }
 

@@ -7,12 +7,12 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Core.BlockAccessLists;
 
 /// <summary>
-/// Orders <see cref="Eip7928Constants.PrestateIndex"/> before every real BAL access index,
+/// Orders <see cref="Eip7928Constants.PrestateIndex"/> before every BAL access index,
 /// preserving iteration order after prestate entries are grafted into decoded BALs.
 /// </summary>
 public sealed class PrestateAwareIndexComparer : IComparer<uint>
 {
-    public static readonly PrestateAwareIndexComparer Instance = new();
+    public static PrestateAwareIndexComparer Instance { get; } = new();
 
     private PrestateAwareIndexComparer() { }
 

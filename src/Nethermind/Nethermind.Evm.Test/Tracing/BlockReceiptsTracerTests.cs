@@ -122,5 +122,33 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.DoesNotThrow(() => tracer.EndBlockTrace());
             block.Header.Bloom.Should().NotBeNull();
         }
+
+        [Test]
+        public void ResetForParallelTx_clears_receipts_and_detaches_previous_other_tracer()
+        {
+            Block previousBlock = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+            Block nextBlock = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
+            IBlockTracer previousOtherTracer = Substitute.For<IBlockTracer>();
+            IBlockTracer nextOtherTracer = Substitute.For<IBlockTracer>();
+            nextOtherTracer.StartNewTxTrace(Arg.Any<Transaction?>()).Returns(NullTxTracer.Instance);
+
+            BlockReceiptsTracer tracer = new(true);
+            tracer.SetOtherTracer(previousOtherTracer);
+            tracer.StartNewBlockTrace(previousBlock);
+            tracer.StartNewTxTrace(previousBlock.Transactions[0]);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], []);
+
+            tracer.ResetForParallelTx(nextBlock, nextOtherTracer);
+
+            tracer.TxReceipts.Length.Should().Be(0);
+            tracer.InnerTracer.Should().BeSameAs(NullTxTracer.Instance);
+            previousOtherTracer.Received(1).StartNewBlockTrace(previousBlock);
+            previousOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
+            nextOtherTracer.DidNotReceive().StartNewBlockTrace(nextBlock);
+
+            tracer.StartNewTxTrace(nextBlock.Transactions[0]);
+
+            nextOtherTracer.Received(1).StartNewTxTrace(nextBlock.Transactions[0]);
+        }
     }
 }
