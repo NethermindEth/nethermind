@@ -11,8 +11,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker(bool isTracingAccess = false) : IDisposable
+public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 {
+    public StackAccessTracker() : this(false) { }
+
     public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
     public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
