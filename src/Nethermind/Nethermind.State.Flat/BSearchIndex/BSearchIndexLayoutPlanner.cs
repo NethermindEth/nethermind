@@ -36,6 +36,11 @@ internal static class BSearchIndexLayoutPlanner
     /// <param name="commonKeyPrefixLen">Out: post-gating LCP. 0 if not worth stripping.</param>
     /// <param name="keyType">Out: 0=Variable, 1=Uniform, 2=UniformWithLen.</param>
     /// <param name="keySlotSize">Out: post-strip slot size for Uniform/UniformWithLen; 0 for Variable.</param>
+    /// <param name="keyLittleEndian">
+    /// Out: when true, callers should set <c>BSearchIndexMetadata.IsKeyLittleEndian</c> so each
+    /// fixed-width key slot is byte-reversed on disk (Flags bit 5). Set only for the SIMD-eligible
+    /// shape: Uniform with <paramref name="keySlotSize"/> ∈ {2,4,8}.
+    /// </param>
     public static void Plan(
         ReadOnlySpan<byte> buffer,
         ReadOnlySpan<int> offsets,
@@ -43,6 +48,7 @@ internal static class BSearchIndexLayoutPlanner
         out int commonKeyPrefixLen,
         out int keyType,
         out int keySlotSize,
+        out bool keyLittleEndian,
         bool disablePrefix = false)
     {
         int count = lengths.Length;
@@ -51,6 +57,7 @@ internal static class BSearchIndexLayoutPlanner
             commonKeyPrefixLen = 0;
             keyType = 0;
             keySlotSize = 0;
+            keyLittleEndian = false;
             return;
         }
 
@@ -123,5 +130,7 @@ internal static class BSearchIndexLayoutPlanner
         }
 
         commonKeyPrefixLen = lcp;
+        // Auto-enable LE storage where the SIMD floor scan can exploit it: Uniform 2/4/8.
+        keyLittleEndian = keyType == 1 && keySlotSize is 2 or 4 or 8;
     }
 }

@@ -63,8 +63,10 @@ internal static class HsstBTreeReader
 
                 // Cheap reject path: the stored full key starts with (commonPrefix + separator),
                 // so the input must too. Saves a length-mismatch read in the common
-                // exact-miss case.
-                if (exactMatch)
+                // exact-miss case. Skip when the leaf stores keys in LE byte order — the
+                // `separator` bytes are byte-reversed, so a direct StartsWith comparison would
+                // be incorrect, and the storage-read SequenceEqual below still catches mismatches.
+                if (exactMatch && !node.Metadata.IsKeyLittleEndian)
                 {
                     ReadOnlySpan<byte> p = node.CommonKeyPrefix;
                     if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;

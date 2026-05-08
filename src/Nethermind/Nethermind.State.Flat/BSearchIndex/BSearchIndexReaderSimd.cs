@@ -113,24 +113,28 @@ public static class BSearchIndexReaderSimd
         ReadOnlySpan<byte> keys,
         int count,
         int keySize,
+        bool isLittleEndian,
         out int result)
     {
         result = 0;
         if (!Enabled) return false;
         if (count < 2 || count > LinearScanMaxCount) return false;
-        if (key.Length != keySize) return false;
+        // BE path requires exact-length keys (lex compare semantics). LE path tolerates a
+        // longer search key — the first keySize bytes drive the integer compare and an equal
+        // prefix with a longer key still yields the correct "search >= stored" floor decision.
+        if (isLittleEndian ? key.Length < keySize : key.Length != keySize) return false;
         if (!Vector512.IsHardwareAccelerated) return false;
 
         switch (keySize)
         {
             case 2:
-                result = FloorScan16(key, keys, count);
+                result = FloorScan16(key, keys, count, isLittleEndian);
                 return true;
             case 4:
-                result = FloorScan32(key, keys, count);
+                result = FloorScan32(key, keys, count, isLittleEndian);
                 return true;
             case 8:
-                result = FloorScan64(key, keys, count);
+                result = FloorScan64(key, keys, count, isLittleEndian);
                 return true;
             default:
                 return false;
@@ -172,13 +176,18 @@ public static class BSearchIndexReaderSimd
         if (payloadLen > 0) key[..payloadLen].CopyTo(encoded);
         encoded[3] = (byte)Math.Min(key.Length, 255);
 
-        result = FloorScan32(encoded, keys, count);
+        // UniformWithLen always stores slots in BE form (the LE flag never applies — see
+        // BSearchIndexWriter.ShouldEncodeKeyLittleEndian), so reuse the BE FloorScan32 path.
+        result = FloorScan32(encoded, keys, count, isLittleEndian: false);
         return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan16(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    private static int FloorScan16(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
     {
+        // search arrives lex-ordered. ReverseEndianness produces the value of a native LE load
+        // applied to the BE-stored bytes — equivalent to the value of a native LE load applied
+        // to LE-stored bytes — so the same broadcast works for both layouts.
         ushort search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(key)));
         ref byte src = ref MemoryMarshal.GetReference(keys);
@@ -189,8 +198,12 @@ public static class BSearchIndexReaderSimd
         while (i + 32 <= count)
         {
             Vector512<ushort> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 2)).AsUInt16();
-            Vector512<ushort> be = Vector512.Shuffle(raw.AsByte(), ByteSwap16Mask512).AsUInt16();
-            Vector512<ushort> gt = Vector512.GreaterThan(be, searchVec);
+            // BE-stored: shuffle each lane to recover the native integer value. LE-stored:
+            // raw already IS the native integer value — skip the shuffle.
+            Vector512<ushort> lanes = isLittleEndian
+                ? raw
+                : Vector512.Shuffle(raw.AsByte(), ByteSwap16Mask512).AsUInt16();
+            Vector512<ushort> gt = Vector512.GreaterThan(lanes, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
             {
@@ -199,11 +212,11 @@ public static class BSearchIndexReaderSimd
             }
             i += 32;
         }
-        return ScalarTail16(search, ref src, i, count);
+        return ScalarTail16(search, ref src, i, count, isLittleEndian);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan32(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    private static int FloorScan32(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
     {
         uint search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(key)));
@@ -215,8 +228,10 @@ public static class BSearchIndexReaderSimd
         while (i + 16 <= count)
         {
             Vector512<uint> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
-            Vector512<uint> be = Vector512.Shuffle(raw.AsByte(), ByteSwap32Mask512).AsUInt32();
-            Vector512<uint> gt = Vector512.GreaterThan(be, searchVec);
+            Vector512<uint> lanes = isLittleEndian
+                ? raw
+                : Vector512.Shuffle(raw.AsByte(), ByteSwap32Mask512).AsUInt32();
+            Vector512<uint> gt = Vector512.GreaterThan(lanes, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
             {
@@ -225,11 +240,11 @@ public static class BSearchIndexReaderSimd
             }
             i += 16;
         }
-        return ScalarTail32(search, ref src, i, count);
+        return ScalarTail32(search, ref src, i, count, isLittleEndian);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan64(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    private static int FloorScan64(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
     {
         ulong search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(key)));
@@ -241,8 +256,10 @@ public static class BSearchIndexReaderSimd
         while (i + 8 <= count)
         {
             Vector512<ulong> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();
-            Vector512<ulong> be = Vector512.Shuffle(raw.AsByte(), ByteSwap64Mask512).AsUInt64();
-            Vector512<ulong> gt = Vector512.GreaterThan(be, searchVec);
+            Vector512<ulong> lanes = isLittleEndian
+                ? raw
+                : Vector512.Shuffle(raw.AsByte(), ByteSwap64Mask512).AsUInt64();
+            Vector512<ulong> gt = Vector512.GreaterThan(lanes, searchVec);
             ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
             {
@@ -251,40 +268,40 @@ public static class BSearchIndexReaderSimd
             }
             i += 8;
         }
-        return ScalarTail64(search, ref src, i, count);
+        return ScalarTail64(search, ref src, i, count, isLittleEndian);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail16(ushort search, ref byte src, int i, int count)
+    private static int ScalarTail16(ushort search, ref byte src, int i, int count, bool isLittleEndian)
     {
         for (; i < count; i++)
         {
-            ushort k = BinaryPrimitives.ReverseEndianness(
-                Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, (nint)(i * 2))));
+            ushort raw = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, (nint)(i * 2)));
+            ushort k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
             if (k > search) return i - 1;
         }
         return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail32(uint search, ref byte src, int i, int count)
+    private static int ScalarTail32(uint search, ref byte src, int i, int count, bool isLittleEndian)
     {
         for (; i < count; i++)
         {
-            uint k = BinaryPrimitives.ReverseEndianness(
-                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(i * 4))));
+            uint raw = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(i * 4)));
+            uint k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
             if (k > search) return i - 1;
         }
         return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail64(ulong search, ref byte src, int i, int count)
+    private static int ScalarTail64(ulong search, ref byte src, int i, int count, bool isLittleEndian)
     {
         for (; i < count; i++)
         {
-            ulong k = BinaryPrimitives.ReverseEndianness(
-                Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, (nint)(i * 8))));
+            ulong raw = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref src, (nint)(i * 8)));
+            ulong k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
             if (k > search) return i - 1;
         }
         return count - 1;

@@ -436,7 +436,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         ReadOnlySpan<byte> sepView = leafSepScratch[..totalSepBytes];
         BSearchIndexLayoutPlanner.Plan(sepView, sepOffsets, sepLengths,
-            out int prefixLen, out int keyType, out int keySlotSize);
+            out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
         ReadOnlySpan<byte> commonPrefix = prefixLen > 0
             ? sepView.Slice(sepOffsets[0], prefixLen)
             : default;
@@ -456,6 +456,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeySlotSize = keySlotSize,
             ValueType = 1,
             ValueSlotSize = valueSlotSize,
+            IsKeyLittleEndian = keyLittleEndian,
         }, keyBuf, valueScratchSlice, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[8];
@@ -608,7 +609,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         ReadOnlySpan<byte> sepView = sepScratch[..tempOffset];
         BSearchIndexLayoutPlanner.Plan(sepView, sepOffsets, sepLengths,
-            out int prefixLen, out int keyType, out int keySlotSize);
+            out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
         ReadOnlySpan<byte> commonPrefix = prefixLen > 0
             ? sepView.Slice(sepOffsets[0], prefixLen)
             : default;
@@ -637,6 +638,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeySlotSize = keySlotSize,
             ValueType = 1,
             ValueSlotSize = valueSlotSize,
+            IsKeyLittleEndian = keyLittleEndian,
         }, keyBuf, valueScratchSlice, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[8];

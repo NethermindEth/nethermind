@@ -34,6 +34,14 @@ internal struct BSearchIndexMetadata
     /// Default: 4 bytes.
     /// </summary>
     public int ValueSlotSize = 4;
+    /// <summary>
+    /// When true, fixed-width key slots are written byte-reversed on disk so that an x86
+    /// little-endian integer load of a slot equals its semantic numeric/lex value. The SIMD
+    /// floor scan can then drop the per-lane byte-swap shuffle. Honored only for Uniform with
+    /// <see cref="KeySlotSize"/> ∈ {2,4,8} and UniformWithLen with <see cref="KeySlotSize"/> = 4;
+    /// ignored for other shapes. Encoded as Flags bit 5 in the on-disk header.
+    /// </summary>
+    public bool IsKeyLittleEndian = false;
 
     public BSearchIndexMetadata() { }
 }
@@ -258,10 +266,12 @@ internal ref struct BSearchIndexWriter<TWriter>
             throw new InvalidOperationException($"Index node ValueSize {valueSize} exceeds u8 header field");
 
         bool hasCommonPrefix = commonKeyPrefix.Length > 0;
+        bool keyLe = ShouldEncodeKeyLittleEndian();
         byte flags = (byte)(
             (_metadata.IsIntermediate ? 0x01 : 0x00) |
             (_metadata.KeyType << 1) |
             (_metadata.ValueType << 3) |
+            (keyLe ? 0x20 : 0x00) |
             (hasCommonPrefix ? 0x40 : 0x00));
 
         if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
@@ -296,14 +306,39 @@ internal ref struct BSearchIndexWriter<TWriter>
         }
     }
 
+    /// <summary>
+    /// Whether the keys section should be written byte-reversed (Flags bit 5). Honored only
+    /// for the slot widths the SIMD/integer-compare reader path supports.
+    /// </summary>
+    private bool ShouldEncodeKeyLittleEndian()
+    {
+        if (!_metadata.IsKeyLittleEndian) return false;
+        // Limited to Uniform 2/4/8: matches the SIMD direct-compare fast path. UniformWithLen
+        // is excluded because byte-reversing its variable-length payload would force GetKey to
+        // materialize results into a scratch buffer that the readonly ref-struct reader can't
+        // safely vend — keep that shape on the BE path until a benchmark justifies the surgery.
+        return _metadata.KeyType == 1 && _metadata.KeySlotSize is 2 or 4 or 8;
+    }
+
     private void WriteUniformKeys()
     {
         int keyLen = _metadata.KeySlotSize;
+        bool reverse = ShouldEncodeKeyLittleEndian();
         int keySrc = 0;
         for (int i = 0; i < _count; i++)
         {
             keySrc += 2; // skip u16 length (known from keyLen)
-            IByteBufferWriter.Copy(ref _writer, _keyBuf.Slice(keySrc, keyLen));
+            ReadOnlySpan<byte> src = _keyBuf.Slice(keySrc, keyLen);
+            if (reverse)
+            {
+                Span<byte> slot = _writer.GetSpan(keyLen);
+                ReverseInto(src, slot[..keyLen]);
+                _writer.Advance(keyLen);
+            }
+            else
+            {
+                IByteBufferWriter.Copy(ref _writer, src);
+            }
             keySrc += keyLen;
         }
     }
@@ -324,6 +359,13 @@ internal ref struct BSearchIndexWriter<TWriter>
             _writer.Advance(slotSize);
             keySrc += len;
         }
+    }
+
+    /// <summary>Copy <paramref name="src"/> reversed into <paramref name="dst"/>. Both must be the same length.</summary>
+    private static void ReverseInto(ReadOnlySpan<byte> src, Span<byte> dst)
+    {
+        int n = src.Length;
+        for (int i = 0; i < n; i++) dst[i] = src[n - 1 - i];
     }
 
     private void WriteVariableKeys()
