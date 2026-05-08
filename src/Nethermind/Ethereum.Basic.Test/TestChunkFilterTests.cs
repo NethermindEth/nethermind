@@ -11,7 +11,7 @@ namespace Ethereum.Basic.Test;
 [NonParallelizable]
 public class TestChunkFilterTests
 {
-    private string? _testChunk;
+    private string _testChunk;
 
     [SetUp]
     public void SetUp() =>
