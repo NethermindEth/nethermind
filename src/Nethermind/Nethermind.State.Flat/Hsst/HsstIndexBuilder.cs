@@ -55,7 +55,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries,
         int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries,
         int maxIntermediateBytes = HsstBTreeOptions.DefaultMaxIntermediateBytes,
-        int minIntermediateChildren = HsstBTreeOptions.DefaultMinIntermediateChildren)
+        int minIntermediateChildren = HsstBTreeOptions.DefaultMinIntermediateChildren,
+        int minIntermediateBytes = HsstBTreeOptions.DefaultMinIntermediateBytes)
     {
         long startWritten = _writer.Written;
         long firstOffset = _writer.FirstOffset;
@@ -70,6 +71,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         if (minLeafEntries < 1) minLeafEntries = 1;
         if (minIntermediateChildren > maxIntermediateEntries) minIntermediateChildren = maxIntermediateEntries;
         if (minIntermediateChildren < 1) minIntermediateChildren = 1;
+        if (minIntermediateBytes < 0) minIntermediateBytes = 0;
+        if (minIntermediateBytes > maxIntermediateBytes) minIntermediateBytes = maxIntermediateBytes;
 
         // Build leaf nodes. minLeafEntries=maxLeafEntries reduces ChooseLeafCount to a fixed cap.
         // maxNodes is sized for the worst case: every leaf at minimum size.
@@ -183,7 +186,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     int childCount = ChooseIntermediateChildCount(
                         currentLevel[..currentLevelCount], childIdx,
                         maxIntermediateEntries, maxIntermediateBytes,
-                        minIntermediateChildren,
+                        minIntermediateChildren, minIntermediateBytes,
                         _writer.Written, firstOffset);
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
@@ -478,7 +481,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private int ChooseIntermediateChildCount(
         scoped ReadOnlySpan<NodeInfo> level, int childIdx,
         int maxChildren, int byteThreshold,
-        int minChildren,
+        int minChildren, int minBytes,
         long nodeStart, long firstOffset)
     {
         int remaining = level.Length - childIdx;
@@ -556,6 +559,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newSumSep, valueSlotSize);
             int committedSize = IntermediateNodeSizeUpperBound(childCount, sumSepBytes, committedValueSlot);
             if (childCount >= minChildren &&
+                committedSize >= minBytes &&
                 (newMaxSepLen > maxSepLen ||
                  (commonLen >= 0 && newCommonLen < commonLen) ||
                  valueSlotSize > committedValueSlot ||

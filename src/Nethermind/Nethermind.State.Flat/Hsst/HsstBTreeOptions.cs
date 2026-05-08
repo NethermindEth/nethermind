@@ -36,6 +36,12 @@ public sealed record HsstBTreeOptions
     /// node across a 4 KiB page boundary.</summary>
     public const int DefaultMinIntermediateChildren = 16;
 
+    /// <summary>Default minimum estimated byte length per intermediate node —
+    /// once reached, the dynamic-split heuristics are allowed to fire. 0 disables
+    /// the byte-length gate (only <see cref="DefaultMinIntermediateChildren"/>
+    /// gates).</summary>
+    public const int DefaultMinIntermediateBytes = 0;
+
     /// <summary>Minimum length of separators stored in leaf nodes.</summary>
     public int MinSeparatorLength { get; init; } = 0;
 
@@ -64,6 +70,14 @@ public sealed record HsstBTreeOptions
     /// widening, 4 KiB page-crossing) are allowed to fire. Set equal to
     /// <see cref="MaxIntermediateEntries"/> to disable the dynamic split.</summary>
     public int MinIntermediateChildren { get; init; } = DefaultMinIntermediateChildren;
+
+    /// <summary>Minimum estimated byte length per intermediate node — the
+    /// committed node must also have reached this size before the dynamic-split
+    /// heuristics are allowed to fire (in addition to <see cref="MinIntermediateChildren"/>).
+    /// Useful for skinny separators where the child-count floor is reached well
+    /// before the node is large enough to benefit from a split. 0 disables the
+    /// byte-length gate.</summary>
+    public int MinIntermediateBytes { get; init; } = DefaultMinIntermediateBytes;
 
     /// <summary>Shared default instance — used when callers pass <c>null</c>.</summary>
     public static HsstBTreeOptions Default { get; } = new();
