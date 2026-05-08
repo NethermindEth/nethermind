@@ -54,6 +54,8 @@ namespace Nethermind.Serialization.Json
 
         public T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, GetSerializerOptions(indented: false));
 
+        public T Deserialize<T>(ReadOnlySpan<byte> utf8Json) => JsonSerializer.Deserialize<T>(utf8Json, GetSerializerOptions(indented: false));
+
         public T Deserialize<T>(ref Utf8JsonReader json) => JsonSerializer.Deserialize<T>(ref json, GetSerializerOptions(indented: false));
 
         public string Serialize<T>(T value, bool indented = false) => JsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
@@ -92,7 +94,7 @@ namespace Nethermind.Serialization.Json
                     new DoubleConverter(),
                     new DoubleArrayConverter(),
                     new BooleanConverter(),
-                    new DictionaryAddressKeyConverter(),
+                    new AddressAsKeyConverter(),
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),

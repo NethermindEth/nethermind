@@ -97,15 +97,15 @@ namespace Nethermind.Consensus.Processing
             _startOpCodes = Evm.Metrics.MainThreadOpCodes;
         }
 
-        public void UpdateStats(ReadOnlySpan<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
+        public void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
         {
-            if (blocks.IsEmpty) return;
+            if (blocks.Count == 0) return;
 
             Block lastBlock = blocks[^1];
             long gasUsed = 0;
             long transactionCount = 0;
             long blobCount = 0;
-            for (int i = 0; i < blocks.Length; i++)
+            for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
                 gasUsed += block.GasUsed;
@@ -120,7 +120,7 @@ namespace Nethermind.Consensus.Processing
             BlockData blockData = _dataPool.Get();
             blockData.Block = lastBlock;
             blockData.BaseBlock = baseBlock;
-            blockData.BlockCount = blocks.Length;
+            blockData.BlockCount = blocks.Count;
             blockData.FirstBlockNumber = blocks[0].Number;
             blockData.GasUsed = gasUsed;
             blockData.TransactionCount = transactionCount;

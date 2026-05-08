@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -326,12 +327,26 @@ namespace Ethereum.Test.Base
         }
 
         private static readonly EthereumJsonSerializer _serializer = new();
+        private static readonly ConcurrentDictionary<SpecOverrideCacheKey, IReleaseSpec> _overriddenSpecs = new();
 
         public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
 
+            return ConvertStateTests(testsInFile);
+        }
+
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(ReadOnlySpan<byte> json)
+        {
+            Dictionary<string, GeneralStateTestJson> testsInFile =
+                _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+
+            return ConvertStateTests(testsInFile);
+        }
+
+        private static List<GeneralStateTest> ConvertStateTests(Dictionary<string, GeneralStateTestJson> testsInFile)
+        {
             List<GeneralStateTest> tests = [];
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
@@ -347,6 +362,19 @@ namespace Ethereum.Test.Base
             Dictionary<string, TransactionTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
 
+            return ConvertTransactionTests(testsInFile);
+        }
+
+        public static IEnumerable<TransactionTest> ConvertTransactionTests(ReadOnlySpan<byte> json)
+        {
+            Dictionary<string, TransactionTestJson> testsInFile =
+                _serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
+
+            return ConvertTransactionTests(testsInFile);
+        }
+
+        private static List<TransactionTest> ConvertTransactionTests(Dictionary<string, TransactionTestJson> testsInFile)
+        {
             List<TransactionTest> tests = [];
             foreach ((string testName, TransactionTestJson testSpec) in testsInFile)
             {
@@ -391,6 +419,32 @@ namespace Ethereum.Test.Base
                 }
             }
 
+            return ConvertToBlockchainTests(testsInFile);
+        }
+
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(ReadOnlySpan<byte> json)
+        {
+            Dictionary<string, BlockchainTestJson> testsInFile;
+            try
+            {
+                testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
+            }
+            catch (Exception)
+            {
+                Dictionary<string, HalfBlockchainTestJson> half =
+                    _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
+                testsInFile = [];
+                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
+                {
+                    testsInFile[pair.Key] = pair.Value;
+                }
+            }
+
+            return ConvertToBlockchainTests(testsInFile);
+        }
+
+        private static List<BlockchainTest> ConvertToBlockchainTests(Dictionary<string, BlockchainTestJson> testsInFile)
+        {
             List<BlockchainTest> testsByName = [];
             foreach ((string testName, BlockchainTestJson testSpec) in testsInFile)
             {
@@ -422,13 +476,24 @@ namespace Ethereum.Test.Base
                 return spec;
             }
 
-            return new OverridableReleaseSpec(spec)
+            SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
+            return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                MaxBlobCount = System.Convert.ToUInt64(blobCount.Max, 16),
-                TargetBlobCount = System.Convert.ToUInt64(blobCount.Target, 16),
-                BlobBaseFeeUpdateFraction = System.Convert.ToUInt64(blobCount.BaseFeeUpdateFraction, 16)
-            };
+                IReleaseSpec spec = SpecNameParser.Parse(key.Name);
+                return new OverridableReleaseSpec(spec)
+                {
+                    MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),
+                    TargetBlobCount = System.Convert.ToUInt64(key.TargetBlobCount, 16),
+                    BlobBaseFeeUpdateFraction = System.Convert.ToUInt64(key.BlobBaseFeeUpdateFraction, 16)
+                };
+            });
         }
+
+        private readonly record struct SpecOverrideCacheKey(
+            string Name,
+            string? MaxBlobCount,
+            string? TargetBlobCount,
+            string? BlobBaseFeeUpdateFraction);
 
         private static (string name, string category) GetNameAndCategory(string key)
         {
