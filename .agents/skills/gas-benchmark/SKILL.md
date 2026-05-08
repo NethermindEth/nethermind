@@ -195,21 +195,29 @@ Report the run URL to the user immediately after triggering.
 
 ## Phase 4 — Analyze results
 
-### 4a. Mandatory checks
+**THIS PHASE IS MANDATORY. Always run it in full, even if the workflow reported success. Never skip or abbreviate it. A "success" workflow conclusion does NOT mean the blocks processed correctly — Nethermind exceptions can occur mid-run without failing the workflow.**
+
+### 4a. Exception scan (NEVER SKIP)
 
 Fetch job logs: `gh run view --job=<job-id> --repo NethermindEth/gas-benchmarks --log`
 
 Strip ANSI escape codes: `sed 's/\x1b\[[0-9;]*m//g'`
 
-**Fail the analysis if any of these appear in Nethermind logs:**
-- `Exception` (ignore Docker/pip/node-exporter exceptions)
-- `Invalid Block` / `Invalid Blocks`
-- `InvalidBlockLevelAccessListHash`
-- `InvalidBlockLevelAccessListException`
+Scan for ALL of these patterns. Report every match with the full log line:
+```
+grep -iE "Exception|Invalid Block|InvalidBlock|Rejected invalid" | grep -v "docker\|pip\|node-exporter\|apt\|dotnet\|nuget\|npm\|orphan"
+```
 
-**Flag if present:** `Unhandled`, `Fatal`, `ERROR` (Nethermind context only)
+**Any match means the run has issues.** Classify:
+- `HeaderGasUsedMismatch` → gas schedule mismatch between image and test data (wrong branch/fork)
+- `InvalidBlockLevelAccessListHash` → BAL pre-state corruption (code bug)
+- `InvalidBlockLevelAccessListException` → address/slot not in BAL (missing BAL entries)
+- `Rejected invalid block ... reason: block is a part of an invalid chain` → cascade from earlier failure
+- Any other `Exception` → report verbatim
 
-**Confirm shutdown:** `Nethermind is shut down`
+**Always report the exception summary in the final report, even when there are zero exceptions.** Write "Exceptions: none" explicitly.
+
+**Confirm shutdown:** grep for `Nethermind is shut down` — if absent, the node crashed or was killed.
 
 ### 4b. Timing analysis
 
