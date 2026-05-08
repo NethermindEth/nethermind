@@ -13,8 +13,7 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStreamEncoder<AccountChanges>
 {
-    private static AccountChangesDecoder? _instance = null;
-    public static AccountChangesDecoder Instance => _instance ??= new();
+    public static readonly AccountChangesDecoder Instance = new();
 
     internal readonly struct EncodingLengths(
         int contentLength,
@@ -93,7 +92,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             ctx.Check(check);
         }
 
-        return new(address, slotChanges, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
+        return new(address, slotChanges, storageReadsList, storageReads, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)

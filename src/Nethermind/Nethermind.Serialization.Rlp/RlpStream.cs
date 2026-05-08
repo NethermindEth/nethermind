@@ -441,6 +441,21 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        public void Encode(in EvmWord value)
+        {
+            ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in value)), 32);
+            int nonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (nonZero < 0)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else
+            {
+                Encode(bytes.Slice(nonZero));
+            }
+        }
+
         public void Encode(string? value)
         {
             if (string.IsNullOrEmpty(value))

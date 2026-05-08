@@ -310,12 +310,6 @@ internal sealed class BlockAccessListValidationIndex
 
     private static bool TryGetRow(uint index, uint lastIndex, out int row)
     {
-        if (index == Eip7928Constants.PrestateIndex)
-        {
-            row = 0;
-            return true;
-        }
-
         if (index > lastIndex)
         {
             row = -1;
@@ -475,8 +469,6 @@ internal sealed class BlockAccessListValidationIndex
 
             int start = _rowStarts[row];
             int otherStart = other._rowStarts[row];
-            // Direct ReadOnlySpan construction avoids the AsSpan(start,len) -> Span -> ReadOnlySpan
-            // op_Implicit chain that shows up as ~35% of this method's Tracing time.
             return new ReadOnlySpan<int>(_accountOrdinals, start, length)
                        .SequenceEqual(new ReadOnlySpan<int>(other._accountOrdinals, otherStart, length)) &&
                    new ReadOnlySpan<TValue>(_values, start, length)
@@ -574,7 +566,7 @@ internal sealed class BlockAccessListValidationIndex
         private readonly int[]? _rowFilled;
         private readonly int[] _accountOrdinals;
         private readonly UInt256[] _keys;
-        private readonly UInt256[] _values;
+        private readonly EvmWord[] _values;
         private readonly bool[]? _rowTouched;
         private readonly int[]? _touchedRows;
         private readonly bool[]? _rowOverflow;
@@ -582,7 +574,7 @@ internal sealed class BlockAccessListValidationIndex
         private int[] _orderScratch = [];
         private int[] _accountScratch = [];
         private UInt256[] _keyScratch = [];
-        private UInt256[] _valueScratch = [];
+        private EvmWord[] _valueScratch = [];
         private int _touchedCount;
 
         private StorageLane(
@@ -590,7 +582,7 @@ internal sealed class BlockAccessListValidationIndex
             int[]? rowFilled,
             int[] accountOrdinals,
             UInt256[] keys,
-            UInt256[] values,
+            EvmWord[] values,
             bool[]? rowTouched,
             int[]? touchedRows,
             bool[]? rowOverflow)
@@ -608,14 +600,14 @@ internal sealed class BlockAccessListValidationIndex
         public static StorageLane CreateImmutable(int[] counts)
         {
             int[] rowStarts = CreateRowStarts(counts);
-            return new(rowStarts, null, new int[rowStarts[^1]], new UInt256[rowStarts[^1]], new UInt256[rowStarts[^1]], null, null, null);
+            return new(rowStarts, null, new int[rowStarts[^1]], new UInt256[rowStarts[^1]], new EvmWord[rowStarts[^1]], null, null, null);
         }
 
         public static StorageLane CreateMutableLike(StorageLane other)
         {
             int rowCount = other.RowCount;
             int[] rowStarts = (int[])other._rowStarts.Clone();
-            return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new UInt256[other._keys.Length], new UInt256[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
+            return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new UInt256[other._keys.Length], new EvmWord[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
         }
 
         public static StorageLane CreateMutableEmpty(int rowCount)
@@ -629,7 +621,7 @@ internal sealed class BlockAccessListValidationIndex
         public int[] CreateFillCursors() =>
             (int[])_rowStarts.Clone();
 
-        public void Fill(int row, int[] cursors, int accountOrdinal, UInt256 key, UInt256 value)
+        public void Fill(int row, int[] cursors, int accountOrdinal, UInt256 key, EvmWord value)
         {
             int offset = cursors[row]++;
             _accountOrdinals[offset] = accountOrdinal;
@@ -637,7 +629,7 @@ internal sealed class BlockAccessListValidationIndex
             _values[offset] = value;
         }
 
-        public void Add(int row, int accountOrdinal, UInt256 key, UInt256 value)
+        public void Add(int row, int accountOrdinal, UInt256 key, EvmWord value)
         {
             int[] rowFilled = _rowFilled ?? throw new InvalidOperationException("Cannot append to immutable lane.");
             int filled = rowFilled[row];
@@ -674,8 +666,8 @@ internal sealed class BlockAccessListValidationIndex
                        .SequenceEqual(new ReadOnlySpan<int>(other._accountOrdinals, otherStart, length)) &&
                    new ReadOnlySpan<UInt256>(_keys, start, length)
                        .SequenceEqual(new ReadOnlySpan<UInt256>(other._keys, otherStart, length)) &&
-                   new ReadOnlySpan<UInt256>(_values, start, length)
-                       .SequenceEqual(new ReadOnlySpan<UInt256>(other._values, otherStart, length));
+                   new ReadOnlySpan<EvmWord>(_values, start, length)
+                       .SequenceEqual(new ReadOnlySpan<EvmWord>(other._values, otherStart, length));
         }
 
         public void SortAllRows()
@@ -749,7 +741,7 @@ internal sealed class BlockAccessListValidationIndex
             {
                 int accountOrdinal = _accountOrdinals[start + i];
                 UInt256 key = _keys[start + i];
-                UInt256 value = _values[start + i];
+                EvmWord value = _values[start + i];
                 int j = i - 1;
                 while (j >= 0 && Compare(start + j, accountOrdinal, key) > 0)
                 {
@@ -805,7 +797,7 @@ internal sealed class BlockAccessListValidationIndex
             _orderScratch = new int[length];
             _accountScratch = new int[length];
             _keyScratch = new UInt256[length];
-            _valueScratch = new UInt256[length];
+            _valueScratch = new EvmWord[length];
         }
 
         private sealed class StorageOrderComparer : IComparer<int>

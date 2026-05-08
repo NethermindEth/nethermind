@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -42,7 +43,7 @@ public class BlockAccessListJournalTests
         Assert.That(accountChanges.CodeChangeAtIndex(1)!.Value.Code, Is.EqualTo(codeBeforeSnapshot));
 
         Assert.That(accountChanges.TryGetSlotChanges(slot, out SlotChanges? slotChanges), Is.True);
-        Assert.That(slotChanges!.Changes[1].Value, Is.EqualTo((UInt256)11));
+        Assert.That(slotChanges!.Changes[1].Value, Is.EqualTo(((UInt256)11).ToBigEndianWord()));
     }
 
     [Test]
@@ -64,7 +65,7 @@ public class BlockAccessListJournalTests
         Assert.That(accountChanges.CodeChangeAtIndex(Eip7928Constants.PrestateIndex)!.Value.Code, Is.EqualTo(prestateCode));
 
         Assert.That(accountChanges.TryGetSlotChanges(slot, out SlotChanges? slotChanges), Is.True);
-        Assert.That(slotChanges!.Changes[Eip7928Constants.PrestateIndex].Value, Is.EqualTo((UInt256)77));
+        Assert.That(slotChanges!.Changes[Eip7928Constants.PrestateIndex].Value, Is.EqualTo(((UInt256)77).ToBigEndianWord()));
     }
 
     [Test]
@@ -102,7 +103,7 @@ public class BlockAccessListJournalTests
         Assert.That(slotChanges!.Changes.Keys[0], Is.EqualTo(Eip7928Constants.PrestateIndex));
         Assert.That(slotChanges.Changes.Keys[1], Is.EqualTo(0u));
         Assert.That(slotChanges.Changes.Keys[2], Is.EqualTo(2u));
-        Assert.That(slotChanges.Changes.Values[2].Value, Is.EqualTo((UInt256)99));
+        Assert.That(slotChanges.Changes.Values[2].Value, Is.EqualTo(((UInt256)99).ToBigEndianWord()));
     }
 
     private static BlockAccessList CreateBalWithPrestate(Address address, UInt256 slot, byte[] prestateCode)

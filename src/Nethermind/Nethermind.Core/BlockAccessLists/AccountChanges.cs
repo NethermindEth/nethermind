@@ -93,6 +93,11 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     public AccountChanges(Address address, SlotChanges[] storageChanges, HashSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges)
+        : this(address, storageChanges, storageReads, sortedStorageReads: null, balanceChanges, nonceChanges, codeChanges)
+    {
+    }
+
+    internal AccountChanges(Address address, SlotChanges[] storageChanges, HashSet<UInt256> storageReads, UInt256[]? sortedStorageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = new(storageChanges.Length, GenericEqualityComparer.GetOptimized<UInt256>());
@@ -103,6 +108,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
         _sortedStorageChanges = storageChanges;
         _storageReads = storageReads;
+        _sortedStorageReads = sortedStorageReads;
         _balanceChanges = balanceChanges;
         _nonceChanges = nonceChanges;
         _codeChanges = codeChanges;
@@ -112,7 +118,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         other is not null &&
         Address == other.Address &&
         ListEquals(StorageChanges, other.StorageChanges) &&
-        SetEquals(StorageReads, other.StorageReads) &&
+        _storageReads.SetEquals(other._storageReads) &&
         ListEquals(BalanceChanges, other.BalanceChanges) &&
         ListEquals(NonceChanges, other.NonceChanges) &&
         ListEquals(CodeChanges, other.CodeChanges);
@@ -185,7 +191,10 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             _storageChanges.Remove(key);
             InvalidateStorageOrder();
-            _storageReads.Add(key);
+            if (_storageReads.Add(key))
+            {
+                _sortedStorageReads = null;
+            }
         }
     }
 
@@ -338,12 +347,12 @@ public class AccountChanges : IEquatable<AccountChanges>
         for (int i = 0; i < storageChanges.Length; i++)
         {
             SlotChanges slotChange = storageChanges[i];
-            UInt256 lastValue = 0;
+            EvmWord lastValue = default;
             foreach (StorageChange storageChange in slotChange.Changes.Values)
             {
                 if (storageChange.Index != Eip7928Constants.PrestateIndex && storageChange.Index > blockAccessIndex)
                 {
-                    if (lastValue != 0)
+                    if (lastValue != default)
                     {
                         slots.Add(slotChange.Key);
                     }
@@ -432,11 +441,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         return sortedStorageChanges;
     }
 
-    // Per-account storage-slot counts are typically tiny (1-3 in the EIP-8037 workload).
-    // For small N the foreach + ArrayPool rent/return overhead exceeds the savings from
-    // dropping the Comparison<T> delegate, so we use an inline insertion sort below the
-    // SoaThreshold. Above it the SoA path with primitive UInt256 keys + MemoryExtensions
-    // .Sort<TKey,TValue> wins (cache-friendly key array, no virtual dispatch per compare).
+    // Below this count, insertion sort beats the SoA rent/copy/sort path.
     private const int SoaSortThreshold = 16;
 
     private SlotChanges[] BuildSortedStorageChanges()
@@ -452,7 +457,6 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         if (count <= SoaSortThreshold)
         {
-            // Insertion sort. No allocations, no delegate, dense for tiny rows.
             for (int i = 1; i < count; i++)
             {
                 SlotChanges current = values[i];
@@ -630,9 +634,6 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         return true;
     }
-
-    private static bool SetEquals<T>(HashSet<T> left, HashSet<T> right)
-        => left.Count == right.Count && left.SetEquals(right);
 
     private UInt256[] GetSortedStorageReads()
     {

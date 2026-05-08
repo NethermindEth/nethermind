@@ -3,9 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -53,23 +51,4 @@ public record SlotChanges(UInt256 Key, IndexedChanges<StorageChange> Changes)
 
     internal bool TryPopStorageChangeDirect(uint index, out StorageChange storageChange)
         => Changes.TryPopLast(index, out storageChange);
-
-    [SkipLocalsInit]
-    public byte[] Get(uint blockAccessIndex)
-    {
-        Span<byte> tmp = stackalloc byte[32];
-        UInt256 lastValue = 0;
-        foreach (KeyValuePair<uint, StorageChange> change in Changes)
-        {
-            if (change.Key != Eip7928Constants.PrestateIndex && change.Key >= blockAccessIndex)
-            {
-                lastValue.ToBigEndian(tmp);
-                return [.. tmp.WithoutLeadingZeros()];
-            }
-            lastValue = change.Value.Value;
-        }
-
-        lastValue.ToBigEndian(tmp);
-        return [.. tmp.WithoutLeadingZeros()];
-    }
 }

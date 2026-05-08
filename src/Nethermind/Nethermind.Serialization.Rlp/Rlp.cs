@@ -270,7 +270,7 @@ namespace Nethermind.Serialization.Rlp
             => LogEntryDecoder.Instance.Encode(item, behaviors);
 
         public static Rlp Encode(BlockAccessList item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => new(BlockAccessListDecoder.Instance.EncodeToBytes(item, behaviors));
+            => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
@@ -998,6 +998,30 @@ namespace Nethermind.Serialization.Rlp
                 return new UInt256(byteSpan, true);
             }
 
+            public EvmWord DecodeEvmWord()
+            {
+                int position = Position;
+                if (PeekByte() == 0)
+                {
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
+                }
+
+                ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan(RlpLimit.L32);
+                if (byteSpan.Length > 32)
+                {
+                    RlpHelpers.ThrowUnexpectedIntegerLength(position, byteSpan.Length);
+                }
+                if (byteSpan.Length > 1 && byteSpan[0] == 0)
+                {
+                    RlpHelpers.ThrowNonCanonicalInteger(position);
+                }
+
+                EvmWord result = default;
+                Span<byte> dest = MemoryMarshal.CreateSpan(ref Unsafe.As<EvmWord, byte>(ref result), 32);
+                byteSpan.CopyTo(dest.Slice(32 - byteSpan.Length));
+                return result;
+            }
+
             public BigInteger DecodeUBigInt()
             {
                 int position = Position;
@@ -1572,6 +1596,17 @@ namespace Nethermind.Serialization.Rlp
         public string ToString(bool withZeroX) => Bytes.ToHexString(withZeroX);
 
         public static int LengthOf(UInt256? item) => item is null ? LengthOfNull : LengthOf(item.Value);
+
+        public static int LengthOf(in EvmWord value)
+        {
+            ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in value)), 32);
+            int nonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (nonZero < 0) return 1;
+            int len = 32 - nonZero;
+            if (len == 1 && bytes[nonZero] < 128) return 1;
+            return 1 + len;
+        }
 
         public static int LengthOf(in UInt256 item)
         {

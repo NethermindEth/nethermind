@@ -18,6 +18,9 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
+    // Nethermind internal: Eip7928Constants.PrestateIndex (uint.MaxValue) overloads the
+    // wire block_access_index space as a prestate sentinel. EIP-7928 reserves no such value;
+    // we reject it on both ends so the sentinel can never collide with a real index.
     public T Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();

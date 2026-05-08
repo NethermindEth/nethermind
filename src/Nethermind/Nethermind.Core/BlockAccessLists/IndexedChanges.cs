@@ -252,7 +252,7 @@ public sealed class IndexedChanges<T> : IEnumerable<T>
         _changes.Clear();
     }
 
-    public bool TryGetLast([NotNullWhen(true)] out T change)
+    public bool TryGetLast(out T change)
     {
         int count = _changes.Count;
         if (count != 0)

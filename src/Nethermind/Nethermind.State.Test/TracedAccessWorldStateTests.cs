@@ -9,6 +9,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -512,7 +513,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 SlotChanges slotChanges = ac.StorageChanges[0];
                 // Storage changes also Pop+Push at same Index, so Count stays 1
                 Assert.That(slotChanges.Changes, Has.Count.EqualTo(1));
-                Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo((UInt256)2));
+                Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo(((UInt256)2).ToBigEndianWord()));
             }
         }
     }

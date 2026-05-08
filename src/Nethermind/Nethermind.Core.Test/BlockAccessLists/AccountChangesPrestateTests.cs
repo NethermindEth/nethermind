@@ -177,16 +177,6 @@ public class AccountChangesPrestateTests
     }
 
     [Test]
-    public void Slot_get_returns_prestate_value_when_only_prestate_present()
-    {
-        SlotChanges slot = new(123u);
-        slot.AddStorageChange(new StorageChange(Eip7928Constants.PrestateIndex, 0xABu));
-
-        byte[] result = slot.Get(0);
-        Assert.That(result, Is.EqualTo(new byte[] { 0xAB }));
-    }
-
-    [Test]
     public void Storage_changes_enumerate_sorted_after_unsorted_writes()
     {
         AccountChanges ac = new(TestItem.AddressA);

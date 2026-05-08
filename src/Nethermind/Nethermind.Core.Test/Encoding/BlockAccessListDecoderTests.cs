@@ -384,11 +384,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Can_encode_then_decode()
     {
-        StorageChange storageChange = new()
-        {
-            Index = 10,
-            Value = 0xcad
-        };
+        StorageChange storageChange = new(10, (UInt256)0xcad);
         byte[] storageChangeBytes = Rlp.Encode(storageChange, RlpBehaviors.None).Bytes;
         StorageChange storageChangeDecoded = Rlp.Decode<StorageChange>(storageChangeBytes, RlpBehaviors.None);
         Assert.That(storageChange, Is.EqualTo(storageChangeDecoded));
@@ -532,7 +528,7 @@ public class BlockAccessListDecoderTests
         RlpStream stream = new(length);
         BlockAccessListDecoder.Instance.Encode(stream, blockAccessList, RlpBehaviors.None);
 
-        byte[] direct = BlockAccessListDecoder.Instance.EncodeToBytes(blockAccessList, RlpBehaviors.None);
+        byte[] direct = BlockAccessListDecoder.EncodeToBytes(blockAccessList, RlpBehaviors.None);
 
         Assert.That(direct, Is.EqualTo(stream.Data.ToArray()));
         Assert.That(Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes, Is.EqualTo(direct));
@@ -759,7 +755,7 @@ public class BlockAccessListDecoderTests
                 .WithAddress(Eip2935Constants.BlockHashHistoryAddress)
                 .WithStorageChanges(
                     0,
-                    [new(0, new(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))])
+                    [new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true))])
                 .TestObject;
             string storageChangesRlp = "0x" + Bytes.ToHexString(Rlp.Encode(storageChangesExpected).Bytes);
             yield return new TestCaseData(storageChangesRlp, storageChangesExpected)

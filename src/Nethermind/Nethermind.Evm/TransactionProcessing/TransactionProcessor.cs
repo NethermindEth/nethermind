@@ -1183,7 +1183,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
                 {
-                    if (slotChanges.Changes.Count > 0 && !slotChanges.Changes.Values[^1].Value.IsZero)
+                    if (slotChanges.Changes.Count > 0 && slotChanges.Changes.Values[^1].Value != default)
                     {
                         createdSlots++;
                     }

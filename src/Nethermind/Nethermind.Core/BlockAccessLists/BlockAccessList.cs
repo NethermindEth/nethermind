@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Int256;
 
@@ -335,7 +336,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         bool changedDuringTx = HasStorageChangedDuringTx(accountChanges, slotChanges, key, before, after);
         bool hasPrev = slotChanges.TryPopStorageChangeDirect(Index, out StorageChange oldStorageChange);
 
-        PushStorageChangeDetails(accountChanges.Address, key, hasPrev, in oldStorageChange, in before);
+        EvmWord beforeAsBytes = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in before)).ByteSwap();
+        PushStorageChangeDetails(accountChanges.Address, key, hasPrev, in oldStorageChange, in beforeAsBytes);
 
         if (changedDuringTx)
         {
@@ -499,6 +501,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
             return beforeInstr != afterInstr;
         }
 
+        EvmWord afterAsBytes = Unsafe.As<UInt256, EvmWord>(ref Unsafe.AsRef(in afterInstr)).ByteSwap();
+
         uint currentIndex = Index;
         for (int i = count - 1; i >= 0; i--)
         {
@@ -506,7 +510,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
             if (storageChange.Index != currentIndex)
             {
                 // storage changed in previous tx in block
-                return storageChange.Value != afterInstr;
+                return storageChange.Value != afterAsBytes;
             }
         }
 
@@ -522,7 +526,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
                 change.PreviousBlockAccessIndex == NoPreviousBlockAccessIndex)
             {
                 // first change of this transaction & block
-                return change.PriorValue != afterInstr;
+                return change.PriorValue != afterAsBytes;
             }
         }
 
@@ -607,13 +611,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         return sortedAccountChanges;
     }
 
-    // Build the address-sorted account view via parallel-array sort. The previous
-    // implementation called Array.Sort with a Comparison<AccountChanges> delegate over
-    // the class array, which paid a virtual dispatch per compare and chased through
-    // ~5k scattered references. Lifting Address into a contiguous pooled key array and
-    // sorting via MemoryExtensions.Sort<TKey, TValue> dispatches directly to
-    // Address.IComparable<Address>.CompareTo (inlinable, struct-friendly) and lets the
-    // sort touch only the packed key bytes for comparisons.
     private AccountChanges[] BuildSortedAccountChanges()
     {
         int count = _accountChanges.Count;
@@ -724,10 +721,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         _changeStream.Add(ChangeType.CodeChange);
     }
 
-    private void PushStorageChangeDetails(Address address, UInt256 slot, bool hasPrevious, in StorageChange previousStorage, in UInt256 priorValue)
+    private void PushStorageChangeDetails(Address address, UInt256 slot, bool hasPrevious, in StorageChange previousStorage, in EvmWord priorValue)
     {
         long previousIndex;
-        UInt256 value;
+        EvmWord value;
         if (hasPrevious)
         {
             previousIndex = previousStorage.Index;
@@ -830,13 +827,13 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         public readonly byte[]? PriorCode = priorCode;
     }
 
-    private readonly struct StorageChangeDetails(Address address, UInt256 slot, uint blockAccessIndex, long previousBlockAccessIndex, UInt256 priorValue)
+    private readonly struct StorageChangeDetails(Address address, UInt256 slot, uint blockAccessIndex, long previousBlockAccessIndex, EvmWord priorValue)
     {
         public readonly Address Address = address;
         public readonly UInt256 Slot = slot;
         public readonly uint BlockAccessIndex = blockAccessIndex;
         public readonly long PreviousBlockAccessIndex = previousBlockAccessIndex;
-        public readonly UInt256 PriorValue = priorValue;
+        public readonly EvmWord PriorValue = priorValue;
     }
 }
 

@@ -2,21 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
-using System.Collections.Concurrent;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Cpu;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -28,11 +30,11 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Specs;
+using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
-using System.Threading;
+using RuntimeInformation = Nethermind.Core.Cpu.RuntimeInformation;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -71,7 +73,7 @@ public class BlockAccessListManager(
             innerException.InvalidBlock,
             innerException.Message,
             (innerException as InvalidTransactionException)?.Reason
-                ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail($"Parallel execution failure: {innerException.Message}"),
+                ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail("Parallel execution failure"),
             innerException);
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
@@ -320,7 +322,10 @@ public class BlockAccessListManager(
                 if (slotChange.Changes.TryGetLastBefore(Eip7928Constants.PrestateIndex, out StorageChange storageChange))
                 {
                     StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
-                    stateProvider.Set(storageCell, [.. storageChange.Value.ToBigEndian().WithoutLeadingZeros()]);
+                    byte[] trimmed = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in storageChange.Value)), 32)
+                        .WithoutLeadingZeros()
+                        .ToArray();
+                    stateProvider.Set(storageCell, trimmed);
                 }
             }
         }

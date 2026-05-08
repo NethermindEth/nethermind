@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -30,6 +31,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private IWorldState? _parentReader;
     private Dictionary<ValueHash256, byte[]>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
+    private EvmWord _readScratch;
+    private EvmWord _originalScratch;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
 
     public void SetBlockAccessIndex(uint index)
@@ -98,7 +101,10 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
-                return StorageValueToBytes(storageChange.Value);
+                // Copy the BE bytes into per-instance scratch; span valid until the next Get on this instance.
+                _readScratch = storageChange.Value;
+                return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref _readScratch), 32)
+                    .WithoutLeadingZeros();
             }
 
             return parentReader.Get(storageCell);
@@ -108,7 +114,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         return default;
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(storageCell.Address);
 
@@ -116,14 +122,16 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
-                return StorageValueToBytes(storageChange.Value);
+                _originalScratch = storageChange.Value;
+                return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref _originalScratch), 32)
+                    .WithoutLeadingZeros();
             }
 
             return parentReader.GetOriginal(storageCell);
         }
 
         ThrowMissingStorage(storageCell);
-        return [];
+        return default;
     }
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce) => oldNonce = GetNonce(address);
@@ -388,14 +396,6 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         }
 
         return false;
-    }
-
-    [SkipLocalsInit]
-    private static byte[] StorageValueToBytes(in UInt256 value)
-    {
-        Span<byte> tmp = stackalloc byte[32];
-        value.ToBigEndian(tmp);
-        return [.. tmp.WithoutLeadingZeros()];
     }
 
     [DoesNotReturn, StackTraceHidden]

@@ -12,8 +12,7 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStreamEncoder<BlockAccessList>
 {
-    private static BlockAccessListDecoder? _instance = null;
-    public static BlockAccessListDecoder Instance => _instance ??= new();
+    public static readonly BlockAccessListDecoder Instance = new();
 
     private static readonly RlpLimit _accountsLimit = new(Eip7928Constants.MaxAccounts, "", ReadOnlyMemory<char>.Empty);
 
@@ -48,22 +47,18 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
         return BlockAccessList.FromSortedAccountChanges(accountChanges, itemCount);
     }
 
-    public byte[] EncodeToBytes(BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public static byte[] EncodeToBytes(BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ReadOnlySpan<AccountChanges> accounts = item.AccountChangesByAddress;
         AccountChangesDecoder.EncodingLengths[] accountLengths = ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Rent(accounts.Length);
-        try
-        {
-            PrepareAccountLengths(accounts, accountLengths, rlpBehaviors, out int contentLength);
 
-            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
-            EncodePrepared(stream, accounts, accountLengths, contentLength, rlpBehaviors);
-            return stream.Data.ToArray();
-        }
-        finally
-        {
-            ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
-        }
+        PrepareAccountLengths(accounts, accountLengths, rlpBehaviors, out int contentLength);
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        EncodePrepared(stream, accounts, accountLengths, contentLength, rlpBehaviors);
+        byte[] result = stream.Data.ToArray();
+        ArrayPool<AccountChangesDecoder.EncodingLengths>.Shared.Return(accountLengths);
+        return result;
     }
 
     public void Encode(RlpStream stream, BlockAccessList item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -78,7 +79,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return GetInternal(storageCell);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         => _innerWorldState.GetOriginal(storageCell);
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
@@ -355,7 +356,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 
                 if (slotChanges is not null && slotChanges.Changes.Count >= 1)
                 {
-                    return slotChanges.Changes.Values[slotChanges.Changes.Count - 1].Value.ToBigEndian();
+                    StorageChange last = slotChanges.Changes.Values[slotChanges.Changes.Count - 1];
+                    return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in last.Value)), 32).ToArray();
                 }
             }
         }
