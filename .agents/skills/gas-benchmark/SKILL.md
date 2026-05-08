@@ -265,13 +265,52 @@ gh release download <tag> --repo NethermindEth/gas-benchmarks \
 ```
 Parse the JSON and compare opcode counts for the specific test to confirm the workload is identical.
 
-### 4e. dotTrace analysis
+### 4e. dotTrace analysis (when `--dottrace` was enabled)
 
-If dotTrace XML artifacts exist:
-1. Download: `gh run download <run-id> --repo NethermindEth/gas-benchmarks -n "repricing-nethermind-dottrace-xml-<run-id>"`
-2. Analyze: `bash scripts/dottrace-report.sh top <report.xml> 20`
-3. Compare: `bash scripts/dottrace-report.sh compare <baseline.xml> <new.xml> 20`
-4. **Never load full XML into context** — files are 50-70MB.
+**Always check if the dotTrace XML artifact exists for the run:**
+```
+gh api repos/NethermindEth/gas-benchmarks/actions/runs/<run-id>/artifacts \
+  --jq '.artifacts[].name' | grep "dottrace-xml"
+```
+
+If present:
+1. **Download** the XML report:
+   ```
+   gh run download <run-id> --repo NethermindEth/gas-benchmarks \
+     -n "repricing-nethermind-dottrace-xml-<run-id>" -D /tmp/dottrace-<run-id>
+   ```
+
+2. **Find the report file:**
+   ```
+   find /tmp/dottrace-<run-id> -name "*.xml" -not -name "*pattern*" -not -name "*conversion*"
+   ```
+
+3. **Top hotspots** — show the top 20 functions by OwnTime (self-time excluding callees):
+   ```
+   bash scripts/dottrace-report.sh top <report.xml> 20
+   ```
+   Output columns: `Function | OwnTime | TotalTime`
+   - **OwnTime** = time spent in the function body itself (the hotspot indicator)
+   - **TotalTime** = time including all callees
+   - Sort by OwnTime descending — the top entries are where CPU time is actually spent
+
+4. **Compare two runs** (when baseline available):
+   ```
+   bash scripts/dottrace-report.sh compare <baseline.xml> <new.xml> 20
+   ```
+   Output shows REGRESSIONS (B slower) and IMPROVEMENTS (B faster) with:
+   - `[A] Own` / `[B] Own` = OwnTime in each run
+   - `Delta` = absolute change (positive = regression)
+   - `Change` = percentage change
+
+5. **Interpretation guide:**
+   - Functions with high OwnTime in `Nethermind.State`, `Nethermind.Trie`, `Nethermind.Db.Rocks` indicate storage/state bottlenecks
+   - `RocksDbSharp` functions indicate disk I/O pressure
+   - `Nethermind.Evm.VirtualMachine` functions indicate EVM execution overhead
+   - System/GC functions (`System.GC`, `JIT_New`) indicate allocation pressure
+   - Compare sstore/sload counts (from 4c) against OwnTime to distinguish I/O-bound vs compute-bound
+
+6. **Never load full XML into context** — files are 50-70MB. Always use `scripts/dottrace-report.sh`.
 
 ## Phase 5 — Report
 
