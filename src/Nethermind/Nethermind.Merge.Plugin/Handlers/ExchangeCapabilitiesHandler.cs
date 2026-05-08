@@ -13,6 +13,9 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IReadOn
 {
     private readonly ILogger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
+    // The enabled-capability set is fixed once the provider builds its dictionary,
+    // so cache the projected list and avoid rebuilding it on every Handle call.
+    private IReadOnlyList<string>? _enabledCache;
 
     public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ILogManager logManager)
     {
@@ -27,8 +30,16 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IReadOn
         IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
         CheckCapabilities(methods, capabilities);
 
-        return ResultWrapper<IReadOnlyList<string>>.Success(
-            [.. capabilities.Where(static x => x.Value.Enabled).Select(static x => x.Key)]);
+        return ResultWrapper<IReadOnlyList<string>>.Success(_enabledCache ??= BuildEnabledList(capabilities));
+    }
+
+    private static IReadOnlyList<string> BuildEnabledList(IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)
+    {
+        List<string> enabled = new(capabilities.Count);
+        foreach (KeyValuePair<string, (bool Enabled, bool WarnIfMissing)> kv in capabilities)
+            if (kv.Value.Enabled)
+                enabled.Add(kv.Key);
+        return enabled;
     }
 
     private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)

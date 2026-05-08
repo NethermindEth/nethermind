@@ -298,12 +298,24 @@ internal static class SszCodecHelpers
         }
 
         int chunkCount = (value.Length + 31) / 32;
-        UInt256[] chunks = ArrayPool<UInt256>.Shared.Rent(chunkCount);
+        // Stack-alloc up to 4 chunks (128 bytes); rent for larger payloads.
+        const int StackChunkLimit = 4;
+        scoped Span<UInt256> chunks;
+        UInt256[]? rented = null;
+        if (chunkCount <= StackChunkLimit)
+        {
+            Span<UInt256> stack = stackalloc UInt256[StackChunkLimit];
+            chunks = stack[..chunkCount];
+        }
+        else
+        {
+            rented = ArrayPool<UInt256>.Shared.Rent(chunkCount);
+            chunks = rented.AsSpan(0, chunkCount);
+        }
         try
         {
-            // Only the in-use prefix [0, chunkCount) is passed to MerkleizeProgressive,
-            // so clearing only that prefix is sufficient, the rented tail is never read.
-            chunks.AsSpan(0, chunkCount).Clear();
+            // Clearing the in-use prefix is sufficient; MerkleizeProgressive only reads it.
+            chunks.Clear();
             int fullByteLength = value.Length / 32 * 32;
             if (fullByteLength > 0)
             {
@@ -317,11 +329,11 @@ internal static class SszCodecHelpers
                 chunks[chunkCount - 1] = new UInt256(lastChunk);
             }
 
-            Merkle.MerkleizeProgressive(out root, chunks.AsSpan(0, chunkCount));
+            Merkle.MerkleizeProgressive(out root, chunks);
         }
         finally
         {
-            ArrayPool<UInt256>.Shared.Return(chunks);
+            if (rented is not null) ArrayPool<UInt256>.Shared.Return(rented);
         }
     }
 
@@ -336,6 +348,8 @@ internal static class SszCodecHelpers
     {
         BitArray bits = value ?? new BitArray(0);
         int byteLength = (bits.Length + 7) / 8;
+        // BitArray.CopyTo requires a byte[] target, so we rent regardless of size;
+        // the small-chunkCount fast path in MerkleizeProgressiveBytes covers stackalloc.
         byte[] bytes = ArrayPool<byte>.Shared.Rent(byteLength);
         try
         {
@@ -370,77 +384,51 @@ internal static class SszCodecHelpers
 
     internal delegate void EncodeItem<T>(T item, Span<byte> buffer);
 
+    internal enum RefTypeMerkleKind { Vector, List, ProgressiveList }
+
+    private static void MerkleizeRefTypeCore<T>(
+        ReadOnlySpan<T> items, int itemSize, EncodeItem<T> encode,
+        RefTypeMerkleKind kind, ulong limit, out UInt256 root)
+    {
+        int count = items.Length;
+        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
+        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
+        try
+        {
+            Span<byte> span = buf.AsSpan(0, itemSize);
+            for (int i = 0; i < count; i++)
+            {
+                span.Clear();
+                encode(items[i], span);
+                MerkleizeFixedSizeBytes(span, out subRoots[i]);
+            }
+            ReadOnlySpan<UInt256> active = subRoots.AsSpan(0, count);
+            switch (kind)
+            {
+                case RefTypeMerkleKind.Vector: Merkle.Merkleize(out root, active); break;
+                case RefTypeMerkleKind.List: Merkle.Merkleize(out root, active, limit); break;
+                default: Merkle.MerkleizeProgressive(out root, active); break;
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buf);
+            ArrayPool<UInt256>.Shared.Return(subRoots);
+        }
+        if (kind != RefTypeMerkleKind.Vector) Merkle.MixIn(ref root, count);
+    }
+
     internal static void MerkleizeRefTypeVector<T>(ReadOnlySpan<T> items, ulong length, int itemSize, EncodeItem<T> encode, out UInt256 root)
     {
         Debug.Assert((ulong)items.Length == length, "Vector items count must equal declared length");
-        int count = items.Length;
-        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
-        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
-        try
-        {
-            for (int i = 0; i < count; i++)
-            {
-                Span<byte> span = buf.AsSpan(0, itemSize);
-                span.Clear();
-                encode(items[i], span);
-                MerkleizeFixedSizeBytes(span, out subRoots[i]);
-            }
-            Merkle.Merkleize(out root, subRoots.AsSpan(0, count));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buf);
-            ArrayPool<UInt256>.Shared.Return(subRoots);
-        }
+        MerkleizeRefTypeCore(items, itemSize, encode, RefTypeMerkleKind.Vector, limit: 0, out root);
     }
 
     internal static void MerkleizeRefTypeList<T>(ReadOnlySpan<T> items, ulong limit, int itemSize, EncodeItem<T> encode, out UInt256 root)
-    {
-        int count = items.Length;
-        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
-        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
-        try
-        {
-            for (int i = 0; i < count; i++)
-            {
-                Span<byte> span = buf.AsSpan(0, itemSize);
-                span.Clear();
-                encode(items[i], span);
-                MerkleizeFixedSizeBytes(span, out subRoots[i]);
-            }
-            Merkle.Merkleize(out root, subRoots.AsSpan(0, count), limit);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buf);
-            ArrayPool<UInt256>.Shared.Return(subRoots);
-        }
-        Merkle.MixIn(ref root, count);
-    }
+        => MerkleizeRefTypeCore(items, itemSize, encode, RefTypeMerkleKind.List, limit, out root);
 
     internal static void MerkleizeRefTypeProgressiveList<T>(ReadOnlySpan<T> items, int itemSize, EncodeItem<T> encode, out UInt256 root)
-    {
-        int count = items.Length;
-        byte[] buf = ArrayPool<byte>.Shared.Rent(itemSize);
-        UInt256[] subRoots = ArrayPool<UInt256>.Shared.Rent(count);
-        try
-        {
-            for (int i = 0; i < count; i++)
-            {
-                Span<byte> span = buf.AsSpan(0, itemSize);
-                span.Clear();
-                encode(items[i], span);
-                MerkleizeFixedSizeBytes(span, out subRoots[i]);
-            }
-            Merkle.MerkleizeProgressive(out root, subRoots.AsSpan(0, count));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buf);
-            ArrayPool<UInt256>.Shared.Return(subRoots);
-        }
-        Merkle.MixIn(ref root, count);
-    }
+        => MerkleizeRefTypeCore(items, itemSize, encode, RefTypeMerkleKind.ProgressiveList, limit: 0, out root);
 }
 """;
 
