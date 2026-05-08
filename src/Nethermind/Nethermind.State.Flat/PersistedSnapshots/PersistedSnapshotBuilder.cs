@@ -441,7 +441,10 @@ public static class PersistedSnapshotBuilder
                     (ValueHash256 _, TreePath path) = storTop[i];
                     snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
                     path.EncodeWith3Byte(topPathKey);
-                    topLevel.Add(topPathKey, node!.FullRlp.AsSpan());
+                    ReadOnlySpan<byte> topRlp = node!.FullRlp.AsSpan();
+                    ref TWriter topValueWriter = ref topLevel.BeginValueWrite();
+                    WriteTrieNodeRlpPageAligned(ref topValueWriter, topRlp);
+                    topLevel.FinishValueWrite(topPathKey, topRlp.Length);
                     trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 topLevel.Build();
@@ -464,7 +467,10 @@ public static class PersistedSnapshotBuilder
                     (ValueHash256 _, TreePath path) = storCompact[i];
                     snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
                     path.EncodeWith8Byte(compactPathKey);
-                    compactLevel.Add(compactPathKey, node!.FullRlp.AsSpan());
+                    ReadOnlySpan<byte> compactRlp = node!.FullRlp.AsSpan();
+                    ref TWriter compactValueWriter = ref compactLevel.BeginValueWrite();
+                    WriteTrieNodeRlpPageAligned(ref compactValueWriter, compactRlp);
+                    compactLevel.FinishValueWrite(compactPathKey, compactRlp.Length);
                     trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 compactLevel.Build();
@@ -487,7 +493,10 @@ public static class PersistedSnapshotBuilder
                     snapshot.TryGetStorageNode((addrRefForStorageNode, path), out TrieNode? node);
                     path.Path.Bytes.CopyTo(fallbackPathKey);
                     fallbackPathKey[32] = (byte)path.Length;
-                    fbLevel.Add(fallbackPathKey, node!.FullRlp.AsSpan());
+                    ReadOnlySpan<byte> fbRlp = node!.FullRlp.AsSpan();
+                    ref TWriter fbValueWriter = ref fbLevel.BeginValueWrite();
+                    WriteTrieNodeRlpPageAligned(ref fbValueWriter, fbRlp);
+                    fbLevel.FinishValueWrite(fallbackPathKey, fbRlp.Length);
                     trieBloom?.Add(PersistedSnapshotBloomBuilder.StorageNodeKey(in addressHash, in path));
                 }
                 fbLevel.Build();
@@ -595,7 +604,10 @@ public static class PersistedSnapshotBuilder
             TreePath path = stateNodeKeys[i];
             snapshot.TryGetStateNode(path, out TrieNode? node);
             path.EncodeWith3Byte(keyBuffer);
-            inner.Add(keyBuffer, node!.FullRlp.AsSpan());
+            ReadOnlySpan<byte> rlp = node!.FullRlp.AsSpan();
+            ref TWriter valueWriter = ref inner.BeginValueWrite();
+            WriteTrieNodeRlpPageAligned(ref valueWriter, rlp);
+            inner.FinishValueWrite(keyBuffer, rlp.Length);
             trieBloom?.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
         }
 
@@ -616,7 +628,10 @@ public static class PersistedSnapshotBuilder
             TreePath path = stateNodeKeys[i];
             snapshot.TryGetStateNode(path, out TrieNode? node);
             path.EncodeWith8Byte(keyBuffer);
-            inner.Add(keyBuffer, node!.FullRlp.AsSpan());
+            ReadOnlySpan<byte> rlp = node!.FullRlp.AsSpan();
+            ref TWriter valueWriter = ref inner.BeginValueWrite();
+            WriteTrieNodeRlpPageAligned(ref valueWriter, rlp);
+            inner.FinishValueWrite(keyBuffer, rlp.Length);
             trieBloom?.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
         }
 
@@ -635,13 +650,46 @@ public static class PersistedSnapshotBuilder
             snapshot.TryGetStateNode(path, out TrieNode? node);
             path.Path.Bytes.CopyTo(keyBuffer);
             keyBuffer[32] = (byte)path.Length;
-            inner.Add(keyBuffer, node!.FullRlp.AsSpan());
+            ReadOnlySpan<byte> rlp = node!.FullRlp.AsSpan();
+            ref TWriter valueWriter = ref inner.BeginValueWrite();
+            WriteTrieNodeRlpPageAligned(ref valueWriter, rlp);
+            inner.FinishValueWrite(keyBuffer, rlp.Length);
             trieBloom?.Add(PersistedSnapshotBloomBuilder.StatePathKey(in path));
         }
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
     }
+
+    /// <summary>
+    /// Write a trie-node RLP value through the supplied writer with leading padding so
+    /// the value never crosses a 4 KiB page boundary in the arena. Linked snapshots
+    /// reach back into the Full snapshot's arena via <see cref="NodeRef"/>; keeping each
+    /// RLP within a single page halves the page-fault / prefetch cost of those later
+    /// fetches. Caller is responsible for the surrounding <c>BeginValueWrite</c> /
+    /// <c>FinishValueWrite(key, value.Length)</c> pair on the HSST B-tree builder —
+    /// passing the builder itself here is not possible because callers hold it as a
+    /// <c>using</c> ref-struct local.
+    ///
+    /// Trie-node RLP is bounded well below 4 KiB (a worst-case branch is ~532 bytes),
+    /// so the simple "pad if it would cross" rule never has to split an oversize value.
+    /// Pad bytes sit between <c>BeginValueWrite</c> and the real value; the reader recovers
+    /// the value via <c>ValueStart = MetadataStart - ValueLength</c>, so they are inert.
+    /// </summary>
+    internal static void WriteTrieNodeRlpPageAligned<TWriter>(ref TWriter w, scoped ReadOnlySpan<byte> value)
+        where TWriter : IByteBufferWriter
+    {
+        long offsetInPage = (w.Written - w.FirstOffset) & 4095L;
+        if (value.Length <= 4096 && offsetInPage != 0 && offsetInPage + value.Length > 4096)
+        {
+            int pad = (int)(4096L - offsetInPage);
+            Span<byte> padSpan = w.GetSpan(pad);
+            padSpan[..pad].Clear();
+            w.Advance(pad);
+        }
+        IByteBufferWriter.Copy(ref w, value);
+    }
+
     /// <summary>
     /// Convert a Full snapshot into a Linked snapshot where trie RLP values become
     /// NodeRefs. Metadata column (0x00) copied as-is. Flat state-trie columns (0x03,
