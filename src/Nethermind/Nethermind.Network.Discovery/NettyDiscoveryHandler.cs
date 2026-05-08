@@ -121,14 +121,11 @@ public class NettyDiscoveryHandler(
             return false;
         }
 
-        byte typeRaw = msgBytes[97];
-        if (!FastEnum.IsDefined((MsgType)typeRaw))
+        if (FromMsgTypeByte(msgBytes[97]) is not { } type)
         {
-            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.AsSpan(0, size).ToHexString()}");
+            if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {msgBytes[97]}, sender: {address}, message {msgBytes.AsSpan(0, size).ToHexString()}");
             return false;
         }
-
-        MsgType type = (MsgType)typeRaw;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
         if (address is IPEndPoint remoteEndpoint && !TryAcceptInbound(remoteEndpoint))
@@ -193,6 +190,9 @@ public class NettyDiscoveryHandler(
             _logger.DebugError($"Error while processing message, type: {type}, sender: {address}, message: {msg}", e);
         }
     }
+
+    protected virtual MsgType? FromMsgTypeByte(byte b) =>
+        FastEnum.IsDefined((MsgType)b) ? (MsgType)b : null;
 
     private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg) => type switch
     {
