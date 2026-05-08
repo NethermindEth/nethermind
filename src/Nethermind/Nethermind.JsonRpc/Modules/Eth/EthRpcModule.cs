@@ -121,6 +121,23 @@ public partial class EthRpcModule(
         return ResultWrapper<UInt256?>.Success(feePerBlobGas);
     }
 
+    public ResultWrapper<UInt256?> eth_baseFee()
+    {
+        BlockHeader? head = _blockFinder.Head?.Header;
+        if (head is null)
+        {
+            return ResultWrapper<UInt256?>.Success(null);
+        }
+
+        IEip1559Spec specFor1559 = _specProvider.GetSpecFor1559(head.Number + 1);
+        if (!specFor1559.IsEip1559Enabled)
+        {
+            return ResultWrapper<UInt256?>.Success(null);
+        }
+
+        return ResultWrapper<UInt256?>.Success(BaseFeeCalculator.Calculate(head, specFor1559));
+    }
+
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
         UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();

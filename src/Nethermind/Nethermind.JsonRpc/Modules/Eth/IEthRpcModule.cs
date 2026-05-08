@@ -70,6 +70,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "0x1")]
         ResultWrapper<UInt256?> eth_blobBaseFee();
 
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the base fee of the next block in wei",
+            IsSharable = true,
+            ExampleResponse = "0x3b9aca00")]
+        ResultWrapper<UInt256?> eth_baseFee();
+
         [JsonRpcMethod(IsImplemented = false,
             Description = "Returns accounts",
             IsSharable = true,

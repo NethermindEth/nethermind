@@ -52,6 +52,52 @@ public partial class EthRpcModuleTests
         return await ctx.Test.TestEthRpc("eth_blobBaseFee");
     }
 
+    [TestCaseSource(nameof(GetBaseFeeTestCases))]
+    public async Task<string> Eth_baseFee_ShouldGiveCorrectResult(UInt256 baseFeePerGas, long gasLimit, long gasUsed, bool londonEnabled)
+    {
+        ISpecProvider specProvider = londonEnabled
+            ? new TestSpecProvider(London.Instance)
+            : GetSpecProviderWithEip1559EnabledAs(false);
+        using Context ctx = await Context.Create(specProvider);
+        Block[] blocks = [
+            Build.A.Block.WithNumber(0).WithBaseFeePerGas(baseFeePerGas).WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject,
+        ];
+        BlockTree blockTree = Build.A.BlockTree(blocks[0]).WithBlocks(blocks).TestObject;
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build(specProvider);
+
+        return await ctx.Test.TestEthRpc("eth_baseFee");
+    }
+
+    public static IEnumerable<TestCaseData> GetBaseFeeTestCases
+    {
+        get
+        {
+            static string Success(UInt256 result) => $"{{\"jsonrpc\":\"2.0\",\"result\":\"{result.ToHexString(true)}\",\"id\":67}}";
+            const string NullResult = "{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}";
+
+            yield return new TestCaseData(UInt256.Zero, 30_000_000L, 0L, false)
+            {
+                TestName = "Pre-London block returns null",
+                ExpectedResult = NullResult
+            };
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 15_000_000L, true)
+            {
+                TestName = "Block at gas target returns same base fee",
+                ExpectedResult = Success(1_000_000_000)
+            };
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 30_000_000L, true)
+            {
+                TestName = "Block over gas target increases base fee by 12.5%",
+                ExpectedResult = Success(1_125_000_000)
+            };
+            yield return new TestCaseData((UInt256)1_000_000_000, 30_000_000L, 0L, true)
+            {
+                TestName = "Block under gas target decreases base fee by 12.5%",
+                ExpectedResult = Success(875_000_000)
+            };
+        }
+    }
+
     [TestCase(true, "0x3")] //Gas Prices: 1,2,3,3,4,5 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 3 (0x3)
     [TestCase(false, "0x2")] //Gas Prices: 0,1,1,2,2,3 | Max Index: 5 | 60th Percentile: 5 * (3/5) = 3 | Result: 2 (0x2)
     public async Task Eth_gasPrice_BlocksAvailableLessThanBlocksToCheckWith1559Tx_ShouldGiveCorrectResult(bool eip1559Enabled, string expected)
