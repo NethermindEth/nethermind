@@ -194,15 +194,7 @@ public static class SszCodec
         for (int i = 0; i < count; i++)
         {
             ExecutionPayloadBodyV1Result? b = bodies[i];
-            if (b is null) { arr[i] = new() { Body = [] }; continue; }
-            arr[i] = new()
-            {
-                Body = [new()
-                {
-                    Transactions = TxsToWire(b.Transactions),
-                    Withdrawals = WithdrawalsToWire(b.Withdrawals)
-                }]
-            };
+            arr[i] = new() { Body = b is null ? [] : [ToBodyWire(b)] };
         }
         return EncodePooled(new PayloadBodiesV1ResponseWire { PayloadBodies = arr });
     }
@@ -214,20 +206,27 @@ public static class SszCodec
         for (int i = 0; i < count; i++)
         {
             ExecutionPayloadBodyV2Result? b = bodies[i];
-            if (b is null) { arr[i] = new() { Body = [] }; continue; }
-            arr[i] = new()
-            {
-                Body = [new()
-                {
-                    Transactions = TxsToWire(b.Transactions),
-                    Withdrawals = WithdrawalsToWire(b.Withdrawals),
-                    BlockAccessList = b.BlockAccessList is not null
-                        ? [new SszTransaction { Bytes = b.BlockAccessList }] : []
-                }]
-            };
+            arr[i] = new() { Body = b is null ? [] : [ToBodyWire(b)] };
         }
         return EncodePooled(new PayloadBodiesV2ResponseWire { PayloadBodies = arr });
     }
+
+    private static ExecutionPayloadBodyV1Wire ToBodyWire(ExecutionPayloadBodyV1Result b) =>
+        new()
+        {
+            Transactions = TxsToWire(b.Transactions),
+            Withdrawals = WithdrawalsToWire(b.Withdrawals)
+        };
+
+    private static ExecutionPayloadBodyV2Wire ToBodyWire(ExecutionPayloadBodyV2Result b) =>
+        new()
+        {
+            Transactions = TxsToWire(b.Transactions),
+            Withdrawals = WithdrawalsToWire(b.Withdrawals),
+            BlockAccessList = b.BlockAccessList is not null
+                ? [new SszTransaction { Bytes = b.BlockAccessList }]
+                : []
+        };
 
     public static TransitionConfigurationV1 DecodeTransitionConfigurationRequest(ReadOnlySpan<byte> buf)
     {
