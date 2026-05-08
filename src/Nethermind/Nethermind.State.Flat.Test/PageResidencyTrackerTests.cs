@@ -58,6 +58,7 @@ public class PageResidencyTrackerTests
         public void MarkDead(in SnapshotLocation location) { }
         public void AdviseDontNeed(ArenaReservation reservation) { }
         public void Touch(ArenaReservation reservation, long subOffset, long size) { }
+        public int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination) => throw new NotSupportedException();
         public void Dispose() { }
     }
 

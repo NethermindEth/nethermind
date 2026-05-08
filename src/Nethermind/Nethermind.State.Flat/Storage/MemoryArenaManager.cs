@@ -117,6 +117,16 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Touch(ArenaReservation reservation, long subOffset, long size) { }
 
+    public int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination)
+    {
+        byte[] arena = _arenas[reservation.ArenaId];
+        int absStart = checked((int)(reservation.Offset + subOffset));
+        int available = Math.Max(0, Math.Min(destination.Length,
+            checked((int)(reservation.Offset + reservation.Size)) - absStart));
+        arena.AsSpan(absStart, available).CopyTo(destination);
+        return available;
+    }
+
     public void QueueEviction(int arenaId, int pageIdx) { }
 
     public PageResidencyTracker PageTracker { get; } = new(0);

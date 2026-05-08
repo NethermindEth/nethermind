@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -273,23 +274,37 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <see cref="Rlp.ValueDecoderContext.PeekNextRlpLength"/>, then copies the full item
     /// into a heap-allocated array. Used to deref <see cref="NodeRef"/> values, which now
     /// point directly at the RLP rather than at a per-entry length-metadata cursor.
+    ///
+    /// Reads via <see cref="ArenaReservation.RandomRead"/> (pread) rather than the
+    /// mmap-backed reader so the referenced Full snapshot's pages are not faulted into
+    /// our resident set or registered in its <see cref="PageResidencyTracker"/> — the
+    /// referrer's own working set should not crowd out the Full snapshot's.
     /// </summary>
+    // Worst-case Merkle-Patricia branch node: 17 entries × (1-byte prefix + 32-byte hash)
+    // plus a 3-byte long-list framing header ≈ 564 bytes. Round up to 568 so the read
+    // covers any branch node in one pread; the result byte[] is always sized to the
+    // parsed length so tail bytes are discarded for shorter nodes.
+    private const int MaxTrieNodeRlpBytes = 568;
+
     public byte[] ReadRlpItem(int rlpDataOffset)
     {
-        ArenaByteReader reader = _reservation.CreateReader();
-        // Worst-case RLP prefix is 1 + 8 bytes (long form with 8-byte length). Clamp the
-        // peek to the remaining reservation so an item near the end of the buffer doesn't
-        // trip TryRead's bounds check; PeekNextRlpLength only consumes as many prefix bytes
-        // as the prefix actually requires.
-        Span<byte> headerBuf = stackalloc byte[9];
-        long remaining = reader.Length - rlpDataOffset;
-        Span<byte> header = headerBuf[..(int)Math.Min(headerBuf.Length, remaining)];
-        reader.TryRead(rlpDataOffset, header);
-        Rlp.ValueDecoderContext ctx = new(header);
-        int totalLength = ctx.PeekNextRlpLength();
-        byte[] result = new byte[totalLength];
-        reader.TryRead(rlpDataOffset, result);
-        return result;
+        long remaining = _reservation.Size - rlpDataOffset;
+        int readSize = (int)Math.Min(MaxTrieNodeRlpBytes, remaining);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(readSize);
+        try
+        {
+            Span<byte> buf = rented.AsSpan(0, readSize);
+            _reservation.RandomRead(rlpDataOffset, buf);
+            Rlp.ValueDecoderContext ctx = new(buf);
+            int totalLength = ctx.PeekNextRlpLength();
+            byte[] result = new byte[totalLength];
+            buf[..totalLength].CopyTo(result);
+            return result;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();

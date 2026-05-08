@@ -89,6 +89,13 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     public void Touch(long subOffset, long size) => _arenaManager.Touch(this, subOffset, size);
 
+    /// <summary>
+    /// Read bytes from this reservation via a non-mmap file primitive (<c>pread</c>).
+    /// See <see cref="IArenaManager.RandomRead"/>.
+    /// </summary>
+    public int RandomRead(long subOffset, Span<byte> destination) =>
+        _arenaManager.RandomRead(this, subOffset, destination);
+
     protected override void CleanUp()
     {
         AdviseDontNeed();

@@ -319,6 +319,15 @@ public sealed class ArenaManager : IArenaManager
             arena.Touch(reservation.Offset + subOffset, size);
     }
 
+    public int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination)
+    {
+        // Intentionally does not touch the page residency tracker: the whole point of
+        // this path is to avoid faulting the referenced arena's pages into our resident
+        // set.
+        if (!_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena)) return 0;
+        return arena.RandomRead(reservation.Offset + subOffset, destination);
+    }
+
     public void QueueEviction(int arenaId, int pageIdx)
     {
         // Disabled tracker (no ring) — nothing to do; the producer wouldn't even reach here

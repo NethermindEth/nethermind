@@ -32,6 +32,16 @@ public unsafe interface IArenaManager : IDisposable
     /// </summary>
     void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size);
 
+    /// <summary>
+    /// Read bytes from the reservation at <paramref name="subOffset"/> via a non-mmap
+    /// file primitive (<c>pread</c>). Used by the cross-snapshot <c>NodeRef</c> deref
+    /// path to avoid faulting referenced Full-snapshot pages into our resident set
+    /// or polluting the per-arena <see cref="PageResidencyTracker"/>. Returns the
+    /// number of bytes copied into <paramref name="destination"/> (may be less than
+    /// the destination length on short read at end-of-data).
+    /// </summary>
+    int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination);
+
     void MarkDead(in SnapshotLocation location);
     void AdviseDontNeed(ArenaReservation reservation);
     void Touch(ArenaReservation reservation, long subOffset, long size);
