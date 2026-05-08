@@ -73,7 +73,7 @@ public class BlockAccessListManager(
             innerException.InvalidBlock,
             innerException.Message,
             (innerException as InvalidTransactionException)?.Reason
-                ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail("Parallel execution failure"),
+                ?? TransactionResult.ErrorType.MalformedTransaction.WithDetail($"Parallel execution failure: {innerException.Message}"),
             innerException);
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
@@ -252,9 +252,9 @@ public class BlockAccessListManager(
 
     internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
     {
-        // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
-        // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
-        // continue to rely solely on the post-execution running max(R,S) check.
+        // EIP-8037: worst-case 2D inclusion check. Only applies when EIP-8037 is active;
+        // pre-EIP-8037 blocks continue to rely solely on the post-execution running
+        // max(regular, state) check.
         if (!spec.IsEip8037Enabled) return;
 
         long intrinsicRegular = intrinsic.Standard.Value;
@@ -384,6 +384,15 @@ public class BlockAccessListManager(
 
         CheckInitialized();
 
+        // Two fast paths exist because validation runs once per tx and is on the
+        // hot per-block path. The slow path produces detailed mismatch diagnostics
+        // but walks the full BAL structure, so we only fall through to it on a
+        // confirmed mismatch.
+        //
+        // Index-based fast path: when the generated BAL has been folded into a
+        // column-oriented validation index, a single ChangesEqual call compares
+        // two snapshots in bulk (vector-friendly, no per-account dictionary
+        // lookups). On equality, only surplus storage-read accounting remains.
         if (_hasGeneratedValidationIndexUpdates &&
             _generatedValidationIndex is not null &&
             _suggestedValidationIndex is not null)
@@ -401,6 +410,10 @@ public class BlockAccessListManager(
             return;
         }
 
+        // Streaming fast path: no index available yet, so iterate the generated
+        // and suggested account changes in lock-step counting matches/mismatches.
+        // Returns false on the first divergence, which then promotes to the slow
+        // path for the precise error.
         if (!TryValidateBlockAccessListFast(block, suggestedBlockAccessList, index, validateStorageReads))
         {
             ValidateBlockAccessListSlow(block, index, validateStorageReads);
@@ -903,7 +916,7 @@ public class BlockAccessListManager(
         private static BlockHeader CreateParentStateHeader(Block block, Hash256 stateRoot)
         {
             Hash256 parentHash = block.ParentHash ?? Keccak.Zero;
-            BlockHeader parentStateHeader = new(
+            return new BlockHeader(
                 parentHash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
@@ -911,11 +924,11 @@ public class BlockAccessListManager(
                 block.Number - 1,
                 block.GasLimit,
                 0,
-                []);
-
-            parentStateHeader.Hash = parentHash;
-            parentStateHeader.StateRoot = stateRoot;
-            return parentStateHeader;
+                [])
+            {
+                Hash = parentHash,
+                StateRoot = stateRoot
+            };
         }
 
         private TxProcessorWithWorldState RentProcessor()
@@ -1070,6 +1083,11 @@ public class BlockAccessListManager(
         }
     }
 
+    // RAII wrapper around a borrowed read-only tx-processing env: holds the
+    // pooled source plus the scope built against the parent state root, and
+    // returns the source to its pool when disposed. Used by parallel workers
+    // so each tx gets its own snapshot reader without contending on the
+    // mutable state provider.
     private sealed class ParentReaderLease(
         IReadOnlyTxProcessorSource source,
         ObjectPool<IReadOnlyTxProcessorSource> envPool,

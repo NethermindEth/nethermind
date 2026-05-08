@@ -12,6 +12,18 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
 
+// Column-oriented snapshot of a BlockAccessList used for fast equality checks
+// during incremental block validation. Each lane (balance/nonce/code/storage)
+// stores per-row (per-tx-index) tuples sorted by (accountOrdinal, key) so two
+// indexes can be compared row-by-row in bulk without per-account dictionary
+// lookups. Two construction modes:
+//   * Build(...): immutable index built once from the suggested BAL. Lanes are
+//     pre-sized via Counts and sorted in place.
+//   * ctor(txCount, addressIndex, suggested): mutable index that mirrors the
+//     suggested layout; the generator pushes rows into it as the block executes
+//     and ChangesEqual(...) compares it against the suggested index after each
+//     tx. _hasOutOfRangeChange tracks whether a generated change went past the
+//     suggested last index, in which case full-slow validation is required.
 internal sealed class BlockAccessListValidationIndex
 {
     private readonly AddressIndex _addressIndex;
@@ -595,6 +607,13 @@ internal sealed class BlockAccessListValidationIndex
             _touchedRows![_touchedCount++] = row;
         }
 
+        // The sort needs to keep three parallel arrays in lock-step, keyed on
+        // (accountOrdinal, key) but moving the value alongside. Array.Sort has
+        // no overload that sorts three parallel arrays without either boxing
+        // (object[] keys) or an indirection array, so we keep a bespoke sort
+        // here. Small rows use a stable in-place insertion sort; larger rows
+        // sort an index array via Array.Sort + a custom comparer and then
+        // gather into scratch buffers (SortWithScratch).
         private void SortRow(int row, int length)
         {
             if (length <= 1)

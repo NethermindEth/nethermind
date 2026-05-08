@@ -16,7 +16,7 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
     // Transaction execution is synchronous; the standard processing path ends
     // the trace on the same worker thread that started it.
     [ThreadStatic]
-    private static Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? t_currentTxTracers;
+    private static Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? _currentTxTracers;
 
     public bool IsTracingRewards => false;
 
@@ -48,13 +48,13 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
         }
 
         OpcodeCountingTxTracer tracer = new(builder);
-        (t_currentTxTracers ??= [])[this] = tracer;
+        (_currentTxTracers ??= [])[this] = tracer;
         return tracer;
     }
 
     public void EndTxTrace()
     {
-        Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? currentTxTracers = t_currentTxTracers;
+        Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? currentTxTracers = _currentTxTracers;
         if (currentTxTracers is null || !currentTxTracers.Remove(this, out OpcodeCountingTxTracer? currentTxTracer))
         {
             return;
@@ -62,7 +62,7 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
 
         if (currentTxTracers.Count == 0)
         {
-            t_currentTxTracers = null;
+            _currentTxTracers = null;
         }
 
         currentTxTracer?.Dispose();
@@ -81,10 +81,10 @@ internal sealed class OpcodeBlockTracer(Action<OpcodeBlockTrace> onBlockComplete
 
     private void ClearCurrentTxTracer()
     {
-        Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? currentTxTracers = t_currentTxTracers;
+        Dictionary<OpcodeBlockTracer, OpcodeCountingTxTracer>? currentTxTracers = _currentTxTracers;
         if (currentTxTracers is not null && currentTxTracers.Remove(this) && currentTxTracers.Count == 0)
         {
-            t_currentTxTracers = null;
+            _currentTxTracers = null;
         }
     }
 }
