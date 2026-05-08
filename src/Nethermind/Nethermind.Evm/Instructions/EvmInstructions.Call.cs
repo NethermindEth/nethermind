@@ -166,8 +166,8 @@ public static partial class EvmInstructions
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
-        // Retrieve code information and resolve delegation in a single lookup (avoids redundant GetCodeHash).
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec, out Address? delegated);
+        bool _ = vm.TxExecutionContext.CodeInfoRepository
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
@@ -185,6 +185,10 @@ public static partial class EvmInstructions
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
+
+
+        // Retrieve code information for the call and schedule background analysis if needed.
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // Get remaining gas for 63/64 calculation
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
