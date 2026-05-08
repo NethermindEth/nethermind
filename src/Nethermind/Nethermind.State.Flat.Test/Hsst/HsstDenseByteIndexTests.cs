@@ -179,6 +179,85 @@ public class HsstDenseByteIndexTests
         Assert.That(data[2], Is.EqualTo((byte)'Z'));
     }
 
+    /// <summary>
+    /// IByteBufferWriter that tracks position as <see cref="long"/> but only retains
+    /// bytes the caller actually writes via <see cref="GetSpan"/>+<see cref="Advance"/>.
+    /// "Skip" Advances (count larger than the scratch tail) bump <see cref="Written"/>
+    /// without growing the scratch — used by the &gt;4 GiB DenseByteIndex test below to
+    /// fast-forward through fake value bodies without allocating multi-GiB buffers.
+    /// </summary>
+    private struct LongAdvanceOnlyWriter(byte[] scratch) : IByteBufferWriter
+    {
+        private readonly byte[] _scratch = scratch;
+        private int _scratchCursor;
+        private long _written;
+
+        public Span<byte> GetSpan(int sizeHint = 0)
+        {
+            if (sizeHint > _scratch.Length - _scratchCursor)
+                throw new InvalidOperationException(
+                    $"LongAdvanceOnlyWriter scratch exhausted: need {sizeHint}, have {_scratch.Length - _scratchCursor}");
+            return _scratch.AsSpan(_scratchCursor);
+        }
+
+        public void Advance(int count)
+        {
+            _written += count;
+            // Only move the scratch cursor when the advance fits; treats large
+            // advances as "skipped value bytes" that don't need to be retained.
+            if (count <= _scratch.Length - _scratchCursor)
+                _scratchCursor += count;
+        }
+
+        public readonly long Written => _written;
+        public readonly long FirstOffset => 0;
+        public readonly ReadOnlySpan<byte> ScratchTrailer => _scratch.AsSpan(0, _scratchCursor);
+    }
+
+    [Test]
+    public void OffsetSize6_AboveUInt32Max_TrailerEncodesCumulativeEndsAsU48LE()
+    {
+        // Three entries each with a value of int.MaxValue bytes (≈2.147 GiB). Cumulative
+        // ends: ~2.15 GiB, ~4.29 GiB, ~6.44 GiB. The last end exceeds uint.MaxValue, so
+        // ChooseOffsetSize must select 6 (u48 LE) — exercising the >4 GiB DenseByteIndex
+        // format that the long-finality compactor relies on.
+        byte[] scratch = new byte[4096];
+        LongAdvanceOnlyWriter writer = new(scratch);
+        long step = int.MaxValue; // 2_147_483_647
+        long[] expectedEnds = [step, step * 2, step * 3];
+
+        using (HsstDenseByteIndexBuilder<LongAdvanceOnlyWriter> b = new(ref writer))
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                b.BeginValueWrite();
+                writer.Advance(int.MaxValue);
+                b.FinishValueWrite((byte)i);
+            }
+            b.Build();
+        }
+
+        ReadOnlySpan<byte> trailer = writer.ScratchTrailer;
+        // 3 ends × 6 bytes + 3-byte trailer = 21 bytes total in scratch.
+        Assert.That(trailer.Length, Is.EqualTo(3 * 6 + 3));
+
+        Assert.That(trailer[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
+        Assert.That(trailer[^2], Is.EqualTo((byte)6), "OffsetSize must be 6 once cumulative ends exceed uint.MaxValue");
+        Assert.That(trailer[^3], Is.EqualTo((byte)2), "Count = N - 1 with N = highestTag + 1 = 3");
+
+        // Decode the three u48 LE end offsets and check exact values.
+        Span<byte> u64 = stackalloc byte[8];
+        for (int i = 0; i < 3; i++)
+        {
+            u64.Clear();
+            trailer.Slice(i * 6, 6).CopyTo(u64);
+            long end = (long)BinaryPrimitives.ReadUInt64LittleEndian(u64);
+            Assert.That(end, Is.EqualTo(expectedEnds[i]), $"end[{i}] u48 LE mismatch");
+        }
+        Assert.That(writer.Written, Is.EqualTo(3L * int.MaxValue + 3 * 6 + 3),
+            "writer position must reflect 3 fake values + ends section + trailer");
+    }
+
     [Test]
     public void OffsetSize_GrowsWithValuesTotal_AndRoundTripsCorrectly()
     {
