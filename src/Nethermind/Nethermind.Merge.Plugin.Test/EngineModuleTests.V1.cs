@@ -1724,7 +1724,7 @@ public partial class EngineModuleTests
                             && !m.Equals(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), StringComparison.Ordinal))
             .Order();
 
-        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
+        ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(expected);
 
         result.Data.Where(static s => !s.Contains(' ')).Should().BeEquivalentTo(expected);
     }
@@ -1793,7 +1793,7 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV3)
         };
 
-        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
+        ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger<ExchangeCapabilitiesHandler>().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(static a =>

@@ -5,30 +5,28 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
-public sealed class GetBlobsV1SszHandler(
-    IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> handler) : SszEndpointHandlerBase
+public sealed class GetBlobsV1SszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";
     public override string Resource => "blobs";
-    public override int? Version => 1;
+    public override int? Version => EngineApiVersions.GetBlobs.V1;
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
-        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await handler.HandleAsync(hashes);
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await engineModule.engine_getBlobsV1(hashes);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeGetBlobsV1Response);
     }
 }
 
-public sealed class GetBlobsV2SszHandler<TVersion>(
-    IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> handler)
+public sealed class GetBlobsV2SszHandler<TVersion>(IEngineRpcModule engineModule)
     : SszEndpointHandlerBase
     where TVersion : struct, IGetBlobsV2Version
 {
@@ -39,8 +37,7 @@ public sealed class GetBlobsV2SszHandler<TVersion>(
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
-        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await handler.HandleAsync(
-            new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: TVersion.AllowPartialReturn));
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await TVersion.Call(engineModule, hashes);
         if (result.Result != Result.Success)
         {
             await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),

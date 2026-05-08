@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Autofac;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -11,11 +10,9 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest;
@@ -53,18 +50,6 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IEngineRpcModule>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
 
-        services.Bridge<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(ctx);
-
-        services.Bridge<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(ctx);
-
-        services.Bridge<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(ctx);
-        services.Bridge<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(ctx);
-        services.Bridge<IGetPayloadBodiesByRangeV1Handler>(ctx);
-        services.Bridge<IGetPayloadBodiesByRangeV2Handler>(ctx);
-
-        services.Bridge<IHandler<IEnumerable<string>, IEnumerable<string>>>(ctx);
-        services.Bridge<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(ctx);
-
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>>();
         services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>>();
@@ -94,9 +79,9 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
             GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>>();
 
         services.AddSingleton<ISszEndpointHandler,
-            GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result, IGetPayloadBodiesByRangeV1Handler>>();
+            GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>>();
         services.AddSingleton<ISszEndpointHandler,
-            GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result, IGetPayloadBodiesByRangeV2Handler>>();
+            GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>>();
 
         foreach (Type handler in SingletonHandlers)
             services.AddSingleton(typeof(ISszEndpointHandler), handler);

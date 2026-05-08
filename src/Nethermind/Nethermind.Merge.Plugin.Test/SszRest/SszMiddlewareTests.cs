@@ -34,15 +34,6 @@ public class SszMiddlewareTests
 {
     private IEngineRpcModule _engineModule = null!;
 
-    private IHandler<IEnumerable<string>, IEnumerable<string>> _capabilities = null!;
-    private IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> _getBlobsV1 = null!;
-    private IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> _getBlobsV2 = null!;
-    private IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> _bodiesByHashV1 = null!;
-    private IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> _bodiesByHashV2 = null!;
-    private IGetPayloadBodiesByRangeV1Handler _bodiesByRangeV1 = null!;
-    private IGetPayloadBodiesByRangeV2Handler _bodiesByRangeV2 = null!;
-    private IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfig = null!;
-
     private IJsonRpcUrlCollection _urlCollection = null!;
     private IRpcAuthentication _auth = null!;
     private IProcessExitSource _processExitSource = null!;
@@ -59,15 +50,6 @@ public class SszMiddlewareTests
     public void SetUp()
     {
         _engineModule = Substitute.For<IEngineRpcModule>();
-
-        _capabilities = Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>();
-        _getBlobsV1 = Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>();
-        _getBlobsV2 = Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>();
-        _bodiesByHashV1 = Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>();
-        _bodiesByHashV2 = Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>();
-        _bodiesByRangeV1 = Substitute.For<IGetPayloadBodiesByRangeV1Handler>();
-        _bodiesByRangeV2 = Substitute.For<IGetPayloadBodiesByRangeV2Handler>();
-        _transitionConfig = Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>();
 
         _urlCollection = Substitute.For<IJsonRpcUrlCollection>();
         _auth = Substitute.For<IRpcAuthentication>();
@@ -106,19 +88,19 @@ public class SszMiddlewareTests
             new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
 
-            new GetBlobsV1SszHandler(_getBlobsV1),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_getBlobsV2),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_getBlobsV2),
+            new GetBlobsV1SszHandler(_engineModule),
+            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
+            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
 
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_bodiesByHashV1),
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_bodiesByHashV2),
+            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
+            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
 
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result, IGetPayloadBodiesByRangeV1Handler>(_bodiesByRangeV1),
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result, IGetPayloadBodiesByRangeV2Handler>(_bodiesByRangeV2),
+            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
+            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
 
             new ClientVersionSszHandler(_engineModule),
-            new CapabilitiesSszHandler(_capabilities),
-            new TransitionConfigurationSszHandler(_transitionConfig),
+            new CapabilitiesSszHandler(_engineModule),
+            new TransitionConfigurationSszHandler(_engineModule),
         ];
 
         return new SszMiddleware(
@@ -269,7 +251,7 @@ public class SszMiddlewareTests
         byte[] blob = new byte[131072];
         byte[] proof = new byte[48];
         BlobAndProofV1 bap = new(blob, proof);
-        _getBlobsV1.HandleAsync(Arg.Any<byte[][]>())
+        _engineModule.engine_getBlobsV1(Arg.Any<byte[][]>())
             .Returns(ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Success([bap]));
 
         byte[] body = BuildHashListRequest([TestItem.KeccakA.Bytes.ToArray()]);
@@ -278,34 +260,37 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        await _getBlobsV1.Received(1).HandleAsync(Arg.Any<byte[][]>());
-        await _getBlobsV2.DidNotReceive().HandleAsync(Arg.Any<GetBlobsHandlerV2Request>());
+        await _engineModule.Received(1).engine_getBlobsV1(Arg.Any<byte[][]>());
+        await _engineModule.DidNotReceive().engine_getBlobsV2(Arg.Any<byte[][]>());
+        await _engineModule.DidNotReceive().engine_getBlobsV3(Arg.Any<byte[][]>());
     }
 
     [TestCase("/engine/v2/blobs", false)]
     [TestCase("/engine/v3/blobs", true)]
-    public async Task GetBlobsV2V3_sends_correct_allowPartialReturn(string path, bool expectedAllowPartial)
+    public async Task GetBlobsV2V3_routes_to_correct_engine_method(string path, bool isV3)
     {
-        GetBlobsHandlerV2Request? capturedRequest = null;
-        _getBlobsV2.HandleAsync(Arg.Do<GetBlobsHandlerV2Request>(r => capturedRequest = r))
+        _engineModule.engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(null));
+        _engineModule.engine_getBlobsV3(Arg.Any<byte[][]>())
             .Returns(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(null));
 
         DefaultHttpContext ctx = MakePostContext(path, BuildHashListRequest([]));
 
         await _middleware.InvokeAsync(ctx);
 
-        capturedRequest!.Value.AllowPartialReturn.Should().Be(expectedAllowPartial);
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        await _engineModule.Received(isV3 ? 0 : 1).engine_getBlobsV2(Arg.Any<byte[][]>());
+        await _engineModule.Received(isV3 ? 1 : 0).engine_getBlobsV3(Arg.Any<byte[][]>());
     }
 
     [TestCase(1, "/engine/v1/payloads/bodies/by-hash")]
     [TestCase(2, "/engine/v2/payloads/bodies/by-hash")]
-    public async Task GetPayloadBodiesByHash_routes_to_correct_handler(int version, string path)
+    public async Task GetPayloadBodiesByHash_routes_to_correct_engine_method(int version, string path)
     {
-        _bodiesByHashV1.Handle(Arg.Any<IReadOnlyList<Hash256>>())
+        _engineModule.engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>())
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(
                 [new ExecutionPayloadBodyV1Result([], null)]));
-        _bodiesByHashV2.Handle(Arg.Any<IReadOnlyList<Hash256>>())
+        _engineModule.engine_getPayloadBodiesByHashV2(Arg.Any<IReadOnlyList<Hash256>>())
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Success(
                 [new ExecutionPayloadBodyV2Result([], null, null)]));
 
@@ -315,24 +300,24 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        _bodiesByHashV1.Received(version == 1 ? 1 : 0).Handle(Arg.Any<IReadOnlyList<Hash256>>());
-        _bodiesByHashV2.Received(version == 2 ? 1 : 0).Handle(Arg.Any<IReadOnlyList<Hash256>>());
+        _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>());
+        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByHashV2(Arg.Any<IReadOnlyList<Hash256>>());
     }
 
     [TestCase(1, "/engine/v1/payloads/bodies/by-range")]
     [TestCase(2, "/engine/v2/payloads/bodies/by-range")]
-    public async Task GetPayloadBodiesByRange_routes_to_correct_handler_with_correct_args(int version, string path)
+    public async Task GetPayloadBodiesByRange_routes_to_correct_engine_method_with_correct_args(int version, string path)
     {
         const long expectedStart = 7;
         const long expectedCount = 3;
 
         long v1Start = -1, v1Count = -1;
         long v2Start = -1, v2Count = -1;
-        _bodiesByRangeV1
-            .Handle(Arg.Do<long>(s => v1Start = s), Arg.Do<long>(c => v1Count = c))
+        _engineModule
+            .engine_getPayloadBodiesByRangeV1(Arg.Do<long>(s => v1Start = s), Arg.Do<long>(c => v1Count = c))
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success([]));
-        _bodiesByRangeV2
-            .Handle(Arg.Do<long>(s => v2Start = s), Arg.Do<long>(c => v2Count = c))
+        _engineModule
+            .engine_getPayloadBodiesByRangeV2(Arg.Do<long>(s => v2Start = s), Arg.Do<long>(c => v2Count = c))
             .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>.Success([]));
 
         byte[] body = BuildPayloadBodiesByRangeRequest((ulong)expectedStart, (ulong)expectedCount);
@@ -340,8 +325,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        await _bodiesByRangeV1.Received(version == 1 ? 1 : 0).Handle(Arg.Any<long>(), Arg.Any<long>());
-        await _bodiesByRangeV2.Received(version == 2 ? 1 : 0).Handle(Arg.Any<long>(), Arg.Any<long>());
+        await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByRangeV1(Arg.Any<long>(), Arg.Any<long>());
+        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByRangeV2(Arg.Any<long>(), Arg.Any<long>());
 
         long capturedStart = version == 1 ? v1Start : v2Start;
         long capturedCount = version == 1 ? v1Count : v2Count;
@@ -353,8 +338,8 @@ public class SszMiddlewareTests
     public async Task Capabilities_returns_intersection_of_supported_methods()
     {
         string[] returned = ["POST /engine/v5/payloads"];
-        _capabilities.Handle(Arg.Any<IEnumerable<string>>())
-            .Returns(ResultWrapper<IEnumerable<string>>.Success(returned));
+        _engineModule.engine_exchangeCapabilities(Arg.Any<IEnumerable<string>>())
+            .Returns(ResultWrapper<IReadOnlyList<string>>.Success(returned));
 
         byte[] body = BuildCapabilitiesRequest(["POST /engine/v5/payloads", "POST /engine/v4/forkchoice"]);
         DefaultHttpContext ctx = MakePostContext("/engine/v1/capabilities", body);
@@ -383,7 +368,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task TransitionConfiguration_calls_handler_and_returns_200()
+    public async Task TransitionConfiguration_calls_engine_module_and_returns_200()
     {
         TransitionConfigurationV1 tc = new()
         {
@@ -391,7 +376,7 @@ public class SszMiddlewareTests
             TerminalBlockHash = TestItem.KeccakA,
             TerminalBlockNumber = 1
         };
-        _transitionConfig.Handle(Arg.Any<TransitionConfigurationV1>())
+        _engineModule.engine_exchangeTransitionConfigurationV1(Arg.Any<TransitionConfigurationV1>())
             .Returns(ResultWrapper<TransitionConfigurationV1>.Success(tc));
 
         byte[] body = BuildTransitionConfigRequest(tc);
@@ -400,7 +385,7 @@ public class SszMiddlewareTests
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        _transitionConfig.Received(1).Handle(Arg.Any<TransitionConfigurationV1>());
+        _engineModule.Received(1).engine_exchangeTransitionConfigurationV1(Arg.Any<TransitionConfigurationV1>());
     }
 
     [Test]
@@ -484,7 +469,7 @@ public class SszMiddlewareTests
     [Test]
     public async Task GetBlobsV1_null_result_data_returns_204_no_content()
     {
-        _getBlobsV1.HandleAsync(Arg.Any<byte[][]>())
+        _engineModule.engine_getBlobsV1(Arg.Any<byte[][]>())
             .Returns(ResultWrapper<IReadOnlyList<BlobAndProofV1?>>.Success(null!));
 
         byte[] body = BuildHashListRequest([TestItem.KeccakA.Bytes.ToArray()]);

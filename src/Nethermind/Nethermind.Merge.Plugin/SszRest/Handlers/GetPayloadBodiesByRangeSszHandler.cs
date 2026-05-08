@@ -12,11 +12,12 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
 /// Handles <c>POST /engine/v{N}/payloads/bodies/by-range</c>, the SSZ-REST equivalent
-/// of <c>engine_getPayloadBodiesByRangeV{N}</c>.
+/// of <c>engine_getPayloadBodiesByRangeV{N}</c>. Generic over a per-version descriptor
+/// so adding a Vn+1 endpoint is one new descriptor + one DI line.
 /// </summary>
-public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult, THandler>(THandler handler)
+public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngineRpcModule engineModule)
     : SszEndpointHandlerBase
-    where TVersion : struct, IPayloadBodiesByRangeVersion<TResult, THandler>
+    where TVersion : struct, IPayloadBodiesByRangeVersion<TResult>
     where TResult : class
 {
     public override string HttpMethod => "POST";
@@ -26,7 +27,7 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult, THandle
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body.Span);
-        ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Handle(handler, start, count);
+        ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);
         if (result.Result != Result.Success)
         {
             await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),

@@ -162,7 +162,7 @@ public class CertainBatchLookupTests
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
         Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-        Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+        Substitute.For<IHandler<IEnumerable<string>, IReadOnlyList<string>>>(),
         Substitute.For<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(),
         Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(),
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),

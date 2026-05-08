@@ -8,16 +8,15 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
 /// Handles <c>POST /engine/v{N}/payloads/bodies/by-hash</c>, the SSZ-REST equivalent
-/// of <c>engine_getPayloadBodiesByHashV{N}</c>.
+/// of <c>engine_getPayloadBodiesByHashV{N}</c>. Generic over a per-version descriptor
+/// so adding a Vn+1 endpoint is one new descriptor + one DI line.
 /// </summary>
-public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
-    IHandler<IReadOnlyList<Hash256>, IReadOnlyList<TResult?>> handler)
+public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineRpcModule engineModule)
     : SszEndpointHandlerBase
     where TVersion : struct, IPayloadBodiesByHashVersion<TResult>
     where TResult : class
@@ -29,7 +28,7 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body.Span);
-        ResultWrapper<IReadOnlyList<TResult?>> result = handler.Handle(hashes);
+        ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
         if (result.Result != Result.Success)
         {
             await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
