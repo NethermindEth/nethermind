@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
@@ -18,7 +19,7 @@ namespace Nethermind.State.Flat.Hsst;
 ///   the metadata pulls the keys/values into cache via the hardware prefetcher.
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
-///   [Value][ValueLength: LEB128][KeyLength: u8][FullKey]
+///   [optional pad][Value][ValueLength: LEB128][KeyLength: u8][FullKey]
 /// MetadataStart points at the ValueLength LEB128. KeyLength is a single byte: keys are
 /// capped at 255 bytes by format contract. The leaf B-tree node also stores a separator
 /// (a min-length prefix of the full key) for binary-search navigation, but the
@@ -26,6 +27,11 @@ namespace Nethermind.State.Flat.Hsst;
 /// reader does not need to consult the leaf to recover it. (ValueLength uses LEB128
 /// because values are unbounded; the LEB128 terminator chain is forward-readable only,
 /// so the lengths sit after the value and the index aims at them.)
+/// The reader recovers the value via ValueStart = MetadataStart - ValueLength, so any
+/// leading pad bytes a caller inserts between BeginValueWrite and the real value (e.g.
+/// to keep the value within a 4 KiB page) are inert gap data — no index entry points at
+/// them. Use the <see cref="HsstBTreeBuilder{TWriter,TReader,TPin}.FinishValueWrite(System.ReadOnlySpan{byte},int)"/>
+/// overload to declare the real value length when padding has been inserted.
 ///
 /// Memory: while the data section is being written, the only per-key state held in
 /// memory is one <c>long</c> per entry (the metadata position). Separators and the
@@ -74,6 +80,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Begin writing a value. Returns ref to the shared writer and snapshots Written.
     /// After writing, call FinishValueWrite with just the key.
+    ///
+    /// Callers may advance the writer past leading padding bytes before writing the
+    /// real value bytes — e.g. to keep the value from crossing a 4 KiB page
+    /// boundary — and then close the entry with the padding-aware overload
+    /// <see cref="FinishValueWrite(ReadOnlySpan{byte}, int)"/>. Padding sits between
+    /// the BeginValueWrite snapshot and (Written - valueLength); the reader recovers
+    /// the value via ValueStart = MetadataStart - ValueLength, so leading pad bytes
+    /// are inert gap data that no index entry points at.
     /// </summary>
     public ref TWriter BeginValueWrite()
     {
@@ -82,14 +96,34 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Finish value write. Computes length from snapshot taken by BeginValueWrite.
+    /// Finish value write. Computes length from snapshot taken by BeginValueWrite —
+    /// every byte written since BeginValueWrite is treated as part of the value.
+    /// Use <see cref="FinishValueWrite(ReadOnlySpan{byte}, int)"/> to declare a
+    /// value length smaller than the writer delta when leading padding was inserted.
     /// Key must be greater than previous key (sorted order).
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
-
         int actualLen = checked((int)(_writer.Written - _writtenBeforeValue));
+        FinishValueWrite(key, actualLen);
+    }
+
+    /// <summary>
+    /// Finish value write with an explicit value length. The writer may have been
+    /// advanced past <paramref name="valueLength"/> bytes — any leading bytes
+    /// between the BeginValueWrite snapshot and (Written - valueLength) are treated
+    /// as padding and become inert gap data that no index entry points at. Use this
+    /// to keep a value from crossing a 4 KiB page boundary by padding ahead of it.
+    /// Key must be greater than previous key (sorted order).
+    /// </summary>
+    public void FinishValueWrite(scoped ReadOnlySpan<byte> key, int valueLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
+        ArgumentOutOfRangeException.ThrowIfNegative(valueLength);
+        Debug.Assert(
+            valueLength <= _writer.Written - _writtenBeforeValue,
+            "valueLength exceeds bytes written since BeginValueWrite");
+
         // metadataPos is relative to the data section start (== _baseOffset).
         // The index builder reads keys back through OpenReader using these positions.
         long metadataPos = _writer.Written - _baseOffset;
@@ -98,7 +132,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // the data region so the entry is self-describing; the leaf separator stored
         // in the B-tree node is recomputed at Build() time from the flushed bytes.
         Span<byte> leb = _writer.GetSpan(5);
-        int lebLen = Leb128.Write(leb, 0, actualLen);
+        int lebLen = Leb128.Write(leb, 0, valueLength);
         _writer.Advance(lebLen);
 
         Span<byte> kl = _writer.GetSpan(1);

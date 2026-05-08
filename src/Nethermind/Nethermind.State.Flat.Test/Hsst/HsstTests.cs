@@ -555,6 +555,41 @@ public class HsstTests
     }
 
     [Test]
+    public void FinishValueWrite_WithExplicitLength_TreatsLeadingBytesAsPadding()
+    {
+        // Caller writes pad bytes, then real value bytes, and declares only the
+        // real-value length. The reader must surface only the real value, and
+        // the orphan pad bytes must not be visible through the entry's bound.
+        const int padLen = 17;
+        byte[] realValue = "hello-padded-world"u8.ToArray();
+        byte[] key = "k"u8.ToArray();
+
+        byte[] buffer = new byte[4096];
+        SpanBufferWriter writer = new(buffer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> b = new(ref writer);
+        try
+        {
+            ref SpanBufferWriter w = ref b.BeginValueWrite();
+            // Pad with a recognisable filler so any leak into the value is obvious.
+            Span<byte> pad = w.GetSpan(padLen);
+            pad[..padLen].Fill(0xCC);
+            w.Advance(padLen);
+            // Real value bytes.
+            Span<byte> dst = w.GetSpan(realValue.Length);
+            realValue.AsSpan().CopyTo(dst);
+            w.Advance(realValue.Length);
+            b.FinishValueWrite(key, realValue.Length);
+            b.Build();
+        }
+        finally { b.Dispose(); }
+
+        ReadOnlySpan<byte> data = buffer.AsSpan(0, (int)writer.Written);
+        Assert.That(CountEntries(data), Is.EqualTo(1));
+        Assert.That(TryGet(data, key, out byte[] got), Is.True);
+        Assert.That(got, Is.EqualTo(realValue));
+    }
+
+    [Test]
     public void NestedBuilder_TwoLevel_RoundTrips()
     {
         // Outer HSST with one entry whose value is an inner HSST
