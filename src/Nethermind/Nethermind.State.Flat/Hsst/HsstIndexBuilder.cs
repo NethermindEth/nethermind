@@ -472,15 +472,22 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         int childCount = 1;
         int sumSepBytes = 0;
-        long minOff = level[childIdx].ChildOffset;
-        long maxOff = minOff;
+        // BaseOffset is fixed at the leftmost child's absolute offset; remaining
+        // children encode as deltas. valueSlotSize tracks the min byte width for
+        // the current max delta over children[1..].
+        long baseChildOffset = level[childIdx].ChildOffset;
+        long maxOff = baseChildOffset;
         int committedValueSlot = MinBytesFor(0);
-        // Max separator length seen so far. The leftmost child's separator is
-        // always empty (length 0) by intermediate-node convention, so this tracks
-        // the widest of the explicit separators (children index ≥ 1). Growth
-        // forces BSearchIndexLayoutPlanner to widen its UniformWithLen slot or
-        // fall back to Variable layout, hurting per-node binary search.
+        // Max separator length seen so far. Growth forces the planner to widen
+        // its Uniform key slot or fall back to Variable layout, hurting binary
+        // search density.
         int maxSepLen = 0;
+        // Common-prefix length across separators observed so far. Sentinel -1
+        // means "no separator seen yet" (childCount == 1, no firstSep). On the
+        // first separator we seed commonLen = sepLen and copy the bytes into
+        // firstSep; subsequent separators shrink commonLen via LCP.
+        int commonLen = -1;
+        Span<byte> firstSep = stackalloc byte[MaxKeyLen];
 
         Span<byte> leftKey = stackalloc byte[MaxKeyLen];
         Span<byte> rightKey = stackalloc byte[MaxKeyLen];
@@ -495,13 +502,28 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int sepLen = WriteSeparatorBetween(sepBuf, leftKey[..leftLen], rightKey[..rightLen]);
 
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
-            long newMinOff = curr.ChildOffset < minOff ? curr.ChildOffset : minOff;
-            int valueSlotSize = MinBytesFor(newMaxOff - newMinOff);
+            int valueSlotSize = MinBytesFor(newMaxOff - baseChildOffset);
             int newMaxSepLen = sepLen > maxSepLen ? sepLen : maxSepLen;
+
+            int newCommonLen;
+            if (commonLen < 0)
+            {
+                // First separator → seeds the common prefix.
+                newCommonLen = sepLen;
+            }
+            else
+            {
+                int boundary = Math.Min(commonLen, sepLen);
+                newCommonLen = commonLen == 0
+                    ? 0
+                    : CommonPrefixLength(firstSep[..boundary], sepBuf[..boundary]);
+            }
 
             int newCount = childCount + 1;
             int newSumSep = sumSepBytes + sepLen;
-            int estimated = newCount * valueSlotSize + newSumSep;
+            // Phantom slot 0 dropped: keys array carries newCount-1 real
+            // separators and values array carries newCount-1 deltas.
+            int estimated = (newCount - 1) * valueSlotSize + newSumSep;
             if (estimated > byteThreshold) break;
 
             // Dynamic split heuristics, mirrors ChooseLeafLayout. Once
@@ -510,16 +532,17 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             // budget:
             //   - newMaxSepLen > maxSepLen: widens the planner's Uniform key slot
             //     (or forces Variable layout), enlarging every per-entry slot.
+            //   - newCommonLen < commonLen (after the first sep is seen):
+            //     planner strips fewer bytes per slot, fattening every entry.
             //   - valueSlotSize > committedValueSlot: child-offset range widened,
             //     bumping every Uniform value slot to a wider encoding.
             //   - WouldCrossNewPage: candidate node would straddle a 4 KiB page
             //     boundary the committed node does not.
-            // (Common-prefix shrink is N/A for intermediate nodes: the leftmost
-            // separator is empty, so the planner's LCP is always 0.)
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newSumSep, valueSlotSize);
             int committedSize = IntermediateNodeSizeUpperBound(childCount, sumSepBytes, committedValueSlot);
             if (childCount >= minChildren &&
                 (newMaxSepLen > maxSepLen ||
+                 (commonLen >= 0 && newCommonLen < commonLen) ||
                  valueSlotSize > committedValueSlot ||
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
@@ -527,9 +550,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             childCount = newCount;
             sumSepBytes = newSumSep;
             maxOff = newMaxOff;
-            minOff = newMinOff;
             committedValueSlot = valueSlotSize;
             maxSepLen = newMaxSepLen;
+            if (commonLen < 0)
+            {
+                sepBuf[..sepLen].CopyTo(firstSep);
+            }
+            commonLen = newCommonLen;
         }
         return childCount;
     }
@@ -540,20 +567,26 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         scoped Span<byte> valueScratch)
     {
         int childCount = children.Length;
+        // Phantom slot 0 dropped: for N children, the keys array carries the
+        // N-1 real separators between adjacent children, and the values array
+        // carries N-1 deltas for children[1..]. BaseOffset names the leftmost
+        // child's absolute offset directly; the reader's no-floor fallback
+        // routes k < smallest-separator queries to it. For a 1-child node
+        // (entryCount == 0) the reader recovers the lone child purely via
+        // BaseOffset.
+        int entryCount = childCount > 0 ? childCount - 1 : 0;
 
-        Span<int> sepOffsets = stackalloc int[childCount];
-        Span<int> sepLengths = stackalloc int[childCount];
+        Span<int> sepOffsets = stackalloc int[entryCount];
+        Span<int> sepLengths = stackalloc int[entryCount];
         int tempOffset = 0;
 
         Span<byte> leftKey = stackalloc byte[MaxKeyLen];
         Span<byte> rightKey = stackalloc byte[MaxKeyLen];
 
-        sepOffsets[0] = 0;
-        sepLengths[0] = 0;
-        for (int i = 1; i < childCount; i++)
+        for (int i = 0; i < entryCount; i++)
         {
-            int leftLen = ReadKey(children[i - 1].LastEntry, leftKey);
-            int rightLen = ReadKey(children[i].FirstEntry, rightKey);
+            int leftLen = ReadKey(children[i].LastEntry, leftKey);
+            int rightLen = ReadKey(children[i + 1].FirstEntry, rightKey);
             sepOffsets[i] = tempOffset;
             sepLengths[i] = WriteSeparatorBetween(sepScratch[tempOffset..], leftKey[..leftLen], rightKey[..rightLen]);
             tempOffset += sepLengths[i];
@@ -566,22 +599,22 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             ? sepView.Slice(sepOffsets[0], prefixLen)
             : default;
 
-        // Compute BaseOffset from child offsets, then choose the minimum byte width
-        // that fits the in-node delta range.
-        long minVal = children[0].ChildOffset;
-        long maxVal = minVal;
+        // BaseOffset is the leftmost child's absolute offset (always — no
+        // longer the conditional min selection of the phantom-slot layout).
+        // valueSlotSize is the min byte width that fits the largest delta
+        // over children[1..].
+        long baseOffset = children[0].ChildOffset;
+        long maxVal = baseOffset;
         for (int i = 1; i < childCount; i++)
         {
-            if (children[i].ChildOffset < minVal) minVal = children[i].ChildOffset;
             if (children[i].ChildOffset > maxVal) maxVal = children[i].ChildOffset;
         }
-        long baseOffset = (minVal > 0 && minVal < maxVal) ? minVal : 0;
         int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
-        int keyBufSize = 2 * childCount + tempOffset - prefixLen * childCount;
+        int keyBufSize = 2 * entryCount + tempOffset - prefixLen * entryCount;
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
-        Span<byte> valueScratchSlice = valueScratch[..(childCount * (2 + valueSlotSize))];
+        Span<byte> valueScratchSlice = valueScratch[..(entryCount * (2 + valueSlotSize))];
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = true,
@@ -593,10 +626,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }, keyBuf, valueScratchSlice, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[8];
-        for (int i = 0; i < childCount; i++)
+        for (int i = 0; i < entryCount; i++)
         {
             ReadOnlySpan<byte> sep = sepView.Slice(sepOffsets[i], sepLengths[i]);
-            WriteUInt64LE(valueBuf, children[i].ChildOffset - baseOffset, valueSlotSize);
+            WriteUInt64LE(valueBuf, children[i + 1].ChildOffset - baseOffset, valueSlotSize);
             indexWriter.AddKey(sep[prefixLen..], valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
@@ -648,13 +681,15 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private static int NodeSizeUpperBound(int count, int maxSepLen, int valueSlotSize)
         => NodeHeaderUpperBound + count * (maxSepLen + valueSlotSize);
 
-    // Conservative upper bound on an intermediate node's serialised size. Keys are
-    // variable-length here, so include the 2-byte u16 length prefix that the
-    // BSearchIndexWriter accumulates per key (matches WriteInternalIndexNode's
-    // keyBufSize accounting before plan-time prefix stripping).
+    // Conservative upper bound on an intermediate node's serialised size. The
+    // phantom leftmost slot is dropped, so a node holding <paramref name="count"/>
+    // children emits count-1 keys and count-1 values. Keys are variable-length;
+    // include the 2-byte u16 length prefix that BSearchIndexWriter accumulates
+    // per key (matches WriteInternalIndexNode's keyBufSize before plan-time
+    // prefix stripping).
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IntermediateNodeSizeUpperBound(int count, int sumSepBytes, int valueSlotSize)
-        => NodeHeaderUpperBound + sumSepBytes + count * (2 + valueSlotSize);
+        => NodeHeaderUpperBound + sumSepBytes + (count > 0 ? count - 1 : 0) * (2 + valueSlotSize);
 
     /// <summary>
     /// True if a node of <paramref name="candidateSize"/> bytes starting at

@@ -190,12 +190,26 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private void WriteEmptyNode()
     {
-        // Empty header: flags only (leaf/intermediate), all sizes/count = 0.
-        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][ValueSize=0 u8][BaseOffset=0 6 bytes]
+        // Empty header: flags only (leaf/intermediate), key/value sizes & count = 0.
+        // BaseOffset is preserved from the caller — for an empty intermediate
+        // node (single-child b-tree intermediate, no separators) BaseOffset
+        // names the lone child's absolute offset and the reader's no-floor
+        // fallback descends to it.
+        // [Flags u8][KeyCount=0 u16][KeySize=0 u16][ValueSize=0 u8][BaseOffset 6 bytes]
+        if (_metadata.BaseOffset > 0xFFFF_FFFF_FFFFUL)
+            throw new InvalidOperationException(
+                $"BaseOffset {_metadata.BaseOffset} exceeds 6-byte (48-bit) header field");
         byte flags = (byte)(_metadata.IsIntermediate ? 0x01 : 0x00);
         Span<byte> span = _writer.GetSpan(12);
         span[0] = flags;
-        span[1..12].Clear();
+        span[1..6].Clear();
+        ulong v = _metadata.BaseOffset;
+        span[6] = (byte)v;
+        span[7] = (byte)(v >> 8);
+        span[8] = (byte)(v >> 16);
+        span[9] = (byte)(v >> 24);
+        span[10] = (byte)(v >> 32);
+        span[11] = (byte)(v >> 40);
         _writer.Advance(12);
     }
 

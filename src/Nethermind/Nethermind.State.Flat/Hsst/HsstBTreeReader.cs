@@ -45,9 +45,14 @@ internal static class HsstBTreeReader
             {
                 if (node.IsIntermediate)
                 {
-                    if (!node.TryGetFloor(key, out _, out ReadOnlySpan<byte> childValueBytes))
-                        return false;
-                    long childOffset = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + node.Metadata.BaseOffset);
+                    // Intermediate nodes drop the phantom leftmost slot: keys array
+                    // holds the N-1 real separators between adjacent children, and
+                    // BaseOffset names the leftmost child directly. A "no floor"
+                    // search result (key < smallest separator, or empty 1-child
+                    // node) routes to the leftmost child via BaseOffset alone.
+                    long childOffset = node.TryGetFloor(key, out _, out ReadOnlySpan<byte> childValueBytes)
+                        ? (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(childValueBytes) + node.Metadata.BaseOffset)
+                        : (long)node.Metadata.BaseOffset;
                     // childOffset is the first byte of the child node (0-indexed within the HSST).
                     currentAbsStart = bound.Offset + childOffset;
                     continue;

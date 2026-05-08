@@ -395,11 +395,15 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                         return true;
                     }
 
-                    // Intermediate: push frame for this level, follow leftmost child.
+                    // Intermediate: push frame for this level, follow leftmost
+                    // child. The phantom slot is gone, so the leftmost child's
+                    // absolute offset is BaseOffset directly. Frame.LastIdx=0
+                    // is the semantic child index (0..N-1 across all N
+                    // children); k=0 = leftmost = BaseOffset, k≥1 = value[k-1].
                     ref Ancestor frame = ref _ancestors[depth];
                     frame.AbsStart = currentStart;
                     frame.LastIdx = 0;
-                    long childRelStart = (long)node.GetUInt64Value(0);
+                    long childRelStart = (long)node.Metadata.BaseOffset;
                     currentStart = _scopeStart + childRelStart;
                 }
                 depth++;
@@ -449,8 +453,14 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 long childAbsStart;
                 using (parentPin)
                 {
-                    if (anc.LastIdx >= parent.EntryCount) continue;
-                    long childRelStart = (long)parent.GetUInt64Value(anc.LastIdx);
+                    // LastIdx is the semantic child index (0..N-1). With N
+                    // children stored as 1 leftmost (BaseOffset) + N-1 deltas,
+                    // EntryCount = N-1. Exhausted when LastIdx > EntryCount.
+                    // LastIdx>=1 reads value[LastIdx-1]; LastIdx==0 would mean
+                    // BaseOffset, but we only reach here after LastIdx++ from
+                    // the leftmost-descent frame so LastIdx≥1 here.
+                    if (anc.LastIdx > parent.EntryCount) continue;
+                    long childRelStart = (long)parent.GetUInt64Value(anc.LastIdx - 1);
                     childAbsStart = _scopeStart + childRelStart;
                 }
                 if (!DescendToLeaf(in reader, childAbsStart, depthHint: _depth + 1))

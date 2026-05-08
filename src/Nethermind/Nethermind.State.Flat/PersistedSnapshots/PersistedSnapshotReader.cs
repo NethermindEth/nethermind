@@ -293,6 +293,11 @@ public static class PersistedSnapshotReader
             // Leaf already faulted in by TryLoadNode's PinBuffer; do not descend
             // into entries (their metaStart pointers sit in the data region).
             if (!node.IsIntermediate) return;
+            // Phantom slot 0 dropped: leftmost child sits at BaseOffset; the
+            // remaining N-1 children encode as deltas in the value array.
+            long leftmostRel = (long)node.Metadata.BaseOffset;
+            WalkBTreeIndexNodes<TReader, TPin>(
+                in reader, scope, scope.Offset + leftmostRel, scopeEnd);
             int n = node.EntryCount;
             for (int i = 0; i < n; i++)
             {
