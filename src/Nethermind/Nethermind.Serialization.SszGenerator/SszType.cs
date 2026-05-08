@@ -104,18 +104,20 @@ class SszType
 
     internal static void DiscoverKnownTypes(Compilation compilation)
     {
+        // Only short-circuit if the previous discovery for this exact Compilation produced
+        // results. A null/empty cache (e.g. if SszBasicTypeAttribute wasn't yet resolvable
+        // during a parallel-build race) must NOT be cached — otherwise every subsequent
+        // emit in the same compilation silently treats `[SszBasicType]` types like
+        // SszBytes8 as plain containers and produces references to nonexistent
+        // `Type.GetLength/Encode/Decode/MerkleizeList` methods.
         if (_lastDiscoveredCompilation?.TryGetTarget(out Compilation? prev) == true
-            && ReferenceEquals(prev, compilation))
+            && ReferenceEquals(prev, compilation)
+            && KnownTypes.Count > 0)
             return;
 
         INamedTypeSymbol? attrSymbol = compilation.GetTypeByMetadataName(
             "Nethermind.Serialization.Ssz.SszBasicTypeAttribute");
-        if (attrSymbol is null)
-        {
-            KnownTypes.Clear();
-            _lastDiscoveredCompilation = new WeakReference<Compilation>(compilation);
-            return;
-        }
+        if (attrSymbol is null) return;
 
         List<SszType> discovered = [];
         foreach (INamedTypeSymbol type in GetAllTypes(compilation.GlobalNamespace))
@@ -145,6 +147,10 @@ class SszType
                 CustomDecodeTemplate = decodeTemplate,
             });
         }
+
+        // Only cache when we got something useful; an empty discovery is worse than a
+        // re-walk because it produces wrong code rather than a slow build.
+        if (discovered.Count == 0) return;
 
         KnownTypes = discovered;
         _lastDiscoveredCompilation = new WeakReference<Compilation>(compilation);
