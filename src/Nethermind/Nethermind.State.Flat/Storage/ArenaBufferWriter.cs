@@ -133,8 +133,6 @@ public readonly unsafe ref struct ArenaBufferReader : IHsstByteReader<NoOpPin>
         return true;
     }
 
-    public bool TryReadWithReadahead(long offset, scoped Span<byte> output) => TryRead(offset, output);
-
     public NoOpPin PinBuffer(long offset, long size)
     {
         if ((ulong)offset + (ulong)size > (ulong)_length)

@@ -725,8 +725,6 @@ public class HsstReaderTests
             return true;
         }
 
-        public readonly bool TryReadWithReadahead(long offset, Span<byte> output) => TryRead(offset, output);
-
         public readonly PooledArrayPin PinBuffer(long offset, long size)
         {
             if ((ulong)offset + (ulong)size > (ulong)_data.Length)
