@@ -70,7 +70,7 @@ internal static class WireConversionExtensions
     public static SszKzgCommitment[] ToKzgWire(this byte[][] proofs)
     {
         SszKzgCommitment[] result = new SszKzgCommitment[proofs.Length];
-        for (int i = 0; i < proofs.Length; i++) result[i] = new SszKzgCommitment { Bytes = proofs[i] };
+        for (int i = 0; i < proofs.Length; i++) result[i] = SszKzgCommitment.FromSpan(proofs[i]);
         return result;
     }
 

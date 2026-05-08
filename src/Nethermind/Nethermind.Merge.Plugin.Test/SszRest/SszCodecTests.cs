@@ -644,4 +644,31 @@ public class SszCodecTests
         erOffset.Should().BeGreaterThanOrEqualTo(45u,
             "execution_requests offset @ 41 must point past the 45-byte fixed section");
     }
+
+    /// <summary>
+    /// Regression test for the inline-array-backed <see cref="SszKzgCommitment"/> shape
+    /// (issue #11525): a list of N commitments must serialize to exactly <c>N * 48</c> raw
+    /// bytes (no offsets, no per-element framing) and round-trip back to the original
+    /// 48-byte payloads.
+    /// </summary>
+    [Test]
+    public void SszKzgCommitment_list_roundtrip_preserves_raw_bytes()
+    {
+        byte[][] proofs = new byte[3][];
+        for (int i = 0; i < proofs.Length; i++)
+        {
+            proofs[i] = new byte[48];
+            for (int j = 0; j < 48; j++) proofs[i][j] = (byte)((i * 48 + j) & 0xFF);
+        }
+
+        BlobsBundleV1Wire wire = new() { Commitments = proofs.ToKzgWire(), Proofs = [], Blobs = [] };
+        byte[] encoded = BlobsBundleV1Wire.Encode(wire);
+
+        BlobsBundleV1Wire.Decode(encoded, out BlobsBundleV1Wire decoded);
+
+        decoded.Commitments.Should().NotBeNull().And.HaveCount(proofs.Length);
+        for (int i = 0; i < proofs.Length; i++)
+            decoded.Commitments![i].AsSpan().ToArray().Should().BeEquivalentTo(proofs[i],
+                $"commitment {i} bytes must round-trip exactly");
+    }
 }
