@@ -8,13 +8,14 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Resettables;
 
 [assembly: InternalsVisibleTo("Nethermind.Core.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
+public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IResettable
 {
     [JsonIgnore]
     public int Index = 0;

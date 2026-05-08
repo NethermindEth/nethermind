@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
@@ -28,9 +28,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
-            foreach (Hash256 hash in message.Hashes.AsSpan())
+            int count = message.Hashes.Count;
+            for (int i = 0; i < count; i++)
             {
-                rlpStream.Encode(hash);
+                rlpStream.Encode(message.Hashes[i]);
             }
         }
 

@@ -14,6 +14,7 @@ public interface ITaikoReleaseSpec : IReleaseSpec
     public bool IsOntakeEnabled { get; }
     public bool IsPacayaEnabled { get; }
     public bool IsShastaEnabled { get; }
+    public bool IsUnzenEnabled { get; }
     public bool UseSurgeGasPriceOracle { get; }
     public Address TaikoL2Address { get; }
     public bool IsRip7728Enabled { get; }

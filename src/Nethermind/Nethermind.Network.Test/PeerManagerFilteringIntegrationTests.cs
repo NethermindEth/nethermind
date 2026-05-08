@@ -237,7 +237,7 @@ public class PeerManagerFilteringIntegrationTests
         private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
         private bool _pendingChanges;
 
-        public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
+        public NetworkNode[] GetPersistedNodes() => _nodes.Select(static kvp => kvp.Value).ToArray();
         public int PersistedNodesCount => _nodes.Count;
 
         public void UpdateNode(NetworkNode node)

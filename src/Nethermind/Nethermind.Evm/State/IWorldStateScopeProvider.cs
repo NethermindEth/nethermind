@@ -81,7 +81,11 @@ public interface IWorldStateScopeProvider
 
         byte[] Get(in UInt256 index);
 
-        void HintGet(in UInt256 index, byte[]? value);
+        /// <summary>
+        /// Hint that a slot is being written. Backends may use this to start asynchronous
+        /// trie warm-up for the slot path.
+        /// </summary>
+        void HintSet(in UInt256 index, byte[]? value);
 
         /// <summary>
         /// Used by JS tracer. May not work on some database layout.

@@ -3,7 +3,6 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {

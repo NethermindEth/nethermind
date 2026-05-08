@@ -43,6 +43,7 @@ namespace Nethermind.Synchronization.Reporting
             FastBlocksHeaders = new("Old Headers", logManager);
             FastBlocksBodies = new("Old Bodies ", logManager);
             FastBlocksReceipts = new("Old Receipts", logManager);
+            FastBlockAccessLists = new("Old Block Access Lists", logManager);
             FullSyncBlocksDownloaded = new("Downloaded", logManager);
             BeaconHeaders = new("Beacon Headers", logManager);
 
@@ -118,6 +119,8 @@ namespace Nethermind.Synchronization.Reporting
 
         public ProgressLogger FastBlocksReceipts { get; init; }
 
+        public ProgressLogger FastBlockAccessLists { get; init; }
+
         public ProgressLogger FullSyncBlocksDownloaded { get; init; }
 
         public ProgressLogger BeaconHeaders { get; init; }
@@ -137,7 +140,7 @@ namespace Nethermind.Synchronization.Reporting
             SyncMode currentSyncMode = _currentMode;
             if (_logger.IsDebug) WriteSyncConfigReport();
 
-            if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
+            if (!_reportedFastBlocksSummary && HasAllEnded(FastBlocksHeaders, FastBlocksBodies, FastBlocksReceipts, FastBlockAccessLists))
             {
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport(currentSyncMode);
@@ -202,6 +205,7 @@ namespace Nethermind.Synchronization.Reporting
             Metrics.FastHeaders = FastBlocksHeaders.CurrentValue;
             Metrics.FastBodies = FastBlocksBodies.CurrentValue;
             Metrics.FastReceipts = FastBlocksReceipts.CurrentValue;
+            Metrics.FastBlockAccessLists = FastBlockAccessLists.CurrentValue;
         }
 
         private void WriteSyncConfigReport()
@@ -257,24 +261,35 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
-            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders && FastBlocksHeaders.HasStarted)
-            {
-                FastBlocksHeaders.LogProgress();
-            }
-
-            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies && FastBlocksBodies.HasStarted)
-            {
-                FastBlocksBodies.LogProgress();
-            }
-
-            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts && FastBlocksReceipts.HasStarted)
-            {
-                FastBlocksReceipts.LogProgress();
-            }
+            LogProgressIfActive(currentSyncMode, SyncMode.FastHeaders, FastBlocksHeaders);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastBodies, FastBlocksBodies);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastReceipts, FastBlocksReceipts);
+            LogProgressIfActive(currentSyncMode, SyncMode.FastBlockAccessLists, FastBlockAccessLists);
         }
 
         private void WriteBeaconSyncReport() => BeaconHeaders.LogProgress();
 
         public void Dispose() => _timer.Dispose();
+
+        private static bool HasAllEnded(params ReadOnlySpan<ProgressLogger> progressLoggers)
+        {
+            foreach (ProgressLogger progressLogger in progressLoggers)
+            {
+                if (!progressLogger.HasEnded)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static void LogProgressIfActive(SyncMode currentSyncMode, SyncMode mode, ProgressLogger progressLogger)
+        {
+            if ((currentSyncMode & mode) == mode && progressLogger.HasStarted)
+            {
+                progressLogger.LogProgress();
+            }
+        }
     }
 }
