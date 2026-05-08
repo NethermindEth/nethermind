@@ -1,102 +1,126 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
+using static Nethermind.JsonRpc.RpcCapabilityOptions;
 
 namespace Nethermind.HealthChecks;
 
 public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCapabilitiesProvider
 {
-    private CapabilityTables? _tables;
-    private ConcurrentDictionary<string, (bool Enabled, bool WarnIfMissing)>? _combined;
+    // Tables are built once on first access and never mutated afterwards, so a plain
+    // Dictionary suffices — Dictionary supports concurrent reads when no writer is
+    // active. The Build call itself is benign-racy: two callers may both populate
+    // local Dictionaries, but Build is pure and the last assignment wins.
+    private Dictionary<string, RpcCapabilityOptions>? _jsonRpc;
+    private Dictionary<string, RpcCapabilityOptions>? _ssz;
+    private Dictionary<string, RpcCapabilityOptions>? _combined;
 
     /// <summary>JSON-RPC method capabilities only (e.g. <c>engine_newPayloadV1</c>).</summary>
-    public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetJsonRpcCapabilities() => Tables.JsonRpc;
+    public IReadOnlyDictionary<string, RpcCapabilityOptions> GetJsonRpcCapabilities()
+    {
+        EnsureBuilt();
+        return _jsonRpc!;
+    }
 
     /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v1/payloads"</c>).</summary>
-    public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetSszRestPaths() => Tables.Ssz;
+    public IReadOnlyDictionary<string, RpcCapabilityOptions> GetSszRestPaths()
+    {
+        EnsureBuilt();
+        return _ssz!;
+    }
 
     /// <summary>Union of JSON-RPC capabilities and SSZ-REST paths — what
     /// <c>engine_exchangeCapabilities</c> advertises in a single response per spec.</summary>
-    public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
+    public IReadOnlyDictionary<string, RpcCapabilityOptions> GetEngineCapabilities()
     {
         if (_combined is not null) return _combined;
+        EnsureBuilt();
 
-        ConcurrentDictionary<string, (bool, bool)> combined = new();
-        foreach ((string k, (bool, bool) v) in Tables.JsonRpc) combined[k] = v;
-        foreach ((string k, (bool, bool) v) in Tables.Ssz) combined[k] = v;
+        Dictionary<string, RpcCapabilityOptions> combined = new(_jsonRpc!.Count + _ssz!.Count);
+        foreach ((string k, RpcCapabilityOptions v) in _jsonRpc) combined[k] = v;
+        foreach ((string k, RpcCapabilityOptions v) in _ssz) combined[k] = v;
         return _combined = combined;
     }
 
-    private CapabilityTables Tables => _tables ??= Build(specProvider.GetFinalSpec());
+    private void EnsureBuilt()
+    {
+        if (_jsonRpc is not null) return;
+        Build(specProvider.GetFinalSpec(), out Dictionary<string, RpcCapabilityOptions> json, out Dictionary<string, RpcCapabilityOptions> ssz);
+        _jsonRpc = json;
+        _ssz = ssz;
+    }
 
     /// <summary>
-    /// Builds the JSON-RPC and SSZ-REST tables in one pass. Each pair shares an
-    /// (Enabled, WarnIfMissing) tuple so the fork-gating logic is expressed once.
+    /// Builds the JSON-RPC and SSZ-REST tables in one pass. Each pair shares its
+    /// <see cref="RpcCapabilityOptions"/> so the fork-gating logic is expressed once.
     /// </summary>
-    private static CapabilityTables Build(IReleaseSpec spec)
+    private static void Build(IReleaseSpec spec,
+        out Dictionary<string, RpcCapabilityOptions> json,
+        out Dictionary<string, RpcCapabilityOptions> ssz)
     {
         bool preCancun = !spec.IsEip4844Enabled;
         bool v4 = spec.RequestsEnabled | spec.IsOpIsthmusEnabled;
 
-        ConcurrentDictionary<string, (bool, bool)> json = new();
-        ConcurrentDictionary<string, (bool, bool)> ssz = new();
+        Dictionary<string, RpcCapabilityOptions> jsonLocal = [];
+        Dictionary<string, RpcCapabilityOptions> sszLocal = [];
 
-        void Pair(string method, string path, bool enabled, bool warnIfMissing)
+        // Configure adds the same options under both the JSON-RPC method name and the
+        // SSZ-REST path — so updates to the gate stay in sync by construction.
+        void Configure(string method, string path, RpcCapabilityOptions options)
         {
-            (bool, bool) entry = (enabled, warnIfMissing);
-            json[method] = entry;
-            ssz[path] = entry;
+            jsonLocal[method] = options;
+            sszLocal[path] = options;
         }
 
         // The Merge
-        Pair(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), SszRestPaths.PostV1TransitionConfig, preCancun, false);
-        Pair(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), SszRestPaths.PostV1Forkchoice, true, false);
-        Pair(nameof(IEngineRpcModule.engine_getPayloadV1), SszRestPaths.GetV1Payloads, true, false);
-        Pair(nameof(IEngineRpcModule.engine_newPayloadV1), SszRestPaths.PostV1Payloads, true, false);
-        Pair(nameof(IEngineRpcModule.engine_getClientVersionV1), SszRestPaths.PostV1ClientVersion, true, false);
+        Configure(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), SszRestPaths.PostV1TransitionConfig, Gate(preCancun));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), SszRestPaths.PostV1Forkchoice, Enabled);
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV1), SszRestPaths.GetV1Payloads, Enabled);
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV1), SszRestPaths.PostV1Payloads, Enabled);
+        Configure(nameof(IEngineRpcModule.engine_getClientVersionV1), SszRestPaths.PostV1ClientVersion, Enabled);
         // SSZ-only: engine_exchangeCapabilities is the meta-method (not advertised in the JSON-RPC
-        // capabilities list itself) but its SSZ-REST equivalent IS an explicit endpoint.
-        ssz[SszRestPaths.PostV1Capabilities] = (true, false);
+        // capabilities list itself), but its SSZ-REST equivalent IS an explicit endpoint.
+        sszLocal[SszRestPaths.PostV1Capabilities] = Enabled;
 
         // Shanghai
-        Pair(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), SszRestPaths.PostV2Forkchoice, spec.WithdrawalsEnabled, false);
-        Pair(nameof(IEngineRpcModule.engine_getPayloadV2), SszRestPaths.GetV2Payloads, spec.WithdrawalsEnabled, false);
-        Pair(nameof(IEngineRpcModule.engine_newPayloadV2), SszRestPaths.PostV2Payloads, spec.WithdrawalsEnabled, false);
-        Pair(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1), SszRestPaths.PostV1PayloadBodiesByHash, spec.WithdrawalsEnabled, false);
-        Pair(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.PostV1PayloadBodiesByRange, spec.WithdrawalsEnabled, false);
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), SszRestPaths.PostV2Forkchoice, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV2), SszRestPaths.GetV2Payloads, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV2), SszRestPaths.PostV2Payloads, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1), SszRestPaths.PostV1PayloadBodiesByHash, Gate(spec.WithdrawalsEnabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1), SszRestPaths.PostV1PayloadBodiesByRange, Gate(spec.WithdrawalsEnabled));
 
         // Cancun
-        Pair(nameof(IEngineRpcModule.engine_getPayloadV3), SszRestPaths.GetV3Payloads, spec.IsEip4844Enabled, spec.IsEip4844Enabled);
-        Pair(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), SszRestPaths.PostV3Forkchoice, spec.IsEip4844Enabled, spec.IsEip4844Enabled);
-        Pair(nameof(IEngineRpcModule.engine_newPayloadV3), SszRestPaths.PostV3Payloads, spec.IsEip4844Enabled, spec.IsEip4844Enabled);
-        Pair(nameof(IEngineRpcModule.engine_getBlobsV1), SszRestPaths.PostV1Blobs, spec.IsEip4844Enabled, false);
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV3), SszRestPaths.GetV3Payloads, GateWithWarn(spec.IsEip4844Enabled));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), SszRestPaths.PostV3Forkchoice, GateWithWarn(spec.IsEip4844Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV3), SszRestPaths.PostV3Payloads, GateWithWarn(spec.IsEip4844Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV1), SszRestPaths.PostV1Blobs, Gate(spec.IsEip4844Enabled));
 
         // Prague
-        Pair(nameof(IEngineRpcModule.engine_getPayloadV4), SszRestPaths.GetV4Payloads, v4, v4);
-        Pair(nameof(IEngineRpcModule.engine_newPayloadV4), SszRestPaths.PostV4Payloads, v4, v4);
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV4), SszRestPaths.GetV4Payloads, GateWithWarn(v4));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV4), SszRestPaths.PostV4Payloads, GateWithWarn(v4));
 
         // Osaka
-        Pair(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetV5Payloads, spec.IsEip7594Enabled, spec.IsEip7594Enabled);
-        Pair(nameof(IEngineRpcModule.engine_getBlobsV2), SszRestPaths.PostV2Blobs, spec.IsEip7594Enabled, false);
-        Pair(nameof(IEngineRpcModule.engine_getBlobsV3), SszRestPaths.PostV3Blobs, spec.IsEip7594Enabled, false);
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV5), SszRestPaths.GetV5Payloads, GateWithWarn(spec.IsEip7594Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV2), SszRestPaths.PostV2Blobs, Gate(spec.IsEip7594Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getBlobsV3), SszRestPaths.PostV3Blobs, Gate(spec.IsEip7594Enabled));
 
         // Amsterdam
-        Pair(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetV6Payloads, spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-        Pair(nameof(IEngineRpcModule.engine_newPayloadV5), SszRestPaths.PostV5Payloads, spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-        Pair(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostV4Forkchoice, spec.IsEip7843Enabled, spec.IsEip7843Enabled);
-        Pair(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostV2PayloadBodiesByHash, spec.IsEip7928Enabled, spec.IsEip7928Enabled);
-        Pair(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.PostV2PayloadBodiesByRange, spec.IsEip7928Enabled, spec.IsEip7928Enabled);
+        Configure(nameof(IEngineRpcModule.engine_getPayloadV6), SszRestPaths.GetV6Payloads, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_newPayloadV5), SszRestPaths.PostV5Payloads, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), SszRestPaths.PostV4Forkchoice, GateWithWarn(spec.IsEip7843Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV2), SszRestPaths.PostV2PayloadBodiesByHash, GateWithWarn(spec.IsEip7928Enabled));
+        Configure(nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV2), SszRestPaths.PostV2PayloadBodiesByRange, GateWithWarn(spec.IsEip7928Enabled));
 
-        return new CapabilityTables(json, ssz);
+        json = jsonLocal;
+        ssz = sszLocal;
     }
 
-    private sealed record CapabilityTables(
-        ConcurrentDictionary<string, (bool Enabled, bool WarnIfMissing)> JsonRpc,
-        ConcurrentDictionary<string, (bool Enabled, bool WarnIfMissing)> Ssz);
+    private static RpcCapabilityOptions Gate(bool enabled) => enabled ? Enabled : None;
+
+    private static RpcCapabilityOptions GateWithWarn(bool enabled) => enabled ? Enabled | WarnIfMissing : None;
 }

@@ -24,17 +24,17 @@ public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyLi
 
     public ResultWrapper<IReadOnlyList<string>> Handle(HashSet<string> methods)
     {
-        IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
+        IReadOnlyDictionary<string, RpcCapabilityOptions> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
 
         List<string>? enabled = _cachedEnabled is null ? new List<string>(capabilities.Count) : null;
         List<string>? missing = null;
 
-        foreach ((string key, (bool isEnabled, bool warnIfMissing)) in capabilities)
+        foreach ((string key, RpcCapabilityOptions flags) in capabilities)
         {
-            if (isEnabled)
+            if (flags.IsEnabled())
             {
                 enabled?.Add(key);
-                if (warnIfMissing && !methods.Contains(key))
+                if (flags.ShouldWarnIfMissing() && !methods.Contains(key))
                 {
                     missing ??= new List<string>();
                     missing.Add(key);

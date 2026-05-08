@@ -1741,7 +1741,7 @@ public partial class EngineModuleTests
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         string[] result = [.. engineRpcCapabilitiesProvider.GetJsonRpcCapabilities()
-            .Where(kv => kv.Value.Enabled)
+            .Where(kv => kv.Value.IsEnabled())
             .Select(kv => kv.Key)];
         string[] expectedMethods =
         [
@@ -1870,7 +1870,7 @@ public partial class EngineModuleTests
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
 
         string[] result = [.. engineRpcCapabilitiesProvider.GetSszRestPaths()
-            .Where(kv => kv.Value.Enabled)
+            .Where(kv => kv.Value.IsEnabled())
             .Select(kv => kv.Key)];
 
         result.Should().BeEquivalentTo(expectedPaths);
