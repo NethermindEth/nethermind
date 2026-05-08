@@ -204,7 +204,7 @@ class SszType
             result.IsStruct = true;
         }
 
-        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { } member && (member.Kind == Kind.List || member.Kind == Kind.ProgressiveList))
+        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { Kind: Kind.List or Kind.ProgressiveList })
         {
             result.IsSszListItself = GetIsCollectionItselfValue(type);
         }
@@ -503,7 +503,7 @@ class SszType
     private static string? GetNamespace(ITypeSymbol syntaxNode) => syntaxNode.ContainingNamespace?.ToString();
 
     private static string GetTypeName(ITypeSymbol syntaxNode) =>
-        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "");
+        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace! + ".", "");
 
     public override string ToString() => $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
 
