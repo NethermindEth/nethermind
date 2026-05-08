@@ -49,10 +49,10 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
     /// Loads all tests from a single directory. Can be called directly by other strategies
     /// that don't need the hook/error-handling infrastructure.
     /// </summary>
-    public static List<EthereumTest> LoadTestsFromDirectory(string testDir, string? wildcard, TestType testType)
-        => LoadTestsFromDirectories([testDir], wildcard, testType);
+    public static List<EthereumTest> LoadTestsFromDirectory(string testDir, string? wildcard, TestType testType) =>
+        [.. LoadTestsFromDirectories([testDir], wildcard, testType)];
 
-    public static List<EthereumTest> LoadTestsFromDirectories(IReadOnlyList<string> testDirs, string? wildcard, TestType testType) =>
+    public static IEnumerable<EthereumTest> LoadTestsFromDirectories(IReadOnlyList<string> testDirs, string? wildcard, TestType testType) =>
         LoadTestFiles(GetTestFiles(testDirs), file =>
         {
             FileTestsSource fileTestsSource = new(file.Path, wildcard);
@@ -67,7 +67,7 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
             return testsByName;
         });
 
-    private List<EthereumTest> LoadTestsFromDirectoriesWithHooks(IReadOnlyList<string> testDirs, string? wildcard) =>
+    private IEnumerable<EthereumTest> LoadTestsFromDirectoriesWithHooks(IReadOnlyList<string> testDirs, string? wildcard) =>
         LoadTestFiles(GetTestFiles(testDirs), file => LoadTestFileWithHooks(file, wildcard));
 
     private List<EthereumTest> LoadTestFileWithHooks(TestFile file, string? wildcard)
@@ -111,11 +111,16 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
         return testFiles;
     }
 
-    private static List<EthereumTest> LoadTestFiles(IReadOnlyList<TestFile> testFiles, Func<TestFile, List<EthereumTest>> loadFile)
+    private static IEnumerable<EthereumTest> LoadTestFiles(IReadOnlyList<TestFile> testFiles, Func<TestFile, List<EthereumTest>> loadFile)
     {
         if (testFiles.Count == 0)
         {
             return [];
+        }
+
+        if (TestChunkFilter.IsEnabled)
+        {
+            return LoadTestFilesSequentially(testFiles, loadFile);
         }
 
         if (testFiles.Count == 1)
@@ -123,6 +128,22 @@ public abstract class TestLoadStrategy(string testsRootPath, TestType testType) 
             return loadFile(testFiles[0]);
         }
 
+        return LoadTestFilesInParallel(testFiles, loadFile);
+    }
+
+    private static IEnumerable<EthereumTest> LoadTestFilesSequentially(IReadOnlyList<TestFile> testFiles, Func<TestFile, List<EthereumTest>> loadFile)
+    {
+        for (int i = 0; i < testFiles.Count; i++)
+        {
+            foreach (EthereumTest test in loadFile(testFiles[i]))
+            {
+                yield return test;
+            }
+        }
+    }
+
+    private static List<EthereumTest> LoadTestFilesInParallel(IReadOnlyList<TestFile> testFiles, Func<TestFile, List<EthereumTest>> loadFile)
+    {
         List<EthereumTest>[] loadedByFile = new List<EthereumTest>[testFiles.Count];
         ExceptionDispatchInfo?[] failures = new ExceptionDispatchInfo?[testFiles.Count];
         Parallel.For(0, testFiles.Count, LoadParallelOptions, i =>
