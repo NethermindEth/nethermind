@@ -269,7 +269,7 @@ namespace Nethermind.Init.Steps
             private Task StepTask => _taskCompletedSource.Task;
             public readonly List<Type> Dependencies = [.. stepInfo.Dependencies];
 
-            private readonly TaskCompletionSource _taskCompletedSource = new();
+            private readonly TaskCompletionSource _taskCompletedSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
             public async Task StartExecute(IEnumerable<StepWrapper> dependentSteps, CancellationToken cancellationToken)
             {

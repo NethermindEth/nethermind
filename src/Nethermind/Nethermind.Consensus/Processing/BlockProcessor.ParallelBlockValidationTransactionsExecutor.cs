@@ -77,7 +77,7 @@ public partial class BlockProcessor
                 BlockReceiptsTracer tracer = new(true);
                 tracer.StartNewBlockTrace(block);
                 receiptsTracers[i] = tracer;
-                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>();
+                gasResults[i] = new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, InvalidBlockException? Exception)>(TaskCreationOptions.RunContinuationsAsynchronously);
             }
 
             Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, token), token);

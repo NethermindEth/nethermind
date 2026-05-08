@@ -1702,7 +1702,7 @@ namespace Nethermind.Blockchain
         {
             if (CanAcceptNewBlocks)
             {
-                Interlocked.CompareExchange(ref _taskCompletionSource, new TaskCompletionSource(), null);
+                Interlocked.CompareExchange(ref _taskCompletionSource, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously), null);
             }
 
             Interlocked.Increment(ref _canAcceptNewBlocksCounter);

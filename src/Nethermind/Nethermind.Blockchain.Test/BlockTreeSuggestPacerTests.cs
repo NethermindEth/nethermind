@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -50,6 +51,8 @@ public class BlockTreeSuggestPacerTests
         waitTask.IsCompleted.Should().BeFalse();
 
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(6).TestObject));
-        waitTask.IsCompleted.Should().BeTrue();
+        // Allow the async continuation (RunContinuationsAsynchronously on the TCS) to be scheduled,
+        // but assert it completes promptly — the test still fails if the unblock didn't happen.
+        waitTask.Wait(TimeSpan.FromMilliseconds(500)).Should().BeTrue();
     }
 }

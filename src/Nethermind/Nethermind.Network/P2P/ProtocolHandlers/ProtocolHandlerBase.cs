@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected internal ISession Session { get; }
         protected long Counter;
 
-        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new();
+        private readonly TaskCompletionSource<MessageBase> _initCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         protected ProtocolHandlerBase(ISession session,
             INodeStatsManager nodeStats,

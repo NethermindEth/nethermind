@@ -318,7 +318,7 @@ public class P2PProtocolHandler(
 
     public async Task<bool> SendPing()
     {
-        TaskCompletionSource<Packet> newSource = new();
+        TaskCompletionSource<Packet> newSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<Packet> previousSource =
             Interlocked.CompareExchange(ref _pongCompletionSource, newSource, null);
 
