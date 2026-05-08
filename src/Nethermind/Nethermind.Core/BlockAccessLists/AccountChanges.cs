@@ -422,11 +422,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
     }
 
-    public void CheckWasChanged() { }
-
-    [JsonIgnore]
-    public bool AccountChanged => HasStateChanges;
-
     private void GetCodeChange(uint blockAccessIndex, out CodeChange? codeChange) =>
         codeChange = _codeChanges.TryGetLastBeforeOrPrestate(blockAccessIndex, out CodeChange change)
             ? change
@@ -524,43 +519,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         _sortedChangedSlots = null;
     }
 
-    private static Dictionary<UInt256, SlotChanges> ToDictionary(SortedList<UInt256, SlotChanges> storageChanges)
-    {
-        Dictionary<UInt256, SlotChanges> dictionary = new(storageChanges.Count, GenericEqualityComparer.GetOptimized<UInt256>());
-        IList<UInt256> keys = storageChanges.Keys;
-        IList<SlotChanges> values = storageChanges.Values;
-        for (int i = 0; i < storageChanges.Count; i++)
-        {
-            dictionary.Add(keys[i], values[i]);
-        }
-
-        return dictionary;
-    }
-
-    private void SeedSortedStorageCaches(SortedList<UInt256, SlotChanges> storageChanges)
-    {
-        int count = storageChanges.Count;
-        if (count == 0)
-        {
-            _sortedStorageChanges = [];
-            _sortedChangedSlots = [];
-            return;
-        }
-
-        SlotChanges[] sortedStorageChanges = new SlotChanges[count];
-        UInt256[] sortedChangedSlots = new UInt256[count];
-        IList<UInt256> keys = storageChanges.Keys;
-        IList<SlotChanges> values = storageChanges.Values;
-        for (int i = 0; i < count; i++)
-        {
-            sortedChangedSlots[i] = keys[i];
-            sortedStorageChanges[i] = values[i];
-        }
-
-        _sortedStorageChanges = sortedStorageChanges;
-        _sortedChangedSlots = sortedChangedSlots;
-    }
-
     public bool SlotChangesAtIndexEqual(AccountChanges other, uint index)
     {
         SlotChangePairsAtIndexEnumerable.Enumerator left = SlotChangePairsAtIndex(index).GetEnumerator();
@@ -612,45 +570,17 @@ public class AccountChanges : IEquatable<AccountChanges>
     private static bool ListEquals<T>(IReadOnlyList<T> left, IReadOnlyList<T> right)
         where T : IEquatable<T>
     {
-        if (left.Count != right.Count)
-            return false;
-
+        if (left.Count != right.Count) return false;
         for (int i = 0; i < left.Count; i++)
-        {
-            if (!left[i].Equals(right[i]))
-                return false;
-        }
-
+            if (!left[i].Equals(right[i])) return false;
         return true;
     }
 
-    private static bool ListEquals<T>(IList<T> left, IList<T> right)
-        where T : IEquatable<T>
+    private static bool ArrayEquals<T>(T[] left, T[] right) where T : IEquatable<T>
     {
-        if (left.Count != right.Count)
-            return false;
-
-        for (int i = 0; i < left.Count; i++)
-        {
-            if (!left[i].Equals(right[i]))
-                return false;
-        }
-
-        return true;
-    }
-
-    private static bool ArrayEquals<T>(T[] left, T[] right)
-        where T : IEquatable<T>
-    {
-        if (left.Length != right.Length)
-            return false;
-
+        if (left.Length != right.Length) return false;
         for (int i = 0; i < left.Length; i++)
-        {
-            if (!left[i].Equals(right[i]))
-                return false;
-        }
-
+            if (!left[i].Equals(right[i])) return false;
         return true;
     }
 

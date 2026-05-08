@@ -91,19 +91,9 @@ public class BlockAccessListDecoderTests
         Console.SetError(error);
         try
         {
-            Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
-
-            RlpException? exception = null;
-            try
-            {
-                Rlp.DecodeArrayPool(ref ctx, new ThrowingByteDecoder());
-            }
-            catch (RlpException e)
-            {
-                exception = e;
-            }
-
-            Assert.That(exception?.Message, Is.EqualTo(ThrowingByteDecoder.Error));
+            Assert.That(
+                () => { Rlp.ValueDecoderContext c = new(new byte[] { 0xc2, 0x01, 0x02 }); Rlp.DecodeArrayPool(ref c, new ThrowingByteDecoder()); },
+                Throws.TypeOf<RlpException>().With.Message.EqualTo(ThrowingByteDecoder.Error));
 
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -120,19 +110,9 @@ public class BlockAccessListDecoderTests
     public void DecodeArrayPool_disposes_decoded_items_when_element_decoder_throws()
     {
         DisposableElement.DisposedCount = 0;
-        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
-
-        RlpException? exception = null;
-        try
-        {
-            Rlp.DecodeArrayPool(ref ctx, new ThrowingDisposableDecoder());
-        }
-        catch (RlpException e)
-        {
-            exception = e;
-        }
-
-        Assert.That(exception?.Message, Is.EqualTo(ThrowingDisposableDecoder.Error));
+        Assert.That(
+            () => { Rlp.ValueDecoderContext c = new(new byte[] { 0xc2, 0x01, 0x02 }); Rlp.DecodeArrayPool(ref c, new ThrowingDisposableDecoder()); },
+            Throws.TypeOf<RlpException>().With.Message.EqualTo(ThrowingDisposableDecoder.Error));
         Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
     }
 
@@ -140,40 +120,16 @@ public class BlockAccessListDecoderTests
     public void DecodeArrayPool_disposes_runtime_disposable_items_when_static_type_does_not_implement_disposable()
     {
         DisposableElement.DisposedCount = 0;
-        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc2, 0x01, 0x02 });
-
-        RlpException? exception = null;
-        try
-        {
-            Rlp.DecodeArrayPool<object>(ref ctx, new ThrowingObjectDecoder());
-        }
-        catch (RlpException e)
-        {
-            exception = e;
-        }
-
-        Assert.That(exception?.Message, Is.EqualTo(ThrowingObjectDecoder.Error));
+        Assert.That(
+            () => { Rlp.ValueDecoderContext c = new(new byte[] { 0xc2, 0x01, 0x02 }); Rlp.DecodeArrayPool<object>(ref c, new ThrowingObjectDecoder()); },
+            Throws.TypeOf<RlpException>().With.Message.EqualTo(ThrowingObjectDecoder.Error));
         Assert.That(DisposableElement.DisposedCount, Is.EqualTo(1));
     }
 
     [Test]
-    public void DecodeArrayPool_wraps_non_rlp_decoder_exceptions()
-    {
-        Rlp.ValueDecoderContext ctx = new(new byte[] { 0xc1, 0x01 });
-
-        RlpException? exception = null;
-        try
-        {
-            Rlp.DecodeArrayPool(ref ctx, new ThrowingArgumentDecoder());
-        }
-        catch (RlpException e)
-        {
-            exception = e;
-        }
-
-        Assert.That(exception, Is.Not.Null);
-        Assert.That(exception!.InnerException, Is.TypeOf<ArgumentException>());
-    }
+    public void DecodeArrayPool_wraps_non_rlp_decoder_exceptions() => Assert.That(
+        () => { Rlp.ValueDecoderContext c = new(new byte[] { 0xc1, 0x01 }); Rlp.DecodeArrayPool(ref c, new ThrowingArgumentDecoder()); },
+        Throws.TypeOf<RlpException>().With.InnerException.TypeOf<ArgumentException>());
 
     [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
@@ -184,19 +140,9 @@ public class BlockAccessListDecoderTests
         SlotChanges withEmptyChanges = new(123u, new SortedList<uint, StorageChange>(PrestateAwareIndexComparer.Instance));
         byte[] rlp = Rlp.Encode(withEmptyChanges).Bytes;
 
-        RlpException? thrown = null;
-        try
-        {
-            Rlp.ValueDecoderContext ctx = new(rlp);
-            SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-        }
-        catch (RlpException e)
-        {
-            thrown = e;
-        }
-
-        Assert.That(thrown, Is.Not.Null);
-        Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
+        Assert.That(
+            () => { Rlp.ValueDecoderContext ctx = new(rlp); SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None); },
+            Throws.TypeOf<RlpException>().With.Message.Contain("Empty storage_changes"));
     }
 
     [Test]
@@ -263,19 +209,9 @@ public class BlockAccessListDecoderTests
     {
         byte[] rlp = [0xc6, 0x84, 0xff, 0xff, 0xff, 0xff, 0x01];
 
-        Rlp.ValueDecoderContext ctx = new(rlp);
-        RlpException? exception = null;
-        try
-        {
-            BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-        }
-        catch (RlpException e)
-        {
-            exception = e;
-        }
-
-        Assert.That(exception, Is.Not.Null);
-        Assert.That(exception!.Message, Does.Contain("reserved for internal prestate"));
+        Assert.That(
+            () => { Rlp.ValueDecoderContext ctx = new(rlp); BalanceChangeDecoder.Instance.Decode(ref ctx, RlpBehaviors.None); },
+            Throws.TypeOf<RlpException>().With.Message.Contain("reserved for internal prestate"));
         Assert.That(
             () => Rlp.Encode(new BalanceChange(Eip7928Constants.PrestateIndex, 0x1)),
             Throws.TypeOf<RlpException>().With.Message.Contain("reserved for internal prestate"));

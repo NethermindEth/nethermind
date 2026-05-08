@@ -803,38 +803,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         StorageChange = 3
     }
 
-    private readonly struct BalanceChangeDetails(Address address, uint blockAccessIndex, long previousBlockAccessIndex, UInt256 priorValue)
-    {
-        public readonly Address Address = address;
-        public readonly uint BlockAccessIndex = blockAccessIndex;
-        public readonly long PreviousBlockAccessIndex = previousBlockAccessIndex;
-        public readonly UInt256 PriorValue = priorValue;
-    }
-
-    private readonly struct NonceChangeDetails(Address address, uint blockAccessIndex, long previousBlockAccessIndex, ulong priorValue)
-    {
-        public readonly Address Address = address;
-        public readonly uint BlockAccessIndex = blockAccessIndex;
-        public readonly long PreviousBlockAccessIndex = previousBlockAccessIndex;
-        public readonly ulong PriorValue = priorValue;
-    }
-
-    private readonly struct CodeChangeDetails(Address address, uint blockAccessIndex, long previousBlockAccessIndex, byte[]? priorCode)
-    {
-        public readonly Address Address = address;
-        public readonly uint BlockAccessIndex = blockAccessIndex;
-        public readonly long PreviousBlockAccessIndex = previousBlockAccessIndex;
-        public readonly byte[]? PriorCode = priorCode;
-    }
-
-    private readonly struct StorageChangeDetails(Address address, UInt256 slot, uint blockAccessIndex, long previousBlockAccessIndex, EvmWord priorValue)
-    {
-        public readonly Address Address = address;
-        public readonly UInt256 Slot = slot;
-        public readonly uint BlockAccessIndex = blockAccessIndex;
-        public readonly long PreviousBlockAccessIndex = previousBlockAccessIndex;
-        public readonly EvmWord PriorValue = priorValue;
-    }
+    private readonly record struct BalanceChangeDetails(Address Address, uint BlockAccessIndex, long PreviousBlockAccessIndex, UInt256 PriorValue);
+    private readonly record struct NonceChangeDetails(Address Address, uint BlockAccessIndex, long PreviousBlockAccessIndex, ulong PriorValue);
+    private readonly record struct CodeChangeDetails(Address Address, uint BlockAccessIndex, long PreviousBlockAccessIndex, byte[]? PriorCode);
+    private readonly record struct StorageChangeDetails(Address Address, UInt256 Slot, uint BlockAccessIndex, long PreviousBlockAccessIndex, EvmWord PriorValue);
 }
 
 public readonly struct ChangesAtIndexEnumerable
