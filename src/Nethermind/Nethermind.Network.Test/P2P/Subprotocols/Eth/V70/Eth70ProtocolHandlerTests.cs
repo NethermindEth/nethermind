@@ -19,6 +19,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
@@ -50,7 +51,8 @@ public class Eth70ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)9.MB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)2.MiB;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)10.MiB;
         NetworkDiagTracer.IsEnabled = true;
 
         _session = Substitute.For<ISession>();
@@ -112,9 +114,17 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Default_size_limits_match_eth_protocol_limits()
+    {
+        Assert.That(SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit, Is.EqualTo(2UL * 1024 * 1024));
+        Assert.That(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit, Is.EqualTo(10UL * 1024 * 1024));
+    }
+
+    [Test]
     public void Should_mark_last_block_incomplete_when_truncated()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)1.MB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)1.MB;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)1.MB;
 
         const int receiptCount = 20000;
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
@@ -191,9 +201,28 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_disconnect_with_subprotocol_error_when_first_block_receipt_index_exceeds_int_max_value()
+    {
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        using GetReceiptsMessage70 request = new(1111, (long)int.MaxValue + 1, new[] { Keccak.Zero }.ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure,
+            Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
+    }
+
+    [Test]
     public async Task Should_request_additional_pages_until_complete()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
 
         TxReceipt[] receipts =
         [
@@ -222,9 +251,45 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_not_copy_remaining_hashes_when_building_paged_receipts_requests()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
+
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
+        ];
+
+        CountingReadOnlyList<Hash256> blockHashes = new([Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB]);
+        int requestCount = 0;
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            requestCount++;
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            TxReceipt[] payload = sent.FirstBlockReceiptIndex == 0
+                ? [receipts[0], receipts[1]]
+                : [receipts[2]];
+
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { payload }.ToPooledList(), sent.FirstBlockReceiptIndex == 0);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
+
+        Assert.That(result.Count, Is.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+        Assert.That(requestCount, Is.EqualTo(2));
+        Assert.That(blockHashes.IndexerReadCount, Is.EqualTo(blockHashes.Count));
+    }
+
+    [Test]
     public async Task Should_merge_partial_first_block_and_continue_to_next_block()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
 
         TxReceipt[] block1 =
         [
@@ -299,7 +364,7 @@ public class Eth70ProtocolHandlerTests
         int expectedRequestCount,
         int expectedResultCount)
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
 
         TxReceipt[] firstPage =
         [
@@ -335,6 +400,39 @@ public class Eth70ProtocolHandlerTests
         }
 
         Assert.That(requestCount, Is.EqualTo(expectedRequestCount));
+    }
+
+    [TestCaseSource(nameof(InvalidPartialContinuationCases))]
+    public void Should_reject_invalid_partial_continuation(InvalidPartialContinuationCase testCase)
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
+
+        _syncManager.FindHeader(Keccak.Zero).Returns(Build.A.BlockHeader.WithGasUsed(testCase.FirstBlockGasUsed).TestObject);
+        if (testCase.SecondBlockGasUsed is not null)
+        {
+            _syncManager.FindHeader(TestItem.KeccakA).Returns(Build.A.BlockHeader.WithGasUsed(testCase.SecondBlockGasUsed.Value).TestObject);
+        }
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            if (!testCase.Responses.TryGetValue(sent.FirstBlockReceiptIndex, out ReceiptsPageResponse? pageResponse))
+            {
+                throw new InvalidOperationException($"Unexpected first block receipt index {sent.FirstBlockReceiptIndex}");
+            }
+
+            using ReceiptsMessage70 response = new(sent.RequestId, pageResponse.Receipts.ToPooledList(), pageResponse.LastBlockIncomplete);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () =>
+        {
+            using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(testCase.RequestedHashes, CancellationToken.None);
+        };
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo(testCase.ExpectedExceptionMessage));
     }
 
     [Test]
@@ -382,13 +480,13 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_reject_when_logs_gas_exceeds_block_gas()
+    public async Task Should_accept_when_logs_gas_exceeds_post_refund_gas_used()
     {
         TxReceipt[] receipts =
         [
             new()
             {
-                GasUsedTotal = 500,
+                GasUsedTotal = GasCostOf.Transaction,
                 Logs = [new LogEntry(TestItem.AddressA, new byte[100], Array.Empty<Hash256>())]
             }
         ];
@@ -396,14 +494,148 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), true);
+            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
-        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+    }
+
+    [Test]
+    public async Task Should_accept_receipts_when_transaction_count_and_size_bounds_match()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts = BuildSequentialReceipts(2);
+        SetupBlockMetadata(blockHash, 1_000_000, GasCostOf.Transaction * 2, 100_000, 100_000);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+    }
+
+    [Test]
+    public async Task Should_skip_transaction_metadata_validation_when_block_body_is_missing()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithGasLimit(1_000_000)
+            .WithGasUsed(GasCostOf.Transaction)
+            .WithTransactionsRoot(TestItem.KeccakB)
+            .TestObject;
+        Block blockWithMissingBody = new(header);
+
+        _syncManager.FindHeader(blockHash).Returns(header);
+        _syncManager.Find(blockHash).Returns(blockWithMissingBody);
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+    }
+
+    [Test]
+    public void Should_reject_receipts_when_transaction_count_mismatches()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+        SetupBlockMetadata(blockHash, 1_000_000, GasCostOf.Transaction, 100_000, 100_000);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Receipt count mismatch with block transactions count"));
+    }
+
+    [Test]
+    public void Should_reject_receipt_larger_than_transaction_gas_limit_allows()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            BuildReceiptWithLogData(GasCostOf.Transaction, logDataSize: 3_000)
+        ];
+        SetupBlockMetadata(blockHash, 1_000_000, GasCostOf.Transaction, GasCostOf.Transaction);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Receipt size exceeds transaction gas limit allowance"));
+    }
+
+    [Test]
+    public void Should_reject_paginated_receipts_when_total_size_exceeds_block_gas_limit_allowance()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 16_000;
+
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            BuildReceiptWithLogData(GasCostOf.Transaction, logDataSize: 5_000),
+            BuildReceiptWithLogData(GasCostOf.Transaction * 2, logDataSize: 5_000)
+        ];
+        SetupBlockMetadata(blockHash, 80_000, GasCostOf.Transaction * 2, 1_000_000, 1_000_000);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            TxReceipt[] payload = sent.FirstBlockReceiptIndex == 0
+                ? [receipts[0]]
+                : [receipts[1]];
+
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { payload }.ToPooledList(), sent.FirstBlockReceiptIndex == 0);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Is.EqualTo("Block receipts size exceeds block gas limit allowance"));
     }
 
     [Test]
@@ -556,7 +788,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_truncate_large_block_in_middle()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 300;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 300;
 
         TxReceipt[] block1Receipts =
         [
@@ -564,6 +796,9 @@ public class Eth70ProtocolHandlerTests
                 new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] },
                 new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] }
         ];
+
+        using ReceiptsMessage70 twoReceiptsResponse = new(1111, new[] { block1Receipts.Take(2).ToArray() }.ToPooledList(), lastBlockIncomplete: true);
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)(GetReceiptsMessageLength(twoReceiptsResponse) - 1);
 
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
 
@@ -579,10 +814,8 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
-    public void Should_truncate_second_block_when_cumulative_exceeds_limit()
+    public void Should_stop_before_second_block_when_cumulative_exceeds_soft_limit()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 650;
-
         TxReceipt[] block1Receipts =
         [
             new() { GasUsedTotal = GasCostOf.Transaction * 50, Logs = [new LogEntry(TestItem.AddressA, new byte[44], [])] },
@@ -592,8 +825,11 @@ public class Eth70ProtocolHandlerTests
         TxReceipt[] block2Receipts =
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
-                new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
         ];
+
+        using ReceiptsMessage70 twoBlocksResponse = new(1111, new[] { block1Receipts, block2Receipts }.ToPooledList(), lastBlockIncomplete: false);
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)(GetReceiptsMessageLength(twoBlocksResponse) - 1);
 
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
         _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
@@ -604,16 +840,101 @@ public class Eth70ProtocolHandlerTests
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
-            m.TxReceipts.Count == 2 &&
+            m.TxReceipts.Count == 1 &&
             m.TxReceipts[0].Length == 2 &&
-            m.TxReceipts[1].Length == 1 &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_send_single_large_block_above_soft_limit_when_below_hard_limit()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 300;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 1000;
+
+        TxReceipt[] largeBlockReceipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] }
+        ];
+
+        using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(largeBlockReceipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 1 &&
+            m.TxReceipts[0].Length == largeBlockReceipts.Length &&
+            !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_count_rlp_wrappers_when_splitting_near_hard_limit()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 1;
+
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] },
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        using ReceiptsMessage70 fullResponse = new(1111, new[] { receipts }.ToPooledList(), lastBlockIncomplete: false);
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)(GetReceiptsMessageLength(fullResponse) - 1);
+
+        using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
+            m.TxReceipts.Count == 1 &&
+            m.TxReceipts[0].Length == 1 &&
             m.LastBlockIncomplete));
     }
 
     [Test]
-    public void Should_split_large_block_when_exceeding_limit()
+    public void Should_count_actual_serialized_receipts_bytes_near_hard_limit()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 1000;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 1;
+
+        TxReceipt[] receipts =
+        [
+            new()
+            {
+                GasUsedTotal = GasCostOf.Transaction,
+                Logs = Enumerable.Range(0, 20).Select(_ => new LogEntry(TestItem.AddressA, [], [])).ToArray()
+            },
+            new()
+            {
+                GasUsedTotal = GasCostOf.Transaction * 2,
+                Logs = Enumerable.Range(0, 20).Select(_ => new LogEntry(TestItem.AddressA, [], [])).ToArray()
+            }
+        ];
+
+        using ReceiptsMessage70 fullResponse = new(1111, new[] { receipts }.ToPooledList(), lastBlockIncomplete: false);
+        int fullResponseLength = GetReceiptsMessageLength(fullResponse);
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = (ulong)(fullResponseLength - 1);
+
+        _syncManager.GetReceipts(Keccak.Zero).Returns(receipts);
+
+        ReceiptsMessage70 response = RequestReceipts(Keccak.Zero);
+
+        Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
+        Assert.That(response.LastBlockIncomplete, Is.True);
+        Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+    }
+
+    [Test]
+    public void Should_split_large_block_when_exceeding_hard_limit()
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 1000;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = 1000;
+
         TxReceipt[] largeBlockReceipts =
         [
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [new LogEntry(TestItem.AddressA, new byte[400], [])] },
@@ -636,7 +957,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_not_split_small_block_when_hitting_limit_single_block()
     {
-        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)10.MB;
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = (ulong)10.MB;
 
         TxReceipt[] smallBlockReceipts =
         [
@@ -687,6 +1008,53 @@ public class Eth70ProtocolHandlerTests
         return receipts;
     }
 
+    private static TxReceipt BuildReceiptWithLogData(long gasUsedTotal, int logDataSize) =>
+        new()
+        {
+            GasUsedTotal = gasUsedTotal,
+            Logs = [new LogEntry(TestItem.AddressA, new byte[logDataSize], [])]
+        };
+
+    private void SetupBlockMetadata(Hash256 blockHash, long gasLimit, long gasUsed, params long[] txGasLimits)
+    {
+        Transaction[] transactions = new Transaction[txGasLimits.Length];
+        for (int i = 0; i < txGasLimits.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithGasLimit(txGasLimits[i]).TestObject;
+        }
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithGasLimit(gasLimit)
+            .WithGasUsed(gasUsed)
+            .TestObject;
+        Block block = new(header, transactions, []);
+
+        _syncManager.FindHeader(blockHash).Returns(header);
+        _syncManager.Find(blockHash).Returns(block);
+    }
+
+    private sealed class CountingReadOnlyList<T>(IReadOnlyList<T> inner) : IReadOnlyList<T>
+    {
+        public int Count => inner.Count;
+
+        public int IndexerReadCount { get; private set; }
+
+        public T this[int index]
+        {
+            get
+            {
+                IndexerReadCount++;
+                return inner[index];
+            }
+        }
+
+        public IEnumerator<T> GetEnumerator() => inner.GetEnumerator();
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private static void AssertReceiptsEqual(TxReceipt[] actual, TxReceipt[] expected) =>
         Assert.That(actual, Is.EqualTo(expected).UsingPropertiesComparer());
 
@@ -698,6 +1066,45 @@ public class Eth70ProtocolHandlerTests
             .SetName("Should_return_last_receipt_when_first_block_receipt_index_is_last");
     }
 
+    public sealed record InvalidPartialContinuationCase(
+        Hash256[] RequestedHashes,
+        Dictionary<long, ReceiptsPageResponse> Responses,
+        long FirstBlockGasUsed,
+        long? SecondBlockGasUsed,
+        string ExpectedExceptionMessage);
+
+    public sealed record ReceiptsPageResponse(TxReceipt[][] Receipts, bool LastBlockIncomplete);
+
+    private static IEnumerable<TestCaseData> InvalidPartialContinuationCases()
+    {
+        TxReceipt[] firstShortPage =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        TxReceipt[] finalShortPage =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
+        ];
+
+        TxReceipt[] nextBlock =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        yield return new TestCaseData(new InvalidPartialContinuationCase(
+            [Keccak.Zero, TestItem.KeccakA],
+            new Dictionary<long, ReceiptsPageResponse>
+            {
+                [0] = new([firstShortPage], LastBlockIncomplete: true),
+                [1] = new([finalShortPage, nextBlock], LastBlockIncomplete: false)
+            },
+            FirstBlockGasUsed: GasCostOf.Transaction * 3,
+            SecondBlockGasUsed: GasCostOf.Transaction,
+            ExpectedExceptionMessage: "Block gas used mismatch between receipts and header"))
+            .SetName("Rejects partial continuation that completes below header gas before continuing");
+    }
+
     private static IEnumerable<TestCaseData> InvalidFirstBlockReceiptIndexCases()
     {
         yield return new TestCaseData(2L)
@@ -705,6 +1112,9 @@ public class Eth70ProtocolHandlerTests
         yield return new TestCaseData(3L)
             .SetName("Should_disconnect_when_first_block_receipt_index_exceeds_receipts_count");
     }
+
+    private int GetReceiptsMessageLength(ReceiptsMessage70 message) =>
+        new ReceiptsMessageSerializer70(_specProvider).GetLength(message, out _);
 
     public enum EmptyReceiptsPayloadScenario
     {
