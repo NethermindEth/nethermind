@@ -191,10 +191,10 @@ public static class BSearchIndexReaderSimd
             Vector512<ushort> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 2)).AsUInt16();
             Vector512<ushort> be = Vector512.Shuffle(raw.AsByte(), ByteSwap16Mask512).AsUInt16();
             Vector512<ushort> gt = Vector512.GreaterThan(be, searchVec);
-            ulong mask = gt.AsByte().ExtractMostSignificantBits();
+            ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
             {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 1;
+                int firstGtLane = BitOperations.TrailingZeroCount(mask);
                 return i + firstGtLane - 1;
             }
             i += 32;
@@ -217,10 +217,10 @@ public static class BSearchIndexReaderSimd
             Vector512<uint> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
             Vector512<uint> be = Vector512.Shuffle(raw.AsByte(), ByteSwap32Mask512).AsUInt32();
             Vector512<uint> gt = Vector512.GreaterThan(be, searchVec);
-            ulong mask = gt.AsByte().ExtractMostSignificantBits();
+            ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
             {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 2;
+                int firstGtLane = BitOperations.TrailingZeroCount(mask);
                 return i + firstGtLane - 1;
             }
             i += 16;
@@ -243,10 +243,10 @@ public static class BSearchIndexReaderSimd
             Vector512<ulong> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();
             Vector512<ulong> be = Vector512.Shuffle(raw.AsByte(), ByteSwap64Mask512).AsUInt64();
             Vector512<ulong> gt = Vector512.GreaterThan(be, searchVec);
-            ulong mask = gt.AsByte().ExtractMostSignificantBits();
+            ulong mask = gt.ExtractMostSignificantBits();
             if (mask != 0)
             {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 3;
+                int firstGtLane = BitOperations.TrailingZeroCount(mask);
                 return i + firstGtLane - 1;
             }
             i += 8;
