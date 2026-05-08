@@ -32,8 +32,6 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 {
     private static readonly Type[] SingletonHandlers =
     [
-        typeof(NewPayloadSszHandler),
-        typeof(ForkchoiceUpdatedSszHandler),
         typeof(ClientVersionSszHandler),
         typeof(CapabilitiesSszHandler),
         typeof(TransitionConfigurationSszHandler),
@@ -66,6 +64,17 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 
         services.Bridge<IHandler<IEnumerable<string>, IEnumerable<string>>>(ctx);
         services.Bridge<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(ctx);
+
+        services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>>();
+
+        services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>>();
+        services.AddSingleton<ISszEndpointHandler, ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>>();
 
         services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>>();
         services.AddSingleton<ISszEndpointHandler, GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>>();

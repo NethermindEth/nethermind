@@ -67,80 +67,11 @@ public static class SszCodec
         });
     }
 
-    public static (ForkchoiceStateV1 state, PayloadAttributes? attrs)
-        DecodeForkchoiceUpdatedRequest(ReadOnlySpan<byte> buf, int version)
-    {
-        if (version <= 1)
-        {
-            ForkchoiceUpdatedV1RequestWire.Decode(buf, out ForkchoiceUpdatedV1RequestWire w1);
-            return (ForkchoiceStateV1FromWire(w1.ForkchoiceState),
-                w1.PayloadAttributes is { Length: > 0 } a1 ? PayloadAttributesFromWire(a1[0]) : null);
-        }
-        if (version == 2)
-        {
-            ForkchoiceUpdatedV2RequestWire.Decode(buf, out ForkchoiceUpdatedV2RequestWire w2);
-            return (ForkchoiceStateV1FromWire(w2.ForkchoiceState),
-                w2.PayloadAttributes is { Length: > 0 } a2 ? PayloadAttributesFromWire(a2[0]) : null);
-        }
-        if (version == 3)
-        {
-            ForkchoiceUpdatedV3RequestWire.Decode(buf, out ForkchoiceUpdatedV3RequestWire w3);
-            return (ForkchoiceStateV1FromWire(w3.ForkchoiceState),
-                w3.PayloadAttributes is { Length: > 0 } a3 ? PayloadAttributesFromWire(a3[0]) : null);
-        }
-        ForkchoiceUpdatedRequestWire.Decode(buf, out ForkchoiceUpdatedRequestWire wN);
-        return (ForkchoiceStateV1FromWire(wN.ForkchoiceState),
-            wN.PayloadAttributes is { Length: > 0 } aN ? PayloadAttributesFromWire(aN[0]) : null);
-    }
-
-    private static ForkchoiceStateV1 ForkchoiceStateV1FromWire(ForkchoiceStateWire w) => new(
+    internal static ForkchoiceStateV1 ForkchoiceStateV1FromWire(ForkchoiceStateWire w) => new(
         headBlockHash: w.HeadBlockHash,
         finalizedBlockHash: w.FinalizedBlockHash,
         safeBlockHash: w.SafeBlockHash);
 
-
-    public static (ExecutionPayload payload, byte[]?[] versionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests)
-        DecodeNewPayloadRequest(ReadOnlySpan<byte> buf, int version)
-    {
-        if (version <= 1)
-        {
-            NewPayloadV1RequestWire.Decode(buf, out NewPayloadV1RequestWire w);
-            return (w.ExecutionPayload.Unwrap(), [], null, null);
-        }
-        if (version == 2)
-        {
-            NewPayloadV2RequestWire.Decode(buf, out NewPayloadV2RequestWire w);
-            return (w.ExecutionPayload.Unwrap(), [], null, null);
-        }
-        if (version == 3)
-        {
-            NewPayloadV3RequestWire.Decode(buf, out NewPayloadV3RequestWire w);
-            ExecutionPayloadV3 ep = w.ExecutionPayload.Unwrap();
-            return (ep, HashesFromWire(w.ExpectedBlobVersionedHashes), w.ParentBeaconBlockRoot, null);
-        }
-        if (version == 4)
-        {
-            NewPayloadV4RequestWire.Decode(buf, out NewPayloadV4RequestWire w);
-            ExecutionPayloadV3 ep = w.ExecutionPayload.Unwrap();
-            return (ep,
-                HashesFromWire(w.ExpectedBlobVersionedHashes),
-                w.ParentBeaconBlockRoot,
-                ExecutionRequestsFromWire(w.ExecutionRequests));
-        }
-        if (version == 5)
-        {
-            NewPayloadV5RequestWire.Decode(buf, out NewPayloadV5RequestWire w5);
-            ExecutionPayloadV4 ep5 = w5.ExecutionPayload.Unwrap();
-            return (ep5,
-                HashesFromWire(w5.ExpectedBlobVersionedHashes),
-                w5.ParentBeaconBlockRoot,
-                ExecutionRequestsFromWire(w5.ExecutionRequests));
-        }
-
-        throw new NotSupportedException(
-            $"Unsupported engine_newPayload SSZ wire version: {version}. " +
-            $"Add a dedicated decode branch for this version before adding handler support.");
-    }
 
     public static ArrayPoolSpan<byte> EncodeGetPayloadV1Response(ExecutionPayload ep)
         => EncodePooled(new SszExecutionPayloadV1(ep));
@@ -393,19 +324,19 @@ public static class SszCodec
         };
     }
 
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV1Wire pa) =>
+    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV1Wire pa) =>
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient);
 
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV2Wire pa) =>
+    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV2Wire pa) =>
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
             withdrawals: WithdrawalsFromWire(pa.Withdrawals));
 
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV3Wire pa) =>
+    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesV3Wire pa) =>
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
             withdrawals: WithdrawalsFromWire(pa.Withdrawals),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot);
 
-    private static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) =>
+    internal static PayloadAttributes PayloadAttributesFromWire(PayloadAttributesWire pa) =>
         BuildPayloadAttributes(pa.Timestamp, pa.PrevRandao, pa.SuggestedFeeRecipient,
             withdrawals: WithdrawalsFromWire(pa.Withdrawals),
             parentBeaconBlockRoot: pa.ParentBeaconBlockRoot,
@@ -465,7 +396,7 @@ public static class SszCodec
         return result;
     }
 
-    private static byte[]?[] HashesFromWire(Hash256[]? hashes)
+    internal static byte[]?[] HashesFromWire(Hash256[]? hashes)
     {
         if (hashes is null || hashes.Length == 0) return [];
         byte[]?[] result = new byte[]?[hashes.Length];
@@ -484,7 +415,7 @@ public static class SszCodec
     private static SszTransaction[] ExecutionRequestsToWire(byte[][]? reqs)
         => reqs is null ? [] : WrapBytes(reqs, data => new SszTransaction { Bytes = data });
 
-    private static byte[][]? ExecutionRequestsFromWire(SszTransaction[]? reqs)
+    internal static byte[][]? ExecutionRequestsFromWire(SszTransaction[]? reqs)
     {
         if (reqs is null || reqs.Length == 0) return null;
         byte[][] result = new byte[reqs.Length][];

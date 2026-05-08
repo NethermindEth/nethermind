@@ -217,19 +217,21 @@ public class SszCodecTests
 
         byte[] encoded = NewPayloadV4RequestWire.Encode(wire);
 
-        (ExecutionPayload payload, byte[]?[] hashes, Hash256? parentBeaconBlockRoot, byte[][]? requests) =
-            SszCodec.DecodeNewPayloadRequest(encoded, version: 4);
+        NewPayloadV4RequestWire.Decode(encoded, out NewPayloadV4RequestWire decoded);
+        ExecutionPayloadV3 payload = decoded.ExecutionPayload.Unwrap();
+        byte[]?[] hashes = SszCodec.HashesFromWire(decoded.ExpectedBlobVersionedHashes);
+        byte[][]? requests = SszCodec.ExecutionRequestsFromWire(decoded.ExecutionRequests);
 
         payload.BlockNumber.Should().Be(100);
         payload.GasLimit.Should().Be(2_000_000);
         payload.Timestamp.Should().Be(1_700_000_100);
         payload.BlockHash.Should().Be(TestItem.KeccakE);
-        ((ExecutionPayloadV3)payload).BlobGasUsed.Should().Be(0x20000UL);
-        ((ExecutionPayloadV3)payload).ExcessBlobGas.Should().Be(0x40000UL);
+        payload.BlobGasUsed.Should().Be(0x20000UL);
+        payload.ExcessBlobGas.Should().Be(0x40000UL);
 
         AssertCommonNewPayloadFields(
             hashes, [TestItem.KeccakA, TestItem.KeccakB],
-            parentBeaconBlockRoot, TestItem.KeccakC,
+            decoded.ParentBeaconBlockRoot, TestItem.KeccakC,
             requests, executionRequest);
     }
 
@@ -250,23 +252,24 @@ public class SszCodecTests
 
         byte[] encoded = NewPayloadV5RequestWire.Encode(wire);
 
-        (ExecutionPayload payload, byte[]?[] hashes, Hash256? parentBeaconBlockRoot, byte[][]? requests) =
-            SszCodec.DecodeNewPayloadRequest(encoded, version: 5);
+        NewPayloadV5RequestWire.Decode(encoded, out NewPayloadV5RequestWire decoded);
+        ExecutionPayloadV4 payload = decoded.ExecutionPayload.Unwrap();
+        byte[]?[] hashes = SszCodec.HashesFromWire(decoded.ExpectedBlobVersionedHashes);
+        byte[][]? requests = SszCodec.ExecutionRequestsFromWire(decoded.ExecutionRequests);
 
         payload.BlockNumber.Should().Be(100);
         payload.Timestamp.Should().Be(1_700_000_100);
         payload.BlockHash.Should().Be(TestItem.KeccakE);
 
-        ExecutionPayloadV4 v4 = payload.Should().BeOfType<ExecutionPayloadV4>().Subject;
-        Span<byte> blockAccessListSpan = v4.BlockAccessList;
+        Span<byte> blockAccessListSpan = payload.BlockAccessList;
         blockAccessListSpan.ToArray().Should().BeEquivalentTo(blockAccessList);
-        v4.SlotNumber.Should().Be(slotNumber);
-        v4.BlobGasUsed.Should().Be(0x20000UL);
-        v4.ExcessBlobGas.Should().Be(0x40000UL);
+        payload.SlotNumber.Should().Be(slotNumber);
+        payload.BlobGasUsed.Should().Be(0x20000UL);
+        payload.ExcessBlobGas.Should().Be(0x40000UL);
 
         AssertCommonNewPayloadFields(
             hashes, [TestItem.KeccakA],
-            parentBeaconBlockRoot, TestItem.KeccakD,
+            decoded.ParentBeaconBlockRoot, TestItem.KeccakD,
             requests, executionRequest);
     }
 
@@ -284,14 +287,6 @@ public class SszCodecTests
     [TestCaseSource(nameof(BufferConsistentEncodings))]
     public void Encoded_buffer_length_is_consistent(Func<ArrayPoolSpan<byte>> encode) =>
         AssertPooledBufferConsistent(encode());
-
-    [Test]
-    public void DecodeNewPayloadRequest_unsupported_version_throws_NotSupportedException()
-    {
-        byte[] emptyBody = Array.Empty<byte>();
-        Action act = () => SszCodec.DecodeNewPayloadRequest(emptyBody, version: 6);
-        act.Should().Throw<NotSupportedException>();
-    }
 
     [Test]
     public void EncodeGetPayloadV1Response_fields_land_at_spec_defined_offsets()
@@ -517,8 +512,10 @@ public class SszCodecTests
 
         byte[] encoded = ForkchoiceUpdatedV3RequestWire.Encode(wire);
 
-        (ForkchoiceStateV1 state, PayloadAttributes? attrs) =
-            SszCodec.DecodeForkchoiceUpdatedRequest(encoded, version: 3);
+        ForkchoiceUpdatedV3RequestWire.Decode(encoded, out ForkchoiceUpdatedV3RequestWire decoded);
+        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(decoded.ForkchoiceState);
+        PayloadAttributes? attrs = decoded.PayloadAttributes is { Length: > 0 } a
+            ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
 
         state.HeadBlockHash.Should().Be(TestItem.KeccakA);
         state.SafeBlockHash.Should().Be(TestItem.KeccakB);
@@ -565,8 +562,10 @@ public class SszCodecTests
 
         byte[] encoded = ForkchoiceUpdatedRequestWire.Encode(wire);
 
-        (ForkchoiceStateV1 state, PayloadAttributes? attrs) =
-            SszCodec.DecodeForkchoiceUpdatedRequest(encoded, version: 4);
+        ForkchoiceUpdatedRequestWire.Decode(encoded, out ForkchoiceUpdatedRequestWire decoded);
+        ForkchoiceStateV1 state = SszCodec.ForkchoiceStateV1FromWire(decoded.ForkchoiceState);
+        PayloadAttributes? attrs = decoded.PayloadAttributes is { Length: > 0 } a
+            ? SszCodec.PayloadAttributesFromWire(a[0]) : null;
 
         state.HeadBlockHash.Should().Be(TestItem.KeccakA);
         attrs.Should().NotBeNull();

@@ -4,52 +4,29 @@
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Consensus;
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
 /// Handles <c>POST /engine/v{N}/payloads</c>, the SSZ-REST equivalent of
-/// <c>engine_newPayloadV{N}</c>.
+/// <c>engine_newPayloadV{N}</c>. Generic over a per-version descriptor so
+/// adding V6 is one new descriptor struct + one DI line — no version switch.
 /// </summary>
-public sealed class NewPayloadSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
+public sealed class NewPayloadSszHandler<TVersion, TWire>(IEngineRpcModule engineModule) : SszEndpointHandlerBase
+    where TVersion : struct, INewPayloadVersion<TWire>
+    where TWire : struct, ISszCodec<TWire>
 {
-    private readonly IEngineRpcModule _engineModule = engineModule;
-
     public override string HttpMethod => "POST";
     public override string Resource => "payloads";
+    public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
-        if (version > EngineApiVersions.NewPayload.V5)
-        {
-            await WriteSszResultAsync(ctx,
-                ResultWrapper<PayloadStatusV1>.Fail(
-                    $"Unsupported engine_newPayload version: {version}", ErrorCodes.MethodNotFound),
-                SszCodec.EncodePayloadStatus);
-            return;
-        }
-
-        (ExecutionPayload payload, byte[]?[] versionedHashes, Hash256? beaconRoot, byte[][]? requests) =
-            SszCodec.DecodeNewPayloadRequest(body.Span, version);
-
-        ResultWrapper<PayloadStatusV1> result = version switch
-        {
-            <= EngineApiVersions.NewPayload.V1 => await _engineModule.engine_newPayloadV1(payload),
-            EngineApiVersions.NewPayload.V2 => await _engineModule.engine_newPayloadV2(payload),
-            EngineApiVersions.NewPayload.V3 => await _engineModule.engine_newPayloadV3(
-                (ExecutionPayloadV3)payload, versionedHashes, beaconRoot),
-            EngineApiVersions.NewPayload.V4 => await _engineModule.engine_newPayloadV4(
-                (ExecutionPayloadV3)payload, versionedHashes, beaconRoot, requests),
-            EngineApiVersions.NewPayload.V5 => await _engineModule.engine_newPayloadV5(
-                (ExecutionPayloadV4)payload, versionedHashes, beaconRoot, requests),
-            _ => ResultWrapper<PayloadStatusV1>.Fail(
-                $"Unsupported engine_newPayload version: {version}", ErrorCodes.MethodNotFound)
-        };
-
+        TWire.Decode(body.Span, out TWire wire);
+        ResultWrapper<PayloadStatusV1> result = await TVersion.Call(engineModule, wire);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodePayloadStatus);
     }
 }
