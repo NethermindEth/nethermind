@@ -40,6 +40,13 @@ public ref struct HsstRefEnumerator<TReader, TPin>(scoped in TReader reader, Bou
 
     public readonly KeyValueEntry Current => new(_inner.CurrentKey, _inner.CurrentValue);
 
+    /// <summary>
+    /// Copy the current key in its logical (lex/BE) form into <paramref name="dst"/>.
+    /// See <see cref="HsstEnumerator{TReader,TPin}.CopyCurrentLogicalKey"/>.
+    /// </summary>
+    public readonly ReadOnlySpan<byte> CopyCurrentLogicalKey(Span<byte> dst)
+        => _inner.CopyCurrentLogicalKey(in _reader, dst);
+
     public void Dispose() => _inner.Dispose();
 }
 

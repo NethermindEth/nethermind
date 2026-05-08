@@ -1041,12 +1041,10 @@ public static class PersistedSnapshotBuilder
 
             using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
 
-            // See StoredToLogical / MergeStorageTrieSubTag for the rationale: source HSSTs
-            // built with HsstPackedArrayBuilder auto-enable LE-stored encoding for keySize
-            // ∈ {2,4,8}, so raw stored bytes are byte-reversed and lex compare on them does
-            // not match logical/integer order. Convert stored→logical for comparison and
-            // for the bytes handed to Add (which re-reverses on write).
-            bool isLeStored = keySize is 2 or 4 or 8;
+            // HsstEnumerator.CopyCurrentLogicalKey returns lex/BE bytes regardless of the
+            // source PackedArray's storage layout (BE-stored or LE-stored). That's the
+            // form HsstPackedArrayBuilder.Add expects, so the merge needs no per-keysize
+            // branching.
             Span<byte> iKeyLogical = stackalloc byte[Math.Max(1, keySize)];
             Span<byte> mKeyLogical = stackalloc byte[Math.Max(1, keySize)];
             Span<byte> minKeyLogical = stackalloc byte[Math.Max(1, keySize)];
@@ -1065,14 +1063,10 @@ public static class PersistedSnapshotBuilder
                         minIdx = i;
                         continue;
                     }
-                    Bound bI = enums[i].CurrentKey;
-                    Bound bM = enums[minIdx].CurrentKey;
                     WholeReadSessionReader rI = sessions[i].GetReader();
                     WholeReadSessionReader rM = sessions[minIdx].GetReader();
-                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
-                    using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
-                    ReadOnlySpan<byte> kI = StoredToLogical(pinI.Buffer, iKeyLogical, isLeStored);
-                    ReadOnlySpan<byte> kM = StoredToLogical(pinM.Buffer, mKeyLogical, isLeStored);
+                    ReadOnlySpan<byte> kI = enums[i].CopyCurrentLogicalKey(in rI, iKeyLogical);
+                    ReadOnlySpan<byte> kM = enums[minIdx].CopyCurrentLogicalKey(in rM, mKeyLogical);
                     int cmp = kI.SequenceCompareTo(kM);
                     if (cmp < 0) minIdx = i;
                     else if (cmp == 0) minIdx = i; // newer (higher index) wins
@@ -1080,21 +1074,17 @@ public static class PersistedSnapshotBuilder
 
                 if (minIdx < 0) break;
 
-                Bound keyBound = enums[minIdx].CurrentKey;
                 Bound valBound = enums[minIdx].CurrentValue;
                 WholeReadSessionReader minIdxReader = sessions[minIdx].GetReader();
-                using NoOpPin keyPin = minIdxReader.PinBuffer(keyBound.Offset, keyBound.Length);
                 using NoOpPin valPin = minIdxReader.PinBuffer(valBound.Offset, valBound.Length);
-                ReadOnlySpan<byte> minKey = StoredToLogical(keyPin.Buffer, minKeyLogical, isLeStored);
+                ReadOnlySpan<byte> minKey = enums[minIdx].CopyCurrentLogicalKey(in minIdxReader, minKeyLogical);
                 builder.Add(minKey, valPin.Buffer);
 
                 for (int i = 0; i < n; i++)
                 {
                     if (i == minIdx || !hasMore[i]) continue;
-                    Bound bI = enums[i].CurrentKey;
                     WholeReadSessionReader rI = sessions[i].GetReader();
-                    using NoOpPin pinI = rI.PinBuffer(bI.Offset, bI.Length);
-                    ReadOnlySpan<byte> kI = StoredToLogical(pinI.Buffer, iKeyLogical, isLeStored);
+                    ReadOnlySpan<byte> kI = enums[i].CopyCurrentLogicalKey(in rI, iKeyLogical);
                     if (kI.SequenceCompareTo(minKey) == 0)
                     {
                         hasMore[i] = enums[i].MoveNext(in rI);
@@ -1918,18 +1908,10 @@ public static class PersistedSnapshotBuilder
             return;
         }
 
-        // Multi-source: streaming N-way merge into a PackedArray.
-        // Source inner HSSTs were built by HsstPackedArrayBuilder, which auto-enables the
-        // LE-stored layout for keySize ∈ {2,4,8} (byte-reversed bytes on disk so a native
-        // LE int load recovers the lex value). HsstEnumerator returns those raw stored
-        // bytes verbatim — so for innerKeySize ∈ {2,4,8} the stored bytes are LE-reversed
-        // and lex compare on them does NOT match logical/integer order (e.g. logical 256
-        // stored as 00 01 00…00 lex-compares smaller than 255 stored as FF 00…00). Convert
-        // stored→logical (reverse when LE) so both the cross-source min selection and the
-        // bytes handed to Add (which expects logical keys and re-reverses on write) are in
-        // the canonical lex/BE form.
-        bool isLeStored = innerKeySize is 2 or 4 or 8;
-
+        // Multi-source: streaming N-way merge into a PackedArray. Cross-source min
+        // selection and the bytes handed to Add both go through CopyCurrentLogicalKey,
+        // which returns lex/BE bytes regardless of the source PackedArray's storage
+        // layout (BE-stored or auto-LE-stored at innerKeySize ∈ {2,4,8}).
         using ArrayPoolList<HsstEnumerator> innerEnumsList = new(active, active);
         using ArrayPoolList<bool> innerHasMoreList = new(active, active);
         HsstEnumerator[] innerEnums = innerEnumsList.UnsafeGetInternalArray();
@@ -1958,35 +1940,27 @@ public static class PersistedSnapshotBuilder
                 {
                     if (!innerHasMore[j]) continue;
                     if (minIdx < 0) { minIdx = j; continue; }
-                    Bound bJ = innerEnums[j].CurrentKey;
-                    Bound bM = innerEnums[minIdx].CurrentKey;
                     WholeReadSessionReader rJ = sessions[matchingSources[srcs[j]]].GetReader();
                     WholeReadSessionReader rM = sessions[matchingSources[srcs[minIdx]]].GetReader();
-                    using NoOpPin pinJ = rJ.PinBuffer(bJ.Offset, bJ.Length);
-                    using NoOpPin pinM = rM.PinBuffer(bM.Offset, bM.Length);
-                    ReadOnlySpan<byte> kJ = StoredToLogical(pinJ.Buffer, jKeyLogical, isLeStored);
-                    ReadOnlySpan<byte> kM = StoredToLogical(pinM.Buffer, mKeyLogical, isLeStored);
+                    ReadOnlySpan<byte> kJ = innerEnums[j].CopyCurrentLogicalKey(in rJ, jKeyLogical);
+                    ReadOnlySpan<byte> kM = innerEnums[minIdx].CopyCurrentLogicalKey(in rM, mKeyLogical);
                     int cmp = kJ.SequenceCompareTo(kM);
                     if (cmp < 0) minIdx = j;
                     else if (cmp == 0) minIdx = j; // newer (higher j) wins
                 }
                 if (minIdx < 0) break;
 
-                Bound kb = innerEnums[minIdx].CurrentKey;
                 Bound vb = innerEnums[minIdx].CurrentValue;
                 WholeReadSessionReader rMin = sessions[matchingSources[srcs[minIdx]]].GetReader();
-                using NoOpPin keyPin = rMin.PinBuffer(kb.Offset, kb.Length);
                 using NoOpPin valPin = rMin.PinBuffer(vb.Offset, vb.Length);
-                ReadOnlySpan<byte> minKey = StoredToLogical(keyPin.Buffer, minKeyLogical, isLeStored);
+                ReadOnlySpan<byte> minKey = innerEnums[minIdx].CopyCurrentLogicalKey(in rMin, minKeyLogical);
                 innerBuilder.Add(minKey, valPin.Buffer);
 
                 for (int j = 0; j < active; j++)
                 {
                     if (j == minIdx || !innerHasMore[j]) continue;
-                    Bound jKey = innerEnums[j].CurrentKey;
                     WholeReadSessionReader rJ = sessions[matchingSources[srcs[j]]].GetReader();
-                    using NoOpPin pinJ = rJ.PinBuffer(jKey.Offset, jKey.Length);
-                    ReadOnlySpan<byte> kJ = StoredToLogical(pinJ.Buffer, jKeyLogical, isLeStored);
+                    ReadOnlySpan<byte> kJ = innerEnums[j].CopyCurrentLogicalKey(in rJ, jKeyLogical);
                     if (kJ.SequenceCompareTo(minKey) == 0)
                         innerHasMore[j] = innerEnums[j].MoveNext(in rJ);
                 }
@@ -2003,19 +1977,6 @@ public static class PersistedSnapshotBuilder
         {
             for (int j = 0; j < active; j++) innerEnums[j].Dispose();
         }
-    }
-
-    /// <summary>
-    /// Convert a key span as stored on disk by <see cref="HsstPackedArrayBuilder{TWriter}"/>
-    /// back to its logical/lex (BE) form. When <paramref name="isLeStored"/> is true the
-    /// stored bytes are byte-reversed into <paramref name="scratch"/> and that span is
-    /// returned; otherwise the input is returned unchanged.
-    /// </summary>
-    private static ReadOnlySpan<byte> StoredToLogical(ReadOnlySpan<byte> stored, Span<byte> scratch, bool isLeStored)
-    {
-        if (!isLeStored) return stored;
-        for (int i = 0; i < stored.Length; i++) scratch[i] = stored[stored.Length - 1 - i];
-        return scratch;
     }
 
     /// <summary>

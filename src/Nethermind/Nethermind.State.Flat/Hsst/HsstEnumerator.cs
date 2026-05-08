@@ -124,6 +124,33 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         return reader.PinBuffer(b.Offset, b.Length);
     }
 
+    /// <summary>
+    /// Copy the current key in its LOGICAL (lex/BE) form into <paramref name="dst"/> and
+    /// return that slice. For BTree, ByteTagMap, and BE-stored PackedArray the stored
+    /// bytes already match logical form, so this is a straight copy. For LE-stored
+    /// PackedArray (auto-enabled at <c>keySize ∈ {2,4,8}</c>) the on-disk bytes are
+    /// byte-reversed and this method un-reverses them — callers see the same lex/BE
+    /// bytes that were originally <c>Add</c>ed to the builder, regardless of layout.
+    /// <paramref name="dst"/> must be at least <see cref="CurrentKey"/>.Length long.
+    /// </summary>
+    public ReadOnlySpan<byte> CopyCurrentLogicalKey(scoped in TReader reader, Span<byte> dst)
+    {
+        Bound b = CurrentKey;
+        int len = (int)b.Length;
+        Span<byte> outSpan = dst[..len];
+        using TPin pin = reader.PinBuffer(b.Offset, b.Length);
+        ReadOnlySpan<byte> stored = pin.Buffer;
+        if (_kind == VariantKind.PackedArray && _packed!.IsLittleEndian)
+        {
+            for (int i = 0; i < len; i++) outSpan[i] = stored[len - 1 - i];
+        }
+        else
+        {
+            stored.CopyTo(outSpan);
+        }
+        return outSpan;
+    }
+
     /// <summary>Pin the current value bytes via <paramref name="reader"/>; empty pin when length is 0.</summary>
     public TPin GetCurrentValue(scoped in TReader reader)
     {
@@ -164,6 +191,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         private readonly int _valueSize;
         private readonly int _stride;
         private readonly long _count;
+        private readonly bool _isLittleEndian;
         private long _index = -1;
         private long _currentEntryStart;
 
@@ -183,9 +211,11 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             _valueSize = layout.ValueSize;
             _stride = layout.EntryStride;
             _count = layout.EntryCount;
+            _isLittleEndian = layout.IsLittleEndian;
         }
 
         public long Count => _count;
+        public bool IsLittleEndian => _isLittleEndian;
 
         public bool MoveNext()
         {
