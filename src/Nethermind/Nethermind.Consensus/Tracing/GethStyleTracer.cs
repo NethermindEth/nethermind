@@ -19,6 +19,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
@@ -122,6 +123,21 @@ public class GethStyleTracer(
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken);
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(block, options, cancellationToken);
+
+    public IReadOnlyCollection<Hash256> TraceBlockIntermediateRoots(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(blockHash);
+        ArgumentNullException.ThrowIfNull(options);
+
+        Block block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"Cannot find block {blockHash}");
+        BlockHeader? parent = FindParent(block);
+
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState);
+        scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+
+        return tracer.BuildResult();
+    }
 
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
     {
