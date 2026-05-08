@@ -48,12 +48,13 @@ public class HsstByteTagMapTests
         List<(byte, byte[])> entries = [];
         SpanByteReader reader = new(data);
         using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        Span<byte> keyBuf = stackalloc byte[1];
         while (e.MoveNext())
         {
-            Bound kb = e.Current.KeyBound;
+            ReadOnlySpan<byte> k = e.CopyCurrentLogicalKey(keyBuf);
             Bound vb = e.Current.ValueBound;
-            Assert.That(kb.Length, Is.EqualTo(1), "tag is one byte");
-            byte tag = data[(int)kb.Offset];
+            Assert.That(k.Length, Is.EqualTo(1), "tag is one byte");
+            byte tag = k[0];
             byte[] v = vb.Length == 0 ? [] : data.Slice((int)vb.Offset, (int)vb.Length).ToArray();
             entries.Add((tag, v));
         }

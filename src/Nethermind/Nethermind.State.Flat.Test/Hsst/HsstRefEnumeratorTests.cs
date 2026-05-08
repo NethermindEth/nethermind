@@ -30,8 +30,9 @@ public class HsstRefEnumeratorTests
         using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
 
         Assert.That(e.MoveNext(), Is.True);
-        Bound k = e.Current.KeyBound;
-        Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, (int)k.Length)), Is.EqualTo("key1"));
+        Span<byte> keyBuf = stackalloc byte[64];
+        ReadOnlySpan<byte> k = e.CopyCurrentLogicalKey(keyBuf);
+        Assert.That(Encoding.UTF8.GetString(k), Is.EqualTo("key1"));
         Bound v = e.Current.ValueBound;
         Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, (int)v.Length)), Is.EqualTo("value1"));
         Assert.That(e.MoveNext(), Is.False);
@@ -60,12 +61,13 @@ public class HsstRefEnumeratorTests
         SpanByteReader reader = new(data);
         using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
 
+        Span<byte> keyBuf = stackalloc byte[64];
         int idx = 0;
         while (e.MoveNext())
         {
             (string expectedKey, string expectedValue) = entries[idx];
-            Bound k = e.Current.KeyBound;
-            Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)k.Offset, (int)k.Length)), Is.EqualTo(expectedKey),
+            ReadOnlySpan<byte> k = e.CopyCurrentLogicalKey(keyBuf);
+            Assert.That(Encoding.UTF8.GetString(k), Is.EqualTo(expectedKey),
                 $"Key mismatch at idx {idx}");
             Bound v = e.Current.ValueBound;
             Assert.That(Encoding.UTF8.GetString(data.AsSpan((int)v.Offset, (int)v.Length)), Is.EqualTo(expectedValue),
@@ -108,11 +110,12 @@ public class HsstRefEnumeratorTests
         SpanByteReader reader = new(data);
         using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
 
+        Span<byte> keyBuf = stackalloc byte[256];
         int idx = 0;
         while (e.MoveNext())
         {
-            Bound k = e.Current.KeyBound;
-            Assert.That(data.AsSpan((int)k.Offset, (int)k.Length).SequenceEqual(deduped[idx].Key), Is.True,
+            ReadOnlySpan<byte> k = e.CopyCurrentLogicalKey(keyBuf);
+            Assert.That(k.SequenceEqual(deduped[idx].Key), Is.True,
                 $"Key mismatch at idx {idx}");
             Bound v = e.Current.ValueBound;
             Assert.That(data.AsSpan((int)v.Offset, (int)v.Length).SequenceEqual(deduped[idx].Value), Is.True,
@@ -145,18 +148,18 @@ public class HsstRefEnumeratorTests
 
         List<string> seenAddrs = [];
         Dictionary<string, List<string>> seenSubtags = [];
+        Span<byte> outerKeyBuf = stackalloc byte[64];
+        Span<byte> innerKeyBuf = stackalloc byte[64];
         while (outerEnum.MoveNext())
         {
-            Bound ak = outerEnum.Current.KeyBound;
-            string addr = Encoding.UTF8.GetString(outer.AsSpan((int)ak.Offset, (int)ak.Length));
+            string addr = Encoding.UTF8.GetString(outerEnum.CopyCurrentLogicalKey(outerKeyBuf));
             seenAddrs.Add(addr);
             List<string> subs = [];
 
             using HsstRefEnumerator<SpanByteReader, NoOpPin> innerEnum = new(in reader, outerEnum.Current.ValueBound);
             while (innerEnum.MoveNext())
             {
-                Bound sk = innerEnum.Current.KeyBound;
-                string sub = Encoding.UTF8.GetString(outer.AsSpan((int)sk.Offset, (int)sk.Length));
+                string sub = Encoding.UTF8.GetString(innerEnum.CopyCurrentLogicalKey(innerKeyBuf));
                 Bound v = innerEnum.Current.ValueBound;
                 string val = Encoding.UTF8.GetString(outer.AsSpan((int)v.Offset, (int)v.Length));
                 subs.Add($"{sub}={val}");

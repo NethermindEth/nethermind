@@ -33,11 +33,11 @@ public class HsstTests
         List<(byte[] Key, byte[] Value)> entries = [];
         SpanByteReader reader = new(data);
         using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        Span<byte> keyBuf = stackalloc byte[256];
         while (e.MoveNext())
         {
-            Bound kb = e.Current.KeyBound;
+            byte[] k = e.CopyCurrentLogicalKey(keyBuf).ToArray();
             Bound vb = e.Current.ValueBound;
-            byte[] k = data.Slice((int)kb.Offset, (int)kb.Length).ToArray();
             byte[] v = data.Slice((int)vb.Offset, (int)vb.Length).ToArray();
             entries.Add((k, v));
         }

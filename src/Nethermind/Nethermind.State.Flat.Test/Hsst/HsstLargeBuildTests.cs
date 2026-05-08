@@ -265,16 +265,16 @@ public class HsstLargeBuildTests
             using HsstRefEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
             Span<byte> expectedKey = stackalloc byte[8];
             Span<byte> expectedValue = stackalloc byte[PackedValueSize];
+            Span<byte> keyBuf = stackalloc byte[KeySize];
             long i = 0;
             while (e.MoveNext())
             {
-                Bound kb = e.Current.KeyBound;
+                ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(keyBuf);
                 Bound vb = e.Current.ValueBound;
-                using NoOpPin kp = reader.PinBuffer(kb.Offset, kb.Length);
                 using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
 
                 BinaryPrimitives.WriteInt64BigEndian(expectedKey, baseKey + i);
-                if (!kp.Buffer.SequenceEqual(expectedKey[(8 - KeySize)..]))
+                if (!kSpan.SequenceEqual(expectedKey[(8 - KeySize)..]))
                     Assert.Fail($"key mismatch at entry {i} (baseKey {baseKey})");
 
                 switch (indexType)
@@ -320,16 +320,16 @@ public class HsstLargeBuildTests
                 case IndexType.ByteTagMap:
                 {
                     using HsstRefEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
+                    Span<byte> tagBuf = stackalloc byte[1];
                     int i = 0;
                     while (e.MoveNext())
                     {
-                        Bound kb = e.Current.KeyBound;
+                        ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(tagBuf);
                         Bound vb = e.Current.ValueBound;
-                        using NoOpPin kp = reader.PinBuffer(kb.Offset, kb.Length);
                         using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
 
-                        Assert.That(kb.Length, Is.EqualTo(1), $"{indexType} key length at entry {i}");
-                        Assert.That(kp.Buffer[0], Is.EqualTo((byte)i), $"{indexType} tag at entry {i}");
+                        Assert.That(kSpan.Length, Is.EqualTo(1), $"{indexType} key length at entry {i}");
+                        Assert.That(kSpan[0], Is.EqualTo((byte)i), $"{indexType} tag at entry {i}");
                         Assert.That(vb.Length, Is.EqualTo(ByteKeyValueSize), $"{indexType} value length at entry {i}");
                         if (!LargeValueMatches((byte)i, vp.Buffer))
                             Assert.Fail($"{indexType} value byte mismatch at entry {i}");
@@ -407,26 +407,26 @@ public class HsstLargeBuildTests
                     case IndexType.BTree:
                     {
                         using HsstBTreeBuilder<ArenaBufferWriter, ArenaBufferReader, NoOpPin> outHsst = new(ref writer, expectedKeyCount: merged);
+                        Span<byte> keyBufA = stackalloc byte[KeySize];
+                        Span<byte> keyBufB = stackalloc byte[KeySize];
                         while (moreA || moreB)
                         {
                             int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);
                             if (cmp <= 0)
                             {
-                                Bound kb = eA.CurrentKey;
+                                ReadOnlySpan<byte> key = eA.CopyCurrentLogicalKey(in rA, keyBufA);
                                 Bound vb = eA.CurrentValue;
-                                using NoOpPin keyPin = rA.PinBuffer(kb.Offset, kb.Length);
                                 using NoOpPin valPin = rA.PinBuffer(vb.Offset, vb.Length);
-                                outHsst.Add(keyPin.Buffer, valPin.Buffer);
+                                outHsst.Add(key, valPin.Buffer);
                                 moreA = eA.MoveNext(in rA);
                                 if (cmp == 0) moreB = eB.MoveNext(in rB);
                             }
                             else
                             {
-                                Bound kb = eB.CurrentKey;
+                                ReadOnlySpan<byte> key = eB.CopyCurrentLogicalKey(in rB, keyBufB);
                                 Bound vb = eB.CurrentValue;
-                                using NoOpPin keyPin = rB.PinBuffer(kb.Offset, kb.Length);
                                 using NoOpPin valPin = rB.PinBuffer(vb.Offset, vb.Length);
-                                outHsst.Add(keyPin.Buffer, valPin.Buffer);
+                                outHsst.Add(key, valPin.Buffer);
                                 moreB = eB.MoveNext(in rB);
                             }
                         }
@@ -437,26 +437,26 @@ public class HsstLargeBuildTests
                     {
                         using HsstPackedArrayBuilder<ArenaBufferWriter> outHsst = new(
                             ref writer, keySize: KeySize, valueSize: PackedValueSize, expectedKeyCount: merged);
+                        Span<byte> keyBufA = stackalloc byte[KeySize];
+                        Span<byte> keyBufB = stackalloc byte[KeySize];
                         while (moreA || moreB)
                         {
                             int cmp = ComparePins(in rA, in rB, in eA, in eB, moreA, moreB);
                             if (cmp <= 0)
                             {
-                                Bound kb = eA.CurrentKey;
+                                ReadOnlySpan<byte> key = eA.CopyCurrentLogicalKey(in rA, keyBufA);
                                 Bound vb = eA.CurrentValue;
-                                using NoOpPin keyPin = rA.PinBuffer(kb.Offset, kb.Length);
                                 using NoOpPin valPin = rA.PinBuffer(vb.Offset, vb.Length);
-                                outHsst.Add(keyPin.Buffer, valPin.Buffer);
+                                outHsst.Add(key, valPin.Buffer);
                                 moreA = eA.MoveNext(in rA);
                                 if (cmp == 0) moreB = eB.MoveNext(in rB);
                             }
                             else
                             {
-                                Bound kb = eB.CurrentKey;
+                                ReadOnlySpan<byte> key = eB.CopyCurrentLogicalKey(in rB, keyBufB);
                                 Bound vb = eB.CurrentValue;
-                                using NoOpPin keyPin = rB.PinBuffer(kb.Offset, kb.Length);
                                 using NoOpPin valPin = rB.PinBuffer(vb.Offset, vb.Length);
-                                outHsst.Add(keyPin.Buffer, valPin.Buffer);
+                                outHsst.Add(key, valPin.Buffer);
                                 moreB = eB.MoveNext(in rB);
                             }
                         }
@@ -488,11 +488,11 @@ public class HsstLargeBuildTests
     {
         if (!moreA) return 1;
         if (!moreB) return -1;
-        Bound kA = eA.CurrentKey;
-        Bound kB = eB.CurrentKey;
-        using NoOpPin pA = rA.PinBuffer(kA.Offset, kA.Length);
-        using NoOpPin pB = rB.PinBuffer(kB.Offset, kB.Length);
-        return pA.Buffer.SequenceCompareTo(pB.Buffer);
+        Span<byte> bufA = stackalloc byte[KeySize];
+        Span<byte> bufB = stackalloc byte[KeySize];
+        ReadOnlySpan<byte> kA = eA.CopyCurrentLogicalKey(in rA, bufA);
+        ReadOnlySpan<byte> kB = eB.CopyCurrentLogicalKey(in rB, bufB);
+        return kA.SequenceCompareTo(kB);
     }
 
     // ---------------- value patterns ----------------

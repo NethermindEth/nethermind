@@ -63,11 +63,12 @@ public class HsstPackedArrayTests
         List<(byte[], byte[])> entries = [];
         SpanByteReader reader = new(data);
         using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));
+        Span<byte> keyBuf = stackalloc byte[64];
         while (e.MoveNext())
         {
-            Bound kb = e.Current.KeyBound;
+            ReadOnlySpan<byte> k = e.CopyCurrentLogicalKey(keyBuf);
             Bound vb = e.Current.ValueBound;
-            entries.Add((data.Slice((int)kb.Offset, (int)kb.Length).ToArray(), data.Slice((int)vb.Offset, (int)vb.Length).ToArray()));
+            entries.Add((k.ToArray(), data.Slice((int)vb.Offset, (int)vb.Length).ToArray()));
         }
         return entries;
     }

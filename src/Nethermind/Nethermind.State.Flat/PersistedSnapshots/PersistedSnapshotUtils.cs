@@ -311,6 +311,9 @@ internal static class PersistedSnapshotUtils
                 if (outerReader.TrySeek(PersistedSnapshot.AccountColumnTag, out _))
                 {
                     Span<byte> slotBytes = stackalloc byte[32];
+                    Span<byte> addrKeyBuf = stackalloc byte[32];
+                    Span<byte> prefixKeyBuf = stackalloc byte[31];
+                    Span<byte> suffixKeyBuf = stackalloc byte[1];
                     Bound accountColumnBound = outerReader.GetBound();
                     using HsstRefEnumerator<SpanByteReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
                     while (addrEnum.MoveNext())
@@ -318,7 +321,7 @@ internal static class PersistedSnapshotUtils
                         // Column 0x01 keys are the 20-byte address-hash prefix (keccak256(address)[..20]).
                         // The original Address is unrecoverable; validation goes through the snapshot's
                         // hash-keyed read API instead, with the zero-padded prefix as a ValueHash256.
-                        ReadOnlySpan<byte> addrKey = SliceFromBound(compactedData, addrEnum.Current.KeyBound);
+                        ReadOnlySpan<byte> addrKey = addrEnum.CopyCurrentLogicalKey(addrKeyBuf);
                         ValueHash256 address = default;
                         addrKey.CopyTo(address.BytesAsSpan);
                         ReadOnlySpan<byte> perAddrSpan = SliceFromBound(compactedData, addrEnum.Current.ValueBound);
@@ -394,13 +397,13 @@ internal static class PersistedSnapshotUtils
                             using HsstRefEnumerator<SpanByteReader, NoOpPin> prefixEnum = new(in reader, slotBound);
                             while (prefixEnum.MoveNext())
                             {
-                                ReadOnlySpan<byte> prefixKey = SliceFromBound(compactedData, prefixEnum.Current.KeyBound);
+                                ReadOnlySpan<byte> prefixKey = prefixEnum.CopyCurrentLogicalKey(prefixKeyBuf);
                                 Bound suffixBound = prefixEnum.Current.ValueBound;
 
                                 using HsstRefEnumerator<SpanByteReader, NoOpPin> suffixEnum = new(in reader, suffixBound);
                                 while (suffixEnum.MoveNext())
                                 {
-                                    ReadOnlySpan<byte> suffixKey = SliceFromBound(compactedData, suffixEnum.Current.KeyBound);
+                                    ReadOnlySpan<byte> suffixKey = suffixEnum.CopyCurrentLogicalKey(suffixKeyBuf);
                                     ReadOnlySpan<byte> slotValue = SliceFromBound(compactedData, suffixEnum.Current.ValueBound);
 
                                     prefixKey.CopyTo(slotBytes);
@@ -464,9 +467,10 @@ internal static class PersistedSnapshotUtils
                 if (r.TrySeek(PersistedSnapshot.StateTopNodesTag, out _))
                 {
                     using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    Span<byte> keyBuf = stackalloc byte[3];
                     while (e.MoveNext())
                     {
-                        ReadOnlySpan<byte> key = SliceFromBound(compactedData, e.Current.KeyBound);
+                        ReadOnlySpan<byte> key = e.CopyCurrentLogicalKey(keyBuf);
                         ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, e.Current.ValueBound);
                         ReadOnlySpan<byte> value = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
                         TreePath path = DecodeWith3Byte(key);
@@ -484,9 +488,10 @@ internal static class PersistedSnapshotUtils
                 if (r.TrySeek(PersistedSnapshot.StateNodeTag, out _))
                 {
                     using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    Span<byte> keyBuf = stackalloc byte[8];
                     while (e.MoveNext())
                     {
-                        ReadOnlySpan<byte> key = SliceFromBound(compactedData, e.Current.KeyBound);
+                        ReadOnlySpan<byte> key = e.CopyCurrentLogicalKey(keyBuf);
                         ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, e.Current.ValueBound);
                         ReadOnlySpan<byte> value = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
                         TreePath path = DecodeWith8Byte(key);
@@ -504,9 +509,10 @@ internal static class PersistedSnapshotUtils
                 if (r.TrySeek(PersistedSnapshot.StateNodeFallbackTag, out _))
                 {
                     using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, r.GetBound());
+                    Span<byte> keyBuf = stackalloc byte[33];
                     while (e.MoveNext())
                     {
-                        ReadOnlySpan<byte> key = SliceFromBound(compactedData, e.Current.KeyBound);
+                        ReadOnlySpan<byte> key = e.CopyCurrentLogicalKey(keyBuf);
                         ReadOnlySpan<byte> rawValue = SliceFromBound(compactedData, e.Current.ValueBound);
                         ReadOnlySpan<byte> value = ResolveNodeRefForValidation(rawValue, snapshotLookup, hasNodeRefs);
                         TreePath path = new(new Hash256(key[..32]), key[32]);
