@@ -31,7 +31,7 @@ public static class BSearchIndexReaderSimd
     /// 100k entries, minSep=4); the SIMD code is preserved for re-enable under future
     /// workloads / dispatch tuning. The benchmark uses [Params] to flip this for A/B.
     /// </summary>
-    public static bool Enabled = false;
+    public static bool Enabled = true;
 
     /// <summary>
     /// Cap: scan up to this many keys with the linear SIMD path. Beyond this, scalar
