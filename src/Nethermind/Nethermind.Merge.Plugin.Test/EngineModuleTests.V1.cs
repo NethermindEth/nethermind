@@ -1726,7 +1726,10 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(expected);
 
-        result.Data.Where(static s => !s.Contains(' ')).Should().BeEquivalentTo(expected);
+        // The advertised list mixes JSON-RPC method names and SSZ-REST paths per spec.
+        // Filter to JSON-RPC names by intersecting with reflection over IEngineRpcModule.
+        HashSet<string> jsonRpcMethodNames = [.. typeof(IEngineRpcModule).GetMethods().Select(static m => m.Name)];
+        result.Data.Where(jsonRpcMethodNames.Contains).Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -1740,8 +1743,8 @@ public partial class EngineModuleTests
         string[] result = [.. engineRpcCapabilitiesProvider.GetJsonRpcCapabilities()
             .Where(kv => kv.Value.Enabled)
             .Select(kv => kv.Key)];
-        string[] expectedMethods = new string[]
-        {
+        string[] expectedMethods =
+        [
             nameof(IEngineRpcModule.engine_getClientVersionV1),
 
             nameof(IEngineRpcModule.engine_getPayloadV1),
@@ -1765,7 +1768,7 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV5),
             nameof(IEngineRpcModule.engine_getBlobsV2),
             nameof(IEngineRpcModule.engine_getBlobsV3)
-        };
+        ];
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }
 
