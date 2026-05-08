@@ -269,17 +269,24 @@ public static class PersistedSnapshotReader
             if (!outer.TrySeek(PersistedSnapshot.AccountColumnTag, out _)) return;
             col = outer.GetBound();
         }
-        if (col.Length < 2) return;
-        WalkBTreeIndexNodes<TReader, TPin>(in reader, col, col.Offset + col.Length - 1);
+        if (col.Length < 3 + 12) return;
+
+        // BTree trailer is [RootSize u16 LE][IndexType u8]; root starts at scopeEnd - 3 - rootSize.
+        Span<byte> sizeBuf = stackalloc byte[2];
+        if (!reader.TryRead(col.Offset + col.Length - 3, sizeBuf)) return;
+        int rootSize = sizeBuf[0] | (sizeBuf[1] << 8);
+        long rootAbsStart = col.Offset + col.Length - 3 - rootSize;
+        long scopeEnd = col.Offset + col.Length - 3;
+        WalkBTreeIndexNodes<TReader, TPin>(in reader, col, rootAbsStart, scopeEnd);
     }
 
     private static void WalkBTreeIndexNodes<TReader, TPin>(
-        scoped in TReader reader, Bound scope, long absEnd)
+        scoped in TReader reader, Bound scope, long absStart, long scopeEnd)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, absEnd,
-                out HsstIndex node, out _, out TPin pin))
+        if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, absStart, scopeEnd,
+                out HsstIndex node, out TPin pin))
             return;
         using (pin)
         {
@@ -289,9 +296,9 @@ public static class PersistedSnapshotReader
             int n = node.EntryCount;
             for (int i = 0; i < n; i++)
             {
-                long childRelEnd = (long)node.GetUInt64Value(i) + 1;
+                long childRelStart = (long)node.GetUInt64Value(i);
                 WalkBTreeIndexNodes<TReader, TPin>(
-                    in reader, scope, scope.Offset + childRelEnd);
+                    in reader, scope, scope.Offset + childRelStart, scopeEnd);
             }
         }
     }

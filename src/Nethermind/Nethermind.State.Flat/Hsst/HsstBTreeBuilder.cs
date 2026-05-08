@@ -12,8 +12,10 @@ namespace Nethermind.State.Flat.Hsst;
 /// Entries MUST be added in sorted key order. No internal sorting is performed.
 ///
 /// Binary layout (BTree):
-///   [Data Region: entries...][Index Region: B-tree nodes...][IndexType: u8 = 0x01]
-///   Root index is readable from the end via MetadataLength byte (no trailer).
+///   [Data Region: entries...][Index Region: B-tree nodes...][RootSize: u16 LE][IndexType: u8 = 0x01]
+///   The root node's start is computed as (HSST end - 3 - RootSize); its header sits at that
+///   first byte. Per-node fields run header → keys → values (low → high) so a forward read of
+///   the metadata pulls the keys/values into cache via the hardware prefetcher.
 ///
 /// Entry format (normal, value first, lengths forward-readable from MetadataStart):
 ///   [Value][ValueLength: LEB128][KeyLength: u8][FullKey]
@@ -123,9 +125,9 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Build index, then append the trailing IndexType byte. The ref writer is already advanced.
-    /// The root index node is readable from the end via its MetadataLength byte; the IndexType
-    /// byte sits one byte further out, at the very end of the HSST.
+    /// Build index, then append the trailing [RootSize u16 LE][IndexType u8] (3 bytes).
+    /// Reader locates the root via (HSST end - 3 - RootSize). A node is capped at 64 KiB
+    /// so RootSize fits in u16.
     /// </summary>
     public void Build()
     {
@@ -136,13 +138,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
         long dataSectionSize = _writer.Written - _baseOffset;
         long absoluteIndexStart = dataSectionSize;
+        int rootSize;
         TReader reader = _writer.OpenReader(dataSectionSize);
         try
         {
             HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
                 ref _writer, reader, _entryPositions.AsSpan(), _options.MinSeparatorLength);
 
-            indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
+            rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
         }
         finally
         {
@@ -155,9 +158,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             _writer.DisposeActiveReader();
         }
 
-        // Trailing IndexType byte (last byte of the HSST).
-        Span<byte> tail = _writer.GetSpan(1);
-        tail[0] = (byte)IndexType.BTree;
-        _writer.Advance(1);
+        if ((uint)rootSize > ushort.MaxValue)
+            throw new InvalidOperationException($"Root node size {rootSize} exceeds u16 trailer field");
+
+        // Trailing [RootSize u16 LE][IndexType u8]; IndexType is the last byte of the HSST.
+        Span<byte> tail = _writer.GetSpan(3);
+        tail[0] = (byte)rootSize;
+        tail[1] = (byte)(rootSize >> 8);
+        tail[2] = (byte)IndexType.BTree;
+        _writer.Advance(3);
     }
 }

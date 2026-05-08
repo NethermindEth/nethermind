@@ -47,8 +47,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Build B-tree index via writer.
     /// The absolute data region start offset (= 1 + dataLen) is needed to compute child offsets.
+    /// Returns the byte length of the root node — the caller writes a u16 trailer with that
+    /// value so readers can locate the root from the HSST end.
     /// </summary>
-    public void Build(long absoluteIndexStart,
+    public int Build(long absoluteIndexStart,
         int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries,
         int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries,
         int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries,
@@ -58,9 +60,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         if (_entryPositions.Length == 0)
         {
-            // Empty index: write a single empty leaf node
-            WriteEmptyLeafIndexNode();
-            return;
+            // Empty index: write a single empty leaf node.
+            return WriteEmptyLeafIndexNode();
         }
 
         if (minLeafEntries > maxLeafEntries) minLeafEntries = maxLeafEntries;
@@ -97,6 +98,16 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // via WriteSeparatorBetween (≤ MaxKeyLen each, ≤ maxIntermediateEntries entries).
         byte[] internalSepScratchArr = ArrayPool<byte>.Shared.Rent(Math.Max(64, maxIntermediateEntries * MaxKeyLen));
 
+        // Reusable per-node value scratch. Each entry's value slot is at most 8 bytes
+        // (Uniform offset width) plus a 2-byte u16 length prefix in the writer's buffer.
+        // Sized for the larger of leaf/intermediate fan-out.
+        int valueScratchEntries = Math.Max(maxLeafEntries, maxIntermediateEntries);
+        byte[] valueScratchArr = ArrayPool<byte>.Shared.Rent(Math.Max(64, valueScratchEntries * (2 + 8)));
+
+        // lastNodeLen tracks the byte length of the most recently written node; the
+        // returned value is the root node's size (the last node emitted).
+        int lastNodeLen = 0;
+
         try
         {
             int currentLevelCount = 0;
@@ -126,11 +137,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 WriteLeafIndexNode(
                     entryIdx, count, layout.NaturalMax,
                     prevKey[..prevKeyLen],
-                    leafSepScratchArr);
+                    leafSepScratchArr, valueScratchArr);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
+                lastNodeLen = nodeLen;
 
-                // childOffset = absolute last byte position of this node
-                long childOffset = absoluteIndexStart + relativeStart + nodeLen - 1;
+                // childOffset = absolute first byte position of this node.
+                long childOffset = absoluteIndexStart + relativeStart;
 
                 currentLevel[currentLevelCount++] = new NodeInfo(
                     childOffset,
@@ -159,13 +171,14 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
                     long nodeStart = _writer.Written;
                     long relativeStart = nodeStart - startWritten;
-                    WriteInternalIndexNode(children, internalSepScratchArr);
+                    WriteInternalIndexNode(children, internalSepScratchArr, valueScratchArr);
                     int nodeLen = checked((int)(_writer.Written - nodeStart));
+                    lastNodeLen = nodeLen;
 
                     NodeInfo first = children[0];
                     NodeInfo last = children[childCount - 1];
 
-                    long childOffset = absoluteIndexStart + relativeStart + nodeLen - 1;
+                    long childOffset = absoluteIndexStart + relativeStart;
 
                     nextLevel[nextLevelCount++] = new NodeInfo(
                         childOffset,
@@ -185,7 +198,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             nextNative.Dispose();
             ArrayPool<byte>.Shared.Return(leafSepScratchArr);
             ArrayPool<byte>.Shared.Return(internalSepScratchArr);
+            ArrayPool<byte>.Shared.Return(valueScratchArr);
         }
+
+        return lastNodeLen;
     }
 
     /// <summary>
@@ -317,8 +333,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         return minLen;
     }
 
-    private void WriteEmptyLeafIndexNode()
+    private int WriteEmptyLeafIndexNode()
     {
+        long nodeStart = _writer.Written;
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = false,
@@ -329,12 +346,14 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             ValueSlotSize = 1,
         }, default, default);
         indexWriter.FinalizeNode();
+        return checked((int)(_writer.Written - nodeStart));
     }
 
     private void WriteLeafIndexNode(
         int globalStartIndex, int count, int naturalMax,
         scoped ReadOnlySpan<byte> globalPrevKey,
-        scoped Span<byte> leafSepScratch)
+        scoped Span<byte> leafSepScratch,
+        scoped Span<byte> valueScratch)
     {
         // Materialise separators for this leaf into the scratch buffer.
         // Each entry's separator is a prefix of its full key; computed against the
@@ -397,6 +416,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             keyBufSize += 2 + (sepLengths[i] - prefixLen);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
+        Span<byte> valueScratchSlice = valueScratch[..(count * (2 + valueSlotSize))];
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = false,
@@ -405,7 +425,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeySlotSize = keySlotSize,
             ValueType = 1,
             ValueSlotSize = valueSlotSize,
-        }, keyBuf, commonPrefix);
+        }, keyBuf, valueScratchSlice, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[8];
         for (int i = 0; i < count; i++)
@@ -467,7 +487,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     private void WriteInternalIndexNode(
         scoped ReadOnlySpan<NodeInfo> children,
-        scoped Span<byte> sepScratch)
+        scoped Span<byte> sepScratch,
+        scoped Span<byte> valueScratch)
     {
         int childCount = children.Length;
 
@@ -511,6 +532,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int keyBufSize = 2 * childCount + tempOffset - prefixLen * childCount;
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
+        Span<byte> valueScratchSlice = valueScratch[..(childCount * (2 + valueSlotSize))];
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
             IsIntermediate = true,
@@ -519,7 +541,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeySlotSize = keySlotSize,
             ValueType = 1,
             ValueSlotSize = valueSlotSize,
-        }, keyBuf, commonPrefix);
+        }, keyBuf, valueScratchSlice, commonPrefix);
 
         Span<byte> valueBuf = stackalloc byte[8];
         for (int i = 0; i < childCount; i++)
@@ -601,7 +623,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     internal readonly struct NodeInfo(long childOffset, int firstEntry, int lastEntry)
     {
-        /// <summary>Absolute last byte position of this node in _data (= absoluteIndexStart + position + size - 1).</summary>
+        /// <summary>Absolute first-byte position of this node in _data (= absoluteIndexStart + relativeStart).</summary>
         public readonly long ChildOffset = childOffset;
         /// <summary>Index (into <c>_entryPositions</c>) of the first leaf entry under this subtree.</summary>
         public readonly int FirstEntry = firstEntry;

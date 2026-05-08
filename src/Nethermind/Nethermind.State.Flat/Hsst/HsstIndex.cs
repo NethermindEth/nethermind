@@ -17,6 +17,7 @@ public readonly ref struct HsstIndex
     public int EntryCount => _inner.EntryCount;
     public bool IsIntermediate => _inner.IsIntermediate;
     public BSearchIndexReader.IndexMetadata Metadata => _inner.Metadata;
+    public int TotalSize => _inner.TotalSize;
 
     /// <summary>
     /// Bytes shared by every key in this node. <see cref="GetKey"/> returns the per-entry
@@ -25,8 +26,8 @@ public readonly ref struct HsstIndex
     /// </summary>
     public ReadOnlySpan<byte> CommonKeyPrefix => _inner.CommonKeyPrefix;
 
-    public static HsstIndex ReadFromEnd(ReadOnlySpan<byte> data, int indexEnd) =>
-        new(BSearchIndexReader.ReadFromEnd(data, indexEnd));
+    public static HsstIndex ReadFromStart(ReadOnlySpan<byte> data, int nodeStart) =>
+        new(BSearchIndexReader.ReadFromStart(data, nodeStart));
 
     public ReadOnlySpan<byte> GetKey(int index) => _inner.GetKey(index);
     public ReadOnlySpan<byte> GetValue(int index) => _inner.GetValue(index);

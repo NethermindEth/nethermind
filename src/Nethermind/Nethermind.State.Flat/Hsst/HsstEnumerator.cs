@@ -271,7 +271,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
     // -----------------------------------------------------------------------
     // BTree: indirect entries reachable only by recursing the index tree.
-    // Streams the walk: keeps an ancestor stack of (AbsEnd, LastIdx) frames
+    // Streams the walk: keeps an ancestor stack of (AbsStart, LastIdx) frames
     // and the current leaf's metaStart values buffered in a reusable array.
     // Pinning a node isn't free for non-mmap readers, so each leaf is loaded
     // exactly once — every entry's metaStart is copied into _leafMetaStarts
@@ -284,11 +284,11 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         private const int MaxDepth = 16;
 
-        private struct Ancestor { public long AbsEnd; public int LastIdx; }
+        private struct Ancestor { public long AbsStart; public int LastIdx; }
 
         private readonly long _scopeStart;
         private readonly long _scopeEnd;
-        private readonly long _rootAbsEnd;
+        private readonly long _rootAbsStart;
         private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
         // Current leaf state. _depth: -1 = not started, -2 = exhausted, ≥0 = leaf depth in tree.
@@ -309,8 +309,24 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         {
             _scopeStart = scope.Offset;
             _scopeEnd = scope.Offset + scope.Length;
-            // Plain BTree trailer is just the IndexType byte; the root ends one byte before it.
-            _rootAbsEnd = _scopeEnd - 1;
+            // BTree trailer is [RootSize u16 LE][IndexType u8]; root starts at scopeEnd - 3 - rootSize.
+            if (scope.Length >= 3 + 12)
+            {
+                Span<byte> sizeBuf = stackalloc byte[2];
+                if (reader.TryRead(_scopeEnd - 3, sizeBuf))
+                {
+                    int rootSize = sizeBuf[0] | (sizeBuf[1] << 8);
+                    _rootAbsStart = _scopeEnd - 3 - rootSize;
+                }
+                else
+                {
+                    _rootAbsStart = -1;
+                }
+            }
+            else
+            {
+                _rootAbsStart = -1;
+            }
         }
 
         // Streaming variant: total entry count is unknown without a full walk. Not used by
@@ -322,8 +338,13 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             if (_depth == -2) return false;
             if (_depth == -1)
             {
+                if (_rootAbsStart < 0)
+                {
+                    _depth = -2;
+                    return false;
+                }
                 // First call: descend leftmost from root.
-                if (!DescendToLeaf(in reader, _rootAbsEnd, depthHint: 0))
+                if (!DescendToLeaf(in reader, _rootAbsStart, depthHint: 0))
                 {
                     _depth = -2;
                     return false;
@@ -345,18 +366,18 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         public long CurrentMetadataStart => _currentMetaStart;
 
         /// <summary>
-        /// Descend leftmost from the node ending at <paramref name="absEnd"/> down to a leaf,
-        /// pushing (AbsEnd, LastIdx=0) ancestor frames as we cross intermediate levels. On
+        /// Descend leftmost from the node starting at <paramref name="absStart"/> down to a leaf,
+        /// pushing (AbsStart, LastIdx=0) ancestor frames as we cross intermediate levels. On
         /// success, _depth and the leaf metaStart buffer are populated with _leafIdx=0;
         /// returns false if a node fails to load or the tree exceeds MaxDepth.
         /// </summary>
-        private bool DescendToLeaf(scoped in TReader reader, long absEnd, int depthHint)
+        private bool DescendToLeaf(scoped in TReader reader, long absStart, int depthHint)
         {
-            long currentEnd = absEnd;
+            long currentStart = absStart;
             int depth = depthHint;
             while (depth < MaxDepth)
             {
-                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentEnd, out HsstIndex node, out _, out TPin pin))
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, _scopeEnd - 3, out HsstIndex node, out TPin pin))
                     return false;
 
                 using (pin)
@@ -376,10 +397,10 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
                     // Intermediate: push frame for this level, follow leftmost child.
                     ref Ancestor frame = ref _ancestors[depth];
-                    frame.AbsEnd = currentEnd;
+                    frame.AbsStart = currentStart;
                     frame.LastIdx = 0;
-                    long childRelEnd = (long)node.GetUInt64Value(0) + 1;
-                    currentEnd = _scopeStart + childRelEnd;
+                    long childRelStart = (long)node.GetUInt64Value(0);
+                    currentStart = _scopeStart + childRelStart;
                 }
                 depth++;
             }
@@ -420,19 +441,19 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 ref Ancestor anc = ref _ancestors[_depth];
                 anc.LastIdx++;
 
-                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsEnd, out HsstIndex parent, out _, out TPin parentPin))
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, _scopeEnd - 3, out HsstIndex parent, out TPin parentPin))
                 {
                     _depth = -2;
                     return false;
                 }
-                long childAbsEnd;
+                long childAbsStart;
                 using (parentPin)
                 {
                     if (anc.LastIdx >= parent.EntryCount) continue;
-                    long childRelEnd = (long)parent.GetUInt64Value(anc.LastIdx) + 1;
-                    childAbsEnd = _scopeStart + childRelEnd;
+                    long childRelStart = (long)parent.GetUInt64Value(anc.LastIdx);
+                    childAbsStart = _scopeStart + childRelStart;
                 }
-                if (!DescendToLeaf(in reader, childAbsEnd, depthHint: _depth + 1))
+                if (!DescendToLeaf(in reader, childAbsStart, depthHint: _depth + 1))
                 {
                     _depth = -2;
                     return false;

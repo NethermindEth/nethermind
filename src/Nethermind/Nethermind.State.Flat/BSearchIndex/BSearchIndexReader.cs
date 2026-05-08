@@ -8,19 +8,20 @@ using Nethermind.Core.Utils;
 namespace Nethermind.State.Flat.BSearchIndex;
 
 /// <summary>
-/// Reads a B-tree index block. An index block stores sorted key-value pairs with separate
-/// sections for values and keys, and a fixed-width metadata footer read backwards from the
-/// trailing flags byte.
+/// Reads a B-tree index block. An index block stores sorted key-value pairs with a
+/// fixed-width metadata header at the front, followed by the keys and values sections.
 ///
 /// Layout (low → high address):
-///   [Values section][Keys section][BaseOffset: 6-byte LE][CommonPrefix bytes][CommonPrefixLen: u8]?
-///   [ValueSize: u8][KeySize: u16 LE][KeyCount: u16 LE][Flags: u8]
+///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][ValueSize: u8][BaseOffset: 6-byte LE]
+///   [CommonPrefixLen: u8][CommonPrefix bytes]?     (only if Flags bit6 set)
+///   [Keys section][Values section]
 ///
-/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=reserved, bit6=HasCommonKeyPrefix
-/// (BaseOffset is mandatory — bit5 used to gate it; readers MUST ignore the bit.)
+/// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=reserved, bit6=HasCommonKeyPrefix.
 ///
-/// All footer fields are fixed-width — no varint decoding on parse. With the
-/// 64 KiB node-size cap, every count/size field fits in u16.
+/// All header fields are fixed-width — no varint decoding on parse. With the 64 KiB
+/// node-size cap, every count/size field fits in u16. Header at the front lets the hardware
+/// prefetcher pull the keys/values forward into cache while the search code is still parsing
+/// the header.
 ///
 /// KeyType/ValueType:
 ///   0 = Variable: raw entry bytes concatenated, then a sentinel u16 offset
@@ -38,18 +39,22 @@ public readonly ref struct BSearchIndexReader
     private readonly ReadOnlySpan<byte> _values;
     private readonly ReadOnlySpan<byte> _keys;
     private readonly ReadOnlySpan<byte> _commonKeyPrefix;
+    private readonly int _totalSize;
 
-    private BSearchIndexReader(IndexMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> commonKeyPrefix)
+    private BSearchIndexReader(IndexMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> commonKeyPrefix, int totalSize)
     {
         _metadata = metadata;
         _values = values;
         _keys = keys;
         _commonKeyPrefix = commonKeyPrefix;
+        _totalSize = totalSize;
     }
 
     public int EntryCount => _metadata.KeyCount;
     public bool IsIntermediate => _metadata.IsIntermediate;
     public IndexMetadata Metadata => _metadata;
+    /// <summary>Total bytes occupied by this index node, including header.</summary>
+    public int TotalSize => _totalSize;
 
     /// <summary>
     /// Bytes shared by every stored key. Empty when the node was written without the
@@ -59,40 +64,37 @@ public readonly ref struct BSearchIndexReader
     public ReadOnlySpan<byte> CommonKeyPrefix => _commonKeyPrefix;
 
     /// <summary>
-    /// Read an index block backward from indexEnd (exclusive end position in data).
+    /// Read an index block forward from <paramref name="nodeStart"/> (inclusive start position).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static BSearchIndexReader ReadFromEnd(ReadOnlySpan<byte> data, int indexEnd)
+    public static BSearchIndexReader ReadFromStart(ReadOnlySpan<byte> data, int nodeStart)
     {
-        // 6-byte tail + mandatory 6-byte BaseOffset = 12 minimum.
-        if (indexEnd < 12)
+        // 12-byte fixed header minimum.
+        if (data.Length - nodeStart < 12)
             return default;
 
-        // Fixed footer: [valueSize u8][keySize u16][keyCount u16][flags u8].
-        int valueSize = data[indexEnd - 6];
-        int keySize = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 5)..]);
-        int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(data[(indexEnd - 3)..]);
-        byte flags = data[indexEnd - 1];
-
-        int pos = indexEnd - 6;
-
-        ReadOnlySpan<byte> commonKeyPrefix = default;
-        if ((flags & 0x40) != 0)
-        {
-            int prefixLen = data[pos - 1];
-            pos -= 1 + prefixLen;
-            commonKeyPrefix = data.Slice(pos, prefixLen);
-        }
-
-        // Mandatory 6-byte LE BaseOffset.
-        pos -= 6;
-        ReadOnlySpan<byte> bo = data.Slice(pos, 6);
+        int pos = nodeStart;
+        byte flags = data[pos];
+        int keyCount = BinaryPrimitives.ReadUInt16LittleEndian(data[(pos + 1)..]);
+        int keySize = BinaryPrimitives.ReadUInt16LittleEndian(data[(pos + 3)..]);
+        int valueSize = data[pos + 5];
+        ReadOnlySpan<byte> bo = data.Slice(pos + 6, 6);
         ulong baseOffset = (ulong)bo[0]
                          | ((ulong)bo[1] << 8)
                          | ((ulong)bo[2] << 16)
                          | ((ulong)bo[3] << 24)
                          | ((ulong)bo[4] << 32)
                          | ((ulong)bo[5] << 40);
+        pos += 12;
+
+        ReadOnlySpan<byte> commonKeyPrefix = default;
+        if ((flags & 0x40) != 0)
+        {
+            int prefixLen = data[pos];
+            pos += 1;
+            commonKeyPrefix = data.Slice(pos, prefixLen);
+            pos += prefixLen;
+        }
 
         IndexMetadata metadata = new()
         {
@@ -103,17 +105,18 @@ public readonly ref struct BSearchIndexReader
             BaseOffset = baseOffset
         };
 
-        // Section boundaries.
-        int keysEnd = pos;
-        int keysStart = keysEnd - metadata.KeySectionSize;
-        int valuesEnd = keysStart;
-        int valuesStart = valuesEnd - metadata.ValueSectionSize;
+        int keysStart = pos;
+        int keySectionSize = metadata.KeySectionSize;
+        int valuesStart = keysStart + keySectionSize;
+        int valueSectionSize = metadata.ValueSectionSize;
+        int totalSize = (valuesStart + valueSectionSize) - nodeStart;
 
         return new BSearchIndexReader(
             metadata,
-            data.Slice(valuesStart, metadata.ValueSectionSize),
-            data.Slice(keysStart, metadata.KeySectionSize),
-            commonKeyPrefix);
+            data.Slice(valuesStart, valueSectionSize),
+            data.Slice(keysStart, keySectionSize),
+            commonKeyPrefix,
+            totalSize);
     }
 
     /// <summary>
