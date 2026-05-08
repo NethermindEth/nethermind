@@ -22,17 +22,18 @@ public sealed record HsstBTreeOptions
     /// <summary>Hard upper bound on children per intermediate node — sanity cap
     /// only; the byte threshold (<see cref="MaxIntermediateBytes"/>) is the
     /// normal binding constraint.</summary>
-    public const int DefaultMaxIntermediateEntries = 1024;
+    public const int DefaultMaxIntermediateEntries = 4096;
 
     /// <summary>Byte budget per intermediate node — accumulation stops when the
     /// next child would push the estimated node size over this threshold. Higher
     /// values flatten the tree (fewer levels = fewer cache misses per lookup) at
     /// the cost of a larger per-node binary search.</summary>
-    public const int DefaultMaxIntermediateBytes = 2048;
+    public const int DefaultMaxIntermediateBytes = 4096;
 
     /// <summary>Default minimum children per intermediate node — once reached,
-    /// the builder may stop early if adding the next child would push the node
-    /// across a 4 KiB page boundary.</summary>
+    /// the builder may split early if the next child would worsen the per-node
+    /// encoding (max separator length grows, value slot widens) or push the
+    /// node across a 4 KiB page boundary.</summary>
     public const int DefaultMinIntermediateChildren = 2;
 
     /// <summary>Minimum length of separators stored in leaf nodes.</summary>
@@ -59,8 +60,9 @@ public sealed record HsstBTreeOptions
     public int MaxIntermediateBytes { get; init; } = DefaultMaxIntermediateBytes;
 
     /// <summary>Minimum children per intermediate node — accumulation always
-    /// reaches this before the 4 KiB page-crossing heuristic is allowed to fire.
-    /// Set to 1 (or higher than typical fan-out) to disable the dynamic split.</summary>
+    /// reaches this before the dynamic-split heuristics (max-sep growth, value-slot
+    /// widening, 4 KiB page-crossing) are allowed to fire. Set equal to
+    /// <see cref="MaxIntermediateEntries"/> to disable the dynamic split.</summary>
     public int MinIntermediateChildren { get; init; } = DefaultMinIntermediateChildren;
 
     /// <summary>Shared default instance — used when callers pass <c>null</c>.</summary>

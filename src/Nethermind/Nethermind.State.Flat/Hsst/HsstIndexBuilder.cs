@@ -475,6 +475,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         long minOff = level[childIdx].ChildOffset;
         long maxOff = minOff;
         int committedValueSlot = MinBytesFor(0);
+        // Max separator length seen so far. The leftmost child's separator is
+        // always empty (length 0) by intermediate-node convention, so this tracks
+        // the widest of the explicit separators (children index ≥ 1). Growth
+        // forces BSearchIndexLayoutPlanner to widen its UniformWithLen slot or
+        // fall back to Variable layout, hurting per-node binary search.
+        int maxSepLen = 0;
 
         Span<byte> leftKey = stackalloc byte[MaxKeyLen];
         Span<byte> rightKey = stackalloc byte[MaxKeyLen];
@@ -491,21 +497,31 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
             long newMinOff = curr.ChildOffset < minOff ? curr.ChildOffset : minOff;
             int valueSlotSize = MinBytesFor(newMaxOff - newMinOff);
+            int newMaxSepLen = sepLen > maxSepLen ? sepLen : maxSepLen;
 
             int newCount = childCount + 1;
             int newSumSep = sumSepBytes + sepLen;
             int estimated = newCount * valueSlotSize + newSumSep;
             if (estimated > byteThreshold) break;
 
-            // 4 KiB page-crossing check: once minChildren reached, refuse to add a
-            // child if doing so would cross a page boundary the committed node
-            // doesn't already cross. NodeSize estimates here include header bytes
-            // and a per-entry 2-byte u16 length prefix (intermediate keys are
-            // variable-encoded), matching WriteInternalIndexNode's keyBufSize.
+            // Dynamic split heuristics, mirrors ChooseLeafLayout. Once
+            // minChildren reached, break early when adding the next child would
+            // worsen the per-node encoding even if it still fits the byte
+            // budget:
+            //   - newMaxSepLen > maxSepLen: widens the planner's Uniform key slot
+            //     (or forces Variable layout), enlarging every per-entry slot.
+            //   - valueSlotSize > committedValueSlot: child-offset range widened,
+            //     bumping every Uniform value slot to a wider encoding.
+            //   - WouldCrossNewPage: candidate node would straddle a 4 KiB page
+            //     boundary the committed node does not.
+            // (Common-prefix shrink is N/A for intermediate nodes: the leftmost
+            // separator is empty, so the planner's LCP is always 0.)
             int candidateSize = IntermediateNodeSizeUpperBound(newCount, newSumSep, valueSlotSize);
             int committedSize = IntermediateNodeSizeUpperBound(childCount, sumSepBytes, committedValueSlot);
             if (childCount >= minChildren &&
-                WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize))
+                (newMaxSepLen > maxSepLen ||
+                 valueSlotSize > committedValueSlot ||
+                 WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
 
             childCount = newCount;
@@ -513,6 +529,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             maxOff = newMaxOff;
             minOff = newMinOff;
             committedValueSlot = valueSlotSize;
+            maxSepLen = newMaxSepLen;
         }
         return childCount;
     }
