@@ -33,8 +33,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// Size cap: a Full persisted snapshot cannot exceed 2 GiB.
 /// <see cref="NodeRef.RlpDataOffset"/> is a 32-bit int that addresses bytes inside
 /// the referenced Full snapshot, so any byte past 2 GiB is unreachable from a Linked
-/// snapshot's NodeRef. <see cref="ConvertFullToLinked"/> enforces this with a
-/// <c>checked((int)colOff)</c> cast on each column offset.
+/// snapshot's NodeRef. <see cref="ConvertFullToLinked"/> enforces this with an
+/// upfront snapshot-size precondition that throws with snapshot identity if violated.
 /// In practice a Full snapshot covers at most <c>compactSize</c> blocks (the granularity
 /// at which PersistenceManager produces base snapshots) — on mainnet that is around
 /// 40 MiB, so the 2 GiB ceiling is far above the working range.
@@ -703,6 +703,16 @@ public static class PersistedSnapshotBuilder
     {
         using WholeReadSession session = fullSnapshot.BeginWholeReadSession();
         WholeReadSessionReader r = session.GetReader();
+
+        // NodeRef.RlpDataOffset is a 32-bit absolute snapshot offset, so a Full
+        // snapshot referenced by NodeRefs cannot exceed int.MaxValue bytes. The
+        // per-column int casts below silently rely on this; hoist the check up
+        // front so a violation surfaces with snapshot identity instead of a
+        // context-free OverflowException deep inside per-column conversion.
+        if ((ulong)r.Length > int.MaxValue)
+            throw new InvalidOperationException(
+                $"ConvertFullToLinked: source Full snapshot id={fullSnapshot.Id} size={r.Length} exceeds the 2 GiB NodeRef addressing limit.");
+
         using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
         int snapshotId = fullSnapshot.Id;
@@ -711,9 +721,8 @@ public static class PersistedSnapshotBuilder
         {
             if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, r.Length), tag, out long colOff, out long colLen))
                 continue;
-            // NodeRef encodes the offset as int; columnOffset must fit even though the
-            // snapshot itself can exceed 2 GiB. Checked cast surfaces invariant violations.
-            int columnOffset = checked((int)colOff);
+            // Safe: snapshot-size precondition above bounds colOff < int.MaxValue.
+            int columnOffset = (int)colOff;
             using NoOpPin colPin = r.PinBuffer(colOff, colLen);
             ReadOnlySpan<byte> column = colPin.Buffer;
 

@@ -29,7 +29,8 @@ public readonly struct NodeRef(int snapshotId, int rlpDataOffset)
     /// <see cref="PersistedSnapshots.PersistedSnapshotBuilder"/> class doc and
     /// <see cref="PersistedSnapshots.PersistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot"/>).
     /// Any byte past 2 GiB would be unreachable from this offset, which is why
-    /// <c>ConvertFullToLinked</c> uses <c>checked((int)colOff)</c> to surface a violation.
+    /// <c>ConvertFullToLinked</c> asserts the source-snapshot size up front and
+    /// throws with snapshot identity if violated.
     /// </summary>
     public int RlpDataOffset { get; } = rlpDataOffset;
 
