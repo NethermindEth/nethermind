@@ -1,13 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization;
 
@@ -24,8 +21,8 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
-    // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
-    [ConfigItem(Description = "In Fast sync mode, the min height threshold limit up to which the Full sync, if already on, stays on when the chain is behind the network head. If the limit is exceeded, it switches back to Fast sync. For regular usage scenarios, setting this value lower than 32 is not recommended as this can cause issues with chain reorgs. Note that the last 2 blocks are always processed in Full sync, so setting it lower than 2 has no effect.", DefaultValue = "8192")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated. Long range catch-up sync has been removed.", DefaultValue = "8192", HiddenFromDocs = true)]
     long? FastSyncCatchUpHeightDelta { get; set; }
 
     [Obsolete]
@@ -44,17 +41,17 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to download receipts in the Fast sync mode. This slows down the process by a few hours but allows to interact with dApps that perform extensive historical logs searches.", DefaultValue = "true")]
     bool DownloadReceiptsInFastSync { get; set; }
 
+    [ConfigItem(Description = "Whether to download block access lists in the Fast sync mode.", DefaultValue = "true")]
+    bool DownloadBlockAccessListsInFastSync { get; set; }
+
     [ConfigItem(Description = "The total difficulty of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string PivotTotalDifficulty { get; }
 
     [ConfigItem(Description = "The number of the pivot block for the Fast sync mode.", DefaultValue = "0")]
-    string PivotNumber { get; set; }
+    long PivotNumber { get; set; }
 
     [ConfigItem(Description = "The hash of the pivot block for the Fast sync mode.", DefaultValue = "null")]
     string? PivotHash { get; set; }
-
-    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
-    private long PivotNumberParsed => LongConverter.FromString(PivotNumber);
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
     UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
@@ -74,7 +71,7 @@ public interface ISyncConfig : IConfig
     public long AncientBodiesBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
+    public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier));
 
     [ConfigItem(Description = $$"""
         The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as follows:
@@ -88,12 +85,27 @@ public interface ISyncConfig : IConfig
     public long AncientReceiptsBarrier { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
-    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+    public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
+
+    [ConfigItem(Description = $$"""
+        The earliest block access list downloaded with fast sync when `{{nameof(DownloadBlockAccessListsInFastSync)}}` is set to `true`.
+        The actual value is determined as follows:
+
+        ```
+        max{ 1, min{ PivotNumber, AncientBlockAccessListsBarrier } }
+        ```
+
+        """,
+        DefaultValue = "0")]
+    public long AncientBlockAccessListsBarrier { get; set; }
+
+    [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
+    public long AncientBlockAccessListsBarrierCalc => Math.Max(1, Math.Min(PivotNumber, AncientBlockAccessListsBarrier));
 
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
 
-    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between between 1 and 256.", DefaultValue = "8")]
+    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
     [ConfigItem(Description = "Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. If `true`, the pivot number must be same one used originally as it's used as a cut-off point.", DefaultValue = "false")]
@@ -138,8 +150,17 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
 
+    [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
+    int SnapServingMaxDepth { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Max trie paths per group accepted in snap GetTrieNodes messages. Raise if peers send slightly larger groups (e.g. Geth trienodeHealThrottle sends 1025).", DefaultValue = "1024", HiddenFromDocs = true)]
+    int SnapServingMaxPathsPerGroup { get; set; }
+
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Concurrent request slots per peer per allocation context (range 1-255). Higher values amortise round-trip latency at the cost of peer load.", DefaultValue = "2", HiddenFromDocs = true)]
+    int AllocationSlots { get; set; }
 
     [ConfigItem(Description = "_Technical._ SyncDispatcher delay on empty request. Used for testing.", DefaultValue = "10", HiddenFromDocs = true)]
     int SyncDispatcherEmptyRequestDelayMs { get; set; }
@@ -170,6 +191,9 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
+
+    [ConfigItem(Description = "_Technical._ Enable double write check during snap sync for debugging.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool EnableSnapDoubleWriteCheck { get; set; }
 
     [ConfigItem(Description = "_Technical._ Estimated size of memory for storing blocks during download.", DefaultValue = "200000000", HiddenFromDocs = true)]
     long ForwardSyncDownloadBufferMemoryBudget { get; set; }

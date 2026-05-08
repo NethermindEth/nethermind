@@ -14,7 +14,7 @@ namespace Nethermind.HealthChecks.Test;
 
 public class FreeDiskSpaceCheckerTests
 {
-    private static readonly long _freeSpaceBytes = (long)(1.GiB() * 1.2);
+    private static readonly long _freeSpaceBytes = (long)(1.GiB * 1.2);
 
     [Test]
     [TestCase(1.5f, true)] //throw exception - min required 2.5% / available 1.5%

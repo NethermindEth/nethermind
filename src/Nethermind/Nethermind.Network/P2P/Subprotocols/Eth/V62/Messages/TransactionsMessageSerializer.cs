@@ -1,15 +1,17 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
         private readonly TxDecoder _decoder = TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
@@ -25,12 +27,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            IOwnedReadOnlyList<Transaction> txs = DeserializeTxs(rlpStream);
-            return new TransactionsMessage(txs);
-        }
+        public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static TransactionsMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+            new(DeserializeTxs(ref ctx));
 
         public int GetLength(TransactionsMessage message, out int contentLength)
         {
@@ -43,9 +44,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(RlpStream rlpStream)
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref Rlp.ValueDecoderContext ctx)
         {
-            return Rlp.DecodeArrayPool<Transaction>(rlpStream, RlpBehaviors.InMempoolForm);
+            int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
+            int length = ctx.PeekNumberOfItemsRemaining(checkPosition);
+            ctx.GuardLimit(length, RlpLimit);
+
+            ArrayPoolList<Transaction> result = new(length);
+            try
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    result.Add(TxDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
+                }
+                ctx.Check(checkPosition);
+                return result;
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
         }
     }
 }

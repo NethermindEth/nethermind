@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Crypto;
@@ -39,10 +38,18 @@ public interface IBlobProofsBuilder
 
 public interface IBlobProofsVerifier
 {
-
     bool ValidateLengths(ShardBlobNetworkWrapper blobs);
-    public bool ValidateHashes(ShardBlobNetworkWrapper blobs, byte[][] blobVersionedHashes)
+
+    /// <remarks>
+    /// Expected to be called only if <see cref="ValidateLengths(ShardBlobNetworkWrapper)"/> returns <c>true</c>.
+    /// </remarks>
+    public bool ValidateHashes(ShardBlobNetworkWrapper blobs, ReadOnlySpan<byte[]> blobVersionedHashes)
     {
+        if (blobs.Blobs.Length != blobVersionedHashes.Length)
+        {
+            return false;
+        }
+
         Span<byte> hash = stackalloc byte[Eip4844Constants.BytesPerBlobVersionedHash];
 
         for (int i = 0; i < blobVersionedHashes.Length; i++)

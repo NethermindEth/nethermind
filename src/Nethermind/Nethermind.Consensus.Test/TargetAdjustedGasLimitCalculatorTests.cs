@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Test
         }
 
         [Test]
-        public void Doesnt_go_below_minimum()
+        public void DoesNot_go_below_minimum()
         {
             int londonBlock = 5;
             long gasLimit = 5000;

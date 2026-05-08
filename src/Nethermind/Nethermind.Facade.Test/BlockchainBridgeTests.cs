@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -22,10 +23,12 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
-using NSubstitute.Core;
+using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
 
@@ -36,6 +39,8 @@ public class BlockchainBridgeTests
     private IReceiptStorage _receiptStorage;
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
+    private ISpecProvider _specProvider;
+    private IStateReader _stateReader;
     private IContainer _container;
 
     [SetUp]
@@ -45,6 +50,9 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _stateReader = Substitute.For<IStateReader>();
+
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -54,29 +62,54 @@ public class BlockchainBridgeTests
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
             .AddScoped(_transactionProcessor)
+            .AddSingleton(_stateReader)
             .Build();
 
+        _specProvider = _container.Resolve<ISpecProvider>();
         _blockchainBridge = _container.Resolve<IBlockchainBridge>();
         return Task.CompletedTask;
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _container.Dispose();
-    }
+    public void TearDown() => _container.Dispose();
 
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
+        result.Should().BeNull();
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null, null));
+        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
+        result.Should().BeNull();
+    }
+
+    // regression test - was throwing NRE before
+    // when receipt at txIndex had different TxHash
+    [Test]
+    public void get_transaction_returns_false_when_receipt_hash_mismatch()
+    {
+        Hash256 txHash = TestItem.KeccakA;
+        Transaction tx = Build.A.Transaction.WithHash(txHash).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithTransactionHash(TestItem.KeccakC).TestObject;
+
+        _receiptStorage.FindBlockHash(txHash).Returns(TestItem.KeccakB);
+        _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
+        _receiptStorage.Get(block).Returns([receipt]);
+
+        // checkTxnPool: false avoids falling through to the mempool path
+        bool found = _blockchainBridge.TryGetTransaction(txHash, out TransactionLookupResult? result, checkTxnPool: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     [Test]
@@ -102,9 +135,16 @@ public class BlockchainBridgeTests
             _receiptStorage.FindBlockHash(receipt.TxHash!).Returns(TestItem.KeccakB);
         }
         _receiptStorage.Get(block).Returns(receipts);
-        var expectation = (receipts[index], Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject, UInt256.Zero);
-        var result = _blockchainBridge.GetTransaction(transactions[index].Hash!);
-        result.Should().BeEquivalentTo(expectation);
+        _blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result).Should().BeTrue();
+        result!.Value.Transaction.Should().BeEquivalentTo(Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject);
+        result.Value.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
+            chainId: _specProvider.ChainId,
+            blockHash: block.Hash,
+            blockNumber: block.Number,
+            txIndex: receipts[index].Index,
+            blockTimestamp: block.Timestamp,
+            baseFee: UInt256.Zero,
+            receipt: receipts[index]));
     }
 
     [Test]
@@ -265,6 +305,36 @@ public class BlockchainBridgeTests
             Arg.Any<ITxTracer>());
     }
 
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    [
+        (bridge, header, tx) => bridge.Call(header, tx),
+        (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, false),
+    ];
+
+    [Test, Combinatorial]
+    public void BlobBaseFee_is_set_for_non_blob_transaction([ValueSource(nameof(BridgeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values(0ul, 100ul)] ulong excessBlobGas)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        IReleaseSpec spec = _specProvider.GetSpec(header);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedBlobBaseFee);
+        ValueHash256 expectedBlobBaseFeeHash = expectedBlobBaseFee.ToValueHash();
+
+        bridgeCall(_blockchainBridge, header, tx);
+
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
+    }
+
     [Test]
     public void Call_tx_returns_InsufficientSenderBalanceError()
     {
@@ -276,7 +346,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
@@ -290,7 +360,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
@@ -350,31 +420,59 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void Call_tx_returns_WrongTransactionNonceError()
+    public void Call_tx_returns_TransactionNonceIsToHighError()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.WrongTransactionNonce);
+            .Returns(TransactionResult.TransactionNonceTooHigh);
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("wrong transaction nonce"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too high"));
     }
 
     [Test]
-    public void EstimateGas_tx_returns_WrongTransactionNonceError()
+    public void Call_tx_returns_TransactionNonceIsToLowError()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
         Transaction tx = new() { GasLimit = 456 };
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.WrongTransactionNonce);
+            .Returns(TransactionResult.TransactionNonceTooLow);
+
+        CallOutput callOutput = _blockchainBridge.Call(header, tx);
+
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too low"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_TransactionNonceIsToHighError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 456 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.TransactionNonceTooHigh);
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("wrong transaction nonce"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too high"));
+    }
+
+    [Test]
+    public void EstimateGas_tx_returns_TransactionNonceIsTooLowError()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .TestObject;
+        Transaction tx = new() { GasLimit = 456 };
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(TransactionResult.TransactionNonceTooLow);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too low"));
     }
 
     [Test]
@@ -405,32 +503,51 @@ public class BlockchainBridgeTests
         Assert.That(callOutput.Error, Is.EqualTo("nonce overflow"));
     }
 
-    [Test]
-    public void Call_tx_returns_MinerPremiumIsNegativeError()
+    private static IEnumerable<TestCaseData> MinerPremiumNegativeCases()
     {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new() { GasLimit = 1 };
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.MinerPremiumNegative);
+        yield return new TestCaseData(
+            new Transaction { GasLimit = 1 },
+            TransactionResult.MinerPremiumNegative,
+            "miner premium is negative"
+        ).SetName("Fallback");
 
-        CallOutput callOutput = _blockchainBridge.Call(header, tx);
-
-        Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
+        Address sender = TestItem.AddressA;
+        UInt256 baseFee = 146_283_608_928UL;
+        UInt256 maxFeePerGas = 140_000_000_000UL;
+        Transaction descriptiveTx = new()
+        {
+            GasLimit = 56786,
+            SenderAddress = sender,
+            DecodedMaxFeePerGas = maxFeePerGas,
+            Type = TxType.EIP1559
+        };
+        yield return new TestCaseData(
+            descriptiveTx,
+            TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail($"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"),
+            $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"
+        ).SetName("Descriptive");
     }
 
-    [Test]
-    public void EstimateGas_tx_returns_MinerPremiumIsNegativeError()
+    [TestCaseSource(nameof(MinerPremiumNegativeCases))]
+    public void Call_tx_returns_MinerPremiumIsNegativeError(Transaction tx, TransactionResult result, string expectedError)
     {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new() { GasLimit = 1 };
         _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.MinerPremiumNegative);
+            .Returns(result);
 
-        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
+        CallOutput callOutput = _blockchainBridge.Call(Build.A.BlockHeader.TestObject, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("miner premium is negative"));
+        Assert.That(callOutput.Error, Is.EqualTo(expectedError));
+    }
+
+    [TestCaseSource(nameof(MinerPremiumNegativeCases))]
+    public void EstimateGas_tx_returns_MinerPremiumIsNegativeError(Transaction tx, TransactionResult result, string expectedError)
+    {
+        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(result);
+
+        CallOutput callOutput = _blockchainBridge.EstimateGas(Build.A.BlockHeader.TestObject, tx, 1);
+
+        Assert.That(callOutput.Error, Is.EqualTo(expectedError));
     }
 
     [Test]
@@ -448,7 +565,7 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_BlockGasLimitExceededError()
+    public void EstimateGas_tx_block_gas_limit_exceeded_returns_allowance_error()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
@@ -458,7 +575,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("Block gas limit exceeded"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas required exceeds allowance (4000000)"));
     }
 
 
@@ -529,11 +646,11 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
+        Assert.That(callOutput.Error, Is.EqualTo("intrinsic gas too low"));
     }
 
     [Test]
-    public void EstimateGas_tx_returns_GasLimitBelowIntrinsicGasError()
+    public void EstimateGas_tx_gas_limit_below_intrinsic_gas_returns_allowance_error()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
@@ -543,7 +660,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas required exceeds allowance (4000000)"));
     }
 
     [Test]
@@ -569,21 +686,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
-    }
-
-    [Test]
-    public void EstimateGas_tx_returns_InsufficientMaxFeePerGasForSenderBalanceError()
-    {
-        BlockHeader header = Build.A.BlockHeader
-            .TestObject;
-        Transaction tx = new();
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(TransactionResult.InsufficientMaxFeePerGasForSenderBalance);
-
-        CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
-
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for gas * price + value"));
     }
 
     [Test]
@@ -640,5 +743,56 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_stateReader_returns_true()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(true);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_stateReader_returns_false()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(false);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+    }
+
+    [Test]
+    public void Simulate_adapter_uses_block_gas_used_for_budget()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 100_000,
+            BlockGasLeft = 80_000,
+            Validate = true,
+            TxsWithExplicitGas = new[] { true }
+        };
+
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(ci =>
+            {
+                Transaction tx = ci.Arg<Transaction>();
+                tx.SpentGas = 10_000;
+                tx.BlockGasUsed = 50_000;
+                return TransactionResult.Ok;
+            });
+
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+            .WithGasLimit(60_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        adapter.Execute(transaction, Substitute.For<ITxTracer>());
+
+        simulateRequestState.TotalGasLeft.Should().Be(50_000);
+        simulateRequestState.BlockGasLeft.Should().Be(30_000);
     }
 }

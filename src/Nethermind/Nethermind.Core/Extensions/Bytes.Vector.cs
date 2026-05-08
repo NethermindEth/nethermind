@@ -29,8 +29,12 @@ public static unsafe partial class Bytes
         }
     }
 
-    public static void Avx2Reverse256InPlace(Span<byte> bytes)
+    // Internal method that requires AVX2 support - caller must check Avx2.IsSupported before calling
+    internal static void Avx2Reverse256InPlace(Span<byte> bytes)
     {
+        Debug.Assert(Avx2.IsSupported, "AVX2 must be supported to call Avx2Reverse256InPlace");
+        Debug.Assert(bytes.Length == 32, "Input must be exactly 32 bytes");
+
         fixed (byte* inputPointer = bytes)
         {
             Vector256<byte> inputVector = Avx2.LoadVector256(inputPointer);
@@ -51,7 +55,7 @@ public static unsafe partial class Bytes
         ref byte thisRef = ref MemoryMarshal.GetReference(thisSpan);
         ref byte valueRef = ref MemoryMarshal.GetReference(valueSpan);
 
-        if (Vector512<byte>.IsSupported && thisSpan.Length >= Vector512<byte>.Count)
+        if (Vector512.IsHardwareAccelerated && thisSpan.Length >= Vector512<byte>.Count)
         {
             for (int i = 0; i < thisSpan.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
             {
@@ -66,7 +70,7 @@ public static unsafe partial class Bytes
             Vector512<byte> b2 = Vector512.LoadUnsafe(ref Unsafe.Add(ref valueRef, offset));
             Vector512.BitwiseOr(b1, b2).StoreUnsafe(ref Unsafe.Add(ref thisRef, offset));
         }
-        else if (Vector256<byte>.IsSupported && thisSpan.Length >= Vector256<byte>.Count)
+        else if (Vector256.IsHardwareAccelerated && thisSpan.Length >= Vector256<byte>.Count)
         {
             for (int i = 0; i < thisSpan.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
             {
@@ -81,7 +85,7 @@ public static unsafe partial class Bytes
             Vector256<byte> b2 = Vector256.LoadUnsafe(ref Unsafe.Add(ref valueRef, offset));
             Vector256.BitwiseOr(b1, b2).StoreUnsafe(ref Unsafe.Add(ref thisRef, offset));
         }
-        else if (Vector128<byte>.IsSupported && thisSpan.Length >= Vector128<byte>.Count)
+        else if (Vector128.IsHardwareAccelerated && thisSpan.Length >= Vector128<byte>.Count)
         {
             for (int i = 0; i < thisSpan.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
             {
@@ -118,7 +122,7 @@ public static unsafe partial class Bytes
         int i = 0;
 
         // We can't do the fold back technique for xor so need to fall though each size
-        if (Vector512<byte>.IsSupported)
+        if (Vector512.IsHardwareAccelerated)
         {
             for (; i <= thisSpan.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
             {
@@ -131,7 +135,7 @@ public static unsafe partial class Bytes
             if (i == thisSpan.Length) return;
         }
 
-        if (Vector256<byte>.IsSupported)
+        if (Vector256.IsHardwareAccelerated)
         {
             for (; i <= thisSpan.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
             {
@@ -144,7 +148,7 @@ public static unsafe partial class Bytes
             if (i == thisSpan.Length) return;
         }
 
-        if (Vector128<byte>.IsSupported)
+        if (Vector128.IsHardwareAccelerated)
         {
             for (; i <= thisSpan.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
             {
@@ -192,9 +196,9 @@ public static unsafe partial class Bytes
 
     public static int CountLeadingZeroBits(this in Vector256<byte> v)
     {
-        if (Vector256<byte>.IsSupported)
+        if (Vector256.IsHardwareAccelerated)
         {
-            var cmp = Vector256.Equals(v, Vector256<byte>.Zero);
+            Vector256<byte> cmp = Vector256.Equals(v, Vector256<byte>.Zero);
             uint nonZeroMask = ~cmp.ExtractMostSignificantBits();
             if (nonZeroMask == 0)
                 return 256;

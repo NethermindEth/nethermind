@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -13,12 +11,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.Proofs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.State.Proofs;
@@ -32,11 +30,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IOverridableEnv<ITracer> tracerEnv,
         IBlockFinder blockFinder,
         IReceiptFinder receiptFinder,
-        ISpecProvider specProvider)
+        ISpecProvider specProvider,
+        IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
         private readonly HeaderDecoder _headerDecoder = new();
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>();
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter)
         {
@@ -67,12 +66,10 @@ namespace Nethermind.JsonRpc.Modules.Proof
             callHeader.TotalDifficulty = sourceHeader.TotalDifficulty + callHeader.Difficulty;
             callHeader.Hash = callHeader.CalculateHash();
 
-            Transaction transaction = tx.ToTransaction();
-            transaction.SenderAddress ??= Address.Zero;
-
-            if (transaction.GasLimit == 0)
+            Result<Transaction> txResult = tx.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap);
+            if (!txResult.Success(out Transaction? transaction, out string? error))
             {
-                transaction.GasLimit = callHeader.GasLimit;
+                return ResultWrapper<CallResultWithProof>.Fail(error, ErrorCodes.InvalidInput);
             }
 
             Block block = new(callHeader, new[] { transaction }, []);
@@ -88,7 +85,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             // we collect proofs from before execution (after learning which addresses will be touched)
             // if we wanted to collect post execution proofs then we would need to use BeforeRestore on the tracer
-            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader.StateRoot, proofTxTracer);
+            callResultWithProof.Accounts = CollectAccountProofs(scope.Component, sourceHeader, proofTxTracer);
 
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
@@ -113,7 +110,15 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction transaction = txs[receipt.Index];
 
             TransactionForRpcWithProof txWithProof = new();
-            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, block.Hash, block.Number, receipt.Index, block.BaseFeePerGas, specProvider.ChainId);
+            TransactionForRpcContext extraData = new(
+                chainId: specProvider.ChainId,
+                blockHash: block.Hash,
+                blockNumber: block.Number,
+                txIndex: receipt.Index,
+                blockTimestamp: block.Timestamp,
+                baseFee: block.BaseFeePerGas,
+                receipt: receipt);
+            txWithProof.Transaction = TransactionForRpc.FromTransaction(transaction, extraData);
             txWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
             if (includeHeader)
             {
@@ -153,7 +158,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             int logIndexStart = receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
 
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, block.Timestamp, tx?.GetGasInfo(spec, block.Header) ?? new(), logIndexStart);
+            receiptWithProof.Receipt = new ReceiptForRpc(
+                txHash,
+                receipt,
+                block.Timestamp,
+                tx?.GetGasInfo(spec, block.Header) ?? new(),
+                logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, specProvider.GetSpec(block.Header), receipt.Index);
 
@@ -165,7 +175,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        private AccountProof[] CollectAccountProofs(ITracer tracer, Hash256 stateRoot, ProofTxTracer proofTxTracer)
+        private AccountProof[] CollectAccountProofs(ITracer tracer, BlockHeader? baseBlock, ProofTxTracer proofTxTracer)
         {
             List<AccountProof> accountProofs = new();
             foreach (Address address in proofTxTracer.Accounts)
@@ -174,7 +184,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     .Where(s => s.Address == address)
                     .Select(s => s.Index).ToArray());
 
-                tracer.Accept(collector, stateRoot);
+                tracer.Accept(collector, baseBlock);
                 accountProofs.Add(collector.BuildResult());
             }
 
@@ -193,14 +203,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
-        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
-        {
-            return TxTrie.CalculateProof(txs, index);
-        }
+        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
 
-        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
-        {
-            return ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptDecoder);
-        }
+        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) => ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
     }
 }

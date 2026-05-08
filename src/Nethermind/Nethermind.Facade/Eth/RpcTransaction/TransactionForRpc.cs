@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -44,34 +44,46 @@ public abstract class TransactionForRpc
     public long? BlockNumber { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public ulong? BlockTimestamp { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Gas { get; set; }
+
+    /// <summary>
+    /// True when the transaction type was inferred by <see cref="TransactionJsonConverter"/> rather than
+    /// explicitly provided in the JSON request. When set, <see cref="ToTransaction"/> can resolve
+    /// the type to match the target block's fork rules.
+    /// </summary>
+    [JsonIgnore]
+    internal bool IsTypeDefaulted { get; set; }
 
     [JsonConstructor]
     protected TransactionForRpc() { }
 
-    protected TransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null)
+    protected TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
     {
         Hash = transaction.Hash;
-        TransactionIndex = txIndex;
-        BlockHash = blockHash;
-        BlockNumber = blockNumber;
+        TransactionIndex = extraData.TxIndex;
+        BlockHash = extraData.BlockHash;
+        BlockNumber = extraData.BlockNumber;
+        BlockTimestamp = extraData.BlockTimestamp;
     }
 
-    public virtual Transaction ToTransaction()
+    public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
+        => new Transaction { Type = ResolveType(spec) };
+
+    private TxType ResolveType(IReleaseSpec? spec)
     {
-        return new Transaction
-        {
-            Type = Type ?? default,
-        };
+        TxType type = Type ?? default;
+        return spec is not null && !spec.IsEip2930Enabled && IsTypeDefaulted ? TxType.Legacy : type;
     }
 
-    public abstract void EnsureDefaults(long? gasCap);
     public abstract bool ShouldSetBaseFee();
 
     internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
-        private delegate TransactionForRpc FromTransactionFunc(Transaction tx, TransactionConverterExtraData extraData);
+        private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
         /// <summary>
         /// Transaction type is determined based on type field or type-specific fields present in the request
@@ -92,7 +104,7 @@ public abstract class TransactionForRpc
                 .Where(p => p.GetCustomAttribute<JsonDiscriminatorAttribute>() is not null)
                 .Select(p => p.Name).ToArray();
 
-            TxTypeInfo typeInfo = new TxTypeInfo
+            TxTypeInfo typeInfo = new()
             {
                 TxType = T.TxType,
                 Type = txType,
@@ -123,39 +135,49 @@ public abstract class TransactionForRpc
 
         public override TransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            const string TypeFieldKey = nameof(TransactionForRpc.Type);
             // Copy the reader so we can do a double parse:
             // The first parse is used to check for fields, while the second parses the entire Transaction
             Utf8JsonReader txTypeReader = reader;
             JsonObject untyped = JsonSerializer.Deserialize<JsonObject>(ref txTypeReader, options);
 
-            TxType? txType = null;
-            if (untyped.TryGetPropertyValue(TypeFieldKey, out JsonNode? node))
+            Type concreteTxType = DeriveTxType(untyped, options, out bool isDefaulted);
+
+            TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
+            result?.IsTypeDefaulted = isDefaulted;
+            return result;
+        }
+
+        private Type DeriveTxType(JsonObject untyped, JsonSerializerOptions options, out bool isDefaulted)
+        {
+            const string gasPriceFieldKey = nameof(LegacyTransactionForRpc.GasPrice);
+            const string typeFieldKey = nameof(TransactionForRpc.Type);
+            isDefaulted = false;
+
+            if (untyped.TryGetPropertyValue(typeFieldKey, out JsonNode? node))
             {
-                txType = node.Deserialize<TxType?>(options);
+                TxType? setType = node.Deserialize<TxType?>(options);
+                if (setType is not null)
+                {
+                    return _txTypes.FirstOrDefault(p => p.TxType == setType)?.Type ?? throw new JsonException("Unknown transaction type");
+                }
             }
 
-            Type concreteTxType =
-                (
-                    txType is not null
-                        ? _txTypes.FirstOrDefault(p => p.TxType == txType)
-                        : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(name => untyped.ContainsKey(name)), _txTypes[^1])
-                )?.Type
-                ?? throw new JsonException("Unknown transaction type");
+            return untyped.ContainsKey(gasPriceFieldKey)
+                ? typeof(LegacyTransactionForRpc)
+                : _txTypes.FirstOrDefault(p => p.DiscriminatorProperties.Any(untyped.ContainsKey))?.Type
+                  ?? GetDefaultType(out isDefaulted);
 
-            return (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
+            static Type GetDefaultType(out bool isDefaulted)
+            {
+                isDefaulted = true;
+                return typeof(EIP1559TransactionForRpc);
+            }
         }
 
-        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, value, value.GetType(), options);
-        }
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);
 
-        public static TransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        {
-            return _txTypes.FirstOrDefault(t => t.TxType == tx.Type)?.FromTransactionFunc(tx, extraData)
+        public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => _txTypes.FirstOrDefault(t => t.TxType == tx.Type)?.FromTransactionFunc(tx, extraData)
                 ?? throw new ArgumentException("No converter for transaction type");
-        }
 
         class TxTypeInfo
         {
@@ -166,15 +188,8 @@ public abstract class TransactionForRpc
         }
     }
 
-    public static TransactionForRpc FromTransaction(Transaction transaction, Hash256? blockHash = null, long? blockNumber = null, int? txIndex = null, UInt256? baseFee = null, ulong? chainId = null) =>
-        TransactionJsonConverter.FromTransaction(transaction, new()
-        {
-            ChainId = chainId,
-            TxIndex = txIndex,
-            BlockHash = blockHash,
-            BlockNumber = blockNumber,
-            BaseFee = baseFee
-        });
+    public static TransactionForRpc FromTransaction(Transaction transaction, in TransactionForRpcContext? extraData = null) =>
+        TransactionJsonConverter.FromTransaction(transaction, extraData ?? default);
 
     public static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
 }

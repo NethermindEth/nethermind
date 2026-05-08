@@ -35,19 +35,19 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public ulong getRefund() => (ulong)refund;
         public dynamic getError() => !string.IsNullOrEmpty(error) ? error : Undefined.Value;
 
-        public readonly struct Opcode
+        public readonly struct Opcode(Instruction value)
         {
-            public Instruction Value { get; }
-            public Opcode(Instruction value) => Value = value;
+            public Instruction Value { get; } = value;
+
             public int toNumber() => (int)Value;
-            public string? toString() => Value.GetName();
+            public string? toString() => Enum.GetName(Value);
             public bool isPush() => Value is >= Instruction.PUSH0 and <= Instruction.PUSH32;
         }
 
-        public readonly struct Stack
+        public readonly struct Stack(TraceStack items)
         {
-            private readonly TraceStack _items;
-            public Stack(TraceStack items) => _items = items;
+            private readonly TraceStack _items = items;
+
             public int length() => _items.Count;
             public IJavaScriptObject peek(int index) => new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
         }
@@ -74,28 +74,19 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             public IJavaScriptObject getUint(int offset) => MemoryTrace.GetUint(offset).ToBigInteger();
         }
 
-        public struct Contract
+        public struct Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte>? input)
         {
-            private readonly UInt256 _value;
-            private readonly Address _address;
-            private readonly ReadOnlyMemory<byte>? _input;
+            private readonly UInt256 _value = value;
+            private readonly Address _address = address;
+            private readonly ReadOnlyMemory<byte>? _input = input;
             private ITypedArray<byte>? _callerConverted;
             private ITypedArray<byte>? _addressConverted;
             private ITypedArray<byte>? _inputConverted;
             private IJavaScriptObject? _valueConverted;
-            public Address Caller { get; }
+            public Address Caller { get; } = caller;
 
-
-            public Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte>? input)
-            {
-                Caller = caller;
-                _address = address;
-                _value = value;
-                _input = input;
-            }
-
-            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToTypedScriptArray();
-            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToTypedScriptArray();
+            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToArray().ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToArray().ToTypedScriptArray();
             public object getInput() => (_inputConverted ??= _input?.ToArray().ToTypedScriptArray()) ?? (object)Undefined.Value;
 
             public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();

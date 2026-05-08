@@ -12,6 +12,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class BadBlockStoreTests
 {
     [Test]

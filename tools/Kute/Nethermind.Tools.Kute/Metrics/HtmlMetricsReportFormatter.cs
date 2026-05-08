@@ -26,7 +26,7 @@ public sealed class HtmlMetricsReportFormatter : IMetricsReportFormatter
         await JsonSerializer.SerializeAsync(stream, report, cancellationToken: token);
         await stream.WriteAsync(_encoding.GetBytes("\n</script>\n"), token);
 
-        using var resourceStream = _assembly.GetManifestResourceStream(_reportTemplate)!;
+        await using var resourceStream = _assembly.GetManifestResourceStream(_reportTemplate)!;
         await resourceStream.CopyToAsync(stream, token);
     }
 }

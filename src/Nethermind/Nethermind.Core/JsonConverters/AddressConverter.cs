@@ -17,17 +17,17 @@ public class AddressConverter : JsonConverter<Address>
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        var bytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader);
         return bytes is null ? null : new Address(bytes);
     }
 
     public override void Write(
         Utf8JsonWriter writer,
         Address address,
-        JsonSerializerOptions options)
-    {
-        ByteArrayConverter.Convert(writer, address.Bytes, skipLeadingZeros: false);
-    }
+        JsonSerializerOptions options) => ByteArrayConverter.Convert(writer, address.Bytes, skipLeadingZeros: false);
+
+    public override Address ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        new(ByteArrayConverter.Convert(ref reader) ?? throw new JsonException("Invalid address property name"));
 
     [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer,
@@ -38,7 +38,7 @@ public class AddressConverter : JsonConverter<Address>
         addressBytes[0] = (byte)'0';
         addressBytes[1] = (byte)'x';
         Span<byte> hex = addressBytes[2..];
-        value.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
+        value.Bytes.OutputBytesToByteHex(hex, false);
         writer.WritePropertyName(addressBytes);
     }
 }

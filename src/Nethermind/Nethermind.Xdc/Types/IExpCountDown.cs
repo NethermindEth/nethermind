@@ -4,6 +4,7 @@
 using System;
 
 namespace Nethermind.Xdc.Types;
+
 public interface IExpCountDown
 {
     void Dispose();

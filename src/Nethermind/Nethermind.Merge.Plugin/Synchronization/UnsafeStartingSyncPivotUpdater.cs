@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -9,7 +10,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
@@ -71,8 +71,9 @@ public class UnsafeStartingSyncPivotUpdater(
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in block cache");
 
-        foreach (Block block in _blockCacheService.BlockCache.Values)
+        foreach (KeyValuePair<Hash256AsKey, Block> kvp in _blockCacheService.BlockCache)
         {
+            Block block = kvp.Value;
             if (block.Number == potentialPivotBlockNumber && HeaderValidator.ValidateHash(block.Header))
             {
                 if (_logger.IsInfo) _logger.Info($"Loaded potential pivot block {potentialPivotBlockNumber} from block cache. Hash: {block.Hash}");

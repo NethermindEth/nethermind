@@ -38,10 +38,10 @@ public sealed class OptimismLegacyTxValidator(ulong chainId) : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         // In Optimism, EIP1559 is activated in Bedrock
-        var isPreBedrock = !releaseSpec.IsEip1559Enabled;
+        bool isPreBedrock = !releaseSpec.IsEip1559Enabled;
         if (isPreBedrock)
         {
-            // Pre-Bedrock we peform no validation at all
+            // Pre-Bedrock we perform no validation at all
             return ValidationResult.Success;
         }
 

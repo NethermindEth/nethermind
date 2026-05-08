@@ -4,6 +4,7 @@
 using System;
 
 namespace Nethermind.Core.Extensions;
+
 public static class DateTimeExtensions
 {
     public static long ToUnixTimeSeconds(this DateTime date)

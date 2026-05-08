@@ -18,13 +18,9 @@ public class StatusMessage69 : P2PMessage
     public long LatestBlock { get; set; }
     public required Hash256 LatestBlockHash { get; set; }
 
-    public override int PacketType { get; } = Eth69MessageCode.Status;
-    public override string Protocol { get; } = "eth";
+    public override int PacketType => Eth69MessageCode.Status;
+    public override string Protocol => "eth";
 
-    public override string ToString()
-    {
-        return
-            $"{Protocol}.{ProtocolVersion} network: {NetworkId} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId} | " +
+    public override string ToString() => $"{Protocol}.{ProtocolVersion} network: {NetworkId} | genesis: {GenesisHash?.ToShortString()} | fork: {ForkId} | " +
             $"earliest: {EarliestBlock} | latest: {LatestBlock} ({LatestBlockHash?.ToShortString()})";
-    }
 }

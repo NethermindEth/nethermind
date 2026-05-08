@@ -5,26 +5,19 @@ using Nethermind.Config;
 using Nethermind.Logging;
 
 namespace Nethermind.Era1;
-public class AdminEraService : IAdminEraService
+
+public class AdminEraService(
+    IEraImporter eraImporter,
+    IEraExporter eraExporter,
+    IProcessExitSource processExit,
+    ILogManager logManager) : IAdminEraService
 {
-    private readonly ILogger _logger;
-    private readonly IEraImporter _eraImporter;
-    private readonly IEraExporter _eraExporter;
-    private readonly IProcessExitSource _processExit;
+    private readonly ILogger _logger = logManager.GetClassLogger<AdminEraService>();
+    private readonly IEraImporter _eraImporter = eraImporter;
+    private readonly IEraExporter _eraExporter = eraExporter;
+    private readonly IProcessExitSource _processExit = processExit;
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
-
-    public AdminEraService(
-        IEraImporter eraImporter,
-        IEraExporter eraExporter,
-        IProcessExitSource processExit,
-        ILogManager logManager)
-    {
-        _eraImporter = eraImporter;
-        _eraExporter = eraExporter;
-        _processExit = processExit;
-        _logger = logManager.GetClassLogger();
-    }
 
     public string ExportHistory(string destination, long from, long to)
     {
@@ -65,7 +58,7 @@ public class AdminEraService : IAdminEraService
 
     private async Task StartExportTask(string destination, long from, long to)
     {
-        // Creating the task is outside the try block so that argument exception can be cought
+        // Creating the task is outside the try block so that argument exceptions can be caught
         Task task = _eraExporter.Export(
             destination,
             from,

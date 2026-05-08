@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,6 +15,7 @@ namespace Nethermind.Evm;
 
 public static class StateOverridesExtensions
 {
+    private static readonly UInt256 MaxNonce = ulong.MaxValue;
 
     public static void ApplyStateOverridesNoCommit(
         this IWorldState state,
@@ -23,8 +25,12 @@ public static class StateOverridesExtensions
     {
         if (overrides is not null)
         {
+            overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
+                if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
+                    throw new ArgumentException($"Nonce override {accountOverride.Nonce.Value} exceeds the maximum supported value ({MaxNonce})");
+
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
                     state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
@@ -50,7 +56,7 @@ public static class StateOverridesExtensions
     {
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
 
-        state.Commit(spec);
+        state.Commit(spec, commitRoots: true);
         state.CommitTree(blockNumber);
         state.RecalculateStateRoot();
     }
@@ -83,15 +89,27 @@ public static class StateOverridesExtensions
         AccountOverride accountOverride,
         Address address)
     {
+        if (accountOverride.MovePrecompileToAddress is not null)
+        {
+            if (!overridableCodeInfoRepository.GetCachedCodeInfo(address, currentSpec).IsPrecompile)
+            {
+                throw new ArgumentException($"Account {address} is not a precompile");
+            }
+
+            overridableCodeInfoRepository.MovePrecompile(
+                currentSpec,
+                address,
+                accountOverride.MovePrecompileToAddress);
+        }
+
         if (accountOverride.Code is not null)
         {
             stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
 
-            overridableCodeInfoRepository.SetCodeOverwrite(
+            overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code),
-                accountOverride.MovePrecompileToAddress);
+                new CodeInfo(accountOverride.Code));
         }
     }
 
@@ -109,7 +127,7 @@ public static class StateOverridesExtensions
             {
                 stateProvider.DecrementNonce(address, nonce - newNonce);
             }
-            else if (nonce < accountOverride.Nonce)
+            else if (nonce < newNonce)
             {
                 stateProvider.IncrementNonce(address, newNonce - nonce);
             }

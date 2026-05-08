@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc;
 
@@ -78,7 +77,7 @@ public interface IJsonRpcConfig : IConfig
 
 
             """,
-        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc]")]
+        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc]")]
     string[] EnabledModules { get; set; }
 
     [ConfigItem(
@@ -179,7 +178,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
     int IpcProcessingConcurrency { get; set; }
 
-    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]
     bool EnablePerMethodMetrics { get; set; }
 
     [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
@@ -187,4 +186,9 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
     bool PreloadRpcModules { get; set; }
+
+    [ConfigItem(
+        Description = "Enable strict parsing rules for Block Params and Hashes in RPC requests. this will decrease compatibility but increase compliance with the spec.",
+        DefaultValue = "true")]
+    bool StrictHexFormat { get; set; }
 }

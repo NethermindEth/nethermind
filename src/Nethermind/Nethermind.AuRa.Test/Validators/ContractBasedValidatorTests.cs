@@ -28,11 +28,9 @@ using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using Nethermind.Evm;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
-using Nethermind.State;
 
 namespace Nethermind.AuRa.Test.Validators;
 
@@ -101,6 +99,7 @@ public class ContractBasedValidatorTests
     public void TearDown()
     {
         _blockFinalizationManager?.Dispose();
+        _readOnlyTxProcessorSource?.Dispose();
     }
 
     [Test]
@@ -111,7 +110,7 @@ public class ContractBasedValidatorTests
     }
 
     [Test]
-    public void throws_ArgumentNullException_on_empty_validSealearStrategy()
+    public void throws_ArgumentNullException_on_empty_validSealerStrategy()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, null, _blockFinalizationManager, default, _logManager, 1);
         act.Should().Throw<ArgumentNullException>();
@@ -568,12 +567,12 @@ public class ContractBasedValidatorTests
                     return new[]
                     {
                             Build.A.LogEntry.WithAddress(_contractAddress)
-                                .WithData(new[] {(byte) (block.Number * 10 + i++)})
+                                .WithData([(byte) (block.Number * 10 + i++)])
                                 .WithTopics(_validatorContract.AbiDefinition.Events[ValidatorContract.InitiateChange].GetHash(), block.ParentHash)
                                 .TestObject
                     };
                 })
-            .OfChainLength(9, 0, 0, false, validators);
+            .OfChainLength(9, blockBeneficiaries: validators);
 
         BlockTree blockTree = blockTreeBuilder.TestObject;
         SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);
@@ -614,15 +613,11 @@ public class ContractBasedValidatorTests
     private static Address[] GenerateValidators(int number) =>
         Enumerable.Range(1, number).Select(static i => Address.FromNumber((UInt256)i)).ToArray();
 
-    private void SetupInitialValidators(params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(params Address[] initialValidators) =>
         SetupInitialValidators(_block.Header, initialValidators);
-    }
 
-    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
-    {
+    private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators) =>
         SetupInitialValidators(header, null, initialValidators);
-    }
 
     private void SetupInitialValidators(BlockHeader header, BlockHeader parentHeader, params Address[] initialValidators)
     {
@@ -647,7 +642,7 @@ public class ContractBasedValidatorTests
 
     private byte[] SetupAbiAddresses(Address[] addresses)
     {
-        byte[] data = addresses.SelectMany(static a => a.Bytes).ToArray();
+        byte[] data = addresses.SelectMany(static a => a.Bytes.ToArray()).ToArray();
 
         _abiEncoder.Decode(
             AbiEncodingStyle.None,
@@ -657,10 +652,8 @@ public class ContractBasedValidatorTests
         return data;
     }
 
-    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo)
-    {
-        return t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
-    }
+    private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo) =>
+        t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
 
     public class ConsecutiveInitiateChangeTestParameters
     {

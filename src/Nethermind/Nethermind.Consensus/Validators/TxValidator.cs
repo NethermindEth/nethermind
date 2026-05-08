@@ -29,7 +29,7 @@ public sealed class TxValidator : ITxValidator
             GasLimitCapTxValidator.Instance
         ]));
 
-        var expectedChainIdTxValidator = new ExpectedChainIdTxValidator(chainId);
+        ExpectedChainIdTxValidator expectedChainIdTxValidator = new(chainId);
         RegisterValidator(TxType.AccessList, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip2930Enabled),
             NonceCapTxValidator.Instance,
@@ -124,7 +124,7 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         // This is unnecessarily calculated twice - at validation and execution times.
-        IntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
         return transaction.GasLimit < intrinsicGas.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;
@@ -239,14 +239,14 @@ public sealed class BlobFieldsTxValidator : ITxValidator
 
         ulong txBlobGas = BlobGasCalculator.CalculateBlobGas(txBlobCount);
 
-        ulong maxBlobGasPerBlock = spec.GetMaxBlobGasPerBlock();
+        ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
 
         if (txBlobGas > maxBlobGasPerBlock)
         {
             return BlockErrorMessages.BlobGasUsedAboveBlockLimit(maxBlobGasPerBlock, txBlobCount, txBlobGas);
         }
 
-        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        ulong maxBlobGasPerTx = spec.GasCosts.MaxBlobGasPerTx;
 
         return txBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(txBlobGas, maxBlobGasPerTx) : ValidationResult.Success;
     }
@@ -281,15 +281,15 @@ public sealed class MempoolBlobTxValidator : ITxValidator
         return transaction switch
         {
             { NetworkWrapper: null } => ValidationResult.Success,
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper, releaseSpec),
+            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateBlobs(transaction, wrapper),
             { Type: TxType.Blob } or { NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
         };
 
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, IReleaseSpec _)
+        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper)
         {
             IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
 
-            return !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
+            return (transaction.BlobVersionedHashes?.Length ?? 0) != wrapper.Blobs.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
                 transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
                 !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
                 ValidationResult.Success;
@@ -307,13 +307,12 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        return transaction switch
-        {
-            LightTransaction lightTx => ValidateProofVersion(lightTx.ProofVersion, releaseSpec),
-            { Type: TxType.Blob, NetworkWrapper: ShardBlobNetworkWrapper wrapper } => ValidateProofVersion(wrapper.Version, releaseSpec),
-            { Type: TxType.Blob, NetworkWrapper: not null } => TxErrorMessages.InvalidTransactionForm,
-            _ => ValidationResult.Success,
-        };
+        if (!transaction.SupportsBlobs) return ValidationResult.Success;
+
+        ProofVersion? version = transaction.GetProofVersion();
+        return version is null
+            ? transaction.NetworkWrapper is not null ? TxErrorMessages.InvalidTransactionForm : ValidationResult.Success
+            : ValidateProofVersion(version.Value, releaseSpec);
 
         static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
             txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
@@ -336,9 +335,9 @@ public abstract class BaseSignatureTxValidator : ITxValidator
         UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
         UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
 
-        UInt256 sMax = releaseSpec.IsEip2Enabled ? Secp256K1Curve.HalfNPlusOne : Secp256K1Curve.N;
+        UInt256 sMax = releaseSpec.IsEip2Enabled ? SecP256k1Curve.HalfNPlusOne : SecP256k1Curve.N;
         return sValue.IsZero || sValue >= sMax ? TxErrorMessages.InvalidTxSignature
-            : rValue.IsZero || rValue >= Secp256K1Curve.NMinusOne ? TxErrorMessages.InvalidTxSignature
+            : rValue.IsZero || rValue >= SecP256k1Curve.N ? TxErrorMessages.InvalidTxSignature
             : signature.V is 27 or 28 ? ValidationResult.Success
             : ValidateChainId(transaction, releaseSpec);
     }

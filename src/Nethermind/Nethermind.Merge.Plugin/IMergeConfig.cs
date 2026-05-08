@@ -65,11 +65,14 @@ public interface IMergeConfig : IConfig
     public int CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in milliseconds, for the `engine_newPayload` method.", DefaultValue = "7000", HiddenFromDocs = true)]
-    public int NewPayloadBlockProcessingTimeout { get; }
+    public int NewPayloadBlockProcessingTimeout { get; set; }
 
     [ConfigItem(Description = "Cache NewPayload valid or invalid results", DefaultValue = "50", HiddenFromDocs = true)]
     public int NewPayloadCacheSize { get; }
 
     [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
     bool SimulateBlockProduction { get; set; }
+
+    [ConfigItem(Description = "Delay, in milliseconds, between `newPayload` and GC trigger. If not set, defaults to 1/8th of `Blocks.SecondsPerSlot`.", DefaultValue = null, HiddenFromDocs = true)]
+    int? PostBlockGcDelayMs { get; set; }
 }

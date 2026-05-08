@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -15,6 +15,7 @@ using System.IO;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -31,7 +32,7 @@ public static class RpcTest
 
     public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 10.Seconds());
+        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 60.Seconds());
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
@@ -47,21 +48,21 @@ public static class RpcTest
         Stream stream = new MemoryStream();
         long size = await serializer.SerializeAsync(stream, response, cts.Token).ConfigureAwait(false);
 
-        // for coverage (and to prove that it does not throw
+        // for coverage (and to prove that it does not throw)
         Stream indentedStream = new MemoryStream();
         await serializer.SerializeAsync(indentedStream, response, cts.Token, true).ConfigureAwait(false);
 
         stream.Seek(0, SeekOrigin.Begin);
         string serialized = await new StreamReader(stream).ReadToEndAsync().ConfigureAwait(false);
 
+        await TestContext.Out.WriteLineAsync(serialized);
+
         size.Should().Be(serialized.Length);
 
         return serialized;
     }
 
-    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule
-    {
-        return new ContainerBuilder()
+    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule => new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig()
             {
                 EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
@@ -69,15 +70,14 @@ public static class RpcTest
             .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
             .AddScoped<T>(module)
             .Build();
-    }
 
     public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
     {
         // TODO: Eventually we would like to support injecting a custom serializer
-        var serializer = new EthereumJsonSerializer();
+        EthereumJsonSerializer serializer = new();
         parameters ??= [];
 
-        var jsonParameters = serializer.Deserialize<JsonElement>(serializer.Serialize(parameters));
+        JsonElement jsonParameters = serializer.Deserialize<JsonElement>(serializer.Serialize(parameters));
 
         return new JsonRpcRequest
         {

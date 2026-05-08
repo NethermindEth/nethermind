@@ -2,197 +2,210 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct EvmPooledMemory : IEvmMemory
+using Word = Vector256<byte>;
+
+public struct EvmPooledMemory
 {
     public const int WordSize = 32;
+    internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
+    internal const long MaxMemoryWords = (int.MaxValue - WordSize + 1L) / WordSize;
 
     private ulong _lastZeroedSize;
 
     private byte[]? _memory;
-    public ulong Length { get; private set; }
     public ulong Size { get; private set; }
 
-    public void SaveWord(in UInt256 location, Span<byte> word)
+    public bool TrySaveWord(in UInt256 location, Span<byte> word)
     {
         if (word.Length != WordSize) ThrowArgumentOutOfRangeException();
 
-        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool outOfGas);
+        if (outOfGas) return false;
+
+        int offset = TruncateToInt32(location.u0);
+        Word word1 = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
         UpdateSize(newLength);
-
-        int offset = (int)location;
-
-        // Direct 256bit register copy rather than invoke Memmove
-        Unsafe.WriteUnaligned(
-            ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), offset),
-            Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(word))
-        );
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), word1);
+        return true;
     }
 
-    public void SaveByte(in UInt256 location, byte value)
+    public bool TrySaveByte(in UInt256 location, byte value)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out _);
-        UpdateSize(in location, in UInt256.One);
+        CheckMemoryAccessViolation(in location, 1, out ulong newLength, out bool isViolation);
+        if (isViolation) return false;
 
-        _memory![(long)location] = value;
+        int offset = TruncateToInt32(location.u0);
+        UpdateSize(newLength);
+        _memory![offset] = value;
+        return true;
     }
 
-    public void Save(in UInt256 location, Span<byte> value)
+    public bool TrySave(in UInt256 location, Span<byte> value)
     {
         if (value.Length == 0)
         {
-            return;
+            return true;
         }
 
-        CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength);
-        UpdateSize(newLength);
+        CheckMemoryAccessViolation(in location, (ulong)value.Length, out ulong newLength, out bool isViolation);
+        if (isViolation) return false;
 
-        value.CopyTo(_memory.AsSpan((int)location, value.Length));
+        UpdateSize(newLength);
+        value.CopyTo(_memory.AsSpan(TruncateToInt32(location.u0), value.Length));
+        return true;
     }
 
-    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool outOfGas)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool isViolation)
     {
-        if (location.IsLargerThanULong() || length.IsLargerThanULong())
+        if (!length.IsUint64)
         {
-            outOfGas = true;
+            isViolation = true;
             newLength = 0;
             return;
         }
 
-        CheckMemoryAccessViolationInner(location.u0, length.u0, out newLength, out outOfGas);
+        CheckMemoryAccessViolation(in location, length.u0, out newLength, out isViolation);
     }
 
-    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength, out bool isViolation)
     {
-        if (location.IsLargerThanULong() || length.IsLargerThanULong())
+        // First pass: bail if length exceeds the aligned-memory cap or the location isn't a u64.
+        // Checking length first lets the compiler drop this branch entirely at call sites with a
+        // constant length (MSTORE/MSTORE8/MLOAD pass 32 or 1).
+        if (length > MaxMemorySize || !location.IsUint64)
         {
-            ThrowOutOfGasException();
-        }
-
-        CheckMemoryAccessViolationInner(location.u0, length.u0, out newLength, out bool outOfGas);
-        if (outOfGas)
-        {
-            ThrowOutOfGasException();
-        }
-    }
-
-    private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength)
-    {
-        if (location.IsLargerThanULong())
-        {
-            ThrowOutOfGasException();
-        }
-
-        CheckMemoryAccessViolationInner(location.u0, length, out newLength, out bool outOfGas);
-        if (outOfGas)
-        {
-            ThrowOutOfGasException();
-        }
-    }
-
-    private static void CheckMemoryAccessViolationInner(ulong location, ulong length, out ulong newLength, out bool outOfGas)
-    {
-        ulong totalSize = location + length;
-        if (totalSize < location || totalSize > long.MaxValue)
-        {
-            outOfGas = true;
+            isViolation = true;
             newLength = 0;
             return;
         }
 
-        outOfGas = false;
-        newLength = totalSize;
+        // length <= MaxMemorySize, so (MaxMemorySize - length) does not underflow. This single
+        // comparison subsumes both the unsigned-overflow check and the final bounds check that the
+        // original code wrote as two separate branches.
+        ulong offset = location.u0;
+        if (offset > MaxMemorySize - length)
+        {
+            isViolation = true;
+            newLength = 0;
+            return;
+        }
+
+        // locU0 + length <= MaxMemorySize < 2^31, no overflow possible.
+        isViolation = false;
+        newLength = offset + length;
     }
 
-    public void Save(in UInt256 location, byte[] value)
+    public bool TrySave(in UInt256 location, byte[] value)
     {
         if (value.Length == 0)
         {
-            return;
+            return true;
         }
 
         ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength);
+        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
+        if (isViolation) return false;
+
         UpdateSize(newLength);
 
-        Array.Copy(value, 0, _memory!, (long)location, value.Length);
+        Array.Copy(value, 0, _memory!, TruncateToInt32(location.u0), value.Length);
+        return true;
     }
 
-    public void Save(in UInt256 location, in ZeroPaddedSpan value)
+    public bool TrySave(in UInt256 location, in ZeroPaddedSpan value)
     {
         if (value.Length == 0)
         {
             // Nothing to do
-            return;
+            return true;
         }
 
         ulong length = (ulong)value.Length;
-        CheckMemoryAccessViolation(in location, length, out ulong newLength);
+        CheckMemoryAccessViolation(in location, length, out ulong newLength, out bool isViolation);
+        if (isViolation) return false;
+
         UpdateSize(newLength);
 
-        if (location.u0 > int.MaxValue)
-        {
-            ThrowOutOfGas();
-        }
-
-        int intLocation = (int)location.u0;
+        int intLocation = TruncateToInt32(location.u0);
         value.Span.CopyTo(_memory.AsSpan(intLocation, value.Span.Length));
         if (value.PaddingLength > 0)
         {
             ClearPadding(_memory, intLocation + value.Span.Length, value.PaddingLength);
         }
 
+        return true;
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         static void ClearPadding(byte[] memory, int offset, int length)
             => memory.AsSpan(offset, length).Clear();
     }
 
-    public Span<byte> LoadSpan(scoped in UInt256 location)
+    public bool TryLoadSpan(scoped in UInt256 location, out Span<byte> data)
     {
-        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
-        UpdateSize(newLength);
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength, out bool isViolation);
+        if (isViolation)
+        {
+            data = default;
+            return false;
+        }
 
-        return _memory.AsSpan((int)location, WordSize);
+        data = LoadSpan(newLength, TruncateToInt32(location.u0), WordSize);
+        return true;
     }
 
-    public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length)
+    public bool TryLoadSpan(scoped in UInt256 location, scoped in UInt256 length, out Span<byte> data)
     {
         if (length.IsZero)
         {
-            return [];
+            data = [];
+            return true;
         }
 
-        CheckMemoryAccessViolation(in location, in length, out ulong newLength);
-        UpdateSize(newLength);
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool isViolation);
+        if (isViolation)
+        {
+            data = default;
+            return false;
+        }
 
-        return _memory.AsSpan((int)location, (int)length);
+        data = LoadSpan(newLength, TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        return true;
     }
 
-    public ReadOnlyMemory<byte> Load(in UInt256 location, in UInt256 length)
+    public bool TryLoad(in UInt256 location, in UInt256 length, out ReadOnlyMemory<byte> data)
     {
         if (length.IsZero)
         {
-            return default;
+            data = default;
+            return true;
         }
 
-        if (location > int.MaxValue)
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool isViolation);
+        if (isViolation)
         {
-            return new byte[(long)length];
+            data = default;
+            return false;
         }
 
-        UpdateSize(in location, in length);
+        UpdateSize(newLength);
 
-        return _memory.AsMemory((int)location, (int)length);
+        data = _memory.AsMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        return true;
     }
 
     public ReadOnlyMemory<byte> Inspect(in UInt256 location, in UInt256 length)
@@ -236,57 +249,120 @@ public struct EvmPooledMemory : IEvmMemory
         }
     }
 
+    public long CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    {
+        if (length == 0)
+        {
+            outOfGas = false;
+            return 0L;
+        }
+
+        CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
+
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
+    }
+
     public long CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
     {
-        outOfGas = false;
         if (length.IsZero)
         {
+            outOfGas = false;
             return 0L;
         }
 
         CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
         if (outOfGas) return 0;
 
-        if (newSize > Size)
-        {
-            long newActiveWords = EvmCalculations.Div32Ceiling(newSize, out outOfGas);
-            if (outOfGas) return 0;
-            long activeWords = EvmCalculations.Div32Ceiling(Size, out outOfGas);
-            if (outOfGas) return 0;
-
-            // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
-            ulong cost = (ulong)
-                ((newActiveWords - activeWords) * GasCostOf.Memory +
-                 ((newActiveWords * newActiveWords) >> 9) -
-                 ((activeWords * activeWords) >> 9));
-
-            if (cost > long.MaxValue)
-            {
-                return long.MaxValue;
-            }
-
-            UpdateSize(newSize, rentIfNeeded: false);
-
-            return (long)cost;
-        }
-
-        return 0L;
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0L;
     }
 
-    public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void StoreWordAfterGas(in UInt256 location, ReadOnlySpan<byte> word)
     {
-        long result = CalculateMemoryCost(in location, in length, out bool outOfGas);
-        if (outOfGas)
-        {
-            ThrowOutOfGas();
-        }
-
-        return result;
-
+        Debug.Assert(location.IsUint64);
+        int offset = TruncateToInt32(location.u0);
+        Word value = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(word));
+        PrepareAccessAfterGas(location.u0 + WordSize);
+        ref byte memory = ref MemoryMarshal.GetArrayDataReference(_memory!);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref memory, offset), value);
     }
 
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowOutOfGas() => throw new OutOfGasException();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void StoreByteAfterGas(in UInt256 location, byte value)
+    {
+        Debug.Assert(location.IsUint64);
+        int offset = TruncateToInt32(location.u0);
+        PrepareAccessAfterGas(location.u0 + 1);
+        _memory![offset] = value;
+    }
+
+    /// <summary>
+    /// Returns a reference to the first of 32 contiguous bytes at <paramref name="location"/> in memory,
+    /// expanding the buffer (and charging gas) as needed.
+    /// </summary>
+    /// <remarks>
+    /// The returned ref aliases the internal memory buffer. The caller MUST consume the ref before
+    /// performing any other operation that may re-rent or grow the underlying storage, otherwise the
+    /// ref becomes dangling.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ref byte Load32BytesAfterGas(in UInt256 location)
+    {
+        Debug.Assert(location.IsUint64);
+        int offset = TruncateToInt32(location.u0);
+        PrepareAccessAfterGas(location.u0 + WordSize);
+        return ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory!), offset);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal Span<byte> LoadSpanAfterGas(in UInt256 location, ulong length)
+    {
+        Debug.Assert(location.IsUint64);
+        int offset = TruncateToInt32(location.u0);
+        int intLength = TruncateToInt32(length);
+        PrepareAccessAfterGas(location.u0 + length);
+        return _memory!.AsSpan(offset, intLength);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void CopyAfterGas(in UInt256 destination, in UInt256 source, ulong length)
+    {
+        if (length == 0)
+        {
+            return;
+        }
+
+        int destinationOffset = TruncateToInt32(destination.u0);
+        int sourceOffset = TruncateToInt32(source.u0);
+        int intLength = TruncateToInt32(length);
+
+        PrepareAccessAfterGas(destination.u0 + length);
+        _memory!.AsSpan(sourceOffset, intLength).CopyTo(_memory.AsSpan(destinationOffset, intLength));
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private long ComputeMemoryExpansionCost(ulong newSize)
+    {
+        // CheckMemoryAccessViolation has already capped newSize at MaxMemorySize (< 2^31), so the
+        // ceiling division cannot overflow uint and the squared terms stay below 2^52. Size is
+        // maintained as a word-aligned invariant by UpdateSize, so no ceiling is required there.
+        Debug.Assert(newSize <= MaxMemorySize);
+        Debug.Assert(Size % WordSize == 0);
+
+        long newActiveWords = (long)((newSize + (WordSize - 1UL)) >> 5);
+        long activeWords = (long)(Size >> 5);
+
+        // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
+        // in long -- so the outOfGas propagation that older revisions carried is unreachable.
+        long cost = (newActiveWords - activeWords) * GasCostOf.Memory +
+            ((newActiveWords * newActiveWords) >> 9) -
+            ((activeWords * activeWords) >> 9);
+
+        UpdateSize(newSize, rentIfNeeded: false);
+
+        return cost;
+    }
 
     public TraceMemory GetTrace()
     {
@@ -298,60 +374,96 @@ public struct EvmPooledMemory : IEvmMemory
     public void Dispose()
     {
         byte[] memory = _memory;
+
         if (memory is not null)
         {
             _memory = null;
-            ArrayPool<byte>.Shared.Return(memory);
+            SafeArrayPool<byte>.Shared.Return(memory);
         }
-    }
-
-    private void UpdateSize(in UInt256 location, in UInt256 length, bool rentIfNeeded = true)
-    {
-        UpdateSize((ulong)(location + length), rentIfNeeded);
     }
 
     private void UpdateSize(ulong length, bool rentIfNeeded = true)
     {
-        const int MinRentSize = 1_024;
-        Length = length;
-
-        if (Length > Size)
+        // CheckMemoryAccessViolation has already proven length <= MaxMemorySize, so
+        // (length + 31) cannot overflow. Branchless align-up replaces the original
+        // "modulo + conditional" pair: one AND and one ADD, no jumps.
+        if (length > Size)
         {
-            ulong remainder = Length % WordSize;
-            Size = remainder != 0 ? Length + WordSize - remainder : Length;
+            Size = (length + (WordSize - 1UL)) & ~(WordSize - 1UL);
         }
 
         if (rentIfNeeded)
         {
-            if (_memory is null)
+            EnsureRented();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Span<byte> LoadSpan(ulong newLength, int offset, int length)
+    {
+        UpdateSize(newLength);
+        return _memory!.AsSpan(offset, length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PrepareAccessAfterGas(ulong newLength)
+    {
+        Debug.Assert(newLength <= Size);
+        EnsureRented();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureRented()
+    {
+        byte[]? memory = _memory;
+        if (memory is null || Size > (ulong)memory.Length || Size > _lastZeroedSize)
+        {
+            RentSlow();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void RentSlow()
+    {
+        const int MinRentSize = 1_024;
+        if (_memory is null)
+        {
+            _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max((uint)Size, MinRentSize));
+            Array.Clear(_memory, 0, TruncateToInt32(Size));
+        }
+        else
+        {
+            int lastZeroedSize = (int)_lastZeroedSize;
+            if (Size > (ulong)_memory.LongLength)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, MinRentSize));
-                Array.Clear(_memory, 0, (int)Size);
+                byte[] beforeResize = _memory;
+                _memory = SafeArrayPool<byte>.Shared.Rent(TruncateToInt32(Size));
+                Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
+                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
+                SafeArrayPool<byte>.Shared.Return(beforeResize);
+            }
+            else if (Size > _lastZeroedSize)
+            {
+                Array.Clear(_memory, lastZeroedSize, TruncateToInt32(Size - _lastZeroedSize));
             }
             else
             {
-                int lastZeroedSize = (int)_lastZeroedSize;
-                if (Size > (ulong)_memory.LongLength)
-                {
-                    byte[] beforeResize = _memory;
-                    _memory = ArrayPool<byte>.Shared.Rent((int)Size);
-                    Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                    ArrayPool<byte>.Shared.Return(beforeResize);
-                }
-                else if (Size > _lastZeroedSize)
-                {
-                    Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                }
-                else
-                {
-                    return;
-                }
+                return;
             }
-
-            _lastZeroedSize = Size;
         }
+
+        _lastZeroedSize = Size;
     }
+
+    // (int)(uint)value rather than (int)value: RyuJIT emits noticeably worse codegen for a
+    // direct ulong->int narrowing (treats it as a signed truncation and keeps the operation
+    // on 64-bit registers, sometimes with extra moves or a movsxd). Routing through (uint)
+    // lowers to a plain 32-bit register write, which on x64 implicitly zeros the upper 32
+    // bits - the JIT collapses it to a single mov. The subsequent (int) reinterpret is free
+    // (same bit pattern). CheckMemoryAccessViolation caps addressable memory at MaxMemorySize
+    // (< 2^31), so reinterpreting the low word as signed is always safe here.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int TruncateToInt32(ulong value) => (int)(uint)value;
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowArgumentOutOfRangeException()
@@ -359,18 +471,13 @@ public struct EvmPooledMemory : IEvmMemory
         Metrics.EvmExceptions++;
         throw new ArgumentOutOfRangeException("Word size must be 32 bytes");
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowOutOfGasException()
-    {
-        Metrics.EvmExceptions++;
-        throw new OutOfGasException();
-    }
 }
 
 public static class UInt256Extensions
 {
-    public static bool IsLargerThanULong(in this UInt256 value) => (value.u1 | value.u2 | value.u3) != 0;
-    public static bool IsLargerThanLong(in this UInt256 value) => value.IsLargerThanULong() || value.u0 > long.MaxValue;
-    public static long ToLong(in this UInt256 value) => value.IsLargerThanLong() ? long.MaxValue : (long)value.u0;
+    extension(in UInt256 value)
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long ToLong() => !value.IsUint64 || value.u0 > long.MaxValue ? long.MaxValue : (long)value.u0;
+    }
 }

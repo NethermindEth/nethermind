@@ -9,8 +9,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class NewBlockMessage : P2PMessage
     {
-        public override int PacketType { get; } = Eth62MessageCode.NewBlock;
-        public override string Protocol { get; } = "eth";
+        public override int PacketType => Eth62MessageCode.NewBlock;
+        public override string Protocol => "eth";
 
         public Block Block { get; set; }
         public UInt256 TotalDifficulty { get; set; }

@@ -33,7 +33,6 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Stats;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 
@@ -80,9 +79,7 @@ public partial class ForwardHeaderProviderTests
     {
         IBlockTree instance = CachedBlockTreeBuilder.OfLength(1024);
         await using IContainer node = CreateNode(builder =>
-        {
-            builder.AddSingleton<IBlockTree>(instance);
-        });
+            builder.AddSingleton<IBlockTree>(instance));
         Context ctx = node.Resolve<Context>();
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
 
@@ -118,7 +115,7 @@ public partial class ForwardHeaderProviderTests
         {
         }, new ConfigProvider(new SyncConfig()
         {
-            PivotNumber = syncPivot.Number.ToString(),
+            PivotNumber = syncPivot.Number,
             PivotHash = syncPivot.Hash!.ToString(),
         }));
 
@@ -138,9 +135,7 @@ public partial class ForwardHeaderProviderTests
     public async Task Ancestor_failure_blocks()
     {
         await using IContainer node = CreateNode(builder =>
-        {
-            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1));
-        });
+            builder.AddSingleton<IBlockTree>(CachedBlockTreeBuilder.OfLength(2048 + 1)));
         Context ctx = node.Resolve<Context>();
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
 
@@ -248,6 +243,31 @@ public partial class ForwardHeaderProviderTests
         await newSyncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
     }
 
+    [Test]
+    public async Task Cache_block_headers_with_disposal()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+
+        using IOwnedReadOnlyList<BlockHeader?>? headers1 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        headers1.Should().NotBeNull();
+        using IOwnedReadOnlyList<BlockHeader?>? headers2 = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        headers2.Should().NotBeNull();
+
+        await syncPeer.Received(1).GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
     private class SlowSealValidator : ISealValidator
     {
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
@@ -331,62 +351,40 @@ public partial class ForwardHeaderProviderTests
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
-        public void Disconnect(DisconnectReason reason, string details)
-        {
+        public void Disconnect(DisconnectReason reason, string details) =>
             throw new NotImplementedException();
-        }
 
-        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
-        {
+        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
-        {
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
-        {
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token) =>
             throw new InvalidOperationException();
-        }
 
-        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
-        {
+        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
-        {
+        public void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
             throw new NotImplementedException();
-        }
 
         public PublicKey Id => Node.Id;
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
-        {
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
-        }
 
-        public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
-        {
+        public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
-        {
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-        {
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class =>
             throw new NotImplementedException();
-        }
 
-        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
-        {
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class =>
             throw new NotImplementedException();
-        }
     }
 
     [Test]
@@ -401,6 +399,48 @@ public partial class ForwardHeaderProviderTests
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Func<Task> headerTask = () => forwardHeader.GetBlockHeaders(0, 128, default);
         await headerTask.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Reports_weak_peer_on_timeout_cancellation()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IOwnedReadOnlyList<BlockHeader>?>>(x => throw new OperationCanceledException());
+
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        (await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)).Should().BeNull();
+        ctx.PeerPool.Received().ReportWeakPeer(peerInfo, AllocationContexts.ForwardHeader);
+    }
+
+    [Test]
+    public async Task Throws_on_sync_cancellation()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(1000);
+        syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns<Task<IOwnedReadOnlyList<BlockHeader>?>>(x => throw new OperationCanceledException());
+
+        ctx.ConfigureBestPeer(syncPeer);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        Func<Task> act = () => forwardHeader.GetBlockHeaders(0, 128, cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Flags]
@@ -453,10 +493,8 @@ public partial class ForwardHeaderProviderTests
         ISyncPeerPool PeerPool
     )
     {
-        public void ConfigureBestPeer(ISyncPeer syncPeer)
-        {
+        public void ConfigureBestPeer(ISyncPeer syncPeer) =>
             ConfigureBestPeer(new PeerInfo(syncPeer));
-        }
 
         public void ConfigureBestPeer(PeerInfo peerInfo)
         {
@@ -582,57 +620,35 @@ public partial class ForwardHeaderProviderTests
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 
-        public void Disconnect(DisconnectReason reason, string details)
-        {
+        public void Disconnect(DisconnectReason reason, string details) =>
             DisconnectReason = reason;
-        }
 
-        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
-        {
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
-        {
+        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
-        {
+        public void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
             throw new NotImplementedException();
-        }
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
-        {
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) =>
             throw new NotImplementedException();
-        }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
-        {
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) =>
             throw new NotImplementedException();
-        }
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-        {
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class =>
             throw new NotImplementedException();
-        }
 
-        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
-        {
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class =>
             throw new NotImplementedException();
-        }
     }
 
-    private class ResponseBuilder
+    private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
     {
-        private readonly IBlockTree _blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping;
-
-        public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
-        {
-            _blockTree = blockTree;
-            _testHeaderMapping = testHeaderMapping;
-        }
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
 
         public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
         {

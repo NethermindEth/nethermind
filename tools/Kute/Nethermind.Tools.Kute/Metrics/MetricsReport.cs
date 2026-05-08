@@ -40,7 +40,7 @@ public sealed record TimeMetrics
         {
             double average = times.Average(t => t.Ticks);
             double sumOfSquares = times.Sum(t => Math.Pow(t.Ticks - average, 2));
-            var stdDev = Math.Sqrt(sumOfSquares / times.Count);
+            double stdDev = Math.Sqrt(sumOfSquares / times.Count);
             return TimeSpan.FromTicks((long)stdDev);
         }
     }
@@ -57,10 +57,10 @@ public sealed record MetricsReport
     public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, TimeSpan>> Singles { get; init; }
     public required IReadOnlyDictionary<string, TimeSpan> Batches { get; init; }
 
-    // Computed properties
     private Dictionary<string, TimeMetrics>? _singlesMetrics;
-    private TimeMetrics? _batchesMetrics;
     public Dictionary<string, TimeMetrics> SinglesMetrics => _singlesMetrics ??= Singles.ToDictionary(kvp => kvp.Key, kvp => TimeMetrics.From(kvp.Value.Values.ToList()));
+
+    private TimeMetrics? _batchesMetrics;
     public TimeMetrics BatchesMetrics => _batchesMetrics ??= TimeMetrics.From(Batches.Values.ToList());
 }
 

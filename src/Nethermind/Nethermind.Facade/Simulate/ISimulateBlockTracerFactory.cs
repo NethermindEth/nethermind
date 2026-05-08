@@ -7,7 +7,8 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Facade.Simulate;
-public interface ISimulateBlockTracerFactory<TTrace>
+
+public interface ISimulateBlockTracerFactory<out TTrace>
 {
-    public abstract IBlockTracer<TTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block);
+    public IBlockTracer<TTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block);
 }

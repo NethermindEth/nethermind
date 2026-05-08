@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -88,12 +87,12 @@ public class BatchedTrieVisitor<TNodeContext>
         _partitionCount = recordCount / _maxBatchSize;
         if (_partitionCount == 0) _partitionCount = 1;
 
-        long expectedDbSize = 240.GiB(); // Unpruned size
+        long expectedDbSize = 240.GiB; // Unpruned size
 
         // Get estimated num of file (expected db size / 64MiB), multiplied by a reasonable num of thread we want to
         // confine to a file. If its too high, the overhead of looping through the stack can get a bit high at the end
         // of the visit. But then again its probably not much.
-        long maxPartitionCount = (expectedDbSize / 64.MiB()) * Math.Min(4, visitingOptions.MaxDegreeOfParallelism);
+        long maxPartitionCount = (expectedDbSize / 64.MiB) * Math.Min(4, visitingOptions.MaxDegreeOfParallelism);
 
         if (_partitionCount > maxPartitionCount)
         {
@@ -105,7 +104,7 @@ public class BatchedTrieVisitor<TNodeContext>
         // Estimated readahead threshold used to determine how many node in a partition to enable readahead.
         long estimatedPartitionAddressSpaceSize = expectedDbSize / _partitionCount;
         long toleratedPerNodeReadAmp =
-            16.KiB(); // If the estimated per-node read is above this, don't enable readahead.
+            16.KiB; // If the estimated per-node read is above this, don't enable readahead.
         _readAheadThreshold = estimatedPartitionAddressSpaceSize / toleratedPerNodeReadAmp;
 
         // Calculating estimated pool margin at about 5% of total working size. The working set size fluctuate a bit so
@@ -146,9 +145,9 @@ public class BatchedTrieVisitor<TNodeContext>
 
         try
         {
-            using ArrayPoolList<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
+            using ArrayPoolListRef<Task> tasks = Enumerable.Range(0, trieVisitContext.MaxDegreeOfParallelism)
                 .Select(_ => Task.Run(BatchedThread))
-                .ToPooledList(trieVisitContext.MaxDegreeOfParallelism);
+                .ToPooledListRef(trieVisitContext.MaxDegreeOfParallelism);
 
             Task.WaitAll(tasks.AsSpan());
         }
@@ -159,6 +158,11 @@ public class BatchedTrieVisitor<TNodeContext>
         }
     }
 
+    /// <summary>
+    /// Pops items from a partition stack and returns them as a new batch.
+    /// Returns null when all jobs are complete or a failure has occurred.
+    /// The caller owns the returned list and must dispose it.
+    /// </summary>
     ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? GetNextBatch()
     {
         CompactStack<Job>? theStack;
@@ -169,7 +173,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Interlocked.Add(ref _currentPointer, -_partitionCount);
 
-                GC.Collect(); // Simulate GC collect of standard visitor
+                GC.Collect(); // Simulate GC collect of a standard visitor
             }
 
             partitionIdx %= _partitionCount;
@@ -256,7 +260,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
 
-    void QueueNextNodes(ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
+    void QueueNextNodes(ref ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
         TreePath emptyPath = TreePath.Empty;
@@ -267,11 +271,19 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
-                using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
-                trieNode.ResolveNode(_resolver, emptyPath);
-                Interlocked.Increment(ref _activeJobs);
-                AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, recursiveResult);
-                QueueNextNodes(recursiveResult);
+                ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
+                try
+                {
+                    trieNode.ResolveNode(_resolver, emptyPath);
+                    Interlocked.Increment(ref _activeJobs);
+                    AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, ref recursiveResult);
+                    QueueNextNodes(ref recursiveResult);
+                }
+                finally
+                {
+                    recursiveResult.Dispose();
+                }
+
                 continue;
             }
 
@@ -280,7 +292,7 @@ public class BatchedTrieVisitor<TNodeContext>
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
 
-            var theStack = _partitions[partitionIdx];
+            CompactStack<Job> theStack = _partitions[partitionIdx];
             lock (theStack)
             {
                 theStack.Push(new Job(keccak, nodeContext, ctx));
@@ -290,95 +302,97 @@ public class BatchedTrieVisitor<TNodeContext>
         Interlocked.Decrement(ref _activeJobs);
     }
 
-
     private void BatchedThread()
     {
-        using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
-        using ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
-        ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? currentBatch;
-        TreePath emptyPath = TreePath.Empty;
-        while ((currentBatch = GetNextBatch()) is not null)
+        ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
+        try
         {
-            // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
-            // but the path ordering is important for read amplification
-            resolveOrdering.Clear();
-            for (int i = 0; i < currentBatch.Count; i++)
-            {
-                (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
-
-                cur.ResolveKey(_resolver, ref emptyPath);
-
-                if (cur.FullRlp.IsNotNull) continue;
-                if (cur.Keccak is null)
-                    ThrowUnableToResolve(ctx);
-
-                resolveOrdering.Add(i);
-            }
-
-            // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
-            // take about 0.1% of the time, so not very cpu intensive in this case.
-            resolveOrdering
-                .AsSpan()
-                .Sort((item1, item2) => currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
-
-            ReadFlags flags = ReadFlags.None;
-            if (resolveOrdering.Count > _readAheadThreshold)
-            {
-                flags = ReadFlags.HintReadAhead;
-            }
-
-            // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
-            for (int i = 0; i < resolveOrdering.Count; i++)
-            {
-                int idx = resolveOrdering[i];
-
-                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
-                try
+            using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
+            TreePath emptyPath = TreePath.Empty;
+            while (GetNextBatch() is { } currentBatch)
+                using (currentBatch)
                 {
-                    Hash256 theKeccak = nodeToResolve.Keccak;
-                    nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
-                    nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                    // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
+                    // but the path ordering is important for read amplification
+                    resolveOrdering.Clear();
+                    for (int i = 0; i < currentBatch.Count; i++)
+                    {
+                        (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
+
+                        cur.ResolveKey(_resolver, ref emptyPath);
+
+                        if (cur.FullRlp.IsNotNull) continue;
+                        if (cur.Keccak is null)
+                            ThrowUnableToResolve(ctx);
+
+                        resolveOrdering.Add(i);
+                    }
+
+                    // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
+                    // take about 0.1% of the time, so not very cpu intensive in this case.
+                    resolveOrdering
+                        .AsSpan()
+                        .Sort((item1, item2) =>
+                            currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
+
+                    ReadFlags flags = ReadFlags.None;
+                    if (resolveOrdering.Count > _readAheadThreshold)
+                    {
+                        flags = ReadFlags.HintReadAhead;
+                    }
+
+                    // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
+                    for (int i = 0; i < resolveOrdering.Count; i++)
+                    {
+                        int idx = resolveOrdering[i];
+
+                        (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
+                        try
+                        {
+                            Hash256 theKeccak = nodeToResolve.Keccak;
+                            nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
+                            nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                        }
+                        catch (TrieException)
+                        {
+                            _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
+                        }
+                    }
+
+                    // Going in reverse to reduce memory
+                    for (int i = currentBatch.Count - 1; i >= 0; i--)
+                    {
+                        (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
+
+                        nextToProcesses.Clear();
+                        if (nodeToResolve.FullRlp.IsNull)
+                        {
+                            // Still need to decrement counter
+                            QueueNextNodes(ref nextToProcesses);
+                            return; // missing node
+                        }
+
+                        AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, ref nextToProcesses);
+                        QueueNextNodes(ref nextToProcesses);
+                    }
                 }
-                catch (TrieException)
-                {
-                    _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
-                }
-            }
-
-            // Going in reverse to reduce memory
-            for (int i = currentBatch.Count - 1; i >= 0; i--)
-            {
-                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
-
-                nextToProcesses.Clear();
-                if (nodeToResolve.FullRlp.IsNull)
-                {
-                    // Still need to decrement counter
-                    QueueNextNodes(nextToProcesses);
-                    return; // missing node
-                }
-
-                AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, nextToProcesses);
-                QueueNextNodes(nextToProcesses);
-            }
-
-            currentBatch.Dispose();
+        }
+        finally
+        {
+            nextToProcesses.Dispose();
         }
 
         return;
 
-        static void ThrowUnableToResolve(in SmallTrieVisitContext ctx)
-        {
-            throw new TrieException(
-                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {ctx.ExpectAccounts}, {ctx.IsStorage}");
-        }
+        void ThrowUnableToResolve(in SmallTrieVisitContext ctx) => throw new TrieException(
+                $"Unable to resolve node without Keccak. ctx: {ctx.Level}, {_visitor.ExpectAccounts}, {ctx.IsStorage}");
     }
 
     /// <summary>
     /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
     /// `nextToVisit`. Also, it assume the node is already resolved.
     /// </summary>
-    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+    internal void AcceptResolvedNode(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, ref ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
     {
         // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
         // which should only be used with hash keys.
@@ -422,8 +436,6 @@ public class BatchedTrieVisitor<TNodeContext>
                     if (_visitor.ShouldVisit(childContext, child.Keccak!))
                     {
                         trieVisitContext.Level++;
-
-
                         nextToVisit.Add((child, childContext, trieVisitContext));
                     }
 
@@ -434,11 +446,11 @@ public class BatchedTrieVisitor<TNodeContext>
                 {
                     _visitor.VisitLeaf(nodeContext, node);
 
-                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                    if (!trieVisitContext.IsStorage && _visitor.ExpectAccounts) // can combine these conditions
                     {
                         TNodeContext childContext = nodeContext.Add(node.Key!);
 
-                        Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.Span);
+                        Rlp.ValueDecoderContext decoderContext = new(node.Value.AsSpan());
                         if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                         {
                             throw new InvalidDataException("Non storage leaf should be an account");
@@ -473,18 +485,11 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private readonly struct Job
+    private readonly struct Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
     {
-        public readonly ValueHash256 Key;
-        public readonly TNodeContext NodeContext;
-        public readonly SmallTrieVisitContext Context;
-
-        public Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
-        {
-            Key = key;
-            NodeContext = nodeContext;
-            Context = context;
-        }
+        public readonly ValueHash256 Key = key;
+        public readonly TNodeContext NodeContext = nodeContext;
+        public readonly SmallTrieVisitContext Context = context;
     }
 }
 
@@ -503,26 +508,17 @@ public struct TreePathContext : INodeContext<TreePathContext>
     {
     }
 
-    public TreePathContext Add(ReadOnlySpan<byte> nibblePath)
+    public TreePathContext Add(ReadOnlySpan<byte> nibblePath) => new()
     {
-        return new TreePathContext()
-        {
-            Path = Path.Append(nibblePath)
-        };
-    }
+        Path = Path.Append(nibblePath)
+    };
 
-    public TreePathContext Add(byte nibble)
+    public TreePathContext Add(byte nibble) => new()
     {
-        return new TreePathContext()
-        {
-            Path = Path.Append(nibble)
-        };
-    }
+        Path = Path.Append(nibble)
+    };
 
-    public readonly TreePathContext AddStorage(in ValueHash256 storage)
-    {
-        return new TreePathContext();
-    }
+    public readonly TreePathContext AddStorage(in ValueHash256 storage) => new();
 }
 
 public interface ITreePathContextWithStorage
@@ -540,32 +536,23 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
     {
     }
 
-    public TreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    public TreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath) => new()
     {
-        return new TreePathContextWithStorage()
-        {
-            Path = Path.Append(nibblePath),
-            Storage = Storage
-        };
-    }
+        Path = Path.Append(nibblePath),
+        Storage = Storage
+    };
 
-    public TreePathContextWithStorage Add(byte nibble)
+    public TreePathContextWithStorage Add(byte nibble) => new()
     {
-        return new TreePathContextWithStorage()
-        {
-            Path = Path.Append(nibble),
-            Storage = Storage
-        };
-    }
+        Path = Path.Append(nibble),
+        Storage = Storage
+    };
 
-    public readonly TreePathContextWithStorage AddStorage(in ValueHash256 storage)
+    public readonly TreePathContextWithStorage AddStorage(in ValueHash256 storage) => new()
     {
-        return new TreePathContextWithStorage()
-        {
-            Path = TreePath.Empty,
-            Storage = Path.Path.ToCommitment(),
-        };
-    }
+        Path = TreePath.Empty,
+        Storage = Path.Path.ToCommitment(),
+    };
 }
 
 /// <summary>
@@ -574,20 +561,11 @@ public readonly struct TreePathContextWithStorage : ITreePathContextWithStorage,
 /// </summary>
 public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<NoopTreePathContextWithStorage>
 {
-    public readonly NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
-    {
-        return this;
-    }
+    public readonly NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath) => this;
 
-    public readonly NoopTreePathContextWithStorage Add(byte nibble)
-    {
-        return this;
-    }
+    public readonly NoopTreePathContextWithStorage Add(byte nibble) => this;
 
-    public readonly NoopTreePathContextWithStorage AddStorage(in ValueHash256 storage)
-    {
-        return this;
-    }
+    public readonly NoopTreePathContextWithStorage AddStorage(in ValueHash256 storage) => this;
 
     public readonly TreePath Path => TreePath.Empty;
     public readonly Hash256? Storage => null;

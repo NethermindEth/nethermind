@@ -50,11 +50,12 @@ public class DbModule(
                 return new NoopTunableDb();
             })
             .AddKeyedAdapter<IReadOnlyKeyValueStore, IKeyValueStore>((kv) => kv)
-
-            // Monitoring use these to track active db. We intercept db factory to keep them lazy. Does not
-            // track db that is not created by db factory though...
-            .AddSingleton<DbTracker>()
-            .AddDecorator<IDbFactory, DbTracker.DbFactoryInterceptor>()
+            .AddKeyedAdapter<ISortedKeyValueStore, IKeyValueStore>((key, kv) =>
+            {
+                if (kv is not ISortedKeyValueStore sortedKeyValue)
+                    throw new InvalidOperationException($"{nameof(IKeyValueStore)}:{key} is not of type {nameof(ISortedKeyValueStore)}");
+                return sortedKeyValue;
+            })
 
             .AddDatabase(DbNames.State)
             .AddDatabase(DbNames.Code)
@@ -64,13 +65,13 @@ public class DbModule(
             .AddDatabase(DbNames.Blocks)
             .AddDatabase(DbNames.Headers)
             .AddDatabase(DbNames.BlockInfos)
-            .AddDatabase(DbNames.BadBlocks)
             .AddDatabase(DbNames.Bloom)
-            .AddDatabase(DbNames.Metadata)
-            .AddDatabase(DbNames.BlobTransactions)
+            .AddDatabase(DbNames.BlockAccessLists)
 
             .AddColumnDatabase<ReceiptsColumns>(DbNames.Receipts)
             .AddColumnDatabase<BlobTxsColumns>(DbNames.BlobTransactions)
+
+            .AddSingleton<HyperClockCacheWrapper>((ctx) => new HyperClockCacheWrapper(ctx.Resolve<IDbConfig>().SharedBlockCacheSize))
             ;
 
         switch (initConfig.DiagnosticMode)
@@ -115,14 +116,8 @@ public class DbModule(
 
     private class ReadOnlyDbFactory(IDbFactory baseDbFactory) : IDbFactory
     {
-        public IDb CreateDb(DbSettings dbSettings)
-        {
-            return baseDbFactory.CreateDb(dbSettings).AsReadOnly(true);
-        }
+        public IDb CreateDb(DbSettings dbSettings) => baseDbFactory.CreateDb(dbSettings).AsReadOnly(true);
 
-        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
-        {
-            return baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
-        }
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
     }
 }

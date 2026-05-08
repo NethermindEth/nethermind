@@ -2,33 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Compression;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using DotNetty.Buffers;
 using Microsoft.IO;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
-using Nethermind.Serialization.Rlp;
 using Snappier;
 namespace Nethermind.Era1;
 
-public class E2StoreWriter : IDisposable
+public class E2StoreWriter(Stream stream) : IDisposable
 {
     internal const int HeaderSize = 8;
-    private readonly Stream _stream;
+    private readonly Stream _stream = stream;
     private readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
     public long Position => _stream.Position;
-
-    public E2StoreWriter(Stream stream)
-    {
-        _stream = stream;
-    }
 
     public async Task<int> WriteEntryAsSnappy(ushort type, Memory<byte> bytes, CancellationToken cancellation = default)
     {
@@ -69,15 +60,32 @@ public class E2StoreWriter : IDisposable
         return length + HeaderSize;
     }
 
-    public Task Flush(CancellationToken cancellation = default)
+    public Task Flush(CancellationToken cancellation = default) => _stream.FlushAsync(cancellation);
+
+    public void Dispose()
     {
-        return _stream.FlushAsync(cancellation);
+        _checksumCalculator.Dispose();
+        _stream.Dispose();
     }
 
-    public void Dispose() => _stream.Dispose();
+    public ValueHash256 FinalizeChecksum() => new(_checksumCalculator.GetHashAndReset());
 
-    public ValueHash256 FinalizeChecksum()
+    /// <summary>
+    /// Compresses <paramref name="bytes"/> using Snappy framing and returns the result
+    /// in a rented <see cref="ArrayPool{T}"/> buffer. The caller must return the buffer
+    /// via <c>ArrayPool&lt;byte&gt;.Shared.Return</c> after use.
+    /// </summary>
+    public static async Task<(byte[] Buffer, int Length)> Compress(
+        ReadOnlyMemory<byte> bytes, CancellationToken cancellation = default)
     {
-        return new ValueHash256(_checksumCalculator.GetHashAndReset());
+        using RecyclableMemoryStream ms = RecyclableStream.GetStream(nameof(E2StoreWriter));
+        using SnappyStream compressor = new(ms, CompressionMode.Compress, leaveOpen: true);
+        await compressor.WriteAsync(bytes, cancellation);
+        await compressor.FlushAsync(cancellation);
+        bool ok = ms.TryGetBuffer(out ArraySegment<byte> segment);
+        Debug.Assert(ok);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(segment.Count);
+        segment.AsSpan().CopyTo(rented);
+        return (rented, segment.Count);
     }
 }

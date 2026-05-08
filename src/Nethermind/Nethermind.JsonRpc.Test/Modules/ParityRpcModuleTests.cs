@@ -15,15 +15,14 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.KeyStore;
 using Nethermind.Network;
 using Nethermind.Network.Contract.P2P;
@@ -34,8 +33,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
-using Nethermind.Core.Test.Db;
-using Nethermind.State;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -64,10 +62,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             Peer peerC = SetUpPeerC();      //Node is null, Caps are empty
             IPeerManager peerManager = Substitute.For<IPeerManager>();
             peerManager.ActivePeers.Returns(new List<Peer> { peerA, peerB, peerC });
+            peerManager.ActivePeersCount.Returns(3);
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
+            peerManager.ConnectedPeersCount.Returns(5);
             peerManager.MaxActivePeers.Returns(15);
 
-            TestReadOnlyStateProvider stateProvider = new TestReadOnlyStateProvider();
+            TestReadOnlyStateProvider stateProvider = new();
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
@@ -101,12 +101,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             transaction1.Signature!.V = 37;
             stateProvider.CreateAccount(transaction1.SenderAddress!, UInt256.UInt128MaxValue);
 
-            var transaction2 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction transaction2 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(120).TestObject;
             transaction2.Signature!.V = 37;
 
-            var transaction3 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction transaction3 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(110).TestObject;
             transaction2.Signature.V = 37;
@@ -257,9 +257,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return peer;
         }
 
-        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null)
-        {
-            return new ParityRpcModule(_ethereumEcdsa,
+        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null) => new ParityRpcModule(_ethereumEcdsa,
                 _txPool,
                 _blockTree,
                 _receiptStorage,
@@ -268,7 +266,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 MainnetSpecProvider.Instance,
                 peerManager ?? Substitute.For<IPeerManager>());
-        }
 
         [Test]
         public async Task parity_pendingTransactions()
@@ -358,6 +355,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IPeerManager peerManager = Substitute.For<IPeerManager>();
             peerManager.ActivePeers.Returns(new List<Peer> { });
             peerManager.ConnectedPeers.Returns(new List<Peer> { new(new Node(TestItem.PublicKeyA, "111.1.1.1", 11111, true)) });
+            peerManager.ConnectedPeersCount.Returns(1);
 
             IParityRpcModule parityRpcModule = CreateParityRpcModule(peerManager);
 
@@ -374,6 +372,27 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(parityRpcModule, "parity_netPeers");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":{\"active\":0,\"connected\":0,\"max\":0,\"peers\":[]},\"id\":67}";
             Assert.That(serialized, Is.EqualTo(expectedResult));
+        }
+
+        [Test]
+        public void ParityTransaction_WithFullPublicKeyJson_DeserializesSuccessfully()
+        {
+            const string fullKeyHex = "a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365f52e5a8728693008d97ae83d51194f273455acf1a30e6f3926aefaede484c07d8ec3";
+            byte[] fullPublicKeyBytes = Bytes.FromHexString(fullKeyHex);
+
+            string json = $$"""
+                {
+                    "publicKey": "0x{{fullKeyHex}}",
+                    "hash": "0xd4720d1b81c70ed4478553a213a83bd2bf6988291677f5d05c6aae0b287f947e"
+                }
+                """;
+
+            EthereumJsonSerializer serializer = new();
+            ParityTransaction tx = serializer.Deserialize<ParityTransaction>(json);
+
+            tx.PublicKey.Should().NotBeNull();
+            tx.PublicKey.Bytes.Length.Should().Be(64);
+            tx.PublicKey.Bytes.Should().BeEquivalentTo(fullPublicKeyBytes);
         }
     }
 }

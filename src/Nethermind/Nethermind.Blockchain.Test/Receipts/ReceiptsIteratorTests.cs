@@ -14,9 +14,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
+[Parallelizable(ParallelScope.All)]
 public class ReceiptsIteratorTests
 {
-    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    private readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()
@@ -25,26 +26,26 @@ public class ReceiptsIteratorTests
             .Block
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
-        TxReceipt[] receipts = new[]
-        {
+        TxReceipt[] receipts =
+        [
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
-            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject,
-        };
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject
+        ];
 
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
         iterator.TryGetNext(out TxReceiptStructRef receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[0].Hash!.BytesToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
     }
 
@@ -65,14 +66,14 @@ public class ReceiptsIteratorTests
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
         iterator.TryGetNext(out TxReceiptStructRef receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes.ToArray());
         receipt.TxHash.Bytes.Length.Should().Be(0);
         iterator.TryGetNext(out receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes.ToArray());
         receipt.TxHash.Bytes.Length.Should().Be(0);
         iterator.TryGetNext(out receipt).Should().BeTrue();
         iterator.RecoverIfNeeded(ref receipt);
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes.ToArray());
         receipt.TxHash.Bytes.ToArray().Should().BeEquivalentTo(block.Transactions[1].Hash!.BytesToArray());
     }
 
@@ -84,34 +85,34 @@ public class ReceiptsIteratorTests
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
         TxReceipt[] receipts =
-        {
+        [
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressA).TestObject,
             Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressB).TestObject,
-            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject,
-        };
+            Build.A.Receipt.WithAllFieldsFilled.WithSender(TestItem.AddressC).TestObject
+        ];
 
         ReceiptsIterator iterator = CreateIterator(receipts, block);
 
         iterator.TryGetNext(out TxReceiptStructRef receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressA.Bytes.ToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressB.Bytes.ToArray());
         iterator.TryGetNext(out receipt).Should().BeTrue();
-        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes);
+        receipt.Sender.Bytes.ToArray().Should().BeEquivalentTo(TestItem.AddressC.Bytes.ToArray());
     }
 
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
     {
         using NettyRlpStream stream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         Span<byte> span = stream.AsSpan();
-        TestMemDb blockDb = new TestMemDb();
-        ReceiptsRecovery recovery = new ReceiptsRecovery(
+        TestMemDb blockDb = new();
+        ReceiptsRecovery recovery = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             MainnetSpecProvider.Instance,
             false
         );
 
-        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
+        ReceiptsIterator iterator = new(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
         return iterator;
     }
 }

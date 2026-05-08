@@ -1,24 +1,45 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
-using Nethermind.Xdc.Types;
 using Nethermind.Core.Crypto;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
+
 public interface IEpochSwitchManager
 {
-    EpochSwitchInfo? GetPreviousEpochSwitchInfoByHash(Hash256 parentHash, int limit);
-    bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent, out ulong epochNumber);
-    bool IsEpochSwitchAtBlock(XdcBlockHeader header, out ulong epochNumber);
-    EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header, Hash256 parentHash);
-    bool IsEpochSwitch(XdcBlockHeader header, out ulong epochNumber);
-    EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end);
-    (ulong currentCheckpointNumber, ulong epochNumber) GetCurrentEpochNumbers(ulong blockNumber);
-    EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCert timeoutCert);
+    /// <summary>
+    /// Determines if an epoch switch occurs at the given round, based on the parent block.
+    /// </summary>
+    bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent);
+
+    /// <summary>
+    /// Determines if the given block is an epoch switch block.
+    /// </summary>
+    bool IsEpochSwitchAtBlock(XdcBlockHeader header);
+
+    /// <summary>
+    /// Returns epoch switch info for the epoch containing the block with the given header.
+    /// </summary>
+    EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header);
+
+    /// <summary>
+    /// Returns epoch switch info for the epoch containing the block with the given hash.
+    /// </summary>
+    EpochSwitchInfo? GetEpochSwitchInfo(Hash256 blockHash);
+
+    /// <summary>
+    /// Returns epoch switch info for the epoch containing the given consensus round.
+    /// </summary>
+    EpochSwitchInfo? GetEpochSwitchInfo(ulong round);
+
+    /// <summary>
+    /// Returns epoch switch info for the epoch in which the timeout certificate was produced.
+    /// </summary>
+    EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCertificate);
+
+    /// <summary>
+    /// Returns the epoch switch block info for the given epoch number, or null if not found.
+    /// </summary>
+    BlockRoundInfo? GetBlockByEpochNumber(ulong epochNumber);
 }

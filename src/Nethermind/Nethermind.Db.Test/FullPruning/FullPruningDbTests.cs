@@ -81,7 +81,7 @@ namespace Nethermind.Db.Test.FullPruning
         }
 
         [Test]
-        public void during_pruning_dont_duplicate_read_with_skip_duplicate_read()
+        public void during_pruning_do_not_duplicate_read_with_skip_duplicate_read()
         {
             TestContext test = new();
             byte[] key = { 1, 2 };

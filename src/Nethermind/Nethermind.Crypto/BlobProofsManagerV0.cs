@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -55,6 +54,11 @@ internal class BlobProofsManagerV0 : IBlobProofsManager
 
     public bool ValidateProofs(ShardBlobNetworkWrapper wrapper)
     {
+        if (wrapper.Version is not ProofVersion.V0)
+        {
+            return false;
+        }
+
         if (wrapper.Blobs.Length is 1 && wrapper.Commitments.Length is 1 && wrapper.Proofs.Length is 1)
         {
             try

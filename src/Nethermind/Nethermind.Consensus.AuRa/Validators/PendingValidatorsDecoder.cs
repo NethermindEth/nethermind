@@ -3,41 +3,42 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal class PendingValidatorsDecoder : IRlpObjectDecoder<PendingValidators>, IRlpStreamDecoder<PendingValidators>
+    internal sealed class PendingValidatorsDecoder : RlpValueDecoder<PendingValidators>, IRlpObjectDecoder<PendingValidators>
     {
-        public PendingValidators Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override PendingValidators DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpStream.IsNextItemNull())
+            if (decoderContext.IsNextItemEmptyList())
             {
-                rlpStream.ReadByte();
+                decoderContext.ReadByte();
                 return null;
             }
 
-            var sequenceLength = rlpStream.ReadSequenceLength();
-            var pendingValidatorsCheck = rlpStream.Position + sequenceLength;
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int pendingValidatorsCheck = decoderContext.Position + sequenceLength;
 
-            var blockNumber = rlpStream.DecodeLong();
-            var blockHash = rlpStream.DecodeKeccak();
+            long blockNumber = decoderContext.DecodeLong();
+            Hash256 blockHash = decoderContext.DecodeKeccak();
 
-            var addressSequenceLength = rlpStream.ReadSequenceLength();
-            var addressCheck = rlpStream.Position + addressSequenceLength;
-            List<Address> addresses = new List<Address>();
-            while (rlpStream.Position < addressCheck)
+            int addressSequenceLength = decoderContext.ReadSequenceLength();
+            int addressCheck = decoderContext.Position + addressSequenceLength;
+            List<Address> addresses = new();
+            while (decoderContext.Position < addressCheck)
             {
-                addresses.Add(rlpStream.DecodeAddress());
+                addresses.Add(decoderContext.DecodeAddress());
             }
-            rlpStream.Check(addressCheck);
+            decoderContext.Check(addressCheck);
 
-            var result = new PendingValidators(blockNumber, blockHash, addresses.ToArray())
+            PendingValidators result = new(blockNumber, blockHash, addresses.ToArray())
             {
-                AreFinalized = rlpStream.DecodeBool()
+                AreFinalized = decoderContext.DecodeBool()
             };
 
-            rlpStream.Check(pendingValidatorsCheck);
+            decoderContext.Check(pendingValidatorsCheck);
 
             return result;
         }
@@ -46,15 +47,15 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (item is null)
             {
-                return Rlp.OfEmptySequence;
+                return Rlp.OfEmptyList;
             }
 
-            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data.ToArray());
         }
 
-        public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public override void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
             rlpStream.StartSequence(contentLength);
@@ -68,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             rlpStream.Encode(item.AreFinalized);
         }
 
-        public int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
+        public override int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
             item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
 
         private static (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
@@ -77,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                                 + Rlp.LengthOf(item.BlockHash)
                                 + Rlp.LengthOf(item.AreFinalized);
 
-            var addressesLength = GetAddressesLength(item.Addresses);
+            int addressesLength = GetAddressesLength(item.Addresses);
             contentLength += Rlp.LengthOfSequence(addressesLength);
 
             return (contentLength, addressesLength);

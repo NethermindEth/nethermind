@@ -1,56 +1,70 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using Nethermind.Api.Extensions;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Autofac;
 using Autofac.Core;
-using Nethermind.Xdc.Spec;
+using Nethermind.Api;
+using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
+using Nethermind.Consensus;
+using Nethermind.Core.Specs;
+using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Specs.ChainSpecStyle;
+using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
 public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
+    private INethermindApi _nethermindApi;
     public const string Xdc = "Xdc";
     public string Author => "Nethermind";
     public string Name => Xdc;
     public string Description => "Xdc support for Nethermind";
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-    public bool MustInitialize => true;
-    public string SealEngineType => Core.SealEngineType.XDPoS;
+    public string SealEngineType => XdcConstants.XDPoS;
     public IModule Module => new XdcModule();
 
-    // IConsensusPlugin
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
+    public Task Init(INethermindApi nethermindApi)
     {
-        throw new NotSupportedException();
+        _nethermindApi = nethermindApi;
+        return Task.CompletedTask;
     }
+
+    public Task InitNetworkProtocol()
+    {
+        // Remove default ETH 68 capability (XDC uses 62-65 and 100)
+        _nethermindApi.ProtocolsManager!.RemoveSupportedCapability(new(Protocol.Eth, 68));
+
+        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 62));
+        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 63));
+        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 64));
+        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 65));
+        _nethermindApi.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 100));
+        return Task.CompletedTask;
+    }
+
+    // IConsensusPlugin
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new XdcHotStuff(
+            _nethermindApi.Context.Resolve<IBlockTree>(),
+            _nethermindApi.Context.Resolve<IXdcConsensusContext>(),
+            _nethermindApi.Context.Resolve<ISpecProvider>(),
+            blockProducer,
+            _nethermindApi.Context.Resolve<IEpochSwitchManager>(),
+            _nethermindApi.Context.Resolve<ISnapshotManager>(),
+            _nethermindApi.Context.Resolve<IMasternodesCalculator>(),
+            _nethermindApi.Context.Resolve<IQuorumCertificateManager>(),
+            _nethermindApi.Context.Resolve<IVotesManager>(),
+            _nethermindApi.Context.Resolve<ISigner>(),
+            _nethermindApi.Context.Resolve<ITimeoutTimer>(),
+            _nethermindApi.ProcessExit,
+            _nethermindApi.Context.Resolve<ISignTransactionManager>(),
+            _nethermindApi.Context.Resolve<ILogManager>()
+            );
     public IBlockProducer InitBlockProducer()
     {
-        throw new NotSupportedException();
+        StartXdcBlockProducer start = _nethermindApi.Context.Resolve<StartXdcBlockProducer>();
+        return start.BuildProducer();
     }
-}
-
-public class XdcModule : Module
-{
-    protected override void Load(ContainerBuilder builder)
-    {
-        base.Load(builder);
-
-        builder
-            .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
-            .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
-                chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<XdcChainSpecEngineParameters>())
-
-            // Validators
-            .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
-
-            ;
-    }
-
 }

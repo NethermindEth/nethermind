@@ -19,13 +19,9 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
 {
     private readonly IEnumerable<RpcAuthTuple> _tuples;
 
-    [JsonConstructor]
-    public AuthorizationListForRpc() { }
+    public AuthorizationListForRpc() => _tuples = Array.Empty<RpcAuthTuple>();
 
-    private AuthorizationListForRpc(IEnumerable<RpcAuthTuple> tuples)
-    {
-        _tuples = tuples;
-    }
+    private AuthorizationListForRpc(IEnumerable<RpcAuthTuple> tuples) => _tuples = tuples;
 
     public class RpcAuthTuple
     {
@@ -36,7 +32,6 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
         public UInt256 S { get; set; }
         public UInt256 R { get; set; }
 
-        [JsonConstructor]
         public RpcAuthTuple() { }
 
         public RpcAuthTuple(UInt256 chainId, ulong nonce, Address address, ulong yParity, UInt256 s, UInt256 r)
@@ -69,17 +64,11 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
             new Signature(tuple.R, tuple.S, (ulong)tuple.YParity + Signature.VOffset))
         ).ToArray();
 
-    public IEnumerator<RpcAuthTuple> GetEnumerator()
-    {
-        return _tuples.GetEnumerator();
-    }
+    public IEnumerator<RpcAuthTuple> GetEnumerator() => _tuples.GetEnumerator();
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    private class JsonConverter : JsonConverter<AuthorizationListForRpc>
+    public class JsonConverter : JsonConverter<AuthorizationListForRpc>
     {
         public override AuthorizationListForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -87,9 +76,6 @@ public class AuthorizationListForRpc : IEnumerable<RpcAuthTuple>
             return list is null ? null : new AuthorizationListForRpc(list);
         }
 
-        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, value._tuples, options);
-        }
+        public override void Write(Utf8JsonWriter writer, AuthorizationListForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value._tuples, options);
     }
 }

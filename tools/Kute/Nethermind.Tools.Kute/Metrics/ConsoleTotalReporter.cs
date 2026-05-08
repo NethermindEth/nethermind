@@ -17,9 +17,7 @@ public sealed class ConsoleTotalReporter : IMetricsReporter
     public async Task Total(TimeSpan elapsed, CancellationToken token = default)
     {
         var report = _provider.Report();
-        using (var stream = Console.OpenStandardOutput())
-        {
-            await _formatter.WriteAsync(stream, report, token);
-        }
+        await using var stream = Console.OpenStandardOutput();
+        await _formatter.WriteAsync(stream, report, token);
     }
 }

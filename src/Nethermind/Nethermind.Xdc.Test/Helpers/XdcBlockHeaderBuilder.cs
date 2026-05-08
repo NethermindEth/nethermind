@@ -10,7 +10,6 @@ using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.PortableExecutable;
 
 namespace Nethermind.Core.Test.Builders;
 
@@ -21,30 +20,28 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     public new XdcBlockHeader TestObject => (XdcBlockHeader)base.TestObject;
 
 
-    public XdcBlockHeaderBuilder()
-    {
+    public XdcBlockHeaderBuilder() =>
         TestObjectInternal = new XdcBlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
             Address.Zero,
             UInt256.One,
             1,
-            30_000_000,
+            XdcConstants.DefaultTargetGasLimit,
             1_700_000_000,
-            new byte[] { 1, 2, 3 })
+            [])
         {
             StateRoot = Keccak.EmptyTreeHash,
             TxRoot = Keccak.EmptyTreeHash,
             ReceiptsRoot = Keccak.EmptyTreeHash,
             Bloom = Bloom.Empty,
-            GasUsed = 21_000,
+            GasUsed = Transaction.BaseTxGasCost,
             MixHash = Keccak.Compute("mix_hash"),
             Nonce = 0,
             Validators = new byte[20 * 2],
             Validator = new byte[65],
             Penalties = Array.Empty<byte>(),
         };
-    }
 
     public XdcBlockHeaderBuilder WithExtraFieldsV2(ExtraFieldsV2 extraFieldsV2)
     {
@@ -54,26 +51,26 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
 
     public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData(int signatureNumber = 72)
     {
-        PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+        PrivateKeyGenerator keyBuilder = new();
         return WithGeneratedExtraConsensusData(Enumerable.Range(0, signatureNumber).Select(i => keyBuilder.Generate()));
     }
 
     public XdcBlockHeaderBuilder WithGeneratedExtraConsensusData(IEnumerable<PrivateKey> keys)
     {
-        QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        BlockRoundInfo blockRoundInfo = new BlockRoundInfo(Hash256.Zero, 1, 1);
-        QuorumCert quorumForSigning = new QuorumCert(blockRoundInfo, null, 450);
+        QuorumCertificateDecoder qcEncoder = new();
+        EthereumEcdsa ecdsa = new(0);
+        BlockRoundInfo blockRoundInfo = new(Hash256.Zero, 1, 1);
+        QuorumCertificate quorumForSigning = new(blockRoundInfo, null, 450);
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(qcEncoder.Encode(quorumForSigning, RlpBehaviors.ForSealing).Bytes)));
-        QuorumCert quorumCert = new QuorumCert(blockRoundInfo, [.. signatures], 450);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1, quorumCert);
+        QuorumCertificate quorumCert = new(blockRoundInfo, [.. signatures], 450);
+        ExtraFieldsV2 extraFieldsV2 = new(1, quorumCert);
 
         EncodeExtraData(extraFieldsV2);
         return this;
     }
     private void EncodeExtraData(ExtraFieldsV2 extraFieldsV2)
     {
-        ExtraConsensusDataDecoder extraEncoder = new ExtraConsensusDataDecoder();
+        ExtraConsensusDataDecoder extraEncoder = new();
         Rlp extraEncoded = extraEncoder.Encode(extraFieldsV2);
         XdcTestObjectInternal.ExtraData = [0x2, .. extraEncoded.Bytes];
     }
@@ -84,9 +81,21 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
+    public new XdcBlockHeaderBuilder WithParentHash(Hash256 parentHash)
+    {
+        XdcTestObjectInternal.ParentHash = parentHash;
+        return this;
+    }
+
     public new XdcBlockHeaderBuilder WithBaseFee(UInt256 baseFee)
     {
         TestObjectInternal.BaseFeePerGas = baseFee;
+        return this;
+    }
+
+    public new XdcBlockHeaderBuilder WithNumber(long blockNumber)
+    {
+        TestObjectInternal.Number = blockNumber;
         return this;
     }
 
@@ -108,7 +117,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     }
     public XdcBlockHeaderBuilder WithValidators(Address[] validators)
     {
-        XdcTestObjectInternal.Validators = validators.SelectMany(a => a.Bytes).ToArray();
+        XdcTestObjectInternal.Validators = validators.SelectMany(a => a.Bytes.ToArray()).ToArray();
         return this;
     }
     public XdcBlockHeaderBuilder WithValidators(byte[] validators)
@@ -118,7 +127,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     }
     public XdcBlockHeaderBuilder WithPenalties(Address[] penalties)
     {
-        XdcTestObjectInternal.Penalties = penalties.SelectMany(a => a.Bytes).ToArray();
+        XdcTestObjectInternal.Penalties = penalties.SelectMany(a => a.Bytes.ToArray()).ToArray();
         return this;
     }
     public XdcBlockHeaderBuilder WithPenalties(byte[] penalties)

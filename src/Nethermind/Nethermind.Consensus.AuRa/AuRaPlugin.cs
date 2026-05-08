@@ -25,7 +25,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -60,18 +59,12 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public IBlockProducer InitBlockProducer()
-        {
-            return BlockProducerStarter!.BuildProducer();
-        }
+        public IBlockProducer InitBlockProducer() => BlockProducerStarter!.BuildProducer();
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
-            return new StandardBlockProducerRunner(
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => new StandardBlockProducerRunner(
                 BlockProducerStarter.CreateTrigger(),
                 _nethermindApi.BlockTree,
                 blockProducer);
-        }
 
         public IModule Module => new AuRaModule(chainSpec);
 
@@ -88,7 +81,6 @@ namespace Nethermind.Consensus.AuRa
 
             builder
                 .AddSingleton<NethermindApi, AuRaNethermindApi>()
-                .AddDecorator<ISpecProvider, AuRaSpecProvider>()
                 .AddSingleton<AuRaChainSpecEngineParameters>(specParam)
                 .AddDecorator<IBetterPeerStrategy, AuRaBetterPeerStrategy>()
                 .Add<StartBlockProducerAuRa>() // Note: Stateful. Probably just some strange unintentional side effect though.
@@ -131,11 +123,11 @@ namespace Nethermind.Consensus.AuRa
                 builder.AddSingleton<IHeaderValidator, AuRaHeaderValidator>();
             }
 
-            if (Rlp.GetStreamDecoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
+            if (Rlp.GetStreamEncoder<ValidatorInfo>() is null) Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
         /// <summary>
-        /// Some validation component that is active in rpc and validation but not in block produccer.
+        /// Some validation component that is active in RPC and validation but not in block producer.
         /// </summary>
         /// <param name="parameters"></param>
         /// <param name="specProvider"></param>
@@ -152,7 +144,8 @@ namespace Nethermind.Consensus.AuRa
                 ITxFilter txFilter = txAuRaFilterBuilders.CreateAuRaTxFilter(new ServiceTxFilter());
 
                 IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
-                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
+                (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
+                ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
                 AuRaContractGasLimitOverride? gasLimitOverride = gasLimitOverrideFactory.GetGasLimitCalculator();
 

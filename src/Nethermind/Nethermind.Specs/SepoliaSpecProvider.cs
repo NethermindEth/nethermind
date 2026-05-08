@@ -26,7 +26,7 @@ public class SepoliaSpecProvider : ISpecProvider
 
     private SepoliaSpecProvider() { }
 
-    IReleaseSpec ISpecProvider.GetSpecInternal(ForkActivation forkActivation) =>
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
         forkActivation switch
         {
             { Timestamp: null } or { Timestamp: < ShanghaiTimestamp } => London.Instance,

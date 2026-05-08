@@ -22,7 +22,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
-public struct TreePath : IEquatable<TreePath>
+public struct TreePath : IEquatable<TreePath>, IComparable<TreePath>
 {
     public const int MemorySize = 36;
     public ValueHash256 Path;
@@ -109,7 +109,7 @@ public struct TreePath : IEquatable<TreePath>
         return copy;
     }
 
-    internal void AppendMut(ReadOnlySpan<byte> nibbles)
+    public void AppendMut(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)
@@ -150,10 +150,7 @@ public struct TreePath : IEquatable<TreePath>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetLast(int nib)
-    {
-        this[Length - 1] = nib;
-    }
+    public void SetLast(int nib) => this[Length - 1] = nib;
 
     public readonly int this[int index]
     {
@@ -215,10 +212,7 @@ public struct TreePath : IEquatable<TreePath>
         Length = pathLength;
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowPathMustBeLess()
-        {
-            throw new IndexOutOfRangeException("path length must be less than current length");
-        }
+        static void ThrowPathMustBeLess() => throw new IndexOutOfRangeException("path length must be less than current length");
     }
 
     /// <summary>
@@ -231,6 +225,7 @@ public struct TreePath : IEquatable<TreePath>
         Length--;
     }
 
+    [SkipLocalsInit]
     public readonly byte[] ToNibble()
     {
         bool odd = Length % 2 == 1;
@@ -245,37 +240,19 @@ public struct TreePath : IEquatable<TreePath>
         return fromPath[..Length];
     }
 
-    public readonly override string ToString()
-    {
-        return ToHexString();
-    }
+    public readonly override string ToString() => ToHexString();
 
-    public static bool operator ==(in TreePath left, in TreePath right)
-    {
-        return left.Equals(right);
-    }
+    public static bool operator ==(in TreePath left, in TreePath right) => left.Equals(right);
 
-    public static bool operator !=(in TreePath left, in TreePath right)
-    {
-        return !(left == right);
-    }
+    public static bool operator !=(in TreePath left, in TreePath right) => !(left == right);
 
-    public readonly bool Equals(in TreePath other)
-    {
-        return Length == other.Length && Path.Equals(in other.Path);
-    }
+    public readonly bool Equals(in TreePath other) => Length == other.Length && Path.Equals(in other.Path);
 
     public readonly bool Equals(TreePath other) => Equals(in other);
 
-    public readonly override bool Equals(object? obj)
-    {
-        return obj is TreePath other && Equals(in other);
-    }
+    public readonly override bool Equals(object? obj) => obj is TreePath other && Equals(in other);
 
-    public readonly override int GetHashCode()
-    {
-        return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
-    }
+    public readonly override int GetHashCode() => (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
 
     /// <summary>
     /// Used for scoped pattern where inside the scope the path is appended with some nibbles and it will
@@ -292,10 +269,7 @@ public struct TreePath : IEquatable<TreePath>
             _path = ref path;
         }
 
-        public void Dispose()
-        {
-            _path.TruncateMut(_previousLength);
-        }
+        public void Dispose() => _path.TruncateMut(_previousLength);
     }
 
     public readonly int CompareTo(in TreePath otherTree)
@@ -314,6 +288,8 @@ public struct TreePath : IEquatable<TreePath>
 
         return Length.CompareTo(otherTree.Length);
     }
+
+    int IComparable<TreePath>.CompareTo(TreePath otherTree) => CompareTo(in otherTree);
 
     /// <summary>
     /// Compare with otherTree, as if this TreePath was truncated to `length`.
@@ -336,6 +312,30 @@ public struct TreePath : IEquatable<TreePath>
         }
 
         return length.CompareTo(otherTree.Length);
+    }
+
+    /// <summary>
+    /// Returns the Path as lower bound (remaining nibbles are 0x0, which TreePath already guarantees).
+    /// </summary>
+    public readonly ValueHash256 ToLowerBoundPath() => Path;
+
+    /// <summary>
+    /// Returns the Path extended to 64 nibbles with 0xF (upper bound of subtree).
+    /// </summary>
+    public readonly ValueHash256 ToUpperBoundPath()
+    {
+        ValueHash256 result = Path;
+        Span<byte> bytes = result.BytesAsSpan;
+
+        int startByte = Length / 2;
+        if (Length % 2 == 1)
+        {
+            bytes[startByte] |= 0x0F;
+            startByte++;
+        }
+        bytes[startByte..].Fill(0xFF);
+
+        return result;
     }
 
     private static ReadOnlySpan<byte> ZeroMasksData => new byte[]
@@ -406,9 +406,15 @@ public struct TreePath : IEquatable<TreePath>
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0,
     };
 
-    public bool StartsWith(TreePath otherPath)
+    public bool StartsWith(TreePath otherPath) => Truncate(otherPath.Length) == otherPath;
+
+    public readonly void EncodeWith8Byte(Span<byte> buffer)
     {
-        return Truncate(otherPath.Length) == otherPath;
+        Path.Bytes[..8].CopyTo(buffer);
+        byte lengthAsByte = (byte)Length;
+
+        // Pack length into lower 4 bits of last byte (upper 4 bits contain path data)
+        buffer[8 - 1] = (byte)((buffer[8 - 1] & 0xf0) | (lengthAsByte & 0x0f));
     }
 }
 

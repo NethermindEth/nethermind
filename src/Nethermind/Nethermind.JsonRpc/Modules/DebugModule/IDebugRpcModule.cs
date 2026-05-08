@@ -11,6 +11,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -58,12 +59,6 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<GcStats> debug_gcStats();
 
-    [JsonRpcMethod(Description = "Retrieves a block in the RLP-serialized form.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<byte[]> debug_getBlockRlp(long number);
-
-    [JsonRpcMethod(Description = "Retrieves a block in the RLP-serialized form.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash);
-
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
 
@@ -103,8 +98,8 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Get Raw Transaction format.")]
     ResultWrapper<string> debug_getRawTransaction(Hash256 transactionHash);
 
-    [JsonRpcMethod(Description = "Retrives Nethermind Sync Stage, With extra Metadata")]
-    Task<ResultWrapper<SyncReportSymmary>> debug_getSyncStage();
+    [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]
+    Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage();
 
     [JsonRpcMethod(Description = "Writes to a file the full stack trace of all invoked opcodes of the transaction specified (or all transactions if not specified) that was included in the block specified. The parent of the block must be present or it will fail.",
         IsImplemented = true, IsSharable = false)]
@@ -123,4 +118,10 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+
+    [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
+    ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
+
+    [JsonRpcMethod(Description = "Generates an execution witness for a single call at a specific block, capturing all state accessed during the call.")]
+    ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null);
 }

@@ -3,8 +3,7 @@
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class BlockFilter(int id, long startBlockNumber) : FilterBase(id)
+    public class BlockFilter(int id) : FilterBase(id)
     {
-        public long StartBlockNumber { get; set; } = startBlockNumber;
     }
 }

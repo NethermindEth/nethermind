@@ -10,19 +10,13 @@ namespace Nethermind.Db.Blooms
     {
         readonly IDictionary<long, byte[]> _store = new Dictionary<long, byte[]>();
 
-        public void Dispose()
-        {
-            _store.Clear();
-        }
+        public void Dispose() => _store.Clear();
 
-        public void Write(long index, ReadOnlySpan<byte> element)
-        {
-            _store[index] = element.ToArray();
-        }
+        public void Write(long index, ReadOnlySpan<byte> element) => _store[index] = element.ToArray();
 
         public int Read(long index, Span<byte> element)
         {
-            if (_store.TryGetValue(index, out var found))
+            if (_store.TryGetValue(index, out byte[] found))
             {
                 found.CopyTo(element);
                 return found.Length;

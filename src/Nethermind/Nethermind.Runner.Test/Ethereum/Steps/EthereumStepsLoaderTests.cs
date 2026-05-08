@@ -36,11 +36,11 @@ public class EthereumStepsLoaderTests
     [Test]
     public void BuildInSteps_IsCorrect()
     {
-        var steps = new HashSet<StepInfo>();
+        HashSet<StepInfo> steps = new();
         steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
         steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ExitOnInvalidBlock)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()
@@ -66,9 +66,7 @@ public class EthereumStepsLoaderTests
     }
 
     [Test]
-    public void LoadStepsFromHere()
-    {
-        LoadStepInfoFromAssembly(GetType().Assembly)
+    public void LoadStepsFromHere() => LoadStepInfoFromAssembly(GetType().Assembly)
             .ToArray()
             .Should()
             .BeEquivalentTo([
@@ -83,7 +81,6 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepE)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
             ]);
-    }
 
     private void CheckPlugin(INethermindPlugin plugin)
     {

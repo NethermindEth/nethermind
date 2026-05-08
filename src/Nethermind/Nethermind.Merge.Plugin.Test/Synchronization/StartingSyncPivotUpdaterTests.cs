@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             ISyncPeer? fakePeer = Substitute.For<ISyncPeer>();
             fakePeer.GetHeadBlockHeader(default, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.Head!.Header);
 
-            // for unsafe pivot updator
+            // for unsafe pivot updater
             Hash256 pivotHash = _externalPeerBlockTree!.FindLevel(35)!.BlockInfos[0].BlockHash;
             fakePeer.GetBlockHeaders(35, 1, 0, default).ReturnsForAnyArgs(x => _externalPeerBlockTree!.FindHeaders(pivotHash, 1, 0, default));
 
@@ -93,16 +93,16 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
-            Hash256 storedFinalizedHash = pivotStream.DecodeKeccak()!;
+            Rlp.ValueDecoderContext ctx = new(storedData!);
+            long storedPivotBlockNumber = ctx.DecodeLong();
+            Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
             storedFinalizedHash.Should().Be(expectedFinalizedHash);
             storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
         }
 
         [Test]
-        public void TrySetFreshPivot_for_unsafe_updator_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
+        public void TrySetFreshPivot_for_unsafe_updater_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
         {
             _ = new UnsafeStartingSyncPivotUpdater(
                 _blockTree!,
@@ -123,9 +123,9 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             _syncModeSelector!.Changed += Raise.EventWith(args);
 
             byte[] storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData)!;
-            RlpStream pivotStream = new(storedData!);
-            long storedPivotBlockNumber = pivotStream.DecodeLong();
-            Hash256 storedPivotBlockHash = pivotStream.DecodeKeccak()!;
+            Rlp.ValueDecoderContext ctx = new(storedData!);
+            long storedPivotBlockNumber = ctx.DecodeLong();
+            Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
             storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
             storedPivotBlockHash.Should().Be(expectedPivotBlockHash);

@@ -35,26 +35,20 @@ namespace Nethermind.Db
 
         public void ClearTempChanges()
         {
-            foreach (IReadOnlyDb readonlyDb in _registeredDbs.Values)
+            foreach (KeyValuePair<string, IReadOnlyDb> kvp in _registeredDbs)
             {
-                readonlyDb.ClearTempChanges();
+                kvp.Value.ClearTempChanges();
             }
         }
 
-        public T GetDb<T>(string dbName) where T : class, IDb
-        {
-            return (T)_registeredDbs
+        public T GetDb<T>(string dbName) where T : class, IDb => (T)_registeredDbs
                 .GetOrAdd(dbName, (_) => _wrappedProvider
                     .GetDb<T>(dbName)
                     .CreateReadOnly(_createInMemoryWriteStore));
-        }
 
-        public IColumnsDb<T> GetColumnDb<T>(string dbName)
-        {
-            return (IColumnsDb<T>)_registeredColumnDbs
+        public IColumnsDb<T> GetColumnDb<T>(string dbName) => (IColumnsDb<T>)_registeredColumnDbs
                 .GetOrAdd(dbName, (_) => _wrappedProvider
                     .GetColumnDb<T>(dbName)
                     .CreateReadOnly(_createInMemoryWriteStore));
-        }
     }
 }

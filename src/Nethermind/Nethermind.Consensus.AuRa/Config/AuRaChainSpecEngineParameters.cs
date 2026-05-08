@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -54,6 +55,21 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public long PosdaoTransition { get; set; } = TransitionDisabled;
 
     public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
+    public IDictionary<ulong, IDictionary<Address, byte[]>> RewriteBytecodeTimestamp { get; set; } = new Dictionary<ulong, IDictionary<Address, byte[]>>();
+
+    public IEnumerable<(ulong, Address, byte[])> RewriteBytecodeTimestampParsed
+    {
+        get
+        {
+            foreach (KeyValuePair<ulong, IDictionary<Address, byte[]>> timestampOverrides in RewriteBytecodeTimestamp)
+            {
+                foreach (KeyValuePair<Address, byte[]> addressOverride in timestampOverrides.Value)
+                {
+                    yield return (timestampOverrides.Key, addressOverride.Key, addressOverride.Value);
+                }
+            }
+        }
+    }
 
     public Address WithdrawalContractAddress { get; set; }
 
@@ -68,7 +84,10 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         spec.MaximumUncleCount = (int)(startBlock >= (MaximumUncleCountTransition ?? long.MaxValue) ? MaximumUncleCount ?? 2 : 2);
+        spec.Eip158IgnoredAccount = Address.SystemUser;
     }
+
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps) => timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
 
     static AuRaParameters.Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
     {
@@ -92,7 +111,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
                     .ToImmutableSortedDictionary();
                 break;
             default:
-                throw new ArgumentOutOfRangeException();
+                throw new ArgumentOutOfRangeException(nameof(validatorJson), validatorType, "Unknown validator type.");
         }
 
         return validator;
@@ -100,14 +119,11 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 
     private class StepDurationJsonConverter : JsonConverter<SortedDictionary<long, long>>
     {
-        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, long> value, JsonSerializerOptions options)
-        {
-            throw new NotSupportedException();
-        }
+        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, long> value, JsonSerializerOptions options) => throw new NotSupportedException();
 
         public override SortedDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            var value = new SortedDictionary<long, long>();
+            SortedDictionary<long, long> value = new();
             if (reader.TokenType == JsonTokenType.String)
             {
                 value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
@@ -125,7 +141,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
                     {
                         throw new ArgumentException("Cannot deserialize BlockReward.");
                     }
-                    var key = long.Parse(reader.GetString());
+                    long key = long.Parse(reader.GetString());
                     reader.Read();
                     if (reader.TokenType == JsonTokenType.String)
                     {

@@ -51,19 +51,25 @@ namespace Nethermind.Config
         public bool Enabled { get; set; }
         public long? TargetBlockGasLimit { get; set; } = null;
 
-        public UInt256 MinGasPrice { get; set; } = 1.Wei();
+        public UInt256 MinGasPrice { get; set; } = 1.Wei;
 
         public bool RandomizedBlocks { get; set; }
 
         public ulong SecondsPerSlot { get; set; } = 12;
 
         public bool PreWarmStateOnBlockProcessing { get; set; } = true;
+
+        public bool CachePrecompilesOnBlockProcessing { get; set; } = true;
+
         public int PreWarmStateConcurrency { get; set; } = 0;
 
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
         public double SingleBlockImprovementOfSlot { get; set; } = 0.25;
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
+
+        public bool ParallelExecution { get; set; } = true;
+        public bool ParallelExecutionBatchRead { get; set; } = true;
 
         public string ExtraData
         {
@@ -74,7 +80,7 @@ namespace Nethermind.Config
             set
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(value);
-                if (bytes is not null && bytes.Length > 32)
+                if (bytes.Length > 32)
                 {
                     throw new InvalidConfigurationException($"Extra Data length was more than 32 bytes. You provided: {_extraDataString}",
                         ExitCodes.TooLongExtraData);
@@ -85,15 +91,17 @@ namespace Nethermind.Config
                 _extraDataBytes = bytes;
             }
         }
-        public byte[] GetExtraDataBytes()
-        {
-            return _extraDataBytes;
-        }
+
+        public bool BuildBlocksOnMainState { get; set; }
+
+        public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
 
         public static string GasTokenTicker { get; set; } = "ETH";
 
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
+
+        public int? BlockProductionBlobLimit { get; set; }
     }
 }

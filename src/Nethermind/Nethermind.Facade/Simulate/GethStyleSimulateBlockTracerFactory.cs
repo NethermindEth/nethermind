@@ -9,6 +9,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 
 namespace Nethermind.Facade.Simulate;
+
 public class GethStyleSimulateBlockTracerFactory(GethTraceOptions options) : ISimulateBlockTracerFactory<GethLikeTxTrace>
 {
     public IBlockTracer<GethLikeTxTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) =>

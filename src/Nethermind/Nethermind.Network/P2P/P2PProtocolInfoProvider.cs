@@ -3,9 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {

@@ -1,12 +1,13 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Network.Contract.Messages;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.TxPool
 {
@@ -35,6 +36,8 @@ namespace Nethermind.TxPool
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
+
+        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) => [];
 
         public void AddPeer(ITxPoolPeer peer) { }
 
@@ -82,10 +85,12 @@ namespace Nethermind.TxPool
             return false;
         }
 
-        public int GetBlobCounts(byte[][] blobVersionedHashes) => 0;
+        public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
+            byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs) => 0;
 
         public UInt256 GetLatestPendingNonce(Address address) => 0;
 
+        public AnnounceResult NotifyAboutTx(Hash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler) => AnnounceResult.RequestRequired;
 
         public event EventHandler<TxEventArgs> NewDiscovered
         {
@@ -111,5 +116,6 @@ namespace Nethermind.TxPool
             remove { }
         }
         public bool AcceptTxWhenNotSynced { get; set; }
+        public void ResetTxPoolState() { }
     }
 }

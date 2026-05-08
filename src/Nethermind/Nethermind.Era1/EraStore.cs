@@ -3,16 +3,15 @@
 
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
-using CommunityToolkit.HighPerformance;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Era1.Exceptions;
 using NonBlocking;
 
 namespace Nethermind.Era1;
+
 public class EraStore : IEraStore
 {
     private readonly char[] _eraSeparator = ['-'];
@@ -80,18 +79,18 @@ public class EraStore : IEraStore
         IFileSystem fileSystem,
         string networkName,
         int maxEraSize,
-        ISet<ValueHash256>? trustedAcccumulators,
+        ISet<ValueHash256>? trustedAccumulators,
         string directory,
         int verifyConcurrency = 0
     )
     {
         _specProvider = specProvider;
         _blockValidator = blockValidator;
-        _trustedAccumulators = trustedAcccumulators;
+        _trustedAccumulators = trustedAccumulators;
         _maxEraFile = maxEraSize;
         _maxOpenFile = Environment.ProcessorCount * 2;
-        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
         _verifyConcurrency = verifyConcurrency;
+        if (_verifyConcurrency == 0) _verifyConcurrency = Environment.ProcessorCount;
 
         // Geth behaviour seems to be to always read the checksum and fail when its missing.
         _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
@@ -100,11 +99,10 @@ public class EraStore : IEraStore
 
         bool hasEraFile = false;
         _epochs = new();
-        foreach (var file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
+        foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
-            int epoch;
-            if (parts.Length != 3 || !int.TryParse(parts[1], out epoch) || epoch < 0)
+            if (parts.Length != 3 || !int.TryParse(parts[1], out int epoch) || epoch < 0)
                 throw new ArgumentException($"Malformed Era1 file '{file}'.", file);
             _epochs[epoch] = file;
             hasEraFile = true;
@@ -241,15 +239,12 @@ public class EraStore : IEraStore
     private void GuardMissingEpoch(long epoch)
     {
         if (!HasEpoch(epoch))
-            throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));
+            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
     }
 
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
     {
-        public void Dispose()
-        {
-            store.ReturnReader(epoch, reader);
-        }
+        public void Dispose() => store.ReturnReader(epoch, reader);
     }
 
     public void Dispose()

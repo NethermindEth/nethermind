@@ -30,7 +30,7 @@ public class RegisterRpcModules(
     IBlockTree blockTree,
     ISpecProvider specProvider,
     IReceiptMonitor receiptMonitor,
-    IFilterStore filterStore,
+    FilterStore filterStore,
     ITxPool txPool,
     IEthSyncingInfo ethSyncingInfo,
     IPeerPool peerPool,
@@ -64,7 +64,7 @@ public class RegisterRpcModules(
             rlpxHost);
 
         // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-        ILogger logger = logManager.GetClassLogger();
+        ILogger logger = logManager.GetClassLogger<RegisterRpcModules>();
         if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
         ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Value.Enabled.OrderBy(static x => x))}");
 

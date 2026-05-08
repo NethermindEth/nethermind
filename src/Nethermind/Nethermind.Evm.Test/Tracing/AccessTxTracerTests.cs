@@ -75,22 +75,21 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [TestCaseSource(nameof(OptimizedAddressCases))]
-        public void ReportAccess_AddressIsSetToOptmizedWithNoStorageCells_OnlyAddressesNotOptimizedIsInTheAccesslist(IEnumerable<Address> optimized, IEnumerable<Address> expected)
+        public void ReportAccess_AddressIsSetToOptimizedWithNoStorageCells_OnlyAddressesNotOptimizedIsInTheAccessList(IEnumerable<Address> optimized, IEnumerable<Address> expected)
         {
-            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
-            JournalSet<StorageCell> accessedStorageCells = [];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB };
             AccessTxTracer sut = new(optimized.ToArray());
 
-            sut.ReportAccess(accessedAddresses, accessedStorageCells);
+            sut.ReportAccess(accessedAddresses, []);
 
             Assert.That(sut.AccessList.Select(static a => a.Address).ToArray(), Is.EquivalentTo(expected));
         }
 
         [Test]
-        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AddressAAndBIsInTheAccesslist()
+        public void ReportAccess_AddressAIsSetToOptimizedAndHasStorageCell_AddressAAndBIsInTheAccessList()
         {
-            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
-            JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 0)];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB };
+            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer) { new StorageCell(TestItem.AddressA, 0) };
             AccessTxTracer sut = new(TestItem.AddressA);
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
@@ -99,10 +98,10 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AccesslistHasCorrectStorageCell()
+        public void ReportAccess_AddressAIsSetToOptimizedAndHasStorageCell_AccessListHasCorrectStorageCell()
         {
-            JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
-            JournalSet<StorageCell> accessedStorageCells = [new StorageCell(TestItem.AddressA, 1)];
+            JournalSet<Address> accessedAddresses = new(Address.EqualityComparer) { TestItem.AddressA, TestItem.AddressB };
+            JournalSet<StorageCell> accessedStorageCells = new(StorageCell.EqualityComparer) { new StorageCell(TestItem.AddressA, 1) };
             AccessTxTracer sut = new(TestItem.AddressA);
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);

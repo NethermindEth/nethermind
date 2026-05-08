@@ -3,39 +3,46 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.Test.Runner;
 
-public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
+public class BlockchainTestsRunner(
+    ITestSourceLoader testsSource,
+    string? filter,
+    ulong chainId,
+    bool trace = false,
+    bool traceMemory = false,
+    bool traceNoStack = false)
+    : BlockchainTestBase, IBlockchainTestRunner
 {
-    private readonly ConsoleColor _defaultColour;
-    private readonly ITestSourceLoader _testsSource;
-    private readonly string? _filter;
-    private readonly ulong _chainId;
-
-    public BlockchainTestsRunner(ITestSourceLoader testsSource, string? filter, ulong chainId)
-    {
-        _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        _defaultColour = Console.ForegroundColor;
-        _filter = filter;
-        _chainId = chainId;
-    }
+    private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
+    private readonly ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
-        List<EthereumTestResult> testResults = new();
-        IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
-        foreach (BlockchainTest test in tests)
+        List<EthereumTestResult> testResults = [];
+        IEnumerable<EthereumTest> tests = _testsSource.LoadTests<EthereumTest>();
+        foreach (EthereumTest loadedTest in tests)
         {
-            if (_filter is not null && !Regex.Match(test.Name, $"^({_filter})").Success)
+            if (loadedTest as FailedToLoadTest is not null)
+            {
+                WriteRed(loadedTest.LoadFailure);
+                testResults.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure));
                 continue;
-            Setup();
+            }
 
+            // Create a streaming tracer once for all tests if tracing is enabled
+            using BlockchainTestStreamingTracer? tracer = trace
+                ? new BlockchainTestStreamingTracer(new() { EnableMemory = traceMemory, DisableStack = traceNoStack })
+                : null;
+
+            BlockchainTest test = loadedTest as BlockchainTest;
+
+            if (filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({filter})").Success)
+                continue;
             Console.Write($"{test,-120} ");
             if (test.LoadFailure is not null)
             {
@@ -44,8 +51,9 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
             }
             else
             {
-                test.ChainId = _chainId;
-                EthereumTestResult result = await RunTest(test);
+                test.ChainId = chainId;
+
+                EthereumTestResult result = await RunTest(test, tracer: tracer);
                 testResults.Add(result);
                 if (result.Pass)
                     WriteGreen("PASS");
@@ -61,13 +69,13 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     {
         Console.ForegroundColor = ConsoleColor.Red;
         Console.WriteLine(text);
-        Console.ForegroundColor = _defaultColour;
+        Console.ForegroundColor = _defaultColor;
     }
 
     private void WriteGreen(string text)
     {
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine(text);
-        Console.ForegroundColor = _defaultColour;
+        Console.ForegroundColor = _defaultColor;
     }
 }

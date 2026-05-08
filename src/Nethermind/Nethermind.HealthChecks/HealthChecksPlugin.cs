@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -12,7 +11,6 @@ using Nethermind.Blockchain.Services;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin;
 
 namespace Nethermind.HealthChecks
@@ -40,7 +38,7 @@ namespace Nethermind.HealthChecks
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _mergeConfig = _api.Config<IMergeConfig>();
-            _logger = api.LogManager.GetClassLogger();
+            _logger = api.LogManager.GetClassLogger<HealthChecksPlugin>();
 
             //will throw an exception and close app or block until enough disk space is available (LowStorageCheckAwaitOnStartup)
             EnsureEnoughFreeSpace();
@@ -91,12 +89,6 @@ namespace Nethermind.HealthChecks
             builder
                 .AddSingleton<IHealthHintService, HealthHintService>()
                 .AddSingleton<INodeHealthService, NodeHealthService>()
-                .AddKeyedSingleton<IDriveInfo[]>(nameof(IInitConfig.BaseDbPath), (ctx) =>
-                {
-                    IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
-                    IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-                    return fileSystem.GetDriveInfos(initConfig.BaseDbPath);
-                })
                 .AddSingleton<FreeDiskSpaceChecker>()
                 .AddSingleton<IJsonRpcServiceConfigurer, HealthCheckJsonRpcConfigurer>()
 

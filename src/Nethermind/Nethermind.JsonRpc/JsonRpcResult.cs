@@ -39,21 +39,12 @@ namespace Nethermind.JsonRpc
         public static JsonRpcResult Collection(IJsonRpcBatchResult responses)
             => new(responses);
 
-        public readonly struct Entry : IDisposable
+        public readonly struct Entry(JsonRpcResponse response, RpcReport report) : IDisposable
         {
-            public JsonRpcResponse Response { get; }
-            public RpcReport Report { get; }
+            public JsonRpcResponse Response { get; } = response;
+            public RpcReport Report { get; } = report;
 
-            public Entry(JsonRpcResponse response, RpcReport report)
-            {
-                Response = response;
-                Report = report;
-            }
-
-            public void Dispose()
-            {
-                Response?.Dispose();
-            }
+            public void Dispose() => Response?.Dispose();
         }
 
         public void Dispose()

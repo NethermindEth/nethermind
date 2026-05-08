@@ -26,8 +26,8 @@ namespace Nethermind.Db
         }
 
         public PruningMode Mode { get; set; } = PruningMode.Hybrid;
-        public long CacheMb { get; set; } = 1280;
-        public long DirtyCacheMb { get; set; } = 1024;
+        public long CacheMb { get; set; } = 1792;
+        public long DirtyCacheMb { get; set; } = 1536;
         public long PersistenceInterval { get; set; } = 1;
         public long FullPruningThresholdMb { get; set; } = 256000;
         public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.Manual;
@@ -59,9 +59,11 @@ namespace Nethermind.Db
         }
 
         public double PrunePersistedNodePortion { get; set; } = 0.05;
-        public long PrunePersistedNodeMinimumTarget { get; set; } = 50.MiB();
+        public long PrunePersistedNodeMinimumTarget { get; set; } = 50.MiB;
         public long MaxUnpersistedBlockCount { get; set; } = 300; // About 1 hour on mainnet
         public long MinUnpersistedBlockCount { get; set; } = 8; // About slightly more than 1 minute
         public int MaxBufferedCommitCount { get; set; } = 128;
+        public int SimulateLongFinalizationDepth { get; set; } = 0;
+        public int PruneDelayMilliseconds { get; set; } = 75;
     }
 }

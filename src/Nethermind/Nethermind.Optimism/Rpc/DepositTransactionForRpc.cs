@@ -7,6 +7,7 @@ using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Eth;
+using Nethermind.Core.Specs;
 using System;
 
 namespace Nethermind.Optimism.Rpc;
@@ -47,9 +48,10 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
     [JsonConstructor]
     public DepositTransactionForRpc() { }
 
-    public DepositTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, OptimismTxReceipt? receipt = null)
-        : base(transaction, txIndex, blockHash, blockNumber)
+    public DepositTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+        : base(transaction, extraData)
     {
+        OptimismTxReceipt? receipt = extraData.Receipt as OptimismTxReceipt;
         SourceHash = transaction.SourceHash ?? Hash256.Zero;
         From = transaction.SenderAddress ?? Address.SystemUser;
         To = transaction.To;
@@ -63,34 +65,32 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
     {
-        var tx = base.ToTransaction();
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
+        if (baseResult.IsError) return baseResult;
 
+        Transaction tx = baseResult.Data;
         tx.SourceHash = SourceHash ?? throw new ArgumentNullException(nameof(SourceHash));
         tx.SenderAddress = From ?? throw new ArgumentNullException(nameof(From));
         tx.To = To;
         tx.Mint = Mint ?? 0;
         tx.Value = Value ?? throw new ArgumentNullException(nameof(Value));
-        tx.GasLimit = Gas ?? throw new ArgumentNullException(nameof(Gas));
         tx.IsOPSystemTransaction = IsSystemTx ?? false;
         tx.Data = Input ?? throw new ArgumentNullException(nameof(Input));
+
+        // Deposit txs require an explicit Gas; the original EnsureDefaults granted a graceful fallback to
+        // gasCap when the request omitted it, which we preserve. gasCap is null/0 mean "no cap" (matching
+        // LegacyTransactionForRpc), so neither substitutes for a missing Gas — that case still throws.
+        long effectiveCap = gasCap is null or 0 ? long.MaxValue : gasCap.Value;
+        long? gasOrDefault = Gas ?? (effectiveCap == long.MaxValue ? null : effectiveCap);
+        tx.GasLimit = long.Min(gasOrDefault ?? throw new ArgumentNullException(nameof(Gas)), effectiveCap);
 
         return tx;
     }
 
-    public override void EnsureDefaults(long? gasCap)
-    {
-        if (Gas is not null && gasCap is not null)
-        {
-            Gas = Math.Min(Gas.Value, gasCap.Value);
-        }
-
-        Gas ??= gasCap;
-    }
-
     public override bool ShouldSetBaseFee() => false;
 
-    public static DepositTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, receipt: extraData.Receipt as OptimismTxReceipt);
+    public static DepositTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
+        => new(tx, extraData);
 }

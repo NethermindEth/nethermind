@@ -33,8 +33,7 @@ namespace Nethermind.JsonRpc.Data
             Logs = (receipt.Logs ?? []).Select((l, idx) => new LogEntryForRpc(receipt, l, blockTimestamp, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
-            Status = receipt.StatusCode;
-            Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
+            Status = receipt.PostTransactionState is null ? receipt.StatusCode : null;
             Type = receipt.TxType;
         }
 
@@ -62,8 +61,8 @@ namespace Nethermind.JsonRpc.Data
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom? LogsBloom { get; set; }
         public Hash256? Root { get; set; }
-        public long Status { get; set; }
-        public string? Error { get; set; }
+        public long? Status { get; set; }
+
         public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()
@@ -71,7 +70,6 @@ namespace Nethermind.JsonRpc.Data
             TxReceipt receipt = new()
             {
                 Bloom = LogsBloom,
-                Error = Error,
                 Index = (int)TransactionIndex,
                 Logs = Logs.Select(static l => l.ToLogEntry()).ToArray(),
                 Recipient = To,
@@ -80,7 +78,7 @@ namespace Nethermind.JsonRpc.Data
                 BlockNumber = BlockNumber,
                 ContractAddress = ContractAddress,
                 GasUsed = GasUsed,
-                StatusCode = (byte)Status,
+                StatusCode = Status is not null ? (byte)Status : byte.MinValue,
                 TxHash = TransactionHash,
                 GasUsedTotal = CumulativeGasUsed,
                 PostTransactionState = Root,

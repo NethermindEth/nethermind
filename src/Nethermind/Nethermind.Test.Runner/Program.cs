@@ -7,7 +7,6 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Specs;
 
 namespace Nethermind.Test.Runner;
@@ -25,19 +24,17 @@ internal class Program
         public static Option<bool> BlockTest { get; } =
             new("--blockTest", "-b") { Description = "Set test as blockTest. if not, it will be by default assumed a state test." };
 
-        public static Option<bool> EofTest { get; } =
-            new("--eofTest", "-e") { Description = "Set test as eofTest. if not, it will be by default assumed a state test." };
         public static Option<bool> TraceAlways { get; } =
-            new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests). [Only for State Test]" };
+            new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests)." };
 
         public static Option<bool> TraceNever { get; } =
             new("--neverTrace", "-n") { Description = "Set to never trace (by default traces are only generated for failing tests). [Only for State Test]" };
 
         public static Option<bool> ExcludeMemory { get; } =
-            new("--memory", "-m") { Description = "Exclude memory trace. [Only for State Test]" };
+            new("--memory", "-m") { Description = "Exclude memory trace." };
 
         public static Option<bool> ExcludeStack { get; } =
-            new("--stack", "-s") { Description = "Exclude stack trace. [Only for State Test]" };
+            new("--stack", "-s") { Description = "Exclude stack trace." };
 
         public static Option<bool> Wait { get; } =
             new("--wait", "-w") { Description = "Wait for input after the test run." };
@@ -59,7 +56,6 @@ internal class Program
             Options.Input,
             Options.Filter,
             Options.BlockTest,
-            Options.EofTest,
             Options.TraceAlways,
             Options.TraceNever,
             Options.ExcludeMemory,
@@ -94,16 +90,26 @@ internal class Program
         while (!string.IsNullOrWhiteSpace(input))
         {
             if (parseResult.GetValue(Options.BlockTest))
-                await RunBlockTest(input, source => new BlockchainTestsRunner(source, parseResult.GetValue(Options.Filter), chainId));
-            else if (parseResult.GetValue(Options.EofTest))
-                RunEofTest(input, source => new EofTestsRunner(source, parseResult.GetValue(Options.Filter)));
+            {
+                await RunBlockTest(input, source => new BlockchainTestsRunner(
+                    source,
+                    parseResult.GetValue(Options.Filter),
+                    chainId,
+                    parseResult.GetValue(Options.TraceAlways),
+                    !parseResult.GetValue(Options.ExcludeMemory),
+                    parseResult.GetValue(Options.ExcludeStack)));
+            }
             else
-                RunStateTest(input, source => new StateTestsRunner(source, whenTrace,
+            {
+                RunStateTest(input, source => new StateTestsRunner(
+                    source,
+                    whenTrace,
                     !parseResult.GetValue(Options.ExcludeMemory),
                     !parseResult.GetValue(Options.ExcludeStack),
                     chainId,
                     parseResult.GetValue(Options.Filter),
                     parseResult.GetValue(Options.EnableWarmup)));
+            }
 
 
             if (!parseResult.GetValue(Options.Stdin))
@@ -124,14 +130,6 @@ internal class Program
             ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
             : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
         await testRunnerBuilder(source).RunTestsAsync();
-    }
-
-    private static void RunEofTest(string path, Func<ITestSourceLoader, IEofTestRunner> testRunnerBuilder)
-    {
-        ITestSourceLoader source = Path.HasExtension(path)
-            ? new TestsSourceLoader(new LoadEofTestFileStrategy(), path)
-            : new TestsSourceLoader(new LoadEofTestsStrategy(), path);
-        testRunnerBuilder(source).RunTests();
     }
 
     private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)

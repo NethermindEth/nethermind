@@ -3,8 +3,6 @@
 
 using System;
 using System.Threading;
-using Autofac;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -15,16 +13,19 @@ public class InvalidBlockDetector
 {
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? OnInvalidBlock;
 
-    private void TriggerOnInvalidBlock(Block invalidBlock)
+    private void TriggerOnInvalidBlock(Block invalidBlock) => OnInvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs()
     {
-        OnInvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs()
-        {
-            InvalidBlock = invalidBlock
-        });
-    }
+        InvalidBlock = invalidBlock
+    });
 
     internal class BlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, InvalidBlockDetector invalidBlockDetector) : IBlockProcessor
     {
+        public event Action? TransactionsExecuted
+        {
+            add => baseBlockProcessor.TransactionsExecuted += value;
+            remove => baseBlockProcessor.TransactionsExecuted -= value;
+        }
+
         public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
             IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
         {

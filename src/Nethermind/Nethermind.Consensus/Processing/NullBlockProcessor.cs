@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 
@@ -21,11 +20,14 @@ namespace Nethermind.Consensus.Processing
         public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token) =>
             suggestedBlocks.ToArray();
 
-        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
-            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+        public event Action? TransactionsExecuted
         {
-            return (suggestedBlock, []);
+            add { }
+            remove { }
         }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token) => (suggestedBlock, []);
 
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed
         {

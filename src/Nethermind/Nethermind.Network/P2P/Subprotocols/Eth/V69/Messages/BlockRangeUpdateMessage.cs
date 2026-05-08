@@ -12,8 +12,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 /// </summary>
 public class BlockRangeUpdateMessage : P2PMessage
 {
-    public override int PacketType { get; } = Eth69MessageCode.BlockRangeUpdate;
-    public override string Protocol { get; } = "eth";
+    public override int PacketType => Eth69MessageCode.BlockRangeUpdate;
+    public override string Protocol => "eth";
 
     /// <summary>
     /// Number of the earliest available full block.

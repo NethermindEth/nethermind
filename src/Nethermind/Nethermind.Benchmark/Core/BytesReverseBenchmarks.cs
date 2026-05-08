@@ -22,7 +22,7 @@ namespace Nethermind.Benchmarks.Core
         {
             Keccak.Zero.BytesToArray(),
             Keccak.EmptyTreeHash.BytesToArray(),
-            TestItem.AddressA.Bytes
+            TestItem.AddressA.Bytes.ToArray()
         };
 
         [Params(0, 1, 2)]
@@ -33,11 +33,14 @@ namespace Nethermind.Benchmarks.Core
         [GlobalSetup]
         public void Setup()
         {
-            unsafe
+            if (Avx2.IsSupported)
             {
-                fixed (byte* ptr_mask = _reverseMask)
+                unsafe
                 {
-                    _shuffleMask = Avx2.LoadVector256(ptr_mask);
+                    fixed (byte* ptr_mask = _reverseMask)
+                    {
+                        _shuffleMask = Avx2.LoadVector256(ptr_mask);
+                    }
                 }
             }
 
@@ -45,16 +48,10 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Bytes.Reverse(_a);
-        }
+        public byte[] Current() => Bytes.Reverse(_a);
 
         [Benchmark]
-        public void Improved()
-        {
-            _a.AsSpan().Reverse();
-        }
+        public void Improved() => _a.AsSpan().Reverse();
 
         [Benchmark]
         public void SwapVersion()
@@ -87,6 +84,11 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public void Avx2Version()
         {
+            if (!Avx2.IsSupported)
+            {
+                return;
+            }
+
             byte[] bytes = _a;
             unsafe
             {

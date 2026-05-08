@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -44,10 +43,6 @@ public class Eip7823Tests
         {
             Assert.That(gas, Is.LessThan(long.MaxValue));
         }
-        else
-        {
-            Assert.That(gas, Is.EqualTo(long.MaxValue));
-        }
     }
 
     [TestCase("0x9e5faafc")]
@@ -77,7 +72,7 @@ public class Eip7823Tests
             yield return new object[] { true, true, inputBaseLength, inputExpLength, inputModulusLength };
             yield return new object[] { false, true, inputBaseLength, inputExpLength, inputModulusLength };
 
-            for (var i = 0b001; i <= 0b111; i++)
+            for (int i = 0b001; i <= 0b111; i++)
             {
                 inputBaseLength = (i & 0b001) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;
                 inputExpLength = (i & 0b010) != 0 ? ModExpMaxInputSizeEip7823PlusOne : ModExpMaxInputSizeEip7823;

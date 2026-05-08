@@ -7,29 +7,43 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat.Handlers;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
-using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
-    public sealed class TransactionProcessor(
+    public sealed class TransactionProcessor<TGasPolicy>(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine<TGasPolicy>? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager,
+        bool parallel = false)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
+
+    /// <summary>
+    /// Non-generic TransactionProcessor for backward compatibility with EthereumGasPolicy.
+    /// </summary>
+    public sealed class EthereumTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider? specProvider,
         IWorldState? worldState,
         IVirtualMachine? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : TransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
+        : EthereumTransactionProcessorBase(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
 
     public class BlobBaseFeeCalculator : ITransactionProcessor.IBlobBaseFeeCalculator
     {
@@ -40,68 +54,39 @@ namespace Nethermind.Evm.TransactionProcessing
             BlobGasCalculator.TryCalculateBlobBaseFee(header, transaction, blobGasPriceUpdateFraction, out blobBaseFee);
     }
 
-    public abstract class TransactionProcessorBase : ITransactionProcessor
+    public abstract class TransactionProcessorBase<TGasPolicy> : ITransactionProcessor
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         protected EthereumEcdsa Ecdsa { get; }
         protected ILogger Logger { get; }
         protected ISpecProvider SpecProvider { get; }
         protected IWorldState WorldState { get; }
-        protected IVirtualMachine VirtualMachine { get; }
+        protected IVirtualMachine<TGasPolicy> VirtualMachine { get; }
         private readonly ICodeInfoRepository _codeInfoRepository;
-        private SystemTransactionProcessor? _systemTransactionProcessor;
+        private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
-
-        [Flags]
-        protected enum ExecutionOptions
-        {
-            /// <summary>
-            /// Just accumulate the state
-            /// </summary>
-            None = 0,
-
-            /// <summary>
-            /// Commit the state after execution
-            /// </summary>
-            Commit = 1,
-
-            /// <summary>
-            /// Restore state after execution
-            /// </summary>
-            Restore = 2,
-
-            /// <summary>
-            /// Skip potential fail checks
-            /// </summary>
-            SkipValidation = 4,
-
-            /// <summary>
-            /// Skip potential fail checks and commit state after execution
-            /// </summary>
-            SkipValidationAndCommit = Commit | SkipValidation,
-
-            /// <summary>
-            /// Commit and later restore state also skip validation, use for CallAndRestore
-            /// </summary>
-            CommitAndRestore = Commit | Restore | SkipValidation
-        }
+        private readonly bool _parallel;
+        private long _blockCumulativeRegularGas;
+        private long _blockCumulativeReceiptGas;
 
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
             ISpecProvider? specProvider,
             IWorldState? worldState,
-            IVirtualMachine? virtualMachine,
+            IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool parallel = false)
         {
-            ArgumentNullException.ThrowIfNull(logManager, nameof(logManager));
-            ArgumentNullException.ThrowIfNull(specProvider, nameof(specProvider));
-            ArgumentNullException.ThrowIfNull(worldState, nameof(worldState));
-            ArgumentNullException.ThrowIfNull(virtualMachine, nameof(virtualMachine));
-            ArgumentNullException.ThrowIfNull(codeInfoRepository, nameof(codeInfoRepository));
-            ArgumentNullException.ThrowIfNull(blobBaseFeeCalculator, nameof(blobBaseFeeCalculator));
+            ArgumentNullException.ThrowIfNull(logManager);
+            ArgumentNullException.ThrowIfNull(specProvider);
+            ArgumentNullException.ThrowIfNull(worldState);
+            ArgumentNullException.ThrowIfNull(virtualMachine);
+            ArgumentNullException.ThrowIfNull(codeInfoRepository);
+            ArgumentNullException.ThrowIfNull(blobBaseFeeCalculator);
 
-            Logger = logManager.GetClassLogger();
+            Logger = logManager.GetClassLogger(typeof(TransactionProcessorBase<>));
             SpecProvider = specProvider;
             WorldState = worldState;
             VirtualMachine = virtualMachine;
@@ -110,10 +95,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
+            _parallel = parallel;
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-            => VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
+        {
+            _blockCumulativeRegularGas = 0;
+            _blockCumulativeReceiptGas = 0;
+            VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
+        }
 
         public void SetBlockExecutionContext(BlockHeader header)
         {
@@ -122,32 +112,29 @@ namespace Nethermind.Evm.TransactionProcessing
             SetBlockExecutionContext(in blockExecutionContext);
         }
 
-        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.CommitAndRestore);
-
-        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer)
+        public TransactionResult Process(
+            Transaction transaction,
+            ITxTracer txTracer,
+            ExecutionOptions options)
         {
-            // we need to treat the result of previous transaction as the original value of next transaction
-            // when we do not commit
-            WorldState.TakeSnapshot(true);
-            return ExecuteCore(transaction, txTracer, ExecutionOptions.None);
+            if (options == ExecutionOptions.BuildUp)
+            {
+                WorldState.TakeSnapshot(true);
+            }
+
+            return ExecuteCore(transaction, txTracer, options);
         }
-
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.Commit);
-
-        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidationAndCommit);
-
-        public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
-            ExecuteCore(transaction, txTracer, ExecutionOptions.SkipValidation);
-
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
-            if (tx.IsSystem() || opts == ExecutionOptions.SkipValidation)
+            if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                if (_systemTransactionProcessor is null)
+                {
+                    Interlocked.CompareExchange(ref _systemTransactionProcessor,
+                        new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager),
+                        null);
+                }
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
@@ -163,43 +150,82 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            // commit - is for standard execute, we will commit thee state after execution
+            // commit - is for standard execute, we will commit the state after execution
             // !commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             // we commit only after all block is constructed
             bool commit = opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) && !spec.IsEip658Enabled);
 
             TransactionResult result;
-            IntrinsicGas intrinsicGas = CalculateIntrinsicGas(tx, spec);
+            IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
             if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;
 
-            UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas);
+            UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress, _codeInfoRepository, tx.BlobVersionedHashes, in effectiveGasPrice));
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
             UpdateMetrics(opts, effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
-            if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
-            if (!(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee))) return result;
-            if (!(result = IncrementNonce(tx, header, spec, tracer, opts))) return result;
+            if (!(result = ValidateSender(tx, header, spec, tracer, opts)) ||
+                !(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)) ||
+                !(result = IncrementNonce(tx, header, spec, tracer, opts)))
+            {
+                if (restore)
+                {
+                    WorldState.Reset(resetBlockChanges: false);
+                }
+                return result;
+            }
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new();
 
-            int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
+            int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
-            if (!(result = CalculateAvailableGas(tx, intrinsicGas, out long gasAvailable))) return result;
-            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment env))) return result;
+            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+            Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
+
+            if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
+            using ExecutionEnvironment env = e;
 
             int statusCode = !tracer.IsTracingInstructions ?
                 ExecuteEvmCall<OffFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out TransactionSubstate substate, out GasConsumed spentGas) :
                 ExecuteEvmCall<OnFlag>(tx, header, spec, tracer, opts, delegationRefunds, intrinsicGas, accessTracker, gasAvailable, env, out substate, out spentGas);
 
             PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, blobBaseFee, statusCode);
-            tx.SpentGas = spentGas.SpentGas;
+
+            // EIP-8037+EIP-7708: process destroy list after PayFees so burn logs include
+            // the priority fee in the destroyed account's balance.
+            if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
+            {
+                foreach (Address toBeDestroyed in substate.DestroyList)
+                {
+                    UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                    if (!balance.IsZero)
+                        substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
+
+                    WorldState.ClearStorage(toBeDestroyed);
+                    WorldState.DeleteAccount(toBeDestroyed);
+                }
+            }
+
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+            {
+                tx.BlockGasUsed = spentGas.EffectiveBlockGas;
+            }
+
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+            {
+                _blockCumulativeRegularGas += spentGas.EffectiveBlockGas;
+                _blockCumulativeReceiptGas += spentGas.SpentGas;
+            }
+
+            //only main thread updates transaction
+            if (!opts.HasFlag(ExecutionOptions.Warmup))
+                tx.SpentGas = spentGas.SpentGas;
 
             // Finalize
             if (restore)
@@ -211,8 +237,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    if (!opts.HasFlag(ExecutionOptions.SkipValidation))
+                    if (!senderReservedGasPayment.IsZero)
+                    {
                         WorldState.AddToBalance(tx.SenderAddress!, senderReservedGasPayment, spec);
+                    }
+
                     DecrementNonce(tx);
 
                     WorldState.Commit(spec, commitRoots: false);
@@ -238,26 +267,36 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (statusCode == StatusCode.Failure)
                 {
-                    byte[] output = substate.ShouldRevert ? substate.Output.Bytes.ToArray() : [];
+                    byte[] output = substate.ShouldRevert ? substate.Output.ToArray() : [];
                     tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
-                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.Bytes.ToArray(), logs, stateRoot);
+                    tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
 
-            if (substate.EvmExceptionType != EvmExceptionType.None)
-                return TransactionResult.EvmException(substate.EvmExceptionType);
+            return substate.EvmExceptionType != EvmExceptionType.None
+                ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
+                : TransactionResult.Ok;
+        }
 
+        protected virtual TransactionResult CalculateAvailableGas(Transaction tx, IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, out TGasPolicy gasAvailable)
+        {
+            gasAvailable = TGasPolicy.CreateAvailableFromIntrinsic(tx.GasLimit, intrinsicGas.Standard, spec);
             return TransactionResult.Ok;
         }
 
-        protected virtual TransactionResult CalculateAvailableGas(Transaction tx, IntrinsicGas intrinsicGas, out long gasAvailable)
+        private static void Apply8037DelegationRefunds(IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, ref TGasPolicy gasAvailable, ref int delegationRefunds)
         {
-            gasAvailable = tx.GasLimit - intrinsicGas.Standard;
-            return TransactionResult.Ok;
+            if (spec.IsEip8037Enabled && delegationRefunds > 0)
+            {
+                TGasPolicy intrinsicGasStandard = intrinsicGas.Standard;
+                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+                TGasPolicy.ApplyCodeInsertRefunds(ref gasAvailable, delegationRefunds, spec, stateGasFloor);
+                delegationRefunds = 0;
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -268,9 +307,10 @@ namespace Nethermind.Evm.TransactionProcessing
             int refunds = 0;
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
-                Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple));
+                Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
 
-                if (!IsValidForExecution(authTuple, accessTracker, out string? error))
+                AuthorizationTupleResult authorizationResult = IsValidForExecution(authTuple, accessTracker, spec, out string? error);
+                if (authorizationResult != AuthorizationTupleResult.Valid)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Delegation {authTuple} is invalid with error: {error}");
                 }
@@ -291,59 +331,70 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             return refunds;
+        }
 
-            bool IsValidForExecution(
-                AuthorizationTuple authorizationTuple,
-                StackAccessTracker accessTracker,
-                [NotNullWhen(false)] out string? error)
+        private enum AuthorizationTupleResult
+        {
+            Valid,
+            IncorrectNonce,
+            InvalidNonce,
+            InvalidChainId,
+            InvalidSignature,
+            InvalidAsCodeDeployed
+        }
+
+        private AuthorizationTupleResult IsValidForExecution(
+            AuthorizationTuple authorizationTuple,
+            in StackAccessTracker accessTracker,
+            IReleaseSpec spec,
+            [NotNullWhen(false)] out string? error)
+        {
+            if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
             {
-                if (authorizationTuple.ChainId != 0 && SpecProvider.ChainId != authorizationTuple.ChainId)
-                {
-                    error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
-                    return false;
-                }
-
-                if (authorizationTuple.Nonce == ulong.MaxValue)
-                {
-                    error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
-                    return false;
-                }
-
-                UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
-                if (authorizationTuple.Authority is null
-                    || s > Secp256K1Curve.HalfN
-                    //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
-                    || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
-                {
-                    error = "Bad signature.";
-                    return false;
-                }
-
-                accessTracker.WarmUp(authorizationTuple.Authority);
-
-                if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
-                {
-                    error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
-                    return false;
-                }
-
-                UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
-                if (authNonce != authorizationTuple.Nonce)
-                {
-                    error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
-                    return false;
-                }
-
-                error = null;
-                return true;
+                error = $"Chain id ({authorizationTuple.ChainId}) does not match.";
+                return AuthorizationTupleResult.InvalidChainId;
             }
+
+            if (authorizationTuple.Nonce == ulong.MaxValue)
+            {
+                error = $"Nonce ({authorizationTuple.Nonce}) must be less than 2**64 - 1.";
+                return AuthorizationTupleResult.InvalidNonce;
+            }
+
+            UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
+            if (authorizationTuple.Authority is null
+                || s > SecP256k1Curve.HalfN
+                //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
+                || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
+            {
+                error = "Bad signature.";
+                return AuthorizationTupleResult.InvalidSignature;
+            }
+
+            accessTracker.WarmUp(authorizationTuple.Authority);
+
+            if (WorldState.HasCode(authorizationTuple.Authority) && !_codeInfoRepository.TryGetDelegation(authorizationTuple.Authority, spec, out _))
+            {
+                error = $"Authority ({authorizationTuple.Authority}) has code deployed.";
+                return AuthorizationTupleResult.InvalidAsCodeDeployed;
+            }
+
+            UInt256 authNonce = WorldState.GetNonce(authorizationTuple.Authority);
+            if (authNonce != authorizationTuple.Nonce)
+            {
+                error = $"Skipping tuple in authorization_list because nonce is set to {authorizationTuple.Nonce}, but authority ({authorizationTuple.Authority}) has {authNonce}.";
+                return AuthorizationTupleResult.IncorrectNonce;
+            }
+
+            error = null;
+            return AuthorizationTupleResult.Valid;
         }
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
 
@@ -357,7 +408,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         /// <summary>
-        /// Validates the transaction, in a static manner (i.e. without accesing state/storage).
+        /// Validates the transaction, in a static manner (i.e. without accessing state/storage).
         /// It basically ensures the transaction is well formed (i.e. no null values where not allowed, no overflows, etc).
         /// As a part of validating the transaction the premium per gas will be calculated, to save computation this
         /// is returned in an out parameter.
@@ -367,14 +418,13 @@ namespace Nethermind.Evm.TransactionProcessing
         /// <param name="spec">The release spec with which the transaction will be executed</param>
         /// <param name="opts">Options (Flags) to use for execution</param>
         /// <param name="intrinsicGas">Calculated intrinsic gas</param>
-        /// <param name="floorGas"></param>
         /// <returns></returns>
         protected virtual TransactionResult ValidateStatic(
             Transaction tx,
             BlockHeader header,
             IReleaseSpec spec,
             ExecutionOptions opts,
-            in IntrinsicGas intrinsicGas)
+            in IntrinsicGas<TGasPolicy> intrinsicGas)
         {
 
             bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
@@ -402,27 +452,47 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.TransactionSizeOverMaxInitCodeSize;
             }
 
-            return ValidateGas(tx, header, intrinsicGas.MinimalGas, validate);
+            TGasPolicy standard = intrinsicGas.Standard;
+            TGasPolicy minimal = intrinsicGas.MinimalGas;
+            long minGasRequired = spec.IsEip8037Enabled
+                ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
+                : TGasPolicy.GetRemainingGas(in minimal);
+
+            return ValidateGas(tx, header, spec, minGasRequired, validate);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired, bool validate)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired, bool validate)
         {
             if (tx.GasLimit < minGasRequired)
             {
                 TraceLogInvalidTx(tx, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {tx.GasLimit} < {minGasRequired}");
-                return TransactionResult.GasLimitBelowIntrinsicGas;
+                return TransactionResult.ErrorType.GasLimitBelowIntrinsicGas.WithDetail(
+                    $"intrinsic gas too low: have {tx.GasLimit}, want {minGasRequired}");
             }
 
-            if (validate && tx.GasLimit > header.GasLimit - header.GasUsed)
+            if (validate)
             {
-                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
-                return TransactionResult.BlockGasLimitExceeded;
+                long gasUsedForAllowance = _parallel ? 0 : spec switch
+                {
+                    { IsEip8037Enabled: true } => _blockCumulativeRegularGas,
+                    { IsEip7778Enabled: true } => _blockCumulativeReceiptGas,
+                    _ => header.GasUsed,
+                };
+
+                long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
+                if (tx.GasLimit > maxTransactionGasLimit)
+                {
+                    string limitDescription = _parallel
+                        ? $"{header.GasLimit}"
+                        : $"{header.GasLimit} - {gasUsedForAllowance}";
+                    TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
+                    return TransactionResult.BlockGasLimitExceeded;
+                }
             }
 
             return TransactionResult.Ok;
         }
 
-        // TODO Should we remove this already
         protected virtual bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
         {
             bool deleteCallerAccount = false;
@@ -450,7 +520,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (!commit || noValidation || effectiveGasPrice.IsZero)
                     {
                         deleteCallerAccount = !commit || restore;
-                        WorldState.CreateAccount(sender, in UInt256.Zero);
+                        WorldState.CreateAccount(sender!, in UInt256.Zero);
                     }
                 }
 
@@ -463,11 +533,14 @@ namespace Nethermind.Evm.TransactionProcessing
             return deleteCallerAccount;
         }
 
-        protected virtual IntrinsicGas CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
-            => IntrinsicGasCalculator.Calculate(tx, spec);
+        protected virtual IntrinsicGas<TGasPolicy> CalculateIntrinsicGas(Transaction tx, IReleaseSpec spec)
+            => TGasPolicy.CalculateIntrinsicGas(tx, spec);
 
-        protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee) =>
-            tx.CalculateEffectiveGasPrice(eip1559Enabled, in baseFee);
+        protected virtual UInt256 CalculateEffectiveGasPrice(Transaction tx, bool eip1559Enabled, in UInt256 baseFee, out UInt256 opcodeGasPrice)
+        {
+            opcodeGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, in baseFee);
+            return opcodeGasPrice;
+        }
 
         protected virtual bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
             tx.TryCalculatePremiumPerGas(baseFee, out premiumPerGas);
@@ -485,89 +558,109 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
+        protected static bool ShouldValidateGas(Transaction tx, ExecutionOptions opts)
+            => !opts.HasFlag(ExecutionOptions.SkipValidation) || !tx.MaxFeePerGas.IsZero || !tx.MaxPriorityFeePerGas.IsZero;
+
         protected virtual TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
                 in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
         {
             premiumPerGas = UInt256.Zero;
             senderReservedGasPayment = UInt256.Zero;
             blobBaseFee = UInt256.Zero;
-            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            bool validate = ShouldValidateGas(tx, opts);
 
-            if (validate)
+            BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+            if (validate && !TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
             {
-                BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
-                if (!TryCalculatePremiumPerGas(tx, header.BaseFeePerGas, out premiumPerGas))
+                TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
+                string errorDetail = $"max fee per gas less than block base fee: address {tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown"}, maxFeePerGas: {tx.MaxFeePerGas}, baseFee: {header.BaseFeePerGas}";
+                return TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail(errorDetail);
+            }
+
+            UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
+            if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
+            {
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                return InsufficientFundsForTransfer(tx, senderBalance);
+            }
+
+            bool overflows;
+            if (spec.IsEip1559Enabled && !tx.IsFree())
+            {
+                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
+                if (overflows || balanceLeft < maxGasFee)
                 {
-                    TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                    return TransactionResult.MinerPremiumNegative;
+                    TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
+                    return InsufficientFundsForGas(tx, senderBalance, tx.MaxFeePerGas);
                 }
 
-                UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress!);
-                if (UInt256.SubtractUnderflow(in senderBalance, in tx.ValueRef, out UInt256 balanceLeft))
+                if (tx.SupportsBlobs)
                 {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                    return TransactionResult.InsufficientSenderBalance;
-                }
-
-                bool overflows;
-                if (spec.IsEip1559Enabled && !tx.IsFree())
-                {
-                    overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, tx.MaxFeePerGas, out UInt256 maxGasFee);
-                    if (overflows || balanceLeft < maxGasFee)
+                    overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee);
+                    if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
                     {
-                        TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {tx.MaxFeePerGas}");
-                        return TransactionResult.InsufficientMaxFeePerGasForSenderBalance;
+                        TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                        return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
                     }
-
-                    if (tx.SupportsBlobs)
-                    {
-                        overflows = UInt256.MultiplyOverflow(BlobGasCalculator.CalculateBlobGas(tx), (UInt256)tx.MaxFeePerBlobGas!, out UInt256 maxBlobGasFee);
-                        if (overflows || UInt256.AddOverflow(maxGasFee, maxBlobGasFee, out UInt256 multidimGasFee) || multidimGasFee > balanceLeft)
-                        {
-                            TraceLogInvalidTx(tx, $"INSUFFICIENT_MAX_FEE_PER_BLOB_GAS_FOR_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                            return TransactionResult.InsufficientSenderBalance;
-                        }
-                    }
-                }
-
-                overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
-                if (!overflows && tx.SupportsBlobs)
-                {
-                    overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
-                    if (!overflows)
-                    {
-                        overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
-                    }
-                }
-
-                if (overflows || senderReservedGasPayment > balanceLeft)
-                {
-                    TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
-                    return TransactionResult.InsufficientSenderBalance;
                 }
             }
 
-            if (validate) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+            overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
+            if (!overflows && tx.SupportsBlobs)
+            {
+                overflows = !_blobBaseFeeCalculator.TryCalculateBlobBaseFee(header, tx, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+                if (!overflows)
+                {
+                    overflows = UInt256.AddOverflow(senderReservedGasPayment, blobBaseFee, out senderReservedGasPayment);
+                }
+            }
+
+            if (overflows || senderReservedGasPayment > balanceLeft)
+            {
+                TraceLogInvalidTx(tx, $"INSUFFICIENT_SENDER_BALANCE: ({tx.SenderAddress})_BALANCE = {senderBalance}");
+                return InsufficientFundsForGas(tx, senderBalance, effectiveGasPrice);
+            }
+
+            if (!senderReservedGasPayment.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress, senderReservedGasPayment, spec);
 
             return TransactionResult.Ok;
+        }
+
+        private static TransactionResult InsufficientFundsForTransfer(Transaction tx, UInt256 senderBalance) =>
+            TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
+                $"insufficient funds for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
+
+        private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
+        {
+            UInt256.MultiplyOverflow((UInt256)tx.GasLimit, gasPrice, out UInt256 gasCost);
+            UInt256.AddOverflow(gasCost, tx.Value, out UInt256 want);
+            return TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance.WithDetail(
+                $"insufficient funds for gas * price + value: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {want}");
         }
 
         protected virtual TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
-            if (tx.Nonce != WorldState.GetNonce(tx.SenderAddress!))
+            bool validate = !opts.HasFlag(ExecutionOptions.SkipValidation);
+            UInt256 nonce = WorldState.GetNonce(tx.SenderAddress!);
+            if (validate && tx.Nonce != nonce)
             {
-                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {WorldState.GetNonce(tx.SenderAddress)})");
-                return TransactionResult.WrongTransactionNonce;
+                TraceLogInvalidTx(tx, $"WRONG_TRANSACTION_NONCE: {tx.Nonce} (expected {nonce})");
+                // Geth core/state_transition.go ErrNonceTooHigh / ErrNonceTooLow.
+                string sender = tx.SenderAddress?.ToString(withEip55Checksum: true) ?? "unknown";
+                return tx.Nonce > nonce
+                    ? TransactionResult.ErrorType.TransactionNonceTooHigh.WithDetail(
+                        $"nonce too high: address {sender}, tx: {tx.Nonce} state: {nonce}")
+                    : TransactionResult.ErrorType.TransactionNonceTooLow.WithDetail(
+                        $"nonce too low: address {sender}, tx: {tx.Nonce} state: {nonce}");
             }
 
-            WorldState.IncrementNonce(tx.SenderAddress);
+            UInt256 newNonce = validate || nonce < ulong.MaxValue ? nonce + 1 : 0;
+            WorldState.SetNonce(tx.SenderAddress, newNonce);
+
             return TransactionResult.Ok;
         }
 
-        protected virtual void DecrementNonce(Transaction tx)
-        {
-            WorldState.DecrementNonce(tx.SenderAddress!);
-        }
+        protected virtual void DecrementNonce(Transaction tx) => WorldState.DecrementNonce(tx.SenderAddress!);
 
         [SkipLocalsInit]
         private TransactionResult BuildExecutionEnvironment(
@@ -579,15 +672,11 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress!) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
-
-            ICodeInfo? codeInfo;
+            CodeInfo? codeInfo;
             ReadOnlyMemory<byte> inputData = tx.IsMessageCall ? tx.Data : default;
             if (tx.IsContractCreation)
             {
-                if (CodeInfoFactory.CreateInitCodeInfo(tx.Data, spec, out codeInfo, out ReadOnlyMemory<byte> trailingData))
-                {
-                    inputData = trailingData;
-                }
+                codeInfo = CodeInfoFactory.CreateCodeInfo(tx.Data);
             }
             else
             {
@@ -610,10 +699,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 accessTracker.WarmUp(tx.SenderAddress!);
             }
 
-            env = new ExecutionEnvironment(
+            env = ExecutionEnvironment.Rent(
                 codeInfo: codeInfo,
                 executingAccount: recipient,
-                caller: tx.SenderAddress,
+                caller: tx.SenderAddress!,
                 codeSource: recipient,
                 callDepth: 0,
                 transferValue: in tx.ValueRef,
@@ -632,10 +721,10 @@ namespace Nethermind.Evm.TransactionProcessing
             ITxTracer tracer,
             ExecutionOptions opts,
             int delegationRefunds,
-            IntrinsicGas gas,
+            IntrinsicGas<TGasPolicy> gas,
             in StackAccessTracker accessedItems,
-            long gasAvailable,
-            in ExecutionEnvironment env,
+            TGasPolicy gasAvailable,
+            ExecutionEnvironment env,
             out TransactionSubstate substate,
             out GasConsumed gasConsumed)
             where TTracingInst : struct, IFlag
@@ -653,185 +742,184 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (tx.IsContractCreation)
                 {
                     // if transaction is a contract creation then recipient address is the contract deployment address
-                    if (!PrepareAccountForContractDeployment(env.ExecutingAccount, _codeInfoRepository, spec))
+                    if (!PrepareDeployment(env.ExecutingAccount))
                     {
-                        goto FailContractCreate;
+                        if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                        WorldState.Restore(snapshot);
+                        gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, static (_, _) => 0);
+                        goto Complete;
                     }
                 }
             }
             else
             {
-                // If EOF header parsing or full container validation fails, transaction is considered valid and failing.
                 // Gas for initcode execution is not consumed, only intrinsic creation transaction costs are charged.
-                gasConsumed = gas.MinimalGas;
+                long minimalGasLong = TGasPolicy.GetRemainingGas(gas.MinimalGas);
+                gasConsumed = minimalGasLong;
                 // If noValidation we didn't charge for gas, so do not refund; otherwise return unspent gas
                 if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - gas.MinimalGas) * VirtualMachine.TxExecutionContext.GasPrice, spec);
+                    WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - minimalGasLong) * VirtualMachine.TxExecutionContext.GasPrice, spec);
                 goto Complete;
             }
 
-            ExecutionType executionType = tx.IsContractCreation ? ((spec.IsEofEnabled && tx.IsEofContractCreation) ? ExecutionType.TXCREATE : ExecutionType.CREATE) : ExecutionType.TRANSACTION;
+            ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
 
-            using (EvmState state = EvmState.RentTopLevel(gasAvailable, executionType, in env, in accessedItems, in snapshot))
+            using (VmState<TGasPolicy> state = VmState<TGasPolicy>.RentTopLevel(gasAvailable, executionType, env, in accessedItems, in snapshot))
             {
-                substate = VirtualMachine.ExecuteTransaction<TTracingInst>(state, WorldState, tracer);
+                substate = !TTracingInst.IsActive
+                    ? VirtualMachine.ExecuteTransaction(state, WorldState, tracer) // no GVM trick for ZK
+                    : VirtualMachine.ExecuteTransaction<OnFlag>(state, WorldState, tracer);
+
                 Metrics.IncrementOpCodes(VirtualMachine.OpCodeCount);
-                gasAvailable = state.GasAvailable;
-            }
+                gasAvailable = state.Gas;
 
-            if (tracer.IsTracingAccess)
-            {
-                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
-            }
-
-            if (substate.ShouldRevert || substate.IsError)
-            {
-                if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
-                WorldState.Restore(snapshot);
-            }
-            else
-            {
-                if (tx.IsContractCreation)
+                if (tracer.IsTracingAccess)
                 {
-                    if (!spec.IsEofEnabled || tx.IsLegacyContractCreation)
+                    tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
+                }
+
+                if (substate.ShouldRevert || substate.IsError)
+                {
+                    if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
+                    WorldState.Restore(snapshot);
+                }
+                else
+                {
+                    if (tx.IsContractCreation)
                     {
-                        if (!DeployLegacyContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                        if (!DeployContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
                         {
                             goto FailContractCreate;
                         }
                     }
-                    else
+
+                    // EIP-8037: defer destroy list processing to after PayFees so that
+                    // burn logs include the priority fee in the balance.
+                    bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
+                    if (!deferFinalization)
                     {
-                        if (!DeployEofContract(spec, env.ExecutingAccount, in substate, in accessedItems, ref gasAvailable))
+                        bool eip7708Enabled = spec.IsEip7708Enabled;
+                        bool tracingRefunds = tracer.IsTracingRefunds;
+                        foreach (Address toBeDestroyed in substate.DestroyList)
                         {
-                            goto FailContractCreate;
+                            if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
+
+                            if (eip7708Enabled)
+                            {
+                                UInt256 balance = WorldState.GetBalance(toBeDestroyed);
+                                if (!balance.IsZero)
+                                {
+                                    substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                                }
+                            }
+
+                            WorldState.ClearStorage(toBeDestroyed);
+                            WorldState.DeleteAccount(toBeDestroyed);
+
+                            if (tracingRefunds)
+                            {
+                                tracer.ReportRefund(spec.GasCosts.DestroyRefund);
+                            }
                         }
                     }
+
+                    statusCode = StatusCode.Success;
                 }
-
-                foreach (Address toBeDestroyed in substate.DestroyList)
-                {
-                    if (Logger.IsTrace)
-                        Logger.Trace($"Destroying account {toBeDestroyed}");
-
-                    WorldState.ClearStorage(toBeDestroyed);
-                    WorldState.DeleteAccount(toBeDestroyed);
-
-                    if (tracer.IsTracingRefunds)
-                        tracer.ReportRefund(RefundOf.Destroy(spec.IsEip3529Enabled));
-                }
-
-                statusCode = StatusCode.Success;
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable,
-                VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas, gas.Standard);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
-
+            gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, static (s, st) => s - st);
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                header.GasUsed += gasConsumed.SpentGas;
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
+            {
+                header.GasUsed += gasConsumed.EffectiveBlockGas;
+            }
 
             return statusCode;
         }
 
-        protected virtual bool DeployLegacyContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
+
+        /// <summary>Computes block-level regular gas from a failed transaction's gas state.</summary>
+        /// <param name="spentGas">Gas burned: <c>tx.GasLimit - StateReservoir</c> (pre-floor).</param>
+        /// <param name="blockStateGas">State-dimension gas used (<see cref="IGasPolicy{TSelf}.GetStateGasUsed"/>).</param>
+        protected delegate long BlockGasCalculation(long spentGas, long blockStateGas);
+
+        protected virtual GasConsumed RefundOnFail(
+            Transaction tx,
+            IReleaseSpec spec,
+            ExecutionOptions opts,
+            in TGasPolicy gas,
+            in UInt256 gasPrice,
+            BlockGasCalculation computeBlockGas,
+            long floorGas = 0)
         {
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, substate.Output.Bytes.Length);
-            if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+            if (spec.IsEip8037Enabled)
             {
+                long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
+                long spentGasRaw = tx.GasLimit - TGasPolicy.GetStateReservoir(in gas);
+                long spentGas = Math.Max(spentGasRaw, floorGas);
+                long blockGas = Math.Max(computeBlockGas(spentGasRaw, blockStateGas), floorGas);
+
+                if (ShouldRefundGas(tx, opts, in gasPrice) && spentGas < tx.GasLimit)
+                    PayRefund(tx, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
+
+                return new GasConsumed(spentGas, spentGas, blockGas, blockStateGas, spentGas);
+            }
+
+            return tx.GasLimit;
+        }
+
+        protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)
+        {
+            if (!CodeDepositHandler.CalculateCost(spec, substate.Output.Length, out long regularDepositCost, out long stateDepositCost))
                 return false;
-            }
 
-            if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output.Bytes, 0))
-            {
+            if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                 return false;
-            }
 
-            if (unspentGas >= codeDepositGasCost)
-            {
-                // Copy the bytes so it's not live memory that will be used in another tx
-                byte[] code = substate.Output.Bytes.ToArray();
-                _codeInfoRepository.InsertCode(code, codeOwner, spec);
-                if (code.Length > CodeSizeConstants.MaxCodeSizeEip170)
-                {
-                    accessedItems.WarmUpLargeContract(codeOwner);
-                }
+            // Copy the bytes so it's not live memory that will be used in another tx.
+            return TryChargeCodeDeposit(spec, codeOwner, in accessedItems, ref unspentGas, regularDepositCost, stateDepositCost, substate.Output.ToArray());
+        }
 
-                unspentGas -= codeDepositGasCost;
-            }
+        private bool TryChargeCodeDeposit(
+            IReleaseSpec spec,
+            Address codeOwner,
+            in StackAccessTracker accessedItems,
+            ref TGasPolicy unspentGas,
+            long regularDepositCost,
+            long stateDepositCost,
+            byte[] code)
+        {
+            long remainingGas = TGasPolicy.GetRemainingGas(in unspentGas);
+            bool hasEnoughGas = remainingGas >= regularDepositCost && remainingGas + TGasPolicy.GetStateReservoir(in unspentGas) >= stateDepositCost;
 
+            if (!hasEnoughGas)
+                return !spec.ChargeForTopLevelCreate;
+
+            TGasPolicy gasAfterCodeDeposit = unspentGas;
+            if (!TGasPolicy.TryConsumeStateAndRegularGas(ref gasAfterCodeDeposit, stateDepositCost, regularDepositCost))
+                return false;
+
+            _codeInfoRepository.InsertCode(code, codeOwner, spec);
+
+            unspentGas = gasAfterCodeDeposit;
             return true;
         }
 
-        private bool DeployEofContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref long unspentGas)
-        {
-            // 1 - load deploy EOF subContainer at deploy_container_index in the container from which RETURNCODE is executed
-            ReadOnlySpan<byte> auxExtraData = substate.Output.Bytes.Span;
-            EofCodeInfo deployCodeInfo = (EofCodeInfo)substate.Output.DeployCode;
-
-            long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, deployCodeInfo.Code.Length + auxExtraData.Length);
-            if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
-            {
-                return false;
-            }
-            int codeLength = deployCodeInfo.Code.Length + auxExtraData.Length;
-            // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-            if (codeLength > spec.MaxCodeSize)
-            {
-                return false;
-            }
-            // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-            byte[] bytecodeResult = new byte[codeLength];
-            // 2 - 1 - 1 - copy old container
-            deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
-            // 2 - 1 - 2 - copy aux data to dataSection
-            auxExtraData.CopyTo(bytecodeResult.AsSpan(deployCodeInfo.Code.Length));
-
-            // 2 - 2 - update data section size in the header u16
-            int dataSubHeaderSectionStart =
-                VERSION_OFFSET // magic + version
-                + Eof1.MINIMUM_HEADER_SECTION_SIZE // type section : (1 byte of separator + 2 bytes for size)
-                + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-                + (deployCodeInfo.EofContainer.Header.ContainerSections is null
-                    ? 0 // container section :  (0 bytes if no container section is available)
-                    : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count) // container section :  (1 byte of separator + (ContainerSections count) * 2 bytes for size)
-                + ONE_BYTE_LENGTH; // data section separator
-
-            ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
-            bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
-            bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
-
-            if (unspentGas >= codeDepositGasCost)
-            {
-                // 4 - set state[new_address].code to the updated deploy container
-                // push new_address onto the stack (already done before the ifs)
-                _codeInfoRepository.InsertCode(bytecodeResult, codeOwner, spec);
-                if (bytecodeResult.Length > CodeSizeConstants.MaxCodeSizeEip170)
-                {
-                    accessedItems.WarmUpLargeContract(codeOwner);
-                }
-                unspentGas -= codeDepositGasCost;
-            }
-
-            return true;
-        }
-
-        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
-        {
-            WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
-        }
+        protected virtual void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts) => WorldState.SubtractFromBalance(tx.SenderAddress!, in tx.ValueRef, spec);
 
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode)
         {
             UInt256 fees = premiumPerGas * (ulong)spentGas;
 
             // n.b. destroyed accounts already set to zero balance
+            // EIP-8037: always pay coinbase — deferred finalization will burn the balance
             bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
-            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
+            if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed || spec.IsEip8037Enabled)
             {
                 WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
             }
@@ -855,16 +943,13 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        protected bool PrepareAccountForContractDeployment(Address contractAddress, ICodeInfoRepository codeInfoRepository, IReleaseSpec spec)
+        protected bool PrepareDeployment(Address contractAddress)
         {
-            if (WorldState.AccountExists(contractAddress) && contractAddress.IsNonZeroAccount(spec, codeInfoRepository, WorldState))
-            {
-                if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
+            if (!WorldState.IsNonZeroAccount(contractAddress, out _))
+                return true;
 
-                return false;
-            }
-
-            return true;
+            if (Logger.IsTrace) Logger.Trace($"Contract collision at {contractAddress}");
+            return false;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -874,42 +959,87 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in long unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long floorGas)
+            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard)
         {
-            long spentGas = tx.GasLimit;
-            var codeInsertRefund = (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds;
+            TGasPolicy gasAfterExecution = unspentGas;
+            long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
+            long floorGasLong = TGasPolicy.GetRemainingGas(floorGas);
 
-            if (!substate.IsError)
-            {
-                spentGas -= unspentGas;
+            if (substate.IsError && spec.IsEip8037Enabled)
+                return RefundOnFail(tx, spec, opts, in gasAfterExecution, in gasPrice, static (s, st) => s - st, floorGasLong);
 
-                long totalToRefund = codeInsertRefund;
-                if (!substate.ShouldRevert)
-                    totalToRefund += substate.Refund + substate.DestroyList.Count * RefundOf.Destroy(spec.IsEip3529Enabled);
-                long actualRefund = CalculateClaimableRefund(spentGas, totalToRefund, spec);
+            (long spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertRegularRefund);
+            (long blockGas, long blockStateGas) = CalculateBlockGas(spec, in substate, in gasAfterExecution, in intrinsicGasStandard, spentGas, floorGasLong, tx.GasLimit);
 
-                if (Logger.IsTrace)
-                    Logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + actualRefund);
-                spentGas -= actualRefund;
-            }
-            else if (codeInsertRefund > 0)
-            {
-                long refund = CalculateClaimableRefund(spentGas, codeInsertRefund, spec);
+            long operationGas = spentGas - refund;
+            long spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
-                if (Logger.IsTrace)
-                    Logger.Trace("Refunding delegations only: " + refund);
-                spentGas -= refund;
-            }
+            if (ShouldRefundGas(tx, opts, in gasPrice))
+                PayRefund(tx, (ulong)(tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
-            long operationGas = spentGas;
-            spentGas = Math.Max(spentGas, floorGas);
-
-            // If noValidation we didn't charge for gas, so do not refund
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation))
-                WorldState.AddToBalance(tx.SenderAddress!, (ulong)(tx.GasLimit - spentGas) * gasPrice, spec);
-
-            return new GasConsumed(spentGas, operationGas);
+            return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, blockStateGas, Math.Max(spentGas, floorGasLong));
         }
+
+        private (long spentGas, long refund) CalculateSpentGasAndRefund(
+            Transaction tx,
+            IReleaseSpec spec,
+            in TransactionSubstate substate,
+            in TGasPolicy gasAfterExecution,
+            long codeInsertRegularRefund)
+        {
+            long spentGas = substate.IsError
+                ? tx.GasLimit
+                : tx.GasLimit - TGasPolicy.GetRemainingGas(in gasAfterExecution) - TGasPolicy.GetStateReservoir(in gasAfterExecution);
+
+            long totalToRefund = codeInsertRegularRefund;
+            if (!substate.IsError && !substate.ShouldRevert)
+                totalToRefund += substate.Refund + substate.DestroyList.Count * spec.GasCosts.DestroyRefund;
+
+            return (spentGas, CalculateClaimableRefund(spentGas, totalToRefund, spec));
+        }
+
+        private static (long blockGas, long blockStateGas) CalculateBlockGas(
+            IReleaseSpec spec,
+            in TransactionSubstate substate,
+            in TGasPolicy gasAfterExecution,
+            in TGasPolicy intrinsicGasStandard,
+            long preRefundGas,
+            long floorGas,
+            long txGasLimit)
+        {
+            if (!spec.IsEip8037Enabled)
+                return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
+
+            long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
+
+            long deduction = substate.ShouldRevert
+                ? blockStateGas
+                : Calculate8037NonRevertDeduction(in gasAfterExecution, in intrinsicGasStandard, txGasLimit);
+
+            return (Math.Max(preRefundGas - deduction, floorGas), blockStateGas);
+        }
+
+        private static long Calculate8037NonRevertDeduction(
+            in TGasPolicy gasAfterExecution,
+            in TGasPolicy intrinsicGasStandard,
+            long txGasLimit)
+        {
+            long intrinsicState = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            long initialReservoir = Math.Max(0, txGasLimit - intrinsicState - Eip7825Constants.DefaultTxGasLimitCap);
+            long reservoirConsumed = initialReservoir - TGasPolicy.GetStateReservoir(in gasAfterExecution);
+            long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
+            return intrinsicState + reservoirConsumed + stateGasSpill;
+        }
+
+        protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)
+        {
+            if (!refundAmount.IsZero)
+                WorldState.AddToBalance(tx.SenderAddress!, refundAmount, spec);
+        }
+
+        private static bool ShouldRefundGas(Transaction tx, ExecutionOptions opts, in UInt256 gasPrice) =>
+            !gasPrice.IsZero && ShouldValidateGas(tx, opts);
 
         protected virtual long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)
             => RefundHelper.CalculateClaimableRefund(spentGas, totalRefund, spec);
@@ -918,40 +1048,82 @@ namespace Nethermind.Evm.TransactionProcessing
         private static void ThrowInvalidDataException(string message) => throw new InvalidDataException(message);
     }
 
-    public readonly struct TransactionResult(string? error, EvmExceptionType evmException = EvmExceptionType.None) : IEquatable<TransactionResult>
-    {
-        [MemberNotNullWhen(false, nameof(TransactionExecuted))]
-        public string? Error { get; } = error;
-        public bool TransactionExecuted => Error is null;
-        public EvmExceptionType EvmExceptionType { get; } = evmException;
+    /// <summary>
+    /// Non-generic TransactionProcessorBase for backward compatibility with EthereumGasPolicy.
+    /// </summary>
+    public abstract class EthereumTransactionProcessorBase(
+        ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager)
+        : TransactionProcessorBase<EthereumGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager);
 
-        public static implicit operator TransactionResult(string? error) => new(error);
+    public readonly struct TransactionResult : IEquatable<TransactionResult>
+    {
+        private TransactionResult(ErrorType error = ErrorType.None, EvmExceptionType evmException = EvmExceptionType.None, string errorDescription = "")
+        {
+            Error = error;
+            EvmExceptionType = evmException;
+            ErrorDescription = errorDescription;
+        }
+
+        public ErrorType Error { get; }
+        public bool TransactionExecuted => Error is ErrorType.None;
+        public EvmExceptionType EvmExceptionType { get; }
+        public string ErrorDescription { get; }
+
+        public static implicit operator TransactionResult(ErrorType error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.TransactionExecuted;
         public bool Equals(TransactionResult other) => (TransactionExecuted && other.TransactionExecuted) || (Error == other.Error);
         public static bool operator ==(TransactionResult obj1, TransactionResult obj2) => obj1.Equals(obj2);
         public static bool operator !=(TransactionResult obj1, TransactionResult obj2) => !obj1.Equals(obj2);
         public override bool Equals(object? obj) => obj is TransactionResult result && Equals(result);
         public override int GetHashCode() => TransactionExecuted ? 1 : Error.GetHashCode();
+        public override string ToString() => Error is not ErrorType.None ? $"Fail : {ErrorDescription}" : "Success";
 
-        public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
+        public static TransactionResult EvmException(EvmExceptionType evmExceptionType, string? description = null) =>
+            new(evmException: evmExceptionType, errorDescription: description ?? "");
 
-        public static TransactionResult EvmException(EvmExceptionType evmExceptionType)
-        {
-            return new TransactionResult(null, evmExceptionType);
-        }
+        public static TransactionResult WithDetail(ErrorType errorType, string detail) => new(errorType, errorDescription: detail);
 
         public static readonly TransactionResult Ok = new();
+        public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
+        public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "intrinsic gas too low");
+        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient funds for gas * price + value");
+        public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient funds for transfer");
+        public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
+        public static readonly TransactionResult MinerPremiumNegative = new(ErrorType.MinerPremiumNegative, errorDescription: "miner premium is negative");
+        public static readonly TransactionResult NonceOverflow = new(ErrorType.NonceOverflow, errorDescription: "nonce overflow");
+        public static readonly TransactionResult SenderHasDeployedCode = new(ErrorType.SenderHasDeployedCode, errorDescription: "sender has deployed code");
+        public static readonly TransactionResult SenderNotSpecified = new(ErrorType.SenderNotSpecified, errorDescription: "sender not specified");
+        public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = new(ErrorType.TransactionSizeOverMaxInitCodeSize, errorDescription: "EIP-3860 - transaction size over max init code size");
+        public static readonly TransactionResult TransactionNonceTooHigh = new(ErrorType.TransactionNonceTooHigh, errorDescription: "nonce too high");
+        public static readonly TransactionResult TransactionNonceTooLow = new(ErrorType.TransactionNonceTooLow, errorDescription: "nonce too low");
 
-        public static readonly TransactionResult BlockGasLimitExceeded = "Block gas limit exceeded";
-        public static readonly TransactionResult GasLimitBelowIntrinsicGas = "gas limit below intrinsic gas";
-        public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = "insufficient MaxFeePerGas for sender balance";
-        public static readonly TransactionResult InsufficientSenderBalance = "insufficient sender balance";
-        public static readonly TransactionResult MalformedTransaction = "malformed";
-        public static readonly TransactionResult MinerPremiumNegative = "miner premium is negative";
-        public static readonly TransactionResult NonceOverflow = "nonce overflow";
-        public static readonly TransactionResult SenderHasDeployedCode = "sender has deployed code";
-        public static readonly TransactionResult SenderNotSpecified = "sender not specified";
-        public static readonly TransactionResult TransactionSizeOverMaxInitCodeSize = "EIP-3860 - transaction size over max init code size";
-        public static readonly TransactionResult WrongTransactionNonce = "wrong transaction nonce";
+        public enum ErrorType
+        {
+            None,
+            BlockGasLimitExceeded,
+            GasLimitBelowIntrinsicGas,
+            InsufficientMaxFeePerGasForSenderBalance,
+            InsufficientSenderBalance,
+            MalformedTransaction,
+            MaxFeePerGasBelowBaseFee,
+            MinerPremiumNegative,
+            NonceOverflow,
+            SenderHasDeployedCode,
+            SenderNotSpecified,
+            TransactionSizeOverMaxInitCodeSize,
+            TransactionNonceTooHigh,
+            TransactionNonceTooLow,
+        }
+    }
+
+    public static class TransactionResultExtensions
+    {
+        public static TransactionResult WithDetail(this TransactionResult.ErrorType errorType, string detail) =>
+            TransactionResult.WithDetail(errorType, detail);
     }
 }

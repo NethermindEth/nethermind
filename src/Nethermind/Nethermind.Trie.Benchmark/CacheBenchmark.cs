@@ -1,3 +1,4 @@
+using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Caching;
@@ -46,7 +47,7 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache Pre_init_trie_cache_160()
         {
             MemCountingCache memCountingCache
-                = new MemCountingCache(1024 * 1024, string.Empty);
+                = new(1024 * 1024, string.Empty);
             return memCountingCache;
         }
 
@@ -54,8 +55,8 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache Post_init_trie_cache_with_item_400()
         {
             MemCountingCache cache
-                = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(Keccak.Zero, new byte[0]);
+                = new(1024 * 1024, string.Empty);
+            cache.Set(Keccak.Zero, Array.Empty<byte>());
             return cache;
         }
 
@@ -63,9 +64,9 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache With_2_items_cache_504()
         {
             MemCountingCache cache
-                = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
+                = new(1024 * 1024, string.Empty);
+            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
             return cache;
         }
 
@@ -73,10 +74,10 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache With_3_items_cache_608()
         {
             MemCountingCache cache
-                = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
-            cache.Set(TestItem.KeccakC, new byte[0]);
+                = new(1024 * 1024, string.Empty);
+            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakC, Array.Empty<byte>());
             return cache;
         }
 
@@ -84,11 +85,11 @@ namespace Nethermind.Trie.Benchmark
         public MemCountingCache Post_dictionary_growth_cache_824_and_136_lost()
         {
             MemCountingCache cache
-                = new MemCountingCache(1024 * 1024, string.Empty);
-            cache.Set(TestItem.KeccakA, new byte[0]);
-            cache.Set(TestItem.KeccakB, new byte[0]);
-            cache.Set(TestItem.KeccakC, new byte[0]);
-            cache.Set(TestItem.KeccakD, new byte[0]);
+                = new(1024 * 1024, string.Empty);
+            cache.Set(TestItem.KeccakA, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakB, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakC, Array.Empty<byte>());
+            cache.Set(TestItem.KeccakD, Array.Empty<byte>());
             return cache;
         }
     }

@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -10,27 +11,14 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 [Rlp.SkipGlobalRegistration] // Created explicitly
-public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
 {
-    private readonly bool _skipStateAndStatus;
+    // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
+    private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
-    public ReceiptMessageDecoder69(bool skipStateAndStatus = false)
+    protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        _skipStateAndStatus = skipStateAndStatus;
-    }
-    public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        Span<byte> span = rlpStream.PeekNextItem();
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(span);
-        TxReceipt response = Decode(ref ctx, rlpBehaviors);
-        rlpStream.SkipItem();
-
-        return response;
-    }
-
-    public TxReceipt? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (ctx.IsNextItemNull())
+        if (ctx.IsNextItemEmptyList())
         {
             ctx.ReadByte();
             return null;
@@ -38,7 +26,8 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         TxReceipt txReceipt = new();
 
-        _ = ctx.ReadSequenceLength();
+        int sequenceLength = ctx.ReadSequenceLength();
+        int receiptEnd = ctx.Position + sequenceLength;
 
         txReceipt.TxType = (TxType)ctx.DecodeByte();
 
@@ -46,21 +35,22 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
             txReceipt.StatusCode = firstItem[0];
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
         }
         else if (firstItem.Length is >= 1 and <= 4)
         {
-            txReceipt.GasUsedTotal = (long)firstItem.ToUnsignedBigInteger();
+            txReceipt.GasUsedTotal = firstItem.ToPositiveLong();
         }
         else
         {
             txReceipt.PostTransactionState = firstItem.Length == 0 ? null : new Hash256(firstItem);
-            txReceipt.GasUsedTotal = (long)ctx.DecodeUBigInt();
+            txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
         }
 
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
         int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
+        ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
@@ -69,7 +59,25 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         txReceipt.Logs = entries;
 
+        // Handle any remaining extra bytes
+        bool allowExtraBytes = (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != 0;
+        if (ctx.Position != receiptEnd)
+        {
+            if (allowExtraBytes)
+            {
+                ctx.Position = receiptEnd;
+            }
+            else
+            {
+                ThrowUnexpectedReceiptField();
+            }
+        }
+
         return txReceipt;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowUnexpectedReceiptField()
+            => throw new RlpException("Unexpected receipt field");
     }
 
     private (int Total, int Logs) GetContentLength(TxReceipt? item, RlpBehaviors rlpBehaviors)
@@ -88,7 +96,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-        if (!_skipStateAndStatus)
+        if (!skipStateAndStatus)
         {
             contentLength += isEip658Receipts
                 ? Rlp.LengthOf(item.StatusCode)
@@ -101,7 +109,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
     private static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (var i = 0; i < item.Logs.Length; i++)
+        for (int i = 0; i < item.Logs.Length; i++)
         {
             logsLength += Rlp.LengthOf(item.Logs[i]);
         }
@@ -109,13 +117,13 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
         return logsLength;
     }
 
-    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    public override int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         (int total, _) = GetContentLength(item, rlpBehaviors);
         return Rlp.LengthOfSequence(total);
     }
 
-    public void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
@@ -129,7 +137,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         rlpStream.Encode((byte)item.TxType);
 
-        if (!_skipStateAndStatus)
+        if (!skipStateAndStatus)
         {
             if ((rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts)
             {
@@ -145,7 +153,7 @@ public class ReceiptMessageDecoder69 : IRlpStreamDecoder<TxReceipt>, IRlpValueDe
 
         rlpStream.StartSequence(logsLength);
         LogEntry[] logs = item.Logs;
-        for (var i = 0; i < logs.Length; i++)
+        for (int i = 0; i < logs.Length; i++)
         {
             rlpStream.Encode(logs[i]);
         }

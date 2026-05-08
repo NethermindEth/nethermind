@@ -78,7 +78,7 @@ public static class NLogConfigurator
         {
             if (ignoredRuleNames.Contains(rule.LoggerNamePattern)) { continue; }
 
-            foreach (var ruleTarget in rule.Targets)
+            foreach (Target ruleTarget in rule.Targets)
             {
                 if (ruleTarget.Name != "seq")
                 {

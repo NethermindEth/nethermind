@@ -2,20 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -26,40 +19,24 @@ public class PseudoNetworkModule() : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
-
-            .AddSingleton<IProtocolValidator, ProtocolValidator>()
-            .AddSingleton<IPooledTxsRequestor, PooledTxsRequestor>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
-            .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
             // TODO: LastNStateRootTracker
-            .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
 
             .AddAdvance<ProtocolsManager>(cfg =>
             {
                 cfg
                     .As<IProtocolsManager>()
-                    .WithAttributeFiltering()
                     .SingleInstance()
                     .OnActivating((m) =>
                     {
                         ProtocolsManager protocolManager = m.Instance;
                         ISyncConfig syncConfig = m.Context.Resolve<ISyncConfig>();
-                        IWorldStateManager worldStateManager = m.Context.Resolve<IWorldStateManager>();
 
-                        if (syncConfig.SnapServingEnabled == true)
+                        if (syncConfig.SnapServingEnabled == true || syncConfig.SnapSync)
                         {
                             protocolManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
                         }
-
-                        if (worldStateManager.HashServer is null)
-                        {
-                            protocolManager.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
-                        }
-
                     });
             })
 

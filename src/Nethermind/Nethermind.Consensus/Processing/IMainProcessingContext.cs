@@ -22,6 +22,7 @@ public interface IMainProcessingContext : IStoppableService
     IBranchProcessor BranchProcessor { get; }
     IBlockProcessor BlockProcessor { get; }
     IBlockchainProcessor BlockchainProcessor { get; }
+    IBlockProcessingQueue BlockProcessingQueue { get; }
     IWorldState WorldState { get; }
     IGenesisLoader GenesisLoader { get; }
 

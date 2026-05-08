@@ -8,6 +8,7 @@ using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -38,6 +39,7 @@ public class EthStatsStep(
     IEthStatsConfig ethStatsConfig,
     INetworkConfig networkConfig,
     IInitConfig initConfig,
+    IMiningConfig miningConfig,
     ILogManager logManager
 ) : IStep, IAsyncDisposable
 {
@@ -70,7 +72,7 @@ public class EthStatsStep(
         string network = specProvider!.NetworkId.ToString();
         string protocol = $"{P2PProtocolInfoProvider.DefaultCapabilitiesToString()}";
 
-        IEthStatsClient _ethStatsClient = new EthStatsClient(
+        IEthStatsClient ethStatsClient = new EthStatsClient(
             ethStatsConfig.Server,
             reconnectionInterval,
             sender,
@@ -87,14 +89,14 @@ public class EthStatsStep(
             ethStatsConfig.Contact!,
             canUpdateHistory,
             ethStatsConfig.Secret!,
-            _ethStatsClient,
+            ethStatsClient,
             sender,
             txPool!,
             blockTree!,
             peerManager!,
             gasPriceOracle!,
             ethSyncingInfo!,
-            initConfig.IsMining,
+            miningConfig.Enabled,
             TimeSpan.FromSeconds(ethStatsConfig.SendInterval),
             logManager);
 

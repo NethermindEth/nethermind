@@ -9,6 +9,7 @@ using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.L1Bridge;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Optimism.Cl.Rpc;
 
@@ -24,34 +25,34 @@ public class OptimismOptimismRpcModule(
 {
     public async Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber)
     {
-        var statusResult = await optimism_syncStatus();
+        ResultWrapper<OptimismSyncStatus> statusResult = await optimism_syncStatus();
         if (statusResult.Result.ResultType != ResultType.Success)
         {
             return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get L2 block ref with sync status");
         }
 
-        var status = statusResult.Data;
+        OptimismSyncStatus status = statusResult.Data;
         if (blockNumber > status.FinalizedL2.Number)
         {
             return ResultWrapper<OptimismOutputAtBlock>.Fail("Block is not finalized");
         }
 
-        var block = await l2Api.GetBlockByNumber(blockNumber);
+        L2Block block = await l2Api.GetBlockByNumber(blockNumber);
 
-        var proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], (long)block.Number);
+        AccountProof? proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], (long)block.Number);
         if (proof == null)
         {
             return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get proof");
         }
 
-        var output = new OptimismOutputV0
+        OptimismOutputV0 output = new()
         {
             StateRoot = block.StateRoot,
             MessagePasserStorageRoot = proof.StorageRoot,
             BlockHash = block.Hash
         };
 
-        var result = new OptimismOutputAtBlock
+        OptimismOutputAtBlock result = new()
         {
             Version = OptimismOutputV0.Version,
             OutputRoot = output.Root(),
@@ -66,7 +67,7 @@ public class OptimismOptimismRpcModule(
 
     public Task<ResultWrapper<OptimismRollupConfig>> optimism_rollupConfig()
     {
-        var config = OptimismRollupConfig.Build(clParameters, engineParameters, chainSpec);
+        OptimismRollupConfig config = OptimismRollupConfig.Build(clParameters, engineParameters, chainSpec);
         return ResultWrapper<OptimismRollupConfig>.Success(config);
     }
 
@@ -74,26 +75,26 @@ public class OptimismOptimismRpcModule(
     {
         // TODO: We need to use `fullTxs` due to serialization issues
 
-        var currentL1 = L1BlockRef.Zero;
+        L1BlockRef currentL1 = L1BlockRef.Zero;
         if (decodingPipeline.DecodedBatchesReader.TryPeek(out (BatchV1 Batch, ulong L1BatchOrigin) pendingBatch))
         {
-            var currentL1Block = await l1Api.GetBlockByNumber(pendingBatch.L1BatchOrigin, fullTxs: true);
+            L1Block? currentL1Block = await l1Api.GetBlockByNumber(pendingBatch.L1BatchOrigin, fullTxs: true);
             // NOTE: If we got a batch from this block, then the L1 client must have it
             ArgumentNullException.ThrowIfNull(currentL1Block);
             currentL1 = L1BlockRef.From(currentL1Block.Value);
         }
 
-        var headL1 = l1Api.GetHead(true);
-        var safeL1 = l1Api.GetSafe(true);
-        var finalizedL1 = l1Api.GetFinalized(true);
+        Task<L1Block?> headL1 = l1Api.GetHead(true);
+        Task<L1Block?> safeL1 = l1Api.GetSafe(true);
+        Task<L1Block?> finalizedL1 = l1Api.GetFinalized(true);
 
         // TODO: From `executionEngineManager` or `l2Api`?
-        var currentL2Blocks = await executionEngineManager.GetCurrentBlocks();
-        var unsafeL2 = l2Api.GetBlockByNumber(currentL2Blocks.Head.Number);
-        var safeL2 = l2Api.GetBlockByNumber(currentL2Blocks.Safe.Number);
-        var finalizedL2 = l2Api.GetBlockByNumber(currentL2Blocks.Finalized.Number);
+        (BlockId Head, BlockId Finalized, BlockId Safe) currentL2Blocks = await executionEngineManager.GetCurrentBlocks();
+        Task<L2Block> unsafeL2 = l2Api.GetBlockByNumber(currentL2Blocks.Head.Number);
+        Task<L2Block> safeL2 = l2Api.GetBlockByNumber(currentL2Blocks.Safe.Number);
+        Task<L2Block> finalizedL2 = l2Api.GetBlockByNumber(currentL2Blocks.Finalized.Number);
 
-        var syncStatus = new OptimismSyncStatus
+        OptimismSyncStatus syncStatus = new()
         {
             // L1
             CurrentL1 = currentL1,
@@ -111,8 +112,5 @@ public class OptimismOptimismRpcModule(
         return ResultWrapper<OptimismSyncStatus>.Success(syncStatus);
     }
 
-    public Task<ResultWrapper<string>> optimism_version()
-    {
-        return ResultWrapper<string>.Success(ProductInfo.Version);
-    }
+    public Task<ResultWrapper<string>> optimism_version() => ResultWrapper<string>.Success(ProductInfo.Version);
 }

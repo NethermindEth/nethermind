@@ -54,10 +54,7 @@ namespace Nethermind.Core.Test.Encoding
                 return receiptBuilder.TestObject;
             }
 
-            TxReceipt[] GetExpectedArray()
-            {
-                return new[] { GetExpected(), GetExpected() };
-            }
+            TxReceipt[] GetExpectedArray() => new[] { GetExpected(), GetExpected() };
 
             TxReceipt BuildReceipt()
             {
@@ -77,7 +74,8 @@ namespace Nethermind.Core.Test.Encoding
             using NettyRlpStream rlp = encoder.EncodeToNewNettyStream(txReceipts, encodeBehaviors);
 
             ReceiptArrayStorageDecoder decoder = new();
-            TxReceipt[] deserialized = decoder.Decode(rlp, RlpBehaviors.Storage);
+            Rlp.ValueDecoderContext ctx = new(rlp.AsSpan());
+            TxReceipt[] deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
             deserialized.Should().BeEquivalentTo(GetExpectedArray());
         }

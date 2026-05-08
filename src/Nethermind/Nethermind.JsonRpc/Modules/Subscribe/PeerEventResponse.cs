@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
-using System.Runtime.CompilerServices;
-using Nethermind.JsonRpc.Modules.Admin;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 
@@ -14,7 +10,6 @@ public class PeerEventResponse
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Type { get; set; }
-    [JsonConverter(typeof(PublicKeyHashedConverter))]
     public PublicKey? Peer { get; set; }
     public string? Protocol { get; set; }
     public int? MsgPacketType { get; set; }

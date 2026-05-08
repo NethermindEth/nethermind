@@ -1,25 +1,21 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Producers;
 using Nethermind.Logging;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree),
         typeof(InitializePrecompiles))] // Unfortunately EngineRPC API need review blockTree
-    public class StartBlockProducer : IStep
+    public class StartBlockProducer(INethermindApi api) : IStep
     {
-        private readonly IApiWithBlockchain _api;
-
-        public StartBlockProducer(INethermindApi api)
-        {
-            _api = api;
-        }
+        private readonly IApiWithBlockchain _api = api;
 
         public Task Execute(CancellationToken _)
         {
@@ -28,10 +24,9 @@ namespace Nethermind.Init.Steps
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
                 if (_api.BlockProducerRunner is null) throw new StepDependencyException(nameof(_api.BlockProducerRunner));
 
-                ILogger logger = _api.LogManager.GetClassLogger();
+                ILogger logger = _api.LogManager.GetClassLogger<StartBlockProducer>();
                 if (logger.IsInfo) logger.Info($"Starting {_api.SealEngineType} block producer & sealer");
-                ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducerRunner);
-                _api.DisposeStack.Push(suggester);
+                _api.Context.ResolveOptional<IProducedBlockSuggester>();
                 _api.BlockProducerRunner.Start();
             }
 

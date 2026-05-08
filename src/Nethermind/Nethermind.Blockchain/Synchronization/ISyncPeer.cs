@@ -41,6 +41,8 @@ namespace Nethermind.Blockchain.Synchronization
         void NotifyOfNewBlock(Block block, SendBlockMode mode);
         void NotifyOfNewRange(BlockHeader earliest, BlockHeader latest) { }
         Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token);
-        Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
+        Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
+        Task<IByteArrayList> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token) =>
+            Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance);
     }
 }

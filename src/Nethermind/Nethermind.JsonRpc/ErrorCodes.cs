@@ -8,6 +8,11 @@ namespace Nethermind.JsonRpc
         public const int None = 0;
 
         /// <summary>
+        /// Execution reverted (Geth compatibility)
+        /// </summary>
+        public const int ExecutionReverted = 3;
+
+        /// <summary>
         /// Invalid JSON
         /// </summary>
         public const int ParseError = -32700;
@@ -38,9 +43,19 @@ namespace Nethermind.JsonRpc
         public const int InvalidInput = -32000;
 
         /// <summary>
+        /// EVM execution error (out of gas, insufficient funds during execution, etc.)
+        /// </summary>
+        public const int ExecutionError = -32003;
+
+        /// <summary>
         /// Requested resource not found
         /// </summary>
-        public const int ResourceNotFound = -32001;
+        public const int ResourceNotFound = -32000;
+
+        /// <summary>
+        /// Transaction creation failed
+        /// </summary>
+        public const int TransactionRejected = -32000;
 
         /// <summary>
         /// Requested resource not available
@@ -48,29 +63,14 @@ namespace Nethermind.JsonRpc
         public const int ResourceUnavailable = -32002;
 
         /// <summary>
-        /// Transaction creation failed
-        /// </summary>
-        public const int TransactionRejected = -32010;
-
-        /// <summary>
         /// Account locked
         /// </summary>
         public const int AccountLocked = -32020;
 
         /// <summary>
-        /// Method is not implemented
-        /// </summary>
-        public const int MethodNotSupported = -32004;
-
-        /// <summary>
         /// Request exceeds defined limit
         /// </summary>
         public const int LimitExceeded = -32005;
-
-        /// <summary>
-        ///
-        /// </summary>
-        public const int ExecutionError = -32015;
 
         /// <summary>
         /// Request exceeds defined timeout limit
@@ -98,28 +98,73 @@ namespace Nethermind.JsonRpc
         public const int BlockTimestampNotIncreased = -38021;
 
         /// <summary>
-        /// Invalid RPC simulate call containing too many blocks
+        /// MovePrecompileToAddress referenced itself in replacement
         /// </summary>
-        public const int InvalidInputTooManyBlocks = -38026;
+        public const int MovePrecompileSelfReference = -38022;
 
         /// <summary>
-        /// Invalid RPC simulate call Not enough gas provided to pay for intrinsic gas for a transaction
-        /// </summary>
-        public const int InsufficientIntrinsicGas = -38013;
-
-        /// <summary>
-        /// Invalid RPC simulate call transaction
-        /// </summary>
-        public const int InvalidTransaction = -38014;
-
-        /// <summary>
-        /// Too many blocks for simulation
+        /// Too many blocks or calls — client limit exceeded
         /// </summary>
         public const int ClientLimitExceededError = -38026;
 
         /// <summary>
-        /// Block is not available due to history expirty policy
+        /// Block is not available due to history expiry policy
         /// </summary>
         public const int PrunedHistoryUnavailable = 4444;
+
+        /// <summary>
+        /// Data is not available due to eip not being enabled yet
+        /// </summary>
+        public const int UnavailableBeforeFork = 4445;
+
+        /// <summary>
+        /// Default error code
+        /// </summary>
+        public const int Default = -32000;
+
+        /// <summary>
+        /// Transaction nonce is lower than the account's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooLow = -38010;
+
+        /// <summary>
+        /// Transaction nonce is higher than the account's current nonce — eth_simulateV1 spec error
+        /// </summary>
+        public const int NonceTooHigh = -38011;
+
+        /// <summary>
+        /// Transaction maxFeePerGas is below the block base fee — eth_simulateV1 spec error
+        /// </summary>
+        public const int FeeCapBelowBaseFee = -38012;
+
+        /// <summary>
+        /// Transaction gas limit is below the intrinsic gas cost — eth_simulateV1 spec error
+        /// </summary>
+        public const int IntrinsicGas = -38013;
+
+        /// <summary>
+        /// Not enough value to cover transaction costs — eth_simulateV1 spec error
+        /// </summary>
+        public const int InsufficientFunds = -38014;
+
+        /// <summary>
+        /// Gas limit reached — eth_simulateV1 spec error
+        /// </summary>
+        public const int BlockGasLimitReached = -38015;
+
+        /// <summary>
+        /// Sender account has deployed code (is not an EOA) — eth_simulateV1 spec error
+        /// </summary>
+        public const int SenderIsNotEoa = -38024;
+
+        /// <summary>
+        /// EIP-3860. Code size is too big — eth_simulateV1 spec error
+        /// </summary>
+        public const int MaxInitCodeSizeExceeded = -38025;
+
+        /// <summary>
+        /// Error during EVM execution
+        /// </summary>
+        public const int VMError = -32015;
     }
 }

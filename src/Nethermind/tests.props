@@ -6,12 +6,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <PropertyGroup Label="DotnetTest">
-    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
-    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
-  </PropertyGroup>
-
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Test.Analyzers\Nethermind.Test.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Nethermind.Test.Analyzers.CodeFixes\Nethermind.Test.Analyzers.CodeFixes.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit.Analyzers">
@@ -21,9 +18,9 @@
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
 
-  <!-- Must be removed when https://youtrack.jetbrains.com/issue/RSRP-498837 is fixed -->
+  <!-- See https://youtrack.jetbrains.com/issue/RSRP-498837 -->
   <ItemGroup Condition="$(ContinuousIntegrationBuild) != 'true' AND $(BuildingInsideVisualStudio) != 'true'">
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
-  
+
 </Project>

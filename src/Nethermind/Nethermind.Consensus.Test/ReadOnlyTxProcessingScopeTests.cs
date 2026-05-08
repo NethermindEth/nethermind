@@ -7,7 +7,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -20,7 +19,7 @@ public class ReadOnlyTxProcessingScopeTests
     {
         bool closed = false;
         IDisposable closer = new Reactive.AnonymousDisposable(() => closed = true);
-        ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
+        ReadOnlyTxProcessingScope env = new(
             Substitute.For<ITransactionProcessor>(),
             closer,
             Substitute.For<IWorldState>());

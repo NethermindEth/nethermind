@@ -7,16 +7,14 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.Healing;
 using Nethermind.State.SnapServer;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
 public class WorldStateManager : IWorldStateManager
 {
-    private readonly IWorldState _worldState;
+    private readonly IWorldStateScopeProvider _worldState;
     private readonly IPruningTrieStore _trieStore;
     private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
@@ -26,7 +24,7 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
     public WorldStateManager(
-        IWorldState worldState,
+        IWorldStateScopeProvider worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager,
@@ -44,9 +42,12 @@ public class WorldStateManager : IWorldStateManager
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
         _lastNStateRootTracker = lastNStateRootTracker;
+        SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? NoopSnapServer.Instance
+            : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
     }
 
-    public IWorldState GlobalWorldState => _worldState;
+    public IWorldStateScopeProvider GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;
 
@@ -58,40 +59,15 @@ public class WorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, GlobalStateReader, _logManager, _lastNStateRootTracker);
+    public ISnapServer SnapServer { get; }
 
-    public IWorldState CreateResettableWorldState()
-    {
-        return new WorldState(
-            _readOnlyTrieStore,
-            _readaOnlyCodeCb,
-            _logManager);
-    }
+    public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
 
-    public IWorldState CreateWorldStateForWarmingUp(IWorldState forWarmup)
-    {
-        PreBlockCaches? preBlockCaches = (forWarmup as IPreBlockCaches)?.Caches;
-        return preBlockCaches is not null
-            ? new WorldState(
-                new PreCachedTrieStore(_readOnlyTrieStore, preBlockCaches.RlpCache),
-                _readaOnlyCodeCb,
-                _logManager,
-                preBlockCaches)
-            : CreateResettableWorldState();
-    }
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => _readOnlyTrieStore;
 
-    public IOverridableWorldScope CreateOverridableWorldScope()
-    {
-        return new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
-    }
+    public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _logManager);
 
-    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken)
-    {
-        return _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
-    }
+    public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie?.VerifyTrie(stateAtBlock, cancellationToken) ?? true;
 
-    public void FlushCache(CancellationToken cancellationToken)
-    {
-        _trieStore.PersistCache(cancellationToken);
-    }
+    public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
 }

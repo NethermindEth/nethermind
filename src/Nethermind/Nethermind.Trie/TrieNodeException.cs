@@ -6,16 +6,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie;
 
-public class TrieNodeException : TrieException
+public class TrieNodeException(string message, TreePath path, Hash256 keccak, Exception? inner = null)
+    : TrieException(message, inner)
 {
-    public ValueHash256 NodeHash { get; private set; }
-    public TreePath Path { get; private set; }
+    public ValueHash256 NodeHash { get; private set; } = keccak;
+    public TreePath Path { get; private set; } = path;
     public string? EnhancedMessage { get; set; }
     public override string Message => EnhancedMessage is null ? base.Message : EnhancedMessage + Environment.NewLine + base.Message;
-
-    public TrieNodeException(string message, TreePath path, Hash256 keccak, Exception? inner = null) : base(message, inner)
-    {
-        NodeHash = keccak;
-        Path = path;
-    }
 }

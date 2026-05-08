@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
@@ -19,8 +19,9 @@ public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationTokenSource cts)
+        SharedCancellationTokenSource cts)
     {
+        cts.CancelAndDispose();
         return new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime);
     }
 }

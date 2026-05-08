@@ -24,8 +24,8 @@ public class InputData
         List<Transaction> transactions = [];
         if (TxRlp is not null)
         {
-            RlpStream rlp = new(Bytes.FromHexString(TxRlp));
-            transactions = decoder.DecodeArray(rlp).ToList();
+            Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(TxRlp));
+            transactions = decoder.DecodeArray(ref ctx).ToList();
         }
         else if (Txs is not null && TransactionMetaDataList is not null)
         {
@@ -33,7 +33,7 @@ public class InputData
 
             for (int i = 0; i < Txs.Length; i++)
             {
-                var transaction = Txs[i].ToTransaction();
+                var transaction = (Transaction)Txs[i].ToTransaction();
                 transaction.SenderAddress = null; // t8n does not accept SenderAddress from input, so need to reset senderAddress
 
                 SignTransaction(transaction, TransactionMetaDataList[i], (LegacyTransactionForRpc)Txs[i]);

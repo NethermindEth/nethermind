@@ -16,13 +16,8 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
-    public class AuRaNethermindApi : NethermindApi
+    public class AuRaNethermindApi(NethermindApi.Dependencies dependencies) : NethermindApi(dependencies)
     {
-        public AuRaNethermindApi(Dependencies dependencies)
-            : base(dependencies)
-        {
-        }
-
         public new IAuRaBlockFinalizationManager? FinalizationManager
         {
             get => base.FinalizationManager as IAuRaBlockFinalizationManager;

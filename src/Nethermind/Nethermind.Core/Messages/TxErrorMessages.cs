@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core.Messages;
+
 public static class TxErrorMessages
 {
     public static string InvalidTxType(string name) =>
@@ -43,8 +44,8 @@ public static class TxErrorMessages
     public static string BlobTxGasLimitExceeded(ulong totalDataGas, ulong maxBlobGas) =>
         $"BlobTxGasLimitExceeded: Transaction's totalDataGas={totalDataGas} exceeded MaxBlobGas per transaction={maxBlobGas}.";
 
-    public const string BlobTxMissingBlobs =
-        "blob transaction missing blob hashes";
+    public static readonly string BlobTxMissingBlobs =
+        $"blob transaction must have at least {Eip4844Constants.MinBlobsPerTransaction} blob";
 
     public const string MissingBlobVersionedHash =
         "MissingBlobVersionedHash: Must be set.";
@@ -80,18 +81,6 @@ public static class TxErrorMessages
 
     public static string TxGasLimitCapExceeded(long gasLimit, long gasLimitCap)
         => $"TxGasLimitCapExceeded: Gas limit {gasLimit} exceeded cap of {gasLimitCap}.";
-
-    public const string InvalidCreateTxData
-        = "InvalidCreateTxData: Legacy createTx cannot create Eof code";
-
-    public const string TooManyEofInitcodes
-        = $"TooManyEofInitcodes: Eof initcodes count exceeded limit";
-
-    public const string EmptyEofInitcodesField
-        = $"EmptyEofInitcodesField: Eof initcodes count must be greater than 0";
-
-    public const string EofContractSizeInvalid
-        = "EofContractSizeInvalid: Eof initcode size is invalid (either 0 or too big)";
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
 

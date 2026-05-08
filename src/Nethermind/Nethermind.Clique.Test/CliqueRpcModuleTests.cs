@@ -40,14 +40,14 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
                 new CliqueSealer(signer, cliqueConfig, Substitute.For<ISnapshotManager>(), LimboLogs.Instance),
-                new TargetAdjustedGasLimitCalculator(HoleskySpecProvider.Instance, new BlocksConfig()),
+                new TargetAdjustedGasLimitCalculator(HoodiSpecProvider.Instance, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 cliqueConfig,
                 LimboLogs.Instance);
 
             SnapshotManager snapshotManager = new(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
 
-            CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+            CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
