@@ -2,8 +2,14 @@
 name: gas-benchmark
 description: Build a diag Docker image, run gas-benchmarks repricing workflow, and analyze results including dotTrace XML reports. Use when asked to "run benchmarks", "trigger gas benchmarks", "benchmark this branch", or "profile block processing".
 allowed-tools:
-  - Bash(gh *)
-  - Bash(git *)
+  - Bash(gh run *)
+  - Bash(gh workflow run *)
+  - Bash(gh release *)
+  - Bash(gh api repos/NethermindEth/*)
+  - Bash(git branch *)
+  - Bash(git log *)
+  - Bash(git status *)
+  - Bash(git push *)
   - Bash(cd *)
   - Bash(ls *)
   - Bash(mkdir *)
@@ -17,7 +23,7 @@ allowed-tools:
   - Read
   - Grep
   - Glob
-argument-hint: "[--branch NAME] [--image NAME] [--filter PATTERN] [--network NETWORK] [--no-diag] [--fork FORK] [--dottrace]"
+argument-hint: "[--branch NAME] [--image NAME] [--filter PATTERN] [--network NETWORK] [--fork FORK] [--dottrace]"
 ---
 
 # Gas Benchmark Pipeline
@@ -41,6 +47,8 @@ When called without arguments (`/gas-benchmark`), do NOT proceed with defaults. 
 
 4. **Ask for filter**: "Any test filter? (e.g., `bloated`, or leave empty for all tests)"
 
+5. **Ask about dotTrace**: "Do you want dotTrace profiling? (requires building a diag image, adds ~2min to build)"
+
 Then proceed with the resolved values.
 
 When called WITH arguments, parse them and proceed directly — only ask if something essential is missing or ambiguous.
@@ -55,9 +63,8 @@ Parse `$ARGUMENTS` for these flags:
 | `--image` | (built from branch) | Skip Docker build; use this pre-built image directly |
 | `--filter` | (none) | Test filter pattern passed to repricing workflow |
 | `--network` | `perf-devnet-3` | Network name (perf-devnet-3, jochemnet, mainnet) |
-| `--no-diag` | (diag enabled) | Use regular Dockerfile instead of Dockerfile.diag |
 | `--fork` | `amsterdam` | Fork name (amsterdam, osaka) |
-| `--dottrace` | (disabled) | Enable dotTrace profiling (requires diag image) |
+| `--dottrace` | (ask user) | Enable dotTrace profiling — builds diag image, passes diagnostics flags |
 | `--release` | (discovered) | Override release tag — skips interactive selection |
 | `--gas-benchmarks-ref` | (discovered) | Override gas-benchmarks branch — skips discovery |
 
@@ -78,17 +85,25 @@ Look for `generated-tests-stateful-<network>.tar.gz`.
 
 ### Step 0b: Find the gas-benchmarks branch
 
-If `--gas-benchmarks-ref` was provided, use it. Otherwise, discover:
+If `--gas-benchmarks-ref` was provided, use it. Otherwise, **extract from the release notes**:
 
-1. List branches with repricing workflow support:
+1. The release body contains a `**Branch:**` field that records which gas-benchmarks branch generated the test data. Parse it:
+   ```
+   gh release view <tag> --repo NethermindEth/gas-benchmarks --json body --jq '.body' \
+     | grep -oP '(?<=\*\*Branch:\*\* ).*' | tr -d '`' | xargs
+   ```
+   On Windows/Git Bash where `grep -P` may not work:
+   ```
+   gh release view <tag> --repo NethermindEth/gas-benchmarks --json body --jq '.body' \
+     | grep "Branch:" | sed 's/.*Branch:\*\* *//; s/`//g' | xargs
+   ```
+
+2. If the release notes don't contain a branch field, fall back to listing branches:
    ```
    gh api repos/NethermindEth/gas-benchmarks/branches?per_page=100 \
-     --jq '.[].name' | grep "stateful-generator-nethermind-diag"
+     --jq '.[].name' | grep -E "devnets/bal|stateful-generator"
    ```
-
-2. Selection logic — pick the **most specific match**:
-   - If the Nethermind branch contains a devnet identifier (e.g., `devnet-6`), prefer a gas-benchmarks branch containing that identifier (e.g., `feat/stateful-generator-nethermind-diag-devnet-6`)
-   - Otherwise use `feat/stateful-generator-nethermind-diag`
+   Ask the user which branch to use.
 
 3. Verify the workflow exists on the chosen branch:
    ```
@@ -129,8 +144,10 @@ Ask: "Proceed?"
 Skip if `--image` is provided.
 
 1. Determine the Nethermind branch (from `--branch` or `git branch --show-current`).
-2. Determine Dockerfile: `Dockerfile.diag` unless `--no-diag` is set.
-3. Compute tag: `<branch-name>-diag` (or `<branch-name>` if `--no-diag`).
+2. Determine Dockerfile based on dotTrace:
+   - dotTrace enabled → `Dockerfile.diag`, tag suffix `-diag`
+   - dotTrace disabled → regular `Dockerfile`, no suffix
+3. Compute tag: `<branch-name>-diag` (if diag) or `<branch-name>` (if regular).
 4. Trigger the docker build:
    ```
    MSYS_NO_PATHCONV=1 gh workflow run publish-docker.yml \
