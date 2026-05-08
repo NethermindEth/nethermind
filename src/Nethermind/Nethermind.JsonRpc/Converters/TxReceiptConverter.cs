@@ -29,7 +29,7 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
         writer.WritePropertyName("root");
         ByteArrayConverter.Convert(writer, (receipt.Root ?? Keccak.Zero).Bytes);
         writer.WritePropertyName("status");
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+        ForcedNumberConversion.Value = NumberConversion.Hex;
         JsonSerializer.Serialize(writer, receipt.Status, options);
 
         writer.WritePropertyName("cumulativeGasUsed");
