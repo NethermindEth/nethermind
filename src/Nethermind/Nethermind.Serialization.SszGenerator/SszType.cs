@@ -9,55 +9,58 @@ class SszType
     // and Nethermind core types that aren't (or can't be) decorated with that attribute.
     public static List<SszType> BasicTypes { get; set; } =
     [
-        new() { Namespace = "System", Name = "Byte", Kind = Kind.Basic, StaticLength = sizeof(byte) },
-        new() { Namespace = "System", Name = "UInt16", Kind = Kind.Basic, StaticLength = sizeof(ushort) },
-        new() { Namespace = "System", Name = "Int32", Kind = Kind.Basic, StaticLength = sizeof(int) },
-        new() { Namespace = "System", Name = "UInt32", Kind = Kind.Basic, StaticLength = sizeof(uint) },
-        new() { Namespace = "System", Name = "Int64", Kind = Kind.Basic, StaticLength = sizeof(long) },
-        new() { Namespace = "System", Name = "UInt64", Kind = Kind.Basic, StaticLength = sizeof(ulong) },
+        Primitive<byte>(),
+        Primitive<ushort>(),
+        Primitive<int>(),
+        Primitive<uint>(),
+        Primitive<long>(),
+        Primitive<ulong>(),
+        Primitive<bool>(),
         new()
         {
-            Namespace = "Nethermind.Int256",
-            Name = "UInt256",
-            Kind = Kind.Basic,
-            StaticLength = 32,
+            Namespace = "Nethermind.Int256", Name = "UInt256",
+            Kind = Kind.Basic, StaticLength = 32,
             CustomEncodeTemplate = "{1}.ToLittleEndian({0});",
             CustomDecodeTemplate = "{1} = new UInt256({0}, isBigEndian: false);",
         },
-        new() { Namespace = "System", Name = "Boolean", Kind = Kind.Basic, StaticLength = 1 },
         new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
         new() { Namespace = "Nethermind.Serialization.Ssz", Name = "SszBytes32", Kind = Kind.Basic, StaticLength = 32 },
-        new()
-        {
-            Namespace = "Nethermind.Core.Crypto",
-            Name = "Hash256",
-            Kind = Kind.Basic,
-            StaticLength = 32,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
-            CustomDecodeTemplate = "{1} = new Hash256({0});",
-        },
-        new()
-        {
-            Namespace = "Nethermind.Core",
-            Name = "Address",
-            Kind = Kind.Basic,
-            StaticLength = 20,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
-            CustomDecodeTemplate = "{1} = new Address({0});",
-        },
-        new()
-        {
-            Namespace = "Nethermind.Core",
-            Name = "Bloom",
-            Kind = Kind.Basic,
-            StaticLength = 256,
-            IsRefType = true,
-            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
-            CustomDecodeTemplate = "{1} = new Bloom({0});",
-        },
+        BytesRef("Nethermind.Core.Crypto", "Hash256", 32),
+        BytesRef("Nethermind.Core", "Address", 20),
+        BytesRef("Nethermind.Core", "Bloom", 256),
     ];
+
+    /// <summary>
+    /// Factory for BCL primitive numerics (and bool). Pulls Name/Namespace from
+    /// <c>typeof(T)</c>; size is derived from <see cref="System.Runtime.InteropServices.Marshal.SizeOf{T}"/>
+    /// with a bool override (<see cref="System.Runtime.InteropServices.Marshal.SizeOf{T}"/>
+    /// returns 4 for <c>bool</c> due to native marshaling, but SSZ encodes it as 1 byte).
+    /// </summary>
+    private static SszType Primitive<T>() where T : unmanaged =>
+        new()
+        {
+            Namespace = typeof(T).Namespace!,
+            Name = typeof(T).Name,
+            Kind = Kind.Basic,
+            StaticLength = typeof(T) == typeof(bool) ? 1 : System.Runtime.InteropServices.Marshal.SizeOf<T>(),
+        };
+
+    /// <summary>
+    /// Factory for Nethermind reference types whose SSZ codec is the same shape:
+    /// encode by <c>{value}.Bytes.CopyTo({dest})</c>, decode by <c>new T({src})</c>.
+    /// Covers Hash256, Address, Bloom, and any future fixed-length-byte ref type.
+    /// </summary>
+    private static SszType BytesRef(string @namespace, string name, int byteLength) =>
+        new()
+        {
+            Namespace = @namespace,
+            Name = name,
+            Kind = Kind.Basic,
+            StaticLength = byteLength,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
+            CustomDecodeTemplate = $"{{1}} = new {name}({{0}});",
+        };
 
     public static List<SszType> KnownTypes { get; set; } = [];
 
