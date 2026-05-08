@@ -1737,10 +1737,9 @@ public partial class EngineModuleTests
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
-        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
-        string[] result = exchangeCapabilitiesHandler.Handle(new HashSet<string>()).Data
-            .Where(static s => !s.Contains(' '))
-            .ToArray();
+        string[] result = [.. engineRpcCapabilitiesProvider.GetJsonRpcCapabilities()
+            .Where(kv => kv.Value.Enabled)
+            .Select(kv => kv.Key)];
         string[] expectedMethods = new string[]
         {
             nameof(IEngineRpcModule.engine_getClientVersionV1),
@@ -1866,11 +1865,10 @@ public partial class EngineModuleTests
     {
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
-        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
 
-        string[] result = exchangeCapabilitiesHandler.Handle(new HashSet<string>()).Data
-            .Where(static s => s.Contains(' '))
-            .ToArray();
+        string[] result = [.. engineRpcCapabilitiesProvider.GetSszRestPaths()
+            .Where(kv => kv.Value.Enabled)
+            .Select(kv => kv.Key)];
 
         result.Should().BeEquivalentTo(expectedPaths);
     }

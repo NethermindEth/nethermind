@@ -25,7 +25,6 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
     {
         ClientVersionV1 caller = SszCodec.DecodeClientVersionRequest(body.Span);
         ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(caller);
-
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeClientVersionResponse);
     }
 }

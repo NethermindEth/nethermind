@@ -11,11 +11,6 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public readonly struct ClientVersionV1
 {
-    // Field initializers default to this client's own product info — used by the
-    // EL when responding with its identity, and by tests/calls that want a self
-    // identification without any decoded input. JSON-RPC and SSZ-REST request
-    // paths populate the properties via the `init` setters from caller-supplied
-    // wire data instead.
     public ClientVersionV1() { }
 
     public string Code { get; init; } = ProductInfo.ClientCode;

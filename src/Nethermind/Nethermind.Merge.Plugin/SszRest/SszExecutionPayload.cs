@@ -15,94 +15,91 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// that <see cref="SszExecutionPayload"/> would include in the fixed header.
 /// </summary>
 [SszContainer]
-public partial class SszExecutionPayloadV1
+public partial class SszExecutionPayloadV1(ExecutionPayload inner)
 {
-    private readonly ExecutionPayload _inner;
+    public SszExecutionPayloadV1() : this(new ExecutionPayload())
+    {
+    }
 
-    private SszTransaction[]? _transactions;
-
-    public SszExecutionPayloadV1() => _inner = new ExecutionPayload();
-    public SszExecutionPayloadV1(ExecutionPayload inner) => _inner = inner;
-
-    public ExecutionPayload Unwrap() => _inner;
+    public ExecutionPayload Unwrap() => inner;
 
     public Hash256 ParentHash
     {
-        get => _inner.ParentHash;
-        set => _inner.ParentHash = value;
+        get => inner.ParentHash;
+        set => inner.ParentHash = value;
     }
 
     public Address FeeRecipient
     {
-        get => _inner.FeeRecipient;
-        set => _inner.FeeRecipient = value;
+        get => inner.FeeRecipient;
+        set => inner.FeeRecipient = value;
     }
 
     public Hash256 StateRoot
     {
-        get => _inner.StateRoot;
-        set => _inner.StateRoot = value;
+        get => inner.StateRoot;
+        set => inner.StateRoot = value;
     }
 
     public Hash256 ReceiptsRoot
     {
-        get => _inner.ReceiptsRoot;
-        set => _inner.ReceiptsRoot = value;
+        get => inner.ReceiptsRoot;
+        set => inner.ReceiptsRoot = value;
     }
 
     public Bloom LogsBloom
     {
-        get => _inner.LogsBloom;
-        set => _inner.LogsBloom = value;
+        get => inner.LogsBloom;
+        set => inner.LogsBloom = value;
     }
 
     public Hash256 PrevRandao
     {
-        get => _inner.PrevRandao;
-        set => _inner.PrevRandao = value;
+        get => inner.PrevRandao;
+        set => inner.PrevRandao = value;
     }
 
     public ulong BlockNumber
     {
-        get => (ulong)_inner.BlockNumber;
-        set => _inner.BlockNumber = (long)value;
+        get => (ulong)inner.BlockNumber;
+        set => inner.BlockNumber = (long)value;
     }
 
     public ulong GasLimit
     {
-        get => (ulong)_inner.GasLimit;
-        set => _inner.GasLimit = (long)value;
+        get => (ulong)inner.GasLimit;
+        set => inner.GasLimit = (long)value;
     }
 
     public ulong GasUsed
     {
-        get => (ulong)_inner.GasUsed;
-        set => _inner.GasUsed = (long)value;
+        get => (ulong)inner.GasUsed;
+        set => inner.GasUsed = (long)value;
     }
 
     public ulong Timestamp
     {
-        get => _inner.Timestamp;
-        set => _inner.Timestamp = value;
+        get => inner.Timestamp;
+        set => inner.Timestamp = value;
     }
 
     [SszList(32)]
     public byte[] ExtraData
     {
-        get => _inner.ExtraData;
-        set => _inner.ExtraData = value;
+        get => inner.ExtraData;
+        set => inner.ExtraData = value;
     }
 
     public UInt256 BaseFeePerGas
     {
-        get => _inner.BaseFeePerGas;
-        set => _inner.BaseFeePerGas = value;
+        get => inner.BaseFeePerGas;
+        set => inner.BaseFeePerGas = value;
     }
 
     public Hash256 BlockHash
     {
-        get => _inner.BlockHash;
-        set => _inner.BlockHash = value;
+        get => inner.BlockHash;
+        set => inner.BlockHash = value;
     }
 
     [SszList(0x10_0000)]
@@ -110,26 +107,26 @@ public partial class SszExecutionPayloadV1
     {
         get
         {
-            if (_transactions is not null) return _transactions;
-            byte[][] txs = _inner.Transactions;
+            if (field is not null) return field;
+            byte[][] txs = inner.Transactions;
             if (txs.Length == 0) return [];
-            _transactions = new SszTransaction[txs.Length];
+            field = new SszTransaction[txs.Length];
             for (int i = 0; i < txs.Length; i++)
-                _transactions[i] = new SszTransaction { Bytes = txs[i] };
-            return _transactions;
+                field[i] = new SszTransaction { Bytes = txs[i] };
+            return field;
         }
         set
         {
-            _transactions = value;
+            field = value;
             if (value is null || value.Length == 0)
             {
-                _inner.Transactions = [];
+                inner.Transactions = [];
                 return;
             }
             byte[][] raw = new byte[value.Length][];
             for (int i = 0; i < value.Length; i++)
                 raw[i] = value[i].Bytes ?? [];
-            _inner.Transactions = raw;
+            inner.Transactions = raw;
         }
     }
 }
@@ -139,15 +136,13 @@ public partial class SszExecutionPayloadV1
 /// Keeps all SSZ-specific type adaptations out of the domain class.
 /// </summary>
 [SszContainer]
-public partial class SszExecutionPayload
+public partial class SszExecutionPayload(ExecutionPayload inner)
 {
-    protected readonly ExecutionPayload _inner;
+    protected readonly ExecutionPayload _inner = inner;
 
-    private SszTransaction[]? _transactions;
-    private SszWithdrawal[]? _withdrawals;
-
-    public SszExecutionPayload() => _inner = new ExecutionPayload();
-    public SszExecutionPayload(ExecutionPayload inner) => _inner = inner;
+    public SszExecutionPayload() : this(new ExecutionPayload())
+    {
+    }
 
     public ExecutionPayload Unwrap() => _inner;
 
@@ -235,17 +230,17 @@ public partial class SszExecutionPayload
     {
         get
         {
-            if (_transactions is not null) return _transactions;
+            if (field is not null) return field;
             byte[][] txs = _inner.Transactions;
             if (txs.Length == 0) return [];
-            _transactions = new SszTransaction[txs.Length];
+            field = new SszTransaction[txs.Length];
             for (int i = 0; i < txs.Length; i++)
-                _transactions[i] = new SszTransaction { Bytes = txs[i] };
-            return _transactions;
+                field[i] = new SszTransaction { Bytes = txs[i] };
+            return field;
         }
         set
         {
-            _transactions = value;
+            field = value;
             if (value is null || value.Length == 0)
             {
                 _inner.Transactions = [];
@@ -263,23 +258,23 @@ public partial class SszExecutionPayload
     {
         get
         {
-            if (_withdrawals is not null) return _withdrawals;
+            if (field is not null) return field;
             Withdrawal[]? ws = _inner.Withdrawals;
             if (ws is null || ws.Length == 0) return [];
-            _withdrawals = new SszWithdrawal[ws.Length];
+            field = new SszWithdrawal[ws.Length];
             for (int i = 0; i < ws.Length; i++)
-                _withdrawals[i] = new SszWithdrawal
+                field[i] = new SszWithdrawal
                 {
                     Index = ws[i].Index,
                     ValidatorIndex = ws[i].ValidatorIndex,
                     Address = ws[i].Address,
                     Amount = ws[i].AmountInGwei
                 };
-            return _withdrawals;
+            return field;
         }
         set
         {
-            _withdrawals = value;
+            field = value;
             if (value is null || value.Length == 0)
             {
                 _inner.Withdrawals = null;

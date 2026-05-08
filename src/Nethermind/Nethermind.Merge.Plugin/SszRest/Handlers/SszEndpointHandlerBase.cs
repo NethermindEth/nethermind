@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// </summary>
 public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 {
-    protected const string OctetStream = "application/octet-stream";
+    private const string OctetStream = "application/octet-stream";
 
     public abstract string HttpMethod { get; }
 
@@ -30,7 +30,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body);
 
-    protected static async Task WriteSszPooledAsync(HttpContext ctx, ArrayPoolSpan<byte> span)
+    private static async Task WriteSszPooledAsync(HttpContext ctx, ArrayPoolSpan<byte> span)
     {
         try
         {
@@ -46,16 +46,18 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         }
     }
 
-    protected static Task WriteSszResultAsync<T>(HttpContext ctx, ResultWrapper<T> result, Func<T, ArrayPoolSpan<byte>> encode)
-    {
-        if (result.Result != Result.Success)
-            return WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error");
-        if (result.Data is null)
+    protected static Task WriteSszResultAsync<T>(HttpContext ctx, ResultWrapper<T> result, Func<T, ArrayPoolSpan<byte>> encode) =>
+        result switch
         {
-            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-            return Task.CompletedTask;
-        }
-        return WriteSszPooledAsync(ctx, encode(result.Data));
+            { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error"),
+            { Data: null } => SetNoContent(ctx),
+            { Data: var data } => WriteSszPooledAsync(ctx, encode(data))
+        };
+
+    private static Task SetNoContent(HttpContext ctx)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status204NoContent;
+        return Task.CompletedTask;
     }
 
     public static async Task WriteErrorAsync(HttpContext ctx, int status, string message)
@@ -65,7 +67,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         await ctx.Response.WriteAsync(message, ctx.RequestAborted);
     }
 
-    protected static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch
+    private static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch
     {
         MergeErrorCodes.UnknownPayload => StatusCodes.Status404NotFound,
         MergeErrorCodes.InvalidForkchoiceState => StatusCodes.Status409Conflict,

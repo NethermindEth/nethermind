@@ -13,8 +13,6 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
-// This verbosity is deliberate: the static-abstract interface pattern requires one concrete struct
-// per version so the JIT can devirtualise each call site.
 public interface IGetPayloadVersion<TResult> where TResult : class
 {
     static abstract int VersionNumber { get; }

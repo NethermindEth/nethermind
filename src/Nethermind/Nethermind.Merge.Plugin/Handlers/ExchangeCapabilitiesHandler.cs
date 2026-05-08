@@ -12,10 +12,6 @@ public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyLi
 {
     private readonly ILogger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
-    // The enabled-capability projection is stable across calls (the provider's
-    // dictionary is built once on first access). Cache the result so we only
-    // pay for the projection on the first request; later requests still scan
-    // for missing capabilities (depends on caller-supplied input).
     private IReadOnlyList<string>? _cachedEnabled;
 
     public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ILogManager logManager)
@@ -30,10 +26,6 @@ public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyLi
     {
         IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
 
-        // Single pass over capabilities: build the enabled list (only on first call,
-        // cached afterwards) and collect missing-but-required entries (every call).
-        // O(N) over capabilities × O(1) HashSet lookup per entry — replaces the
-        // previous O(N) × O(M) LINQ Any nested scan.
         List<string>? enabled = _cachedEnabled is null ? new List<string>(capabilities.Count) : null;
         List<string>? missing = null;
 

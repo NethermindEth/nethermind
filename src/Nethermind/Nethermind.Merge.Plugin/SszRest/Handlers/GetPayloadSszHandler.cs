@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -29,14 +28,15 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
 
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
-        if (!TryParsePayloadId(extra.Span, out byte[] id, out string err))
+        if (TryParsePayloadId(extra.Span, out byte[] id, out string err))
+        {
+            ctx.Response.Headers.CacheControl = "no-store";
+            await WriteSszResultAsync(ctx, await TVersion.Call(engine, id), static d => TVersion.Encode(d!));
+        }
+        else
         {
             await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, err);
-            return;
         }
-
-        ctx.Response.Headers["Cache-Control"] = "no-store";
-        await WriteSszResultAsync(ctx, await TVersion.Call(engine, id), static d => TVersion.Encode(d!));
     }
 
     private static bool TryParsePayloadId(ReadOnlySpan<char> extra, out byte[] id, out string err)

@@ -87,7 +87,7 @@ class SszType
     public int StaticLength
     {
         get => _length ?? Members?.Sum(x => x.StaticLength) ?? 0;
-        set => _length = value;
+        private set => _length = value;
     }
 
     public bool IsVariable => (Members is not null && Members.Any(x => x.IsVariable)) || Kind is Kind.CompatibleUnion;
@@ -188,15 +188,15 @@ class SszType
             _ => null,
         };
 
-        if (result.Kind == Kind.ProgressiveContainer)
+        switch (result.Kind)
         {
-            result.Members = BuildProgressiveContainerMembers(result.Name, result.Members ?? []);
-            (result.ActiveFieldsBytes, result.ActiveFieldsBitLength) = BuildActiveFields(result.Members);
-        }
-
-        if (result.Kind == Kind.CompatibleUnion)
-        {
-            InitializeCompatibleUnion(type, result);
+            case Kind.ProgressiveContainer:
+                result.Members = BuildProgressiveContainerMembers(result.Name, result.Members ?? []);
+                (result.ActiveFieldsBytes, result.ActiveFieldsBitLength) = BuildActiveFields(result.Members);
+                break;
+            case Kind.CompatibleUnion:
+                InitializeCompatibleUnion(type, result);
+                break;
         }
 
         if ((result.Kind & (Kind.Container | Kind.ProgressiveContainer | Kind.CompatibleUnion)) != Kind.None && type.TypeKind == TypeKind.Struct)
@@ -204,7 +204,7 @@ class SszType
             result.IsStruct = true;
         }
 
-        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is SszProperty member && (member.Kind == Kind.List || member.Kind == Kind.ProgressiveList))
+        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { } member && (member.Kind == Kind.List || member.Kind == Kind.ProgressiveList))
         {
             result.IsSszListItself = GetIsCollectionItselfValue(type);
         }
