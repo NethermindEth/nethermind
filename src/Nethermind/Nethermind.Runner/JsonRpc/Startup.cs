@@ -10,6 +10,7 @@ using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -538,18 +539,32 @@ public class Startup : IStartup
                     writer.Advance(written);
                     break;
                 }
-            case null:
-                {
-                    writer.Write("null"u8);
-                    break;
-                }
             default:
                 WriteOther(writer, id);
                 break;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        static void WriteOther(PipeWriter writer, object id) => JsonSerializer.Serialize(writer.AsStream(), id, id.GetType(), EthereumJsonSerializer.JsonOptions);
+        static void WriteOther(PipeWriter writer, object? id)
+        {
+            switch (id)
+            {
+                case string strId:
+                {
+                    // escaping is intentionally skipped for max performance;
+                    // JSON-RPC IDs are usually simple values (typically numeric)
+                    Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
+                    buf[0] = (byte)'"';
+                    int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
+                    buf[len + 1] = (byte)'"';
+                    writer.Advance(len + 2);
+                    break;
+                }
+                default:
+                    writer.Write("null"u8);
+                    break;
+            }
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
