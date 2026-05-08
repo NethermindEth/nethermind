@@ -6,9 +6,9 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.State.Flat.Hsst;
 
-public sealed class PooledByteBufferWriter(int initialCapacity) : IDisposable
+public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset = 0) : IDisposable
 {
-    private Writer _writer = new(initialCapacity);
+    private Writer _writer = new(initialCapacity, firstOffset);
 
     public ref Writer GetWriter() => ref _writer;
     public ReadOnlySpan<byte> WrittenSpan => _writer.WrittenSpan;
@@ -20,11 +20,13 @@ public sealed class PooledByteBufferWriter(int initialCapacity) : IDisposable
         internal byte* _buffer;
         private int _capacity;
         private int _written;
+        private readonly long _firstOffset;
 
-        internal Writer(int initialCapacity)
+        internal Writer(int initialCapacity, long firstOffset)
         {
             _capacity = initialCapacity;
             _buffer = initialCapacity == 0 ? null : (byte*)NativeMemory.Alloc((nuint)initialCapacity);
+            _firstOffset = firstOffset;
         }
 
         public Span<byte> GetSpan(int sizeHint = 0)
@@ -36,6 +38,7 @@ public sealed class PooledByteBufferWriter(int initialCapacity) : IDisposable
 
         public void Advance(int count) => _written += count;
         public readonly long Written => _written;
+        public readonly long FirstOffset => _firstOffset;
         public readonly ReadOnlySpan<byte> WrittenSpan => new(_buffer, _written);
 
         /// <summary>

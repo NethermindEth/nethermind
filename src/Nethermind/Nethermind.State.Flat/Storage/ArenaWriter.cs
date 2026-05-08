@@ -17,7 +17,8 @@ public sealed class ArenaWriter : IDisposable
         _manager = manager;
         _arenaId = arenaId;
         _startOffset = startOffset;
-        _writer = new ArenaBufferWriter(stream,
+        long firstOffset = (-startOffset) & 4095L;
+        _writer = new ArenaBufferWriter(stream, firstOffset,
             (relOffset, size) => manager.OpenPendingView(arenaId, startOffset + relOffset, size));
         _tag = tag;
     }

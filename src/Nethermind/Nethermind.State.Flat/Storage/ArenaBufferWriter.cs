@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.Storage;
 /// section it just emitted, so it doesn't need to keep separators/keys in
 /// memory while the data section is being written.
 /// </summary>
-public unsafe struct ArenaBufferWriter(Stream stream, ArenaBufferWriter.OpenViewDelegate openView)
+public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBufferWriter.OpenViewDelegate openView)
     : IByteBufferWriterWithReader<ArenaBufferReader, NoOpPin>, IDisposable
 {
     private const int BufferSize = 1024 * 1024; // 1 MiB
@@ -33,6 +33,7 @@ public unsafe struct ArenaBufferWriter(Stream stream, ArenaBufferWriter.OpenView
 
     private readonly Stream _stream = stream;
     private readonly OpenViewDelegate _openView = openView;
+    private readonly long _firstOffset = firstOffset;
     private byte[] _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
     private int _buffered;
     private long _flushed;
@@ -49,6 +50,8 @@ public unsafe struct ArenaBufferWriter(Stream stream, ArenaBufferWriter.OpenView
     public void Advance(int count) => _buffered += count;
 
     public readonly long Written => _flushed + _buffered;
+
+    public readonly long FirstOffset => _firstOffset;
 
     /// <summary>
     /// Flush pending bytes to the stream and mmap the trailing <paramref name="pastSize"/>

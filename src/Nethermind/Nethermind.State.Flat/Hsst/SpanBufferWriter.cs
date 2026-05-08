@@ -13,6 +13,16 @@ public interface IByteBufferWriter
     void Advance(int count);
     long Written { get; }
 
+    /// <summary>
+    /// Smallest writer-local offset (in the same coordinate system as
+    /// <see cref="Written"/>) that maps to a 4 KiB-aligned byte in the writer's
+    /// eventual destination. Callers can pad to the next 4 KiB boundary with
+    /// <c>(-(Written - FirstOffset)) &amp; 4095L</c>. For writers whose backing
+    /// destination has no inherent alignment (e.g. transient in-memory buffers),
+    /// implementations may return <c>0</c>.
+    /// </summary>
+    long FirstOffset { get; }
+
     static void Copy<TWriter>(ref TWriter writer, ReadOnlySpan<byte> value) where TWriter : IByteBufferWriter
     {
         while (value.Length > 0)
@@ -59,15 +69,17 @@ public interface IByteBufferWriterWithReader<TReader, TPin> : IByteBufferWriter
     void DisposeActiveReader();
 }
 
-public unsafe struct SpanBufferWriter(Span<byte> buffer) : IByteBufferWriterWithReader<SpanByteReader, NoOpPin>
+public unsafe struct SpanBufferWriter(Span<byte> buffer, long firstOffset = 0) : IByteBufferWriterWithReader<SpanByteReader, NoOpPin>
 {
     private readonly byte* _buffer = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(buffer));
     private readonly int _length = buffer.Length;
+    private readonly long _firstOffset = firstOffset;
     private int _written;
 
     public readonly Span<byte> GetSpan(int sizeHint = 0) => new(_buffer + _written, _length - _written);
     public void Advance(int count) => _written += count;
     public readonly long Written => _written;
+    public readonly long FirstOffset => _firstOffset;
 
     public readonly SpanByteReader OpenReader(long pastSize)
         => new(new ReadOnlySpan<byte>(_buffer + (_written - pastSize), checked((int)pastSize)));

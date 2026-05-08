@@ -130,7 +130,7 @@ public class HsstLargeBuildTests
         // Open a separate read-side mmap so the index builder can read back the
         // freshly-flushed data section through the writer's OpenReader.
         using FileStream fs = new(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
-        ArenaBufferWriter writer = new(fs, (relOffset, size) => OpenFileView(fs, relOffset, size));
+        ArenaBufferWriter writer = new(fs, firstOffset: 0, (relOffset, size) => OpenFileView(fs, relOffset, size));
         try
         {
             switch (indexType)
@@ -179,7 +179,7 @@ public class HsstLargeBuildTests
     private static void WriteLargeValuesHsst(IndexType indexType, string path)
     {
         using FileStream fs = new(path, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
-        ArenaBufferWriter writer = new(fs, (relOffset, size) => OpenFileView(fs, relOffset, size));
+        ArenaBufferWriter writer = new(fs, firstOffset: 0, (relOffset, size) => OpenFileView(fs, relOffset, size));
         byte[] valueBuf = new byte[ByteKeyValueSize];
         try
         {
@@ -398,7 +398,7 @@ public class HsstLargeBuildTests
             bool moreB = eB.MoveNext(in rB);
 
             using FileStream outFs = new(pathOut, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite, bufferSize: 1);
-            ArenaBufferWriter writer = new(outFs, (relOffset, size) => OpenFileView(outFs, relOffset, size));
+            ArenaBufferWriter writer = new(outFs, firstOffset: 0, (relOffset, size) => OpenFileView(outFs, relOffset, size));
             try
             {
                 int merged = checked((int)(EntryCountPerHsst * 2));
