@@ -277,6 +277,37 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     private static void ReleaseSetLock(ref int meta) =>
         Volatile.Write(ref meta, meta & ~MetaLockBit);
 
+    /// <summary>
+    /// Atomically remove <c>(arenaId, pageIdx)</c> from the tracker if present. Used by the
+    /// whole-range <c>madvise(MADV_DONTNEED)</c> paths so that a snapshot's pages aren't left
+    /// "tracked" after the kernel drops them — otherwise the next reader would see a false
+    /// <see cref="TouchOutcome.Hit"/>, skip <c>PopulateRead</c>, and synchronously page-fault.
+    /// Lock-free CAS-with-retry; a concurrent hot-path REF arm or a miss-path replacement
+    /// races cleanly (we either clear the matching slot or observe the new occupant and stop).
+    /// </summary>
+    public void Forget(int arenaId, int pageIdx)
+    {
+        if (_setCount == 0) return;
+        long key = PackKey(arenaId, pageIdx);
+        int setIdx = (int)(Mix(key) & (uint)_setMask);
+        long* setBase = _slots + ((nint)setIdx << WayShift);
+        for (int w = 0; w < Ways; w++)
+        {
+            SpinWait spinner = default;
+            while (true)
+            {
+                long observed = Volatile.Read(ref setBase[w]);
+                // Not (or no longer) our key — either never matched, or a miss-path evictor
+                // overwrote it; either way the slot is no longer ours to clear.
+                if ((observed & KeyMask) != key) break;
+                if (Interlocked.CompareExchange(ref setBase[w], 0L, observed) == observed) return;
+                // Lost the race against a REF flip — re-read and retry; CAS will succeed once
+                // we observe the new (key | newRef) state.
+                spinner.SpinOnce();
+            }
+        }
+    }
+
     public bool ContainsPage(int arenaId, int pageIdx)
     {
         if (_setCount == 0) return false;

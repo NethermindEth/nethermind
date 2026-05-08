@@ -287,6 +287,7 @@ public sealed class ArenaManager : IArenaManager
                     arena.FadviseDontNeed(location.Offset, location.Size);
             }
         }
+        ForgetTrackerRange(location.ArenaId, location.Offset, location.Size);
     }
 
     public void AdviseDontNeed(ArenaReservation reservation)
@@ -296,6 +297,20 @@ public sealed class ArenaManager : IArenaManager
             if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
                 arena.AdviseDontNeed(reservation.Offset, reservation.Size);
         }
+        ForgetTrackerRange(reservation.ArenaId, reservation.Offset, reservation.Size);
+    }
+
+    // Drop tracker entries for every fully-covered OS page in [byteOffset, byteOffset+byteSize).
+    // Mirrors ArenaFile.AdviseDontNeed's page-rounding (offset rounded up, end rounded down).
+    // Runs outside the manager lock — the tracker is independent of arena lifecycle.
+    private void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize)
+    {
+        if (_pageTracker.MaxCapacity == 0 || byteSize <= 0) return;
+        int pageSize = Environment.SystemPageSize;
+        long startPage = (byteOffset + pageSize - 1) / pageSize;
+        long endPageExclusive = (byteOffset + byteSize) / pageSize;
+        for (long p = startPage; p < endPageExclusive; p++)
+            _pageTracker.Forget(arenaId, (int)p);
     }
 
     public void Touch(ArenaReservation reservation, long subOffset, long size)

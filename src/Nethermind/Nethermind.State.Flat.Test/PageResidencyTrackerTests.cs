@@ -197,6 +197,33 @@ public class PageResidencyTrackerTests
     }
 
     [Test]
+    public void Forget_RemovesPresentEntry_AndIsNoOpForAbsentOrDisabled()
+    {
+        PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
+
+        // Present: insert, then Forget — gone.
+        tracker.TryTouch(5, 3, out _, out _);
+        tracker.ContainsPage(5, 3).Should().BeTrue();
+        tracker.Forget(5, 3);
+        tracker.ContainsPage(5, 3).Should().BeFalse();
+        tracker.Count.Should().Be(0);
+
+        // Absent: Forget on a key the tracker never saw — neighbouring entries survive.
+        tracker.TryTouch(5, 3, out _, out _);
+        tracker.Forget(5, 4);
+        tracker.ContainsPage(5, 3).Should().BeTrue();
+
+        // After REF bit armed (Hit re-arms it), Forget still clears via CAS retry.
+        tracker.TryTouch(5, 3, out _, out _);  // Hit, sets REF=1
+        tracker.Forget(5, 3);
+        tracker.ContainsPage(5, 3).Should().BeFalse();
+
+        // Disabled tracker: no-op, no exception.
+        using PageResidencyTracker disabled = new(maxCapacity: 0);
+        disabled.Forget(5, 3);
+    }
+
+    [Test]
     public void Clear_RemovesAllEntries()
     {
         RecordingHandler handler = new();
