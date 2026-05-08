@@ -329,21 +329,11 @@ namespace Ethereum.Test.Base
         private static readonly EthereumJsonSerializer _serializer = new();
         private static readonly ConcurrentDictionary<SpecOverrideCacheKey, IReleaseSpec> _overriddenSpecs = new();
 
-        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
-        {
-            Dictionary<string, GeneralStateTestJson> testsInFile =
-                _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json) =>
+            ConvertStateTests(_serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json));
 
-            return ConvertStateTests(testsInFile);
-        }
-
-        public static IEnumerable<GeneralStateTest> ConvertStateTest(ReadOnlySpan<byte> json)
-        {
-            Dictionary<string, GeneralStateTestJson> testsInFile =
-                _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
-
-            return ConvertStateTests(testsInFile);
-        }
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(ReadOnlySpan<byte> json) =>
+            ConvertStateTests(_serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json));
 
         private static List<GeneralStateTest> ConvertStateTests(Dictionary<string, GeneralStateTestJson> testsInFile)
         {
@@ -357,21 +347,11 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
-        public static IEnumerable<TransactionTest> ConvertTransactionTests(string json)
-        {
-            Dictionary<string, TransactionTestJson> testsInFile =
-                _serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
+        public static IEnumerable<TransactionTest> ConvertTransactionTests(string json) =>
+            ConvertTransactionTests(_serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json));
 
-            return ConvertTransactionTests(testsInFile);
-        }
-
-        public static IEnumerable<TransactionTest> ConvertTransactionTests(ReadOnlySpan<byte> json)
-        {
-            Dictionary<string, TransactionTestJson> testsInFile =
-                _serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json);
-
-            return ConvertTransactionTests(testsInFile);
-        }
+        public static IEnumerable<TransactionTest> ConvertTransactionTests(ReadOnlySpan<byte> json) =>
+            ConvertTransactionTests(_serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json));
 
         private static List<TransactionTest> ConvertTransactionTests(Dictionary<string, TransactionTestJson> testsInFile)
         {
@@ -403,44 +383,22 @@ namespace Ethereum.Test.Base
 
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
-            Dictionary<string, BlockchainTestJson> testsInFile;
-            try
-            {
-                testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
-            }
-            catch (Exception)
-            {
-                Dictionary<string, HalfBlockchainTestJson> half =
-                    _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
-                testsInFile = [];
-                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
-                {
-                    testsInFile[pair.Key] = pair.Value;
-                }
-            }
-
-            return ConvertToBlockchainTests(testsInFile);
+            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
+            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
         }
 
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(ReadOnlySpan<byte> json)
         {
-            Dictionary<string, BlockchainTestJson> testsInFile;
-            try
-            {
-                testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
-            }
-            catch (Exception)
-            {
-                Dictionary<string, HalfBlockchainTestJson> half =
-                    _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
-                testsInFile = [];
-                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
-                {
-                    testsInFile[pair.Key] = pair.Value;
-                }
-            }
+            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
+            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
+        }
 
-            return ConvertToBlockchainTests(testsInFile);
+        // Some BAL fixtures use the trimmed HalfBlockchainTestJson shape; coerce on demand.
+        private static Dictionary<string, BlockchainTestJson> CoerceFromHalf(Dictionary<string, HalfBlockchainTestJson> half)
+        {
+            Dictionary<string, BlockchainTestJson> result = [];
+            foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half) result[pair.Key] = pair.Value;
+            return result;
         }
 
         private static List<BlockchainTest> ConvertToBlockchainTests(Dictionary<string, BlockchainTestJson> testsInFile)

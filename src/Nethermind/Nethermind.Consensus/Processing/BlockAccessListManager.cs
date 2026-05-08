@@ -101,7 +101,12 @@ public class BlockAccessListManager(
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggestedBlock.BlockAccessList, suggestedBlock.Transactions.Length, addressIndex);
                 _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex);
-                _suggestedChargeableStorageReads = CountChargeableStorageReads(suggestedBlock.BlockAccessList);
+                int storageReads = 0;
+                foreach (AccountChanges ac in suggestedBlock.BlockAccessList.UnorderedAccountChanges)
+                {
+                    storageReads += BlockAccessList.CountChargeableStorageReads(ac);
+                }
+                _suggestedChargeableStorageReads = storageReads;
             }
             _gasRemaining = suggestedBlock.GasUsed;
             _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
@@ -243,17 +248,6 @@ public class BlockAccessListManager(
             }
         }
 
-    }
-
-    internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState)
-    {
-        // EIP-8037 (bal-devnet-6, execution-specs PR 2703): worst-case 2D inclusion
-        // check. Only applies when EIP-8037 is active; legacy and pre-EIP-8037 blocks
-        // continue to rely solely on the post-execution running max(R,S) check.
-        if (!spec.IsEip8037Enabled) return;
-
-        IntrinsicGas<EthereumGasPolicy> intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec, block.Header.GasLimit);
-        CheckPerTxInclusion(block, index, tx, spec, cumulativeRegular, cumulativeState, in intrinsic);
     }
 
     internal static void CheckPerTxInclusion(Block block, int index, Transaction tx, IReleaseSpec spec, long cumulativeRegular, long cumulativeState, in IntrinsicGas<EthereumGasPolicy> intrinsic)
@@ -586,47 +580,24 @@ public class BlockAccessListManager(
     private void RegisterGeneratedDelta(BlockAccessList blockAccessList)
     {
         _generatedValidationIndex?.Add(blockAccessList);
-        if (_suggestedValidationIndex is not null)
+        if (_suggestedValidationIndex is not null && !_hasGeneratedRequiredReadAccountMismatch)
         {
-            _hasGeneratedRequiredReadAccountMismatch |= HasRequiredReadAccountMissing(blockAccessList, _suggestedValidationIndex);
+            // Read-only account that the suggested BAL didn't declare -> mismatch.
+            // Skip declared state changes, system-account reads, and optional storage-only reads.
+            foreach (AccountChanges generatedAccountChanges in blockAccessList.UnorderedAccountChanges)
+            {
+                if (generatedAccountChanges.HasStateChanges) continue;
+                ChangeAtIndex generated = BlockAccessList.CreateChangeAtIndex(generatedAccountChanges, blockAccessList.Index);
+                if (IsSystemAccountRead(generated, blockAccessList.Index) || HasOptionalStorageReads(generated)) continue;
+                if (!_suggestedValidationIndex.HasAccount(generated.Address))
+                {
+                    _hasGeneratedRequiredReadAccountMismatch = true;
+                    break;
+                }
+            }
         }
 
         _hasGeneratedValidationIndexUpdates = true;
-    }
-
-    private static bool HasRequiredReadAccountMissing(BlockAccessList generatedDelta, BlockAccessListValidationIndex suggestedValidationIndex)
-    {
-        foreach (AccountChanges generatedAccountChanges in generatedDelta.UnorderedAccountChanges)
-        {
-            if (generatedAccountChanges.HasStateChanges)
-            {
-                continue;
-            }
-
-            ChangeAtIndex generated = BlockAccessList.CreateChangeAtIndex(generatedAccountChanges, generatedDelta.Index);
-            if (IsSystemAccountRead(generated, generatedDelta.Index) || HasOptionalStorageReads(generated))
-            {
-                continue;
-            }
-
-            if (!suggestedValidationIndex.HasAccount(generated.Address))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static int CountChargeableStorageReads(BlockAccessList blockAccessList)
-    {
-        int storageReads = 0;
-        foreach (AccountChanges accountChanges in blockAccessList.UnorderedAccountChanges)
-        {
-            storageReads += BlockAccessList.CountChargeableStorageReads(accountChanges);
-        }
-
-        return storageReads;
     }
 
     private static bool ChangesAtIndexEqual(in ChangeAtIndex generated, in ChangeAtIndex suggested, uint index) =>

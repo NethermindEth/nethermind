@@ -6,31 +6,13 @@ using Nethermind.Core;
 
 namespace Nethermind.Evm.GasPolicy;
 
-/// <summary>
-/// EIP-8037 (bal-devnet-6) per-tx 2D block-gas inclusion check.
-/// Mirrors execution-specs PR 2703 (https://github.com/ethereum/execution-specs/pull/2703):
-/// at tx inclusion time, both regular and state dimensions must independently fit in the
-/// remaining per-dimension block budget. Block-end validation continues to enforce
-/// max(block_regular_gas_used, block_state_gas_used) &lt;= gas_limit.
-/// </summary>
+// EIP-8037 per-tx 2D block-gas inclusion check (execution-specs PR 2703).
+// Both regular and state dimensions must independently fit in the remaining per-dim block
+// budget at inclusion time. Block-end validation still enforces max(R, S) <= gas_limit.
 public static class Eip8037BlockGasInclusionCheck
 {
-    public enum Outcome
-    {
-        Ok,
-        RegularDimensionExceeded,
-        StateDimensionExceeded,
-    }
+    public enum Outcome { Ok, RegularDimensionExceeded, StateDimensionExceeded }
 
-    /// <summary>
-    /// Worst-case 2D inclusion check from execution-specs PR 2703.
-    /// </summary>
-    /// <param name="blockGasLimit">Block header gas_limit.</param>
-    /// <param name="cumulativeBlockRegular">Sum of per-tx BlockGas (regular) for txs already included.</param>
-    /// <param name="cumulativeBlockState">Sum of per-tx BlockStateGas for txs already included.</param>
-    /// <param name="txGas">tx.gas (per-tx gas limit).</param>
-    /// <param name="intrinsicRegular">Per-tx intrinsic regular component.</param>
-    /// <param name="intrinsicState">Per-tx intrinsic state component (e.g. GAS_NEW_ACCOUNT * cpsb for creation).</param>
     public static Outcome Validate(
         long blockGasLimit,
         long cumulativeBlockRegular,

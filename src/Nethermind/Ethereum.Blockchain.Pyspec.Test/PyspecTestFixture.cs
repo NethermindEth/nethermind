@@ -11,63 +11,64 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
-/// <summary>
-/// Generic base for pyspec blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
-/// Directory is derived by convention: strip "BlockchainTests" suffix, lowercase.
-/// </summary>
+// Standard pre/post-merge blockchain tests. Fixture dir derived from class name (strip "BlockchainTests").
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
 {
     protected override bool? ParallelExecutionOverride => false;
-
     protected override bool? ParallelExecutionBatchReadOverride => false;
 
     [SetUp]
     public void SkipInCiOnUnsupportedRunners() => CiRunnerGuard.SkipIfNotLinuxX64Ci();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/blockchain_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("BlockchainTests")}")
-            .LoadTests<BlockchainTest>();
+        PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests", "BlockchainTests");
 }
 
-/// <summary>
-/// Generic base for pyspec engine blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
-/// Directory is derived by convention: strip "EngineBlockchainTests" suffix, lowercase.
-/// In CI, only runs on Linux x64 to stay within the job timeout budget.
-/// </summary>
+// Engine-payload variant. Linux x64 only - heavy job-time budget.
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestBase
 {
     protected override bool? ParallelExecutionOverride => false;
-
     protected override bool? ParallelExecutionBatchReadOverride => false;
 
     [SetUp]
     public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/blockchain_tests_engine/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("EngineBlockchainTests")}")
-            .LoadTests<BlockchainTest>();
+        PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests_engine", "EngineBlockchainTests");
 }
 
-/// <summary>
-/// Parameterized base for pyspec Amsterdam blockchain tests with selectable parallel-BAL
-/// execution and batch-read prewarming. Linux x64 only — these are heavy. Loads only the
-/// <c>fixtures/blockchain_tests/for_amsterdam</c> directory because parallel execution is
-/// gated on EIP-7928 (Amsterdam).
-/// </summary>
+// Sync fixtures share the engine-payload format and additionally ship a `syncPayload` field
+// exercising sync-mode validation; we run the engine payload through the standard harness
+// here and leave the sync-specific payload for a follow-up.
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public abstract class PyspecSyncBlockchainTestFixture<TSelf> : BlockchainTestBase
+{
+    protected override bool? ParallelExecutionOverride => false;
+    protected override bool? ParallelExecutionBatchReadOverride => false;
+
+    [SetUp]
+    public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
+
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
+
+    public static IEnumerable<BlockchainTest> LoadTests() =>
+        PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
+}
+
+// EIP-7928 (Amsterdam) parallel-BAL execution / batch-read prewarm matrix - Linux x64 only.
+// Loads only `for_amsterdam` because parallel execution is gated on EIP-7928.
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool batchRead) : BlockchainTestBase
@@ -79,19 +80,14 @@ public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool b
     public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            "fixtures/blockchain_tests/for_amsterdam")
+        new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/for_amsterdam")
             .LoadTests<BlockchainTest>();
 }
 
-/// <summary>
-/// Engine-payload variant of <see cref="PyspecAmsterdamBlockchainTestFixture"/>; loads from
-/// <c>fixtures/blockchain_tests_engine/for_amsterdam</c>.
-/// </summary>
+// Engine-payload variant of Amsterdam fixture; loads from `for_amsterdam` engine tree.
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, bool batchRead) : BlockchainTestBase
@@ -103,47 +99,13 @@ public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, 
     public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
+    public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            "fixtures/blockchain_tests_engine/for_amsterdam")
+        new TestsSourceLoader(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests_engine/for_amsterdam")
             .LoadTests<BlockchainTest>();
 }
 
-/// <summary>
-/// Generic base for pyspec sync blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
-/// Sync fixtures share the engine-payload format and additionally ship a <c>syncPayload</c>
-/// field exercising sync-mode validation; we run the engine payload through the standard
-/// blockchain test harness here and leave the sync-specific payload for a follow-up.
-/// Directory is derived by convention: strip "SyncBlockchainTests" suffix, lowercase.
-/// </summary>
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecSyncBlockchainTestFixture<TSelf> : BlockchainTestBase
-{
-    protected override bool? ParallelExecutionOverride => false;
-
-    protected override bool? ParallelExecutionBatchReadOverride => false;
-
-    [SetUp]
-    public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
-
-    [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
-
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/blockchain_tests_sync/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("SyncBlockchainTests")}")
-            .LoadTests<BlockchainTest>();
-}
-
-/// <summary>
-/// Generic base for pyspec state tests using <see cref="LoadPyspecTestsStrategy"/>.
-/// Directory is derived by convention: strip "StateTests" suffix, lowercase.
-/// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
@@ -155,17 +117,10 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
     public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/state_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("StateTests")}").LoadTests<GeneralStateTest>();
+        PyspecLoader.Load<GeneralStateTest, TSelf>("state_tests", "StateTests");
 }
 
-/// <summary>
-/// Generic base for pyspec transaction-validation tests using
-/// <see cref="LoadPyspecTestsStrategy"/>. Each fixture validates that decoding the raw
-/// <c>txbytes</c> against the per-fork expected outcome (success or a specific
-/// <c>TransactionException</c> token) lines up with Nethermind's tx decoder + validator.
-/// Directory is derived by convention: strip "TransactionTests" suffix, lowercase.
-/// </summary>
+// Tx-validation fixtures: decode raw txbytes, run TxValidator, compare against per-fork expected exception.
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
 public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
@@ -181,15 +136,18 @@ public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
     }
 
     public static IEnumerable<TransactionTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/transaction_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("TransactionTests")}").LoadTests<TransactionTest>();
+        PyspecLoader.Load<TransactionTest, TSelf>("transaction_tests", "TransactionTests");
 }
 
-/// <summary>
-/// Skips heavy tests in CI on runners that are too slow or running variant builds.
-/// Local runs always execute, even when TEST_CHUNK is set.
-/// Set TEST_SKIP_HEAVY=1 in CI to skip heavy tests (used by checked/no-intrinsics variants).
-/// </summary>
+internal static class PyspecLoader
+{
+    public static IEnumerable<T> Load<T, TSelf>(string root, string suffix) where T : EthereumTest =>
+        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
+            $"fixtures/{root}/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>(suffix)}").LoadTests<T>();
+}
+
+// Skips heavy tests in CI on runners that are too slow or running variant builds.
+// Local runs always execute. Set TEST_SKIP_HEAVY=1 in CI for checked/no-intrinsics variants.
 internal static class CiRunnerGuard
 {
     private static readonly bool s_isCi = IsCi();
@@ -199,15 +157,15 @@ internal static class CiRunnerGuard
     public static void SkipIfNotLinuxX64Ci()
     {
         if (s_isCi && !s_isLinuxX64)
-            Assert.Ignore("Skipped in CI — Pyspec generated fixture shards only run on Linux x64 runners");
+            Assert.Ignore("Skipped in CI - Pyspec generated fixture shards only run on Linux x64 runners");
     }
 
     public static void SkipIfNotLinuxX64()
     {
         if (s_isCi && s_skipHeavy)
-            Assert.Ignore("Skipped — TEST_SKIP_HEAVY is set");
+            Assert.Ignore("Skipped - TEST_SKIP_HEAVY is set");
         if (s_isCi && !s_isLinuxX64)
-            Assert.Ignore("Skipped in CI — engine/Amsterdam tests only run on Linux x64");
+            Assert.Ignore("Skipped in CI - engine/Amsterdam tests only run on Linux x64");
     }
 
     private static bool IsCi() =>

@@ -80,43 +80,31 @@ public class Eip8037BlockGasIntegrationTests
         return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
     }
 
-    /// <summary>
-    /// PR 2703 boundary[exact_fit]: post-tx cumulative state hits limit exactly.
-    /// IncrementalValidation uses strict <c>&gt;</c>, so cumS == limit must be accepted.
-    /// </summary>
-    [Test]
-    public void Spec_pr2703_boundary_state_exact_fit_accepts()
+    // PR 2703 boundary: post-tx cumulative state hits the limit exactly (must accept,
+    // IncrementalValidation uses strict >) vs exceeds by 1 (must reject).
+    [TestCase(200_000L, true, TestName = "Spec_pr2703_boundary_state_exact_fit_accepts")]
+    [TestCase(200_001L, false, TestName = "Spec_pr2703_boundary_state_exceeded_by_one_rejects")]
+    public void Spec_pr2703_boundary_state(long blockStateGasUsed, bool accepts)
     {
         long blockGasLimit = 200_000;
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx1);
 
         GasValidationResultSlot[] results = ResultsForCount(1);
-        // cumR = 50_000, cumS = 200_000 (exact fit). max = 200_000 == limit -> accept.
-        results[0].TrySetResult(GasResult(block, 0, 50_000, 200_000));
+        results[0].TrySetResult(GasResult(block, 0, 50_000, blockStateGasUsed));
 
-        Assert.DoesNotThrow(() =>
-            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
-        Assert.That(block.Header.GasUsed, Is.EqualTo(200_000));
-    }
-
-    /// <summary>
-    /// PR 2703 boundary[exceeded]: post-tx cumulative state exceeds limit by 1 -> reject.
-    /// </summary>
-    [Test]
-    public void Spec_pr2703_boundary_state_exceeded_by_one_rejects()
-    {
-        long blockGasLimit = 200_000;
-        Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
-        (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx1);
-
-        GasValidationResultSlot[] results = ResultsForCount(1);
-        // cumS = 200_001 -> max = 200_001 > 200_000 -> reject.
-        results[0].TrySetResult(GasResult(block, 0, 50_000, 200_001));
-
-        InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() =>
-            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
-        Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
+        if (accepts)
+        {
+            Assert.DoesNotThrow(() =>
+                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
+            Assert.That(block.Header.GasUsed, Is.EqualTo(200_000));
+        }
+        else
+        {
+            InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() =>
+                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
+            Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
+        }
     }
 
     /// <summary>

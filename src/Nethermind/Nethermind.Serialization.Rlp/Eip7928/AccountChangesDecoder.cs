@@ -15,21 +15,13 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 {
     public static readonly AccountChangesDecoder Instance = new();
 
-    internal readonly struct EncodingLengths(
-        int contentLength,
-        int storageChangesContentLength,
-        int storageReadsContentLength,
-        int balanceContentLength,
-        int nonceContentLength,
-        int codeContentLength)
-    {
-        public int ContentLength { get; } = contentLength;
-        public int StorageChangesContentLength { get; } = storageChangesContentLength;
-        public int StorageReadsContentLength { get; } = storageReadsContentLength;
-        public int BalanceContentLength { get; } = balanceContentLength;
-        public int NonceContentLength { get; } = nonceContentLength;
-        public int CodeContentLength { get; } = codeContentLength;
-    }
+    internal readonly record struct EncodingLengths(
+        int ContentLength,
+        int StorageChangesContentLength,
+        int StorageReadsContentLength,
+        int BalanceContentLength,
+        int NonceContentLength,
+        int CodeContentLength);
 
     private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
     private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);

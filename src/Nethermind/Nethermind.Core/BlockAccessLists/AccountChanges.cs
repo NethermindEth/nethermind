@@ -191,15 +191,10 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public void ClearEmptySlotChangesAndAddRead(UInt256 key)
     {
-        if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
-        {
-            _storageChanges.Remove(key);
-            InvalidateStorageOrder();
-            if (_storageReads.Add(key))
-            {
-                _sortedStorageReads = null;
-            }
-        }
+        if (!TryGetSlotChanges(key, out SlotChanges? slotChanges) || slotChanges.Changes.Count != 0) return;
+        _storageChanges.Remove(key);
+        InvalidateStorageOrder();
+        if (_storageReads.Add(key)) _sortedStorageReads = null;
     }
 
     public SlotChanges GetOrAddSlotChanges(UInt256 key)
@@ -344,60 +339,13 @@ public class AccountChanges : IEquatable<AccountChanges>
         return codeChange.Value.CodeHash;
     }
 
-    public HashSet<UInt256> GetAllSlots(uint blockAccessIndex)
-    {
-        HashSet<UInt256> slots = [];
-        SlotChanges[] storageChanges = GetSortedStorageChanges();
-        for (int i = 0; i < storageChanges.Length; i++)
-        {
-            SlotChanges slotChange = storageChanges[i];
-            EvmWord lastValue = default;
-            foreach (StorageChange storageChange in slotChange.Changes.Values)
-            {
-                if (storageChange.Index != Eip7928Constants.PrestateIndex && storageChange.Index > blockAccessIndex)
-                {
-                    if (lastValue != default)
-                    {
-                        slots.Add(slotChange.Key);
-                    }
-                    break;
-                }
-                lastValue = storageChange.Value;
-            }
-        }
-        return slots;
-    }
-
-    // check if account exists at start of tx at index
+    // ExistedBeforeBlock implies the account cannot be destroyed mid-block, so it stays existing.
     public bool AccountExists(uint blockAccessIndex)
     {
-        if (ExistedBeforeBlock)
-        {
-            // cannot be destroyed if already exists
-            return true;
-        }
-
-        if (blockAccessIndex == 0)
-        {
-            return ExistedBeforeBlock;
-        }
-
-        if (_nonceChanges.HasBefore(blockAccessIndex))
-        {
-            return true;
-        }
-
-        if (_balanceChanges.HasBefore(blockAccessIndex))
-        {
-            return true;
-        }
-
-        if (_codeChanges.TryGetLastBefore(blockAccessIndex, out CodeChange lastCodeChange))
-        {
-            return lastCodeChange.Code.Length != 0;
-        }
-
-        return false;
+        if (ExistedBeforeBlock) return true;
+        if (blockAccessIndex == 0) return false;
+        if (_nonceChanges.HasBefore(blockAccessIndex) || _balanceChanges.HasBefore(blockAccessIndex)) return true;
+        return _codeChanges.TryGetLastBefore(blockAccessIndex, out CodeChange last) && last.Code.Length != 0;
     }
 
     [JsonIgnore]
@@ -405,19 +353,11 @@ public class AccountChanges : IEquatable<AccountChanges>
     {
         get
         {
-            if (_balanceChanges.HasChanges || _nonceChanges.HasChanges || _codeChanges.HasChanges)
-            {
-                return true;
-            }
-
+            if (_balanceChanges.HasChanges || _nonceChanges.HasChanges || _codeChanges.HasChanges) return true;
             foreach (SlotChanges slotChanges in _storageChanges.Values)
             {
-                if (slotChanges.HasChanges)
-                {
-                    return true;
-                }
+                if (slotChanges.HasChanges) return true;
             }
-
             return false;
         }
     }
@@ -427,18 +367,7 @@ public class AccountChanges : IEquatable<AccountChanges>
             ? change
             : null;
 
-    private SlotChanges[] GetSortedStorageChanges()
-    {
-        SlotChanges[]? sortedStorageChanges = _sortedStorageChanges;
-        if (sortedStorageChanges is not null)
-        {
-            return sortedStorageChanges;
-        }
-
-        sortedStorageChanges = BuildSortedStorageChanges();
-        _sortedStorageChanges = sortedStorageChanges;
-        return sortedStorageChanges;
-    }
+    private SlotChanges[] GetSortedStorageChanges() => _sortedStorageChanges ??= BuildSortedStorageChanges();
 
     // Below this count, insertion sort beats the SoA rent/copy/sort path.
     private const int SoaSortThreshold = 16;
@@ -489,27 +418,21 @@ public class AccountChanges : IEquatable<AccountChanges>
         return values;
     }
 
-    private UInt256[] GetSortedChangedSlots()
-    {
-        UInt256[]? sortedChangedSlots = _sortedChangedSlots;
-        if (sortedChangedSlots is not null)
-        {
-            return sortedChangedSlots;
-        }
+    private UInt256[] GetSortedChangedSlots() => _sortedChangedSlots ??= BuildSortedChangedSlots();
 
+    private UInt256[] BuildSortedChangedSlots()
+    {
         SlotChanges[] storageChanges = GetSortedStorageChanges();
         if (storageChanges.Length == 0)
         {
-            _sortedChangedSlots = [];
-            return _sortedChangedSlots;
+            return [];
         }
 
-        sortedChangedSlots = new UInt256[storageChanges.Length];
+        UInt256[] sortedChangedSlots = new UInt256[storageChanges.Length];
         for (int i = 0; i < storageChanges.Length; i++)
         {
             sortedChangedSlots[i] = storageChanges[i].Key;
         }
-        _sortedChangedSlots = sortedChangedSlots;
         return sortedChangedSlots;
     }
 
@@ -584,24 +507,19 @@ public class AccountChanges : IEquatable<AccountChanges>
         return true;
     }
 
-    private UInt256[] GetSortedStorageReads()
-    {
-        UInt256[]? sorted = _sortedStorageReads;
-        if (sorted is not null)
-        {
-            return sorted;
-        }
+    private UInt256[] GetSortedStorageReads() => _sortedStorageReads ??= BuildSortedStorageReads();
 
+    private UInt256[] BuildSortedStorageReads()
+    {
         int count = _storageReads.Count;
         if (count == 0)
         {
-            return _sortedStorageReads = [];
+            return [];
         }
 
-        sorted = new UInt256[count];
+        UInt256[] sorted = new UInt256[count];
         _storageReads.CopyTo(sorted);
         sorted.AsSpan().Sort();
-        _sortedStorageReads = sorted;
         return sorted;
     }
 

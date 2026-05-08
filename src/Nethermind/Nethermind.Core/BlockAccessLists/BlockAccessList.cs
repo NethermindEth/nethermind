@@ -435,21 +435,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         _sortedAccountChanges = null;
     }
 
-    internal void RemoveAccountChanges(params Address[] addresses)
-    {
-        _itemCount = null;
-        bool removedAccount = false;
-        foreach (Address address in addresses)
-        {
-            removedAccount |= _accountChanges.Remove(address);
-        }
-
-        if (removedAccount)
-        {
-            _sortedAccountChanges = null;
-        }
-    }
-
     private bool HasBalanceChangedDuringTx(AccountChanges accountChanges, Address address, UInt256 beforeInstr, UInt256 afterInstr)
     {
         IndexedChangeValues<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
@@ -598,18 +583,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
         return existing;
     }
 
-    private AccountChanges[] GetSortedAccountChanges()
-    {
-        AccountChanges[]? sortedAccountChanges = _sortedAccountChanges;
-        if (sortedAccountChanges is not null)
-        {
-            return sortedAccountChanges;
-        }
-
-        sortedAccountChanges = BuildSortedAccountChanges();
-        _sortedAccountChanges = sortedAccountChanges;
-        return sortedAccountChanges;
-    }
+    private AccountChanges[] GetSortedAccountChanges() => _sortedAccountChanges ??= BuildSortedAccountChanges();
 
     private AccountChanges[] BuildSortedAccountChanges()
     {
@@ -666,18 +640,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     private void PushBalanceChangeDetails(Address address, bool hasPrevious, in BalanceChange previousBalance, in UInt256 priorValue)
     {
-        long previousIndex;
-        UInt256 value;
-        if (hasPrevious)
-        {
-            previousIndex = previousBalance.Index;
-            value = previousBalance.Value;
-        }
-        else
-        {
-            previousIndex = NoPreviousBlockAccessIndex;
-            value = priorValue;
-        }
+        long previousIndex = hasPrevious ? previousBalance.Index : NoPreviousBlockAccessIndex;
+        UInt256 value = hasPrevious ? previousBalance.Value : priorValue;
         Debug.Assert(IsRestorablePreviousIndex(previousIndex));
         _balanceDetails.Add(new(address, Index, previousIndex, value));
         _changeStream.Add(ChangeType.BalanceChange);
@@ -685,18 +649,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     private void PushNonceChangeDetails(Address address, bool hasPrevious, in NonceChange previousNonce)
     {
-        long previousIndex;
-        ulong value;
-        if (hasPrevious)
-        {
-            previousIndex = previousNonce.Index;
-            value = previousNonce.Value;
-        }
-        else
-        {
-            previousIndex = NoPreviousBlockAccessIndex;
-            value = 0;
-        }
+        long previousIndex = hasPrevious ? previousNonce.Index : NoPreviousBlockAccessIndex;
+        ulong value = hasPrevious ? previousNonce.Value : 0;
         Debug.Assert(IsRestorablePreviousIndex(previousIndex));
         _nonceDetails.Add(new(address, Index, previousIndex, value));
         _changeStream.Add(ChangeType.NonceChange);
@@ -704,18 +658,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     private void PushCodeChangeDetails(Address address, bool hasPrevious, in CodeChange previousCode, byte[]? priorCode)
     {
-        long previousIndex;
-        byte[]? code;
-        if (hasPrevious)
-        {
-            previousIndex = previousCode.Index;
-            code = previousCode.Code;
-        }
-        else
-        {
-            previousIndex = NoPreviousBlockAccessIndex;
-            code = priorCode;
-        }
+        long previousIndex = hasPrevious ? previousCode.Index : NoPreviousBlockAccessIndex;
+        byte[]? code = hasPrevious ? previousCode.Code : priorCode;
         Debug.Assert(IsRestorablePreviousIndex(previousIndex));
         _codeDetails.Add(new(address, Index, previousIndex, code));
         _changeStream.Add(ChangeType.CodeChange);
@@ -723,18 +667,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
     private void PushStorageChangeDetails(Address address, UInt256 slot, bool hasPrevious, in StorageChange previousStorage, in EvmWord priorValue)
     {
-        long previousIndex;
-        EvmWord value;
-        if (hasPrevious)
-        {
-            previousIndex = previousStorage.Index;
-            value = previousStorage.Value;
-        }
-        else
-        {
-            previousIndex = NoPreviousBlockAccessIndex;
-            value = priorValue;
-        }
+        long previousIndex = hasPrevious ? previousStorage.Index : NoPreviousBlockAccessIndex;
+        EvmWord value = hasPrevious ? previousStorage.Value : priorValue;
         Debug.Assert(IsRestorablePreviousIndex(previousIndex));
         _storageDetails.Add(new(address, slot, Index, previousIndex, value));
         _changeStream.Add(ChangeType.StorageChange);

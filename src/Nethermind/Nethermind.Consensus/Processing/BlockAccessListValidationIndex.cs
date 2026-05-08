@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -23,32 +24,13 @@ internal sealed class BlockAccessListValidationIndex
     private ulong[] _hasAccountWords = [];
     private bool _hasOutOfRangeChange;
 
-    public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex)
-        : this(txCount, addressIndex, suggested: null)
-    {
-    }
-
-    public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex? suggested)
+    public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested)
     {
         _addressIndex = addressIndex;
         _lastIndex = GetLastIndex(txCount);
-        int rowCount = checked((int)_lastIndex + 1);
-        _isMutable = true;
-
-        if (suggested is null)
-        {
-            _balance = Lane<UInt256>.CreateMutableEmpty(rowCount);
-            _nonce = Lane<ulong>.CreateMutableEmpty(rowCount);
-            _code = Lane<ValueHash256>.CreateMutableEmpty(rowCount);
-            _storage = StorageLane.CreateMutableEmpty(rowCount);
-            return;
-        }
-
         if (_lastIndex != suggested._lastIndex)
-        {
             throw new ArgumentException("Suggested validation index has a different row count.", nameof(suggested));
-        }
-
+        _isMutable = true;
         _balance = Lane<UInt256>.CreateMutableLike(suggested._balance);
         _nonce = Lane<ulong>.CreateMutableLike(suggested._nonce);
         _code = Lane<ValueHash256>.CreateMutableLike(suggested._code);
@@ -106,70 +88,36 @@ internal sealed class BlockAccessListValidationIndex
     public void Add(BlockAccessList blockAccessList)
     {
         if (!_isMutable)
-        {
             throw new InvalidOperationException("Only generated validation indexes can be appended.");
-        }
 
         foreach (AccountChanges accountChanges in blockAccessList.UnorderedAccountChanges)
         {
             int accountOrdinal = _addressIndex.GetOrAdd(accountChanges.Address);
 
-            ReadOnlySpan<BalanceChange> balanceChanges = accountChanges.BalanceChangeSet.BlockAccessChanges;
-            for (int i = 0; i < balanceChanges.Length; i++)
+            foreach (BalanceChange change in accountChanges.BalanceChangeSet.BlockAccessChanges)
             {
-                BalanceChange change = balanceChanges[i];
-                if (TryGetRow(change.Index, _lastIndex, out int row))
-                {
-                    _balance.Add(row, accountOrdinal, change.Value);
-                }
-                else
-                {
-                    _hasOutOfRangeChange = true;
-                }
+                if (TryGetRow(change.Index, _lastIndex, out int row)) _balance.Add(row, accountOrdinal, change.Value);
+                else _hasOutOfRangeChange = true;
             }
 
-            ReadOnlySpan<NonceChange> nonceChanges = accountChanges.NonceChangeSet.BlockAccessChanges;
-            for (int i = 0; i < nonceChanges.Length; i++)
+            foreach (NonceChange change in accountChanges.NonceChangeSet.BlockAccessChanges)
             {
-                NonceChange change = nonceChanges[i];
-                if (TryGetRow(change.Index, _lastIndex, out int row))
-                {
-                    _nonce.Add(row, accountOrdinal, change.Value);
-                }
-                else
-                {
-                    _hasOutOfRangeChange = true;
-                }
+                if (TryGetRow(change.Index, _lastIndex, out int row)) _nonce.Add(row, accountOrdinal, change.Value);
+                else _hasOutOfRangeChange = true;
             }
 
-            ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChangeSet.BlockAccessChanges;
-            for (int i = 0; i < codeChanges.Length; i++)
+            foreach (CodeChange change in accountChanges.CodeChangeSet.BlockAccessChanges)
             {
-                CodeChange change = codeChanges[i];
-                if (TryGetRow(change.Index, _lastIndex, out int row))
-                {
-                    _code.Add(row, accountOrdinal, change.CodeHash);
-                }
-                else
-                {
-                    _hasOutOfRangeChange = true;
-                }
+                if (TryGetRow(change.Index, _lastIndex, out int row)) _code.Add(row, accountOrdinal, change.CodeHash);
+                else _hasOutOfRangeChange = true;
             }
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                ReadOnlySpan<StorageChange> storageChanges = slotChanges.Changes.BlockAccessChanges;
-                for (int i = 0; i < storageChanges.Length; i++)
+                foreach (StorageChange change in slotChanges.Changes.BlockAccessChanges)
                 {
-                    StorageChange change = storageChanges[i];
-                    if (TryGetRow(change.Index, _lastIndex, out int row))
-                    {
-                        _storage.Add(row, accountOrdinal, slotChanges.Key, change.Value);
-                    }
-                    else
-                    {
-                        _hasOutOfRangeChange = true;
-                    }
+                    if (TryGetRow(change.Index, _lastIndex, out int row)) _storage.Add(row, accountOrdinal, slotChanges.Key, change.Value);
+                    else _hasOutOfRangeChange = true;
                 }
             }
         }
@@ -244,46 +192,26 @@ internal sealed class BlockAccessListValidationIndex
             bool found = addressIndex.TryGet(accountChanges.Address, out int accountOrdinal);
             Debug.Assert(found);
 
-            ReadOnlySpan<BalanceChange> balanceChanges = accountChanges.BalanceChangeSet.BlockAccessChanges;
-            for (int i = 0; i < balanceChanges.Length; i++)
+            foreach (BalanceChange change in accountChanges.BalanceChangeSet.BlockAccessChanges)
             {
-                BalanceChange change = balanceChanges[i];
-                if (TryGetRow(change.Index, lastIndex, out int row))
-                {
-                    balance.Fill(row, balanceCursors, accountOrdinal, change.Value);
-                }
+                if (TryGetRow(change.Index, lastIndex, out int row)) balance.Fill(row, balanceCursors, accountOrdinal, change.Value);
             }
 
-            ReadOnlySpan<NonceChange> nonceChanges = accountChanges.NonceChangeSet.BlockAccessChanges;
-            for (int i = 0; i < nonceChanges.Length; i++)
+            foreach (NonceChange change in accountChanges.NonceChangeSet.BlockAccessChanges)
             {
-                NonceChange change = nonceChanges[i];
-                if (TryGetRow(change.Index, lastIndex, out int row))
-                {
-                    nonce.Fill(row, nonceCursors, accountOrdinal, change.Value);
-                }
+                if (TryGetRow(change.Index, lastIndex, out int row)) nonce.Fill(row, nonceCursors, accountOrdinal, change.Value);
             }
 
-            ReadOnlySpan<CodeChange> codeChanges = accountChanges.CodeChangeSet.BlockAccessChanges;
-            for (int i = 0; i < codeChanges.Length; i++)
+            foreach (CodeChange change in accountChanges.CodeChangeSet.BlockAccessChanges)
             {
-                CodeChange change = codeChanges[i];
-                if (TryGetRow(change.Index, lastIndex, out int row))
-                {
-                    code.Fill(row, codeCursors, accountOrdinal, change.CodeHash);
-                }
+                if (TryGetRow(change.Index, lastIndex, out int row)) code.Fill(row, codeCursors, accountOrdinal, change.CodeHash);
             }
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                ReadOnlySpan<StorageChange> storageChanges = slotChanges.Changes.BlockAccessChanges;
-                for (int i = 0; i < storageChanges.Length; i++)
+                foreach (StorageChange change in slotChanges.Changes.BlockAccessChanges)
                 {
-                    StorageChange change = storageChanges[i];
-                    if (TryGetRow(change.Index, lastIndex, out int row))
-                    {
-                        storage.Fill(row, storageCursors, accountOrdinal, slotChanges.Key, change.Value);
-                    }
+                    if (TryGetRow(change.Index, lastIndex, out int row)) storage.Fill(row, storageCursors, accountOrdinal, slotChanges.Key, change.Value);
                 }
             }
         }
@@ -292,32 +220,23 @@ internal sealed class BlockAccessListValidationIndex
     private bool HasAccountOrdinal(int accountOrdinal)
     {
         int word = accountOrdinal >> 6;
-        ulong mask = 1UL << (accountOrdinal & 63);
-        return (uint)word < (uint)_hasAccountWords.Length &&
-               (_hasAccountWords[word] & mask) != 0;
+        return (uint)word < (uint)_hasAccountWords.Length
+            && (_hasAccountWords[word] & (1UL << (accountOrdinal & 63))) != 0;
     }
 
     private static void MarkAccount(ref ulong[] words, int accountOrdinal)
     {
         int word = accountOrdinal >> 6;
         if ((uint)word >= (uint)words.Length)
-        {
             Array.Resize(ref words, Math.Max(word + 1, words.Length == 0 ? 1 : words.Length * 2));
-        }
-
         words[word] |= 1UL << (accountOrdinal & 63);
     }
 
+    // No callers read `row` on the false return; cheaper to set unconditionally and skip the branch.
     private static bool TryGetRow(uint index, uint lastIndex, out int row)
     {
-        if (index > lastIndex)
-        {
-            row = -1;
-            return false;
-        }
-
         row = (int)index;
-        return true;
+        return index <= lastIndex;
     }
 
     private static uint GetLastIndex(int txCount) =>
@@ -326,46 +245,16 @@ internal sealed class BlockAccessListValidationIndex
     internal sealed class AddressIndex
     {
         private readonly Dictionary<AddressAsKey, int> _ordinals = new(AddressAsKey.EqualityComparer);
-        private Address[] _addresses = new Address[16];
-        private int _count;
-
-        public int Count => _count;
 
         public int GetOrAdd(Address address)
         {
-            AddressAsKey key = address;
-            if (_ordinals.TryGetValue(key, out int ordinal))
-            {
-                return ordinal;
-            }
-
-            ordinal = _count;
-            _ordinals.Add(key, ordinal);
-            if ((uint)ordinal >= (uint)_addresses.Length)
-            {
-                Array.Resize(ref _addresses, _addresses.Length * 2);
-            }
-
-            _addresses[ordinal] = address;
-            _count++;
+            ref int ordinal = ref CollectionsMarshal.GetValueRefOrAddDefault(_ordinals, address, out bool exists);
+            if (!exists) ordinal = _ordinals.Count - 1;
             return ordinal;
         }
 
-        public bool TryGet(Address address, out int ordinal)
-        {
-            AddressAsKey key = address;
-            return _ordinals.TryGetValue(key, out ordinal);
-        }
-
-        public Address GetAddress(int ordinal)
-        {
-            if ((uint)ordinal >= (uint)_count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(ordinal));
-            }
-
-            return _addresses[ordinal];
-        }
+        public bool TryGet(Address address, out int ordinal) =>
+            _ordinals.TryGetValue(address, out ordinal);
     }
 
     private sealed class Counts(int rowCount)
@@ -417,12 +306,6 @@ internal sealed class BlockAccessListValidationIndex
             int rowCount = other.RowCount;
             int[] rowStarts = (int[])other._rowStarts.Clone();
             return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new TValue[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
-        }
-
-        public static Lane<TValue> CreateMutableEmpty(int rowCount)
-        {
-            int[] rowStarts = new int[rowCount + 1];
-            return new(rowStarts, new int[rowCount], [], [], new bool[rowCount], new int[rowCount], new bool[rowCount]);
         }
 
         public int RowCount => _rowStarts.Length - 1;
@@ -608,12 +491,6 @@ internal sealed class BlockAccessListValidationIndex
             int rowCount = other.RowCount;
             int[] rowStarts = (int[])other._rowStarts.Clone();
             return new(rowStarts, new int[rowCount], new int[other._accountOrdinals.Length], new UInt256[other._keys.Length], new EvmWord[other._values.Length], new bool[rowCount], new int[rowCount], new bool[rowCount]);
-        }
-
-        public static StorageLane CreateMutableEmpty(int rowCount)
-        {
-            int[] rowStarts = new int[rowCount + 1];
-            return new(rowStarts, new int[rowCount], [], [], [], new bool[rowCount], new int[rowCount], new bool[rowCount]);
         }
 
         public int RowCount => _rowStarts.Length - 1;

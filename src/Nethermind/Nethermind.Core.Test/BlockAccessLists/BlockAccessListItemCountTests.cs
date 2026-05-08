@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -45,76 +47,38 @@ public class BlockAccessListItemCountTests
         Assert.That(bal.ItemCount, Is.EqualTo(1));
     }
 
-    [Test]
-    public void ItemCount_recomputes_after_AddAccountRead()
+    public static IEnumerable<TestCaseData> MutatorCases()
     {
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        Assert.That(bal.ItemCount, Is.EqualTo(1), "cache established");
-
-        bal.AddAccountRead(TestItem.AddressB);
-
-        Assert.That(bal.ItemCount, Is.EqualTo(2));
+        yield return new TestCaseData(
+            (Action<BlockAccessList>)(static bal => bal.AddAccountRead(TestItem.AddressB)), 2)
+            .SetName("ItemCount_recomputes_after_AddAccountRead");
+        yield return new TestCaseData(
+            (Action<BlockAccessList>)(static bal => bal.AddStorageRead(TestItem.AddressA, 1)), 2)
+            .SetName("ItemCount_recomputes_after_AddStorageRead");
+        yield return new TestCaseData(
+            (Action<BlockAccessList>)(static bal => bal.AddStorageChange(TestItem.AddressA, 1, before: 0, after: 42)), 2)
+            .SetName("ItemCount_recomputes_after_AddStorageChange");
+        yield return new TestCaseData(
+            (Action<BlockAccessList>)(static bal => bal.AddBalanceChange(TestItem.AddressB, before: UInt256.Zero, after: (UInt256)100)), 2)
+            .SetName("ItemCount_recomputes_after_AddBalanceChange");
+        yield return new TestCaseData(
+            (Action<BlockAccessList>)(static bal => bal.AddNonceChange(TestItem.AddressB, 1)), 2)
+            .SetName("ItemCount_recomputes_after_AddNonceChange");
+        yield return new TestCaseData(
+            (Action<BlockAccessList>)(static bal => bal.AddCodeChange(TestItem.AddressB, before: Array.Empty<byte>(), after: new byte[] { 0x60 })), 2)
+            .SetName("ItemCount_recomputes_after_AddCodeChange");
     }
 
-    [Test]
-    public void ItemCount_recomputes_after_AddStorageRead()
+    [TestCaseSource(nameof(MutatorCases))]
+    public void ItemCount_recomputes_after_mutation(Action<BlockAccessList> mutate, int expected)
     {
         BlockAccessList bal = new();
         bal.AddAccountRead(TestItem.AddressA);
         Assert.That(bal.ItemCount, Is.EqualTo(1), "cache established");
 
-        bal.AddStorageRead(TestItem.AddressA, 1);
+        mutate(bal);
 
-        Assert.That(bal.ItemCount, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void ItemCount_recomputes_after_AddStorageChange()
-    {
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        Assert.That(bal.ItemCount, Is.EqualTo(1), "cache established");
-
-        bal.AddStorageChange(TestItem.AddressA, 1, before: 0, after: 42);
-
-        Assert.That(bal.ItemCount, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void ItemCount_recomputes_after_AddBalanceChange()
-    {
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        Assert.That(bal.ItemCount, Is.EqualTo(1), "cache established");
-
-        bal.AddBalanceChange(TestItem.AddressB, before: UInt256.Zero, after: (UInt256)100);
-
-        Assert.That(bal.ItemCount, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void ItemCount_recomputes_after_AddNonceChange()
-    {
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        Assert.That(bal.ItemCount, Is.EqualTo(1), "cache established");
-
-        bal.AddNonceChange(TestItem.AddressB, 1);
-
-        Assert.That(bal.ItemCount, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void ItemCount_recomputes_after_AddCodeChange()
-    {
-        BlockAccessList bal = new();
-        bal.AddAccountRead(TestItem.AddressA);
-        Assert.That(bal.ItemCount, Is.EqualTo(1), "cache established");
-
-        bal.AddCodeChange(TestItem.AddressB, before: System.Array.Empty<byte>(), after: new byte[] { 0x60 });
-
-        Assert.That(bal.ItemCount, Is.EqualTo(2));
+        Assert.That(bal.ItemCount, Is.EqualTo(expected));
     }
 
     [Test]
