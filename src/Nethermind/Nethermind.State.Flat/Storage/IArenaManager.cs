@@ -37,22 +37,23 @@ public unsafe interface IArenaManager : IDisposable
     void Touch(ArenaReservation reservation, long subOffset, long size);
 
     /// <summary>
-    /// Drop a single OS page of <paramref name="arenaId"/> from RAM via
-    /// <c>madvise(MADV_DONTNEED)</c> (and optionally <c>posix_fadvise(POSIX_FADV_DONTNEED)</c>).
-    /// Used by <see cref="ArenaReservation.TouchPage"/> only for the cross-arena eviction case;
-    /// same-arena evictions go directly through the reservation's captured
-    /// <see cref="ArenaFile"/> reference and never call this. Implementations that have no
-    /// per-page mapping (e.g. the in-memory test arena) treat this as a no-op.
-    /// <paramref name="pageIdx"/> is the arena-absolute page index
+    /// Enqueue a page eviction for asynchronous dispatch. The implementation pushes
+    /// <c>(arenaId, pageIdx)</c> onto a bounded MPSC ring drained by a background worker that
+    /// performs the <c>madvise(MADV_DONTNEED)</c> (and optional <c>posix_fadvise</c>) syscall
+    /// off the producer thread. The drain re-checks <see cref="PageResidencyTracker.ContainsPage"/>
+    /// and skips the syscall if the page returned to the working set in the meantime. On
+    /// ring-full the producer falls back to inline dispatch so no eviction is lost.
+    /// Implementations with no per-page mapping (the in-memory test arena) treat this as a
+    /// no-op. <paramref name="pageIdx"/> is the arena-absolute page index
     /// (<c>offset / Environment.SystemPageSize</c>).
     /// </summary>
-    void AdviseDontNeedPage(int arenaId, int pageIdx);
+    void QueueEviction(int arenaId, int pageIdx);
 
     /// <summary>
-    /// Direct-mapped page residency tracker shared across readers of this manager. Reservations
-    /// call <see cref="PageResidencyTracker.TryTouch"/> directly to record per-page accesses.
-    /// Implementations with nothing to track (e.g. the in-memory test arena) return a
-    /// 0-capacity tracker whose <c>TryTouch</c> is a no-op.
+    /// Per-arena page residency tracker. Reservations call
+    /// <see cref="PageResidencyTracker.TryTouch"/> directly to record per-page accesses; the
+    /// manager owns the tracker and disposes it. Implementations with nothing to track (e.g.
+    /// the in-memory test arena) return a 0-capacity tracker whose <c>TryTouch</c> is a no-op.
     /// </summary>
     PageResidencyTracker PageTracker { get; }
 

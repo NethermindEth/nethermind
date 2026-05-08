@@ -277,7 +277,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     private static void ReleaseSetLock(ref int meta) =>
         Volatile.Write(ref meta, meta & ~MetaLockBit);
 
-    internal bool ContainsPage(int arenaId, int pageIdx)
+    public bool ContainsPage(int arenaId, int pageIdx)
     {
         if (_setCount == 0) return false;
         long key = PackKey(arenaId, pageIdx);

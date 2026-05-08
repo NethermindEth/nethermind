@@ -34,7 +34,7 @@ public class PageResidencyTrackerTests
     /// Minimal <see cref="IArenaManager"/> stub for <see cref="ArenaByteReader"/> tests:
     /// exposes the supplied tracker via <see cref="PageTracker"/> so an
     /// <see cref="ArenaReservation"/> can call into it directly, and forwards
-    /// <see cref="IArenaManager.AdviseDontNeedPage"/> into <paramref name="handler"/> so test
+    /// <see cref="IArenaManager.QueueEviction"/> into <paramref name="handler"/> so test
     /// assertions on cross-arena evictions still work. Same-arena evictions skip this stub
     /// entirely (the reservation handles them directly off its captured ArenaFile, which is
     /// null in tests so they no-op silently).
@@ -42,7 +42,7 @@ public class PageResidencyTrackerTests
     private sealed unsafe class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler) : IArenaManager
     {
         public PageResidencyTracker PageTracker => tracker;
-        public void AdviseDontNeedPage(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
+        public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
         public int ArenaFileCount => 0;
         public long ArenaMappedBytes => 0;
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();

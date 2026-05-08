@@ -61,8 +61,11 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
 
-    [ConfigItem(Description = "Persisted-snapshot arena page-cache budget in bytes. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker.", DefaultValue = "17179869184")]
-    long PersistedSnapshotPageCacheBytes { get; set; }
+    [ConfigItem(Description = "Per-arena page-cache budget (bytes) for the base persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker for this arena.", DefaultValue = "8589934592")]
+    long PersistedSnapshotBaseArenaPageCacheBytes { get; set; }
+
+    [ConfigItem(Description = "Per-arena page-cache budget (bytes) for the compacted persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker for this arena.", DefaultValue = "8589934592")]
+    long PersistedSnapshotCompactedArenaPageCacheBytes { get; set; }
 
     [ConfigItem(Description = "When the persisted-snapshot page tracker evicts a page, also call posix_fadvise(POSIX_FADV_DONTNEED) on the arena file descriptor in addition to the existing madvise. Only useful for benchmarking — keeps arena pages from polluting the OS file cache and competing with other applications.", DefaultValue = "false")]
     bool PersistedSnapshotFadviseOnPageEviction { get; set; }

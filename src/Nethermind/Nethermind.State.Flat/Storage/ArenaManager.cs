@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Numerics;
 
 namespace Nethermind.State.Flat.Storage;
 
@@ -30,8 +31,27 @@ public sealed class ArenaManager : IArenaManager
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
     private readonly PageResidencyTracker _pageTracker;
+    // MPSC-used MpmcRingBuffer for queued evictions; null when the tracker is disabled
+    // (no pages tracked → no evictions to dispatch).
+    private readonly MpmcRingBuffer<long>? _evictionRing;
+    private readonly SemaphoreSlim? _evictionWake;
+    private readonly CancellationTokenSource? _evictionDrainCts;
+    private readonly Task? _evictionDrainTask;
+    // 0 = drain may sleep, 1 = at least one item is queued. Producers flip 0→1 and Release; the
+    // drain resets it to 0 before draining and re-checks after to close the lost-wakeup race.
+    private int _evictionSignal;
+    // Lightweight observability — also used by tests. Never decremented.
+    private long _evictionsQueued;
+    private long _evictionsInlineFallback;
+    private long _evictionsSkippedRetouched;
+    private long _evictionsDispatched;
     private int _nextArenaId;
     private bool _disposed;
+
+    internal long EvictionsQueued => Volatile.Read(ref _evictionsQueued);
+    internal long EvictionsInlineFallback => Volatile.Read(ref _evictionsInlineFallback);
+    internal long EvictionsSkippedRetouched => Volatile.Read(ref _evictionsSkippedRetouched);
+    internal long EvictionsDispatched => Volatile.Read(ref _evictionsDispatched);
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
@@ -53,14 +73,26 @@ public sealed class ArenaManager : IArenaManager
         }
     }
 
-    public ArenaManager(string basePath, PageResidencyTracker pageTracker, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false)
+    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false)
     {
-        ArgumentNullException.ThrowIfNull(pageTracker);
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
         _fadviseOnEviction = fadviseOnEviction;
         Directory.CreateDirectory(basePath);
-        _pageTracker = pageTracker;
+        _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
+
+        // Eviction queue is sized at 10% of the tracker's slot capacity (rounded up to the next
+        // power of two, floored at 64). With the tracker disabled (capacity 0) there are no
+        // evictions to dispatch — skip the ring + drain task entirely so we don't pay for an
+        // idle Task.
+        if (_pageTracker.MaxCapacity > 0)
+        {
+            int ringCapacity = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(64, _pageTracker.MaxCapacity / 10));
+            _evictionRing = new MpmcRingBuffer<long>(ringCapacity);
+            _evictionWake = new SemaphoreSlim(0, int.MaxValue);
+            _evictionDrainCts = new CancellationTokenSource();
+            _evictionDrainTask = Task.Run(() => DrainEvictionsAsync(_evictionDrainCts.Token));
+        }
     }
 
     /// <summary>
@@ -272,7 +304,68 @@ public sealed class ArenaManager : IArenaManager
             arena.Touch(reservation.Offset + subOffset, size);
     }
 
-    public void AdviseDontNeedPage(int arenaId, int pageIdx)
+    public void QueueEviction(int arenaId, int pageIdx)
+    {
+        // Disabled tracker (no ring) — nothing to do; the producer wouldn't even reach here
+        // because TryTouch always returns Hit, but stay defensive for direct callers.
+        if (_evictionRing is null) return;
+
+        long packed = ((long)(uint)arenaId << 32) | (uint)pageIdx;
+        if (_evictionRing.TryEnqueue(packed))
+        {
+            Interlocked.Increment(ref _evictionsQueued);
+            // Wake the drain only on the empty→non-empty edge; subsequent enqueues piggy-back
+            // on the in-flight wake-up.
+            if (Interlocked.Exchange(ref _evictionSignal, 1) == 0)
+                _evictionWake!.Release();
+            return;
+        }
+
+        // Ring full — fall back to inline dispatch so the eviction is not lost. Bursts large
+        // enough to fill 10% of the residency cap should be rare; if seen in practice, raise
+        // the ring fraction or the per-arena budget.
+        Interlocked.Increment(ref _evictionsInlineFallback);
+        DispatchEvictionInline(arenaId, pageIdx);
+    }
+
+    private async Task DrainEvictionsAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                // Reset the signal *before* draining; if a producer enqueues mid-drain it will
+                // flip the flag back to 1 and the post-drain check picks it up.
+                Volatile.Write(ref _evictionSignal, 0);
+                while (_evictionRing!.TryDequeue(out long packed))
+                    DispatchOneEviction(packed);
+
+                if (Volatile.Read(ref _evictionSignal) != 0) continue;
+                await _evictionWake!.WaitAsync(ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Shutdown — drain leftovers happens in Dispose.
+        }
+    }
+
+    private void DispatchOneEviction(long packed)
+    {
+        int arenaId = (int)(packed >> 32);
+        int pageIdx = (int)packed;
+        // Re-check residency: if the page returned to the working set between enqueue and
+        // drain, skip the syscall — punishing it would just force a re-fault on the next read.
+        if (_pageTracker.ContainsPage(arenaId, pageIdx))
+        {
+            Interlocked.Increment(ref _evictionsSkippedRetouched);
+            return;
+        }
+        Interlocked.Increment(ref _evictionsDispatched);
+        DispatchEvictionInline(arenaId, pageIdx);
+    }
+
+    private void DispatchEvictionInline(int arenaId, int pageIdx)
     {
         if (!_arenas.TryGetValue(arenaId, out ArenaFile? arena)) return;
         int pageSize = Environment.SystemPageSize;
@@ -334,13 +427,35 @@ public sealed class ArenaManager : IArenaManager
 
     public void Dispose()
     {
+        // Idempotent — owners higher up may also Dispose us through their own teardown.
         lock (_lock)
         {
+            if (_disposed) return;
             _disposed = true;
+        }
+
+        // Stop the drain task first so it doesn't race with arena disposal below.
+        _evictionDrainCts?.Cancel();
+        try { _evictionWake?.Release(); } catch (ObjectDisposedException) { /* concurrent dispose */ }
+        try { _evictionDrainTask?.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) { /* expected on shutdown */ }
+        catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException)) { /* expected */ }
+
+        // Drain any leftovers synchronously; the syscalls are cheap enough that we'd rather
+        // pay the cost than leave kernel pages cached for a process about to exit.
+        if (_evictionRing is not null)
+            while (_evictionRing.TryDequeue(out long packed))
+                DispatchOneEviction(packed);
+
+        _evictionWake?.Dispose();
+        _evictionDrainCts?.Dispose();
+
+        lock (_lock)
+        {
             foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
                 kv.Value.Dispose();
             _arenas.Clear();
-            // _pageTracker is injected — caller owns disposal.
         }
+        _pageTracker.Dispose();
     }
 }

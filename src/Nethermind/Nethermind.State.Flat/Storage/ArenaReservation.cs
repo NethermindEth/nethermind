@@ -39,35 +39,23 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     /// <summary>
     /// Record a single OS-page access by a reader of this reservation. Records the page in the
-    /// shared <see cref="PageResidencyTracker"/>; on a fresh insertion or displacement, pre-faults
-    /// the local page via <see cref="ArenaFile.PopulateRead"/> directly. On displacement, drops
-    /// the evicted page: same-arena evictions go straight through this reservation's captured
-    /// <see cref="ArenaFile"/> reference (no dictionary lookup), cross-arena evictions fall back
-    /// through <see cref="IArenaManager.AdviseDontNeedPage"/>.
+    /// per-manager <see cref="PageResidencyTracker"/>; on a fresh insertion, pre-faults the
+    /// local page via <see cref="ArenaFile.PopulateRead"/> directly. On a displacement, hands
+    /// the evicted key to <see cref="IArenaManager.QueueEviction"/>, which enqueues it onto an
+    /// MPSC ring drained by a background worker — the actual <c>madvise(MADV_DONTNEED)</c>
+    /// syscall happens off the producer thread.
     /// </summary>
-    /// <remarks>
-    /// The same-arena fast path mirrors <see cref="ArenaFile.AdviseDontNeed"/> only — fadvise
-    /// (when enabled on the manager) only fires on the cross-arena path. The reservation does
-    /// not see the manager's <c>fadviseOnEviction</c> flag, and historically same-arena fadvise
-    /// was never issued; preserving that behavior.
-    /// </remarks>
     internal void TouchPage(int pageIdx)
     {
         TouchOutcome outcome = _arenaManager.PageTracker.TryTouch(ArenaId, pageIdx,
             out int evictedArenaId, out int evictedPageIdx);
         if (outcome == TouchOutcome.Hit) return;
 
-        int pageSize = Environment.SystemPageSize;
-
         // Pre-fault the freshly tracked local page so the next read does not block on a fault.
-        _arenaFile?.PopulateRead((long)pageIdx * pageSize, pageSize);
+        _arenaFile?.PopulateRead((long)pageIdx * Environment.SystemPageSize, Environment.SystemPageSize);
 
-        if (outcome != TouchOutcome.Evicted) return;
-
-        if (evictedArenaId == ArenaId)
-            _arenaFile?.AdviseDontNeed((long)evictedPageIdx * pageSize, pageSize);
-        else
-            _arenaManager.AdviseDontNeedPage(evictedArenaId, evictedPageIdx);
+        if (outcome == TouchOutcome.Evicted)
+            _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
     }
 
     /// <summary>

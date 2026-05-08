@@ -76,8 +76,8 @@ public class LongFinalityIntegrationTests
     [Test]
     public void FullStack_PersistAndQuery_AccountsStorageAndTrieNodes()
     {
-        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096);
-        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096);
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
@@ -125,8 +125,8 @@ public class LongFinalityIntegrationTests
         MemDb catalogDb = new();
 
         // Session 1: persist two snapshots
-        using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096))
-        using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096))
+        using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096))
         using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
@@ -145,8 +145,8 @@ public class LongFinalityIntegrationTests
         }
 
         // Session 2: reload and verify
-        using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096))
-        using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096))
+        using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096))
         using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
@@ -221,8 +221,8 @@ public class LongFinalityIntegrationTests
     [TestCase(500)]
     public void ManySnapshots_PersistAndQuery(int snapshotCount)
     {
-        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
-        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 64 * 1024);
         using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
@@ -243,8 +243,8 @@ public class LongFinalityIntegrationTests
     [Test]
     public async Task FlatDbManager_EndToEnd_WithPersistedSnapshots()
     {
-        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096);
-        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096);
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
@@ -297,8 +297,8 @@ public class LongFinalityIntegrationTests
         MemDb catalogDb = new();
 
         // Session 1: persist snapshots
-        using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096))
-        using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096))
+        using (ArenaManager baseArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager compactedArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096))
         using (PersistedSnapshotRepository repo = new(baseArena1, compactedArena1, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
@@ -311,8 +311,8 @@ public class LongFinalityIntegrationTests
         }
 
         // Session 2: reload and prune
-        using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096))
-        using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096))
+        using (ArenaManager baseArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager compactedArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096))
         using (PersistedSnapshotRepository repo = new(baseArena2, compactedArena2, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
@@ -324,8 +324,8 @@ public class LongFinalityIntegrationTests
         }
 
         // Session 3: verify pruned state persists
-        using (ArenaManager baseArena3 = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096))
-        using (ArenaManager compactedArena3 = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096))
+        using (ArenaManager baseArena3 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
+        using (ArenaManager compactedArena3 = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096))
         using (PersistedSnapshotRepository repo = new(baseArena3, compactedArena3, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
@@ -336,8 +336,8 @@ public class LongFinalityIntegrationTests
     [Test]
     public void EmptySnapshot_PersistsAndLoads()
     {
-        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 4096);
-        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 4096);
+        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 

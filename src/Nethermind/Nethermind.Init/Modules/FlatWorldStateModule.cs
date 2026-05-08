@@ -73,23 +73,20 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
-            // Single shared page tracker — its slot key already namespaces by arenaId
-            // (`(arenaId << 32) | pageIdx`), so one tracker correctly partitions the
-            // configured byte budget between the compacted and base arenas instead of
-            // each arena getting its own full budget.
-            .AddSingleton<PageResidencyTracker>((ctx) =>
-                PageResidencyTracker.FromByteBudget(ctx.Resolve<IFlatDbConfig>().PersistedSnapshotPageCacheBytes))
+            // Each arena owns its own page residency tracker (sized by a per-arena byte budget),
+            // its own eviction ring, and its own background drain task. The shared-tracker
+            // arrangement that preceded this commit is gone.
             .AddSingleton<IArenaManager>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), ctx.Resolve<PageResidencyTracker>(), cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
+                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), cfg.PersistedSnapshotCompactedArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
             })
             .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"), ctx.Resolve<PageResidencyTracker>(), cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
+                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"), cfg.PersistedSnapshotBaseArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
                 IArenaManager compactedArena = ctx.Resolve<IArenaManager>();
                 IDb catalogDb = ctx.Resolve<IColumnsDb<FlatDbColumns>>().GetColumnDb(FlatDbColumns.PersistedSnapshotCatalog);
                 PersistedSnapshotRepository repo = new(baseArena, compactedArena, catalogDb, cfg);

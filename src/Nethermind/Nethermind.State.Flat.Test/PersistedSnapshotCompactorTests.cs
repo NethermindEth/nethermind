@@ -51,8 +51,8 @@ public class PersistedSnapshotCompactorTests
         Directory.CreateDirectory(testDir);
         try
         {
-            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
-            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), 0, maxArenaSize: 64 * 1024);
             using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 
@@ -136,10 +136,12 @@ public class PersistedSnapshotCompactorTests
         {
             // Disabled tracker on the base arena (we don't care about source-side residency);
             // a real, sized tracker on the compacted arena so we can observe what
-            // WarmAddressIndex registers after AdviseDontNeed.
-            using PageResidencyTracker compactedTracker = new(maxCapacity: 1024);
-            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
-            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), compactedTracker, maxArenaSize: 64 * 1024);
+            // WarmAddressIndex registers after AdviseDontNeed. Budget = 1024 OS pages so the
+            // tracker materialises at the expected capacity regardless of system page size.
+            long compactedBudget = 1024L * Environment.SystemPageSize;
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), pageCacheBytes: 0, maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), pageCacheBytes: compactedBudget, maxArenaSize: 64 * 1024);
+            PageResidencyTracker compactedTracker = compactedArena.PageTracker;
             using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 
@@ -395,8 +397,8 @@ public class PersistedSnapshotCompactorTests
         Directory.CreateDirectory(testDir);
         try
         {
-            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
-            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), new PageResidencyTracker(0), maxArenaSize: 64 * 1024);
+            using ArenaManager baseArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+            using ArenaManager compactedArena = new(Path.Combine(testDir, "arenas", "compacted"), 0, maxArenaSize: 64 * 1024);
             using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 
