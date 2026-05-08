@@ -61,7 +61,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max arena file size in bytes", DefaultValue = "1073741824")]
     long ArenaFileSizeBytes { get; set; }
 
-    [ConfigItem(Description = "Per-arena page-cache budget (bytes) for the base persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker for this arena.", DefaultValue = "8589934592")]
+    [ConfigItem(Description = "Per-arena page-cache budget (bytes) for the base persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker for this arena.", DefaultValue = "1073741824")]
     long PersistedSnapshotBaseArenaPageCacheBytes { get; set; }
 
     [ConfigItem(Description = "Per-arena page-cache budget (bytes) for the compacted persisted-snapshot arena. Backs the PageResidencyTracker that drives madvise(DONTNEED) eviction on mmap'd arena files. 0 disables the tracker for this arena.", DefaultValue = "8589934592")]
