@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
@@ -403,6 +404,6 @@ public class NodeHealthServiceTests
                 _capabilities[capability] = RpcCapabilityOptions.None;
         }
 
-        public IReadOnlyDictionary<string, RpcCapabilityOptions> GetEngineCapabilities() => _capabilities;
+        public FrozenDictionary<string, RpcCapabilityOptions> GetEngineCapabilities() => _capabilities.ToFrozenDictionary();
     }
 }

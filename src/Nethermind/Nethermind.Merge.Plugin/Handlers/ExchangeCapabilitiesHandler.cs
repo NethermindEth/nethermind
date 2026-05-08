@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -24,7 +25,7 @@ public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyLi
 
     public ResultWrapper<IReadOnlyList<string>> Handle(HashSet<string> methods)
     {
-        IReadOnlyDictionary<string, RpcCapabilityOptions> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
+        FrozenDictionary<string, RpcCapabilityOptions> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
 
         List<string>? enabled = _cachedEnabled is null ? new List<string>(capabilities.Count) : null;
         List<string>? missing = null;

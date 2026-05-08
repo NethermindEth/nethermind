@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -12,23 +13,24 @@ namespace Nethermind.HealthChecks;
 
 public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCapabilitiesProvider
 {
-    // Tables are built once on first access and never mutated afterwards, so a plain
-    // Dictionary suffices — Dictionary supports concurrent reads when no writer is
-    // active. The Build call itself is benign-racy: two callers may both populate
-    // local Dictionaries, but Build is pure and the last assignment wins.
-    private Dictionary<string, RpcCapabilityOptions>? _jsonRpc;
-    private Dictionary<string, RpcCapabilityOptions>? _ssz;
-    private Dictionary<string, RpcCapabilityOptions>? _combined;
+    // Tables are built once on first access and never mutated afterwards. FrozenDictionary
+    // pays a higher build cost for faster reads — fine because each call to GetXxx hits
+    // the cached frozen instance and exchangeCapabilities iterates the full table.
+    // The Build call itself is benign-racy: two callers may both populate local tables,
+    // but Build is pure and the last assignment wins.
+    private FrozenDictionary<string, RpcCapabilityOptions>? _jsonRpc;
+    private FrozenDictionary<string, RpcCapabilityOptions>? _ssz;
+    private FrozenDictionary<string, RpcCapabilityOptions>? _combined;
 
     /// <summary>JSON-RPC method capabilities only (e.g. <c>engine_newPayloadV1</c>).</summary>
-    public IReadOnlyDictionary<string, RpcCapabilityOptions> GetJsonRpcCapabilities()
+    public FrozenDictionary<string, RpcCapabilityOptions> GetJsonRpcCapabilities()
     {
         EnsureBuilt();
         return _jsonRpc!;
     }
 
     /// <summary>SSZ-REST path capabilities only (e.g. <c>"POST /engine/v1/payloads"</c>).</summary>
-    public IReadOnlyDictionary<string, RpcCapabilityOptions> GetSszRestPaths()
+    public FrozenDictionary<string, RpcCapabilityOptions> GetSszRestPaths()
     {
         EnsureBuilt();
         return _ssz!;
@@ -36,7 +38,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
 
     /// <summary>Union of JSON-RPC capabilities and SSZ-REST paths — what
     /// <c>engine_exchangeCapabilities</c> advertises in a single response per spec.</summary>
-    public IReadOnlyDictionary<string, RpcCapabilityOptions> GetEngineCapabilities()
+    public FrozenDictionary<string, RpcCapabilityOptions> GetEngineCapabilities()
     {
         if (_combined is not null) return _combined;
         EnsureBuilt();
@@ -44,15 +46,15 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         Dictionary<string, RpcCapabilityOptions> combined = new(_jsonRpc!.Count + _ssz!.Count);
         foreach ((string k, RpcCapabilityOptions v) in _jsonRpc) combined[k] = v;
         foreach ((string k, RpcCapabilityOptions v) in _ssz) combined[k] = v;
-        return _combined = combined;
+        return _combined = combined.ToFrozenDictionary();
     }
 
     private void EnsureBuilt()
     {
         if (_jsonRpc is not null) return;
         Build(specProvider.GetFinalSpec(), out Dictionary<string, RpcCapabilityOptions> json, out Dictionary<string, RpcCapabilityOptions> ssz);
-        _jsonRpc = json;
-        _ssz = ssz;
+        _jsonRpc = json.ToFrozenDictionary();
+        _ssz = ssz.ToFrozenDictionary();
     }
 
     /// <summary>
