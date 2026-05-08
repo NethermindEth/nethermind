@@ -35,6 +35,3 @@ public class SszVectorAttribute(int length) : Attribute
 
 [AttributeUsage(AttributeTargets.Property)]
 public class SszProgressiveBitlistAttribute : Attribute;
-
-[AttributeUsage(AttributeTargets.Property)]
-public class SszIgnoreAttribute : Attribute;

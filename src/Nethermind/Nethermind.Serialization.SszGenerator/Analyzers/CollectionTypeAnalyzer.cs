@@ -3,7 +3,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Nethermind.Serialization.Ssz;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
@@ -15,7 +14,7 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor Rule = new(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true);
 
-    private static readonly string SszIgnoreAttributeFullName = typeof(SszIgnoreAttribute).FullName!;
+    private const string SszIgnoreAttributeFullName = "Nethermind.Serialization.Ssz.SszIgnoreAttribute";
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
