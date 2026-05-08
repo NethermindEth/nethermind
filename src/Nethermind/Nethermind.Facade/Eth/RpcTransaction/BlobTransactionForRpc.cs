@@ -39,6 +39,13 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     {
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
+
+        if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
+        {
+            Blobs = wrapper.Blobs;
+            Commitments = wrapper.Commitments;
+            Proofs = wrapper.Proofs;
+        }
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, long? gasCap = null, IReleaseSpec? spec = null)
