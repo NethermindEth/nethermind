@@ -49,7 +49,7 @@ public readonly struct NewPayloadDescriptorV3 : INewPayloadVersion<NewPayloadV3R
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV3RequestWire wire)
         => engine.engine_newPayloadV3(
             wire.ExecutionPayload.Unwrap(),
-            SszCodec.HashesFromWire(wire.ExpectedBlobVersionedHashes),
+            wire.ExpectedBlobVersionedHashes.ToBytesArrays(),
             wire.ParentBeaconBlockRoot);
 }
 
@@ -59,9 +59,9 @@ public readonly struct NewPayloadDescriptorV4 : INewPayloadVersion<NewPayloadV4R
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV4RequestWire wire)
         => engine.engine_newPayloadV4(
             wire.ExecutionPayload.Unwrap(),
-            SszCodec.HashesFromWire(wire.ExpectedBlobVersionedHashes),
+            wire.ExpectedBlobVersionedHashes.ToBytesArrays(),
             wire.ParentBeaconBlockRoot,
-            SszCodec.ExecutionRequestsFromWire(wire.ExecutionRequests));
+            wire.ExecutionRequests.ToExecutionRequests());
 }
 
 public readonly struct NewPayloadDescriptorV5 : INewPayloadVersion<NewPayloadV5RequestWire>
@@ -70,9 +70,9 @@ public readonly struct NewPayloadDescriptorV5 : INewPayloadVersion<NewPayloadV5R
     public static Task<ResultWrapper<PayloadStatusV1>> Call(IEngineRpcModule engine, in NewPayloadV5RequestWire wire)
         => engine.engine_newPayloadV5(
             wire.ExecutionPayload.Unwrap(),
-            SszCodec.HashesFromWire(wire.ExpectedBlobVersionedHashes),
+            wire.ExpectedBlobVersionedHashes.ToBytesArrays(),
             wire.ParentBeaconBlockRoot,
-            SszCodec.ExecutionRequestsFromWire(wire.ExecutionRequests));
+            wire.ExecutionRequests.ToExecutionRequests());
 }
 
 public interface IForkchoiceUpdatedVersion<TWire> where TWire : struct, ISszCodec<TWire>

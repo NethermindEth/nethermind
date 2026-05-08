@@ -219,8 +219,8 @@ public class SszCodecTests
 
         NewPayloadV4RequestWire.Decode(encoded, out NewPayloadV4RequestWire decoded);
         ExecutionPayloadV3 payload = decoded.ExecutionPayload.Unwrap();
-        byte[]?[] hashes = SszCodec.HashesFromWire(decoded.ExpectedBlobVersionedHashes);
-        byte[][]? requests = SszCodec.ExecutionRequestsFromWire(decoded.ExecutionRequests);
+        byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
+        byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
         payload.BlockNumber.Should().Be(100);
         payload.GasLimit.Should().Be(2_000_000);
@@ -254,8 +254,8 @@ public class SszCodecTests
 
         NewPayloadV5RequestWire.Decode(encoded, out NewPayloadV5RequestWire decoded);
         ExecutionPayloadV4 payload = decoded.ExecutionPayload.Unwrap();
-        byte[]?[] hashes = SszCodec.HashesFromWire(decoded.ExpectedBlobVersionedHashes);
-        byte[][]? requests = SszCodec.ExecutionRequestsFromWire(decoded.ExecutionRequests);
+        byte[]?[] hashes = decoded.ExpectedBlobVersionedHashes.ToBytesArrays();
+        byte[][]? requests = decoded.ExecutionRequests.ToExecutionRequests();
 
         payload.BlockNumber.Should().Be(100);
         payload.Timestamp.Should().Be(1_700_000_100);
