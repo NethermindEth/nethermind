@@ -867,7 +867,7 @@ public partial class EngineModuleTests
             {
                 SortedList<uint, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
                 modifiedAccounts[TestItem.AddressF] = new AccountChanges(
-                    TestItem.AddressF, new(), new SortedSet<UInt256>(), new(), fakeNonce, new());
+                    TestItem.AddressF, [], [], [], fakeNonce, []);
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
@@ -894,7 +894,7 @@ public partial class EngineModuleTests
             storageChanges.Add(sc.Key, new SlotChanges(sc.Key, changes));
         }
 
-        SortedSet<UInt256> storageReads = new(ac.StorageReads);
+        HashSet<UInt256> storageReads = new(ac.StorageReads);
 
         SortedList<uint, BalanceChange> balanceChanges = new();
         foreach (BalanceChange bc in ac.BalanceChanges)
@@ -911,6 +911,6 @@ public partial class EngineModuleTests
         foreach (CodeChange cc in ac.CodeChanges)
             codeChanges.Add(cc.Index, cc);
 
-        return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
+        return new AccountChanges(ac.Address, storageChanges.Values.ToArray(), storageReads.ToHashSet(), balanceChanges, nonceChanges, codeChanges);
     }
 }

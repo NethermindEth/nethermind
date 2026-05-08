@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -601,17 +602,41 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
             return sortedAccountChanges;
         }
 
-        if (_accountChanges.Count == 0)
-        {
-            _sortedAccountChanges = [];
-            return _sortedAccountChanges;
-        }
-
-        sortedAccountChanges = new AccountChanges[_accountChanges.Count];
-        _accountChanges.Values.CopyTo(sortedAccountChanges, 0);
-        Array.Sort(sortedAccountChanges, static (left, right) => left.Address.CompareTo(right.Address));
+        sortedAccountChanges = BuildSortedAccountChanges();
         _sortedAccountChanges = sortedAccountChanges;
         return sortedAccountChanges;
+    }
+
+    // Build the address-sorted account view via parallel-array sort. The previous
+    // implementation called Array.Sort with a Comparison<AccountChanges> delegate over
+    // the class array, which paid a virtual dispatch per compare and chased through
+    // ~5k scattered references. Lifting Address into a contiguous pooled key array and
+    // sorting via MemoryExtensions.Sort<TKey, TValue> dispatches directly to
+    // Address.IComparable<Address>.CompareTo (inlinable, struct-friendly) and lets the
+    // sort touch only the packed key bytes for comparisons.
+    private AccountChanges[] BuildSortedAccountChanges()
+    {
+        int count = _accountChanges.Count;
+        if (count == 0)
+        {
+            return [];
+        }
+
+        AccountChanges[] values = new AccountChanges[count];
+        Address[] keys = ArrayPool<Address>.Shared.Rent(count);
+
+        int i = 0;
+        foreach (AccountChanges acc in _accountChanges.Values)
+        {
+            keys[i] = acc.Address;
+            values[i] = acc;
+            i++;
+        }
+
+        keys.AsSpan(0, count).Sort(values.AsSpan(0, count));
+        ArrayPool<Address>.Shared.Return(keys);
+
+        return values;
     }
 
     public static ChangeAtIndex CreateChangeAtIndex(AccountChanges accountChanges, uint index) =>

@@ -98,7 +98,7 @@ public class BlockAccessListManager(
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggestedBlock.BlockAccessList, suggestedBlock.Transactions.Length, addressIndex);
-                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex);
                 _suggestedChargeableStorageReads = CountChargeableStorageReads(suggestedBlock.BlockAccessList);
             }
             _gasRemaining = suggestedBlock.GasUsed;

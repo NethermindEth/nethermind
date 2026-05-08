@@ -17,7 +17,8 @@ namespace Nethermind.Core.BlockAccessLists;
 /// kept outside the append-only block-access-index lane.
 /// </summary>
 [JsonConverter(typeof(IndexedChangesJsonConverterFactory))]
-public sealed class IndexedChanges<T> where T : struct, IIndexedChange
+public sealed class IndexedChanges<T> : IEnumerable<T>
+    where T : struct, IIndexedChange
 {
     private bool _hasPrestate;
     private T _prestate;
@@ -61,7 +62,7 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
         }
     }
 
-    public static IndexedChanges<T> FromSortedList(SortedList<uint, T> changes)
+    public static implicit operator IndexedChanges<T>(SortedList<uint, T> changes)
     {
         IndexedChanges<T> indexed = new(changes.Count);
         IList<T> values = changes.Values;
@@ -329,7 +330,11 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
 
     public Enumerator GetEnumerator() => new(this);
 
-    internal ReadOnlySpan<T> BlockAccessChanges => CollectionsMarshal.AsSpan(_changes);
+    internal ReadOnlySpan<T> BlockAccessChanges
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => CollectionsMarshal.AsSpan(_changes);
+    }
 
     internal T GetAt(int index)
     {
@@ -425,6 +430,8 @@ public sealed class IndexedChanges<T> where T : struct, IIndexedChange
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowIndexOutOfRange() => throw new ArgumentOutOfRangeException("index");
+    IEnumerator<T> IEnumerable<T>.GetEnumerator() => ((IEnumerable<T>)_changes).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable)_changes).GetEnumerator();
 
     public struct Enumerator
     {

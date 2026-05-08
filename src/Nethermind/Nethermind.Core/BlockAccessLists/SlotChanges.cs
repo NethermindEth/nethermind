@@ -14,7 +14,7 @@ public record SlotChanges(UInt256 Key, IndexedChanges<StorageChange> Changes)
 {
     public SlotChanges(UInt256 slot) : this(slot, new IndexedChanges<StorageChange>()) { }
 
-    public SlotChanges(UInt256 slot, SortedList<uint, StorageChange> changes) : this(slot, IndexedChanges<StorageChange>.FromSortedList(changes)) { }
+    public SlotChanges(UInt256 slot, SortedList<uint, StorageChange> changes) : this(slot, (IndexedChanges<StorageChange>)changes) { }
 
     public virtual bool Equals(SlotChanges? other)
     {

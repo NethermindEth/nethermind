@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -472,6 +474,71 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void GetLength_block_access_list_does_not_sort_account_changes()
+    {
+        AccountChanges accountChangesA = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
+        AccountChanges accountChangesB = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
+        SortByAddress(ref accountChangesA, ref accountChangesB);
+        BlockAccessList blockAccessList = new();
+        blockAccessList.AddAccountChanges(accountChangesB, accountChangesA);
+
+        FieldInfo sortedAccountChangesField = PrivateField<BlockAccessList>("_sortedAccountChanges");
+
+        BlockAccessListDecoder.Instance.GetLength(blockAccessList, RlpBehaviors.None);
+
+        Assert.That(sortedAccountChangesField.GetValue(blockAccessList), Is.Null);
+
+        Rlp.Encode(blockAccessList, RlpBehaviors.None);
+
+        Assert.That(sortedAccountChangesField.GetValue(blockAccessList), Is.Not.Null);
+    }
+
+    [Test]
+    public void GetLength_account_changes_does_not_sort_storage_changes()
+    {
+        AccountChanges accountChanges = new(TestItem.AddressA);
+        accountChanges.GetOrAddSlotChanges(9u).AddStorageChange(new StorageChange(0u, 0x99));
+        accountChanges.GetOrAddSlotChanges(1u).AddStorageChange(new StorageChange(0u, 0x11));
+
+        FieldInfo sortedStorageChangesField = PrivateField<AccountChanges>("_sortedStorageChanges");
+
+        AccountChangesDecoder.Instance.GetLength(accountChanges, RlpBehaviors.None);
+
+        Assert.That(sortedStorageChangesField.GetValue(accountChanges), Is.Null);
+
+        Rlp.Encode(accountChanges, RlpBehaviors.None);
+
+        Assert.That(sortedStorageChangesField.GetValue(accountChanges), Is.Not.Null);
+    }
+
+    [Test]
+    public void EncodeToBytes_matches_stream_encoder()
+    {
+        StorageChange storageChange = new(1, 0x11);
+        AccountChanges accountChangesA = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithStorageChanges(0x22, storageChange)
+            .WithStorageReads(0x33, 0x44)
+            .WithBalanceChanges([new(1, 0x55)])
+            .WithNonceChanges([new(1, 0x66)])
+            .WithCodeChanges(new CodeChange(1, [0x77]))
+            .TestObject;
+        AccountChanges accountChangesB = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
+        SortByAddress(ref accountChangesA, ref accountChangesB);
+        BlockAccessList blockAccessList = new();
+        blockAccessList.AddAccountChanges(accountChangesB, accountChangesA);
+
+        int length = BlockAccessListDecoder.Instance.GetLength(blockAccessList, RlpBehaviors.None);
+        RlpStream stream = new(length);
+        BlockAccessListDecoder.Instance.Encode(stream, blockAccessList, RlpBehaviors.None);
+
+        byte[] direct = BlockAccessListDecoder.Instance.EncodeToBytes(blockAccessList, RlpBehaviors.None);
+
+        Assert.That(direct, Is.EqualTo(stream.Data.ToArray()));
+        Assert.That(Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes, Is.EqualTo(direct));
+    }
+
+    [Test]
     public void Encoding_account_changes_orders_unsorted_generated_storage_changes()
     {
         AccountChanges accountChanges = new(TestItem.AddressA);
@@ -503,7 +570,7 @@ public class BlockAccessListDecoderTests
         };
         AccountChanges accountChanges = new(
             TestItem.AddressA,
-            storageChanges,
+            storageChanges.Values.ToArray(),
             [],
             [],
             [],
@@ -519,20 +586,16 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_account_changes_with_unsorted_storage_reads_throws()
     {
-        SortedSet<UInt256> storageReads = new(DescendingComparer<UInt256>())
-        {
-            UInt256.One,
-            new UInt256(2)
-        };
-        AccountChanges accountChanges = new(
+        // Encode reads in descending order on the wire to exercise the decoder's
+        // ascending-order check. The production encoder always emits sorted reads,
+        // so we go directly through the test helper that takes the raw array.
+        byte[] encoded = EncodeAccountChanges(
             TestItem.AddressA,
             [],
-            storageReads,
+            [new UInt256(2), UInt256.One],
             [],
             [],
             []);
-
-        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
 
         Assert.That(
             () => Rlp.Decode<AccountChanges>(encoded, RlpBehaviors.None),
@@ -834,6 +897,10 @@ public class BlockAccessListDecoderTests
             encoder.Encode(stream, items[i], RlpBehaviors.None);
         }
     }
+
+    private static FieldInfo PrivateField<T>(string name) =>
+        typeof(T).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
+        ?? throw new MissingFieldException(typeof(T).FullName, name);
 
     private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>
     {
