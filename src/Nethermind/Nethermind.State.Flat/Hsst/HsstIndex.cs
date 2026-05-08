@@ -20,12 +20,11 @@ public readonly ref struct HsstIndex
     public int TotalSize => _inner.TotalSize;
 
     /// <summary>
-    /// Number of leading bytes shared by every key in this node. <see cref="GetKey"/>
-    /// returns the per-entry suffix; the full stored key is the queried key's first
-    /// <see cref="CommonKeyPrefixLen"/> bytes followed by the suffix. Zero when the node
-    /// was written without the common-prefix optimization.
+    /// Bytes shared by every key in this node. <see cref="GetKey"/> returns the per-entry
+    /// suffix; the full stored key is <see cref="CommonKeyPrefix"/> followed by the suffix.
+    /// Empty when the node was written without the common-prefix optimization.
     /// </summary>
-    public int CommonKeyPrefixLen => _inner.CommonKeyPrefixLen;
+    public ReadOnlySpan<byte> CommonKeyPrefix => _inner.CommonKeyPrefix;
 
     public static HsstIndex ReadFromStart(ReadOnlySpan<byte> data, int nodeStart) =>
         new(BSearchIndexReader.ReadFromStart(data, nodeStart));
@@ -34,7 +33,7 @@ public readonly ref struct HsstIndex
     public ReadOnlySpan<byte> GetValue(int index) => _inner.GetValue(index);
     public ulong GetUInt64Value(int index) => _inner.GetUInt64Value(index);
     public int FindFloorIndex(ReadOnlySpan<byte> key) => _inner.FindFloorIndex(key);
-    public int GetFullKey(int index, ReadOnlySpan<byte> queryKey, Span<byte> dest) => _inner.GetFullKey(index, queryKey, dest);
+    public int GetFullKey(int index, Span<byte> dest) => _inner.GetFullKey(index, dest);
 
     public bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue) =>
         _inner.TryGetFloor(key, out floorKey, out floorValue);

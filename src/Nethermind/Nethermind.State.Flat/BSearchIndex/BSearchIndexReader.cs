@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///
 /// Layout (low → high address):
 ///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][ValueSize: u8][BaseOffset: 6-byte LE]
-///   [CommonPrefixLen: u8]?     (only if Flags bit6 set; the prefix bytes themselves are NOT stored)
+///   [CommonPrefixLen: u8][CommonPrefix bytes]?     (only if Flags bit6 set)
 ///   [Keys section][Values section]
 ///
 /// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=reserved, bit6=HasCommonKeyPrefix.
@@ -30,27 +30,23 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///   1 = Uniform: packed fixed-width entries
 ///   2 = UniformWithLen: fixed slot size, last byte = actual length
 ///
-/// When HasCommonKeyPrefix is set, every stored key equals (P || GetKey(i)) where P is
-/// the implied common prefix; the keys section holds suffixes only. P's BYTES are never
-/// stored — readers obtain them by slicing the queried key's first <see cref="CommonKeyPrefixLen"/>
-/// bytes. This is sound for non-root nodes because the descent path through ancestor
-/// separators guarantees the queried key shares that many leading bytes with every
-/// stored key. The root must therefore be written without the prefix optimization.
+/// When HasCommonKeyPrefix is set, every stored key equals (CommonKeyPrefix || GetKey(i));
+/// the keys section holds suffixes only.
 /// </summary>
 public readonly ref struct BSearchIndexReader
 {
     private readonly IndexMetadata _metadata;
     private readonly ReadOnlySpan<byte> _values;
     private readonly ReadOnlySpan<byte> _keys;
-    private readonly int _commonKeyPrefixLen;
+    private readonly ReadOnlySpan<byte> _commonKeyPrefix;
     private readonly int _totalSize;
 
-    private BSearchIndexReader(IndexMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, int commonKeyPrefixLen, int totalSize)
+    private BSearchIndexReader(IndexMetadata metadata, ReadOnlySpan<byte> values, ReadOnlySpan<byte> keys, ReadOnlySpan<byte> commonKeyPrefix, int totalSize)
     {
         _metadata = metadata;
         _values = values;
         _keys = keys;
-        _commonKeyPrefixLen = commonKeyPrefixLen;
+        _commonKeyPrefix = commonKeyPrefix;
         _totalSize = totalSize;
     }
 
@@ -61,12 +57,11 @@ public readonly ref struct BSearchIndexReader
     public int TotalSize => _totalSize;
 
     /// <summary>
-    /// Number of leading bytes shared by every stored key. Zero when the node was written
-    /// without the common-prefix optimization. The bytes themselves are NOT stored — the
-    /// descent path forces the queried key to share that many leading bytes, so the read
-    /// path uses <c>K[..CommonKeyPrefixLen]</c> as the implied prefix.
+    /// Bytes shared by every stored key. Empty when the node was written without the
+    /// common-prefix optimization. Stored keys equal <see cref="CommonKeyPrefix"/> followed
+    /// by <see cref="GetKey"/>(i).
     /// </summary>
-    public int CommonKeyPrefixLen => _commonKeyPrefixLen;
+    public ReadOnlySpan<byte> CommonKeyPrefix => _commonKeyPrefix;
 
     /// <summary>
     /// Read an index block forward from <paramref name="nodeStart"/> (inclusive start position).
@@ -92,11 +87,13 @@ public readonly ref struct BSearchIndexReader
                          | ((ulong)bo[5] << 40);
         pos += 12;
 
-        int commonKeyPrefixLen = 0;
+        ReadOnlySpan<byte> commonKeyPrefix = default;
         if ((flags & 0x40) != 0)
         {
-            commonKeyPrefixLen = data[pos];
+            int prefixLen = data[pos];
             pos += 1;
+            commonKeyPrefix = data.Slice(pos, prefixLen);
+            pos += prefixLen;
         }
 
         IndexMetadata metadata = new()
@@ -118,7 +115,7 @@ public readonly ref struct BSearchIndexReader
             metadata,
             data.Slice(valuesStart, valueSectionSize),
             data.Slice(keysStart, keySectionSize),
-            commonKeyPrefixLen,
+            commonKeyPrefix,
             totalSize);
     }
 
@@ -193,16 +190,32 @@ public readonly ref struct BSearchIndexReader
     }
 
     /// <summary>
-    /// Strip the implied common-key-prefix bytes from <paramref name="key"/>. The descent
-    /// path forces <paramref name="key"/> to be at least <see cref="_commonKeyPrefixLen"/>
-    /// bytes long and to share that many leading bytes with every stored key — callers
-    /// that violate this contract (e.g. a query that bypasses descent and hits a non-root
-    /// node directly) will get a residual whose suffix bytes do not correspond to the
-    /// stored keys' suffixes.
+    /// Strip the common key prefix from <paramref name="key"/>. Returns the residual span
+    /// to binary-search against suffixes, or signals via <paramref name="shortcutResult"/>
+    /// that the answer is determined entirely by the prefix relationship.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ReadOnlySpan<byte> StripCommonPrefix(ReadOnlySpan<byte> key) =>
-        _commonKeyPrefixLen == 0 ? key : key[_commonKeyPrefixLen..];
+    private bool TryStripCommonPrefix(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> residual, out int shortcutResult)
+    {
+        if (_commonKeyPrefix.Length == 0)
+        {
+            residual = key;
+            shortcutResult = 0;
+            return true;
+        }
+        if (key.StartsWith(_commonKeyPrefix))
+        {
+            residual = key[_commonKeyPrefix.Length..];
+            shortcutResult = 0;
+            return true;
+        }
+        // key does not start with prefix — relationship to every stored key is fixed.
+        residual = default;
+        shortcutResult = key.SequenceCompareTo(_commonKeyPrefix) < 0
+            ? -1                       // key < prefix ≤ every stored key → no floor
+            : _metadata.KeyCount - 1;  // key > prefix && !StartsWith(prefix) → floor = last
+        return false;
+    }
 
     /// <summary>
     /// Runtime toggle: when true, FindFloorIndex uses branchless binary search variants
@@ -219,10 +232,11 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int FindFloorIndex(ReadOnlySpan<byte> key)
     {
+        if (!TryStripCommonPrefix(key, out ReadOnlySpan<byte> q, out int shortcut))
+            return shortcut;
+
         int count = _metadata.KeyCount;
         if (count == 0) return -1;
-        if (key.Length < _commonKeyPrefixLen) return -1;
-        ReadOnlySpan<byte> q = StripCommonPrefix(key);
 
         // q is the search key with CommonKeyPrefix stripped; _keys holds the matching
         // stripped separators, so the lexicographic compare is consistent.
@@ -249,13 +263,13 @@ public readonly ref struct BSearchIndexReader
     /// <summary>
     /// Find the largest entry whose key is &lt;= searchKey (floor lookup).
     /// Returns true and sets floorKey/floorValue if found. <paramref name="floorKey"/> is
-    /// the per-entry suffix; the full stored key is <c>key[..CommonKeyPrefixLen]</c>
-    /// followed by <paramref name="floorKey"/>.
+    /// the per-entry suffix; the full stored key is <see cref="CommonKeyPrefix"/> followed
+    /// by <paramref name="floorKey"/>.
     /// </summary>
     public bool TryGetFloor(ReadOnlySpan<byte> key, out ReadOnlySpan<byte> floorKey, out ReadOnlySpan<byte> floorValue)
     {
         // FindFloorIndex handles both the empty-node early-return and the
-        // common-prefix strip + KeyType dispatch.
+        // CommonKeyPrefix strip + KeyType dispatch.
         int result = FindFloorIndex(key);
         if (result < 0)
         {
@@ -390,25 +404,17 @@ public readonly ref struct BSearchIndexReader
     }
 
     /// <summary>
-    /// Copy the full key (implied common prefix + per-entry suffix) for entry
-    /// <paramref name="index"/> into <paramref name="dest"/>. The prefix bytes are taken
-    /// from <paramref name="queryKey"/> — caller must supply the same key used to descend
-    /// to this node so the prefix is structurally guaranteed to match. Returns the total
-    /// number of bytes written.
+    /// Copy the full key (common prefix + per-entry suffix) for entry <paramref name="index"/>
+    /// into <paramref name="dest"/>. Returns the total number of bytes written.
     /// </summary>
-    public int GetFullKey(int index, ReadOnlySpan<byte> queryKey, Span<byte> dest)
+    public int GetFullKey(int index, Span<byte> dest)
     {
         ReadOnlySpan<byte> suffix = GetKey(index);
-        int total = _commonKeyPrefixLen + suffix.Length;
+        int total = _commonKeyPrefix.Length + suffix.Length;
         if (dest.Length < total)
             throw new ArgumentException("Destination too small for full key", nameof(dest));
-        if (_commonKeyPrefixLen > 0)
-        {
-            if (queryKey.Length < _commonKeyPrefixLen)
-                throw new ArgumentException("Query key shorter than common-prefix length", nameof(queryKey));
-            queryKey[.._commonKeyPrefixLen].CopyTo(dest);
-        }
-        suffix.CopyTo(dest[_commonKeyPrefixLen..]);
+        _commonKeyPrefix.CopyTo(dest);
+        suffix.CopyTo(dest[_commonKeyPrefix.Length..]);
         return total;
     }
 
