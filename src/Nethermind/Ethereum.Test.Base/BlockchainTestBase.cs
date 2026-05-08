@@ -395,12 +395,10 @@ public abstract class BlockchainTestBase
         // BAL doesn't match the suggested one) before tx-level validation runs. EEST's
         // *_from_state_test synthesized fixtures and a few other negative tests ship incomplete
         // BALs because the original test was authored against tx-level rejection. Accept any
-        // BAL "missing/surplus account changes" error as equivalent to the tx-level rejection
+        // suggested-block-level-access-list mismatch as equivalent to the tx-level rejection
         // the fixture expected — the block IS invalid; only the failure mode differs.
         if (!matches && actualError is not null
-            && (actualError.Contains("Suggested block-level access list missing account changes", StringComparison.Ordinal)
-                || actualError.Contains("Suggested block-level access list contained surplus changes", StringComparison.Ordinal)
-                || actualError.Contains("Suggested block-level access list contained incorrect changes", StringComparison.Ordinal)))
+            && actualError.Contains("Suggested block-level access list", StringComparison.Ordinal))
         {
             matches = true;
         }

@@ -7,11 +7,10 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class StorageChangeDecoder : IndexedChangeDecoder<StorageChange>
 {
-    private static StorageChangeDecoder? _instance;
-    public static StorageChangeDecoder Instance => _instance ??= new();
+    public static readonly StorageChangeDecoder Instance = new();
 
     protected override StorageChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
-        => new(ctx.DecodeUInt(), ctx.DecodeUInt256());
+        => new(ctx.DecodeUInt(), ctx.DecodeEvmWord());
 
     protected override void EncodeValue(RlpStream stream, StorageChange item)
         => stream.Encode(item.Value);

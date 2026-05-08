@@ -398,11 +398,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch? batch = null;
             do
             {
-                batch = BuildNewBatch(requestSize);
-                if (batch is not null)
-                {
-                    batch = ProcessPersistedPortion(batch);
-                }
+                batch = ProcessPersistedPortion(BuildNewBatch(requestSize));
 
                 if (batch is null)
                 {
@@ -566,8 +562,10 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         /// <param name="batch"></param>
         /// <returns></returns>
-        private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch batch)
+        private HeadersSyncBatch? ProcessPersistedPortion(HeadersSyncBatch? batch)
         {
+            if (batch is null) return null;
+
             ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(batch.EndNumber);
             // Don't worry about fork — `InsertHeaders` will check for fork and retry if not on the right fork.
             Hash256? seedHash = level?.BlockInfos is { Length: > 0 } infos ? infos[0].BlockHash : null;

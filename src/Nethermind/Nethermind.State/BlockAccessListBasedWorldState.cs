@@ -81,7 +81,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         CheckInitialized();
         ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);

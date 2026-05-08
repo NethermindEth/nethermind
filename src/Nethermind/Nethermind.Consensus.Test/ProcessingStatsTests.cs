@@ -24,22 +24,7 @@ public class ProcessingStatsTests
         {
             ProcessingStats processingStats = CreateProcessingStats(out TaskCompletionSource<BlockStatistics> completion);
 
-            BlockHeader baseBlock = Build.A.BlockHeader
-                .WithNumber(0)
-                .WithStateRoot(TestItem.KeccakA)
-                .TestObject;
-            Block block1 = Build.A.Block
-                .WithParent(baseBlock)
-                .WithGasUsed(2_000_000)
-                .WithStateRoot(TestItem.KeccakB)
-                .WithTransactions(new Transaction(), new Transaction())
-                .TestObject;
-            Block block2 = Build.A.Block
-                .WithParent(block1)
-                .WithGasUsed(3_000_000)
-                .WithStateRoot(TestItem.KeccakC)
-                .WithTransactions(new Transaction())
-                .TestObject;
+            (BlockHeader baseBlock, Block block1, Block block2) = BuildBlockTrio();
 
             processingStats.UpdateStats([block1, block2], baseBlock, 500_000);
 
@@ -65,22 +50,7 @@ public class ProcessingStatsTests
             TestProcessingStats processingStats = CreateTestProcessingStats(out TaskCompletionSource<BlockStatistics> completion);
             processingStats.Start();
 
-            BlockHeader baseBlock = Build.A.BlockHeader
-                .WithNumber(0)
-                .WithStateRoot(TestItem.KeccakA)
-                .TestObject;
-            Block block1 = Build.A.Block
-                .WithParent(baseBlock)
-                .WithGasUsed(2_000_000)
-                .WithStateRoot(TestItem.KeccakB)
-                .WithTransactions(new Transaction(), new Transaction())
-                .TestObject;
-            Block block2 = Build.A.Block
-                .WithParent(block1)
-                .WithGasUsed(3_000_000)
-                .WithStateRoot(TestItem.KeccakC)
-                .WithTransactions(new Transaction())
-                .TestObject;
+            (BlockHeader baseBlock, Block block1, Block block2) = BuildBlockTrio();
 
             processingStats.GenerateReportForTest(block1, baseBlock, blockCount: 1, gasUsed: 2_000_000, transactionCount: 2, processingMicroseconds: 200_000);
             processingStats.AdvanceReportWindow();
@@ -97,6 +67,27 @@ public class ProcessingStatsTests
                 Assert.That(stats.MGasPerSecond, Is.EqualTo(10));
             });
         });
+
+    private static (BlockHeader BaseBlock, Block Block1, Block Block2) BuildBlockTrio()
+    {
+        BlockHeader baseBlock = Build.A.BlockHeader
+            .WithNumber(0)
+            .WithStateRoot(TestItem.KeccakA)
+            .TestObject;
+        Block block1 = Build.A.Block
+            .WithParent(baseBlock)
+            .WithGasUsed(2_000_000)
+            .WithStateRoot(TestItem.KeccakB)
+            .WithTransactions(new Transaction(), new Transaction())
+            .TestObject;
+        Block block2 = Build.A.Block
+            .WithParent(block1)
+            .WithGasUsed(3_000_000)
+            .WithStateRoot(TestItem.KeccakC)
+            .WithTransactions(new Transaction())
+            .TestObject;
+        return (baseBlock, block1, block2);
+    }
 
     private static ProcessingStats CreateProcessingStats(out TaskCompletionSource<BlockStatistics> completion)
     {

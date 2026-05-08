@@ -9,8 +9,7 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>
 {
-    private static CodeChangeDecoder? _instance;
-    public static CodeChangeDecoder Instance => _instance ??= new();
+    public static readonly CodeChangeDecoder Instance = new();
     private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
 
     protected override CodeChange DecodeFields(ref Rlp.ValueDecoderContext ctx)

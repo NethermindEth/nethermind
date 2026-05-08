@@ -15,15 +15,15 @@ public abstract class TransactionTestBase
 {
     private static readonly TxValidator s_mainnetTxValidator = new(MainnetSpecProvider.Instance.ChainId);
 
-    protected static (bool Pass, string FailMessage) RunTest(TransactionTest test)
+    protected static Result RunTest(TransactionTest test)
     {
         if (string.IsNullOrEmpty(test.TxBytes))
         {
-            return (false, "Missing txbytes");
+            return Result.Fail("Missing txbytes");
         }
         if (string.IsNullOrEmpty(test.Fork))
         {
-            return (false, "Missing fork");
+            return Result.Fail("Missing fork");
         }
 
         IReleaseSpec spec;
@@ -33,7 +33,7 @@ public abstract class TransactionTestBase
         }
         catch (Exception ex)
         {
-            return (false, $"Unknown fork '{test.Fork}': {ex.Message}");
+            return Result.Fail($"Unknown fork '{test.Fork}': {ex.Message}");
         }
 
         bool decoded = TryDecode(test.TxBytes, out Transaction? tx, out string? decodeError);
@@ -44,19 +44,19 @@ public abstract class TransactionTestBase
         {
             if (observedError is null)
             {
-                return (false, $"Expected exception '{test.ExpectedException}' but tx validated cleanly.");
+                return Result.Fail($"Expected exception '{test.ExpectedException}' but tx validated cleanly.");
             }
             if (!ExceptionMatches(test.ExpectedException!, observedError))
             {
-                return (false, $"Expected '{test.ExpectedException}' but got '{observedError}'.");
+                return Result.Fail($"Expected '{test.ExpectedException}' but got '{observedError}'.");
             }
         }
         else if (observedError is not null)
         {
-            return (false, $"Expected success but got error '{observedError}'.");
+            return Result.Fail($"Expected success but got error '{observedError}'.");
         }
 
-        return (true, string.Empty);
+        return Result.Success;
     }
 
     private static bool TryDecode(string txBytesHex, out Transaction? tx, out string? error)

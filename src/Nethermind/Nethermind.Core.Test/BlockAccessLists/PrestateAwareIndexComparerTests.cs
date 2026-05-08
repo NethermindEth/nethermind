@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.BlockAccessLists;
 using NUnit.Framework;
@@ -10,26 +11,18 @@ namespace Nethermind.Core.Test.BlockAccessLists;
 [TestFixture]
 public class PrestateAwareIndexComparerTests
 {
-    [Test]
-    public void Prestate_sorts_before_zero() =>
-        Assert.That(PrestateAwareIndexComparer.Instance.Compare(Eip7928Constants.PrestateIndex, 0u), Is.LessThan(0));
-
     // Highest realistic real index is far below uint.MaxValue (= PrestateIndex sentinel).
-    [Test]
-    public void Prestate_sorts_before_max_real_index() =>
-        Assert.That(PrestateAwareIndexComparer.Instance.Compare(Eip7928Constants.PrestateIndex, uint.MaxValue - 1), Is.LessThan(0));
-
-    [Test]
-    public void Real_indices_compare_normally()
+    [TestCase(Eip7928Constants.PrestateIndex, 0u, -1, TestName = "Prestate_lt_zero")]
+    [TestCase(Eip7928Constants.PrestateIndex, uint.MaxValue - 1, -1, TestName = "Prestate_lt_max_real")]
+    [TestCase(Eip7928Constants.PrestateIndex, Eip7928Constants.PrestateIndex, 0, TestName = "Prestate_eq_prestate")]
+    [TestCase(0u, 1u, -1, TestName = "Real_0_lt_1")]
+    [TestCase(5u, 5u, 0, TestName = "Real_5_eq_5")]
+    [TestCase(7u, 3u, 1, TestName = "Real_7_gt_3")]
+    public void Comparer_orders_prestate_first(uint a, uint b, int expectedSign)
     {
-        Assert.That(PrestateAwareIndexComparer.Instance.Compare(0u, 1u), Is.LessThan(0));
-        Assert.That(PrestateAwareIndexComparer.Instance.Compare(5u, 5u), Is.EqualTo(0));
-        Assert.That(PrestateAwareIndexComparer.Instance.Compare(7u, 3u), Is.GreaterThan(0));
+        int actual = PrestateAwareIndexComparer.Instance.Compare(a, b);
+        Assert.That(Math.Sign(actual), Is.EqualTo(expectedSign));
     }
-
-    [Test]
-    public void Two_prestates_are_equal() =>
-        Assert.That(PrestateAwareIndexComparer.Instance.Compare(Eip7928Constants.PrestateIndex, Eip7928Constants.PrestateIndex), Is.EqualTo(0));
 
     [Test]
     public void SortedList_iterates_prestate_first()

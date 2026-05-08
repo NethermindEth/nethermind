@@ -217,6 +217,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -242,17 +243,57 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
+          IS_PYSPEC: ${{ startsWith(matrix.project, 'Ethereum.Blockchain.Pyspec') }}
         run: |
+          monitor_pid=""
+          stop_pyspec_monitor() {
+            if [ -n "$monitor_pid" ]; then
+              kill "$monitor_pid" 2>/dev/null || true
+              wait "$monitor_pid" 2>/dev/null || true
+            fi
+          }
+
+          if [ "$IS_PYSPEC" = "true" ]; then
+            (
+              while true; do
+                echo "::group::Pyspec resources $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+                free -h
+                df -h /
+                if [ -r /sys/fs/cgroup/memory.current ]; then
+                  echo "cgroup memory.current bytes: $(cat /sys/fs/cgroup/memory.current)"
+                fi
+                if [ -r /sys/fs/cgroup/memory.max ]; then
+                  echo "cgroup memory.max bytes: $(cat /sys/fs/cgroup/memory.max)"
+                fi
+                ps -eo pid,ppid,rss,vsz,pcpu,pmem,comm --sort=-rss | head -n 12
+                echo "::endgroup::"
+                sleep 60
+              done
+            ) &
+            monitor_pid=$!
+            trap stop_pyspec_monitor EXIT
+          fi
+
+          run_test() {
+            if [ -n "${{ matrix.filter }}" ]; then
+              dotnet test --project ${{ matrix.project }}.csproj -c release "$@" --filter "${{ matrix.filter }}"
+            elif [ "${{ matrix.project }}" = "Ethereum.Blockchain.Pyspec.Test" ] && [ -n "${{ matrix.chunk }}" ]; then
+              dotnet test --project ${{ matrix.project }}.csproj -c release "$@" \
+                --filter "FullyQualifiedName!~AmsterdamParallel&FullyQualifiedName!~AmsterdamBatchRead"
+            else
+              dotnet test --project ${{ matrix.project }}.csproj -c release "$@"
+            fi
+          }
+
           # Variant matrix entries set `matrix.filter` to scope to a specific Amsterdam
           # parallel-variant fixture. Default Pyspec chunks instead exclude the variant
           # classes by name so they don't double-run the heavy Amsterdam fixture set.
-          if [ -n "${{ matrix.filter }}" ]; then
-            dotnet test --project ${{ matrix.project }}.csproj -c release --filter "${{ matrix.filter }}"
-          elif [ "${{ matrix.project }}" = "Ethereum.Blockchain.Pyspec.Test" ] && [ -n "${{ matrix.chunk }}" ]; then
-            dotnet test --project ${{ matrix.project }}.csproj -c release \
-              --filter "FullyQualifiedName!~AmsterdamParallel&FullyQualifiedName!~AmsterdamBatchRead"
+          if [ "$IS_PYSPEC" = "true" ]; then
+            dotnet build ${{ matrix.project }}.csproj -c release
+            dotnet build-server shutdown
+            run_test --no-build --no-restore
           else
-            dotnet test --project ${{ matrix.project }}.csproj -c release
+            run_test
           fi
 
   tests-summary:

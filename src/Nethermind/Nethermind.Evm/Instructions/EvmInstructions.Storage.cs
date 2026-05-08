@@ -511,7 +511,7 @@ public static partial class EvmInstructions
         else
         {
             // Retrieve the original storage value to determine if this is a reversal.
-            Span<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
+            ReadOnlySpan<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
             bool originalIsZero = originalValue.IsZero();
             bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
 

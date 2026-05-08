@@ -10,20 +10,16 @@ using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Consensus.Processing;
 
-public readonly struct GasValidationResult(
-    long blockGasUsed,
-    long blockStateGasUsed,
-    in IntrinsicGas<EthereumGasPolicy> intrinsicGas,
-    InvalidBlockException? exception)
-{
-    public readonly long BlockGasUsed = blockGasUsed;
-    public readonly long BlockStateGasUsed = blockStateGasUsed;
-    public readonly IntrinsicGas<EthereumGasPolicy> IntrinsicGas = intrinsicGas;
-    public readonly InvalidBlockException? Exception = exception;
-}
+public readonly record struct GasValidationResult(
+    long BlockGasUsed,
+    long BlockStateGasUsed,
+    IntrinsicGas<EthereumGasPolicy> IntrinsicGas,
+    InvalidBlockException? Exception);
 
 public sealed class GasValidationResultSlot
 {
+    // Lock instance: Monitor.Wait/PulseAll require an object reference, not the
+    // System.Threading.Lock class (which is incompatible with Wait/Pulse).
     private readonly object _sync = new();
     private GasValidationResult _result;
     private Exception? _exception;

@@ -365,7 +365,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 Assert.That(accountChanges.StorageChangeCount, Is.EqualTo(1));
                 Assert.That(storageEntry.Key, Is.EqualTo(UInt256.Zero));
                 Assert.That(storageEntry.Value.Index, Is.EqualTo(0));
-                Assert.That(storageEntry.Value.Value, Is.EqualTo(new UInt256(parentHash.Bytes, isBigEndian: true)));
+                Assert.That(storageEntry.Value.Value, Is.EqualTo(new StorageChange(0, new UInt256(parentHash.Bytes, isBigEndian: true)).Value));
                 Assert.That(accountChanges.StorageReads, Is.Empty);
             }
         }

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Ethereum.Test.Base;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
@@ -18,7 +17,6 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
     {
         string testsDirectoryName = TestFixtureDownloader.EnsureDownloaded(
             "PyTests", Constants.ARCHIVE_URL_TEMPLATE, ArchiveVersion, ArchiveName);
-        ArchiveFixtureOverrides.Apply(ArchiveVersion, testsDirectoryName);
 
         TestType testType = TestType.Blockchain;
         foreach (TestType type in Enum.GetValues<TestType>())
@@ -30,10 +28,16 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
             }
         }
 
-        IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
+        IEnumerable<string> directories = !string.IsNullOrEmpty(testsDir)
             ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
-        return testDirs.SelectMany(td => TestLoadStrategy.LoadTestsFromDirectory(td, wildcard, testType));
+        List<string> testDirs = [];
+        foreach (string testDir in directories)
+        {
+            testDirs.Add(testDir);
+        }
+
+        return TestLoadStrategy.LoadTestsFromDirectories(testDirs, wildcard, testType);
     }
 
     private static string ResolveTestsDirectory(string testsDirectoryName, string testsDir)

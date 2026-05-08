@@ -508,8 +508,10 @@ public class TracedAccessWorldStateTests(bool parallel)
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.StorageChangeCount, Is.EqualTo(1));
                 Assert.That(ac.TryGetStorageChange((UInt256)1, out StorageChange? change), Is.True);
-                // Storage changes also Pop+Push at same Index, so the latest value wins
-                Assert.That(change!.Value.Value, Is.EqualTo((UInt256)2));
+                // Storage changes also Pop+Push at same Index, so the latest value wins.
+                // StorageChange.Value is now EvmWord (BE wire form) — round-trip via the
+                // convenience ctor to compare on the same representation.
+                Assert.That(change!.Value.Value, Is.EqualTo(new StorageChange(0, (UInt256)2).Value));
             }
         }
     }

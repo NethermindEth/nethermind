@@ -3,6 +3,8 @@
 
 using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -36,8 +38,6 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     public byte[] Get(uint blockAccessIndex)
     {
         Span<byte> tmp = stackalloc byte[32];
-        UInt256 lastValue = 0;
-
         ReadOnlySpan<StorageChange> span = Changes;
         int idx = span.BinarySearch(new IndexKey<StorageChange>(blockAccessIndex));
         // Whether found exactly or not, idx (or ~idx) is the position of the first entry with
@@ -45,10 +45,13 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
         int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
         if (lastBefore >= 0)
         {
-            lastValue = span[lastBefore].Value;
+            // StorageChange.Value is already in big-endian wire form (see ctor); reinterpret the
+            // 32-byte EvmWord vector as a byte span and copy.
+            EvmWord value = span[lastBefore].Value;
+            ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref value), 32);
+            valueBytes.CopyTo(tmp);
         }
-
-        lastValue.ToBigEndian(tmp);
         return [.. tmp.WithoutLeadingZeros()];
     }
 

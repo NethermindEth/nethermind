@@ -33,5 +33,10 @@ public interface IProcessingStats
     /// <param name="blocks">The processed blocks.</param>
     /// <param name="baseBlock">The parent block header.</param>
     /// <param name="blockProcessingTimeInMicros">Processing time in microseconds.</param>
+    /// <remarks>
+    /// Uses <see cref="IReadOnlyList{T}"/> rather than <see cref="ReadOnlySpan{T}"/> so that
+    /// dynamic-proxy mocks (NSubstitute, Moq) can generate proxies — ref-struct parameters
+    /// break dynamic proxy generation, which in turn aborts block processing in tests.
+    /// </remarks>
     void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros);
 }

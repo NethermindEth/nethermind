@@ -167,7 +167,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return ref inner.GetCodeHash(address);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
         return inner.GetOriginal(in storageCell);

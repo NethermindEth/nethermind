@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -311,7 +312,11 @@ public class BlockAccessListManager(
                 int slotCount = slotChange.Changes.Length;
                 if (slotCount > 0 && slotChange.Changes[^1].Index != Eip7928Constants.PrestateIndex)
                 {
-                    stateProvider.Set(storageCell, [.. slotChange.Changes[^1].Value.ToBigEndian().WithoutLeadingZeros()]);
+                    // StorageChange.Value is now EvmWord (Vector256<byte>) in big-endian wire form.
+                    EvmWord value = slotChange.Changes[^1].Value;
+                    ReadOnlySpan<byte> valueBytes = System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(
+                        ref Unsafe.As<EvmWord, byte>(ref value), 32);
+                    stateProvider.Set(storageCell, [.. valueBytes.WithoutLeadingZeros()]);
                 }
             }
         }
