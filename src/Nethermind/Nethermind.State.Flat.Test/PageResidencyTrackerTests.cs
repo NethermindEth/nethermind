@@ -89,11 +89,9 @@ public class PageResidencyTrackerTests
     [Test]
     public void Set_FullWithUnreferencedSlots_NextTouchEvictsClockVictim()
     {
-        // Single-set tracker → all keys land in set 0. Insert 8 distinct keys; each insertion
-        // arms its REF bit. The 9th touch must:
-        //   1) clear all 8 REF bits on the first clock pass,
-        //   2) evict way 0 (the head of the clock) on the wrap-around pass,
-        //   3) report (0, 0) — the first inserted key — as the displaced key.
+        // Single-set tracker → all keys land in set 0. Under BIP all 8 fresh inserts arrive
+        // with REF=0, so the 9th touch finds the clock head (way 0) immediately unreferenced
+        // and evicts (0, 0) — the first inserted key.
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(OneSetCapacity);
 
@@ -117,59 +115,58 @@ public class PageResidencyTrackerTests
         // Empty set: Inserted, no displaced key.
         tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Inserted);
 
-        // Re-touching the same key: Hit.
+        // Re-touching the same key: Hit. This is the call that earns (0, 0) its REF bit
+        // under BIP (the prior insert was cold).
         tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Hit);
 
-        // Fill the remaining 7 ways — all Inserted.
+        // Fill the remaining 7 ways — all Inserted (all cold under BIP).
         for (int i = 1; i < Ways; i++)
             tracker.TryTouch(0, i, out _, out _).Should().Be(TouchOutcome.Inserted);
 
-        // Set is full and all REFs are armed. The 9th touch evicts the clock head (0, 0).
+        // Set is full. Way 0 holds (0, 0) with REF=1 (earned via the re-touch above); ways 1..7
+        // are all REF=0. The 9th touch's clock pass clears way 0's REF and lands on way 1,
+        // evicting (0, 1) — way 0 was protected by its earned REF bit.
         tracker.TryTouch(0, Ways, out int evictedArenaId, out int evictedPageIdx).Should().Be(TouchOutcome.Evicted);
         evictedArenaId.Should().Be(0);
-        evictedPageIdx.Should().Be(0);
+        evictedPageIdx.Should().Be(1);
     }
 
     [Test]
     public void ReferenceBit_GivesSecondChance()
     {
-        // After the first eviction at step (1) below, ways 1..7 have their REF bits cleared
-        // (the clock arm wiped them on its first pass) while way 0 holds the freshly-inserted
-        // key with REF=1. Re-touching the key in (say) way 3 re-arms its REF. The next eviction
-        // must skip way 3 and evict the next REF=0 way the hand encounters — way 1 — proving
-        // the second-chance semantic.
+        // Under BIP, all 8 fills land cold (REF=0). Re-touching (0, 3) re-arms its REF bit.
+        // The clock hand starts at way 0 and advances one slot per eviction. After three
+        // streaming evictions the hand is at way 3 — but (0, 3)'s REF is set, so the hand
+        // clears it (giving it its "second chance") and moves on to way 4 to find a victim.
+        // Net effect: (0, 3) survives the streaming flood that wiped (0, 0)/(0, 1)/(0, 2)/(0, 4).
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(OneSetCapacity);
 
-        // Step 0: fill the set with (0,0) .. (0,7). All REF=1.
         for (int i = 0; i < Ways; i++)
             Touch(tracker, 0, i, handler);
 
-        // Step 1: insert (0, 8). Clock clears all REFs, evicts way 0 → (0,0). Hand now at 1.
-        Touch(tracker, 0, 8, handler);
-        handler.Evictions.Should().ContainSingle().Which.Should().Be((0, 0));
+        Touch(tracker, 0, 3, handler);                          // arms way 3's REF bit
+        handler.Evictions.Should().BeEmpty("re-touching is a Hit, not an eviction");
 
-        // Step 2: re-touch (0, 3) — sets its REF bit back to 1. Way 0's (0,8) REF is also 1.
-        Touch(tracker, 0, 3, handler);
-        handler.Evictions.Should().HaveCount(1, "re-touching is a Hit, not an eviction");
+        for (int i = 0; i < 4; i++)                             // four streaming new keys
+            Touch(tracker, 0, Ways + i, handler);
 
-        // Step 3: insert (0, 9). Hand starts at 1 (way 1 has REF=0 since the previous pass
-        // cleared it and nothing re-touched it) → evicts (0, 1). (0, 3) survives.
-        Touch(tracker, 0, 9, handler);
-        handler.Evictions.Should().HaveCount(2);
-        handler.Evictions[1].Should().Be((0, 1));
+        handler.Evictions.Should().Equal((0, 0), (0, 1), (0, 2), (0, 4));
         tracker.ContainsPage(0, 3).Should().BeTrue("re-touched key got a second chance");
-        tracker.ContainsPage(0, 9).Should().BeTrue();
     }
 
     [Test]
-    public void RefBit_ClearedOnSecondPass_ExactlyOneEviction()
+    public void Miss_OnFullSet_ProducesExactlyOneEviction()
     {
-        // Fill the set; every way has REF=1. The very next miss must clear all 8 REFs on the
-        // first clock pass and evict exactly one entry on the wrap-around.
+        // A miss on a full set must displace exactly one entry, regardless of how many REF
+        // bits the clock had to clear before finding an unreferenced way.
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(OneSetCapacity);
         for (int i = 0; i < Ways; i++)
+            Touch(tracker, 0, i, handler);
+
+        // Re-touch every other entry so the clock has to clear REFs on its way to a victim.
+        for (int i = 0; i < Ways; i += 2)
             Touch(tracker, 0, i, handler);
 
         Touch(tracker, 0, Ways, handler);
