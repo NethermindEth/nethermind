@@ -550,19 +550,21 @@ public class Startup : IStartup
             switch (id)
             {
                 case string strId:
-                {
-                    // escaping is intentionally skipped for max performance;
-                    // JSON-RPC IDs are usually simple values (typically numeric)
-                    Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
-                    buf[0] = (byte)'"';
-                    int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
-                    buf[len + 1] = (byte)'"';
-                    writer.Advance(len + 2);
-                    break;
-                }
+                    {
+                        // escaping is intentionally skipped for max performance;
+                        // JSON-RPC IDs are usually simple values (typically numeric)
+                        Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
+                        buf[0] = (byte)'"';
+                        int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
+                        buf[len + 1] = (byte)'"';
+                        writer.Advance(len + 2);
+                        break;
+                    }
                 default:
-                    writer.Write("null"u8);
-                    break;
+                    {
+                        writer.Write("null"u8);
+                        break;
+                    }
             }
         }
     }
