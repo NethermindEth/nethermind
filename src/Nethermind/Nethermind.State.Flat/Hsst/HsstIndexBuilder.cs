@@ -125,6 +125,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             // loop to avoid per-iteration stackalloc.
             Span<byte> leafLastKey = stackalloc byte[MaxKeyLen];
 
+            // True until the first node of the index region has been written.
+            // Used to gate MaybePadToNextPage so we never pad after the root —
+            // the trailer formula assumes [...root...][trailer] with no gap.
+            bool firstNode = true;
+
             while (entryIdx < _entryPositions.Length)
             {
                 // Phase 1: pick leaf size + naturalMax. Writes the leaf's last entry's
@@ -135,6 +140,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     _writer.Written, firstOffset,
                     leafLastKey, out int leafLastKeyLen);
                 int count = layout.Count;
+
+                // Pad to a fresh page if we're within PageAlignPadThreshold of
+                // the boundary. Skipped on the first node — there's nothing to
+                // pad away from yet.
+                if (!firstNode) MaybePadToNextPage();
+                firstNode = false;
 
                 // Phase 2: emit leaf node bytes.
                 long nodeStart = _writer.Written;
@@ -175,6 +186,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                         minIntermediateChildren,
                         _writer.Written, firstOffset);
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
+
+                    // Always non-first here (at least one leaf already written).
+                    MaybePadToNextPage();
 
                     long nodeStart = _writer.Written;
                     long relativeStart = nodeStart - startWritten;
@@ -705,6 +719,40 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         bool committedCrosses = pageOff + committedSize > 4096;
         bool candidateCrosses = pageOff + candidateSize > 4096;
         return candidateCrosses && !committedCrosses;
+    }
+
+    /// <summary>
+    /// Bytes-to-next-page threshold below which the builder pads up to the page
+    /// boundary before writing the next node. Companion to <see cref="WouldCrossNewPage"/>:
+    /// the page-crossing heuristic stops a node growing into the next page, but
+    /// the next node would then start at the seam and be guaranteed to cross.
+    /// Padding eats the small leftover (≤<see cref="PageAlignPadThreshold"/> bytes)
+    /// so the next node opens on a fresh page. Threshold is intentionally large
+    /// so most splits earn the alignment; nodes finalised well inside their page
+    /// (gap > threshold) skip padding to avoid writing kilobytes of zeros.
+    /// </summary>
+    private const int PageAlignPadThreshold = 64;
+
+    /// <summary>
+    /// If the writer is within <see cref="PageAlignPadThreshold"/> bytes of the
+    /// next 4 KiB boundary, pad up to that boundary so the next node starts on a
+    /// fresh page. Padding bytes are inert: parent nodes record exact child
+    /// offsets, so readers never look at the padding region. Caller must avoid
+    /// invoking this after the very last node (root) — the trailer formula
+    /// <c>root_start = HSST_end - 3 - rootSize</c> assumes the trailer abuts the
+    /// root, and any padding between them would offset the computed root start.
+    /// </summary>
+    private void MaybePadToNextPage()
+    {
+        long firstOffset = _writer.FirstOffset;
+        long pageOff = (_writer.Written - firstOffset) & 4095L;
+        if (pageOff == 0) return;
+        long remaining = 4096L - pageOff;
+        if (remaining > PageAlignPadThreshold) return;
+        int len = (int)remaining;
+        Span<byte> pad = _writer.GetSpan(len);
+        pad[..len].Clear();
+        _writer.Advance(len);
     }
 
     /// <summary>
