@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -17,9 +18,9 @@ public sealed class GetBlobsV1SszHandler(IEngineRpcModule engineModule) : SszEnd
     public override string Resource => SszRestPaths.Blobs;
     public override int? Version => EngineApiVersions.GetBlobs.V1;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
+        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body);
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await engineModule.engine_getBlobsV1(hashes);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeGetBlobsV1Response);
     }
@@ -33,9 +34,9 @@ public sealed class GetBlobsV2SszHandler<TVersion>(IEngineRpcModule engineModule
     public override string Resource => SszRestPaths.Blobs;
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
+        byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body);
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await TVersion.Call(engineModule, hashes);
         await WriteSszResultAsync(ctx, result, static (d, w) => TVersion.Encode(d!, w));
     }

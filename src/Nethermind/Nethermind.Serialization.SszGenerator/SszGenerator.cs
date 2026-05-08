@@ -441,6 +441,33 @@ internal static class SszCodecHelpers
         return lowerCased == "data" || lowerCased == "container" || lowerCased.Contains("offset") ? $"_{lowerCased}" : lowerCased;
     }
 
+    /// <summary>
+    /// Emits a `Decode(ReadOnlySequence&lt;byte&gt;, out T)` overload that lets the SSZ-REST
+    /// middleware feed a <c>PipeReader</c>'s buffer directly. Single-segment input is
+    /// zero-copy; multi-segment consolidates into one pooled buffer before dispatching to
+    /// the existing span decoder. (Recursive sequence-aware decode would touch every leaf
+    /// primitive — deferred until the bulk-copy shows up as a real cost.)
+    /// </summary>
+    private static string SequenceDecodeMethod(string typeName) => $@"public static void Decode(System.Buffers.ReadOnlySequence<byte> data, out {typeName} container)
+    {{
+        if (data.IsSingleSegment)
+        {{
+            Decode(data.FirstSpan, out container);
+            return;
+        }}
+        int len = (int)data.Length;
+        byte[] rented = System.Buffers.ArrayPool<byte>.Shared.Rent(len);
+        try
+        {{
+            data.CopyTo(rented.AsSpan(0, len));
+            Decode(rented.AsSpan(0, len), out container);
+        }}
+        finally
+        {{
+            System.Buffers.ArrayPool<byte>.Shared.Return(rented);
+        }}
+    }}";
+
     private static string ValidationStatement(SszType decl, SszProperty property, string expression) =>
         property.Kind switch
         {
@@ -789,6 +816,8 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         {DecodeAndAssign(decl, variables[0], "data")}
     }}
 {Whitespace}
+    {SequenceDecodeMethod(decl.Name)}
+{Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
     {{
         if(data.Length is 0)
@@ -999,6 +1028,8 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {Shift(2, variables.Select((m, i) => DecodeAndAssign(decl, m, $"data.Slice(offset{i + 1}, {(i + 1 == variables.Count ? "data.Length" : $"offset{i + 2}")} - offset{i + 1})")))}
     }}
+{Whitespace}
+    {SequenceDecodeMethod(decl.Name)}
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name}[] container)
     {{
@@ -1239,6 +1270,8 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
         }};
         ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.Name}));
     }}
+{Whitespace}
+    {SequenceDecodeMethod(decl.Name)}
 {Whitespace}
     public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)
     {{

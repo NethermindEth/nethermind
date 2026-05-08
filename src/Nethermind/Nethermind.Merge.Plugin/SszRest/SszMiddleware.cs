@@ -151,18 +151,21 @@ public sealed class SszMiddleware
                 _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
         }
 
-        byte[]? rentedBuffer = null;
-        int bodyLength = 0;
+        // Read directly from PipeReader: the buffer is a ReadOnlySequence over Kestrel's
+        // pooled blocks (~4 KB each), so multi-segment is the common case for blob-bearing
+        // payloads. The generated SSZ codecs accept ReadOnlySequence<byte> — single-segment
+        // is zero-copy, multi-segment consolidates once via ArrayPool. Both paths skip the
+        // MemoryStream + ToArray dance the previous implementation needed.
+        PipeReader reader = ctx.Request.BodyReader;
+        ReadOnlySequence<byte> body = default;
+        bool bodyRead = false;
         try
         {
-            (rentedBuffer, bodyLength) = await ReadBodyAsync(ctx);
-            ReadOnlyMemory<byte> bodyMemory = rentedBuffer is null
-                ? ReadOnlyMemory<byte>.Empty
-                : rentedBuffer.AsMemory(0, bodyLength);
+            body = await ReadBodyAsync(ctx, reader);
+            bodyRead = true;
+            Metrics.SszRestRequestBytesTotal += body.Length;
 
-            Metrics.SszRestRequestBytesTotal += bodyLength;
-
-            await handler!.HandleAsync(ctx, version, extra, bodyMemory);
+            await handler!.HandleAsync(ctx, version, extra, body);
 
             int status = ctx.Response.StatusCode;
             if (status is >= 200 and < 300)
@@ -172,7 +175,7 @@ public sealed class SszMiddleware
             else if (status >= 500)
                 Metrics.SszRestRequestsServerErrorTotal++;
         }
-        catch (InvalidOperationException ex) when (rentedBuffer is null)
+        catch (InvalidOperationException ex) when (!bodyRead)
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status413PayloadTooLarge, ex.Message);
@@ -192,11 +195,16 @@ public sealed class SszMiddleware
         {
             Metrics.SszRestRequestsServerErrorTotal++;
             if (_logger.IsError) _logger.Error($"SSZ-REST handler error for {ctx.Request.Path.Value}", ex);
-            await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
+
+            // If the inner code already aborted the request (e.g. encode failed mid-stream
+            // and called ctx.Abort), don't try to write a 500 — WriteAsync would throw
+            // OperationCanceledException, producing a duplicate exception in the logs.
+            if (!ctx.RequestAborted.IsCancellationRequested)
+                await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status500InternalServerError, "Internal server error");
         }
         finally
         {
-            if (rentedBuffer is not null) ArrayPool<byte>.Shared.Return(rentedBuffer);
+            if (bodyRead) reader.AdvanceTo(body.End);
         }
     }
 
@@ -342,7 +350,12 @@ public sealed class SszMiddleware
         return false;
     }
 
-    private static async Task<(byte[]? buffer, int length)> ReadBodyAsync(HttpContext ctx)
+    /// <summary>
+    /// Returns the request body as a <see cref="ReadOnlySequence{T}"/> over the PipeReader's
+    /// pooled segments. The caller MUST call <see cref="PipeReader.AdvanceTo(SequencePosition)"/>
+    /// once the wire object has been decoded (no remaining views into the segments).
+    /// </summary>
+    private static async Task<ReadOnlySequence<byte>> ReadBodyAsync(HttpContext ctx, PipeReader reader)
     {
         long? contentLength = ctx.Request.ContentLength;
         if (contentLength > MaxBodySize)
@@ -352,55 +365,22 @@ public sealed class SszMiddleware
         if (contentLength is > 0)
         {
             int len = (int)contentLength;
-            byte[] rent = ArrayPool<byte>.Shared.Rent(len);
-            await ctx.Request.Body.ReadExactlyAsync(rent.AsMemory(0, len), ctx.RequestAborted);
-            return (rent, len);
+            ReadResult rr = await reader.ReadAtLeastAsync(len, ctx.RequestAborted);
+            // Slice to the declared ContentLength even if Kestrel buffered extra bytes
+            // (HTTP keep-alive could carry the next request's framing in the same buffer).
+            return rr.Buffer.Slice(0, len);
         }
 
-        PipeReader reader = ctx.Request.BodyReader;
-        byte[]? result = null;
-        int written = 0;
-        try
+        // ContentLength unknown (chunked transfer): drain the pipe without consuming any
+        // bytes so the final ReadResult holds the entire body in one ReadOnlySequence.
+        while (true)
         {
-            while (true)
-            {
-                ReadResult rr = await reader.ReadAsync(ctx.RequestAborted);
-                ReadOnlySequence<byte> seq = rr.Buffer;
-
-                int needed = written + (int)seq.Length;
-                if (needed > MaxBodySize)
-                    throw new InvalidOperationException(
-                        $"Request body too large: exceeds limit of {MaxBodySize}");
-
-                if (needed > 0)
-                {
-                    if (result is null)
-                        result = ArrayPool<byte>.Shared.Rent(Math.Max(needed, 4096));
-                    else if (result.Length < needed)
-                    {
-                        byte[] larger = ArrayPool<byte>.Shared.Rent((int)Math.Min(MaxBodySize, Math.Max(needed, (long)result.Length * 2)));
-                        result.AsSpan(0, written).CopyTo(larger);
-                        ArrayPool<byte>.Shared.Return(result);
-                        result = larger;
-                    }
-
-                    seq.CopyTo(result.AsSpan(written));
-                    written += (int)seq.Length;
-                }
-
-                reader.AdvanceTo(seq.End);
-
-                if (rr.IsCompleted) break;
-            }
-
-            byte[]? owned = result;
-            result = null;
-            return (owned, written);
-        }
-        finally
-        {
-            if (result is not null) ArrayPool<byte>.Shared.Return(result);
-            await reader.CompleteAsync();
+            ReadResult rr = await reader.ReadAsync(ctx.RequestAborted);
+            if (rr.Buffer.Length > MaxBodySize)
+                throw new InvalidOperationException(
+                    $"Request body too large: exceeds limit of {MaxBodySize}");
+            if (rr.IsCompleted) return rr.Buffer;
+            reader.AdvanceTo(rr.Buffer.Start, rr.Buffer.End);
         }
     }
 }

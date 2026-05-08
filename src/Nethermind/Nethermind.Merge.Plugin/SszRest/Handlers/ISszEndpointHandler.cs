@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
@@ -21,9 +22,11 @@ public interface ISszEndpointHandler
 
     /// <summary>
     /// Executes the endpoint logic. Called by <see cref="SszMiddleware"/> after auth
-    /// has already been validated and the request body has been read.
+    /// has already been validated. <paramref name="body"/> views directly into the
+    /// PipeReader's pooled segments — implementations must complete decoding before
+    /// performing async work that yields control back to the middleware.
     /// </summary>
-    Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body);
+    Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body);
 
     bool AcceptsPathExtra => false;
 }

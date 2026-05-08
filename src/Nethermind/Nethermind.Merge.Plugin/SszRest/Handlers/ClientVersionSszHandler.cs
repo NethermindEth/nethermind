@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.JsonRpc;
@@ -21,9 +22,9 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
     public override string Resource => SszRestPaths.ClientVersion;
     public override int? Version => 1;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        ClientVersionV1 caller = SszCodec.DecodeClientVersionRequest(body.Span);
+        ClientVersionV1 caller = SszCodec.DecodeClientVersionRequest(body);
         ResultWrapper<ClientVersionV1[]> result = _engineModule.engine_getClientVersionV1(caller);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeClientVersionResponse);
     }

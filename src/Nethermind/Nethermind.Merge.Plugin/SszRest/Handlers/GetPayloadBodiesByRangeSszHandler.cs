@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -23,9 +24,9 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     public override string Resource => SszRestPaths.PayloadBodiesByRange;
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body.Span);
+        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body);
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);
         await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }

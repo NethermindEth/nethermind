@@ -126,7 +126,7 @@ public static class SszCodec
             ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
         }, writer);
 
-    public static byte[][] DecodeGetBlobsRequest(ReadOnlySpan<byte> buf)
+    public static byte[][] DecodeGetBlobsRequest(ReadOnlySequence<byte> buf)
     {
         GetBlobsRequestWire.Decode(buf, out GetBlobsRequestWire wire);
         if (wire.VersionedHashes is null) return [];
@@ -179,13 +179,13 @@ public static class SszCodec
         return EncodeToWriter(new GetBlobsV3ResponseWire { BlobsAndProofs = arr }, writer);
     }
 
-    public static Hash256[] DecodeGetPayloadBodiesByHashRequest(ReadOnlySpan<byte> buf)
+    public static Hash256[] DecodeGetPayloadBodiesByHashRequest(ReadOnlySequence<byte> buf)
     {
         GetPayloadBodiesByHashRequestWire.Decode(buf, out GetPayloadBodiesByHashRequestWire wire);
         return wire.BlockHashes ?? [];
     }
 
-    public static (long start, long count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySpan<byte> buf)
+    public static (long start, long count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
     {
         GetPayloadBodiesByRangeRequestWire.Decode(buf, out GetPayloadBodiesByRangeRequestWire wire);
         return ((long)wire.Start, (long)wire.Count);
@@ -215,7 +215,7 @@ public static class SszCodec
         return EncodeToWriter(new PayloadBodiesV2ResponseWire { PayloadBodies = arr }, writer);
     }
 
-    public static TransitionConfigurationV1 DecodeTransitionConfigurationRequest(ReadOnlySpan<byte> buf)
+    public static TransitionConfigurationV1 DecodeTransitionConfigurationRequest(ReadOnlySequence<byte> buf)
     {
         ExchangeTransitionConfigurationWire.Decode(buf, out ExchangeTransitionConfigurationWire wire);
         TransitionConfigurationV1Wire tc = wire.TransitionConfiguration;
@@ -247,7 +247,7 @@ public static class SszCodec
         return EncodeToWriter(new ExchangeCapabilitiesResponseWire { Capabilities = arr }, writer);
     }
 
-    public static string[] DecodeCapabilitiesRequest(ReadOnlySpan<byte> buf)
+    public static string[] DecodeCapabilitiesRequest(ReadOnlySequence<byte> buf)
     {
         ExchangeCapabilitiesRequestWire.Decode(buf, out ExchangeCapabilitiesRequestWire wire);
         if (wire.Capabilities is null) return [];
@@ -257,7 +257,7 @@ public static class SszCodec
         return result;
     }
 
-    public static ClientVersionV1 DecodeClientVersionRequest(ReadOnlySpan<byte> buf)
+    public static ClientVersionV1 DecodeClientVersionRequest(ReadOnlySequence<byte> buf)
     {
         GetClientVersionRequestWire.Decode(buf, out GetClientVersionRequestWire wire);
         ClientVersionWire cl = wire.ClientVersion;

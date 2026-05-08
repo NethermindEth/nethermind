@@ -476,6 +476,64 @@ public class SszMiddlewareTests
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
     }
 
+    [Test]
+    public async Task Server_error_skips_WriteError_when_request_already_aborted()
+    {
+        // Engine module throws — the middleware's outer catch normally writes a 500 error
+        // and calls ctx.Response.WriteAsync. If the inner code already aborted the request
+        // (encode failure path: WriteSszAsync calls ctx.Abort), the WriteAsync would throw
+        // a secondary OperationCanceledException, producing a duplicate exception log.
+        // The fix: the outer catch checks RequestAborted and skips the error write.
+        _engineModule.engine_newPayloadV1(Arg.Any<ExecutionPayload>())
+            .Returns<Task<ResultWrapper<PayloadStatusV1>>>(_ => throw new InvalidOperationException("simulated server error"));
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", BuildMinimalV1NewPayloadRequest());
+
+        // Simulate the encode-failure → ctx.Abort() effect by pre-cancelling RequestAborted.
+        // DefaultHttpContext's Abort() is a no-op without a real lifetime feature, so we
+        // signal the cancellation directly to drive the catch's IsCancellationRequested branch.
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+        ctx.RequestAborted = cts.Token;
+
+        await _middleware.InvokeAsync(ctx);
+
+        // With the fix: the outer catch sees RequestAborted is cancelled and does NOT
+        // call WriteErrorAsync. StatusCode remains the DefaultHttpContext default (200);
+        // crucially it must NOT be 500.
+        ctx.Response.StatusCode.Should().NotBe(StatusCodes.Status500InternalServerError);
+        ResponseBytes(ctx).Should().BeEmpty("aborted request must not have an error body written");
+    }
+
+    [Test]
+    public async Task Encoder_returning_zero_length_for_non_null_data_yields_204()
+    {
+        // Build a middleware whose only handler succeeds with a non-null result through
+        // an encoder that produces no bytes. WriteSszAsync should treat empty-success as
+        // 204 No Content rather than 200 OK with Content-Length: 0.
+        ZeroLengthEncodeHandler handler = new();
+        SszMiddleware middleware = new(
+            _ => Task.CompletedTask, _urlCollection, _auth, [handler], _processExitSource, LimboLogs.Instance);
+
+        DefaultHttpContext ctx = MakePostContext($"/engine/v1/{ZeroLengthEncodeHandler.ResourceName}", []);
+
+        await middleware.InvokeAsync(ctx);
+
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        ResponseBytes(ctx).Should().BeEmpty();
+    }
+
+    private sealed class ZeroLengthEncodeHandler : SszEndpointHandlerBase
+    {
+        public const string ResourceName = "zero-length-encode";
+        public override string HttpMethod => "POST";
+        public override string Resource => ResourceName;
+        public override int? Version => 1;
+
+        public override Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body) =>
+            WriteSszResultAsync(ctx, ResultWrapper<int>.Success(42), static (_, _) => 0);
+    }
+
     private static Block MakeMinimalBlock()
     {
         BlockHeader header = new(

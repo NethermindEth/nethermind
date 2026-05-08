@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.JsonRpc;
@@ -23,9 +24,9 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     public override string Resource => SszRestPaths.Forkchoice;
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        TWire.Decode(body.Span, out TWire wire);
+        TWire.Decode(body, out TWire wire);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await TVersion.Call(engineModule, wire);
         await WriteSszResultAsync(ctx, result, SszCodec.EncodeForkchoiceUpdatedResponse);
     }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections;
 using System.IO;
@@ -159,12 +160,137 @@ public static partial class Ssz
     public static void Decode(ReadOnlySpan<byte> span, out BitArray list) =>
         list = DecodeBitlist(span);
 
+    // Sequence-aware overloads: enable zero-copy decoding from a PipeReader's
+    // ReadOnlySequence<byte>. Multi-segment fixed primitives copy ≤32 bytes onto the stack;
+    // single-segment hits the span fast path.
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> ToContiguous(ReadOnlySequence<byte> data, Span<byte> stackBuffer)
+    {
+        if (data.IsSingleSegment) return data.FirstSpan;
+        data.CopyTo(stackBuffer);
+        return stackBuffer;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Decode(ReadOnlySequence<byte> data, out bool result) =>
+        result = data.FirstSpan[0] != 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Decode(ReadOnlySequence<byte> data, out byte result)
+    {
+        ValidateLength(data.Length, sizeof(byte));
+        result = data.FirstSpan[0];
+    }
+
+    public static void Decode(ReadOnlySequence<byte> data, out ushort result)
+    {
+        Span<byte> stack = stackalloc byte[sizeof(ushort)];
+        Decode(ToContiguous(data, stack), out result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Decode(ReadOnlySequence<byte> data, out uint result)
+    {
+        Span<byte> stack = stackalloc byte[sizeof(uint)];
+        Decode(ToContiguous(data, stack), out result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Decode(ReadOnlySequence<byte> data, out int result)
+    {
+        Span<byte> stack = stackalloc byte[sizeof(int)];
+        Decode(ToContiguous(data, stack), out result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Decode(ReadOnlySequence<byte> data, out ulong result)
+    {
+        Span<byte> stack = stackalloc byte[sizeof(ulong)];
+        Decode(ToContiguous(data, stack), out result);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Decode(ReadOnlySequence<byte> data, out long result)
+    {
+        Span<byte> stack = stackalloc byte[sizeof(long)];
+        Decode(ToContiguous(data, stack), out result);
+    }
+
+    public static void Decode(ReadOnlySequence<byte> data, out UInt128 result)
+    {
+        Span<byte> stack = stackalloc byte[16];
+        Decode(ToContiguous(data, stack), out result);
+    }
+
+    public static void Decode(ReadOnlySequence<byte> data, out UInt256 value)
+    {
+        Span<byte> stack = stackalloc byte[32];
+        Decode(ToContiguous(data, stack), out value);
+    }
+
+    /// <summary>
+    /// Materializes a (typically variable-length) byte region. Single-segment is zero-copy
+    /// up to <see cref="byte"/>[] allocation; multi-segment performs one consolidated copy.
+    /// </summary>
+    public static byte[] DecodeBytes(ReadOnlySequence<byte> data) =>
+        data.IsEmpty ? [] : data.ToArray();
+
+    public static void Decode(ReadOnlySequence<byte> data, int vectorLength, out BitArray vector)
+    {
+        int byteLength = (vectorLength + 7) / 8;
+        if (data.IsSingleSegment)
+        {
+            vector = DecodeBitvector(data.FirstSpan, vectorLength);
+            return;
+        }
+        byte[] rented = ArrayPool<byte>.Shared.Rent(byteLength);
+        try
+        {
+            data.CopyTo(rented.AsSpan(0, byteLength));
+            vector = DecodeBitvector(rented.AsSpan(0, byteLength), vectorLength);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    public static void Decode(ReadOnlySequence<byte> data, out BitArray list)
+    {
+        if (data.IsSingleSegment)
+        {
+            list = DecodeBitlist(data.FirstSpan);
+            return;
+        }
+        int byteLength = (int)data.Length;
+        byte[] rented = ArrayPool<byte>.Shared.Rent(byteLength);
+        try
+        {
+            data.CopyTo(rented.AsSpan(0, byteLength));
+            list = DecodeBitlist(rented.AsSpan(0, byteLength));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
     private static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength)
     {
         if (span.Length != expectedLength)
         {
             throw new InvalidDataException(
                  $"SSZ decode expects input of length {expectedLength} and received {span.Length}");
+        }
+    }
+
+    private static void ValidateLength(long actualLength, int expectedLength)
+    {
+        if (actualLength != expectedLength)
+        {
+            throw new InvalidDataException(
+                 $"SSZ decode expects input of length {expectedLength} and received {actualLength}");
         }
     }
 

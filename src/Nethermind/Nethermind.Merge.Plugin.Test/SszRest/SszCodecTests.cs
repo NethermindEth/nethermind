@@ -33,6 +33,13 @@ public class SszCodecTests
         return w.WrittenSpan.ToArray();
     }
 
+    /// <summary>
+    /// Wraps a contiguous byte array as a single-segment <see cref="ReadOnlySequence{T}"/>
+    /// — what the middleware would hand to a handler when Kestrel buffered the body
+    /// in one pooled block.
+    /// </summary>
+    private static ReadOnlySequence<byte> Seq(byte[] data) => new(data);
+
 
     [TestCase(PayloadStatus.Valid, (byte)0)]
     [TestCase(PayloadStatus.Invalid, (byte)1)]
@@ -78,7 +85,7 @@ public class SszCodecTests
         };
 
         byte[] encoded = Encode(original, SszCodec.EncodeTransitionConfigurationResponse);
-        TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(encoded);
+        TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(Seq(encoded));
 
         decoded.TerminalTotalDifficulty.Should().Be(original.TerminalTotalDifficulty);
         decoded.TerminalBlockHash.Should().Be(original.TerminalBlockHash);
@@ -95,7 +102,7 @@ public class SszCodecTests
             TerminalBlockHash = TestItem.KeccakA,
             TerminalBlockNumber = 1
         }, SszCodec.EncodeTransitionConfigurationResponse);
-        TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(encoded);
+        TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(Seq(encoded));
 
         decoded.TerminalTotalDifficulty.Should().Be(max);
     }
@@ -106,7 +113,7 @@ public class SszCodecTests
         string[] caps = ["POST /engine/v5/payloads", "GET /engine/v6/payloads/{id}", "POST /engine/v4/forkchoice"];
 
         byte[] encoded = Encode<IReadOnlyList<string>>(caps, SszCodec.EncodeCapabilitiesResponse);
-        string[] decoded = SszCodec.DecodeCapabilitiesRequest(encoded);
+        string[] decoded = SszCodec.DecodeCapabilitiesRequest(Seq(encoded));
 
         decoded.Should().BeEquivalentTo(caps);
     }
@@ -119,7 +126,7 @@ public class SszCodecTests
         request[0] = 0x04;
         Buffer.BlockCopy(hash, 0, request, 4, 32);
 
-        byte[][] decoded = SszCodec.DecodeGetBlobsRequest(request);
+        byte[][] decoded = SszCodec.DecodeGetBlobsRequest(Seq(request));
 
         decoded.Should().HaveCount(1);
         decoded[0].Should().BeEquivalentTo(hash);
@@ -134,7 +141,7 @@ public class SszCodecTests
         for (int i = 0; i < hashes.Length; i++)
             Buffer.BlockCopy(hashes[i].Bytes.ToArray(), 0, request, 4 + i * 32, 32);
 
-        SszCodec.DecodeGetPayloadBodiesByHashRequest(request).Should().BeEquivalentTo(hashes);
+        SszCodec.DecodeGetPayloadBodiesByHashRequest(Seq(request)).Should().BeEquivalentTo(hashes);
     }
 
     [Test]
@@ -144,7 +151,7 @@ public class SszCodecTests
         BitConverter.TryWriteBytes(request.AsSpan(0, 8), 10UL);
         BitConverter.TryWriteBytes(request.AsSpan(8, 8), 5UL);
 
-        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(request);
+        (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Seq(request));
 
         start.Should().Be(10);
         count.Should().Be(5);

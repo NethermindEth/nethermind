@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Merge.Plugin.Data;
@@ -18,9 +19,9 @@ public sealed class TransitionConfigurationSszHandler(IEngineRpcModule engineMod
     public override string Resource => SszRestPaths.TransitionConfiguration;
     public override int? Version => 1;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
-        TransitionConfigurationV1 tc = SszCodec.DecodeTransitionConfigurationRequest(body.Span);
+        TransitionConfigurationV1 tc = SszCodec.DecodeTransitionConfigurationRequest(body);
         await WriteSszResultAsync(ctx, engineModule.engine_exchangeTransitionConfigurationV1(tc),
             SszCodec.EncodeTransitionConfigurationResponse);
     }

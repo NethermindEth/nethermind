@@ -29,7 +29,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     public virtual bool AcceptsPathExtra => false;
 
     /// <inheritdoc/>
-    public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body);
+    public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body);
 
     private static async Task WriteSszAsync<T>(HttpContext ctx, T value, Func<T, IBufferWriter<byte>, int> encode)
     {
@@ -51,6 +51,16 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
             throw;
         }
         Debug.Assert(pipe.UnflushedBytes - before == length, "encoder advanced wrong byte count");
+
+        if (length == 0)
+        {
+            // Encoder produced an empty body for non-null input — semantically equivalent
+            // to no-content. Mirrors the SetNoContent path so success-with-empty-body and
+            // null-data return the same 204 status.
+            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
+            return;
+        }
+
         ctx.Response.ContentType = OctetStream;
         ctx.Response.ContentLength = length;
         ctx.Response.StatusCode = StatusCodes.Status200OK;
