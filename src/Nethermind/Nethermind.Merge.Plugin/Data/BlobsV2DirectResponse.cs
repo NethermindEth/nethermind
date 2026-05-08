@@ -27,8 +27,7 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
 
     public BlobsV2DirectResponse(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs, int count)
     {
-        Debug.Assert(count <= blobs.Length && count <= proofs.Length,
-            "count must not exceed array lengths");
+        Debug.Assert(count <= blobs.Length && count <= proofs.Length, "count must not exceed array lengths");
         _blobs = blobs;
         _proofs = proofs;
         _count = count;
@@ -41,8 +40,7 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
         get
         {
             if ((uint)index >= (uint)_count) throw new ArgumentOutOfRangeException(nameof(index));
-            byte[]? blob = _blobs[index];
-            return blob is null ? null : new BlobAndProofV2(blob, _proofs[index].ToArray());
+            return BuildBlobAndProofV2(index);
         }
     }
 
@@ -92,9 +90,14 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<Blo
     {
         for (int i = 0; i < _count; i++)
         {
-            byte[]? blob = _blobs[i];
-            yield return blob is null ? null : new BlobAndProofV2(blob, _proofs[i].ToArray());
+            yield return BuildBlobAndProofV2(i);
         }
+    }
+
+    private BlobAndProofV2? BuildBlobAndProofV2(int i)
+    {
+        byte[]? blob = _blobs[i];
+        return blob is null ? null : new BlobAndProofV2(blob, _proofs[i].ToArray());
     }
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();

@@ -29,12 +29,6 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineR
     {
         Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body.Span);
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);
-        if (result.Result != Result.Success)
-        {
-            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
-                result.Result.Error ?? "Unknown error");
-            return;
-        }
-        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data!));
+        await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }
 }

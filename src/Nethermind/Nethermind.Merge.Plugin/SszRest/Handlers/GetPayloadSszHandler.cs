@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -18,6 +18,10 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
     where TVersion : struct, IGetPayloadVersion<TResult>
     where TResult : class
 {
+    // Spec: payload_id is hex-encoded Bytes8 (16 hex chars).
+    private const int PayloadIdHexLength = 16;
+    private const int PayloadIdByteLength = 8;
+
     public override string HttpMethod => "GET";
     public override string Resource => "payloads";
     public override int? Version => TVersion.VersionNumber;
@@ -31,22 +35,36 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
             return;
         }
 
-        ResultWrapper<TResult?> result = await TVersion.Call(engine, id);
-
         ctx.Response.Headers["Cache-Control"] = "no-store";
+        await WriteSszResultAsync(ctx, await TVersion.Call(engine, id), static d => TVersion.Encode(d!));
+    }
 
-        if (result.Result != Result.Success)
-        {
-            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
-                result.Result.Error ?? "Unknown error");
-            return;
-        }
-        if (result.Data is null)
-        {
-            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-            return;
-        }
+    private static bool TryParsePayloadId(ReadOnlySpan<char> extra, out byte[] id, out string err)
+    {
+        if (extra.Length == 0)
+            return Out([], "Missing payload ID", out id, out err);
 
-        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data));
+        ReadOnlySpan<char> hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
+        if (hex.Length != PayloadIdHexLength)
+            return Out([], $"Invalid payload ID: '{extra}' (expected {PayloadIdHexLength} hex chars)", out id, out err);
+
+        // stackalloc so a malformed hex never allocates; on success we materialize
+        // one byte[8] for the IEngineRpcModule call (JSON-RPC binds byte[]).
+        Span<byte> stack = stackalloc byte[PayloadIdByteLength];
+        if (Convert.FromHexString(hex, stack, out _, out _) != OperationStatus.Done)
+            return Out([], $"Invalid payload ID: '{extra}'", out id, out err);
+
+        return Out(stack.ToArray(), error: null, out id, out err);
+    }
+
+    /// <summary>
+    /// Single result-projection helper. Pass <c>null</c> for <paramref name="error"/>
+    /// on success; non-null is treated as failure.
+    /// </summary>
+    private static bool Out(byte[] value, string? error, out byte[] id, out string err)
+    {
+        id = value;
+        err = error ?? string.Empty;
+        return error is null;
     }
 }

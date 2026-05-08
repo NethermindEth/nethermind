@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
@@ -31,42 +30,6 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body);
 
-    // Per execution-apis #764 ssz-encoding spec: "{payload_id} MUST be validated as a
-    // well-formed hex-encoded Bytes8 before processing." Bytes8 = exactly 16 hex chars.
-    private const int PayloadIdHexLength = 16;
-    private const int PayloadIdByteLength = 8;
-
-    protected static bool TryParsePayloadId(ReadOnlySpan<char> extra, out byte[] id, out string err)
-    {
-        if (extra.Length == 0)
-        {
-            id = [];
-            err = "Missing payload ID";
-            return false;
-        }
-        ReadOnlySpan<char> hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
-        if (hex.Length != PayloadIdHexLength)
-        {
-            id = [];
-            err = $"Invalid payload ID: '{extra}' (expected {PayloadIdHexLength} hex chars)";
-            return false;
-        }
-        // Decode into the stack first so a malformed hex doesn't allocate. Engine API
-        // binds byte[] (JSON-RPC marshaling), so we still allocate one final byte[8]
-        // on success — the unavoidable cost of crossing into IEngineRpcModule.
-        Span<byte> stack = stackalloc byte[PayloadIdByteLength];
-        OperationStatus status = Convert.FromHexString(hex, stack, out _, out _);
-        if (status != OperationStatus.Done)
-        {
-            id = [];
-            err = $"Invalid payload ID: '{extra}'";
-            return false;
-        }
-        id = stack.ToArray();
-        err = string.Empty;
-        return true;
-    }
-
     protected static async Task WriteSszPooledAsync(HttpContext ctx, ArrayPoolSpan<byte> span)
     {
         try
@@ -83,23 +46,16 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         }
     }
 
-    protected static async Task WriteSszResultAsync<T>(
-        HttpContext ctx,
-        ResultWrapper<T> result,
-        Func<T, ArrayPoolSpan<byte>> encode)
+    protected static Task WriteSszResultAsync<T>(HttpContext ctx, ResultWrapper<T> result, Func<T, ArrayPoolSpan<byte>> encode)
     {
         if (result.Result != Result.Success)
-        {
-            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
-                result.Result.Error ?? "Unknown error");
-            return;
-        }
+            return WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error");
         if (result.Data is null)
         {
             ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-            return;
+            return Task.CompletedTask;
         }
-        await WriteSszPooledAsync(ctx, encode(result.Data));
+        return WriteSszPooledAsync(ctx, encode(result.Data));
     }
 
     public static async Task WriteErrorAsync(HttpContext ctx, int status, string message)

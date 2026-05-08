@@ -19,13 +19,21 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// Converts between Engine API domain objects and SSZ wire types.
 /// Encode/decode uses the SSZ source-generator (<see cref="ISszCodec{T}"/>)
 /// </summary>
+/// <summary>
+/// Wire-byte values for <see cref="PayloadStatusV1.Status"/> per the SSZ-REST spec
+/// (execution-apis #764, <c>PayloadStatusV1</c> definition).
+/// </summary>
+internal static class SszPayloadStatus
+{
+    public const byte Valid = 0;
+    public const byte Invalid = 1;
+    public const byte Syncing = 2;
+    public const byte Accepted = 3;
+    public const byte InvalidBlockHash = 4;
+}
+
 public static class SszCodec
 {
-    private const byte SszStatusValid = 0;
-    private const byte SszStatusInvalid = 1;
-    private const byte SszStatusSyncing = 2;
-    private const byte SszStatusAccepted = 3;
-    private const byte SszStatusInvalidBlockHash = 4;
 
     private static ArrayPoolSpan<byte> EncodePooled<T>(T value) where T : ISszCodec<T>
     {
@@ -247,8 +255,15 @@ public static class SszCodec
 
     public static ClientVersionV1 DecodeClientVersionRequest(ReadOnlySpan<byte> buf)
     {
-        GetClientVersionRequestWire.Decode(buf, out GetClientVersionRequestWire _);
-        return new ClientVersionV1();
+        GetClientVersionRequestWire.Decode(buf, out GetClientVersionRequestWire wire);
+        ClientVersionWire cl = wire.ClientVersion;
+        return new ClientVersionV1
+        {
+            Code = Encoding.UTF8.GetString(cl.Code ?? []),
+            Name = Encoding.UTF8.GetString(cl.Name ?? []),
+            Version = Encoding.UTF8.GetString(cl.Version ?? []),
+            Commit = cl.Commit is { Length: 4 } c ? Convert.ToHexString(c) : new string('0', 8),
+        };
     }
 
     public static ArrayPoolSpan<byte> EncodeClientVersionResponse(ClientVersionV1[] versions)
@@ -273,11 +288,11 @@ public static class SszCodec
 
     private static byte EngineStatusToSsz(string status) => status switch
     {
-        PayloadStatus.Valid => SszStatusValid,
-        PayloadStatus.Invalid => SszStatusInvalid,
-        PayloadStatus.Syncing => SszStatusSyncing,
-        PayloadStatus.Accepted => SszStatusAccepted,
-        PayloadStatus.InvalidBlockHash => SszStatusInvalidBlockHash,
+        PayloadStatus.Valid => SszPayloadStatus.Valid,
+        PayloadStatus.Invalid => SszPayloadStatus.Invalid,
+        PayloadStatus.Syncing => SszPayloadStatus.Syncing,
+        PayloadStatus.Accepted => SszPayloadStatus.Accepted,
+        PayloadStatus.InvalidBlockHash => SszPayloadStatus.InvalidBlockHash,
         _ => throw new InvalidOperationException($"Unknown payload status '{status}': cannot map to SSZ wire byte")
     };
 

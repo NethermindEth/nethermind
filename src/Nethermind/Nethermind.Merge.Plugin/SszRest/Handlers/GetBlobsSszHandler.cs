@@ -38,17 +38,6 @@ public sealed class GetBlobsV2SszHandler<TVersion>(IEngineRpcModule engineModule
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await TVersion.Call(engineModule, hashes);
-        if (result.Result != Result.Success)
-        {
-            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
-                result.Result.Error ?? "Unknown error");
-            return;
-        }
-        if (result.Data is null)
-        {
-            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-            return;
-        }
-        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data));
+        await WriteSszResultAsync(ctx, result, static d => TVersion.Encode(d!));
     }
 }

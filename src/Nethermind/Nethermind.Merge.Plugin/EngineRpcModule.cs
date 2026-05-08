@@ -26,7 +26,7 @@ public partial class EngineRpcModule(
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
     IGetPayloadBodiesByRangeV1Handler executionGetPayloadBodiesByRangeV1Handler,
     IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
-    IHandler<IEnumerable<string>, IReadOnlyList<string>> capabilitiesHandler,
+    IHandler<HashSet<string>, IReadOnlyList<string>> capabilitiesHandler,
     IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> getBlobsHandler,
     IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> getBlobsHandlerV2,
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
@@ -37,12 +37,12 @@ public partial class EngineRpcModule(
     ILogManager logManager) : IEngineRpcModule
 {
 
-    private readonly IHandler<IEnumerable<string>, IReadOnlyList<string>> _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
+    private readonly IHandler<HashSet<string>, IReadOnlyList<string>> _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EngineRpcModule>();
 
     public ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
-        => _capabilitiesHandler.Handle(methods);
+        => _capabilitiesHandler.Handle(methods as HashSet<string> ?? [.. methods]);
 
     public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) => ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
 }

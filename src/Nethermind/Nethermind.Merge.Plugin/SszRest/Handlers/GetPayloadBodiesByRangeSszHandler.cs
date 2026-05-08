@@ -28,12 +28,6 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     {
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body.Span);
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);
-        if (result.Result != Result.Success)
-        {
-            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
-                result.Result.Error ?? "Unknown error");
-            return;
-        }
-        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data!));
+        await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }
 }

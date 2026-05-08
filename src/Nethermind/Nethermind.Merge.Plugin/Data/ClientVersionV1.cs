@@ -11,19 +11,18 @@ namespace Nethermind.Merge.Plugin.Data;
 /// </summary>
 public readonly struct ClientVersionV1
 {
-    public ClientVersionV1()
-    {
-        Code = ProductInfo.ClientCode;
-        Name = ProductInfo.Name;
-        Version = ProductInfo.Version;
-        Commit = ProductInfo.Commit.Length < 8
-            ? string.Empty.PadLeft(8, '0')
-            : ProductInfo.Commit[..8];
-    }
+    // Field initializers default to this client's own product info — used by the
+    // EL when responding with its identity, and by tests/calls that want a self
+    // identification without any decoded input. JSON-RPC and SSZ-REST request
+    // paths populate the properties via the `init` setters from caller-supplied
+    // wire data instead.
+    public ClientVersionV1() { }
 
-    public string Code { get; }
-    public string Name { get; }
-    public string Version { get; }
-    public string Commit { get; }
+    public string Code { get; init; } = ProductInfo.ClientCode;
+    public string Name { get; init; } = ProductInfo.Name;
+    public string Version { get; init; } = ProductInfo.Version;
+    public string Commit { get; init; } = ProductInfo.Commit.Length < 8
+        ? string.Empty.PadLeft(8, '0')
+        : ProductInfo.Commit[..8];
 }
 

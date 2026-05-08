@@ -1738,7 +1738,7 @@ public partial class EngineModuleTests
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
-        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data
+        string[] result = exchangeCapabilitiesHandler.Handle(new HashSet<string>()).Data
             .Where(static s => !s.Contains(' '))
             .ToArray();
         string[] expectedMethods = new string[]
@@ -1868,7 +1868,7 @@ public partial class EngineModuleTests
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
 
-        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data
+        string[] result = exchangeCapabilitiesHandler.Handle(new HashSet<string>()).Data
             .Where(static s => s.Contains(' '))
             .ToArray();
 

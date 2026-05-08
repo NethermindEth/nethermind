@@ -3,19 +3,20 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IReadOnlyList<string>>
+public class ExchangeCapabilitiesHandler : IHandler<HashSet<string>, IReadOnlyList<string>>
 {
     private readonly ILogger _logger;
     private readonly IRpcCapabilitiesProvider _engineRpcCapabilitiesProvider;
-    // The enabled-capability set is fixed once the provider builds its dictionary,
-    // so cache the projected list and avoid rebuilding it on every Handle call.
-    private IReadOnlyList<string>? _enabledCache;
+    // The enabled-capability projection is stable across calls (the provider's
+    // dictionary is built once on first access). Cache the result so we only
+    // pay for the projection on the first request; later requests still scan
+    // for missing capabilities (depends on caller-supplied input).
+    private IReadOnlyList<string>? _cachedEnabled;
 
     public ExchangeCapabilitiesHandler(IRpcCapabilitiesProvider engineRpcCapabilitiesProvider, ILogManager logManager)
     {
@@ -25,46 +26,35 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IReadOn
         _engineRpcCapabilitiesProvider = engineRpcCapabilitiesProvider;
     }
 
-    public ResultWrapper<IReadOnlyList<string>> Handle(IEnumerable<string> methods)
+    public ResultWrapper<IReadOnlyList<string>> Handle(HashSet<string> methods)
     {
         IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities = _engineRpcCapabilitiesProvider.GetEngineCapabilities();
-        CheckCapabilities(methods, capabilities);
 
-        return ResultWrapper<IReadOnlyList<string>>.Success(_enabledCache ??= BuildEnabledList(capabilities));
-    }
+        // Single pass over capabilities: build the enabled list (only on first call,
+        // cached afterwards) and collect missing-but-required entries (every call).
+        // O(N) over capabilities × O(1) HashSet lookup per entry — replaces the
+        // previous O(N) × O(M) LINQ Any nested scan.
+        List<string>? enabled = _cachedEnabled is null ? new List<string>(capabilities.Count) : null;
+        List<string>? missing = null;
 
-    private static IReadOnlyList<string> BuildEnabledList(IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)
-    {
-        List<string> enabled = new(capabilities.Count);
-        foreach (KeyValuePair<string, (bool Enabled, bool WarnIfMissing)> kv in capabilities)
-            if (kv.Value.Enabled)
-                enabled.Add(kv.Key);
-        return enabled;
-    }
-
-    private void CheckCapabilities(IEnumerable<string> methods, IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> capabilities)
-    {
-        List<string> missing = new();
-
-        foreach (KeyValuePair<string, (bool Enabled, bool WarnIfMissing)> capability in capabilities)
+        foreach ((string key, (bool isEnabled, bool warnIfMissing)) in capabilities)
         {
-            bool found = false;
-
-            foreach (string method in methods)
-                if (method.Equals(capability.Key, StringComparison.Ordinal))
+            if (isEnabled)
+            {
+                enabled?.Add(key);
+                if (warnIfMissing && !methods.Contains(key))
                 {
-                    found = true;
-                    break;
+                    missing ??= new List<string>();
+                    missing.Add(key);
                 }
-
-            // Warn if not found and capability activated
-            if (!found && capability.Value is { Enabled: true, WarnIfMissing: true })
-                missing.Add(capability.Key);
+            }
         }
 
-        if (missing.Count > 0)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Consensus client missing capabilities: {string.Join(", ", missing)}");
-        }
+        if (enabled is not null) _cachedEnabled = enabled;
+
+        if (missing is { Count: > 0 } && _logger.IsWarn)
+            _logger.Warn($"Consensus client missing capabilities: {string.Join(", ", missing)}");
+
+        return ResultWrapper<IReadOnlyList<string>>.Success(_cachedEnabled!);
     }
 }
