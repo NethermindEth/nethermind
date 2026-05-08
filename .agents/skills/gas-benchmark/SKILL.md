@@ -9,7 +9,6 @@ allowed-tools:
   - Bash(git branch *)
   - Bash(git log *)
   - Bash(git status *)
-  - Bash(git push *)
   - Bash(cd *)
   - Bash(ls *)
   - Bash(mkdir *)
@@ -148,8 +147,9 @@ Skip if `--image` is provided.
    - dotTrace enabled → `Dockerfile.diag`, tag suffix `-diag`
    - dotTrace disabled → regular `Dockerfile`, no suffix
 3. Compute tag: `<branch-name>-diag` (if diag) or `<branch-name>` (if regular).
-4. Trigger the docker build:
+4. Capture timestamp, then trigger the docker build:
    ```
+   BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
    MSYS_NO_PATHCONV=1 gh workflow run publish-docker.yml \
      --ref <branch> \
      -f image-name=nethermind \
@@ -157,11 +157,18 @@ Skip if `--image` is provided.
      -f dockerfile=<dockerfile> \
      -f build-config=release
    ```
-5. Poll until complete: `gh run view <run-id> --json status,conclusion`
-6. If build fails, fetch logs and report the error. Stop.
-7. Final image: `nethermindeth/nethermind:<tag>`
+5. Wait ~10s, then find the run ID using the timestamp to avoid race conditions:
+   ```
+   gh run list --workflow=publish-docker.yml --limit 5 --json databaseId,createdAt \
+     --jq '[.[] | select(.createdAt > "<BEFORE>")] | first | .databaseId'
+   ```
+6. Poll until complete: `gh run view <run-id> --json status,conclusion`
+7. If build fails, fetch logs and report the error. Stop.
+8. Final image: `nethermindeth/nethermind:<tag>`
 
 ## Phase 2 — Trigger repricing workflow
+
+Capture timestamp before triggering: `BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)`
 
 Build the workflow trigger using only the inputs the workflow accepts (from Step 0c):
 ```
@@ -189,9 +196,15 @@ Report the run URL to the user immediately after triggering.
 
 ## Phase 3 — Wait for completion
 
-1. Get the run ID from `gh run list --repo NethermindEth/gas-benchmarks --workflow=repricing-nethermind.yml --limit 1`.
+1. Find the run ID using the timestamp captured before triggering (same approach as Phase 1 step 5):
+   ```
+   gh run list --repo NethermindEth/gas-benchmarks --workflow=repricing-nethermind.yml \
+     --limit 5 --json databaseId,createdAt \
+     --jq '[.[] | select(.createdAt > "<BEFORE>")] | first | .databaseId'
+   ```
 2. Poll: `gh run view <run-id> --repo NethermindEth/gas-benchmarks --json status,conclusion` every 30 seconds.
-3. Report to the user when the run completes with success or failure.
+3. **Timeout after 2 hours** (240 polls). If exceeded, report "timed out" and provide the run URL for manual inspection. Stop.
+4. Report to the user when the run completes with success or failure.
 
 ## Phase 4 — Analyze results
 
@@ -205,8 +218,9 @@ Strip ANSI escape codes: `sed 's/\x1b\[[0-9;]*m//g'`
 
 Scan for ALL of these patterns. Report every match with the full log line:
 ```
-grep -iE "Exception|Invalid Block|InvalidBlock|Rejected invalid" | grep -v "docker\|pip\|node-exporter\|apt\|dotnet\|nuget\|npm\|orphan"
+grep -iE "Exception|Invalid Block|InvalidBlock|Rejected invalid" | grep -v "node-exporter\|pip install\|apt-get\|npm warn\|orphan process\|docker-compose\|nuget\.org"
 ```
+Note: do NOT exclude `dotnet` — real Nethermind exceptions contain .NET runtime frames.
 
 **Any match means the run has issues.** Classify:
 - `HeaderGasUsedMismatch` → gas schedule mismatch between image and test data (wrong branch/fork)
