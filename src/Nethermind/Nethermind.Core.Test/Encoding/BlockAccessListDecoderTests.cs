@@ -176,7 +176,7 @@ public class BlockAccessListDecoderTests
         AccountChanges accountChangesDecoded = Rlp.Decode<AccountChanges>(accountChangesBytes, RlpBehaviors.None);
         Assert.That(accountChanges, Is.EqualTo(accountChangesDecoded));
 
-        SortedDictionary<Address, AccountChanges> accountChangesDict = new()
+        Dictionary<Address, AccountChanges> accountChangesDict = new()
         {
             { accountChanges.Address, accountChanges }
         };
@@ -190,16 +190,26 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decoding_block_access_list_with_unsorted_account_changes_throws()
     {
-        AccountChanges accountChangesA = Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject;
-        AccountChanges accountChangesB = Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject;
-        SortedDictionary<Address, AccountChanges> accountChanges = new(DescendingComparer<Address>())
-        {
-            { accountChangesA.Address, accountChangesA },
-            { accountChangesB.Address, accountChangesB }
-        };
+        // Use addresses with known ordering: 0x00...01 < 0xff...ff
+        Address lowAddress = new("0x0000000000000000000000000000000000000001");
+        Address highAddress = new("0xffffffffffffffffffffffffffffffffffffffff");
+        AccountChanges accountLow = Build.An.AccountChanges.WithAddress(lowAddress).TestObject;
+        AccountChanges accountHigh = Build.An.AccountChanges.WithAddress(highAddress).TestObject;
 
-        BlockAccessList blockAccessList = new(accountChanges);
-        byte[] encoded = Rlp.Encode(blockAccessList, RlpBehaviors.None).Bytes;
+        // Encode correctly ordered [low, high], then manually swap order in the RLP
+        // First encode each item
+        int lowLen = AccountChangesDecoder.GetContentLength(accountLow, RlpBehaviors.None);
+        int highLen = AccountChangesDecoder.GetContentLength(accountHigh, RlpBehaviors.None);
+        int lowSeqLen = Rlp.LengthOfSequence(lowLen);
+        int highSeqLen = Rlp.LengthOfSequence(highLen);
+
+        // Outer sequence wraps [high, low] in wrong order
+        int contentLength = highSeqLen + lowSeqLen;
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        AccountChangesDecoder.Instance.Encode(stream, accountHigh, RlpBehaviors.None);
+        AccountChangesDecoder.Instance.Encode(stream, accountLow, RlpBehaviors.None);
+        byte[] encoded = stream.Data.ToArray()!;
 
         Assert.That(
             () => Rlp.Decode<BlockAccessList>(encoded, RlpBehaviors.None),
@@ -345,7 +355,7 @@ public class BlockAccessListDecoderTests
         {
             StorageChange parentHashStorageChange = new(0, new UInt256(Bytes.FromHexString("0xc382836f81d7e4055a0e280268371e17cc69a531efe2abee082e9b922d6050fd"), isBigEndian: true));
             StorageChange timestampStorageChange = new(0, 0xc);
-            SortedDictionary<Address, AccountChanges> expectedAccountChanges = new()
+            Dictionary<Address, AccountChanges> expectedAccountChanges = new()
             {
                 {
                     Eip7002Constants.WithdrawalRequestPredeployAddress,
