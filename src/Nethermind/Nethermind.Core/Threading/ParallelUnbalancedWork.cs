@@ -194,6 +194,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         public SharedCounter Index { get; } = new SharedCounter(fromInclusive);
         public SemaphoreSlim Event { get; } = new(initialCount: 0);
         private int _activeThreads = threads;
+        private int _faulted;
         private ExceptionDispatchInfo? _exception;
         public CancellationToken CancellationToken { get; } = token;
 
@@ -211,7 +212,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// Whether any worker has captured an exception. Used by workers to short-circuit
         /// fetching new indices once the operation is already faulted.
         /// </summary>
-        public bool IsFaulted => Volatile.Read(ref _exception) is not null;
+        public bool IsFaulted => Volatile.Read(ref _faulted) != 0;
 
         /// <summary>
         /// Captures the first exception observed by any worker so it can be rethrown on the
@@ -219,11 +220,15 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public void CaptureException(Exception exception)
         {
-            // Skip the (non-trivial) ExceptionDispatchInfo.Capture call once we already have one.
-            if (IsFaulted) return;
+            // Publish the fault flag before paying for ExceptionDispatchInfo.Capture (which walks
+            // the stack and is non-trivial) so other workers can short-circuit immediately. Without
+            // this, all four workers can race through cheap iterations during the capture window.
+            if (Interlocked.CompareExchange(ref _faulted, 1, 0) != 0) return;
 
-            // Only the first exception wins; any later ones are discarded.
-            Interlocked.CompareExchange(ref _exception, ExceptionDispatchInfo.Capture(exception), null);
+            // Only the first faulting worker reaches here; the write must be a release so that the
+            // calling thread (which observes ActiveThreads == 0 via the semaphore) sees a non-null
+            // _exception in ThrowIfFaulted.
+            Volatile.Write(ref _exception, ExceptionDispatchInfo.Capture(exception));
         }
 
         /// <summary>
