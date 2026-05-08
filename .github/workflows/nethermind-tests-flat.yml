@@ -87,7 +87,7 @@ jobs:
         with:
           cache: true
           cache-dependency-path: |
-            src/Nethermind/**/packages.lock.json
+            src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: ${{ matrix.project }}
         id: test
