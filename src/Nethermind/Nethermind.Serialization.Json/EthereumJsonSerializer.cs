@@ -78,6 +78,7 @@ namespace Nethermind.Serialization.Json
                 {
                     new LongConverter(),
                     new UInt256Converter(),
+                    new EvmWordConverter(),
                     new ULongConverter(),
                     new IntConverter(),
                     new ByteArrayConverter(),

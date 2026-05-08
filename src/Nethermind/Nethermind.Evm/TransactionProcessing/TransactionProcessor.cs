@@ -248,9 +248,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     Address[] orderedDestroyList = [.. destroyList];
                     Array.Sort(orderedDestroyList, GenericComparer.GetOptimized<Address>());
-                    foreach (Address toBeDestroyed in orderedDestroyList)
+                    for (int i = 0; i < orderedDestroyList.Length; i++)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, toBeDestroyed);
+                        FinalizeDestroyedAccount(WorldState, in substate, orderedDestroyList[i]);
                     }
                 }
                 else

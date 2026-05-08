@@ -41,7 +41,7 @@ public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStr
             }
             lastAddress = address;
 
-            itemCount += 1L + a.StorageChanges.Count + a.StorageReads.Count;
+            itemCount += 1L + a.StorageChanges.Length + a.StorageReads.Count;
         }
 
         return BlockAccessList.FromSortedAccountChanges(accountChanges, itemCount);

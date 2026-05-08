@@ -199,7 +199,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
+                Assert.That(ac!.StorageChanges, Has.Length.EqualTo(1));
                 Assert.That(ac.StorageChanges[0].Key, Is.EqualTo((UInt256)1));
             }
         }
@@ -509,7 +509,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
+                Assert.That(ac!.StorageChanges, Has.Length.EqualTo(1));
                 SlotChanges slotChanges = ac.StorageChanges[0];
                 // Storage changes also Pop+Push at same Index, so Count stays 1
                 Assert.That(slotChanges.Changes, Has.Count.EqualTo(1));

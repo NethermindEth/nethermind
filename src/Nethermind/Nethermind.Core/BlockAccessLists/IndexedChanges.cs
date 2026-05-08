@@ -454,6 +454,18 @@ public sealed class IndexedChanges<T> : IEnumerable<T>
             }
         }
 
+        public uint CurrentKey
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _changes.GetKeyAt(_index);
+        }
+
+        public T CurrentValue
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _changes.GetAt(_index);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool MoveNext() => ++_index < _changes.Count;
     }

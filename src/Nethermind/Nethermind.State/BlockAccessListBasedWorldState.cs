@@ -29,17 +29,15 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private BlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private IWorldState? _parentReader;
-    private Dictionary<ValueHash256, byte[]>? _codeChangesByHash;
+    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
     private uint _blockAccessIndex = 0;
     private EvmWord _readScratch;
     private EvmWord _originalScratch;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
 
-    public void SetBlockAccessIndex(uint index)
-    {
-        _blockAccessIndex = index;
-        _codeChangesByHash = null;
-    }
+    // _codeChangesByHash is monotonic across the block (a code blob deployed at any tx is
+    // queryable at any later tx), so it is built once per block in Setup and not rebuilt here.
+    public void SetBlockAccessIndex(uint index) => _blockAccessIndex = index;
 
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
@@ -49,7 +47,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
-        _codeChangesByHash = null;
+        _codeChangesByHash = BuildCodeChangesByHash();
         _transientStorageProvider.Reset();
     }
 
@@ -359,23 +357,36 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     {
         code = null;
 
-        Dictionary<ValueHash256, byte[]> codeChangesByHash = _codeChangesByHash ??= BuildCodeChangesByHash();
-        return codeChangesByHash.TryGetValue(codeHash, out code);
+        if (_codeChangesByHash is { } codeChangesByHash
+            && codeChangesByHash.TryGetValue(codeHash, out (uint Index, byte[] Code) entry)
+            && entry.Index < _blockAccessIndex)
+        {
+            code = entry.Code;
+            return true;
+        }
+        return false;
     }
 
-    private Dictionary<ValueHash256, byte[]> BuildCodeChangesByHash()
+    private Dictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
     {
-        Dictionary<ValueHash256, byte[]> codeChangesByHash = [];
         if (_suggestedBlockAccessList is null)
         {
-            return codeChangesByHash;
+            return null;
         }
 
+        // Built once per block; entries are immutable across the block. TryGetCodeByHash filters
+        // by Index < _blockAccessIndex at lookup time so future-tx code stays invisible.
+        Dictionary<ValueHash256, (uint Index, byte[] Code)> codeChangesByHash = [];
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
+            foreach (CodeChange codeChange in accountChanges.CodeChanges)
             {
-                codeChangesByHash[codeChange.CodeHash] = codeChange.Code;
+                if (codeChange.Index == Eip7928Constants.PrestateIndex) continue;
+                if (!codeChangesByHash.TryGetValue(codeChange.CodeHash, out (uint Index, byte[] Code) existing)
+                    || codeChange.Index < existing.Index)
+                {
+                    codeChangesByHash[codeChange.CodeHash] = (codeChange.Index, codeChange.Code);
+                }
             }
         }
 

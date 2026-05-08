@@ -185,15 +185,15 @@ public class BlockAccessListManager(
 
         long totalRegularGas = 0;
         long totalStateGas = 0;
-        for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
+        for (uint chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
             if (token.IsCancellationRequested)
             {
                 return;
             }
 
-            int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
-            for (int j = chunkStart; j < chunkEnd; j++)
+            uint chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, (uint)len);
+            for (uint j = chunkStart; j < chunkEnd; j++)
             {
                 Transaction tx = block.Transactions[j];
 
@@ -203,7 +203,8 @@ public class BlockAccessListManager(
                 // the worst-case per-dimension contribution must fit the remaining budget.
                 // The worker precomputes intrinsic gas once and carries it here to avoid
                 // recalculating dynamic state-byte costs on the validation thread.
-                CheckPerTxInclusion(block, j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in gasResult.IntrinsicGas);
+                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
+                CheckPerTxInclusion(block, (int)j, tx, _blockExecutionContext.Value.Spec, totalRegularGas, totalStateGas, in intrinsicGas);
 
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
@@ -215,17 +216,17 @@ public class BlockAccessListManager(
                 totalStateGas += gasResult.BlockStateGasUsed;
                 SpendGas(gasResult.BlockGasUsed);
 
-                CheckGasUsed(j, block, totalRegularGas, totalStateGas);
+                CheckGasUsed((int)j, block, totalRegularGas, totalStateGas);
 
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
+                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs((int)j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
                 // Worker for tx (j+1) has stashed its BAL into _perTxBal[j+1] via Return as
                 // soon as the tx finished — no contention with the validator. Merge it into
                 // the target now, in order, so incremental validation sees only data from
                 // txs 0..(j+1).
                 bool validateStorageReads = j == chunkEnd - 1;
-                MergeAndReturnBal((uint)(j + 1));
-                ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
+                MergeAndReturnBal(j + 1);
+                ValidateBlockAccessList(block, j + 1, validateStorageReads);
             }
         }
 
@@ -287,34 +288,39 @@ public class BlockAccessListManager(
     {
         foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChangesByAddress)
         {
-            if (accountChanges.TryGetLastBalanceChangeBefore(Eip7928Constants.PrestateIndex, out BalanceChange balanceChange))
-            {
-                UInt256 oldBalance = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account)
-                    ? account.Balance
-                    : UInt256.Zero;
+            bool hasBalance = accountChanges.TryGetLastBalanceChangeBefore(Eip7928Constants.PrestateIndex, out BalanceChange balanceChange);
+            bool hasNonce = accountChanges.TryGetLastNonceChangeBefore(Eip7928Constants.PrestateIndex, out NonceChange nonceChange);
+            bool hasCode = accountChanges.TryGetLastCodeChangeBefore(Eip7928Constants.PrestateIndex, out CodeChange codeChange);
 
+            if (hasBalance || hasNonce || hasCode)
+            {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                UInt256 newBalance = balanceChange.Value;
-                if (newBalance > oldBalance)
+
+                if (hasBalance)
                 {
-                    stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
+                    UInt256 oldBalance = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account)
+                        ? account.Balance
+                        : UInt256.Zero;
+                    UInt256 newBalance = balanceChange.Value;
+                    if (newBalance > oldBalance)
+                    {
+                        stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
+                    }
+                    else
+                    {
+                        stateProvider.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
+                    }
                 }
-                else
+
+                if (hasNonce)
                 {
-                    stateProvider.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
+                    stateProvider.SetNonce(accountChanges.Address, nonceChange.Value);
                 }
-            }
 
-            if (accountChanges.TryGetLastNonceChangeBefore(Eip7928Constants.PrestateIndex, out NonceChange nonceChange))
-            {
-                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.SetNonce(accountChanges.Address, nonceChange.Value);
-            }
-
-            if (accountChanges.TryGetLastCodeChangeBefore(Eip7928Constants.PrestateIndex, out CodeChange codeChange))
-            {
-                stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.InsertCode(accountChanges.Address, codeChange.CodeHash, codeChange.Code, spec);
+                if (hasCode)
+                {
+                    stateProvider.InsertCode(accountChanges.Address, codeChange.CodeHash, codeChange.Code, spec);
+                }
             }
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
@@ -322,6 +328,10 @@ public class BlockAccessListManager(
                 if (slotChange.Changes.TryGetLastBefore(Eip7928Constants.PrestateIndex, out StorageChange storageChange))
                 {
                     StorageCell storageCell = new(accountChanges.Address, slotChange.Key);
+                    // Storage cell value is stored as a byte[] in the change journal; the trimmed
+                    // big-endian encoding is the canonical representation. Allocation matches the
+                    // exact trimmed length; an `IWorldState.Set(ReadOnlySpan<byte>)` overload would
+                    // just shift this allocation into the storage provider.
                     byte[] trimmed = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in storageChange.Value)), 32)
                         .WithoutLeadingZeros()
                         .ToArray();

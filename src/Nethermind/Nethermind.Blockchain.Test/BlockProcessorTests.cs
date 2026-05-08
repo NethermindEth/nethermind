@@ -980,7 +980,7 @@ public class BlockProcessorTests
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
-        gasResults[0].TrySetResult(new GasValidationResult(1, 2, in intrinsicGas, null));
+        gasResults[0].TrySetResult(new GasValidationResult(1, 2, intrinsicGas, null));
 
         BlockProcessor.ParallelBlockValidationTransactionsExecutor.CancelIncompleteGasResults(gasResults, gasResults.Length);
 
@@ -1039,7 +1039,7 @@ public class BlockProcessorTests
         GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
-        return new(blockGasUsed, blockStateGasUsed, in intrinsicGas, exception);
+        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
     }
 
     private static Transaction[] CreateParallelValidationTransactions(int txCount)

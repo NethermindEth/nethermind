@@ -77,7 +77,7 @@ public class Eip8037BlockGasIntegrationTests
         GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
     {
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
-        return new(blockGasUsed, blockStateGasUsed, in intrinsicGas, exception);
+        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
     }
 
     /// <summary>

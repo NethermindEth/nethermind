@@ -21,10 +21,10 @@ public class AccountChanges : IEquatable<AccountChanges>
     public Address Address { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IList<SlotChanges> StorageChanges => GetSortedStorageChanges();
+    public SlotChanges[] StorageChanges => GetSortedStorageChanges();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
-    public IList<UInt256> ChangedSlots => GetSortedChangedSlots();
+    public UInt256[] ChangedSlots => GetSortedChangedSlots();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public HashSet<UInt256> StorageReads => _storageReads;
@@ -72,52 +72,56 @@ public class AccountChanges : IEquatable<AccountChanges>
     private UInt256[]? _sortedChangedSlots;
     private UInt256[]? _sortedStorageReads;
 
-    public AccountChanges()
-    {
-        Address = Address.Zero;
-        _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
-        _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
-        _balanceChanges = new();
-        _nonceChanges = new();
-        _codeChanges = new();
-    }
+    public AccountChanges() : this(Address.Zero, null, null, null, null, null, null) { }
 
-    public AccountChanges(Address address)
-    {
-        Address = address;
-        _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
-        _storageReads = new(GenericEqualityComparer.GetOptimized<UInt256>());
-        _balanceChanges = new();
-        _nonceChanges = new();
-        _codeChanges = new();
-    }
+    public AccountChanges(Address address) : this(address, null, null, null, null, null, null) { }
 
-    public AccountChanges(Address address, SlotChanges[] storageChanges, HashSet<UInt256> storageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges)
+    public AccountChanges(
+        Address address,
+        SlotChanges[] storageChanges,
+        HashSet<UInt256> storageReads,
+        IndexedChanges<BalanceChange> balanceChanges,
+        IndexedChanges<NonceChange> nonceChanges,
+        IndexedChanges<CodeChange> codeChanges)
         : this(address, storageChanges, storageReads, sortedStorageReads: null, balanceChanges, nonceChanges, codeChanges)
     {
     }
 
-    internal AccountChanges(Address address, SlotChanges[] storageChanges, HashSet<UInt256> storageReads, UInt256[]? sortedStorageReads, IndexedChanges<BalanceChange> balanceChanges, IndexedChanges<NonceChange> nonceChanges, IndexedChanges<CodeChange> codeChanges)
+    internal AccountChanges(
+        Address address,
+        SlotChanges[]? storageChanges,
+        HashSet<UInt256>? storageReads,
+        UInt256[]? sortedStorageReads,
+        IndexedChanges<BalanceChange>? balanceChanges,
+        IndexedChanges<NonceChange>? nonceChanges,
+        IndexedChanges<CodeChange>? codeChanges)
     {
         Address = address;
-        _storageChanges = new(storageChanges.Length, GenericEqualityComparer.GetOptimized<UInt256>());
-        for (int i = 0; i < storageChanges.Length; i++)
+        if (storageChanges is null)
         {
-            SlotChanges slotChanges = storageChanges[i];
-            _storageChanges.Add(slotChanges.Key, slotChanges);
+            _storageChanges = new(GenericEqualityComparer.GetOptimized<UInt256>());
         }
-        _sortedStorageChanges = storageChanges;
-        _storageReads = storageReads;
+        else
+        {
+            _storageChanges = new(storageChanges.Length, GenericEqualityComparer.GetOptimized<UInt256>());
+            for (int i = 0; i < storageChanges.Length; i++)
+            {
+                SlotChanges slotChanges = storageChanges[i];
+                _storageChanges.Add(slotChanges.Key, slotChanges);
+            }
+            _sortedStorageChanges = storageChanges;
+        }
+        _storageReads = storageReads ?? new(GenericEqualityComparer.GetOptimized<UInt256>());
         _sortedStorageReads = sortedStorageReads;
-        _balanceChanges = balanceChanges;
-        _nonceChanges = nonceChanges;
-        _codeChanges = codeChanges;
+        _balanceChanges = balanceChanges ?? new();
+        _nonceChanges = nonceChanges ?? new();
+        _codeChanges = codeChanges ?? new();
     }
 
     public bool Equals(AccountChanges? other) =>
         other is not null &&
         Address == other.Address &&
-        ListEquals(StorageChanges, other.StorageChanges) &&
+        ArrayEquals(StorageChanges, other.StorageChanges) &&
         _storageReads.SetEquals(other._storageReads) &&
         ListEquals(BalanceChanges, other.BalanceChanges) &&
         ListEquals(NonceChanges, other.NonceChanges) &&
@@ -292,7 +296,7 @@ public class AccountChanges : IEquatable<AccountChanges>
             sb.Append($" nonce=[{string.Join(", ", NonceChanges)}]");
         if (CodeChanges.Count > 0)
             sb.Append($" code=[{string.Join(", ", CodeChanges)}]");
-        if (StorageChanges.Count > 0)
+        if (StorageChanges.Length > 0)
             sb.Append($" storage=[{string.Join(", ", StorageChanges)}]");
         if (StorageReads.Count > 0)
             sb.Append($" reads=[{string.Join(", ", StorageReads)}]");
@@ -627,6 +631,21 @@ public class AccountChanges : IEquatable<AccountChanges>
             return false;
 
         for (int i = 0; i < left.Count; i++)
+        {
+            if (!left[i].Equals(right[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool ArrayEquals<T>(T[] left, T[] right)
+        where T : IEquatable<T>
+    {
+        if (left.Length != right.Length)
+            return false;
+
+        for (int i = 0; i < left.Length; i++)
         {
             if (!left[i].Equals(right[i]))
                 return false;

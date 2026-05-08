@@ -88,17 +88,17 @@ public class OsakaSyncBlockchainTests : PyspecSyncBlockchainTestFixture<OsakaSyn
 // FlatDB workflow can chunk them on dedicated matrix entries. Default chunks exclude these
 // classes via FullyQualifiedName filter to avoid double-running.
 
-public class AmsterdamParallelBlockchainTests : PyspecAmsterdamParallelBlockchainTestFixture;
+public class AmsterdamParallelBlockchainTests() : PyspecAmsterdamBlockchainTestFixture(parallel: true, batchRead: false);
 
-public class AmsterdamBatchReadBlockchainTests : PyspecAmsterdamBatchReadBlockchainTestFixture;
+public class AmsterdamBatchReadBlockchainTests() : PyspecAmsterdamBlockchainTestFixture(parallel: false, batchRead: true);
 
-public class AmsterdamParallelFullBlockchainTests : PyspecAmsterdamParallelFullBlockchainTestFixture;
+public class AmsterdamParallelFullBlockchainTests() : PyspecAmsterdamBlockchainTestFixture(parallel: true, batchRead: true);
 
-public class AmsterdamParallelEngineBlockchainTests : PyspecAmsterdamParallelEngineBlockchainTestFixture;
+public class AmsterdamParallelEngineBlockchainTests() : PyspecAmsterdamEngineBlockchainTestFixture(parallel: true, batchRead: false);
 
-public class AmsterdamBatchReadEngineBlockchainTests : PyspecAmsterdamBatchReadEngineBlockchainTestFixture;
+public class AmsterdamBatchReadEngineBlockchainTests() : PyspecAmsterdamEngineBlockchainTestFixture(parallel: false, batchRead: true);
 
-public class AmsterdamParallelFullEngineBlockchainTests : PyspecAmsterdamParallelFullEngineBlockchainTestFixture;
+public class AmsterdamParallelFullEngineBlockchainTests() : PyspecAmsterdamEngineBlockchainTestFixture(parallel: true, batchRead: true);
 
 // State tests - directory derived from class name by convention (strip "StateTests", lowercase)
 

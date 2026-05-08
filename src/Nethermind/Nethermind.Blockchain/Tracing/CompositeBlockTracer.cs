@@ -50,47 +50,32 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        int childCount = _childTracers.Count;
-        if (childCount == 0)
-        {
-            return NullTxTracer.Instance;
-        }
-
-        if (childCount == 1)
-        {
-            return _childTracers[0].StartNewTxTrace(tx);
-        }
-
-        ITxTracer? firstTracer = null;
+        ITxTracer? singleTracer = null;
         List<ITxTracer>? tracers = null;
-        int tracerCount = 0;
 
-        for (int i = 0; i < childCount; i++)
+        for (int i = 0; i < _childTracers.Count; i++)
         {
-            IBlockTracer childBlockTracer = _childTracers[i];
-            ITxTracer txTracer = childBlockTracer.StartNewTxTrace(tx);
-            if (txTracer != NullTxTracer.Instance)
-            {
-                if (tracerCount == 0)
-                {
-                    firstTracer = txTracer;
-                }
-                else
-                {
-                    tracers ??= new(childCount) { firstTracer! };
-                    tracers.Add(txTracer);
-                }
+            ITxTracer txTracer = _childTracers[i].StartNewTxTrace(tx);
 
-                tracerCount++;
+            if (txTracer == NullTxTracer.Instance)
+            {
+                continue;
+            }
+
+            if (singleTracer is null)
+            {
+                singleTracer = txTracer;
+            }
+            else
+            {
+                tracers ??= [singleTracer];
+                tracers.Add(txTracer);
             }
         }
 
-        return tracerCount switch
-        {
-            0 => NullTxTracer.Instance,
-            1 => firstTracer!,
-            _ => new CompositeTxTracer(tracers!)
-        };
+        return tracers is not null
+            ? new CompositeTxTracer(tracers)
+            : singleTracer ?? NullTxTracer.Instance;
     }
 
     public void EndBlockTrace()
@@ -141,54 +126,44 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
     public IBlockTracer GetParallelSafeTracer()
     {
         int nestedFingerprint = GetNestedVersionFingerprint();
-        IBlockTracer? cached = _parallelSafeTracerCache;
-        if (cached is not null &&
+        if (_parallelSafeTracerCache is { } cached &&
             _parallelSafeTracerCacheVersion == _version &&
             _parallelSafeTracerNestedFingerprint == nestedFingerprint)
         {
             return cached;
         }
 
-        IBlockTracer? firstTracer = null;
-        List<IBlockTracer>? parallelSafeTracers = null;
-        int parallelSafeTracerCount = 0;
-        for (int index = 0; index < _childTracers.Count; index++)
-        {
-            IBlockTracer childTracer = _childTracers[index];
-            IBlockTracer parallelSafeTracer = NullBlockTracer.Instance;
-            if (childTracer is IParallelSafeBlockTracer)
-            {
-                parallelSafeTracer = childTracer;
-            }
-            else if (childTracer is CompositeBlockTracer compositeBlockTracer)
-            {
-                parallelSafeTracer = compositeBlockTracer.GetParallelSafeTracer();
-            }
+        IBlockTracer? singleTracer = null;
+        List<IBlockTracer>? tracers = null;
 
-            if (parallelSafeTracer == NullBlockTracer.Instance)
+        for (int i = 0; i < _childTracers.Count; i++)
+        {
+            IBlockTracer tracer = _childTracers[i] switch
+            {
+                IParallelSafeBlockTracer parallelSafe => parallelSafe,
+                CompositeBlockTracer composite => composite.GetParallelSafeTracer(),
+                _ => NullBlockTracer.Instance
+            };
+
+            if (tracer == NullBlockTracer.Instance)
             {
                 continue;
             }
 
-            if (parallelSafeTracerCount == 0)
+            if (singleTracer is null)
             {
-                firstTracer = parallelSafeTracer;
+                singleTracer = tracer;
             }
             else
             {
-                parallelSafeTracers ??= new(_childTracers.Count) { firstTracer! };
-                parallelSafeTracers.Add(parallelSafeTracer);
+                tracers ??= [singleTracer];
+                tracers.Add(tracer);
             }
-
-            parallelSafeTracerCount++;
         }
 
-        IBlockTracer result = parallelSafeTracerCount switch
-        {
-            0 => NullBlockTracer.Instance,
-            1 => firstTracer!,
-            _ => CreateParallelSafeComposite(parallelSafeTracers!)
-        };
+        IBlockTracer result = tracers is not null
+            ? CreateParallelSafeComposite(tracers)
+            : singleTracer ?? NullBlockTracer.Instance;
 
         _parallelSafeTracerCache = result;
         _parallelSafeTracerCacheVersion = _version;

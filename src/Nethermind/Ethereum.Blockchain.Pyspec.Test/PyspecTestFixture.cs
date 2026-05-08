@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
@@ -62,17 +63,17 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestB
 }
 
 /// <summary>
-/// Generic base for pyspec Amsterdam blockchain tests with the parallel BAL-driven
-/// transaction executor enabled. Linux x64 only — these are heavy. Loads only the
+/// Parameterized base for pyspec Amsterdam blockchain tests with selectable parallel-BAL
+/// execution and batch-read prewarming. Linux x64 only — these are heavy. Loads only the
 /// <c>fixtures/blockchain_tests/for_amsterdam</c> directory because parallel execution is
 /// gated on EIP-7928 (Amsterdam).
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamParallelBlockchainTestFixture : BlockchainTestBase
+public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool batchRead) : BlockchainTestBase
 {
-    protected override bool? ParallelExecutionOverride => true;
-    protected override bool? ParallelExecutionBatchReadOverride => false;
+    protected override bool? ParallelExecutionOverride => parallel;
+    protected override bool? ParallelExecutionBatchReadOverride => batchRead;
 
     [SetUp]
     public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
@@ -88,106 +89,15 @@ public abstract class PyspecAmsterdamParallelBlockchainTestFixture : BlockchainT
 }
 
 /// <summary>
-/// Sequential Amsterdam blockchain tests with batch-read prewarming enabled.
+/// Engine-payload variant of <see cref="PyspecAmsterdamBlockchainTestFixture"/>; loads from
+/// <c>fixtures/blockchain_tests_engine/for_amsterdam</c>.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamBatchReadBlockchainTestFixture : BlockchainTestBase
+public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, bool batchRead) : BlockchainTestBase
 {
-    protected override bool? ParallelExecutionOverride => false;
-    protected override bool? ParallelExecutionBatchReadOverride => true;
-
-    [SetUp]
-    public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
-
-    [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
-
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            "fixtures/blockchain_tests/for_amsterdam")
-            .LoadTests<BlockchainTest>();
-}
-
-/// <summary>
-/// Production-config Amsterdam blockchain tests: parallel BAL execution + batch-read prewarming.
-/// </summary>
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamParallelFullBlockchainTestFixture : BlockchainTestBase
-{
-    protected override bool? ParallelExecutionOverride => true;
-    protected override bool? ParallelExecutionBatchReadOverride => true;
-
-    [SetUp]
-    public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
-
-    [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
-
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            "fixtures/blockchain_tests/for_amsterdam")
-            .LoadTests<BlockchainTest>();
-}
-
-/// <summary>
-/// Engine variant of <see cref="PyspecAmsterdamParallelBlockchainTestFixture"/>.
-/// </summary>
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamParallelEngineBlockchainTestFixture : BlockchainTestBase
-{
-    protected override bool? ParallelExecutionOverride => true;
-    protected override bool? ParallelExecutionBatchReadOverride => false;
-
-    [SetUp]
-    public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
-
-    [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
-
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            "fixtures/blockchain_tests_engine/for_amsterdam")
-            .LoadTests<BlockchainTest>();
-}
-
-/// <summary>
-/// Engine variant of <see cref="PyspecAmsterdamBatchReadBlockchainTestFixture"/>.
-/// </summary>
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamBatchReadEngineBlockchainTestFixture : BlockchainTestBase
-{
-    protected override bool? ParallelExecutionOverride => false;
-    protected override bool? ParallelExecutionBatchReadOverride => true;
-
-    [SetUp]
-    public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
-
-    [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) =>
-        Assert.That((await RunTest(test)).Pass, Is.True);
-
-    public static IEnumerable<BlockchainTest> LoadTests() =>
-        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            "fixtures/blockchain_tests_engine/for_amsterdam")
-            .LoadTests<BlockchainTest>();
-}
-
-/// <summary>
-/// Engine variant of <see cref="PyspecAmsterdamParallelFullBlockchainTestFixture"/> — production config.
-/// </summary>
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamParallelFullEngineBlockchainTestFixture : BlockchainTestBase
-{
-    protected override bool? ParallelExecutionOverride => true;
-    protected override bool? ParallelExecutionBatchReadOverride => true;
+    protected override bool? ParallelExecutionOverride => parallel;
+    protected override bool? ParallelExecutionBatchReadOverride => batchRead;
 
     [SetUp]
     public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
@@ -266,8 +176,8 @@ public abstract class PyspecTransactionTestFixture<TSelf> : TransactionTestBase
     [TestCaseSource(nameof(LoadTests))]
     public void Test(TransactionTest test)
     {
-        (bool pass, string failMessage) = RunTest(test);
-        Assert.That(pass, Is.True, failMessage);
+        Result result = RunTest(test);
+        Assert.That((bool)result, Is.True, result.Error);
     }
 
     public static IEnumerable<TransactionTest> LoadTests() =>

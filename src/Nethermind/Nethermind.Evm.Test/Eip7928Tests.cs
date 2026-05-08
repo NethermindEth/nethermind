@@ -266,7 +266,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(accountChanges.StorageChanges, Has.Count.EqualTo(1));
+                Assert.That(accountChanges.StorageChanges, Has.Length.EqualTo(1));
                 Assert.That(slotChanges.Key, Is.EqualTo(UInt256.Zero));
                 Assert.That(storageChange.Index, Is.EqualTo(0));
                 Assert.That(storageChange.Value, Is.EqualTo(new UInt256(parentHash.Bytes, isBigEndian: true).ToBigEndianWord()));

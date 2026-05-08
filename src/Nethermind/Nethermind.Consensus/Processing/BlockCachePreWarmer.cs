@@ -453,12 +453,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // Merge two sorted sequences (ChangedSlots, SortedStorageReads) into one
                 // ascending pass for better trie path locality
-                IList<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
                 ReadOnlySpan<UInt256> reads = ac.SortedStorageReads;
                 int slotIndex = 0;
                 int readIndex = 0;
 
-                while (slotIndex < changed.Count || readIndex < reads.Length)
+                while (slotIndex < changed.Length || readIndex < reads.Length)
                 {
                     UInt256 slot;
                     if (readIndex >= reads.Length)
@@ -468,7 +468,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     else
                     {
                         slot = reads[readIndex];
-                        if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
+                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
                         {
                             slot = changed[slotIndex++];
                         }

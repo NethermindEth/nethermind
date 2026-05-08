@@ -67,16 +67,16 @@ public partial class BlockProcessor
             balManager.NextTransaction();
             balManager.ValidateBlockAccessList(block, 0);
 
-            for (int i = 0; i < block.Transactions.Length; i++)
+            for (uint i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
                 IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(currentTx, spec, block.Header.GasLimit);
                 if (shouldValidate)
                 {
-                    BlockAccessListManager.CheckPerTxInclusion(block, i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
+                    BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalRegularGas, totalStateGas, in intrinsicGas);
                 }
 
-                ProcessTransaction(balManager.GetTxProcessor((uint)(i + 1)), stateProvider, block, currentTx, i, receiptsTracer, processingOptions, in intrinsicGas);
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, in intrinsicGas);
                 totalRegularGas = receiptsTracer.CumulativeRegularGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -93,7 +93,7 @@ public partial class BlockProcessor
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
-                balManager.ValidateBlockAccessList(block, (uint)(i + 1));
+                balManager.ValidateBlockAccessList(block, i + 1);
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -166,7 +166,7 @@ public partial class BlockProcessor
                                             state.processingOptions,
                                             in intrinsicGas);
                                     }
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, in intrinsicGas, null));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, intrinsicGas, null));
                                 }
                                 catch (InvalidBlockException ex)
                                 {
@@ -176,7 +176,7 @@ public partial class BlockProcessor
                                     // rethrows on `ex is not null` before doing any accounting, so the
                                     // tuple values here are observed only as cross-mode telemetry; we
                                     // still report (0, 0) so any future consumer agrees with sequential.
-                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, in intrinsicGas, ex));
+                                    state.gasResults[txIndex].TrySetResult(new GasValidationResult(0, 0, intrinsicGas, ex));
                                 }
                                 catch
                                 {
@@ -241,6 +241,9 @@ public partial class BlockProcessor
                 return;
             }
 
+            // Resize (rather than allocate fresh) preserves the BlockReceiptsTracer and
+            // GasValidationResultSlot instances already pooled in slots [0, currentLength);
+            // freshly allocated arrays would force re-instantiation of every slot every block.
             int newLength = Math.Max(length, currentLength == 0 ? 4 : currentLength * 2);
             Array.Resize(ref _receiptsTracerPool, newLength);
             Array.Resize(ref _gasResultPool, newLength);

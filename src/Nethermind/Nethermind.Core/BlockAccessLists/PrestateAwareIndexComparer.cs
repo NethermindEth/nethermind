@@ -17,16 +17,9 @@ public sealed class PrestateAwareIndexComparer : IComparer<uint>
     private PrestateAwareIndexComparer() { }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int Compare(uint x, uint y)
-    {
-        if (x == Eip7928Constants.PrestateIndex)
-        {
-            return y == Eip7928Constants.PrestateIndex ? 0 : -1;
-        }
-        if (y == Eip7928Constants.PrestateIndex)
-        {
-            return 1;
-        }
-        return x.CompareTo(y);
-    }
+    public int Compare(uint x, uint y) =>
+        x == y ? 0 :
+        x == Eip7928Constants.PrestateIndex ? -1 :
+        y == Eip7928Constants.PrestateIndex ? 1 :
+        x.CompareTo(y);
 }
