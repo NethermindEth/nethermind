@@ -50,8 +50,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             get
             {
                 ValueHash256 h = default;
-                using NoOpPin pin = Pin(in _reader, _key);
-                pin.Buffer.CopyTo(h.BytesAsSpan);
+                _reader.TryRead(_key.Offset, h.BytesAsSpan[..(int)_key.Length]);
                 return h;
             }
         }
@@ -60,8 +59,9 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             get
             {
                 if (_value.Length == 0) return false;
-                using NoOpPin pin = _reader.PinBuffer(_value.Offset, 1);
-                return pin.Buffer[0] == 0x01;
+                Span<byte> tag = stackalloc byte[1];
+                _reader.TryRead(_value.Offset, tag);
+                return tag[0] == 0x01;
             }
         }
     }
@@ -123,8 +123,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             get
             {
                 ValueHash256 h = default;
-                using NoOpPin pin = Pin(in _reader, _key);
-                pin.Buffer.CopyTo(h.BytesAsSpan);
+                _reader.TryRead(_key.Offset, h.BytesAsSpan[..(int)_key.Length]);
                 return h;
             }
         }
@@ -202,10 +201,8 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             get
             {
                 Span<byte> slotKey = stackalloc byte[32];
-                using (NoOpPin prefixPin = Pin(in _reader, _prefix))
-                    prefixPin.Buffer.CopyTo(slotKey);
-                using (NoOpPin suffixPin = Pin(in _reader, _suffix))
-                    suffixPin.Buffer.CopyTo(slotKey[SlotPrefixLength..]);
+                _reader.TryRead(_prefix.Offset, slotKey[..(int)_prefix.Length]);
+                _reader.TryRead(_suffix.Offset, slotKey[SlotPrefixLength..]);
                 return new UInt256(slotKey, isBigEndian: true);
             }
         }
@@ -294,8 +291,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 // by zero-padding the 20-byte column key into a ValueHash256 (struct, no
                 // alloc).
                 _curAddrHash = default;
-                using (NoOpPin addrPin = Pin(in _reader, addrEntry.KeyBound))
-                    addrPin.Buffer.CopyTo(_curAddrHash.BytesAsSpan);
+                _reader.TryRead(addrEntry.KeyBound.Offset, _curAddrHash.BytesAsSpan[..(int)addrEntry.KeyBound.Length]);
                 _prefixEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound);
                 _level = 1;
             }
@@ -534,8 +530,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     }
                 }
                 _curHash = default;
-                using (NoOpPin pin = Pin(in _reader, addrEntry.KeyBound))
-                    pin.Buffer.CopyTo(_curHash.BytesAsSpan);
+                _reader.TryRead(addrEntry.KeyBound.Offset, _curHash.BytesAsSpan[..(int)addrEntry.KeyBound.Length]);
                 _level = 1;
             }
         }
