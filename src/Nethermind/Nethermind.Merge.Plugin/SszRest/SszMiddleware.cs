@@ -126,25 +126,30 @@ public sealed class SszMiddleware
             return;
         }
 
-        if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlySpan<char> pathSegment))
+        if (!TryRoute(ctx.Request.Path.Value ?? string.Empty, out int version, out ReadOnlyMemory<char> pathSegment))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound, "Unknown SSZ endpoint");
             return;
         }
 
-        if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlySpan<char> extraSpan))
+        if (!TryResolveHandler(ctx.Request.Method, pathSegment, version, out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
+            // Use .Span in the interpolation: ROM<char>.ToString() would allocate a separate
+            // intermediate string; appending the span goes straight into the format buffer.
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
-                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment}");
+                $"Unknown method: {ctx.Request.Method} /engine/v{version}/{pathSegment.Span}");
             return;
         }
 
-        string extra = extraSpan.IsEmpty ? string.Empty : extraSpan.ToString();
-
         if (_logger.IsTrace)
-            _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}{(extra.Length > 0 ? "/" + extra : "")}");
+        {
+            if (extra.IsEmpty)
+                _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}");
+            else
+                _logger.Trace($"SSZ-REST {ctx.Request.Method} /engine/v{version}/{handler!.Resource}/{extra.Span}");
+        }
 
         byte[]? rentedBuffer = null;
         int bodyLength = 0;
@@ -195,7 +200,7 @@ public sealed class SszMiddleware
         }
     }
 
-    private static bool TryRoute(string path, out int version, out ReadOnlySpan<char> pathSegment)
+    private static bool TryRoute(string path, out int version, out ReadOnlyMemory<char> pathSegment)
     {
         version = 0;
         pathSegment = default;
@@ -204,7 +209,8 @@ public sealed class SszMiddleware
         if (!span.StartsWith(EnginePrefix.AsSpan(), StringComparison.OrdinalIgnoreCase))
             return false;
 
-        span = span[EnginePrefix.Length..];
+        int offset = EnginePrefix.Length;
+        span = span[offset..];
 
         int slashPos = span.IndexOf('/');
         if (slashPos <= 0) return false;
@@ -212,6 +218,7 @@ public sealed class SszMiddleware
         if (!int.TryParse(span[..slashPos], out version))
             return false;
 
+        offset += slashPos + 1;
         span = span[(slashPos + 1)..];
         if (span.IsEmpty) return false;
 
@@ -232,12 +239,14 @@ public sealed class SszMiddleware
             prevSlash = false;
         }
 
-        pathSegment = span;
+        // Slice into the original path string — zero-allocation; the memory stays valid
+        // for the lifetime of the request because Path.Value is held by ctx.Request.
+        pathSegment = path.AsMemory(offset);
         return true;
     }
 
-    private bool TryResolveHandler(string method, ReadOnlySpan<char> pathSegment, int version,
-        out ISszEndpointHandler? handler, out ReadOnlySpan<char> extra)
+    private bool TryResolveHandler(string method, ReadOnlyMemory<char> pathSegment, int version,
+        out ISszEndpointHandler? handler, out ReadOnlyMemory<char> extra)
     {
         handler = null;
         extra = default;
@@ -253,7 +262,7 @@ public sealed class SszMiddleware
             FrozenDictionary<string, List<ISszEndpointHandler>>.AlternateLookup<ReadOnlySpan<char>>
                 lookup = isPost ? _postLookup : _getLookup;
 
-            if (lookup.TryGetValue(pathSegment, out List<ISszEndpointHandler>? exactList))
+            if (lookup.TryGetValue(pathSegment.Span, out List<ISszEndpointHandler>? exactList))
             {
                 ISszEndpointHandler? fallback = null;
                 foreach (ISszEndpointHandler candidate in exactList)
@@ -266,24 +275,25 @@ public sealed class SszMiddleware
         }
 
         ISszEndpointHandler? prefixFallback = null;
-        ReadOnlySpan<char> prefixFallbackExtra = default;
+        ReadOnlyMemory<char> prefixFallbackExtra = default;
 
         (string Resource, List<ISszEndpointHandler> Handlers)[] prefixRoutes =
             isPost ? _postPrefixRoutes : isGet ? _getPrefixRoutes : [];
 
+        ReadOnlySpan<char> pathSpan = pathSegment.Span;
         foreach ((string routeResource, List<ISszEndpointHandler> candidates) in prefixRoutes)
         {
             ReadOnlySpan<char> resourceSpan = routeResource.AsSpan();
 
-            if (MemoryExtensions.Equals(pathSegment, resourceSpan, StringComparison.OrdinalIgnoreCase))
+            if (pathSpan.Equals(resourceSpan, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            if (pathSegment.Length <= resourceSpan.Length || pathSegment[resourceSpan.Length] != '/')
+            if (pathSpan.Length <= resourceSpan.Length || pathSpan[resourceSpan.Length] != '/')
                 continue;
-            if (!pathSegment.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
+            if (!pathSpan.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            ReadOnlySpan<char> tailSpan = pathSegment[(resourceSpan.Length + 1)..];
+            ReadOnlyMemory<char> tail = pathSegment[(resourceSpan.Length + 1)..];
 
             foreach (ISszEndpointHandler candidate in candidates)
             {
@@ -292,14 +302,14 @@ public sealed class SszMiddleware
                 if (candidate.Version == version)
                 {
                     handler = candidate;
-                    extra = tailSpan;
+                    extra = tail;
                     return true;
                 }
 
                 if (candidate.Version is null)
                 {
                     prefixFallback = candidate;
-                    prefixFallbackExtra = tailSpan;
+                    prefixFallbackExtra = tail;
                 }
             }
         }

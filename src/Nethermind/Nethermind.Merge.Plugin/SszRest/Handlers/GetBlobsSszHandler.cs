@@ -18,7 +18,7 @@ public sealed class GetBlobsV1SszHandler(IEngineRpcModule engineModule) : SszEnd
     public override string Resource => "blobs";
     public override int? Version => EngineApiVersions.GetBlobs.V1;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await engineModule.engine_getBlobsV1(hashes);
@@ -34,7 +34,7 @@ public sealed class GetBlobsV2SszHandler<TVersion>(IEngineRpcModule engineModule
     public override string Resource => "blobs";
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await TVersion.Call(engineModule, hashes);

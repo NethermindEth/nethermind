@@ -23,9 +23,9 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
     public override int? Version => TVersion.VersionNumber;
     public override bool AcceptsPathExtra => true;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
-        if (!TryParsePayloadId(extra, out byte[] id, out string err))
+        if (!TryParsePayloadId(extra.Span, out byte[] id, out string err))
         {
             await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest, err);
             return;

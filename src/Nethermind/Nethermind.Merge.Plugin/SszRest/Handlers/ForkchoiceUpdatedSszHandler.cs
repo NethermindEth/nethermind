@@ -23,7 +23,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     public override string Resource => "forkchoice";
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         TWire.Decode(body.Span, out TWire wire);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await TVersion.Call(engineModule, wire);

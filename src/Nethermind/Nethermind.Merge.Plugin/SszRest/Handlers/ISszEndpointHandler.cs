@@ -23,7 +23,7 @@ public interface ISszEndpointHandler
     /// Executes the endpoint logic. Called by <see cref="SszMiddleware"/> after auth
     /// has already been validated and the request body has been read.
     /// </summary>
-    Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body);
+    Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body);
 
     bool AcceptsPathExtra => false;
 }

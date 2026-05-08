@@ -25,7 +25,7 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineR
     public override string Resource => "payloads/bodies/by-hash";
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body.Span);
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, hashes);

@@ -19,7 +19,7 @@ public sealed class CapabilitiesSszHandler(IEngineRpcModule engineModule) : SszE
     public override string Resource => "capabilities";
     public override int? Version => 1;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         string[] caps = SszCodec.DecodeCapabilitiesRequest(body.Span);
         await WriteSszResultAsync(ctx, engineModule.engine_exchangeCapabilities(caps),

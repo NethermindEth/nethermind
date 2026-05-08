@@ -23,7 +23,7 @@ public sealed class NewPayloadSszHandler<TVersion, TWire>(IEngineRpcModule engin
     public override string Resource => "payloads";
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         TWire.Decode(body.Span, out TWire wire);
         ResultWrapper<PayloadStatusV1> result = await TVersion.Call(engineModule, wire);

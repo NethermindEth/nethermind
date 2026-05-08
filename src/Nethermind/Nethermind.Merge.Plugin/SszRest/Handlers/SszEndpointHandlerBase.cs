@@ -29,7 +29,7 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     public virtual bool AcceptsPathExtra => false;
 
     /// <inheritdoc/>
-    public abstract Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body);
+    public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body);
 
     // Per execution-apis #764 ssz-encoding spec: "{payload_id} MUST be validated as a
     // well-formed hex-encoded Bytes8 before processing." Bytes8 = exactly 16 hex chars.
@@ -51,15 +51,18 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
             err = $"Invalid payload ID: '{extra}' (expected {PayloadIdHexLength} hex chars)";
             return false;
         }
-        byte[] dest = new byte[PayloadIdByteLength];
-        OperationStatus status = Convert.FromHexString(hex, dest, out _, out _);
+        // Decode into the stack first so a malformed hex doesn't allocate. Engine API
+        // binds byte[] (JSON-RPC marshaling), so we still allocate one final byte[8]
+        // on success — the unavoidable cost of crossing into IEngineRpcModule.
+        Span<byte> stack = stackalloc byte[PayloadIdByteLength];
+        OperationStatus status = Convert.FromHexString(hex, stack, out _, out _);
         if (status != OperationStatus.Done)
         {
             id = [];
             err = $"Invalid payload ID: '{extra}'";
             return false;
         }
-        id = dest;
+        id = stack.ToArray();
         err = string.Empty;
         return true;
     }

@@ -24,7 +24,7 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     public override string Resource => "payloads/bodies/by-range";
     public override int? Version => TVersion.VersionNumber;
 
-    public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body.Span);
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);

@@ -18,7 +18,7 @@ public sealed class TransitionConfigurationSszHandler(IEngineRpcModule engineMod
     public override string Resource => "transition-configuration";
     public override int? Version => 1;
 
-    public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
+    public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         TransitionConfigurationV1 tc = SszCodec.DecodeTransitionConfigurationRequest(body.Span);
         await WriteSszResultAsync(ctx, engineModule.engine_exchangeTransitionConfigurationV1(tc),
