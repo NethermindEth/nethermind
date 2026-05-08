@@ -20,16 +20,15 @@ public readonly ref struct HsstIndex
     public int TotalSize => _inner.TotalSize;
 
     /// <summary>
-    /// Bytes shared by every key in this node. <see cref="GetKey"/> returns the per-entry
-    /// suffix; the full stored key is <see cref="CommonKeyPrefix"/> followed by the suffix.
-    /// Empty when the node was written without the common-prefix optimization.
+    /// Bytes shared by every key in this node. The full lex-order key for entry i is
+    /// reconstructed via <see cref="GetFullKey"/>. Empty when the node was written without
+    /// the common-prefix optimization.
     /// </summary>
     public ReadOnlySpan<byte> CommonKeyPrefix => _inner.CommonKeyPrefix;
 
     public static HsstIndex ReadFromStart(ReadOnlySpan<byte> data, int nodeStart) =>
         new(BSearchIndexReader.ReadFromStart(data, nodeStart));
 
-    public ReadOnlySpan<byte> GetKey(int index) => _inner.GetKey(index);
     public ReadOnlySpan<byte> GetValue(int index) => _inner.GetValue(index);
     public ulong GetUInt64Value(int index) => _inner.GetUInt64Value(index);
     public int FindFloorIndex(ReadOnlySpan<byte> key) => _inner.FindFloorIndex(key);

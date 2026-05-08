@@ -23,8 +23,8 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
 /// with KeySize ∈ {2,4,8}, UniformWithLen with slotSize=4, and unconditionally for Variable
 /// (KeyType=0) where the prefixArr is uniformly 2 bytes/slot — the SIMD floor scan exploits
-/// this to drop its per-lane byte-swap shuffle. <see cref="GetKey"/> returns raw stored bytes
-/// (LE-reversed under this flag); <see cref="GetFullKey"/> always emits lex/original-order bytes.
+/// this to drop its per-lane byte-swap shuffle. Stored slots are LE-reversed under this flag;
+/// <see cref="GetFullKey"/> always emits lex/original-order bytes.
 ///
 /// All header fields are fixed-width — no varint decoding on parse. With the 64 KiB
 /// node-size cap, every count/size field fits in u16. Header at the front lets the hardware
@@ -47,8 +47,8 @@ namespace Nethermind.State.Flat.BSearchIndex;
 ///   1 = Uniform: packed fixed-width entries
 ///   2 = UniformWithLen: fixed slot size, last byte = actual length
 ///
-/// When HasCommonKeyPrefix is set, every stored key equals (CommonKeyPrefix || GetKey(i));
-/// the keys section holds suffixes only.
+/// When HasCommonKeyPrefix is set, every stored key equals (CommonKeyPrefix || stored slot i);
+/// the keys section holds suffixes only — use <see cref="GetFullKey"/> to reconstruct lex bytes.
 /// </summary>
 public readonly ref struct BSearchIndexReader
 {
@@ -75,8 +75,8 @@ public readonly ref struct BSearchIndexReader
 
     /// <summary>
     /// Bytes shared by every stored key. Empty when the node was written without the
-    /// common-prefix optimization. Stored keys equal <see cref="CommonKeyPrefix"/> followed
-    /// by <see cref="GetKey"/>(i).
+    /// common-prefix optimization. The full lex-order key for entry i is reconstructed via
+    /// <see cref="GetFullKey"/>.
     /// </summary>
     public ReadOnlySpan<byte> CommonKeyPrefix => _commonKeyPrefix;
 
@@ -137,13 +137,13 @@ public readonly ref struct BSearchIndexReader
     }
 
     /// <summary>
-    /// Get the key at the given entry index — raw stored bytes, no allocation.
-    /// When <see cref="IndexMetadata.IsKeyLittleEndian"/> is set, the returned bytes are the
-    /// byte-reversed form of the original key for slot widths 2/4/8 (Uniform) or 4 (UniformWithLen).
-    /// Use <see cref="GetFullKey"/> to obtain lex/original-order key bytes.
+    /// Raw stored slot at <paramref name="index"/>, zero-copy. Bytes are in storage order, which
+    /// for Variable is the 2-byte prefix slot, and for LE-stored Uniform/UniformWithLen is the
+    /// byte-reversed form of the original key. Only meaningful as a comparison token in the
+    /// stored encoding — external callers wanting lex-order key bytes use <see cref="GetFullKey"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ReadOnlySpan<byte> GetKey(int index) => _metadata.KeyType switch
+    private ReadOnlySpan<byte> GetRawSlot(int index) => _metadata.KeyType switch
     {
         // Variable: SoA layout, prefix slot is byte-reversed (LE-stored). Returning the raw
         // 2-byte slot follows the same convention as LE-stored Uniform/UniformWithLen — callers
@@ -420,7 +420,7 @@ public readonly ref struct BSearchIndexReader
             return false;
         }
 
-        floorKey = GetKey(result);
+        floorKey = GetRawSlot(result);
         floorValue = GetValue(result);
         return true;
     }
@@ -769,7 +769,7 @@ public readonly ref struct BSearchIndexReader
             return total;
         }
 
-        ReadOnlySpan<byte> suffix = GetKey(index);
+        ReadOnlySpan<byte> suffix = GetRawSlot(index);
         int totalLegacy = _commonKeyPrefix.Length + suffix.Length;
         if (dest.Length < totalLegacy)
             throw new ArgumentException("Destination too small for full key", nameof(dest));
@@ -807,7 +807,7 @@ public readonly ref struct BSearchIndexReader
 
         public bool MoveNext() => ++_current < _index.EntryCount;
 
-        public readonly IndexEntry Current => new(_index.GetKey(_current), _index.GetValue(_current));
+        public readonly IndexEntry Current => new(_index.GetRawSlot(_current), _index.GetValue(_current));
     }
 
     public readonly ref struct IndexEntry(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)

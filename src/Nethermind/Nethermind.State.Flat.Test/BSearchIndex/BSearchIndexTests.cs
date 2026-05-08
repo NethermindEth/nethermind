@@ -146,10 +146,12 @@ public class BSearchIndexTests
         // Also verify the reader parses the binary correctly
         BSearchIndexReader index = BSearchIndexReader.ReadFromStart(output, 0);
         Assert.That(index.EntryCount, Is.EqualTo(separatorHexes.Length));
+        Span<byte> keyBufRead = stackalloc byte[64];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSep = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
-            Assert.That(index.GetKey(i).ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
+            int len = index.GetFullKey(i, keyBufRead);
+            Assert.That(keyBufRead[..len].ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
             Assert.That(index.GetUInt64Value(i), Is.EqualTo((ulong)values[i]), $"Entry {i} value mismatch");
         }
     }
@@ -428,10 +430,12 @@ public class BSearchIndexTests
         BSearchIndexReader index = BSearchIndexReader.ReadFromStart(output, 0);
         Assert.That(index.EntryCount, Is.EqualTo(separatorHexes.Length));
         Assert.That(index.IsIntermediate, Is.EqualTo(isIntermediate));
+        Span<byte> keyBufRead = stackalloc byte[64];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSep = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
-            Assert.That(index.GetKey(i).ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
+            int len = index.GetFullKey(i, keyBufRead);
+            Assert.That(keyBufRead[..len].ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
         }
     }
 
@@ -575,25 +579,16 @@ public class BSearchIndexTests
         Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.True);
         Assert.That(reader.CommonKeyPrefix.ToArray(), Is.EqualTo(Convert.FromHexString("DEADBEEF")));
 
-        // Per-entry decoded suffix matches (suffix only, prefix stripped). For Variable
-        // (KeyType=0) GetKey returns the byte-reversed 2-byte prefix slot — consistent with
-        // the LE-stored Uniform/UniformWithLen convention. GetFullKey reconstructs lex order
-        // for all encodings; use it where the test checks decoded bytes.
+        // Per-entry decoded suffix matches (suffix only, prefix stripped). GetFullKey
+        // reconstructs lex order for all encodings.
         Span<byte> suffixBuf = stackalloc byte[16];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSuffix = [Convert.FromHexString(separatorHexes[i])[4]];
-            if (keyType == 0)
-            {
-                int total = reader.GetFullKey(i, suffixBuf);
-                int prefixLenInDest = reader.CommonKeyPrefix.Length;
-                Assert.That(suffixBuf.Slice(prefixLenInDest, total - prefixLenInDest).ToArray(),
-                    Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
-            }
-            else
-            {
-                Assert.That(reader.GetKey(i).ToArray(), Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
-            }
+            int total = reader.GetFullKey(i, suffixBuf);
+            int prefixLenInDest = reader.CommonKeyPrefix.Length;
+            Assert.That(suffixBuf.Slice(prefixLenInDest, total - prefixLenInDest).ToArray(),
+                Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
         }
 
         // GetFullKey reconstructs the original key.
@@ -781,10 +776,11 @@ public class BSearchIndexTests
         Assert.That((leOut[0] & 0x20), Is.EqualTo(0x20));
 
         // Raw stored slot bytes are byte-reversed under LE.
+        int hdrUniform = HeaderSize(beReader);
         for (int i = 0; i < n; i++)
         {
-            ReadOnlySpan<byte> beSlot = beReader.GetKey(i);
-            ReadOnlySpan<byte> leSlot = leReader.GetKey(i);
+            ReadOnlySpan<byte> beSlot = beOut.AsSpan(hdrUniform + i * keySize, keySize);
+            ReadOnlySpan<byte> leSlot = leOut.AsSpan(hdrUniform + i * keySize, keySize);
             byte[] reversed = new byte[keySize];
             for (int j = 0; j < keySize; j++) reversed[j] = beSlot[keySize - 1 - j];
             Assert.That(leSlot.ToArray(), Is.EqualTo(reversed), $"LE slot {i} should be byte-reversed BE slot");
@@ -956,18 +952,6 @@ public class BSearchIndexTests
             byte[] reversed = new byte[slotSize];
             for (int j = 0; j < slotSize; j++) reversed[j] = beSlot[slotSize - 1 - j];
             Assert.That(leSlot.ToArray(), Is.EqualTo(reversed), $"LE slot {i} should be byte-reversed BE slot");
-        }
-
-        // GetKey: BE returns actualLen lex payload bytes; LE returns actualLen reversed bytes.
-        for (int i = 0; i < n; i++)
-        {
-            ReadOnlySpan<byte> beKey = beReader.GetKey(i);
-            ReadOnlySpan<byte> leKey = leReader.GetKey(i);
-            Assert.That(beKey.ToArray(), Is.EqualTo(keys[i]));
-            byte[] reversed = new byte[keys[i].Length];
-            for (int j = 0; j < reversed.Length; j++) reversed[j] = keys[i][keys[i].Length - 1 - j];
-            Assert.That(leKey.ToArray(), Is.EqualTo(reversed),
-                $"LE GetKey({i}) should be reversed payload of len {keys[i].Length}");
         }
 
         // GetFullKey under LE recovers the original lex bytes (no common prefix here).
