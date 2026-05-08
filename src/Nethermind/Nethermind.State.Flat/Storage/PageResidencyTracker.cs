@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace Nethermind.State.Flat.Storage;
@@ -25,62 +27,82 @@ public interface IPageEvictionHandler
 /// </summary>
 public enum TouchOutcome
 {
-    /// <summary>The hashed slot already held this exact <c>(arenaId, pageIdx)</c>.</summary>
+    /// <summary>The set already held this exact <c>(arenaId, pageIdx)</c>.</summary>
     Hit,
-    /// <summary>The hashed slot was empty and now holds <c>(arenaId, pageIdx)</c>.</summary>
+    /// <summary>The set had an empty way and now holds <c>(arenaId, pageIdx)</c>.</summary>
     Inserted,
-    /// <summary>The hashed slot held a different page; the out parameters carry the displaced key.</summary>
+    /// <summary>The set was full of unreferenced pages; the clock victim was displaced and the out parameters carry its key.</summary>
     Evicted,
 }
 
 /// <summary>
-/// Direct-mapped page residency tracker for arena-backed mmap regions. Each slot occupies a full
-/// 64-byte cache line; the slot value packs <c>(arenaId &lt;&lt; 32) | pageIdx</c> with
-/// <c>-1L</c> as the empty sentinel. <see cref="TryTouch"/> hashes the key to a slot and
-/// unconditionally CAS-replaces the occupant via <see cref="Interlocked.Exchange(ref long, long)"/>;
-/// the displaced key (if any) is reported back to the caller via out parameters so the caller
-/// can dispatch eviction (e.g. <c>madvise(MADV_DONTNEED)</c>). There is no LRU or clock arm:
-/// collision is the eviction policy.
+/// 8-way set-associative <em>clock</em> (second-chance) page residency tracker for arena-backed
+/// mmap regions. Each set occupies one 64-byte cache line (8 ways × 8 bytes); the slot value
+/// packs <c>(REF | VALID | arenaId | pageIdx)</c>:
+/// <list type="bullet">
+///   <item>bit 63: <b>REF</b> bit — set on every touch, cleared by the clock hand on a miss-pass.</item>
+///   <item>bit 62: <b>VALID</b> bit — distinguishes empty (<c>0L</c>) from a present <c>(arenaId=0, pageIdx=0)</c>.</item>
+///   <item>bits 32–61: <b>arenaId</b> (30 bits — ample; arena IDs are dense small ints).</item>
+///   <item>bits 0–31: <b>pageIdx</b>.</item>
+/// </list>
+/// Hits are lock-free: scan the 8 ways with <see cref="Volatile.Read(ref long)"/>, and on a match
+/// arm the REF bit via <see cref="Interlocked.Or(ref long, long)"/>. The miss path takes a 1-bit
+/// per-set spinlock (stashed in a packed <c>int[]</c> meta side-array — one int per set, ~16 sets
+/// per cache line, only touched on miss) and runs the clock algorithm: re-scan for a hit, then
+/// for an empty way, then advance a per-set hand clearing REF bits until it finds an
+/// unreferenced way to evict.
 /// </summary>
 /// <remarks>
-/// Lock-free and false-sharing-free: slots are 64-byte aligned and stride one per cache line,
-/// so two threads writing to different slots never invalidate each other's L1 lines. The
-/// underlying buffer is allocated off-GC via
-/// <see cref="System.Runtime.InteropServices.NativeMemory.AlignedAlloc(nuint, nuint)"/> and freed
-/// in <see cref="Dispose"/> (or a finalizer fallback).
+/// Slot lines are 64-byte aligned via <see cref="NativeMemory.AlignedAlloc(nuint, nuint)"/>, so
+/// two threads writing to different sets never invalidate each other's L1 lines on the hot path.
+/// The meta side-array sees no traffic on hits, so the false-sharing it allows between concurrent
+/// evictors in nearby sets is bounded to the rare miss path.
 ///
-/// Two threads racing on the same slot may each observe a different prior occupant and so each
-/// report a different evicted page. Redundant <c>madvise(DONTNEED)</c> on the same page is
-/// wasted work but harmless.
+/// Concurrent miss-path racers may each independently elect different victims and report
+/// different evicted pages; redundant <c>madvise(MADV_DONTNEED)</c> on the same page is wasted
+/// work but harmless.
 /// </remarks>
 public sealed unsafe class PageResidencyTracker : IDisposable
 {
-    private const long EmptySlot = -1L;
+    private const long RefBit = unchecked((long)0x8000_0000_0000_0000UL);
+    private const long ValidBit = 0x4000_0000_0000_0000L;
+    // Mask used to compare a slot against a packed key — strips REF, keeps VALID + arenaId + pageIdx.
+    private const long KeyMask = ~RefBit;
+    private const long ArenaIdMask = 0x3FFF_FFFFL; // 30 bits
+    private const int Ways = 8;
+    private const int WayShift = 3; // log2(Ways)
+    private const int WayMask = Ways - 1;
     private const int CacheLineBytes = 64;
-    private const int SlotShift = 3; // log2(CacheLineBytes / sizeof(long))
+    private const int MetaLockBit = 1 << 7;
+    private const int MetaHandMask = 0x7;
 
-    // Naturally 64-byte aligned via NativeMemory.AlignedAlloc; one long per cache line.
+    // _slots: _setCount sets, each Ways longs (one cache line). 64-byte aligned.
     private long* _slots;
+    // _meta: one int per set, packed (no per-set padding). bit 7 = lock; bits 0..2 = clock hand.
+    private int* _meta;
     private int _disposed;
-    private readonly int _slotCount;
-    private readonly int _mask;
+    private readonly int _setCount;
+    private readonly int _setMask;
 
-    public int MaxCapacity => _slotCount;
+    public int MaxCapacity => _setCount * Ways;
 
     public int Count
     {
         get
         {
             int count = 0;
-            for (int i = 0; i < _slotCount; i++)
-                if (Volatile.Read(ref SlotRef(i)) != EmptySlot) count++;
+            long* p = _slots;
+            long* end = _slots + ((nint)_setCount << WayShift);
+            for (; p < end; p++)
+                if ((Volatile.Read(ref *p) & ValidBit) != 0) count++;
             return count;
         }
     }
 
     /// <summary>
     /// Construct a tracker sized from a byte budget — divides by the OS page size to derive the
-    /// slot count. Non-positive budgets yield a 0-capacity (disabled) tracker.
+    /// slot count, then rounds up to a power-of-two number of 8-way sets. Non-positive budgets
+    /// yield a 0-capacity (disabled) tracker.
     /// </summary>
     public static PageResidencyTracker FromByteBudget(long bytes)
     {
@@ -96,61 +118,165 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         if (maxCapacity == 0)
         {
             _slots = null;
-            _slotCount = 0;
-            _mask = 0;
+            _meta = null;
+            _setCount = 0;
+            _setMask = 0;
             return;
         }
 
-        _slotCount = (int)BitOperations.RoundUpToPowerOf2((uint)maxCapacity);
-        _mask = _slotCount - 1;
+        int requestedSets = Math.Max(1, (maxCapacity + Ways - 1) >> WayShift);
+        _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)requestedSets);
+        _setMask = _setCount - 1;
 
-        nuint bytes = (nuint)_slotCount * CacheLineBytes;
-        _slots = (long*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc(bytes, CacheLineBytes);
-        for (int i = 0; i < _slotCount; i++) SlotRef(i) = EmptySlot;
+        nuint slotBytes = (nuint)_setCount * CacheLineBytes;
+        _slots = (long*)NativeMemory.AlignedAlloc(slotBytes, CacheLineBytes);
+        NativeMemory.Clear(_slots, slotBytes);
+
+        nuint metaBytes = (nuint)_setCount * sizeof(int);
+        _meta = (int*)NativeMemory.AlignedAlloc(metaBytes, CacheLineBytes);
+        NativeMemory.Clear(_meta, metaBytes);
     }
 
     /// <summary>
     /// Records <paramref name="arenaId"/>/<paramref name="pageIdx"/> as recently touched and
-    /// returns the slot transition: <see cref="TouchOutcome.Hit"/> when the slot already held
-    /// this exact key, <see cref="TouchOutcome.Inserted"/> when it was empty, or
-    /// <see cref="TouchOutcome.Evicted"/> when it held a different page (the out parameters
-    /// then carry the displaced key). Disabled trackers (<see cref="MaxCapacity"/> == 0) always
-    /// return <see cref="TouchOutcome.Hit"/>.
+    /// returns the outcome: <see cref="TouchOutcome.Hit"/> when the set already held this exact
+    /// key (REF bit re-armed), <see cref="TouchOutcome.Inserted"/> when an empty way absorbed it,
+    /// or <see cref="TouchOutcome.Evicted"/> when the clock hand displaced an unreferenced
+    /// occupant (out parameters carry the displaced key). Disabled trackers
+    /// (<see cref="MaxCapacity"/> == 0) always return <see cref="TouchOutcome.Hit"/>.
     /// </summary>
     public TouchOutcome TryTouch(int arenaId, int pageIdx, out int evictedArenaId, out int evictedPageIdx)
     {
         evictedArenaId = 0;
         evictedPageIdx = 0;
 
-        if (_slotCount == 0) return TouchOutcome.Hit;
+        if (_setCount == 0) return TouchOutcome.Hit;
 
-        long packed = Pack(arenaId, pageIdx);
-        int idx = (int)(Mix(packed) & (uint)_mask);
-        ref long slot = ref SlotRef(idx);
+        long key = PackKey(arenaId, pageIdx);
+        int setIdx = (int)(Mix(key) & (uint)_setMask);
+        long* setBase = _slots + ((nint)setIdx << WayShift);
 
-        // A relaxed read first lets the common no-op-on-hit path skip the bus-locking exchange.
-        if (Volatile.Read(ref slot) == packed) return TouchOutcome.Hit;
+        // Hot path: lock-free scan. On a match, set the REF bit if it isn't already set.
+        for (int w = 0; w < Ways; w++)
+        {
+            long s = Volatile.Read(ref setBase[w]);
+            if ((s & KeyMask) == key)
+            {
+                if ((s & RefBit) == 0)
+                    Interlocked.Or(ref setBase[w], RefBit);
+                return TouchOutcome.Hit;
+            }
+        }
 
-        long prev = Interlocked.Exchange(ref slot, packed);
-        if (prev == EmptySlot) return TouchOutcome.Inserted;
-        if (prev == packed) return TouchOutcome.Hit; // raced with self — same key won
-        evictedArenaId = (int)(prev >> 32);
-        evictedPageIdx = (int)prev;
-        return TouchOutcome.Evicted;
+        return MissPath(setIdx, setBase, key, out evictedArenaId, out evictedPageIdx);
     }
+
+    private TouchOutcome MissPath(int setIdx, long* setBase, long key, out int evictedArenaId, out int evictedPageIdx)
+    {
+        evictedArenaId = 0;
+        evictedPageIdx = 0;
+
+        ref int meta = ref Unsafe.AsRef<int>(_meta + setIdx);
+        AcquireSetLock(ref meta);
+
+        try
+        {
+            // Re-scan under the lock — another thread may have inserted this same key while we
+            // were spinning, in which case we must not double-insert it.
+            for (int w = 0; w < Ways; w++)
+            {
+                long s = setBase[w];
+                if ((s & KeyMask) == key)
+                {
+                    Volatile.Write(ref setBase[w], s | RefBit);
+                    return TouchOutcome.Hit;
+                }
+            }
+
+            // Look for an empty way (VALID=0).
+            for (int w = 0; w < Ways; w++)
+            {
+                if (setBase[w] == 0L)
+                {
+                    Volatile.Write(ref setBase[w], key | RefBit);
+                    return TouchOutcome.Inserted;
+                }
+            }
+
+            // Set is full — run the clock. Worst case: 8 set-REFs ⇒ one full pass clears them,
+            // second pass finds an unreferenced way. Bound the loop at 2*Ways iterations.
+            int hand = meta & MetaHandMask;
+            for (int i = 0; i < 2 * Ways; i++)
+            {
+                long s = setBase[hand];
+                if ((s & RefBit) != 0)
+                {
+                    Volatile.Write(ref setBase[hand], s & ~RefBit);
+                    hand = (hand + 1) & WayMask;
+                    continue;
+                }
+
+                evictedArenaId = (int)((s >> 32) & ArenaIdMask);
+                evictedPageIdx = (int)s;
+                Volatile.Write(ref setBase[hand], key | RefBit);
+                hand = (hand + 1) & WayMask;
+                meta = (meta & ~MetaHandMask) | hand;
+                return TouchOutcome.Evicted;
+            }
+
+            // Unreachable: 2*Ways passes guarantees a victim. Fall through defensively.
+            Debug.Fail("Clock scan failed to find a victim");
+            return TouchOutcome.Hit;
+        }
+        finally
+        {
+            ReleaseSetLock(ref meta);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void AcquireSetLock(ref int meta)
+    {
+        SpinWait spinner = default;
+        while (true)
+        {
+            int observed = Volatile.Read(ref meta);
+            if ((observed & MetaLockBit) == 0)
+            {
+                int withLock = observed | MetaLockBit;
+                if (Interlocked.CompareExchange(ref meta, withLock, observed) == observed)
+                    return;
+            }
+            spinner.SpinOnce();
+        }
+    }
+
+    // Lock holder writes meta directly; release with Volatile.Write so prior slot writes
+    // publish before the lock bit clears.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReleaseSetLock(ref int meta) =>
+        Volatile.Write(ref meta, meta & ~MetaLockBit);
 
     internal bool ContainsPage(int arenaId, int pageIdx)
     {
-        if (_slotCount == 0) return false;
-        long packed = Pack(arenaId, pageIdx);
-        int idx = (int)(Mix(packed) & (uint)_mask);
-        return Volatile.Read(ref SlotRef(idx)) == packed;
+        if (_setCount == 0) return false;
+        long key = PackKey(arenaId, pageIdx);
+        int setIdx = (int)(Mix(key) & (uint)_setMask);
+        long* setBase = _slots + ((nint)setIdx << WayShift);
+        for (int w = 0; w < Ways; w++)
+            if ((Volatile.Read(ref setBase[w]) & KeyMask) == key) return true;
+        return false;
     }
 
     public void Clear()
     {
-        for (int i = 0; i < _slotCount; i++)
-            Volatile.Write(ref SlotRef(i), EmptySlot);
+        if (_setCount == 0) return;
+        long* end = _slots + ((nint)_setCount << WayShift);
+        for (long* p = _slots; p < end; p++)
+            Volatile.Write(ref *p, 0L);
+        int* metaEnd = _meta + _setCount;
+        for (int* p = _meta; p < metaEnd; p++)
+            Volatile.Write(ref *p, 0);
     }
 
     public void Dispose()
@@ -158,8 +284,13 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         if (_slots is not null)
         {
-            System.Runtime.InteropServices.NativeMemory.AlignedFree(_slots);
+            NativeMemory.AlignedFree(_slots);
             _slots = null;
+        }
+        if (_meta is not null)
+        {
+            NativeMemory.AlignedFree(_meta);
+            _meta = null;
         }
         GC.SuppressFinalize(this);
     }
@@ -167,15 +298,14 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     ~PageResidencyTracker() => Dispose();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ref long SlotRef(int slotIdx) =>
-        ref Unsafe.AsRef<long>(_slots + ((nint)slotIdx << SlotShift));
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long Pack(int arenaId, int pageIdx) =>
-        ((long)(uint)arenaId << 32) | (uint)pageIdx;
+    private static long PackKey(int arenaId, int pageIdx)
+    {
+        Debug.Assert(((uint)arenaId & ~(uint)ArenaIdMask) == 0, "arenaId exceeds 30-bit range");
+        return ValidBit | (((long)arenaId & ArenaIdMask) << 32) | (uint)pageIdx;
+    }
 
     // Multiplicative (Fibonacci) mix; uses the high bits, which give a better
-    // slot distribution than the low bits of (arenaId, pageIdx) when arenaId is
+    // set distribution than the low bits of (arenaId, pageIdx) when arenaId is
     // in {0..few} and pageIdx is a dense counter.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint Mix(long packed) =>
