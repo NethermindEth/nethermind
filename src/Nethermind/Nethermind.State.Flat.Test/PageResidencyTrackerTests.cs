@@ -89,9 +89,9 @@ public class PageResidencyTrackerTests
     [Test]
     public void Set_FullWithUnreferencedSlots_NextTouchEvictsClockVictim()
     {
-        // Single-set tracker → all keys land in set 0. Under BIP all 8 fresh inserts arrive
-        // with REF=0, so the 9th touch finds the clock head (way 0) immediately unreferenced
-        // and evicts (0, 0) — the first inserted key.
+        // Single-set tracker → all keys land in set 0. Each insert arms REF=1, so the 9th
+        // touch's clock pass clears all 8 REF bits before wrapping back to way 0 (the head)
+        // and evicting (0, 0) — the first inserted key.
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(OneSetCapacity);
 
@@ -115,41 +115,44 @@ public class PageResidencyTrackerTests
         // Empty set: Inserted, no displaced key.
         tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Inserted);
 
-        // Re-touching the same key: Hit. This is the call that earns (0, 0) its REF bit
-        // under BIP (the prior insert was cold).
+        // Re-touching the same key: Hit.
         tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Hit);
 
-        // Fill the remaining 7 ways — all Inserted (all cold under BIP).
+        // Fill the remaining 7 ways — all Inserted.
         for (int i = 1; i < Ways; i++)
             tracker.TryTouch(0, i, out _, out _).Should().Be(TouchOutcome.Inserted);
 
-        // Set is full. Way 0 holds (0, 0) with REF=1 (earned via the re-touch above); ways 1..7
-        // are all REF=0. The 9th touch's clock pass clears way 0's REF and lands on way 1,
-        // evicting (0, 1) — way 0 was protected by its earned REF bit.
+        // Set is full and every way has REF=1. The 9th touch's clock pass clears all 8 REF
+        // bits, then wraps back to way 0 and evicts (0, 0) — the first inserted key.
         tracker.TryTouch(0, Ways, out int evictedArenaId, out int evictedPageIdx).Should().Be(TouchOutcome.Evicted);
         evictedArenaId.Should().Be(0);
-        evictedPageIdx.Should().Be(1);
+        evictedPageIdx.Should().Be(0);
     }
 
     [Test]
     public void ReferenceBit_GivesSecondChance()
     {
-        // Under BIP, all 8 fills land cold (REF=0). Re-touching (0, 3) re-arms its REF bit.
-        // The clock hand starts at way 0 and advances one slot per eviction. After three
-        // streaming evictions the hand is at way 3 — but (0, 3)'s REF is set, so the hand
-        // clears it (giving it its "second chance") and moves on to way 4 to find a victim.
-        // Net effect: (0, 3) survives the streaming flood that wiped (0, 0)/(0, 1)/(0, 2)/(0, 4).
+        // Fill the set, then prime the clock with one streaming insert: that pass clears all
+        // 8 REF bits and evicts (0, 0); afterwards way 0 = (0, 8)/REF=1 and ways 1..7 still
+        // hold (0, 1..7) but with REF=0; clock hand sits at way 1.
+        // Re-touching (0, 3) arms way 3's REF. The next three streaming inserts walk the hand
+        // through ways 1, 2 (each REF=0 → evict) and then hit way 3 — REF=1 saves it (clears
+        // the bit and moves on), so the third eviction lands on way 4 instead.
+        // Net evictions: (0, 0), (0, 1), (0, 2), (0, 4). (0, 3) survived the streaming flood.
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(OneSetCapacity);
 
         for (int i = 0; i < Ways; i++)
             Touch(tracker, 0, i, handler);
 
-        Touch(tracker, 0, 3, handler);                          // arms way 3's REF bit
-        handler.Evictions.Should().BeEmpty("re-touching is a Hit, not an eviction");
+        Touch(tracker, 0, Ways, handler);                       // primes the clock
+        handler.Evictions.Should().Equal((0, 0));
 
-        for (int i = 0; i < 4; i++)                             // four streaming new keys
-            Touch(tracker, 0, Ways + i, handler);
+        Touch(tracker, 0, 3, handler);                          // arms way 3's REF bit
+        handler.Evictions.Should().HaveCount(1, "re-touching is a Hit, not an eviction");
+
+        for (int i = 0; i < 3; i++)                             // three more streaming keys
+            Touch(tracker, 0, Ways + 1 + i, handler);
 
         handler.Evictions.Should().Equal((0, 0), (0, 1), (0, 2), (0, 4));
         tracker.ContainsPage(0, 3).Should().BeTrue("re-touched key got a second chance");

@@ -37,11 +37,10 @@ public enum TouchOutcome
 
 /// <summary>
 /// 8-way set-associative <em>clock</em> (second-chance) page residency tracker for arena-backed
-/// mmap regions, with a <em>Bimodal Insertion Policy</em> (BIP) on the miss path. Each set
-/// occupies one 64-byte cache line (8 ways × 8 bytes); the slot value packs
-/// <c>(REF | VALID | arenaId | pageIdx)</c>:
+/// mmap regions. Each set occupies one 64-byte cache line (8 ways × 8 bytes); the slot value
+/// packs <c>(REF | VALID | arenaId | pageIdx)</c>:
 /// <list type="bullet">
-///   <item>bit 63: <b>REF</b> bit — set on every touch (Hit re-arms it), cleared by the clock hand on a miss-pass.</item>
+///   <item>bit 63: <b>REF</b> bit — set on every touch (insert and Hit both arm it), cleared by the clock hand on a miss-pass.</item>
 ///   <item>bit 62: <b>VALID</b> bit — distinguishes empty (<c>0L</c>) from a present <c>(arenaId=0, pageIdx=0)</c>.</item>
 ///   <item>bits 32–61: <b>arenaId</b> (30 bits — ample; arena IDs are dense small ints).</item>
 ///   <item>bits 0–31: <b>pageIdx</b>.</item>
@@ -52,12 +51,6 @@ public enum TouchOutcome
 /// per cache line, only touched on miss) and runs the clock algorithm: re-scan for a hit, then
 /// for an empty way, then advance a per-set hand clearing REF bits until it finds an
 /// unreferenced way to evict.
-///
-/// <para><b>BIP:</b> new arrivals are inserted with REF=0, so a one-shot streaming workload
-/// can't wipe out the working set — a fresh entry must be re-touched to earn its REF bit and
-/// survive a clock pass. To keep the cache adaptable when the working set actually shifts,
-/// every <see cref="BipHotInsertEvery"/>-th insertion (1/32 by default) bypasses BIP and arms
-/// REF=1 on insert; this is the standard ε used in the BIP/DIP literature.</para>
 /// </summary>
 /// <remarks>
 /// Slot lines are 64-byte aligned via <see cref="NativeMemory.AlignedAlloc(nuint, nuint)"/>, so
@@ -82,19 +75,12 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     private const int CacheLineBytes = 64;
     private const int MetaLockBit = 1 << 7;
     private const int MetaHandMask = 0x7;
-    // BIP epsilon: 1 in N inserts bypass cold-insertion and arm REF=1 immediately. 32 matches
-    // the canonical Bimodal Insertion Policy (Qureshi et al., ISCA'07).
-    private const int BipHotInsertEvery = 32;
-    private const int BipHotInsertMask = BipHotInsertEvery - 1;
 
     // _slots: _setCount sets, each Ways longs (one cache line). 64-byte aligned.
     private long* _slots;
     // _meta: one int per set, packed (no per-set padding). bit 7 = lock; bits 0..2 = clock hand.
     private int* _meta;
     private int _disposed;
-    // Counts new insertions/evictions across all sets. Every BipHotInsertEvery-th increment
-    // marks the corresponding insertion as "hot" (REF=1 on insert).
-    private int _bipInsertCounter;
     private readonly int _setCount;
     private readonly int _setMask;
 
@@ -207,14 +193,13 @@ public sealed unsafe class PageResidencyTracker : IDisposable
                 }
             }
 
-            // Look for an empty way (VALID=0). New arrivals enter cold (REF=0) under BIP so a
-            // streaming miss flood can't displace the working set; the rare hot-insert epsilon
-            // keeps the cache responsive to genuine working-set shifts.
+            // Look for an empty way (VALID=0). New arrivals arm REF=1 so they survive the
+            // first clock pass.
             for (int w = 0; w < Ways; w++)
             {
                 if (setBase[w] == 0L)
                 {
-                    Volatile.Write(ref setBase[w], key | InitialRefBitForInsert());
+                    Volatile.Write(ref setBase[w], key | RefBit);
                     return TouchOutcome.Inserted;
                 }
             }
@@ -234,7 +219,7 @@ public sealed unsafe class PageResidencyTracker : IDisposable
 
                 evictedArenaId = (int)((s >> 32) & ArenaIdMask);
                 evictedPageIdx = (int)s;
-                Volatile.Write(ref setBase[hand], key | InitialRefBitForInsert());
+                Volatile.Write(ref setBase[hand], key | RefBit);
                 hand = (hand + 1) & WayMask;
                 meta = (meta & ~MetaHandMask) | hand;
                 return TouchOutcome.Evicted;
@@ -249,10 +234,6 @@ public sealed unsafe class PageResidencyTracker : IDisposable
             ReleaseSetLock(ref meta);
         }
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private long InitialRefBitForInsert() =>
-        (Interlocked.Increment(ref _bipInsertCounter) & BipHotInsertMask) == 0 ? RefBit : 0L;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void AcquireSetLock(ref int meta)
