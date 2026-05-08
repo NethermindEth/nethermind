@@ -34,7 +34,7 @@ public sealed record HsstBTreeOptions
     /// the builder may split early if the next child would worsen the per-node
     /// encoding (max separator length grows, value slot widens) or push the
     /// node across a 4 KiB page boundary.</summary>
-    public const int DefaultMinIntermediateChildren = 2;
+    public const int DefaultMinIntermediateChildren = 16;
 
     /// <summary>Minimum length of separators stored in leaf nodes.</summary>
     public int MinSeparatorLength { get; init; } = 0;
