@@ -11,16 +11,17 @@ namespace Nethermind.State.Flat.BSearchIndex;
 
 /// <summary>
 /// SIMD floor-search fast paths for <see cref="BSearchIndexReader"/> Uniform (KeyType=1)
-/// keys with small fan-out. For 4- and 8-byte fixed-width keys (typical at intermediate
+/// keys with small fan-out. For 2-, 4- and 8-byte fixed-width keys (typical at intermediate
 /// index levels and in compact leaves), the BCL's <c>SequenceCompareTo</c> per-call setup
 /// cost dominates the actual byte compare; a vectorised linear scan is faster on small
 /// counts and avoids the log-N branch mispredicts of binary search.
 ///
 /// Unsigned big-endian integer compare is equivalent to lexicographic byte compare for
-/// fixed-width keys, so we byte-swap each lane and use signed <c>GreaterThan</c> with a
-/// sign-bias XOR to emulate unsigned compare.
+/// fixed-width keys, so we byte-swap each lane and use AVX-512's native unsigned
+/// <c>GreaterThan</c> on <c>Vector512&lt;uint&gt;</c> / <c>Vector512&lt;ulong&gt;</c>.
 ///
-/// Three vector widths supported with runtime dispatch (Vector512 → Vector256 → Vector128).
+/// AVX-512 only: when <see cref="Vector512.IsHardwareAccelerated"/> is false the
+/// fast path is skipped and the caller falls back to scalar binary search.
 /// </summary>
 public static class BSearchIndexReaderSimd
 {
@@ -39,31 +40,39 @@ public static class BSearchIndexReaderSimd
     /// </summary>
     public static int LinearScanMaxCount = 1024;
 
-    private static readonly Vector128<byte> ByteSwap32Mask128 = Vector128.Create(
-        (byte)3, 2, 1, 0,
-        7, 6, 5, 4,
-        11, 10, 9, 8,
-        15, 14, 13, 12);
-
-    private static readonly Vector128<byte> ByteSwap64Mask128 = Vector128.Create(
-        (byte)7, 6, 5, 4, 3, 2, 1, 0,
-        15, 14, 13, 12, 11, 10, 9, 8);
-
-    private static readonly Vector256<byte> ByteSwap32Mask256 = Vector256.Create(
-        (byte)3, 2, 1, 0,
-        7, 6, 5, 4,
-        11, 10, 9, 8,
-        15, 14, 13, 12,
-        19, 18, 17, 16,
-        23, 22, 21, 20,
-        27, 26, 25, 24,
-        31, 30, 29, 28);
-
-    private static readonly Vector256<byte> ByteSwap64Mask256 = Vector256.Create(
-        (byte)7, 6, 5, 4, 3, 2, 1, 0,
-        15, 14, 13, 12, 11, 10, 9, 8,
-        23, 22, 21, 20, 19, 18, 17, 16,
-        31, 30, 29, 28, 27, 26, 25, 24);
+    private static readonly Vector512<byte> ByteSwap16Mask512 = Vector512.Create(
+        (byte)1, 0,
+        3, 2,
+        5, 4,
+        7, 6,
+        9, 8,
+        11, 10,
+        13, 12,
+        15, 14,
+        17, 16,
+        19, 18,
+        21, 20,
+        23, 22,
+        25, 24,
+        27, 26,
+        29, 28,
+        31, 30,
+        33, 32,
+        35, 34,
+        37, 36,
+        39, 38,
+        41, 40,
+        43, 42,
+        45, 44,
+        47, 46,
+        49, 48,
+        51, 50,
+        53, 52,
+        55, 54,
+        57, 56,
+        59, 58,
+        61, 60,
+        63, 62);
 
     private static readonly Vector512<byte> ByteSwap32Mask512 = Vector512.Create(
         (byte)3, 2, 1, 0,
@@ -110,10 +119,13 @@ public static class BSearchIndexReaderSimd
         if (!Enabled) return false;
         if (count < 2 || count > LinearScanMaxCount) return false;
         if (key.Length != keySize) return false;
-        if (!Vector128.IsHardwareAccelerated) return false;
+        if (!Vector512.IsHardwareAccelerated) return false;
 
         switch (keySize)
         {
+            case 2:
+                result = FloorScan16(key, keys, count);
+                return true;
             case 4:
                 result = FloorScan32(key, keys, count);
                 return true;
@@ -148,7 +160,7 @@ public static class BSearchIndexReaderSimd
         if (!Enabled) return false;
         if (slotSize != 4) return false;
         if (count < 2 || count > LinearScanMaxCount) return false;
-        if (!Vector128.IsHardwareAccelerated) return false;
+        if (!Vector512.IsHardwareAccelerated) return false;
 
         // Encode the search key into the storage slot format: first min(3, keyLen) bytes
         // of payload (zero-padded), then a length byte = min(keyLen, 255). The writer
@@ -165,94 +177,46 @@ public static class BSearchIndexReaderSimd
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FloorScan16(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    {
+        ushort search = BinaryPrimitives.ReverseEndianness(
+            Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(key)));
+        ref byte src = ref MemoryMarshal.GetReference(keys);
+
+        Vector512<ushort> searchVec = Vector512.Create(search);
+        int i = 0;
+        // 32 keys per iteration.
+        while (i + 32 <= count)
+        {
+            Vector512<ushort> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 2)).AsUInt16();
+            Vector512<ushort> be = Vector512.Shuffle(raw.AsByte(), ByteSwap16Mask512).AsUInt16();
+            Vector512<ushort> gt = Vector512.GreaterThan(be, searchVec);
+            ulong mask = gt.AsByte().ExtractMostSignificantBits();
+            if (mask != 0)
+            {
+                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 1;
+                return i + firstGtLane - 1;
+            }
+            i += 32;
+        }
+        return ScalarTail16(search, ref src, i, count);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FloorScan32(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
         uint search = BinaryPrimitives.ReverseEndianness(
             Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(key)));
         ref byte src = ref MemoryMarshal.GetReference(keys);
 
-        if (Vector512.IsHardwareAccelerated)
-            return FloorScan32_V512(search, ref src, count);
-        if (Vector256.IsHardwareAccelerated)
-            return FloorScan32_V256(search, ref src, count);
-        return FloorScan32_V128(search, ref src, count);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan64(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
-    {
-        ulong search = BinaryPrimitives.ReverseEndianness(
-            Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(key)));
-        ref byte src = ref MemoryMarshal.GetReference(keys);
-
-        if (Vector512.IsHardwareAccelerated)
-            return FloorScan64_V512(search, ref src, count);
-        if (Vector256.IsHardwareAccelerated)
-            return FloorScan64_V256(search, ref src, count);
-        return FloorScan64_V128(search, ref src, count);
-    }
-
-    // ---------------- KeySize=4 ----------------
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan32_V128(uint search, ref byte src, int count)
-    {
-        Vector128<int> searchVec = Vector128.Create(unchecked((int)(search ^ 0x80000000u)));
-        Vector128<uint> signBias = Vector128.Create(0x80000000u);
-        int i = 0;
-        // 4 keys per iteration.
-        while (i + 4 <= count)
-        {
-            Vector128<uint> raw = Vector128.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
-            Vector128<uint> be = Vector128.Shuffle(raw.AsByte(), ByteSwap32Mask128).AsUInt32();
-            Vector128<int> gt = Vector128.GreaterThan((be ^ signBias).AsInt32(), searchVec);
-            uint mask = gt.AsByte().ExtractMostSignificantBits();
-            if (mask != 0)
-            {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 2;
-                return i + firstGtLane - 1;
-            }
-            i += 4;
-        }
-        return ScalarTail32(search, ref src, i, count);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan32_V256(uint search, ref byte src, int count)
-    {
-        Vector256<int> searchVec = Vector256.Create(unchecked((int)(search ^ 0x80000000u)));
-        Vector256<uint> signBias = Vector256.Create(0x80000000u);
-        int i = 0;
-        // 8 keys per iteration.
-        while (i + 8 <= count)
-        {
-            Vector256<uint> raw = Vector256.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
-            Vector256<uint> be = Vector256.Shuffle(raw.AsByte(), ByteSwap32Mask256).AsUInt32();
-            Vector256<int> gt = Vector256.GreaterThan((be ^ signBias).AsInt32(), searchVec);
-            uint mask = gt.AsByte().ExtractMostSignificantBits();
-            if (mask != 0)
-            {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 2;
-                return i + firstGtLane - 1;
-            }
-            i += 8;
-        }
-        // Tail (at most 7 keys remain): scalar.
-        return ScalarTail32(search, ref src, i, count);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan32_V512(uint search, ref byte src, int count)
-    {
-        Vector512<int> searchVec = Vector512.Create(unchecked((int)(search ^ 0x80000000u)));
-        Vector512<uint> signBias = Vector512.Create(0x80000000u);
+        Vector512<uint> searchVec = Vector512.Create(search);
         int i = 0;
         // 16 keys per iteration.
         while (i + 16 <= count)
         {
             Vector512<uint> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 4)).AsUInt32();
             Vector512<uint> be = Vector512.Shuffle(raw.AsByte(), ByteSwap32Mask512).AsUInt32();
-            Vector512<int> gt = Vector512.GreaterThan((be ^ signBias).AsInt32(), searchVec);
+            Vector512<uint> gt = Vector512.GreaterThan(be, searchVec);
             ulong mask = gt.AsByte().ExtractMostSignificantBits();
             if (mask != 0)
             {
@@ -265,77 +229,20 @@ public static class BSearchIndexReaderSimd
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarTail32(uint search, ref byte src, int i, int count)
+    private static int FloorScan64(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
-        for (; i < count; i++)
-        {
-            uint k = BinaryPrimitives.ReverseEndianness(
-                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(i * 4))));
-            if (k > search) return i - 1;
-        }
-        return count - 1;
-    }
+        ulong search = BinaryPrimitives.ReverseEndianness(
+            Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(key)));
+        ref byte src = ref MemoryMarshal.GetReference(keys);
 
-    // ---------------- KeySize=8 ----------------
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan64_V128(ulong search, ref byte src, int count)
-    {
-        Vector128<long> searchVec = Vector128.Create(unchecked((long)(search ^ 0x8000000000000000UL)));
-        Vector128<ulong> signBias = Vector128.Create(0x8000000000000000UL);
-        int i = 0;
-        // 2 keys per iteration.
-        while (i + 2 <= count)
-        {
-            Vector128<ulong> raw = Vector128.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();
-            Vector128<ulong> be = Vector128.Shuffle(raw.AsByte(), ByteSwap64Mask128).AsUInt64();
-            Vector128<long> gt = Vector128.GreaterThan((be ^ signBias).AsInt64(), searchVec);
-            uint mask = gt.AsByte().ExtractMostSignificantBits();
-            if (mask != 0)
-            {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 3;
-                return i + firstGtLane - 1;
-            }
-            i += 2;
-        }
-        return ScalarTail64(search, ref src, i, count);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan64_V256(ulong search, ref byte src, int count)
-    {
-        Vector256<long> searchVec = Vector256.Create(unchecked((long)(search ^ 0x8000000000000000UL)));
-        Vector256<ulong> signBias = Vector256.Create(0x8000000000000000UL);
-        int i = 0;
-        // 4 keys per iteration.
-        while (i + 4 <= count)
-        {
-            Vector256<ulong> raw = Vector256.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();
-            Vector256<ulong> be = Vector256.Shuffle(raw.AsByte(), ByteSwap64Mask256).AsUInt64();
-            Vector256<long> gt = Vector256.GreaterThan((be ^ signBias).AsInt64(), searchVec);
-            uint mask = gt.AsByte().ExtractMostSignificantBits();
-            if (mask != 0)
-            {
-                int firstGtLane = BitOperations.TrailingZeroCount(mask) >> 3;
-                return i + firstGtLane - 1;
-            }
-            i += 4;
-        }
-        return ScalarTail64(search, ref src, i, count);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FloorScan64_V512(ulong search, ref byte src, int count)
-    {
-        Vector512<long> searchVec = Vector512.Create(unchecked((long)(search ^ 0x8000000000000000UL)));
-        Vector512<ulong> signBias = Vector512.Create(0x8000000000000000UL);
+        Vector512<ulong> searchVec = Vector512.Create(search);
         int i = 0;
         // 8 keys per iteration.
         while (i + 8 <= count)
         {
             Vector512<ulong> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 8)).AsUInt64();
             Vector512<ulong> be = Vector512.Shuffle(raw.AsByte(), ByteSwap64Mask512).AsUInt64();
-            Vector512<long> gt = Vector512.GreaterThan((be ^ signBias).AsInt64(), searchVec);
+            Vector512<ulong> gt = Vector512.GreaterThan(be, searchVec);
             ulong mask = gt.AsByte().ExtractMostSignificantBits();
             if (mask != 0)
             {
@@ -345,6 +252,30 @@ public static class BSearchIndexReaderSimd
             i += 8;
         }
         return ScalarTail64(search, ref src, i, count);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ScalarTail16(ushort search, ref byte src, int i, int count)
+    {
+        for (; i < count; i++)
+        {
+            ushort k = BinaryPrimitives.ReverseEndianness(
+                Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref src, (nint)(i * 2))));
+            if (k > search) return i - 1;
+        }
+        return count - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ScalarTail32(uint search, ref byte src, int i, int count)
+    {
+        for (; i < count; i++)
+        {
+            uint k = BinaryPrimitives.ReverseEndianness(
+                Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(i * 4))));
+            if (k > search) return i - 1;
+        }
+        return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
