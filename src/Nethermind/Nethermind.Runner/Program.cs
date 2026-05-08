@@ -186,6 +186,24 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     EthereumJsonSerializer serializer = new();
 
+    if (logger.IsInfo)
+    {
+        List<string> nonDefaultLines = [];
+        foreach ((string category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues())
+        {
+            nonDefaultLines.Add($"  {category}.{name} = {serializer.Serialize(currentValue)}");
+        }
+
+        if (nonDefaultLines.Count == 0)
+        {
+            logger.Info("Configuration: all values at defaults.");
+        }
+        else
+        {
+            logger.Info($"Configuration: {nonDefaultLines.Count} non-default value(s):\n{string.Join('\n', nonDefaultLines)}");
+        }
+    }
+
     if (logger.IsDebug)
     {
         logger.Debug($"Nethermind configuration:\n{serializer.Serialize(initConfig, true)}");
