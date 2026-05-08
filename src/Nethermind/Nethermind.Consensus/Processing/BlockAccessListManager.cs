@@ -275,6 +275,17 @@ public class BlockAccessListManager(
         }
     }
 
+    /// <summary>
+    /// Applies the suggested-block BAL deltas onto <paramref name="stateProvider"/> so the post-block
+    /// world state matches the wire BAL.
+    /// </summary>
+    /// <remarks>
+    /// Requires <paramref name="suggestedBlockAccessList"/> to have already been prestate-loaded
+    /// via <see cref="LoadPreStateToSuggestedBlockAccessList"/>. The <c>oldBalance</c> calculation
+    /// below relies on a prestate balance entry being present (it falls back to zero only for
+    /// brand-new accounts created in this block). Callers in the parallel and sequential paths
+    /// run prestate load as the first step; do not invoke this on a freshly-decoded BAL.
+    /// </remarks>
     public static void ApplyStateChanges(ReadOnlyBlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
     {
         foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
@@ -282,6 +293,9 @@ public class BlockAccessListManager(
             if (accountChanges.BalanceChanges.Length > 0 && accountChanges.BalanceChanges[^1].Index != Eip7928Constants.PrestateIndex)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                // GetBalance(0) returns the prestate entry (the only change with index < 0 in the
+                // ordering used by PrestateAwareIndexComparer). Null only for accounts created
+                // mid-block — those have no prestate balance, so 0 is the correct delta base.
                 UInt256 oldBalance = accountChanges.GetBalance(0) ?? UInt256.Zero;
                 UInt256 newBalance = accountChanges.BalanceChanges[^1].Value;
                 if (newBalance > oldBalance)

@@ -63,25 +63,15 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell)
-    {
-        CheckInitialized();
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+    public ReadOnlySpan<byte> Get(in StorageCell storageCell) => GetAtCurrentIndex(in storageCell);
 
-        if (accountChanges is not null)
-        {
-            accountChanges.TryGetSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges);
+    // Same lookup as Get: the BAL slot view is the value strictly before _blockAccessIndex,
+    // which is the start-of-tx (= "original") value. Intra-tx writes never reach this state
+    // — they go through the per-tx journal owned by TracedAccessWorldState — so EIP-2200's
+    // "original" and "current" both resolve to the same BAL slot here.
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell) => GetAtCurrentIndex(in storageCell);
 
-            if (slotChanges is not null)
-            {
-                return slotChanges.Get(_blockAccessIndex);
-            }
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
-    }
-
-    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    private ReadOnlySpan<byte> GetAtCurrentIndex(in StorageCell storageCell)
     {
         CheckInitialized();
         ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);

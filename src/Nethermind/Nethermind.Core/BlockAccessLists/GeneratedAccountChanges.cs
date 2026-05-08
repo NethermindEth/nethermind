@@ -94,40 +94,47 @@ public class GeneratedAccountChanges(Address address)
         //   - other: ReadOnlySlotChanges[] (decoder produces sorted)
         // Walk in lockstep, skipping slots that have no change at this index on either side.
         // Concrete struct enumerator type avoids the boxing the IEnumerable/IEnumerator
-        // interface would force; Dispose chain bottoms out at empty TreeSet.Enumerator.Dispose
-        // so we skip the `using` for clarity — the manual MoveNext/Current control here is
-        // intentional, and there's no resource to release.
+        // interface would force; the manual MoveNext/Current control rules out a `using` block,
+        // so the enumerator is disposed explicitly in `finally` to be safe against future BCL
+        // changes that give SortedDictionary's value-enumerator a non-trivial Dispose.
         SortedDictionary<UInt256, GeneratedSlotChanges>.ValueCollection.Enumerator a
             = _storageChanges.Values.GetEnumerator();
-        ReadOnlySlotChanges[] b = other.StorageChanges;
-        int j = 0;
-        bool aHas = a.MoveNext();
-        StorageChange aChange = default, bChange = default;
-
-        while (true)
+        try
         {
-            // Advance each side to the next slot that has a change at `index`, capturing the
-            // change in the same binary search rather than re-searching after presence is known.
-            bool aMatched = false;
-            while (aHas)
+            ReadOnlySlotChanges[] b = other.StorageChanges;
+            int j = 0;
+            bool aHas = a.MoveNext();
+            StorageChange aChange = default, bChange = default;
+
+            while (true)
             {
-                if (TryGetSlotChangeAtIndex(a.Current, index, out aChange)) { aMatched = true; break; }
+                // Advance each side to the next slot that has a change at `index`, capturing the
+                // change in the same binary search rather than re-searching after presence is known.
+                bool aMatched = false;
+                while (aHas)
+                {
+                    if (TryGetSlotChangeAtIndex(a.Current, index, out aChange)) { aMatched = true; break; }
+                    aHas = a.MoveNext();
+                }
+                bool bMatched = false;
+                while (j < b.Length)
+                {
+                    if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) { bMatched = true; break; }
+                    j++;
+                }
+
+                if (!aMatched && !bMatched) return true;
+                if (aMatched != bMatched) return false;
+                if (a.Current.Key != b[j].Key) return false;
+                if (!aChange.Equals(bChange)) return false;
+
                 aHas = a.MoveNext();
-            }
-            bool bMatched = false;
-            while (j < b.Length)
-            {
-                if (TryGetSlotChangeAtIndex(b[j], index, out bChange)) { bMatched = true; break; }
                 j++;
             }
-
-            if (!aMatched && !bMatched) return true;
-            if (aMatched != bMatched) return false;
-            if (a.Current.Key != b[j].Key) return false;
-            if (!aChange.Equals(bChange)) return false;
-
-            aHas = a.MoveNext();
-            j++;
+        }
+        finally
+        {
+            a.Dispose();
         }
     }
 

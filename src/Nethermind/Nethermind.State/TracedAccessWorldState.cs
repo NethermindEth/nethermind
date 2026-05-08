@@ -20,6 +20,16 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
+/// <remarks>
+/// Setup contract: <see cref="SetGeneratingBlockAccessList"/> must be called with a non-null
+/// per-tx slice before any state-mutating method on this instance runs. The mutating helpers
+/// below dereference <c>_generatingBlockAccessList</c> without a null-check on the hot path,
+/// so violating this contract surfaces as a NullReferenceException at the first write rather
+/// than a silent logic error. Today's two callers honour this:
+///   - sequential path: BlockProcessor sets the slice immediately after constructing the wrapper;
+///   - parallel path: ParallelBlockValidationTransactionsExecutor's per-tx Get() rents/sets a
+///     slice from the pool before each tx runs.
+/// </remarks>
 public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : IWorldState, IPreBlockCaches, IBlockAccessListSource
 {
     public PreBlockCaches Caches => (_innerWorldState.ScopeProvider as IPreBlockCaches)?.Caches
@@ -30,6 +40,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
     protected IWorldState _innerWorldState = innerWorldState;
+    // Nullable on purpose: see class remarks. SetGeneratingBlockAccessList must run before any
+    // state-mutating method dereferences this; the null check is omitted on hot paths so a
+    // missed setup fails fast rather than silently corrupting BAL output.
     private BlockAccessListAtIndex? _generatingBlockAccessList;
     private int _systemAccountReadSuppressionDepth;
     private UInt256 _scratchBalance;

@@ -153,6 +153,11 @@ public partial class BlockProcessor
                                 // we fan out the load account-by-account. Each account's prestate
                                 // gate is signaled as soon as its load completes, freeing any consumer
                                 // blocked on it (see ReadOnlyAccountChanges.WaitForPrestate).
+                                //
+                                // Invariant: this loader iteration must NEVER call WaitForPrestate
+                                // — it would deadlock on the gate it is fulfilling. ParallelUnbalancedWork
+                                // schedules slot 0 ahead of the tx-worker queue so a fully-busy pool
+                                // cannot starve the loader.
                                 state.balManager.LoadPreStateToSuggestedBlockAccessList(state.block);
 
                                 // ApplyStateChanges mutates the shared stateProvider so runs inside

@@ -287,8 +287,14 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     }
 
     // === Mutations limited to LoadPreStateToSuggestedBlockAccessList (called from BlockAccessListManager) ===
-    // Prestate is keyed at index -1, smaller than every real change, so we prepend (one realloc)
-    // to preserve the sorted-by-index invariant.
+    // Prestate is keyed at PrestateAwareIndexComparer's smallest-of-all sentinel, so we prepend
+    // (one realloc) to preserve the sorted-by-index invariant.
+    //
+    // Allocation cost: 3 small arrays per BAL account (balance/nonce/code). On a block touching
+    // ~1000 accounts that's ~3000 short-lived arrays. Eliminating this would require holding the
+    // prestate in dedicated nullable fields and synthesizing the merged view at every iterator /
+    // index lookup / RLP encode site — the trade-off is more cross-cutting code on every read
+    // path against a one-time prepend on the prestate-load thread. Kept simple for now.
 
     public void LoadPreStateBalance(UInt256 balance) => _balanceChanges = [new BalanceChange(Eip7928Constants.PrestateIndex, balance), .. _balanceChanges];
     public void LoadPreStateNonce(ulong nonce) => _nonceChanges = [new NonceChange(Eip7928Constants.PrestateIndex, nonce), .. _nonceChanges];
@@ -330,6 +336,19 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     public void SignalPrestateLoaded() => _prestateGate?.TrySetResult();
 
+    /// <summary>
+    /// Synchronously waits for this account's prestate-load to complete. Safe to call from
+    /// parallel tx workers because the loader (slot 0 of the parallel loop) signals each
+    /// account individually as soon as its prestate is loaded — workers unblock as their
+    /// accounts come online, never as a thundering herd at the end.
+    ///
+    /// Required invariants for the parallel scheduler in
+    /// <c>BlockProcessor.ParallelBlockValidationTransactionsExecutor</c>:
+    ///   1. The loader iteration (slot 0) must NEVER call <see cref="WaitForPrestate"/>
+    ///      itself — it would deadlock on the gate it is supposed to fulfill.
+    ///   2. ParallelUnbalancedWork must guarantee slot 0 gets a thread independent of the
+    ///      tx-worker queue, so a fully-busy worker pool cannot starve the loader.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void WaitForPrestate()
     {
