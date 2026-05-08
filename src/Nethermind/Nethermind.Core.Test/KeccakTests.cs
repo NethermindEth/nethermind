@@ -87,6 +87,29 @@ namespace Nethermind.Core.Test
             }
         }
 
+        // Reset must zero _remainderLength alongside returning the remainder buffer; otherwise
+        // a subsequent Update() reads through a stale length on the now-empty buffer and throws.
+        [Test]
+        public void Update_then_Reset_then_Update_does_not_throw()
+        {
+            KeccakHash keccakHash = KeccakHash.Create();
+            keccakHash.Update([1, 2, 3]);
+
+            keccakHash.Reset();
+
+            Assert.DoesNotThrow(() => keccakHash.Update([4, 5, 6]));
+
+            Span<byte> output = stackalloc byte[32];
+            keccakHash.UpdateFinalTo(output);
+
+            Span<byte> expected = stackalloc byte[32];
+            KeccakHash reference = KeccakHash.Create();
+            reference.Update([4, 5, 6]);
+            reference.UpdateFinalTo(expected);
+
+            Assert.That(output.SequenceEqual(expected), Is.True);
+        }
+
         [Test]
         public void Null_string()
         {
