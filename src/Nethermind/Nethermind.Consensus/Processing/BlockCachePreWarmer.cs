@@ -451,30 +451,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 Address address = ac.Address;
                 worldState.WarmUp(address);
 
-                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
+                // Merge two sorted sequences (ChangedSlots, SortedStorageReads) into one
                 // ascending pass for better trie path locality
-                IList<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> reads = ac.SortedStorageReads;
                 int slotIndex = 0;
-                using SortedSet<UInt256>.Enumerator readEnumerator = ac.StorageReads.GetEnumerator();
-                bool hasRead = readEnumerator.MoveNext();
+                int readIndex = 0;
 
-                while (slotIndex < changed.Count || hasRead)
+                while (slotIndex < changed.Length || readIndex < reads.Length)
                 {
                     UInt256 slot;
-                    if (!hasRead)
+                    if (readIndex >= reads.Length)
                     {
                         slot = changed[slotIndex++];
                     }
                     else
                     {
-                        slot = readEnumerator.Current;
-                        if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
+                        slot = reads[readIndex];
+                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
                         {
                             slot = changed[slotIndex++];
                         }
                         else
                         {
-                            hasRead = readEnumerator.MoveNext();
+                            readIndex++;
                         }
                     }
                     worldState.Get(new StorageCell(address, slot));
