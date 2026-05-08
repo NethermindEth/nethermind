@@ -30,6 +30,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
 
 
     public EnumerableWithCount<AccountChanges> AccountChanges => new(_accountChanges.Values, _accountChanges.Values.Count);
+    [JsonIgnore]
     public EnumerableWithCount<AccountChanges> AccountChangesSorted
     {
         get

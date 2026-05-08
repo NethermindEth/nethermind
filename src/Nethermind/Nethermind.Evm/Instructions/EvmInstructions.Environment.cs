@@ -613,15 +613,11 @@ public static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
         IWorldState state = vm.WorldState;
-        if (!state.AccountExists(address))
+        if (state.IsDeadAccount(address))
         {
             return stack.PushZero<TTracingInst>();
         }
         ValueHash256 hash = state.GetCodeHash(address);
-        if (state.GetBalance(address) == 0 && state.GetNonce(address) == 0 && hash == Keccak.OfAnEmptyString)
-        {
-            return stack.PushZero<TTracingInst>();
-        }
         return stack.Push32Bytes<TTracingInst>(in hash);
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
