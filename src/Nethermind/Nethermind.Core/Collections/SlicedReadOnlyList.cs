@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,13 +8,13 @@ using System.Collections.Generic;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// ChatGPT generated sliced read only list
+/// A read-only view over a contiguous segment of an <see cref="IReadOnlyList{T}"/>.
 /// </summary>
 /// <typeparam name="T"></typeparam>
 public class SlicedReadOnlyList<T> : IReadOnlyList<T>
 {
-    private readonly IReadOnlyList<T> _list;
-    private readonly int _start;
+    protected readonly IReadOnlyList<T> _list;
+    protected readonly int _start;
     private readonly int _count;
 
     public SlicedReadOnlyList(IReadOnlyList<T> list, int start, int count)
