@@ -298,6 +298,31 @@ public class DebugRpcModule(
         }
     }
 
+    public ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null)
+    {
+        TryGetHeaderAndCheckState<IReadOnlyCollection<Hash256>>(blockHash, out ResultWrapper<IReadOnlyCollection<Hash256>>? headerError);
+        if (headerError is not null)
+        {
+            return headerError;
+        }
+
+        using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
+        CancellationToken cancellationToken = timeout.Token;
+
+        try
+        {
+            IReadOnlyCollection<Hash256> roots = debugBridge.GetBlockIntermediateRoots(blockHash, cancellationToken, options);
+
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_intermediateRoots)} request {blockHash}, roots: {roots.Count}");
+
+            return ResultWrapper<IReadOnlyCollection<Hash256>>.Success(roots);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ResultWrapper<IReadOnlyCollection<Hash256>>.Fail(ex.Message, ErrorCodes.ResourceNotFound);
+        }
+    }
+
     public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null) => throw new NotImplementedException();
 
     public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter) => throw new NotImplementedException();

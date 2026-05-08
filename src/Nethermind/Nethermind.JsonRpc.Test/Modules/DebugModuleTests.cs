@@ -419,4 +419,39 @@ public class DebugModuleTests
         actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
         actual.Result.Error.Should().Contain("No state available");
     }
+
+    [Test]
+    public void Debug_intermediateRoots_returns_post_tx_roots_from_bridge()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(true);
+
+        Hash256[] expected = [TestItem.KeccakB, TestItem.KeccakC];
+        _debugBridge
+            .GetBlockIntermediateRoots(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions?>())
+            .Returns(expected);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IReadOnlyCollection<Hash256>> actual = rpcModule.debug_intermediateRoots(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Success);
+        actual.Data.Should().BeEquivalentTo(expected);
+    }
+
+    [Test]
+    public void Debug_intermediateRoots_fails_when_state_unavailable()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(false);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IReadOnlyCollection<Hash256>> actual = rpcModule.debug_intermediateRoots(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Failure);
+        actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
+    }
 }
