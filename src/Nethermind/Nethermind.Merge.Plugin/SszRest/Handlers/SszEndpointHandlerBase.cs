@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
@@ -35,7 +36,21 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         // GetSpan/Advance buffer into the response pipe without starting the response;
         // headers (incl. ContentLength) remain settable until FlushAsync.
         PipeWriter pipe = ctx.Response.BodyWriter;
-        int length = encode(value, pipe);
+        Debug.Assert(!ctx.Response.HasStarted, "response must not have started before SSZ encode");
+        long before = pipe.UnflushedBytes;
+        int length;
+        try
+        {
+            length = encode(value, pipe);
+        }
+        catch
+        {
+            // Encode advanced bytes into the pipe before throwing; we can't rewind.
+            // Abort the connection so the CL doesn't see a 500 with garbled-binary body.
+            ctx.Abort();
+            throw;
+        }
+        Debug.Assert(pipe.UnflushedBytes - before == length, "encoder advanced wrong byte count");
         ctx.Response.ContentType = OctetStream;
         ctx.Response.ContentLength = length;
         ctx.Response.StatusCode = StatusCodes.Status200OK;
