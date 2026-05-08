@@ -93,11 +93,19 @@ public sealed class SszMiddleware
         FrozenDictionary<string, List<ISszEndpointHandler>> post = postDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
         FrozenDictionary<string, List<ISszEndpointHandler>> get = getDict.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-        List<(string, List<ISszEndpointHandler>)> postPrefix = [];
-        List<(string, List<ISszEndpointHandler>)> getPrefix = [];
-        foreach ((string r, List<ISszEndpointHandler> list) in post) postPrefix.Add((r, list));
-        foreach ((string r, List<ISszEndpointHandler> list) in get) getPrefix.Add((r, list));
-        return (post, get, postPrefix.ToArray(), getPrefix.ToArray());
+        return (post, get, BuildPrefix(postDict), BuildPrefix(getDict));
+
+        static (string Resource, List<ISszEndpointHandler> Handlers)[] BuildPrefix(
+            Dictionary<string, List<ISszEndpointHandler>> source)
+        {
+            List<(string, List<ISszEndpointHandler>)> prefix = [];
+            foreach ((string r, List<ISszEndpointHandler> list) in source)
+            {
+                List<ISszEndpointHandler> accepting = list.FindAll(static c => c.AcceptsPathExtra);
+                if (accepting.Count > 0) prefix.Add((r, accepting));
+            }
+            return prefix.ToArray();
+        }
     }
 
     public async Task InvokeAsync(HttpContext ctx)
@@ -297,8 +305,6 @@ public sealed class SszMiddleware
         {
             ReadOnlySpan<char> resourceSpan = routeResource.AsSpan();
 
-            if (pathSpan.Equals(resourceSpan, StringComparison.OrdinalIgnoreCase))
-                continue;
             if (pathSpan.Length <= resourceSpan.Length || pathSpan[resourceSpan.Length] != '/')
                 continue;
             if (!pathSpan.StartsWith(resourceSpan, StringComparison.OrdinalIgnoreCase))
@@ -308,8 +314,6 @@ public sealed class SszMiddleware
 
             foreach (ISszEndpointHandler candidate in candidates)
             {
-                if (!candidate.AcceptsPathExtra) continue;
-
                 if (candidate.Version == version)
                 {
                     handler = candidate;

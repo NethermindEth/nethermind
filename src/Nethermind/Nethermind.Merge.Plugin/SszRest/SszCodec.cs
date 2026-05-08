@@ -141,28 +141,25 @@ public static class SszCodec
         // V1 SSZ has no nullable wrapper, nulls (unknown hashes) are dropped and the CL
         // infers misses by comparing response length to request length.
         int count = blobs.Count;
-        BlobAndProofV1Wire[] arr = new BlobAndProofV1Wire[count];
         int filled = 0;
+        for (int i = 0; i < count; i++) if (blobs[i] is not null) filled++;
+        BlobAndProofV1Wire[] arr = new BlobAndProofV1Wire[filled];
+        int j = 0;
         for (int i = 0; i < count; i++)
-        {
-            BlobAndProofV1? b = blobs[i];
-            if (b is not null) arr[filled++] = new() { Blob = b.Blob, Proof = b.Proof };
-        }
-        return EncodeToWriter(new GetBlobsV1ResponseWire { BlobsAndProofs = arr[..filled] }, writer);
+            if (blobs[i] is { } b) arr[j++] = new() { Blob = b.Blob, Proof = b.Proof };
+        return EncodeToWriter(new GetBlobsV1ResponseWire { BlobsAndProofs = arr }, writer);
     }
 
     public static int EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
     {
-        // Same null-drop as V1.
         int count = blobs.Count;
-        BlobAndProofV2Wire[] arr = new BlobAndProofV2Wire[count];
         int filled = 0;
+        for (int i = 0; i < count; i++) if (blobs[i] is not null) filled++;
+        BlobAndProofV2Wire[] arr = new BlobAndProofV2Wire[filled];
+        int j = 0;
         for (int i = 0; i < count; i++)
-        {
-            BlobAndProofV2? b = blobs[i];
-            if (b is not null) arr[filled++] = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() };
-        }
-        return EncodeToWriter(new GetBlobsV2ResponseWire { BlobsAndProofs = arr[..filled] }, writer);
+            if (blobs[i] is { } b) arr[j++] = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() };
+        return EncodeToWriter(new GetBlobsV2ResponseWire { BlobsAndProofs = arr }, writer);
     }
 
     public static int EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
