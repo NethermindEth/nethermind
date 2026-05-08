@@ -11,17 +11,29 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 
-// Standard pre/post-merge blockchain tests. Fixture dir derived from class name (strip "BlockchainTests").
+// Common base for pyspec blockchain fixtures. `heavy` toggles the skip policy:
+// false (default) = skip only in CI on non-Linux-x64 (allows local macOS/Win runs);
+// true            = also honor TEST_SKIP_HEAVY=1 for engine/sync/Amsterdam variants.
+// Each derived class declares its own [TestCaseSource(nameof(LoadTests))] Test body because
+// NUnit resolves the source on the test method's declaring type and rejects non-static sources.
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
+public abstract class PyspecBlockchainFixtureBase(bool parallel, bool batchRead, bool heavy) : BlockchainTestBase
 {
-    protected override bool? ParallelExecutionOverride => false;
-    protected override bool? ParallelExecutionBatchReadOverride => false;
+    protected override bool? ParallelExecutionOverride => parallel;
+    protected override bool? ParallelExecutionBatchReadOverride => batchRead;
 
     [SetUp]
-    public void SkipInCiOnUnsupportedRunners() => CiRunnerGuard.SkipIfNotLinuxX64Ci();
+    public void SkipUnsupportedRunners()
+    {
+        if (heavy) CiRunnerGuard.SkipIfNotLinuxX64();
+        else CiRunnerGuard.SkipIfNotLinuxX64Ci();
+    }
+}
 
+// Standard pre/post-merge blockchain tests. Fixture dir derived from class name (strip "BlockchainTests").
+public abstract class PyspecBlockchainTestFixture<TSelf>() : PyspecBlockchainFixtureBase(parallel: false, batchRead: false, heavy: false)
+{
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
@@ -29,17 +41,13 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
         PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests", "BlockchainTests");
 }
 
+// Heavy/Linux-x64-only blockchain fixtures: engine payloads, sync-mode payloads, and the
+// EIP-7928 (Amsterdam) parallel-BAL / batch-read prewarm matrix.
+public abstract class PyspecLinuxX64BlockchainFixture(bool parallel, bool batchRead) : PyspecBlockchainFixtureBase(parallel, batchRead, heavy: true);
+
 // Engine-payload variant. Linux x64 only - heavy job-time budget.
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestBase
+public abstract class PyspecEngineBlockchainTestFixture<TSelf>() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {
-    protected override bool? ParallelExecutionOverride => false;
-    protected override bool? ParallelExecutionBatchReadOverride => false;
-
-    [SetUp]
-    public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
-
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
@@ -50,16 +58,8 @@ public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestB
 // Sync fixtures share the engine-payload format and additionally ship a `syncPayload` field
 // exercising sync-mode validation; we run the engine payload through the standard harness
 // here and leave the sync-specific payload for a follow-up.
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecSyncBlockchainTestFixture<TSelf> : BlockchainTestBase
+public abstract class PyspecSyncBlockchainTestFixture<TSelf>() : PyspecLinuxX64BlockchainFixture(parallel: false, batchRead: false)
 {
-    protected override bool? ParallelExecutionOverride => false;
-    protected override bool? ParallelExecutionBatchReadOverride => false;
-
-    [SetUp]
-    public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
-
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
@@ -67,18 +67,9 @@ public abstract class PyspecSyncBlockchainTestFixture<TSelf> : BlockchainTestBas
         PyspecLoader.Load<BlockchainTest, TSelf>("blockchain_tests_sync", "SyncBlockchainTests");
 }
 
-// EIP-7928 (Amsterdam) parallel-BAL execution / batch-read prewarm matrix - Linux x64 only.
-// Loads only `for_amsterdam` because parallel execution is gated on EIP-7928.
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool batchRead) : BlockchainTestBase
+// Loads only `for_amsterdam` because parallel-BAL execution is gated on EIP-7928.
+public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool batchRead) : PyspecLinuxX64BlockchainFixture(parallel, batchRead)
 {
-    protected override bool? ParallelExecutionOverride => parallel;
-    protected override bool? ParallelExecutionBatchReadOverride => batchRead;
-
-    [SetUp]
-    public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
-
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
@@ -87,17 +78,9 @@ public abstract class PyspecAmsterdamBlockchainTestFixture(bool parallel, bool b
             .LoadTests<BlockchainTest>();
 }
 
-// Engine-payload variant of Amsterdam fixture; loads from `for_amsterdam` engine tree.
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, bool batchRead) : BlockchainTestBase
+// Engine-payload variant of the Amsterdam fixture; loads from `for_amsterdam` engine tree.
+public abstract class PyspecAmsterdamEngineBlockchainTestFixture(bool parallel, bool batchRead) : PyspecLinuxX64BlockchainFixture(parallel, batchRead)
 {
-    protected override bool? ParallelExecutionOverride => parallel;
-    protected override bool? ParallelExecutionBatchReadOverride => batchRead;
-
-    [SetUp]
-    public void SkipUnlessLinuxX64() => CiRunnerGuard.SkipIfNotLinuxX64();
-
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => Assert.That((await RunTest(test)).Pass, Is.True);
 
