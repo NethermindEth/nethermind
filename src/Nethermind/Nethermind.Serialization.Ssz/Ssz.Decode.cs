@@ -183,14 +183,19 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Decode(ReadOnlySequence<byte> data, out bool result) =>
-        result = data.FirstSpan[0] != 0;
+    public static void Decode(ReadOnlySequence<byte> data, out bool result)
+    {
+        // Defer to the span overload — it validates the byte is 0 or 1 (per SSZ spec)
+        // and our sequence path must not silently disagree on invalid input.
+        Span<byte> stack = stackalloc byte[sizeof(bool)];
+        Decode(ToContiguous(data, stack), out result);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Decode(ReadOnlySequence<byte> data, out byte result)
     {
-        ValidateLength(data.Length, sizeof(byte));
-        result = data.FirstSpan[0];
+        Span<byte> stack = stackalloc byte[sizeof(byte)];
+        Decode(ToContiguous(data, stack), out result);
     }
 
     public static void Decode(ReadOnlySequence<byte> data, out ushort result)
