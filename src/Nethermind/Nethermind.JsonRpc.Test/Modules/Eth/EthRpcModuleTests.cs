@@ -944,6 +944,26 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task EthGetHeaderByHash_WhenAuraBlock_EmitsAuraFields()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain aura = ctx.AuraTest;
+        string serialized = await aura.TestEthRpc("eth_getHeaderByHash", aura.BlockTree.Genesis!.Hash!.ToString());
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+
+        // AuRa-specific fields must be present (proves the AuRa branch fired).
+        result.ContainsKey("signature").Should().BeTrue();
+        result.ContainsKey("step").Should().BeTrue();
+
+        // PoW nonce is declared with [JsonIgnoreCondition.Never] so it serializes as null on AuRa headers.
+        result["nonce"]!.Type.Should().Be(JTokenType.Null);
+
+        // PoW mixHash uses default null-omit semantics — absent or null, not a non-null value.
+        JToken? mixHashToken = result["mixHash"];
+        (mixHashToken is null || mixHashToken.Type == JTokenType.Null).Should().BeTrue();
+    }
+
+    [Test]
     public async Task EthGetHeaderByNumber_WhenEarliest_MatchesExpectedJson()
     {
         using Context ctx = await Context.Create();

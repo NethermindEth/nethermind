@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth;
 
@@ -14,14 +16,25 @@ public class BlockHeaderForRpc
 {
     public BlockHeaderForRpc() { }
 
+    [SkipLocalsInit]
     public BlockHeaderForRpc(BlockHeader header, ISpecProvider? specProvider = null)
     {
+        bool isAuRaBlock = header.AuRaSignature is not null;
         Number = header.Number;
         Hash = header.Hash;
         ParentHash = header.ParentHash;
-        Nonce = new byte[8];
-        BinaryPrimitives.WriteUInt64BigEndian(Nonce, header.Nonce);
-        MixHash = header.MixHash;
+        if (!isAuRaBlock)
+        {
+            MixHash = header.MixHash;
+            Nonce = new byte[8];
+            BinaryPrimitives.WriteUInt64BigEndian(Nonce, header.Nonce);
+        }
+        else
+        {
+            Author = header.Author;
+            Step = header.AuRaStep;
+            Signature = header.AuRaSignature;
+        }
         Sha3Uncles = header.UnclesHash;
         LogsBloom = header.Bloom;
         StateRoot = header.StateRoot;
@@ -30,7 +43,7 @@ public class BlockHeaderForRpc
         ExtraData = header.ExtraData;
         GasLimit = header.GasLimit;
         GasUsed = header.GasUsed;
-        Timestamp = (UInt256)header.Timestamp;
+        Timestamp = header.Timestamp;
         TransactionsRoot = header.TxRoot;
         ReceiptsRoot = header.ReceiptsRoot;
         WithdrawalsRoot = header.WithdrawalsRoot;
@@ -53,6 +66,9 @@ public class BlockHeaderForRpc
         }
     }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Address? Author { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
 
@@ -66,6 +82,11 @@ public class BlockHeaderForRpc
 
     public Hash256? MixHash { get; set; }
     public Hash256? Sha3Uncles { get; set; }
+
+    public byte[]? Signature { get; set; }
+
+    [JsonConverter(typeof(NullableRawLongConverter))]
+    public long? Step { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom? LogsBloom { get; set; }
