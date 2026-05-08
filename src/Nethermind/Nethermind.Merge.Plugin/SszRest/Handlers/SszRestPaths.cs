@@ -7,8 +7,6 @@ public static class SszRestPaths
 {
     public const string Payloads = "payloads";
 
-    public const string PayloadsGet = "payloads";
-
     public const string Forkchoice = "forkchoice";
 
     public const string Capabilities = "capabilities";

@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using Nethermind.Serialization.Ssz;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
@@ -13,6 +14,8 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
     private const string Category = "Design";
 
     private static readonly DiagnosticDescriptor Rule = new(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true);
+
+    private static readonly string SszIgnoreAttributeFullName = typeof(SszIgnoreAttribute).FullName!;
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
@@ -40,12 +43,6 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
         }
     }
 
-    private static readonly HashSet<string> SszIgnoreAttributeNames = new(StringComparer.Ordinal)
-    {
-        "SszIgnoreAttribute",
-        "SszIgnore",
-    };
-
     private static void CheckProperty(SyntaxNodeAnalysisContext context, PropertyDeclarationSyntax propertyDeclaration)
     {
         ITypeSymbol? typeSymbol = context.SemanticModel.GetTypeInfo(propertyDeclaration.Type).Type;
@@ -54,22 +51,25 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
         {
             bool isIgnored = propertyDeclaration.AttributeLists
                 .SelectMany(attrList => attrList.Attributes)
-                .Any(attr => MatchesAttributeName(attr, SszIgnoreAttributeNames));
+                .Any(attr => IsSszIgnoreAttribute(attr, context.SemanticModel));
 
-            if (isIgnored)
+            if (!isIgnored)
             {
-                return;
-            }
+                bool hasRequiredAttribute = propertyDeclaration.AttributeLists
+                    .SelectMany(attrList => attrList.Attributes)
+                    .Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
 
-            bool hasRequiredAttribute = propertyDeclaration.AttributeLists
-                .SelectMany(attrList => attrList.Attributes)
-                .Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
-
-            if (!hasRequiredAttribute)
-            {
-                Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
-                context.ReportDiagnostic(diagnostic);
+                if (!hasRequiredAttribute)
+                {
+                    Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(),
+                        propertyDeclaration.Identifier.Text);
+                    context.ReportDiagnostic(diagnostic);
+                }
             }
         }
     }
+
+    private static bool IsSszIgnoreAttribute(AttributeSyntax attribute, SemanticModel semanticModel) =>
+        semanticModel.GetSymbolInfo(attribute).Symbol is IMethodSymbol ctor
+        && ctor.ContainingType.ToDisplayString() == SszIgnoreAttributeFullName;
 }

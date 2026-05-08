@@ -10,7 +10,6 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -39,13 +38,6 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.AddTransient<IStartupFilter, SszMiddlewareStartupFilter>();
 
         services.Bridge<ILogManager>(ctx);
-        services.AddSingleton<IJsonRpcUrlCollection>(_ =>
-        {
-            IJsonRpcConfig jsonRpcConfig = ctx.Resolve<IJsonRpcConfig>();
-            IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-            ILogManager logManager = ctx.Resolve<ILogManager>();
-            return new JsonRpcUrlCollection(logManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
-        });
         services.Bridge<IRpcAuthentication>(ctx);
         services.Bridge<IEngineRpcModule>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
