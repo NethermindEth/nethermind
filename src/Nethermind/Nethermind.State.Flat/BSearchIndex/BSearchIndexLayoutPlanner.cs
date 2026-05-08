@@ -19,11 +19,9 @@ internal static class BSearchIndexLayoutPlanner
 {
     /// <summary>
     /// Cap on the common-key-prefix length stored in node metadata. Bounded by
-    /// the u8 prefix-length byte in the fixed footer; 128 keeps prefix blocks
-    /// small enough that <see cref="HsstBTreeReader"/>'s footer probe-window
-    /// reads them in one shot.
+    /// the u8 prefix-length byte in the header.
     /// </summary>
-    public const int MaxCommonKeyPrefixLen = 128;
+    public const int MaxCommonKeyPrefixLen = 255;
 
     /// <summary>
     /// Compute the longest common prefix and the tightest KeyType+KeySlotSize for
@@ -36,6 +34,14 @@ internal static class BSearchIndexLayoutPlanner
     /// <param name="commonKeyPrefixLen">Out: post-gating LCP. 0 if not worth stripping.</param>
     /// <param name="keyType">Out: 0=Variable, 1=Uniform, 2=UniformWithLen.</param>
     /// <param name="keySlotSize">Out: post-strip slot size for Uniform/UniformWithLen; 0 for Variable.</param>
+    /// <param name="parentGuaranteedPrefixLen">
+    /// Upper bound on the prefix length the descent path is guaranteed to share with the
+    /// query key. Non-root callers compute this as <c>LCP(s_left, s_right)</c> over the
+    /// parent's bounding separators; the root passes <c>disablePrefix=true</c>. The reader
+    /// uses <c>K[..commonKeyPrefixLen]</c> as the implied prefix, so the stored length must
+    /// not exceed what descent guarantees — otherwise floor lookups for keys at the subtree
+    /// boundary would treat unmatched bytes as if they matched.
+    /// </param>
     public static void Plan(
         ReadOnlySpan<byte> buffer,
         ReadOnlySpan<int> offsets,
@@ -43,7 +49,8 @@ internal static class BSearchIndexLayoutPlanner
         out int commonKeyPrefixLen,
         out int keyType,
         out int keySlotSize,
-        bool disablePrefix = false)
+        bool disablePrefix = false,
+        int parentGuaranteedPrefixLen = int.MaxValue)
     {
         int count = lengths.Length;
         if (count == 0)
@@ -81,10 +88,15 @@ internal static class BSearchIndexLayoutPlanner
             }
         }
 
+        // Clamp to the descent-guaranteed prefix: the read path uses K[..lcp] as the
+        // implied prefix bytes (no bytes are stored), so the stored length must not
+        // exceed what the descent invariant guarantees K shares with stored keys.
+        if (lcp > parentGuaranteedPrefixLen) lcp = parentGuaranteedPrefixLen;
         if (lcp > MaxCommonKeyPrefixLen) lcp = MaxCommonKeyPrefixLen;
 
-        // Strip-gate: positive savings, no key collapses to empty.
-        if (lcp == 0 || lcp >= minLen || lcp * (count - 1) - 1 <= 0)
+        // Strip-gate: positive savings (only the 1-byte length is stored now), no
+        // key collapses to empty.
+        if (lcp == 0 || lcp >= minLen || lcp * count - 1 <= 0)
             lcp = 0;
 
         if (disablePrefix) lcp = 0;

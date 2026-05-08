@@ -428,10 +428,10 @@ public class BSearchIndexTests
     // ===== COMMON-KEY-PREFIX OPTIMIZATION =====
 
     /// <summary>
-    /// Build a Variable-key node manually so we can pin the on-disk effects
-    /// of the common-prefix optimization (smaller node, prefix in metadata,
-    /// flag bit 6, suffixes in keys section) and exercise the boundary-lookup
-    /// branches in <see cref="BSearchIndexReader.TryGetFloor"/>.
+    /// Build a Variable-key node manually so we can pin the on-disk effects of the
+    /// common-prefix optimization (smaller node, only the prefix length in the header,
+    /// flag bit 6 set, suffixes in keys section). The prefix BYTES themselves are not
+    /// stored — the read path takes them from the queried key (descent invariant).
     /// </summary>
     [TestCase(0, TestName = "CommonPrefix_Variable_NotInline")]
     [TestCase(1, TestName = "CommonPrefix_Uniform_NotInline")]
@@ -451,7 +451,6 @@ public class BSearchIndexTests
         // Hard-code the prefix here — this test pins the keyType to verify all three
         // round-trip correctly under the option-driven writer. Suffix length is 1.
         const int prefixLen = 4;
-        byte[] commonPrefix = Convert.FromHexString("DEADBEEF");
         int slotSize = keyType switch { 1 => 1, 2 => 1 + 1, _ => 0 };
 
         byte[] keyBuf = new byte[separatorHexes.Length * (2 + 1)];
@@ -462,7 +461,7 @@ public class BSearchIndexTests
         {
             KeyType = keyType,
             KeySlotSize = slotSize,
-        }, keyBuf, valScratch, commonPrefix);
+        }, keyBuf, valScratch, prefixLen);
         Span<byte> valBuf = stackalloc byte[4];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
@@ -474,7 +473,7 @@ public class BSearchIndexTests
         int written = (int)w.Written;
 
         // Control node: same data without the prefix optimization (full-length keys,
-        // no commonKeyPrefix passed). Demonstrates the size win.
+        // commonKeyPrefixLen = 0). Demonstrates the size win.
         int controlSlotSize = keyType switch { 1 => 5, 2 => 5 + 1, _ => 0 };
         byte[] controlKeyBuf = new byte[separatorHexes.Length * (2 + 5)];
         byte[] controlValScratch = new byte[separatorHexes.Length * (2 + 4)];
@@ -494,12 +493,14 @@ public class BSearchIndexTests
         }
         controlWriter.FinalizeNode();
 
-        // Optimization paid off.
+        // Optimization paid off — and the savings are larger than the previous
+        // bytes-stored layout because only a 1-byte length is now in the header
+        // (so 4 bytes per node × 1 node = 4 saved over the prior encoding).
         Assert.That(written, Is.LessThan(cw.Written), "Common-prefix optimization should shrink the node");
 
         BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
         Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.True);
-        Assert.That(reader.CommonKeyPrefix.ToArray(), Is.EqualTo(Convert.FromHexString("DEADBEEF")));
+        Assert.That(reader.CommonKeyPrefixLen, Is.EqualTo(prefixLen));
 
         // Per-entry decoded suffix matches (suffix only, prefix stripped).
         for (int i = 0; i < separatorHexes.Length; i++)
@@ -508,59 +509,68 @@ public class BSearchIndexTests
             Assert.That(reader.GetKey(i).ToArray(), Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
         }
 
-        // GetFullKey reconstructs the original key.
+        // GetFullKey reconstructs the original key — the prefix bytes come from the
+        // queried key supplied by the caller (descent invariant).
         Span<byte> reconstructed = stackalloc byte[16];
+        ReadOnlySpan<byte> queryKey = Convert.FromHexString("DEADBEEFFF"); // any key with the right 4-byte prefix
         for (int i = 0; i < separatorHexes.Length; i++)
         {
-            int len = reader.GetFullKey(i, reconstructed);
+            int len = reader.GetFullKey(i, queryKey, reconstructed);
             Assert.That(reconstructed[..len].ToArray(), Is.EqualTo(Convert.FromHexString(separatorHexes[i])));
         }
 
-        // Floor lookup: exact, less-than-prefix, greater-than-prefix-non-matching.
+        // Floor lookup with a key that satisfies the descent invariant (shares the
+        // prefix with all stored keys). The cheap-reject path the old encoding
+        // exercised — K not starting with the stored prefix — is no longer reachable
+        // through the read path, since descent guarantees K shares CommonKeyPrefixLen
+        // bytes; testing it here would mean violating the contract.
         ReadOnlySpan<byte> probe = Convert.FromHexString("DEADBEEF44");
         Assert.That(reader.TryGetFloor(probe, out _, out ReadOnlySpan<byte> v44), Is.True);
         Assert.That(BinaryPrimitives.ReadInt32LittleEndian(v44), Is.EqualTo(40));
 
-        // Probe < prefix (e.g. starts with 0x00) → no floor.
-        Assert.That(reader.TryGetFloor(Convert.FromHexString("00FF"), out _, out _), Is.False);
-        Assert.That(reader.FindFloorIndex(Convert.FromHexString("00FF")), Is.EqualTo(-1));
-
-        // Probe > prefix and !StartsWith(prefix) (e.g. 0xFF…) → floor = last entry.
-        Assert.That(reader.TryGetFloor(Convert.FromHexString("FF"), out _, out ReadOnlySpan<byte> vLast), Is.True);
-        Assert.That(BinaryPrimitives.ReadInt32LittleEndian(vLast), Is.EqualTo(80));
-
-        // Probe == prefix exactly → floor = first entry (smallest stored key starts with prefix).
-        Assert.That(reader.TryGetFloor(Convert.FromHexString("DEADBEEF"), out _, out _), Is.False,
-            "Empty suffix < every non-empty stored suffix → no floor");
-
         // Probe between two stored keys (DEADBEEF40 between …33 and …44) → floor = …33.
         Assert.That(reader.TryGetFloor(Convert.FromHexString("DEADBEEF40"), out _, out ReadOnlySpan<byte> vBetween), Is.True);
         Assert.That(BinaryPrimitives.ReadInt32LittleEndian(vBetween), Is.EqualTo(30));
+
+        // Probe == prefix exactly → empty suffix < every non-empty stored suffix → no floor.
+        Assert.That(reader.TryGetFloor(Convert.FromHexString("DEADBEEF"), out _, out _), Is.False,
+            "Empty suffix < every non-empty stored suffix → no floor");
+
+        // Probe shorter than the prefix → can't satisfy the descent invariant; the
+        // reader bails to no-floor rather than slicing out of bounds.
+        Assert.That(reader.TryGetFloor(Convert.FromHexString("DEAD"), out _, out _), Is.False);
+        Assert.That(reader.FindFloorIndex(Convert.FromHexString("DEAD")), Is.EqualTo(-1));
     }
 
     /// <summary>
-    /// Two-entry node where the savings would be exactly zero (1 byte prefix,
-    /// 2 entries → savings = 1 × 1 − 1 = 0). The layout planner must gate the
-    /// strip out and report <c>commonKeyPrefixLen = 0</c>.
+    /// Single-entry node where the savings would be exactly zero (1 byte prefix,
+    /// 1 entry → savings = 1 × 1 − 1 = 0; only the length byte would be added with
+    /// nothing meaningful to strip beyond the lone entry). The layout planner must
+    /// gate the strip out and report <c>commonKeyPrefixLen = 0</c>.
     /// </summary>
     [Test]
     public void CommonKeyPrefix_SkippedWhenSavingsNotPositive()
     {
-        byte[] sepBuffer = [0xAA, 0x01, 0xAA, 0x02];
-        ReadOnlySpan<int> offsets = [0, 2];
-        ReadOnlySpan<int> lengths = [2, 2];
+        // Single 2-byte separator with LCP == 1 (against itself, lcp == minLen);
+        // the lcp-clamp gate fires here too. Use a 2-entry node with full-length
+        // collision instead would skip via lcp == minLen — exercise the
+        // savings-not-positive arm by going through the planner with count==1.
+        byte[] sepBuffer = [0xAA, 0xBB];
+        ReadOnlySpan<int> offsets = [0];
+        ReadOnlySpan<int> lengths = [2];
 
         BSearchIndexLayoutPlanner.Plan(sepBuffer, offsets, lengths,
             out int prefixLen, out int keyType, out int keySlotSize);
 
-        Assert.That(prefixLen, Is.EqualTo(0), "1-byte LCP × 1 saving entry − 1 metadata byte = 0; must not strip");
-        // Same length, length > 0 → Uniform-2.
+        // count=1 ⇒ lcp = minLen = 2 ⇒ collapse-to-empty gate fires; prefix kept at 0.
+        Assert.That(prefixLen, Is.EqualTo(0));
+        // Single entry of length 2 → Uniform-2.
         Assert.That(keyType, Is.EqualTo(1));
         Assert.That(keySlotSize, Is.EqualTo(2));
 
         // Round-trip through the writer with the planner's decision.
-        byte[] keyBuf = new byte[2 * (2 + 2)];
-        byte[] valScratch = new byte[2 * (2 + 4)];
+        byte[] keyBuf = new byte[1 * (2 + 2)];
+        byte[] valScratch = new byte[1 * (2 + 4)];
         byte[] output = new byte[64];
         SpanBufferWriter w = new(output);
         BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
@@ -571,13 +581,11 @@ public class BSearchIndexTests
         Span<byte> valBuf = stackalloc byte[4];
         BinaryPrimitives.WriteInt32LittleEndian(valBuf, 1);
         writer.AddKey(sepBuffer.AsSpan(0, 2), valBuf);
-        BinaryPrimitives.WriteInt32LittleEndian(valBuf, 2);
-        writer.AddKey(sepBuffer.AsSpan(2, 2), valBuf);
         writer.FinalizeNode();
 
         BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
         Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.False);
-        Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
+        Assert.That(reader.CommonKeyPrefixLen, Is.EqualTo(0));
     }
 
     /// <summary>

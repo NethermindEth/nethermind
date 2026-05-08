@@ -43,11 +43,17 @@ internal struct BSearchIndexMetadata
 ///
 /// Index node layout (low → high address):
 ///   [Flags: u8][KeyCount: u16 LE][KeySize: u16 LE][ValueSize: u8][BaseOffset: 6-byte LE]
-///   [CommonPrefixLen: u8][CommonPrefix bytes]?     (only if Flags bit6 set)
+///   [CommonPrefixLen: u8]?     (only if Flags bit6 set; bytes themselves are not stored)
 ///   [Keys section][Values section]
 ///
-/// Header is fixed-width (12 base bytes) plus an optional (1 + prefixLen) common-key-prefix
-/// block. Readers parse it forward from the first byte; the parent stores the child's
+/// Header is fixed-width (12 base bytes) plus an optional 1-byte common-key-prefix length.
+/// The prefix BYTES themselves are never written: the reader recovers them from the
+/// queried key, taking <c>K[..CommonPrefixLen]</c>. This is sound for non-root nodes
+/// because the descent path through ancestor separators forces K to share that many
+/// leading bytes with every stored key in the node. The root has no descent context, so
+/// it must be written with <c>disablePrefix=true</c>.
+///
+/// Readers parse the header forward from the first byte; the parent stores the child's
 /// first-byte offset. Putting the metadata header before the keys/values section lets the
 /// hardware prefetcher pull the entry data into L1/L2 while the search code is still parsing
 /// the header — the previous metadata-at-end layout fought the prefetcher's forward stride.
@@ -71,7 +77,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     private readonly BSearchIndexMetadata _metadata;
     private readonly Span<byte> _keyBuf;
     private readonly Span<byte> _valueBuf;
-    private readonly ReadOnlySpan<byte> _commonKeyPrefix;
+    private readonly int _commonKeyPrefixLen;
     private int _count;
     private int _keyPos;    // grows forward from 0 in _keyBuf
     private int _valuePos;  // grows forward from 0 in _valueBuf
@@ -81,13 +87,13 @@ internal ref struct BSearchIndexWriter<TWriter>
         BSearchIndexMetadata metadata,
         Span<byte> keyBuffer,
         Span<byte> valueBuffer,
-        ReadOnlySpan<byte> commonKeyPrefix = default)
+        int commonKeyPrefixLen = 0)
     {
         _writer = ref writer;
         _metadata = metadata;
         _keyBuf = keyBuffer;
         _valueBuf = valueBuffer;
-        _commonKeyPrefix = commonKeyPrefix;
+        _commonKeyPrefixLen = commonKeyPrefixLen;
         _count = 0;
         _keyPos = 0;
         _valuePos = 0;
@@ -147,7 +153,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         };
 
         // 1) Header.
-        WriteHeader(keySize, valueSize, _commonKeyPrefix);
+        WriteHeader(keySize, valueSize, _commonKeyPrefixLen);
 
         // 2) Keys section.
         switch (_metadata.KeyType)
@@ -184,7 +190,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     private int HeaderSize()
     {
         int hdr = 12; // Flags(1) + KeyCount(2) + KeySize(2) + ValueSize(1) + BaseOffset(6)
-        if (_commonKeyPrefix.Length > 0) hdr += 1 + _commonKeyPrefix.Length;
+        if (_commonKeyPrefixLen > 0) hdr += 1; // CommonPrefixLen byte; bytes themselves are not stored
         return hdr;
     }
 
@@ -230,7 +236,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         return dataBytes + (_count + 1) * 2;
     }
 
-    private void WriteHeader(int keySize, int valueSize, scoped ReadOnlySpan<byte> commonKeyPrefix)
+    private void WriteHeader(int keySize, int valueSize, int commonKeyPrefixLen)
     {
         // Header fields are sized for the 64 KiB per-node cap; ValueSize is u8 since
         // per-entry value slots are 1..8 bytes for Uniform offsets (the only value
@@ -243,7 +249,7 @@ internal ref struct BSearchIndexWriter<TWriter>
         if ((uint)valueSize > byte.MaxValue)
             throw new InvalidOperationException($"Index node ValueSize {valueSize} exceeds u8 header field");
 
-        bool hasCommonPrefix = commonKeyPrefix.Length > 0;
+        bool hasCommonPrefix = commonKeyPrefixLen > 0;
         byte flags = (byte)(
             (_metadata.IsIntermediate ? 0x01 : 0x00) |
             (_metadata.KeyType << 1) |
@@ -269,16 +275,16 @@ internal ref struct BSearchIndexWriter<TWriter>
         head[11] = (byte)(v >> 40);
         _writer.Advance(12);
 
-        // Optional common-prefix block: length first (forward-readable), then bytes.
+        // Optional common-prefix block: length only — the bytes themselves are
+        // recovered by the reader from the queried key (descent guarantees K shares
+        // CommonPrefixLen leading bytes with every stored key).
         if (hasCommonPrefix)
         {
-            int plen = commonKeyPrefix.Length;
-            if ((uint)plen > byte.MaxValue)
-                throw new InvalidOperationException($"Common key prefix length {plen} exceeds u8 header field");
-            Span<byte> dst = _writer.GetSpan(plen + 1);
-            dst[0] = (byte)plen;
-            commonKeyPrefix.CopyTo(dst[1..]);
-            _writer.Advance(plen + 1);
+            if ((uint)commonKeyPrefixLen > byte.MaxValue)
+                throw new InvalidOperationException($"Common key prefix length {commonKeyPrefixLen} exceeds u8 header field");
+            Span<byte> dst = _writer.GetSpan(1);
+            dst[0] = (byte)commonKeyPrefixLen;
+            _writer.Advance(1);
         }
     }
 

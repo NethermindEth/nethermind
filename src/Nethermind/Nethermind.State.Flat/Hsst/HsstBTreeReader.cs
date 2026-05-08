@@ -56,13 +56,15 @@ internal static class HsstBTreeReader
                 if (!node.TryGetFloor(key, out ReadOnlySpan<byte> separator, out ReadOnlySpan<byte> metaBytes))
                     return false;
 
-                // Cheap reject path: the stored full key starts with (commonPrefix + separator),
-                // so the input must too. Saves a length-mismatch read in the common
+                // Cheap reject path: the stored full key starts with the implied common
+                // prefix (which is K[..commonPrefixLen] by construction) followed by the
+                // separator. The prefix half is trivially satisfied — only the suffix
+                // half needs checking. Saves a length-mismatch read in the common
                 // exact-miss case.
                 if (exactMatch)
                 {
-                    ReadOnlySpan<byte> p = node.CommonKeyPrefix;
-                    if (!key.StartsWith(p) || !key[p.Length..].StartsWith(separator)) return false;
+                    int plen = node.CommonKeyPrefixLen;
+                    if (key.Length < plen || !key[plen..].StartsWith(separator)) return false;
                 }
 
                 long metaStart = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset);
@@ -149,8 +151,9 @@ internal static class HsstBTreeReader
             if ((flags & 0x40) != 0)
             {
                 if (winLen < 13) goto Cold;
-                int prefixLen = win[12];
-                headerSize += 1 + prefixLen;
+                // Only the prefix-length byte is stored; the prefix bytes themselves
+                // are taken from the queried key at lookup time.
+                headerSize += 1;
             }
             int keyType = (flags >> 1) & 0x03;
             int valueType = (flags >> 3) & 0x03;

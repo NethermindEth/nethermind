@@ -131,13 +131,18 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     leafLastKey, out int leafLastKeyLen);
                 int count = layout.Count;
 
+                // The leaf is the root iff it consumes every remaining entry on the
+                // very first iteration — i.e. there is exactly one leaf in total.
+                bool isRoot = entryIdx == 0 && count == _entryPositions.Length;
+
                 // Phase 2: emit leaf node bytes.
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
                 WriteLeafIndexNode(
                     entryIdx, count, layout.NaturalMax,
                     prevKey[..prevKeyLen],
-                    leafSepScratchArr, valueScratchArr);
+                    leafSepScratchArr, valueScratchArr,
+                    isRoot);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
                 lastNodeLen = nodeLen;
 
@@ -169,9 +174,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                         maxIntermediateEntries, maxIntermediateBytes);
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
+                    // This node will be the root iff it covers the entire current level
+                    // in one go — i.e. the next level has only this single node.
+                    bool isRoot = childIdx == 0 && childCount == currentLevelCount;
+
                     long nodeStart = _writer.Written;
                     long relativeStart = nodeStart - startWritten;
-                    WriteInternalIndexNode(children, internalSepScratchArr, valueScratchArr);
+                    WriteInternalIndexNode(children, internalSepScratchArr, valueScratchArr, isRoot);
                     int nodeLen = checked((int)(_writer.Written - nodeStart));
                     lastNodeLen = nodeLen;
 
@@ -349,11 +358,43 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         return checked((int)(_writer.Written - nodeStart));
     }
 
+    /// <summary>
+    /// Compute the prefix length any descent reaching a subtree spanning leaf entries
+    /// [<paramref name="firstLeafIdx"/>, <paramref name="lastLeafIdx"/>] is guaranteed to
+    /// match against the queried key. The bounds are the parent's separators around this
+    /// subtree, computed via <see cref="WriteSeparatorBetween"/> over the adjacent leaf
+    /// entries; their LCP is the descent-guaranteed prefix because K ∈ [s_left, s_right)
+    /// and any K in that range shares LCP(s_left, s_right) with all stored keys
+    /// (LCP-in-range lemma). Subtrees on the leftmost or rightmost descendant chain have
+    /// an open bound and return 0.
+    /// </summary>
+    private int ComputeParentGuaranteedPrefixLen(int firstLeafIdx, int lastLeafIdx)
+    {
+        if (firstLeafIdx == 0) return 0;
+        if (lastLeafIdx >= _entryPositions.Length - 1) return 0;
+
+        Span<byte> leftPrev = stackalloc byte[MaxKeyLen];
+        Span<byte> leftCurr = stackalloc byte[MaxKeyLen];
+        Span<byte> rightPrev = stackalloc byte[MaxKeyLen];
+        Span<byte> rightCurr = stackalloc byte[MaxKeyLen];
+        int leftPrevLen = ReadKey(firstLeafIdx - 1, leftPrev);
+        int leftCurrLen = ReadKey(firstLeafIdx, leftCurr);
+        int rightPrevLen = ReadKey(lastLeafIdx, rightPrev);
+        int rightCurrLen = ReadKey(lastLeafIdx + 1, rightCurr);
+
+        Span<byte> sLeftBuf = stackalloc byte[MaxKeyLen];
+        Span<byte> sRightBuf = stackalloc byte[MaxKeyLen];
+        int sLeftLen = WriteSeparatorBetween(sLeftBuf, leftPrev[..leftPrevLen], leftCurr[..leftCurrLen]);
+        int sRightLen = WriteSeparatorBetween(sRightBuf, rightPrev[..rightPrevLen], rightCurr[..rightCurrLen]);
+        return CommonPrefixLength(sLeftBuf[..sLeftLen], sRightBuf[..sRightLen]);
+    }
+
     private void WriteLeafIndexNode(
         int globalStartIndex, int count, int naturalMax,
         scoped ReadOnlySpan<byte> globalPrevKey,
         scoped Span<byte> leafSepScratch,
-        scoped Span<byte> valueScratch)
+        scoped Span<byte> valueScratch,
+        bool isRoot)
     {
         // Materialise separators for this leaf into the scratch buffer.
         // Each entry's separator is a prefix of its full key; computed against the
@@ -404,11 +445,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }
 
         ReadOnlySpan<byte> sepView = leafSepScratch[..totalSepBytes];
+        int parentGuaranteed = isRoot
+            ? 0
+            : ComputeParentGuaranteedPrefixLen(globalStartIndex, globalStartIndex + count - 1);
         BSearchIndexLayoutPlanner.Plan(sepView, sepOffsets, sepLengths,
-            out int prefixLen, out int keyType, out int keySlotSize);
-        ReadOnlySpan<byte> commonPrefix = prefixLen > 0
-            ? sepView.Slice(sepOffsets[0], prefixLen)
-            : default;
+            out int prefixLen, out int keyType, out int keySlotSize,
+            disablePrefix: isRoot, parentGuaranteedPrefixLen: parentGuaranteed);
 
         // Key buffer: 2 bytes (u16 length) + post-strip suffix bytes per entry.
         int keyBufSize = 0;
@@ -425,7 +467,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeySlotSize = keySlotSize,
             ValueType = 1,
             ValueSlotSize = valueSlotSize,
-        }, keyBuf, valueScratchSlice, commonPrefix);
+        }, keyBuf, valueScratchSlice, prefixLen);
 
         Span<byte> valueBuf = stackalloc byte[8];
         for (int i = 0; i < count; i++)
@@ -488,7 +530,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private void WriteInternalIndexNode(
         scoped ReadOnlySpan<NodeInfo> children,
         scoped Span<byte> sepScratch,
-        scoped Span<byte> valueScratch)
+        scoped Span<byte> valueScratch,
+        bool isRoot)
     {
         int childCount = children.Length;
 
@@ -511,11 +554,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }
 
         ReadOnlySpan<byte> sepView = sepScratch[..tempOffset];
+        int parentGuaranteed = isRoot
+            ? 0
+            : ComputeParentGuaranteedPrefixLen(children[0].FirstEntry, children[childCount - 1].LastEntry);
         BSearchIndexLayoutPlanner.Plan(sepView, sepOffsets, sepLengths,
-            out int prefixLen, out int keyType, out int keySlotSize);
-        ReadOnlySpan<byte> commonPrefix = prefixLen > 0
-            ? sepView.Slice(sepOffsets[0], prefixLen)
-            : default;
+            out int prefixLen, out int keyType, out int keySlotSize,
+            disablePrefix: isRoot, parentGuaranteedPrefixLen: parentGuaranteed);
 
         // Compute BaseOffset from child offsets, then choose the minimum byte width
         // that fits the in-node delta range.
@@ -541,7 +585,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             KeySlotSize = keySlotSize,
             ValueType = 1,
             ValueSlotSize = valueSlotSize,
-        }, keyBuf, valueScratchSlice, commonPrefix);
+        }, keyBuf, valueScratchSlice, prefixLen);
 
         Span<byte> valueBuf = stackalloc byte[8];
         for (int i = 0; i < childCount; i++)
