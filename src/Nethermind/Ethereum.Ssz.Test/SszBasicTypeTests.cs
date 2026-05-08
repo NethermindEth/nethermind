@@ -39,16 +39,7 @@ public class SszBasicTypeTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
 
-        if (ssz.Length != 1)
-        {
-            // Wrong length: decoder should throw
-            Assert.That(() => SszEncoder.DecodeBool(ssz.AsSpan()), Throws.InstanceOf<Exception>());
-        }
-        else
-        {
-            // Correct length but invalid value (> 1): DecodeBool doesn't validate yet
-            Assert.That(ssz[0] > 1, Is.True, "Expected out-of-range boolean value");
-        }
+        Assert.That(() => SszEncoder.DecodeBool(ssz.AsSpan()), Throws.InstanceOf<Exception>());
     }
 
     [TestCaseSource(nameof(Uint8ValidCases))]
