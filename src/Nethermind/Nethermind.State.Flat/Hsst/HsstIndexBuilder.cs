@@ -54,9 +54,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries,
         int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries,
         int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries,
-        int maxIntermediateBytes = HsstBTreeOptions.DefaultMaxIntermediateBytes)
+        int maxIntermediateBytes = HsstBTreeOptions.DefaultMaxIntermediateBytes,
+        int minIntermediateChildren = HsstBTreeOptions.DefaultMinIntermediateChildren)
     {
         long startWritten = _writer.Written;
+        long firstOffset = _writer.FirstOffset;
 
         if (_entryPositions.Length == 0)
         {
@@ -66,6 +68,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         if (minLeafEntries > maxLeafEntries) minLeafEntries = maxLeafEntries;
         if (minLeafEntries < 1) minLeafEntries = 1;
+        if (minIntermediateChildren > maxIntermediateEntries) minIntermediateChildren = maxIntermediateEntries;
+        if (minIntermediateChildren < 1) minIntermediateChildren = 1;
 
         // Build leaf nodes. minLeafEntries=maxLeafEntries reduces ChooseLeafCount to a fixed cap.
         // maxNodes is sized for the worst case: every leaf at minimum size.
@@ -128,6 +132,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 LeafLayout layout = ChooseLeafLayout(
                     entryIdx, minLeafEntries, maxLeafEntries,
                     prevKey[..prevKeyLen],
+                    _writer.Written, firstOffset,
                     leafLastKey, out int leafLastKeyLen);
                 int count = layout.Count;
 
@@ -171,7 +176,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 {
                     int childCount = ChooseIntermediateChildCount(
                         currentLevel[..currentLevelCount], childIdx,
-                        maxIntermediateEntries, maxIntermediateBytes);
+                        maxIntermediateEntries, maxIntermediateBytes,
+                        minIntermediateChildren,
+                        _writer.Written, firstOffset);
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
                     // This node will be the root iff it covers the entire current level
@@ -237,6 +244,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private LeafLayout ChooseLeafLayout(
         int entryIdx, int minLeafEntries, int maxLeafEntries,
         scoped ReadOnlySpan<byte> globalPrevKey,
+        long nodeStart, long firstOffset,
         scoped Span<byte> leafLastKeyOut, out int leafLastKeyLen)
     {
         int remaining = _entryPositions.Length - entryIdx;
@@ -307,8 +315,17 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             long newBase = (newMinVal > 0 && newMinVal < newMaxVal) ? newMinVal : 0;
             int newValueSlotSize = MinBytesFor(newMaxVal - newBase);
 
+            // Conservative upper-bound size estimate for the candidate node (count+1
+            // entries). Treats per-entry common-prefix strip as 0 (unknown until plan
+            // time) and uses newMaxSepLen for every key — overestimates slightly,
+            // but guarantees we never plan a node that crosses a 4 KiB page.
+            int candidateCount = count + 1;
+            int candidateSize = NodeSizeUpperBound(candidateCount, newMaxSepLen, newValueSlotSize);
+            int committedSize = NodeSizeUpperBound(count, maxSepLen, valueSlotSize);
+
             if (count >= minLeafEntries &&
-                (newMaxSepLen > maxSepLen || newCommonLen < commonLen || newValueSlotSize > valueSlotSize))
+                (newMaxSepLen > maxSepLen || newCommonLen < commonLen || newValueSlotSize > valueSlotSize ||
+                 WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
 
             maxSepLen = newMaxSepLen;
@@ -487,7 +504,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// </summary>
     private int ChooseIntermediateChildCount(
         scoped ReadOnlySpan<NodeInfo> level, int childIdx,
-        int maxChildren, int byteThreshold)
+        int maxChildren, int byteThreshold,
+        int minChildren,
+        long nodeStart, long firstOffset)
     {
         int remaining = level.Length - childIdx;
         int hardMax = Math.Min(maxChildren, remaining);
@@ -497,6 +516,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int sumSepBytes = 0;
         long minOff = level[childIdx].ChildOffset;
         long maxOff = minOff;
+        int committedValueSlot = MinBytesFor(0);
 
         Span<byte> leftKey = stackalloc byte[MaxKeyLen];
         Span<byte> rightKey = stackalloc byte[MaxKeyLen];
@@ -519,10 +539,22 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int estimated = newCount * valueSlotSize + newSumSep;
             if (estimated > byteThreshold) break;
 
+            // 4 KiB page-crossing check: once minChildren reached, refuse to add a
+            // child if doing so would cross a page boundary the committed node
+            // doesn't already cross. NodeSize estimates here include header bytes
+            // and a per-entry 2-byte u16 length prefix (intermediate keys are
+            // variable-encoded), matching WriteInternalIndexNode's keyBufSize.
+            int candidateSize = IntermediateNodeSizeUpperBound(newCount, newSumSep, valueSlotSize);
+            int committedSize = IntermediateNodeSizeUpperBound(childCount, sumSepBytes, committedValueSlot);
+            if (childCount >= minChildren &&
+                WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize))
+                break;
+
             childCount = newCount;
             sumSepBytes = newSumSep;
             maxOff = newMaxOff;
             minOff = newMinOff;
+            committedValueSlot = valueSlotSize;
         }
         return childCount;
     }
@@ -630,6 +662,42 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     private static void ThrowReadFailed()
         => throw new IOException("HSST data-section read out of range during index build.");
+
+    // Conservative upper bound on BSearchIndexWriter header bytes: 12 base
+    // (Flags + KeyCount u16 + KeySize u16 + ValueSize u8 + BaseOffset 6) + 1
+    // optional CommonPrefixLen byte + a small slack.
+    private const int NodeHeaderUpperBound = 16;
+
+    // Conservative upper bound on a leaf node's serialised size given a candidate
+    // entry count, max separator length, and value slot size. Treats common prefix
+    // as 0 (unknown until plan-time) and uses Uniform layouts (no offset table).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int NodeSizeUpperBound(int count, int maxSepLen, int valueSlotSize)
+        => NodeHeaderUpperBound + count * (maxSepLen + valueSlotSize);
+
+    // Conservative upper bound on an intermediate node's serialised size. Keys are
+    // variable-length here, so include the 2-byte u16 length prefix that the
+    // BSearchIndexWriter accumulates per key (matches WriteInternalIndexNode's
+    // keyBufSize accounting before plan-time prefix stripping).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int IntermediateNodeSizeUpperBound(int count, int sumSepBytes, int valueSlotSize)
+        => NodeHeaderUpperBound + sumSepBytes + count * (2 + valueSlotSize);
+
+    /// <summary>
+    /// True if a node of <paramref name="candidateSize"/> bytes starting at
+    /// <paramref name="nodeStart"/> would straddle a 4 KiB page boundary that the
+    /// already-committed node of <paramref name="committedSize"/> bytes does not.
+    /// Pages are aligned relative to <paramref name="firstOffset"/>, matching the
+    /// writer's <see cref="IByteBufferWriter.FirstOffset"/> contract.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool WouldCrossNewPage(long nodeStart, long firstOffset, int committedSize, int candidateSize)
+    {
+        long pageOff = (nodeStart - firstOffset) & 4095L;
+        bool committedCrosses = pageOff + committedSize > 4096;
+        bool candidateCrosses = pageOff + candidateSize > 4096;
+        return candidateCrosses && !committedCrosses;
+    }
 
     /// <summary>
     /// Smallest 1..8 byte width that can encode <paramref name="value"/>. Returns 1 for 0.

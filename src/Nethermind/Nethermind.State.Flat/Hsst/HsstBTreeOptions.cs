@@ -30,6 +30,11 @@ public sealed record HsstBTreeOptions
     /// the cost of a larger per-node binary search.</summary>
     public const int DefaultMaxIntermediateBytes = 2048;
 
+    /// <summary>Default minimum children per intermediate node — once reached,
+    /// the builder may stop early if adding the next child would push the node
+    /// across a 4 KiB page boundary.</summary>
+    public const int DefaultMinIntermediateChildren = 2;
+
     /// <summary>Minimum length of separators stored in leaf nodes.</summary>
     public int MinSeparatorLength { get; init; } = 0;
 
@@ -52,6 +57,11 @@ public sealed record HsstBTreeOptions
     /// threshold (or the count cap is hit, whichever fires first). Higher values
     /// flatten the tree at the cost of larger per-node binary search.</summary>
     public int MaxIntermediateBytes { get; init; } = DefaultMaxIntermediateBytes;
+
+    /// <summary>Minimum children per intermediate node — accumulation always
+    /// reaches this before the 4 KiB page-crossing heuristic is allowed to fire.
+    /// Set to 1 (or higher than typical fan-out) to disable the dynamic split.</summary>
+    public int MinIntermediateChildren { get; init; } = DefaultMinIntermediateChildren;
 
     /// <summary>Shared default instance — used when callers pass <c>null</c>.</summary>
     public static HsstBTreeOptions Default { get; } = new();

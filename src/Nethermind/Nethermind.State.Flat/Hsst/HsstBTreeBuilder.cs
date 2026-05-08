@@ -169,6 +169,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         int minLeafEntries = Math.Min(_options.MinLeafEntries, maxLeafEntries);
         int maxIntermediateEntries = _options.MaxIntermediateEntries;
         int maxIntermediateBytes = _options.MaxIntermediateBytes;
+        int minIntermediateChildren = Math.Min(_options.MinIntermediateChildren, maxIntermediateEntries);
 
         long dataSectionSize = _writer.Written - _baseOffset;
         long absoluteIndexStart = dataSectionSize;
@@ -179,7 +180,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
                 ref _writer, reader, _entryPositions.AsSpan(), _options.MinSeparatorLength);
 
-            rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes);
+            rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren);
         }
         finally
         {
