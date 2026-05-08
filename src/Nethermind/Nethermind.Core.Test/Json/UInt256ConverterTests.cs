@@ -84,24 +84,33 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     public void Undefined_not_supported(NumberConversion notSupportedConversion)
     {
         ForcedNumberConversion.Value = notSupportedConversion;
-
-        UInt256Converter converter = new();
-        Assert.Throws<NotSupportedException>(
-            () => TestConverter(int.MaxValue, Equals, converter));
-        Assert.Throws<NotSupportedException>(
-            () => TestConverter(UInt256.One, Equals, converter));
-
-        ForcedNumberConversion.Value = NumberConversion.Hex;
+        try
+        {
+            UInt256Converter converter = new();
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(int.MaxValue, Equals, converter));
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(UInt256.One, Equals, converter));
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [Test]
     public void Raw_works_with_zero_and_this_is_ok()
     {
         ForcedNumberConversion.Value = NumberConversion.Raw;
-        UInt256Converter converter = new();
-        TestConverter(0, Equals, converter);
-
-        ForcedNumberConversion.Value = NumberConversion.Hex;
+        try
+        {
+            UInt256Converter converter = new();
+            TestConverter(0, Equals, converter);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [TestCase("\"0xa00000\"", "10485760")]
