@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -78,9 +79,15 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             .AddSingleton<IHardwareInfo, HardwareInfo>()
 
-            .AddSingleton<ITimestamper>(_ => Core.Timestamper.Default)
-            .AddSingleton<ITimerFactory>(_ => Core.Timers.TimerFactory.Default)
+            .AddSingleton<ITimestamper>(_ => Timestamper.Default)
+            .AddSingleton<ITimerFactory>(_ => TimerFactory.Default)
             .AddSingleton<IFileSystem>(_ => new RealFileSystem())
+            .AddKeyedSingleton<IDriveInfo[]>(nameof(IInitConfig.BaseDbPath), (ctx) =>
+            {
+                IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
+                IInitConfig initConfig = ctx.Resolve<IInitConfig>();
+                return fileSystem.GetDriveInfos(initConfig.BaseDbPath);
+            })
             ;
 
         if (!configProvider.GetConfig<ITxPoolConfig>().BlobsSupport.IsPersistentStorage())
@@ -101,8 +108,8 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
 
             builder
                 .AddSingleton(configProvider)
-                .AddSingleton<ChainSpec>(chainSpec)
-                .AddSingleton<ILogManager>(logManager)
+                .AddSingleton(chainSpec)
+                .AddSingleton(logManager)
                 .AddSingleton<ISpecProvider, ChainSpecBasedSpecProvider>()
                 ;
         }

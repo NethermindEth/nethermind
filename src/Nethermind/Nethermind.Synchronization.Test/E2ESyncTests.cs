@@ -1,18 +1,20 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -39,6 +41,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
@@ -88,13 +91,21 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
     private const int ChainLength = 1000;
     private const int HeadPivotDistance = 500;
+    private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
+    private const int BalSyncChainLength = 15_000;
+    private const int PartialBalSyncChainLength = 1_000;
+    private const int PartialBalActivationBlock = 400;
+    private const int PartialBalSyncHeadPivotDistance = 500;
+    private const int BalSyncBuildProgressInterval = 1_000;
+    private const int BalSyncVerificationProgressInterval = 3_000;
+    private static readonly DateTime PostMergeStartTime = new(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly ulong PostMergeStartTimestamp = (ulong)PostMergeStartTime.Subtract(DateTime.UnixEpoch).TotalSeconds;
 
-    private int _portNumber = 0;
-    private PrivateKey _serverKey = TestItem.PrivateKeyA;
+    private static int _nextPortNumber = 30_000;
     private IContainer _server = null!;
 
     private int AllocatePort() =>
-        Interlocked.Increment(ref _portNumber);
+        Interlocked.Increment(ref _nextPortNumber);
 
     /// <summary>
     /// Replace all entries in a block-keyed dictionary with a single entry at block 0
@@ -200,10 +211,14 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     /// <summary>
     /// Common code for all node
     /// </summary>
-    private Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer) =>
-        CreateNode(nodeKey, configurer, dbMode);
+    private Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer, PrivateKey? fundedAccountKey = null) =>
+        CreateNode(nodeKey, configurer, dbMode, fundedAccountKey);
 
-    private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer, DbMode dbModeOverride)
+    private async Task<IContainer> CreateNode(
+        PrivateKey nodeKey,
+        Func<IConfigProvider, ChainSpec, Task> configurer,
+        DbMode dbModeOverride,
+        PrivateKey? fundedAccountKey = null)
     {
         IConfigProvider configProvider = new ConfigProvider();
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -214,7 +229,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         // Needed for generating spam state.
         spec.Genesis.Header.GasLimit = 1_000_000_000;
-        spec.Allocations[_serverKey.Address] = new ChainSpecAllocation(300.Ether);
+        spec.Allocations[(fundedAccountKey ?? TestItem.PrivateKeyA).Address] = new ChainSpecAllocation(300.Ether);
 
         spec.Allocations[Eip7002Constants.WithdrawalRequestPredeployAddress] = new ChainSpecAllocation
         {
@@ -286,7 +301,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         if (isPostMerge)
         {
             // Activate configured mainnet future EIP
-            ManualTimestamper timestamper = new(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            ManualTimestamper timestamper = new(PostMergeStartTime);
             builder
                 .AddModule(new TestMergeModule(configProvider.GetConfig<ITxPoolConfig>()))
                 .AddSingleton<ManualTimestamper>(timestamper) // Used by test code
@@ -303,7 +318,130 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 ;
         }
 
-        return builder.Build();
+        IContainer container = builder.Build();
+
+        if (isPostMerge)
+        {
+            EnablePostMergeEthCapabilities(container.Resolve<IProtocolsManager>());
+        }
+
+        return container;
+    }
+
+    private static void EnablePostMergeEthCapabilities(IProtocolsManager protocolsManager)
+    {
+        ArgumentNullException.ThrowIfNull(protocolsManager);
+        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth69));
+        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth70));
+        protocolsManager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth71));
+    }
+
+    private static void EnableBlockAccessListsFromGenesis(ChainSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        MoveBlockTransitionsToGenesis(spec);
+        spec.Parameters.Eip7928TransitionTimestamp = spec.Genesis.Header.Timestamp;
+        spec.Genesis.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+    }
+
+    private static void EnableBlockAccessListsAtBlock(ChainSpec spec, ulong activationBlockNumber)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        MoveBlockTransitionsToGenesis(spec);
+        spec.Parameters.Eip7928TransitionTimestamp = PostMergeStartTimestamp + activationBlockNumber;
+        spec.Genesis.Header.BlockAccessListHash = null;
+    }
+
+    private static void MoveBlockTransitionsToGenesis(ChainSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        SetNumericTransitionsToGenesis(spec);
+        SetNumericTransitionsToGenesis(spec.Parameters);
+        NormalizeEngineBlockTransitions(spec.EngineChainSpecParametersProvider);
+    }
+
+    private static void NormalizeEngineBlockTransitions(IChainSpecParametersProvider engineChainSpecParametersProvider)
+    {
+        ArgumentNullException.ThrowIfNull(engineChainSpecParametersProvider);
+
+        foreach (IChainSpecEngineParameters engineParameters in engineChainSpecParametersProvider.AllChainSpecParameters)
+        {
+            SetNumericTransitionsToGenesis(engineParameters);
+
+            if (engineParameters is EthashChainSpecEngineParameters ethashParameters)
+            {
+                ethashParameters.BlockReward = [];
+                ethashParameters.DifficultyBombDelays = new Dictionary<long, long>();
+            }
+        }
+    }
+
+    private static void SetNumericTransitionsToGenesis(object target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        PropertyInfo[] properties = target.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public);
+        foreach (PropertyInfo property in properties)
+        {
+            bool isTimestampTransition =
+                property.Name.EndsWith("Timestamp", StringComparison.Ordinal) ||
+                property.Name.EndsWith("TransitionTimestamp", StringComparison.Ordinal);
+
+            if (isTimestampTransition)
+            {
+                continue;
+            }
+
+            bool isNumericTransition =
+                property.Name.EndsWith("Transition", StringComparison.Ordinal) ||
+                property.Name.EndsWith("BlockNumber", StringComparison.Ordinal);
+
+            if (!isNumericTransition)
+            {
+                continue;
+            }
+
+            if (property.PropertyType == typeof(long))
+            {
+                property.SetValue(target, 0L);
+            }
+            else if (property.PropertyType == typeof(long?) && property.GetValue(target) is not null)
+            {
+                property.SetValue(target, 0L);
+            }
+        }
+    }
+
+    private static void ConfigureLocalNetwork(IConfigProvider configProvider, int port)
+    {
+        INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+        networkConfig.P2PPort = port;
+        // Disable IP filtering for E2E tests as all nodes run on localhost
+        networkConfig.FilterPeersByRecentIp = false;
+        networkConfig.FilterDiscoveryNodesByRecentIp = false;
+    }
+
+    private async Task StartServerAndBuildStorageChain(
+        IContainer server,
+        int chainLength,
+        CancellationToken cancellationToken,
+        string progressLabel)
+    {
+        SyncTestContext serverCtx = server.Resolve<SyncTestContext>();
+        await serverCtx.StartBlockProcessing(cancellationToken);
+
+        TestContext.Progress.WriteLine($"{progressLabel}: building {chainLength} storage blocks.");
+        for (int i = 0; i < chainLength; i++)
+        {
+            await serverCtx.BuildBlockWithStorage(i, cancellationToken);
+
+            if ((i + 1) % BalSyncBuildProgressInterval == 0 || i == chainLength - 1)
+            {
+                TestContext.Progress.WriteLine($"{progressLabel}: built {i + 1}/{chainLength} blocks.");
+            }
+        }
+
+        await serverCtx.StartNetwork(cancellationToken);
     }
 
     [OneTimeSetUp]
@@ -314,26 +452,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         PrivateKey serverKey = TestItem.PrivateKeyA;
-        _serverKey = serverKey;
         _server = await CreateNode(serverKey, (cfg, spec) =>
         {
-            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = AllocatePort();
-            // Disable IP filtering for E2E tests as all nodes run on localhost
-            networkConfig.FilterPeersByRecentIp = false;
-            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+            ConfigureLocalNetwork(cfg, AllocatePort());
             return Task.CompletedTask;
         });
 
-        SyncTestContext serverCtx = _server.Resolve<SyncTestContext>();
-        await serverCtx.StartBlockProcessing(cancellationToken);
-
-        for (int i = 0; i < ChainLength; i++)
-        {
-            await serverCtx.BuildBlockWithStorage(i, cancellationToken);
-        }
-
-        await serverCtx.StartNetwork(cancellationToken);
+        await StartServerAndBuildStorageChain(_server, ChainLength, cancellationToken, "Setup server");
     }
 
     [OneTimeTearDown]
@@ -349,11 +474,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         PrivateKey clientKey = TestItem.PrivateKeyB;
         await using IContainer client = await CreateNode(clientKey, (cfg, spec) =>
         {
-            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = AllocatePort();
-            // Disable IP filtering for E2E tests as all nodes run on localhost
-            networkConfig.FilterPeersByRecentIp = false;
-            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+            ConfigureLocalNetwork(cfg, AllocatePort());
             return Task.CompletedTask;
         });
 
@@ -379,23 +500,22 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             await SetPivot(syncConfig, cancellationTokenSource.Token);
 
-            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = AllocatePort();
-            // Disable IP filtering for E2E tests as all nodes run on localhost
-            networkConfig.FilterPeersByRecentIp = false;
-            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+            ConfigureLocalNetwork(cfg, AllocatePort());
         });
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
-    private async Task SetPivot(SyncConfig syncConfig, CancellationToken cancellationToken)
+    private async Task SetPivot(SyncConfig syncConfig, CancellationToken cancellationToken) =>
+        await SetPivot(_server, syncConfig, cancellationToken, HeadPivotDistance);
+
+    private static async Task SetPivot(IContainer server, SyncConfig syncConfig, CancellationToken cancellationToken, int headPivotDistance)
     {
-        IBlockProcessingQueue blockProcessingQueue = _server.Resolve<IBlockProcessingQueue>();
+        IBlockProcessingQueue blockProcessingQueue = server.Resolve<IBlockProcessingQueue>();
         await blockProcessingQueue.WaitForBlockProcessing(cancellationToken);
-        IBlockTree serverBlockTree = _server.Resolve<IBlockTree>();
+        IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
         long serverHeadNumber = serverBlockTree.Head!.Number;
-        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - HeadPivotDistance)!;
+        BlockHeader pivot = serverBlockTree.FindHeader(serverHeadNumber - headPivotDistance)!;
         syncConfig.PivotHash = pivot.Hash!.ToString();
         syncConfig.PivotNumber = pivot.Number;
         syncConfig.PivotTotalDifficulty = pivot.TotalDifficulty!.Value.ToString();
@@ -408,7 +528,23 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         if (dbMode == DbMode.Hash) Assert.Ignore("Hash db does not support snap sync");
 
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        await RunSnapSyncOnce(cancellationTokenSource.Token);
+    }
 
+    // Stress reproducer for SnapSync Windows flake — run manually; see PR #11443 for context.
+    [Test, Explicit("Stress reproducer for SnapSync Windows flake — run manually")]
+    [TestCaseSource(nameof(StressIterations))]
+    public async Task SnapSync_StressRepro(int iteration)
+    {
+        if (dbMode != DbMode.Flat) Assert.Ignore("Stress repro only targets the Flat dbMode where the flake was observed");
+        _ = iteration; // index is purely to give NUnit a unique case per attempt
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+        await RunSnapSyncOnce(cancellationTokenSource.Token);
+    }
+
+    private async Task RunSnapSyncOnce(CancellationToken cancellationToken)
+    {
         PrivateKey clientKey = TestItem.PrivateKeyD;
         await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
         {
@@ -416,16 +552,68 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             syncConfig.FastSync = true;
             syncConfig.SnapSync = true;
 
-            await SetPivot(syncConfig, cancellationTokenSource.Token);
+            await SetPivot(syncConfig, cancellationToken);
 
-            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
-            networkConfig.P2PPort = AllocatePort();
-            // Disable IP filtering for E2E tests as all nodes run on localhost
-            networkConfig.FilterPeersByRecentIp = false;
-            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+            ConfigureLocalNetwork(cfg, AllocatePort());
         });
 
-        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+    }
+
+    private const int StressIterationCount = 30;
+    private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
+
+    [Test]
+    [Retry(2)]
+    public async Task FastSync_downloads_block_access_lists_over_eth71()
+    {
+        if (!isPostMerge || dbMode != DbMode.Default)
+        {
+            Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
+        }
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(BalSyncTestTimeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+        PrivateKey serverKey = TestItem.PrivateKeyE;
+        await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+        {
+            EnableBlockAccessListsFromGenesis(spec);
+            ConfigureLocalNetwork(cfg, AllocatePort());
+            return Task.CompletedTask;
+        }, serverKey);
+
+        await StartServerAndBuildStorageChain(server, BalSyncChainLength, cancellationToken, "BAL sync server");
+
+        IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
+        Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(BalSyncChainLength));
+
+        IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
+        using (MemoryManager<byte>? serverBal = serverBalStore.GetRlp(serverBlockTree.FindBlock(1)!.Hash!))
+        {
+            Assert.That(serverBal, Is.Not.Null);
+        }
+
+        long syncPivotNumber = 0;
+        PrivateKey clientKey = TestItem.PrivateKeyF;
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+        {
+            EnableBlockAccessListsFromGenesis(spec);
+
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = true;
+
+            await SetPivot(server, syncConfig, cancellationToken, HeadPivotDistance);
+            syncPivotNumber = syncConfig.PivotNumber;
+
+            ConfigureLocalNetwork(cfg, AllocatePort());
+        }, serverKey);
+
+        Assert.That(syncPivotNumber, Is.GreaterThan(1));
+        TestContext.Progress.WriteLine($"BAL sync test: head {BalSyncChainLength}, pivot {syncPivotNumber}.");
+
+        await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
+        Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
     }
 
     [Test]
@@ -454,11 +642,72 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
 
+    [Test]
+    [Retry(2)]
+    public async Task FastSync_skips_pre_eip7928_block_access_lists_over_eth71()
+    {
+        if (!isPostMerge || dbMode != DbMode.Default)
+        {
+            Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
+        }
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(BalSyncTestTimeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+        PrivateKey serverKey = TestItem.PrivateKeyE;
+        await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+        {
+            EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
+            ConfigureLocalNetwork(cfg, AllocatePort());
+            return Task.CompletedTask;
+        }, serverKey);
+
+        await StartServerAndBuildStorageChain(server, PartialBalSyncChainLength, cancellationToken, "Partial BAL sync server");
+
+        IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
+        Assert.That(serverBlockTree.Head!.Number, Is.EqualTo(PartialBalSyncChainLength));
+
+        IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
+        Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
+        Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
+        Assert.That(lastPreActivationBlock.Header.BlockAccessListHash, Is.Null);
+        using (MemoryManager<byte>? preActivationBal = serverBalStore.GetRlp(lastPreActivationBlock.Hash!))
+        {
+            Assert.That(preActivationBal, Is.Null);
+        }
+        Assert.That(firstActivatedBlock.Header.BlockAccessListHash, Is.Not.Null);
+        using (MemoryManager<byte>? firstActivatedBal = serverBalStore.GetRlp(firstActivatedBlock.Hash!))
+        {
+            Assert.That(firstActivatedBal, Is.Not.Null);
+        }
+
+        long syncPivotNumber = 0;
+        PrivateKey clientKey = TestItem.PrivateKeyF;
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+        {
+            EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
+
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = true;
+
+            await SetPivot(server, syncConfig, cancellationToken, PartialBalSyncHeadPivotDistance);
+            syncPivotNumber = syncConfig.PivotNumber;
+
+            ConfigureLocalNetwork(cfg, AllocatePort());
+        }, serverKey);
+
+        Assert.That(syncPivotNumber, Is.GreaterThan(PartialBalActivationBlock));
+        TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
+
+        await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
+        Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+    }
+
     // Post and pre merge have slightly different operation for these.
     private interface ITestEnv
     {
         Task BuildBlockWithTxs(Transaction[] transactions, CancellationToken cancellation);
-        Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken);
+        Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead);
         Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken);
     }
 
@@ -477,13 +726,13 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
             {
-                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+                Assert.That(acceptTxResult, Is.EqualTo(AcceptTxResult.Accepted));
             }
 
             timestamper.Add(TimeSpan.FromSeconds(1));
             try
             {
-                (await manualBlockProductionTrigger.BuildBlock()).Should().NotBeNull();
+                Assert.That(await manualBlockProductionTrigger.BuildBlock(), Is.Not.Null);
                 await newBlockTask;
             }
             catch (Exception e)
@@ -493,7 +742,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         }
 
 
-        public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
+        public virtual async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead)
         {
             await WaitForSyncMode(mode => (mode == SyncMode.WaitingForBlock || mode == SyncMode.None || mode == SyncMode.Full), cancellationToken);
 
@@ -534,7 +783,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             AcceptTxResult[] txResults = transactions.Select(t => txPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
             foreach (AcceptTxResult acceptTxResult in txResults)
             {
-                acceptTxResult.Should().Be(AcceptTxResult.Accepted);
+                Assert.That(acceptTxResult, Is.EqualTo(AcceptTxResult.Accepted));
             }
             timestamper.Add(TimeSpan.FromSeconds(1));
 
@@ -546,21 +795,22 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 ParentBeaconBlockRoot = Hash256.Zero,
                 Timestamp = (ulong)timestamper.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds
             });
-            payloadId.Should().NotBeNullOrEmpty();
+            Assert.That(payloadId, Is.Not.Null.And.Not.Empty);
 
             IBlockProductionContext? blockProductionContext = await payloadPreparationService.GetPayload(payloadId!, skipCancel: true);
-            blockProductionContext.Should().NotBeNull();
-            blockProductionContext!.CurrentBestBlock.Should().NotBeNull();
+            Assert.That(blockProductionContext, Is.Not.Null);
+            Assert.That(blockProductionContext!.CurrentBestBlock, Is.Not.Null);
 
-            (await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!)).Should().Be(AddBlockResult.Added);
+            Assert.That(await blockTree.SuggestBlockAsync(blockProductionContext.CurrentBestBlock!), Is.EqualTo(AddBlockResult.Added));
 
             await newBlockTask;
         }
 
-        public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken)
+        public async Task SyncUntilFinished(IContainer server, CancellationToken cancellationToken, long finalizedDistanceFromHead)
         {
             IBlockTree otherBlockTree = server.Resolve<IBlockTree>();
-            Block finalizedBlock = otherBlockTree.FindBlock(otherBlockTree.Head!.Number - 250)!;
+            long finalizedBlockNumber = Math.Max(0, otherBlockTree.Head!.Number - finalizedDistanceFromHead);
+            Block finalizedBlock = otherBlockTree.FindBlock(finalizedBlockNumber)!;
             Block headBlock = otherBlockTree.Head!;
             blockCacheService.BlockCache.TryAdd(new Hash256AsKey(finalizedBlock.Hash!), finalizedBlock);
             blockCacheService.BlockCache.TryAdd(new Hash256AsKey(headBlock.Hash!), headBlock);
@@ -569,7 +819,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
             mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
 
-            await preMergeTestEnv.SyncUntilFinished(server, cancellationToken);
+            await preMergeTestEnv.SyncUntilFinished(server, cancellationToken, finalizedDistanceFromHead);
         }
 
         public Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken) =>
@@ -581,6 +831,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ISpecProvider specProvider,
         IEthereumEcdsa ecdsa,
         IBlockTree blockTree,
+        IBlockAccessListStore blockAccessListStore,
         IReceiptStorage receiptStorage,
         IBlockProcessingQueue blockProcessingQueue,
         ITestEnv testEnv,
@@ -710,7 +961,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 #pragma warning disable CS0162 // Unreachable code detected
             {
                 IWorldStateManager worldStateManager = server.Resolve<IWorldStateManager>();
-                worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken).Should().BeTrue();
+                Assert.That(worldStateManager.VerifyTrie(blockTree.Head!.Header, cancellationToken), Is.True);
             }
 #pragma warning restore CS0162 // Unreachable code detected
         }
@@ -725,8 +976,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 cancellationToken.ThrowIfCancellationRequested();
                 Block clientBlock = blockTree.FindBlock(i)!;
                 TxReceipt[] clientReceipts = receiptStorage.Get(clientBlock);
-                clientBlock.Should().NotBeNull();
-                clientReceipts.Should().NotBeNull();
+                Assert.That(clientBlock, Is.Not.Null);
+                Assert.That(clientReceipts, Is.Not.Null);
 
                 if (CheckBlocksAndReceiptsContent)
 #pragma warning disable CS0162 // Unreachable code detected
@@ -747,12 +998,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             using NettyRlpStream stream1 = _blockDecoder.EncodeToNewNettyStream(block1);
             using NettyRlpStream stream2 = _blockDecoder.EncodeToNewNettyStream(block2);
 
-            stream1.AsSpan().ToArray().Should().BeEquivalentTo(stream2.AsSpan().ToArray());
+            Assert.That(stream1.AsSpan().ToArray(), Is.EqualTo(stream2.AsSpan().ToArray()));
         }
 
         private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
             // The network encoding is not the same as storage encoding.
-            EncodeReceipts(receipts1).Should().BeEquivalentTo(EncodeReceipts(receipts2));
+            Assert.That(EncodeReceipts(receipts1), Is.EqualTo(EncodeReceipts(receipts2)));
 
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
@@ -771,7 +1022,25 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
         }
 
-        public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken)
+        public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken) =>
+            await ExecuteSyncFromServer(server, async (sourceServer, token) =>
+            {
+                await VerifyHeadWith(sourceServer, token);
+                await VerifyAllBlocksAndReceipts(sourceServer, token);
+            }, cancellationToken);
+
+        public async Task SyncFromServerAndVerifyAccessLists(IContainer server, long syncPivotNumber, CancellationToken cancellationToken) =>
+            await ExecuteSyncFromServer(server, async (sourceServer, token) =>
+            {
+                await VerifyHeadWith(sourceServer, token);
+                await VerifyBlockAccessListsWith(sourceServer, syncPivotNumber, token);
+            }, cancellationToken);
+
+        private async Task ExecuteSyncFromServer(
+            IContainer server,
+            Func<IContainer, CancellationToken, Task> verification,
+            CancellationToken cancellationToken,
+            long finalizedDistanceFromHead = 250)
         {
             await immediateDisconnectFailure.WatchForDisconnection(async (token) =>
             {
@@ -779,9 +1048,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 {
                     await runner.StartNetwork(token);
                     await ConnectTo(server, token);
-                    await testEnv.SyncUntilFinished(server, token);
-                    await VerifyHeadWith(server, token);
-                    await VerifyAllBlocksAndReceipts(server, token);
+                    await testEnv.SyncUntilFinished(server, token, finalizedDistanceFromHead);
+                    await verification(server, token);
                 }, token);
             }, cancellationToken);
 
@@ -794,6 +1062,77 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Console.Error.WriteLine($"On {head?.ToString(BlockHeader.Format.Short)}");
             bool stateVerified = worldStateManager.VerifyTrie(head!, cancellationToken);
             Assert.That(stateVerified, Is.True);
+        }
+
+        private Task VerifyBlockAccessListsWith(IContainer server, long syncPivotNumber, CancellationToken cancellationToken)
+        {
+            IBlockTree sourceBlockTree = server.Resolve<IBlockTree>();
+            IBlockAccessListStore sourceBlockAccessListStore = server.Resolve<IBlockAccessListStore>();
+            long sourceHeadNumber = sourceBlockTree.Head!.Number;
+
+            TestContext.Progress.WriteLine($"BAL sync verification: comparing BAL presence and exact BAL blobs for blocks 1-{sourceHeadNumber}. Pivot {syncPivotNumber}.");
+            for (long blockNumber = 1; blockNumber <= sourceHeadNumber; blockNumber++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CompareBlockAccessList(blockNumber);
+
+                if (blockNumber % BalSyncVerificationProgressInterval == 0 || blockNumber == sourceHeadNumber)
+                {
+                    TestContext.Progress.WriteLine($"BAL sync verification: compared {blockNumber}/{sourceHeadNumber} BALs.");
+                }
+            }
+
+            TestContext.Progress.WriteLine($"BAL sync verification: BALs matched through head {sourceHeadNumber}.");
+            return Task.CompletedTask;
+
+            void CompareBlockAccessList(long blockNumber)
+            {
+                Block sourceBlock = sourceBlockTree.FindBlock(blockNumber)!;
+                Block syncedBlock = blockTree.FindBlock(blockNumber)!;
+
+                byte[]? sourceBal = GetBlockAccessListRlp(sourceBlockAccessListStore, sourceBlock.Hash!);
+                byte[]? syncedBal = GetBlockAccessListRlp(blockAccessListStore, syncedBlock.Hash!);
+                bool balEnabled = sourceBlock.Header.BlockAccessListHash is not null;
+
+                if (!balEnabled)
+                {
+                    if (sourceBal is not null || syncedBal is not null)
+                    {
+                        TestContext.Progress.WriteLine(
+                            $"BAL debug block {blockNumber}: sourceBal={(sourceBal is null ? "null" : sourceBal.Length)}, " +
+                            $"syncedBal={(syncedBal is null ? "null" : syncedBal.Length)}, " +
+                            $"sourceBalHash={sourceBlock.Header.BlockAccessListHash}, " +
+                            $"syncedBalHash={syncedBlock.Header.BlockAccessListHash}");
+                    }
+
+                    Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
+                    Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
+                    Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    return;
+                }
+
+                if (sourceBal is null || syncedBal is null)
+                {
+                    TestContext.Progress.WriteLine(
+                        $"BAL debug block {blockNumber}: sourceBal={(sourceBal is null ? "null" : sourceBal.Length)}, " +
+                        $"syncedBal={(syncedBal is null ? "null" : syncedBal.Length)}, " +
+                        $"syncedEncoded={(syncedBlock.EncodedBlockAccessList is null ? "null" : syncedBlock.EncodedBlockAccessList.Length)}, " +
+                        $"syncedHasStore={blockAccessListStore.Exists(syncedBlock.Hash!)}, " +
+                        $"headerBalHash={syncedBlock.Header.BlockAccessListHash}");
+                }
+
+                Assert.That(sourceBal, Is.Not.Null, $"Source BAL missing at block {blockNumber}.");
+                Assert.That(syncedBal, Is.Not.Null, $"Synced BAL missing at block {blockNumber}.");
+                Assert.That(syncedBal, Is.EqualTo(sourceBal), $"BAL mismatch at block {blockNumber}.");
+                Assert.That(new Hash256(ValueKeccak.Compute(syncedBal!).Bytes), Is.EqualTo(syncedBlock.Header.BlockAccessListHash),
+                    $"BAL hash mismatch at block {blockNumber}.");
+            }
+        }
+
+        private static byte[]? GetBlockAccessListRlp(IBlockAccessListStore blockAccessListStore, Hash256 blockHash)
+        {
+            using MemoryManager<byte>? rlp = blockAccessListStore.GetRlp(blockHash);
+            return rlp?.Memory.ToArray();
         }
     }
 

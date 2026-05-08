@@ -69,6 +69,7 @@ public class XdcModule : Module
                 IAbiEncoder,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
+            .AddSingleton<IMintedRecordContract, MintedRecordContract>()
 
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
@@ -83,7 +84,7 @@ public class XdcModule : Module
             .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
 
             // forensics handler
-            .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
+            .AddSingleton<IForensicsProcessor, NullForensicsProcessor>()
 
             // Validators
             .AddSingleton<IBlockValidator, XdcBlockValidator>()

@@ -158,6 +158,43 @@ public class StateCompositionServiceIncrementalRecoveryTests
         }
     }
 
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task OnNewHeadBlock_NoBaseline_FiresDeferredBootstrapScan()
+    {
+        long scansBefore = Metrics.StateCompScansCompleted;
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+
+        Assert.That(stateHolder.LastProcessedStateRoot, Is.EqualTo(Hash256.Zero));
+
+        Block headBlock = Build.A.Block.WithNumber(1).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+        Assert.That(service, Is.Not.Null, "service must be constructed to subscribe NewHeadBlock");
+
+        blockTree.NewHeadBlock += Raise.EventWith(blockTree, new BlockEventArgs(headBlock));
+
+        await WaitForConditionAsync(
+            () => stateHolder.HasScanBaseline,
+            TimeSpan.FromSeconds(5),
+            "Deferred bootstrap did not set HasScanBaseline=true within 5s").ConfigureAwait(false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompScansCompleted, Is.EqualTo(scansBefore + 1),
+                "OnNewHeadBlock with lastRoot==Zero must dispatch AnalyzeAsync, which bumps scans_completed.");
+            Assert.That(stateHolder.LastProcessedStateRoot, Is.Not.EqualTo(Hash256.Zero),
+                "After the deferred bootstrap, the baseline must be seeded from the header root.");
+        }
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout, string message)
     {
         using CancellationTokenSource cts = new(timeout);

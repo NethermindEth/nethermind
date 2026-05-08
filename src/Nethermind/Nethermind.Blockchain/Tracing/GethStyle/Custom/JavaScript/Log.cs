@@ -85,8 +85,8 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private IJavaScriptObject? _valueConverted;
             public Address Caller { get; } = caller;
 
-            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToTypedScriptArray();
-            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToTypedScriptArray();
+            public ITypedArray<byte> getAddress() => _addressConverted ??= _address.Bytes.ToArray().ToTypedScriptArray();
+            public ITypedArray<byte> getCaller() => _callerConverted ??= Caller.Bytes.ToArray().ToTypedScriptArray();
             public object getInput() => (_inputConverted ??= _input?.ToArray().ToTypedScriptArray()) ?? (object)Undefined.Value;
 
             public IJavaScriptObject getValue() => _valueConverted ??= _value.ToBigInteger();

@@ -36,6 +36,7 @@ using Nethermind.Evm.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Eip2930;
 using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
@@ -91,7 +92,7 @@ namespace Nethermind.Facade
                     {
                         transaction = block.Transactions[txIndex];
                         receipt = receipts.Length > txIndex && receipts[txIndex].TxHash == txHash ? receipts[txIndex] : null;
-                        return true;
+                        return receipt is not null;
                     }
                 }
             }
@@ -220,29 +221,78 @@ namespace Nethermind.Facade
 
         public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            AccessTxTracer accessTxTracer = optimize
-                ? new(tx.SenderAddress,
-                    tx.GetRecipient(tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : 0), header.GasBeneficiary)
-                : new(header.GasBeneficiary);
-
-            CallOutputTracer callOutputTracer = new();
-
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
             BlockProcessingComponents components = scope.Component;
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
 
-            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+            AccessList? originalAccessList = tx.AccessList;
+            try
+            {
+                return ConvergeAccessList(components, header, tx, optimize, cancellationToken);
+            }
+            finally
+            {
+                tx.AccessList = originalAccessList;
+            }
+        }
+
+        // Convergence loop: mirrors Geth's AccessList() — run with the current AL, discover touched
+        // slots, repeat until the AL stabilizes. Gas and error come from the final (warm) run, so
+        // cold-read overcounting is eliminated and OOG due to AL intrinsic cost is surfaced.
+        // Starts from the caller-supplied AL so user-provided entries are preserved and counted.
+        private CallOutput ConvergeAccessList(BlockProcessingComponents components, BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
+        {
+            // Loop-invariant: the addresses to filter from the discovered AL depend only on header
+            // and tx, neither of which change between iterations. Compute once and reuse.
+            Address[] addressesToOptimize = BuildAddressesToOptimize(header, tx, optimize);
+            AccessList? previousAccessList = tx.AccessList;
+            AccessTxTracer accessTracer = new(addressesToOptimize);
+            CallOutputTracer outputTracer = new();
+            CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken);
+            TransactionResult result;
+            bool stop;
+            do
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                accessTracer.Reset();
+                outputTracer.Reset();
+                tx.AccessList = previousAccessList;
+                result = TryCallAndRestore(components, header, tx, false, tracer);
+                stop = !result.TransactionExecuted || HasConverged(previousAccessList, accessTracer.AccessList);
+                previousAccessList = accessTracer.AccessList;
+            } while (!stop);
 
             return new CallOutput
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                GasSpent = accessTxTracer.GasSpent,
-                OperationGas = callOutputTracer.OperationGas,
-                OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted,
-                AccessList = accessTxTracer.AccessList,
+                Error = ConstructError(result, outputTracer.Error),
+                GasSpent = outputTracer.GasSpent,
+                OperationGas = outputTracer.OperationGas,
+                OutputData = outputTracer.ReturnValue,
+                InputError = !result.TransactionExecuted,
+                AccessList = accessTracer.AccessList,
             };
+        }
+
+        private Address[] BuildAddressesToOptimize(BlockHeader header, Transaction tx, bool optimize)
+        {
+            if (!optimize)
+                return [header.GasBeneficiary];
+
+            // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
+            // so excluding them keeps the returned access list minimal.
+            UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
+            Address recipient = tx.GetRecipient(senderNonce);
+            return [tx.SenderAddress, recipient, header.GasBeneficiary];
+        }
+
+        private static bool HasConverged(AccessList? previous, AccessList? discovered)
+        {
+            // Count comparison is sufficient because WarmUp(tx.AccessList) pre-populates the warm-address
+            // set with all of `previous`'s entries before execution, making `discovered` monotonically
+            // non-decreasing (discovered ⊇ previous). Equal counts therefore imply equal content.
+            (int addrs, int keys) previousCount = previous?.Count ?? (0, 0);
+            (int addrs, int keys) discoveredCount = discovered?.Count ?? (0, 0);
+            return previousCount == discoveredCount;
         }
 
         private TransactionResult TryCallAndRestore(
