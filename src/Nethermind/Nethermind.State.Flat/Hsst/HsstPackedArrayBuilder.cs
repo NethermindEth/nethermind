@@ -19,8 +19,13 @@ namespace Nethermind.State.Flat.Hsst;
 ///   [Summary L1: Count_1 * KeySize]
 ///   ...
 ///   [Summary L(D-1): Count_{D-1} * KeySize]
-///   [Metadata (fixed 9 B): KeySize (u8), ValueSize (u8), EntryCount (u32 LE),
-///              EntriesPerCkLevel0Log2 (u8), RecordsPerCkHigherLog2 (u8), Depth (u8)]
+///   [Metadata (fixed 10 B): KeySize (u8), ValueSize (u8), EntryCount (u32 LE),
+///              EntriesPerCkLevel0Log2 (u8), RecordsPerCkHigherLog2 (u8), Depth (u8),
+///              Flags (u8): bit 0 = IsLittleEndian, other bits reserved=0]
+/// When <c>IsLittleEndian</c> is set (only allowed for <c>KeySize ∈ {2,4,8}</c>), every stored
+/// key — both data and summary — is byte-reversed at write time so a native LE int load
+/// recovers the lex value, matching the BSearchIndex LE-stored convention. This unlocks
+/// the AVX-512 floor-scan fast path in <c>BSearchIndexReaderSimd</c>.
 /// Per-level record counts are derivable: Count_0 = ceil(EntryCount / 1<<L0),
 /// Count_{k+1} = ceil(Count_k / 1<<Lh) — the reader recomputes them on parse.
 ///   [MetadataLength: u8]
@@ -45,6 +50,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     private readonly int _strideBytes;
     private readonly int _entriesPerCkLevel0Log2;
     private readonly int _entriesPerCkLevel0;
+    private readonly bool _isLittleEndian;
 
     private NativeMemoryListRef<byte> _prevKeyBuffer;
     private NativeMemoryListRef<byte> _checkpointKeys;
@@ -58,9 +64,14 @@ public ref struct HsstPackedArrayBuilder<TWriter>
     /// <see cref="Add"/> calls validate against them. Allocates working buffers from
     /// NativeMemory — call <see cref="Dispose"/> to free.
     /// </summary>
+    /// <param name="isLittleEndian">Storage-endianness override. <c>null</c> (default) auto-enables
+    /// the LE-stored layout whenever <paramref name="keySize"/> ∈ {2,4,8}, unlocking the AVX-512
+    /// floor-scan fast path; <c>true</c> requires that size; <c>false</c> forces the BE/lex byte
+    /// layout (compatible with every <paramref name="keySize"/>).</param>
     public HsstPackedArrayBuilder(ref TWriter writer, int keySize, int valueSize,
         int binaryIndexStrideBytes = DefaultBinaryIndexStrideBytes,
-        int expectedKeyCount = 16)
+        int expectedKeyCount = 16,
+        bool? isLittleEndian = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(keySize);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(keySize, 255);
@@ -68,11 +79,18 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         ArgumentOutOfRangeException.ThrowIfGreaterThan(valueSize, 255);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(binaryIndexStrideBytes, 0);
 
+        bool keySizeSupportsLe = keySize is 2 or 4 or 8;
+        bool resolvedLe = isLittleEndian ?? keySizeSupportsLe;
+        if (resolvedLe && !keySizeSupportsLe)
+            throw new ArgumentException(
+                $"isLittleEndian requires keySize ∈ {{2,4,8}}, got {keySize}.", nameof(isLittleEndian));
+
         _writer = ref writer;
         _baseOffset = _writer.Written;
         _keySize = keySize;
         _valueSize = valueSize;
         _strideBytes = binaryIndexStrideBytes;
+        _isLittleEndian = resolvedLe;
         // Entries-per-ck at level 0: floor(stride / entry size), then rounded down to the
         // nearest power of two so the reader can use a mask + shift instead of div/mul.
         // With fixed-size entries this turns the byte-stride knob into an exact entry-count
@@ -113,7 +131,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         if (_entryCount > 0 && key.SequenceCompareTo(_prevKeyBuffer.AsSpan()) <= 0)
             throw new InvalidOperationException("Keys must be added in strictly ascending order.");
 
-        if (_keySize > 0) IByteBufferWriter.Copy(ref _writer, key);
+        if (_keySize > 0) WriteStorageKey(ref _writer, key);
         if (_valueSize > 0) IByteBufferWriter.Copy(ref _writer, value);
 
         _entryCount++;
@@ -125,7 +143,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         // _entriesPerCkLevel0 is a power of two — use mask in place of modulo.
         if ((_entryCount & (_entriesPerCkLevel0 - 1)) == 0)
         {
-            if (_keySize > 0) _checkpointKeys.AddRange(key);
+            if (_keySize > 0) AppendStorageKey(ref _checkpointKeys, key);
             _level0Count++;
         }
     }
@@ -141,7 +159,7 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         // an empty candidate range.
         if (_entryCount > 0 && (_entryCount & (_entriesPerCkLevel0 - 1)) != 0)
         {
-            if (_keySize > 0) _checkpointKeys.AddRange(_prevKeyBuffer.AsSpan());
+            if (_keySize > 0) AppendStorageKey(ref _checkpointKeys, _prevKeyBuffer.AsSpan());
             _level0Count++;
         }
 
@@ -260,18 +278,22 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         }
 
         long metaStart = _writer.Written;
-        // Fixed prefix (9 B): KeySize / ValueSize bounded to [0, 255]; EntryCount bounded
+        // Fixed prefix (10 B): KeySize / ValueSize bounded to [0, 255]; EntryCount bounded
         // to int.MaxValue (the int-indexed checkpoint staging buffers would overflow long
         // before EntryCount could exceed it); the two log2 shifts are clamped to ≤ 30 by
-        // construction; Depth is capped at MaxSummaryDepth (8). All fit in u8.
-        Span<byte> hdr = _writer.GetSpan(2 + 4 + 3);
+        // construction; Depth is capped at MaxSummaryDepth. All fit in u8. Flags carries
+        // the storage-endianness bit so the reader can dispatch to the LE int-compare /
+        // SIMD fast path.
+        const int HdrSize = 2 + 4 + 3 + 1;
+        Span<byte> hdr = _writer.GetSpan(HdrSize);
         hdr[0] = (byte)_keySize;
         hdr[1] = (byte)_valueSize;
         BinaryPrimitives.WriteUInt32LittleEndian(hdr[2..], checked((uint)_entryCount));
         hdr[6] = (byte)_entriesPerCkLevel0Log2;
         hdr[7] = (byte)recordsPerCkHigherLog2;
         hdr[8] = (byte)depth;
-        _writer.Advance(2 + 4 + 3);
+        hdr[9] = _isLittleEndian ? (byte)0x01 : (byte)0x00;
+        _writer.Advance(HdrSize);
         int metaLen = checked((int)(_writer.Written - metaStart));
         if (metaLen > 255)
             throw new InvalidOperationException("PackedArray metadata exceeds 255 bytes.");
@@ -287,5 +309,39 @@ public ref struct HsstPackedArrayBuilder<TWriter>
         Span<byte> buf = _writer.GetSpan(10);
         int len = Leb128.Write(buf, 0, value);
         _writer.Advance(len);
+    }
+
+    // Lex-keyed input arrives big-endian. When IsLittleEndian is set (KeySize ∈ {2,4,8}),
+    // emit byte-reversed bytes so a native LE int load over the slot recovers the lex value.
+    // Mirrors the BSearchIndex LE-stored convention (see BSearchIndexReaderSimd.cs:122-126).
+    private void WriteStorageKey(ref TWriter writer, scoped ReadOnlySpan<byte> key)
+    {
+        if (!_isLittleEndian)
+        {
+            IByteBufferWriter.Copy(ref writer, key);
+            return;
+        }
+        Span<byte> buf = stackalloc byte[8];
+        Span<byte> dst = buf[.._keySize];
+        ReverseTo(key, dst);
+        IByteBufferWriter.Copy(ref writer, dst);
+    }
+
+    private void AppendStorageKey(ref NativeMemoryListRef<byte> list, scoped ReadOnlySpan<byte> key)
+    {
+        if (!_isLittleEndian)
+        {
+            list.AddRange(key);
+            return;
+        }
+        Span<byte> buf = stackalloc byte[8];
+        Span<byte> dst = buf[.._keySize];
+        ReverseTo(key, dst);
+        list.AddRange(dst);
+    }
+
+    private static void ReverseTo(scoped ReadOnlySpan<byte> src, Span<byte> dst)
+    {
+        for (int i = 0; i < src.Length; i++) dst[i] = src[src.Length - 1 - i];
     }
 }

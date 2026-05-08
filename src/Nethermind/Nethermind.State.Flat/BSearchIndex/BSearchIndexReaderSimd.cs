@@ -186,6 +186,50 @@ public static class BSearchIndexReaderSimd
         return true;
     }
 
+    /// <summary>
+    /// Strided floor-scan dispatcher: keys are interleaved with per-entry payload, so each
+    /// slot is <paramref name="stride"/> bytes (e.g. <c>keySize + valueSize</c> in HSST
+    /// PackedArray data sections). Falls back to the contiguous primitive when
+    /// <paramref name="stride"/> equals <paramref name="keySize"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryFindFloorIndexUniformSimdStrided(
+        ReadOnlySpan<byte> key,
+        ReadOnlySpan<byte> src,
+        int count,
+        int keySize,
+        int stride,
+        bool isLittleEndian,
+        out int result)
+    {
+        result = 0;
+        if (!Enabled) return false;
+        if (count < 2 || count > LinearScanMaxCount) return false;
+        if (isLittleEndian ? key.Length < keySize : key.Length != keySize) return false;
+        if (!Vector512.IsHardwareAccelerated) return false;
+        if (stride < keySize) return false;
+        if (stride == keySize)
+        {
+            // Contiguous; reuse the existing fast path.
+            return TryFindFloorIndexUniformSimd(key, src, count, keySize, isLittleEndian, out result);
+        }
+
+        switch (keySize)
+        {
+            case 2:
+                result = FloorScan16Strided(key, src, count, stride, isLittleEndian);
+                return true;
+            case 4:
+                result = FloorScan32Strided(key, src, count, stride, isLittleEndian);
+                return true;
+            case 8:
+                result = FloorScan64Strided(key, src, count, stride, isLittleEndian);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FloorScan16(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, bool isLittleEndian)
     {
@@ -273,6 +317,136 @@ public static class BSearchIndexReaderSimd
             i += 8;
         }
         return ScalarTail64(search, ref src, i, count, isLittleEndian);
+    }
+
+    // Strided variants gather lanes from interleaved slots via per-lane scalar loads.
+    // AVX-512 has no efficient general gather for arbitrary 4/8-byte strides, but a single
+    // Vector512.GreaterThan over the assembled lanes still amortises well at small counts —
+    // the win comes from removing the branch mispredicts of binary search.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FloorScan16Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride, bool isLittleEndian)
+    {
+        ushort search = BinaryPrimitives.ReverseEndianness(
+            Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(key)));
+        ref byte s = ref MemoryMarshal.GetReference(src);
+        Vector512<ushort> searchVec = Vector512.Create(search);
+
+        int i = 0;
+        Span<ushort> lanes = stackalloc ushort[32];
+        while (i + 32 <= count)
+        {
+            for (int j = 0; j < 32; j++)
+            {
+                ushort raw = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
+                lanes[j] = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            }
+            Vector512<ushort> v = Vector512.LoadUnsafe(ref MemoryMarshal.GetReference(lanes));
+            Vector512<ushort> gt = Vector512.GreaterThan(v, searchVec);
+            ulong mask = gt.ExtractMostSignificantBits();
+            if (mask != 0)
+            {
+                int firstGtLane = BitOperations.TrailingZeroCount(mask);
+                return i + firstGtLane - 1;
+            }
+            i += 32;
+        }
+        return ScalarTail16Strided(search, ref s, i, count, stride, isLittleEndian);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FloorScan32Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride, bool isLittleEndian)
+    {
+        uint search = BinaryPrimitives.ReverseEndianness(
+            Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(key)));
+        ref byte s = ref MemoryMarshal.GetReference(src);
+        Vector512<uint> searchVec = Vector512.Create(search);
+
+        int i = 0;
+        Span<uint> lanes = stackalloc uint[16];
+        while (i + 16 <= count)
+        {
+            for (int j = 0; j < 16; j++)
+            {
+                uint raw = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
+                lanes[j] = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            }
+            Vector512<uint> v = Vector512.LoadUnsafe(ref MemoryMarshal.GetReference(lanes));
+            Vector512<uint> gt = Vector512.GreaterThan(v, searchVec);
+            ulong mask = gt.ExtractMostSignificantBits();
+            if (mask != 0)
+            {
+                int firstGtLane = BitOperations.TrailingZeroCount(mask);
+                return i + firstGtLane - 1;
+            }
+            i += 16;
+        }
+        return ScalarTail32Strided(search, ref s, i, count, stride, isLittleEndian);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FloorScan64Strided(ReadOnlySpan<byte> key, ReadOnlySpan<byte> src, int count, int stride, bool isLittleEndian)
+    {
+        ulong search = BinaryPrimitives.ReverseEndianness(
+            Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetReference(key)));
+        ref byte s = ref MemoryMarshal.GetReference(src);
+        Vector512<ulong> searchVec = Vector512.Create(search);
+
+        int i = 0;
+        Span<ulong> lanes = stackalloc ulong[8];
+        while (i + 8 <= count)
+        {
+            for (int j = 0; j < 8; j++)
+            {
+                ulong raw = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, (nint)((i + j) * stride)));
+                lanes[j] = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            }
+            Vector512<ulong> v = Vector512.LoadUnsafe(ref MemoryMarshal.GetReference(lanes));
+            Vector512<ulong> gt = Vector512.GreaterThan(v, searchVec);
+            ulong mask = gt.ExtractMostSignificantBits();
+            if (mask != 0)
+            {
+                int firstGtLane = BitOperations.TrailingZeroCount(mask);
+                return i + firstGtLane - 1;
+            }
+            i += 8;
+        }
+        return ScalarTail64Strided(search, ref s, i, count, stride, isLittleEndian);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ScalarTail16Strided(ushort search, ref byte s, int i, int count, int stride, bool isLittleEndian)
+    {
+        for (; i < count; i++)
+        {
+            ushort raw = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref s, (nint)(i * stride)));
+            ushort k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            if (k > search) return i - 1;
+        }
+        return count - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ScalarTail32Strided(uint search, ref byte s, int i, int count, int stride, bool isLittleEndian)
+    {
+        for (; i < count; i++)
+        {
+            uint raw = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref s, (nint)(i * stride)));
+            uint k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            if (k > search) return i - 1;
+        }
+        return count - 1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ScalarTail64Strided(ulong search, ref byte s, int i, int count, int stride, bool isLittleEndian)
+    {
+        for (; i < count; i++)
+        {
+            ulong raw = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref s, (nint)(i * stride)));
+            ulong k = isLittleEndian ? raw : BinaryPrimitives.ReverseEndianness(raw);
+            if (k > search) return i - 1;
+        }
+        return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

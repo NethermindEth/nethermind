@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
 using NUnit.Framework;
 
@@ -255,6 +256,171 @@ public class HsstPackedArrayTests
                 Assert.That(ok, Is.True);
                 Assert.That(got, Is.EqualTo(values[floorIdx]));
             }
+        }
+    }
+
+    private static byte[] BuildFlatLe(byte[][] keys, byte[][] values, int keySize, int valueSize, int strideBytes, bool isLE)
+    {
+        using PooledByteBufferWriter pooled = new(10 * 1024 * 1024);
+        HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> builder = new(
+            ref pooled.GetWriter(),
+            keySize: keySize,
+            valueSize: valueSize,
+            binaryIndexStrideBytes: strideBytes,
+            expectedKeyCount: keys.Length,
+            isLittleEndian: isLE);
+        try
+        {
+            for (int i = 0; i < keys.Length; i++) builder.Add(keys[i], values[i]);
+            builder.Build();
+            return pooled.WrittenSpan.ToArray();
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    private static (byte[][] Keys, byte[][] Values) MakeUniqueAscendingKeys(int count, int keySize, int valueSize, int seed)
+    {
+        Random rng = new(seed);
+        HashSet<string> seen = [];
+        List<byte[]> ks = new(count);
+        while (ks.Count < count)
+        {
+            byte[] k = new byte[keySize];
+            rng.NextBytes(k);
+            if (seen.Add(Convert.ToHexString(k))) ks.Add(k);
+        }
+        ks.Sort((a, b) => a.AsSpan().SequenceCompareTo(b));
+        byte[][] vs = ks.Select((_, i) =>
+        {
+            byte[] v = new byte[valueSize];
+            for (int b = 0; b < valueSize; b++) v[b] = (byte)((i * 31 + b) & 0xff);
+            return v;
+        }).ToArray();
+        return (ks.ToArray(), vs);
+    }
+
+    private static bool TryGetSpan(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeek(key, out _)) { value = []; return false; }
+        Bound b = r.GetBound();
+        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
+        return true;
+    }
+
+    private static bool TryGetFloorSpan(ReadOnlySpan<byte> data, scoped ReadOnlySpan<byte> key, out byte[] value)
+    {
+        SpanByteReader reader = new(data);
+        using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
+        if (!r.TrySeekFloor(key, out _)) { value = []; return false; }
+        Bound b = r.GetBound();
+        value = data.Slice((int)b.Offset, (int)b.Length).ToArray();
+        return true;
+    }
+
+    // Cross-product: KeySize ∈ {2,4,8} × IsLittleEndian ∈ {false,true} × SIMD ∈ {off,on} ×
+    // counts spanning the SIMD/scalar boundary and crossing 8/16/32-lane batch boundaries.
+    [Test, Pairwise]
+    public void LeAndSimd_AgreeWithScalarLinearSearch(
+        [Values(2, 4, 8)] int keySize,
+        [Values(false, true)] bool isLE,
+        [Values(false, true)] bool simdOn,
+        [Values(1, 7, 15, 16, 17, 31, 32, 33, 64, 257, 1023, 1024, 1025)] int count,
+        [Values(8, 0)] int valueSize,
+        [Values(64, 256, 4096)] int strideBytes)
+    {
+        bool savedEnabled = BSearchIndexReaderSimd.Enabled;
+        BSearchIndexReaderSimd.Enabled = simdOn;
+        try
+        {
+            (byte[][] keys, byte[][] values) = MakeUniqueAscendingKeys(count, keySize, valueSize, seed: keySize * 1000 + count);
+            byte[] data = BuildFlatLe(keys, values, keySize, valueSize, strideBytes, isLE);
+
+            // Every stored key must round-trip via exact seek.
+            for (int i = 0; i < count; i++)
+            {
+                Assert.That(TryGetSpan(data, keys[i], out byte[] got), Is.True, $"missing key #{i} (keySize={keySize}, isLE={isLE}, simdOn={simdOn}, count={count})");
+                Assert.That(got, Is.EqualTo(values[i]));
+            }
+
+            // Floor probes: smaller-than-all, larger-than-all, between every consecutive pair,
+            // exact at first/last.
+            byte[] tinier = new byte[keySize];
+            byte[] huger = Enumerable.Repeat((byte)0xff, keySize).ToArray();
+            CheckFloor(data, tinier, keys, values);
+            CheckFloor(data, huger, keys, values);
+            CheckFloor(data, keys[0], keys, values);
+            CheckFloor(data, keys[count - 1], keys, values);
+
+            // A handful of random in-between probes.
+            Random rng = new(count * 7 + (isLE ? 1 : 0) + (simdOn ? 2 : 0));
+            for (int t = 0; t < 32; t++)
+            {
+                byte[] probe = new byte[keySize];
+                rng.NextBytes(probe);
+                CheckFloor(data, probe, keys, values);
+            }
+        }
+        finally
+        {
+            BSearchIndexReaderSimd.Enabled = savedEnabled;
+        }
+    }
+
+    private static void CheckFloor(byte[] data, byte[] probe, byte[][] keys, byte[][] values)
+    {
+        int floorIdx = -1;
+        for (int i = 0; i < keys.Length; i++)
+        {
+            if (keys[i].AsSpan().SequenceCompareTo(probe) <= 0) floorIdx = i; else break;
+        }
+        bool ok = TryGetFloorSpan(data, probe, out byte[] got);
+        if (floorIdx < 0)
+        {
+            Assert.That(ok, Is.False, $"expected no floor for {Convert.ToHexString(probe)}");
+        }
+        else
+        {
+            Assert.That(ok, Is.True, $"expected floor for {Convert.ToHexString(probe)}");
+            Assert.That(got, Is.EqualTo(values[floorIdx]));
+        }
+    }
+
+    [Test]
+    public void LeBuilder_RejectsNonStandardKeySize()
+    {
+        using PooledByteBufferWriter pooled = new(1024);
+        Assert.Throws<ArgumentException>(() =>
+        {
+            HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> builder = new(
+                ref pooled.GetWriter(),
+                keySize: 16, valueSize: 0, isLittleEndian: true);
+            builder.Dispose();
+        });
+    }
+
+    [TestCase(2)]
+    [TestCase(4)]
+    [TestCase(8)]
+    public void LeAndBe_LayoutsRoundTripIdentically(int keySize)
+    {
+        const int count = 500;
+        const int valueSize = 4;
+        (byte[][] keys, byte[][] values) = MakeUniqueAscendingKeys(count, keySize, valueSize, seed: keySize + 99);
+
+        byte[] beData = BuildFlatLe(keys, values, keySize, valueSize, strideBytes: 256, isLE: false);
+        byte[] leData = BuildFlatLe(keys, values, keySize, valueSize, strideBytes: 256, isLE: true);
+
+        for (int i = 0; i < count; i++)
+        {
+            Assert.That(TryGetSpan(beData, keys[i], out byte[] beGot), Is.True);
+            Assert.That(TryGetSpan(leData, keys[i], out byte[] leGot), Is.True);
+            Assert.That(beGot, Is.EqualTo(values[i]));
+            Assert.That(leGot, Is.EqualTo(values[i]));
         }
     }
 
