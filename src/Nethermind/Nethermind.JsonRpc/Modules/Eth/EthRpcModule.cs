@@ -601,7 +601,7 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex >= (uint)block.Transactions.Length)
+        if (positionIndex >= block.Transactions.Length)
         {
             return ResultWrapper<string?>.Success(null);
         }
@@ -621,7 +621,7 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex >= (uint)block.Transactions.Length)
+        if (positionIndex >= block.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
@@ -655,7 +655,7 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex >= (uint)block.Uncles.Length)
+        if (positionIndex >= block.Uncles.Length)
         {
             return ResultWrapper<BlockForRpc?>.Success(null);
         }

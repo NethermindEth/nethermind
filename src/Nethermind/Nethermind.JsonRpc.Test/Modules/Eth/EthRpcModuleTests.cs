@@ -1365,6 +1365,43 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task EthSendRawTransactionSync_WhenAlreadyMined_FastPathReturnsReceipt()
+    {
+        // The fast-path: TxSender returns the hash, the receipt is already in the bridge, so the
+        // first loop iteration finds it and returns without ever waiting on the semaphore.
+        Transaction tx = Build.A.Transaction
+            .WithNonce(3)
+            .WithGasLimit(21_000)
+            .WithGasPrice(20.GWei)
+            .To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Hash256 txHash = tx.Hash!;
+        TxReceipt receipt = Build.A.Receipt
+            .WithBlockNumber(1)
+            .WithBlockHash(TestItem.KeccakA)
+            .WithTransactionHash(txHash)
+            .WithLogs([])
+            .TestObject;
+
+        ITxSender txSender = Substitute.For<ITxSender>();
+        txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns((txHash, AcceptTxResult.Accepted));
+
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash)
+            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
+
+        serialized.Should().Contain($"\"transactionHash\":\"{txHash}\"");
+        serialized.Should().NotContain("\"error\":");
+    }
+
+    [Test]
     public async Task Send_transaction_without_signature_will_not_set_nonce_when_zero_and_not_null()
     {
         using Context ctx = await Context.Create();
