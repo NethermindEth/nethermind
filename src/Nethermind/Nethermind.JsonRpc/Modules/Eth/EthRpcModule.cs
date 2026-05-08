@@ -446,7 +446,6 @@ public partial class EthRpcModule(
     }
 
     private static string FormatWeiAsEther(UInt256 wei) =>
-        // Invariant culture + F2 to match Geth's "X.XX ether" exactly across all locales.
         (wei.ToDecimal(null) / (decimal)Unit.Ether).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 
     private string? TryAttachBlobSidecar(Transaction tx, BlobTransactionForRpc blobTx)
