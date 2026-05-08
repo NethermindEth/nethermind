@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
@@ -100,6 +101,64 @@ namespace Nethermind.Config.Test
             IConfigProvider configProvider = new ConfigProvider(blocksConfig);
 
             configProvider.GetConfig<IBlocksConfig>().MinGasPrice.Should().Be(12345);
+        }
+    }
+
+    [TestFixture]
+    [Parallelizable(ParallelScope.None)]
+    public class GetNonDefaultValuesTests
+    {
+        [Test]
+        public void Returns_empty_when_no_overrides()
+        {
+            ConfigProvider configProvider = new();
+            configProvider.Initialize();
+
+            List<(string Category, string Name, object? CurrentValue, object? DefaultValue)> nonDefaults =
+                configProvider.GetNonDefaultValues().ToList();
+
+            Assert.That(nonDefaults, Is.Empty);
+        }
+
+        [Test]
+        public void Returns_overridden_value_with_current_and_default()
+        {
+            Dictionary<string, string> args = new()
+            {
+                { "Network.DiscoveryPort", "12345" }
+            };
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new ArgsConfigSource(args));
+            configProvider.Initialize();
+
+            List<(string Category, string Name, object? CurrentValue, object? DefaultValue)> nonDefaults =
+                configProvider.GetNonDefaultValues()
+                    .Where(static x => x.Category == "Network" && x.Name == nameof(INetworkConfig.DiscoveryPort))
+                    .ToList();
+
+            Assert.That(nonDefaults, Has.Count.EqualTo(1));
+            Assert.That(nonDefaults[0].CurrentValue, Is.EqualTo(12345));
+            Assert.That(nonDefaults[0].DefaultValue, Is.EqualTo(30303));
+        }
+
+        [Test]
+        public void Surfaces_overrides_across_categories()
+        {
+            Dictionary<string, string> args = new()
+            {
+                { "Network.DiscoveryPort", "12345" },
+                { "JsonRpc.Enabled", "true" }
+            };
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new ArgsConfigSource(args));
+            configProvider.Initialize();
+
+            HashSet<string> keys = configProvider.GetNonDefaultValues()
+                .Select(static x => $"{x.Category}.{x.Name}")
+                .ToHashSet();
+
+            Assert.That(keys, Does.Contain("Network.DiscoveryPort"));
+            Assert.That(keys, Does.Contain("JsonRpc.Enabled"));
         }
     }
 }

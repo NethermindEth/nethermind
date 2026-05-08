@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config;
 
@@ -40,5 +44,98 @@ public static class ConfigExtensions
         ConfigItemAttribute attribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>()!;
         string? defaultValue = attribute.DefaultValue;
         return (T)TypeDescriptor.GetConverter(typeof(T)).ConvertFrom(defaultValue!)!;
+    }
+
+    /// <summary>
+    /// Enumerates configuration properties whose current value differs from the
+    /// implementation's default. Useful for surfacing on startup which knobs the
+    /// operator has actually changed, rather than dumping every value.
+    /// </summary>
+    /// <remarks>
+    /// The default is taken from a freshly constructed instance of the
+    /// implementing type, so initializers and constructors are honoured exactly
+    /// as production wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
+    /// </remarks>
+    /// <param name="configProvider">The provider to query.</param>
+    /// <returns>
+    /// Tuples of <c>(category, propertyName, currentValue, defaultValue)</c> for
+    /// every property whose current value is not equal to its default.
+    /// </returns>
+    public static IEnumerable<(string Category, string Name, object? CurrentValue, object? DefaultValue)>
+        GetNonDefaultValues(this IConfigProvider configProvider)
+    {
+        ArgumentNullException.ThrowIfNull(configProvider);
+
+        foreach (Type configInterface in TypeDiscovery
+                     .FindNethermindBasedTypes(typeof(IConfig))
+                     .Where(static t => t.IsInterface))
+        {
+            Type? implementation = configInterface.GetDirectInterfaceImplementation();
+            if (implementation is null) continue;
+
+            IConfig current;
+            try
+            {
+                current = configProvider.GetConfig(configInterface);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+
+            IConfig fresh;
+            try
+            {
+                fresh = (IConfig)Activator.CreateInstance(implementation)!;
+            }
+            catch (MissingMethodException)
+            {
+                continue;
+            }
+
+            string category = GetCategoryName(configInterface) ?? string.Empty;
+
+            foreach (PropertyInfo property in configInterface.GetProperties())
+            {
+                if (!property.CanRead) continue;
+
+                object? actual = property.GetValue(current);
+                object? defaultValue = property.GetValue(fresh);
+
+                if (!ValuesEqual(actual, defaultValue))
+                {
+                    yield return (category, property.Name, actual, defaultValue);
+                }
+            }
+        }
+    }
+
+    private static bool ValuesEqual(object? a, object? b)
+    {
+        if (a is null) return b is null;
+        if (b is null) return false;
+        if (a is string || b is string) return a.Equals(b);
+        if (a is IEnumerable enumerableA && b is IEnumerable enumerableB)
+        {
+            IEnumerator iteratorA = enumerableA.GetEnumerator();
+            IEnumerator iteratorB = enumerableB.GetEnumerator();
+            try
+            {
+                while (true)
+                {
+                    bool hasA = iteratorA.MoveNext();
+                    bool hasB = iteratorB.MoveNext();
+                    if (hasA != hasB) return false;
+                    if (!hasA) return true;
+                    if (!ValuesEqual(iteratorA.Current, iteratorB.Current)) return false;
+                }
+            }
+            finally
+            {
+                (iteratorA as IDisposable)?.Dispose();
+                (iteratorB as IDisposable)?.Dispose();
+            }
+        }
+        return a.Equals(b);
     }
 }
