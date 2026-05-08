@@ -179,67 +179,44 @@ public class SszMiddlewareTests
         return (rented, len);
     }
 
-    [Test]
-    public async Task NewPayload_v1_calls_engine_module_and_returns_200()
+    [TestCase(1, "/engine/v1/payloads")]
+    [TestCase(2, "/engine/v2/payloads")]
+    public async Task NewPayload_routes_to_correct_engine_module_version(int version, string path)
     {
         PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
         _engineModule.engine_newPayloadV1(Arg.Any<ExecutionPayload>())
             .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
+        _engineModule.engine_newPayloadV2(Arg.Any<ExecutionPayload>())
+            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
 
-        byte[] body = BuildMinimalV1NewPayloadRequest();
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body);
+        byte[] body = version == 1 ? BuildMinimalV1NewPayloadRequest() : BuildMinimalV2NewPayloadRequest();
+        DefaultHttpContext ctx = MakePostContext(path, body);
 
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
         ctx.Response.ContentType.Should().Contain(OctetStream);
-        await _engineModule.Received(1).engine_newPayloadV1(Arg.Any<ExecutionPayload>());
+        await _engineModule.Received(version == 1 ? 1 : 0).engine_newPayloadV1(Arg.Any<ExecutionPayload>());
+        await _engineModule.Received(version == 2 ? 1 : 0).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
     }
 
-    [Test]
-    public async Task NewPayload_v2_routes_to_v2_not_v1()
-    {
-        PayloadStatusV1 status = new() { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA };
-        _engineModule.engine_newPayloadV2(Arg.Any<ExecutionPayload>())
-            .Returns(ResultWrapper<PayloadStatusV1>.Success(status));
-
-        byte[] body = BuildMinimalV2NewPayloadRequest();
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads", body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        await _engineModule.Received(1).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
-        await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
-    }
-
-    [Test]
-    public async Task GetPayloadV1_returns_200_and_no_store_header()
+    [TestCase(1, "/engine/v1/payloads/0x0102030405060708")]
+    [TestCase(2, "/engine/v2/payloads/0x0102030405060708")]
+    public async Task GetPayload_routes_to_correct_handler_with_no_store_header(int version, string path)
     {
         _engineModule.engine_getPayloadV1(Arg.Any<byte[]>())
             .Returns(ResultWrapper<ExecutionPayload?>.Success(SszTestData.MakeMinimalPayload()));
+        _engineModule.engine_getPayloadV2(Arg.Any<byte[]>())
+            .Returns(ResultWrapper<GetPayloadV2Result?>.Success(new GetPayloadV2Result(MakeMinimalBlock(), UInt256.One)));
 
-        DefaultHttpContext ctx = MakeGetContext("/engine/v1/payloads/0x0102030405060708");
+        DefaultHttpContext ctx = MakeGetContext(path);
 
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
         ctx.Response.Headers["Cache-Control"].ToString().Should().Contain("no-store");
-    }
-
-    [Test]
-    public async Task GetPayloadV2_routes_to_v2_handler_not_v1()
-    {
-        GetPayloadV2Result result = new(MakeMinimalBlock(), UInt256.One);
-        _engineModule.engine_getPayloadV2(Arg.Any<byte[]>())
-            .Returns(ResultWrapper<GetPayloadV2Result?>.Success(result));
-
-        DefaultHttpContext ctx = MakeGetContext("/engine/v2/payloads/0x0102030405060708");
-
-        await _middleware.InvokeAsync(ctx);
-
-        await _engineModule.Received(1).engine_getPayloadV2(Arg.Any<byte[]>());
-        await _engineModule.DidNotReceive().engine_getPayloadV1(Arg.Any<byte[]>());
+        await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadV1(Arg.Any<byte[]>());
+        await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
     }
 
     [TestCase("/engine/v1/forkchoice", 1)]
@@ -313,69 +290,55 @@ public class SszMiddlewareTests
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
     }
 
-    [Test]
-    public async Task GetPayloadBodiesByHashV1_calls_handler_and_returns_200()
+    [TestCase(1, "/engine/v1/payloads/bodies/by-hash")]
+    [TestCase(2, "/engine/v2/payloads/bodies/by-hash")]
+    public async Task GetPayloadBodiesByHash_routes_to_correct_handler(int version, string path)
     {
         _bodiesByHashV1.Handle(Arg.Any<IReadOnlyList<Hash256>>())
             .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success(
                 [new ExecutionPayloadBodyV1Result([], null)]));
+        _bodiesByHashV2.Handle(Arg.Any<IReadOnlyList<Hash256>>())
+            .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success(
+                [new ExecutionPayloadBodyV2Result([], null, null)]));
 
         byte[] body = BuildPayloadBodiesByHashRequest([TestItem.KeccakA]);
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads/bodies/by-hash", body);
+        DefaultHttpContext ctx = MakePostContext(path, body);
 
         await _middleware.InvokeAsync(ctx);
 
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        _bodiesByHashV1.Received(1).Handle(Arg.Any<IReadOnlyList<Hash256>>());
-        _bodiesByHashV2.DidNotReceive().Handle(Arg.Any<IReadOnlyList<Hash256>>());
+        _bodiesByHashV1.Received(version == 1 ? 1 : 0).Handle(Arg.Any<IReadOnlyList<Hash256>>());
+        _bodiesByHashV2.Received(version == 2 ? 1 : 0).Handle(Arg.Any<IReadOnlyList<Hash256>>());
     }
 
-    [Test]
-    public async Task GetPayloadBodiesByHashV2_calls_v2_handler_not_v1()
+    [TestCase(1, "/engine/v1/payloads/bodies/by-range")]
+    [TestCase(2, "/engine/v2/payloads/bodies/by-range")]
+    public async Task GetPayloadBodiesByRange_routes_to_correct_handler_with_correct_args(int version, string path)
     {
-        _bodiesByHashV2.Handle(Arg.Any<IReadOnlyList<Hash256>>())
-            .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success([]));
+        const long expectedStart = 7;
+        const long expectedCount = 3;
 
-        byte[] body = BuildPayloadBodiesByHashRequest([]);
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads/bodies/by-hash", body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        _bodiesByHashV2.Received(1).Handle(Arg.Any<IReadOnlyList<Hash256>>());
-        _bodiesByHashV1.DidNotReceive().Handle(Arg.Any<IReadOnlyList<Hash256>>());
-    }
-
-    [Test]
-    public async Task GetPayloadBodiesByRangeV1_calls_handler_with_correct_args()
-    {
-        long capturedStart = -1, capturedCount = -1;
+        long v1Start = -1, v1Count = -1;
+        long v2Start = -1, v2Count = -1;
         _bodiesByRangeV1
-            .Handle(Arg.Do<long>(s => capturedStart = s), Arg.Do<long>(c => capturedCount = c))
+            .Handle(Arg.Do<long>(s => v1Start = s), Arg.Do<long>(c => v1Count = c))
             .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>.Success([]));
-
-        byte[] body = BuildPayloadBodiesByRangeRequest(7, 3);
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads/bodies/by-range", body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        capturedStart.Should().Be(7);
-        capturedCount.Should().Be(3);
-        await _bodiesByRangeV2.DidNotReceive().Handle(Arg.Any<long>(), Arg.Any<long>());
-    }
-
-    [Test]
-    public async Task GetPayloadBodiesByRangeV2_uses_v2_handler_not_v1()
-    {
-        _bodiesByRangeV2.Handle(Arg.Any<long>(), Arg.Any<long>())
+        _bodiesByRangeV2
+            .Handle(Arg.Do<long>(s => v2Start = s), Arg.Do<long>(c => v2Count = c))
             .Returns(ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>.Success([]));
 
-        byte[] body = BuildPayloadBodiesByRangeRequest(1, 10);
-        DefaultHttpContext ctx = MakePostContext("/engine/v2/payloads/bodies/by-range", body);
+        byte[] body = BuildPayloadBodiesByRangeRequest((ulong)expectedStart, (ulong)expectedCount);
+        DefaultHttpContext ctx = MakePostContext(path, body);
 
         await _middleware.InvokeAsync(ctx);
 
-        await _bodiesByRangeV2.Received(1).Handle(1, 10);
-        await _bodiesByRangeV1.DidNotReceive().Handle(Arg.Any<long>(), Arg.Any<long>());
+        await _bodiesByRangeV1.Received(version == 1 ? 1 : 0).Handle(Arg.Any<long>(), Arg.Any<long>());
+        await _bodiesByRangeV2.Received(version == 2 ? 1 : 0).Handle(Arg.Any<long>(), Arg.Any<long>());
+
+        long capturedStart = version == 1 ? v1Start : v2Start;
+        long capturedCount = version == 1 ? v1Count : v2Count;
+        capturedStart.Should().Be(expectedStart);
+        capturedCount.Should().Be(expectedCount);
     }
 
     [Test]

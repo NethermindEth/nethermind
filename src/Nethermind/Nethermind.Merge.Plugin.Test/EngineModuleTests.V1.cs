@@ -1800,57 +1800,71 @@ public partial class EngineModuleTests
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
     }
 
-    [Test]
-    public void SszRestPathsAreAdvertised_for_Mainnet()
+    private static readonly string[] SszRestPathsParis =
+    [
+        "POST /engine/v1/payloads",
+        "GET /engine/v1/payloads/{payload_id}",
+        "POST /engine/v1/forkchoice",
+        "POST /engine/v1/capabilities",
+        "POST /engine/v1/client/version",
+    ];
+
+    private static readonly string[] SszRestPathsShanghai =
+    [
+        "POST /engine/v2/payloads",
+        "GET /engine/v2/payloads/{payload_id}",
+        "POST /engine/v2/forkchoice",
+        "POST /engine/v1/payloads/bodies/by-hash",
+        "POST /engine/v1/payloads/bodies/by-range",
+    ];
+
+    private static readonly string[] SszRestPathsCancun =
+    [
+        "POST /engine/v3/payloads",
+        "GET /engine/v3/payloads/{payload_id}",
+        "POST /engine/v3/forkchoice",
+        "POST /engine/v1/blobs",
+    ];
+
+    private static readonly string[] SszRestPathsPrague =
+    [
+        "POST /engine/v4/payloads",
+        "GET /engine/v4/payloads/{payload_id}",
+    ];
+
+    private static readonly string[] SszRestPathsOsaka =
+    [
+        "GET /engine/v5/payloads/{payload_id}",
+        "POST /engine/v2/blobs",
+        "POST /engine/v3/blobs",
+    ];
+
+    private static readonly string[] SszRestPathsAmsterdam =
+    [
+        "POST /engine/v5/payloads",
+        "GET /engine/v6/payloads/{payload_id}",
+        "POST /engine/v4/forkchoice",
+        "POST /engine/v2/payloads/bodies/by-hash",
+        "POST /engine/v2/payloads/bodies/by-range",
+    ];
+
+    public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()
     {
-        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
-        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
-        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
-        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
+        yield return new TestCaseData(
+            Osaka.Instance,
+            (string[])[..SszRestPathsParis, ..SszRestPathsShanghai, ..SszRestPathsCancun, ..SszRestPathsPrague, ..SszRestPathsOsaka])
+            .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Osaka");
 
-        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data
-            .Where(static s => s.Contains(' '))
-            .ToArray();
-
-        result.Should().BeEquivalentTo(new[]
-        {
-            // Paris baseline (always-on)
-            "POST /engine/v1/payloads",
-            "GET /engine/v1/payloads/{payload_id}",
-            "POST /engine/v1/forkchoice",
-            "POST /engine/v1/capabilities",
-            "POST /engine/v1/client/version",
-
-            // Shanghai
-            "POST /engine/v2/payloads",
-            "GET /engine/v2/payloads/{payload_id}",
-            "POST /engine/v2/forkchoice",
-            "POST /engine/v1/payloads/bodies/by-hash",
-            "POST /engine/v1/payloads/bodies/by-range",
-
-            // Cancun
-            "POST /engine/v3/payloads",
-            "GET /engine/v3/payloads/{payload_id}",
-            "POST /engine/v3/forkchoice",
-            "POST /engine/v1/blobs",
-
-            // Prague
-            "POST /engine/v4/payloads",
-            "GET /engine/v4/payloads/{payload_id}",
-
-            // Osaka
-            "GET /engine/v5/payloads/{payload_id}",
-            "POST /engine/v2/blobs",
-            "POST /engine/v3/blobs",
-        });
+        yield return new TestCaseData(
+            Amsterdam.Instance,
+            (string[])[..SszRestPathsParis, ..SszRestPathsShanghai, ..SszRestPathsCancun, ..SszRestPathsPrague, ..SszRestPathsOsaka, ..SszRestPathsAmsterdam])
+            .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Amsterdam");
     }
 
-    [Test]
-    public void SszRestPathsAreAdvertised_for_Amsterdam()
+    [TestCaseSource(nameof(SszRestPathsAdvertisedCases))]
+    public void SszRestPathsAreAdvertised(IReleaseSpec releaseSpec, string[] expectedPaths)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Amsterdam.Instance);
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
 
@@ -1858,44 +1872,7 @@ public partial class EngineModuleTests
             .Where(static s => s.Contains(' '))
             .ToArray();
 
-        result.Should().BeEquivalentTo(new[]
-        {
-            // Paris baseline (always-on)
-            "POST /engine/v1/payloads",
-            "GET /engine/v1/payloads/{payload_id}",
-            "POST /engine/v1/forkchoice",
-            "POST /engine/v1/capabilities",
-            "POST /engine/v1/client/version",
-
-            // Shanghai
-            "POST /engine/v2/payloads",
-            "GET /engine/v2/payloads/{payload_id}",
-            "POST /engine/v2/forkchoice",
-            "POST /engine/v1/payloads/bodies/by-hash",
-            "POST /engine/v1/payloads/bodies/by-range",
-
-            // Cancun
-            "POST /engine/v3/payloads",
-            "GET /engine/v3/payloads/{payload_id}",
-            "POST /engine/v3/forkchoice",
-            "POST /engine/v1/blobs",
-
-            // Prague
-            "POST /engine/v4/payloads",
-            "GET /engine/v4/payloads/{payload_id}",
-
-            // Osaka
-            "GET /engine/v5/payloads/{payload_id}",
-            "POST /engine/v2/blobs",
-            "POST /engine/v3/blobs",
-
-            // Amsterdam
-            "POST /engine/v5/payloads",
-            "GET /engine/v6/payloads/{payload_id}",
-            "POST /engine/v4/forkchoice",
-            "POST /engine/v2/payloads/bodies/by-hash",
-            "POST /engine/v2/payloads/bodies/by-range",
-        });
+        result.Should().BeEquivalentTo(expectedPaths);
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(

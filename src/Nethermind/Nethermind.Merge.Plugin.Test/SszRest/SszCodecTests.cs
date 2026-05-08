@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -167,18 +168,23 @@ public class SszCodecTests
         withPresent.Length.Should().BeGreaterThan(withNull.Length);
     }
 
-    [Test]
-    public void EncodeGetPayloadV1Response_produces_non_empty_bytes() =>
-        ToBytes(SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload())).Should().NotBeEmpty();
-
-    [Test]
-    public void EncodeGetPayloadV3Response_produces_non_empty_bytes()
+    private static IEnumerable<TestCaseData> NonEmptyEncodings()
     {
-        ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
-        Block block = ep.TryGetBlock().Block!;
-        ToBytes(SszCodec.EncodeGetPayloadV3Response(new GetPayloadV3Result(block, UInt256.One, new BlobsBundleV1(block), false)))
-            .Should().NotBeEmpty();
+        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
+            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload())))
+            .SetName(nameof(Encoded_buffer_is_non_empty) + "_GetPayloadV1");
+
+        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
+        {
+            ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
+            Block block = ep.TryGetBlock().Block!;
+            return SszCodec.EncodeGetPayloadV3Response(new GetPayloadV3Result(block, UInt256.One, new BlobsBundleV1(block), false));
+        })).SetName(nameof(Encoded_buffer_is_non_empty) + "_GetPayloadV3");
     }
+
+    [TestCaseSource(nameof(NonEmptyEncodings))]
+    public void Encoded_buffer_is_non_empty(Func<ArrayPoolSpan<byte>> encode) =>
+        ToBytes(encode()).Should().NotBeEmpty();
 
     private static void AssertCommonNewPayloadFields(
         byte[]?[] hashes, Hash256[] expectedHashes,
@@ -264,15 +270,20 @@ public class SszCodecTests
             requests, executionRequest);
     }
 
-    [Test]
-    public void EncodePayloadStatus_buffer_length_is_consistent() =>
-        AssertPooledBufferConsistent(
-            SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Valid }));
+    private static IEnumerable<TestCaseData> BufferConsistentEncodings()
+    {
+        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
+            SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Valid })))
+            .SetName(nameof(Encoded_buffer_length_is_consistent) + "_PayloadStatus");
 
-    [Test]
-    public void EncodeGetPayloadV1Response_buffer_length_is_consistent() =>
-        AssertPooledBufferConsistent(
-            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload()));
+        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
+            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload())))
+            .SetName(nameof(Encoded_buffer_length_is_consistent) + "_GetPayloadV1");
+    }
+
+    [TestCaseSource(nameof(BufferConsistentEncodings))]
+    public void Encoded_buffer_length_is_consistent(Func<ArrayPoolSpan<byte>> encode) =>
+        AssertPooledBufferConsistent(encode());
 
     [Test]
     public void DecodeNewPayloadRequest_unsupported_version_throws_NotSupportedException()
@@ -439,6 +450,33 @@ public class SszCodecTests
                 "payload_id bytes must match the original hex string");
     }
 
+    private static void AssertGetPayloadResponseHeaderOffsets(
+        ArrayPoolSpan<byte> encoded,
+        int fixedSectionSize,
+        UInt256 expectedBlockValue,
+        byte expectedShouldOverrideBuilder,
+        string version)
+    {
+        Span<byte> buf = encoded;
+
+        encoded.Length.Should().BeGreaterThanOrEqualTo(fixedSectionSize,
+            $"encoded {version} response must cover the {fixedSectionSize}-byte fixed section");
+
+        uint epOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
+        epOffset.Should().BeGreaterThanOrEqualTo((uint)fixedSectionSize,
+            $"execution_payload offset @ 0 must point past the {fixedSectionSize}-byte fixed section");
+
+        new UInt256(buf.Slice(4, 32), isBigEndian: false).Should()
+            .Be(expectedBlockValue, "block_value must be encoded at byte offset 4");
+
+        uint bbOffset = BitConverter.ToUInt32(buf.Slice(36, 4));
+        bbOffset.Should().BeGreaterThanOrEqualTo((uint)fixedSectionSize,
+            $"blobs_bundle offset @ 36 must point past the {fixedSectionSize}-byte fixed section");
+
+        buf[40].Should().Be(expectedShouldOverrideBuilder,
+            $"should_override_builder must encode as 0x{expectedShouldOverrideBuilder:X2} at offset 40");
+    }
+
     [Test]
     public void EncodeGetPayloadV3Response_all_static_fields_land_at_spec_defined_offsets()
     {
@@ -448,24 +486,9 @@ public class SszCodecTests
 
         using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV3Response(
             new GetPayloadV3Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: true));
-        Span<byte> buf = encoded;
 
-        encoded.Length.Should().BeGreaterThanOrEqualTo(41,
-            "encoded V3 response must cover the 41-byte fixed section");
-
-        uint epOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
-        epOffset.Should().BeGreaterThanOrEqualTo(41u,
-            "execution_payload offset @ 0 must point past the 41-byte fixed section");
-
-        new UInt256(buf.Slice(4, 32), isBigEndian: false).Should()
-            .Be(blockValue, "block_value must be encoded at byte offset 4");
-
-        uint bbOffset = BitConverter.ToUInt32(buf.Slice(36, 4));
-        bbOffset.Should().BeGreaterThanOrEqualTo(41u,
-            "blobs_bundle offset @ 36 must point past the 41-byte fixed section");
-
-        buf[40].Should().Be(1,
-            "should_override_builder=true must encode as 0x01 at offset 40");
+        AssertGetPayloadResponseHeaderOffsets(encoded, fixedSectionSize: 41, blockValue,
+            expectedShouldOverrideBuilder: 1, version: "V3");
     }
 
     [Test]
@@ -593,26 +616,11 @@ public class SszCodecTests
 
         using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV4Response(
             new GetPayloadV4Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: false, executionRequests: []));
-        Span<byte> buf = encoded;
 
-        encoded.Length.Should().BeGreaterThanOrEqualTo(45,
-            "encoded V4 response must cover the 45-byte fixed section");
+        AssertGetPayloadResponseHeaderOffsets(encoded, fixedSectionSize: 45, blockValue,
+            expectedShouldOverrideBuilder: 0, version: "V4");
 
-        uint epOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
-        epOffset.Should().BeGreaterThanOrEqualTo(45u,
-            "execution_payload offset @ 0 must point past the 45-byte fixed section");
-
-        new UInt256(buf.Slice(4, 32), isBigEndian: false).Should()
-            .Be(blockValue, "block_value must be encoded at byte offset 4");
-
-        uint bbOffset = BitConverter.ToUInt32(buf.Slice(36, 4));
-        bbOffset.Should().BeGreaterThanOrEqualTo(45u,
-            "blobs_bundle offset @ 36 must point past the 45-byte fixed section");
-
-        buf[40].Should().Be(0,
-            "should_override_builder=false must encode as 0x00 at offset 40");
-
-        uint erOffset = BitConverter.ToUInt32(buf.Slice(41, 4));
+        uint erOffset = BitConverter.ToUInt32(((Span<byte>)encoded).Slice(41, 4));
         erOffset.Should().BeGreaterThanOrEqualTo(45u,
             "execution_requests offset @ 41 must point past the 45-byte fixed section");
     }

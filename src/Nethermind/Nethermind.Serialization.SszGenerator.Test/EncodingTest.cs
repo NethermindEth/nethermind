@@ -60,14 +60,19 @@ public class EncodingTest
         Assert.That(decoded.Second, Is.Empty);
     }
 
-    [Test]
-    public void Decode_bitvector_preserves_declared_length()
+    private static BitArray MakeSampleBits10()
     {
         BitArray bits = new(10);
         bits[0] = true;
         bits[3] = true;
         bits[9] = true;
-        BitVectorContainer container = new() { Bits = bits };
+        return bits;
+    }
+
+    [Test]
+    public void Decode_bitvector_preserves_declared_length()
+    {
+        BitVectorContainer container = new() { Bits = MakeSampleBits10() };
 
         byte[] encoded = Encode(container);
         Decode(encoded, out BitVectorContainer decoded);
@@ -204,10 +209,7 @@ public class EncodingTest
     [Test]
     public void Encode_and_decode_progressive_bitlist_round_trip()
     {
-        BitArray bits = new(10);
-        bits[0] = true;
-        bits[3] = true;
-        bits[9] = true;
+        BitArray bits = MakeSampleBits10();
         ProgressiveBitlistContainer container = new() { Bits = bits };
 
         byte[] encoded = Encode(container);
@@ -221,10 +223,7 @@ public class EncodingTest
     [Test]
     public void Merkleize_progressive_bitlist_uses_progressive_merkleization()
     {
-        BitArray bits = new(10);
-        bits[0] = true;
-        bits[3] = true;
-        bits[9] = true;
+        BitArray bits = MakeSampleBits10();
         ProgressiveBitlistContainer container = new() { Bits = bits };
 
         Merkleize(container, out UInt256 actual);
