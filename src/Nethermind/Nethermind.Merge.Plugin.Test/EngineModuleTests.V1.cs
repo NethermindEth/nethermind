@@ -1852,12 +1852,12 @@ public partial class EngineModuleTests
     {
         yield return new TestCaseData(
             Osaka.Instance,
-            (string[])[..SszRestPathsParis, ..SszRestPathsShanghai, ..SszRestPathsCancun, ..SszRestPathsPrague, ..SszRestPathsOsaka])
+            (string[])[.. SszRestPathsParis, .. SszRestPathsShanghai, .. SszRestPathsCancun, .. SszRestPathsPrague, .. SszRestPathsOsaka])
             .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Osaka");
 
         yield return new TestCaseData(
             Amsterdam.Instance,
-            (string[])[..SszRestPathsParis, ..SszRestPathsShanghai, ..SszRestPathsCancun, ..SszRestPathsPrague, ..SszRestPathsOsaka, ..SszRestPathsAmsterdam])
+            (string[])[.. SszRestPathsParis, .. SszRestPathsShanghai, .. SszRestPathsCancun, .. SszRestPathsPrague, .. SszRestPathsOsaka, .. SszRestPathsAmsterdam])
             .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Amsterdam");
     }
 
