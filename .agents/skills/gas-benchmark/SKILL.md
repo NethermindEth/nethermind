@@ -114,7 +114,7 @@ If `--gas-benchmarks-ref` was provided, use it. Otherwise, **extract from the re
 Read the workflow YAML on the chosen branch to learn which inputs it supports:
 ```
 gh api repos/NethermindEth/gas-benchmarks/contents/.github/workflows/repricing-nethermind.yml?ref=<branch> \
-  --jq '.content' | base64 -d | head -60
+  --jq '.content' | base64 -d
 ```
 Note which of these inputs exist: `release_tag`, `genesis_file`, `runner`, `diagnostics_mode`, `diagnostics_xml`. Only pass flags the workflow declares.
 
@@ -146,7 +146,11 @@ Skip if `--image` is provided.
 2. Determine Dockerfile based on dotTrace:
    - dotTrace enabled → `Dockerfile.diag`, tag suffix `-diag`
    - dotTrace disabled → regular `Dockerfile`, no suffix
-3. Compute tag: `<branch-name>-diag` (if diag) or `<branch-name>` (if regular).
+3. Compute tag: sanitize the branch name (replace `/` with `-`) then append suffix:
+   ```
+   TAG=$(echo "<branch-name>" | tr '/' '-')
+   ```
+   Final tag: `<TAG>-diag` (if diag) or `<TAG>` (if regular).
 4. Capture timestamp, then trigger the docker build:
    ```
    BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -235,20 +239,31 @@ Note: do NOT exclude `dotnet` — real Nethermind exceptions contain .NET runtim
 
 ### 4b. Timing analysis
 
-Extract all `Processed` lines. For each test block (blocks with `Gas gwei` in the log line):
-- Report block number, processing time (ms), slot time (ms)
-- Identify which test scenario each block belongs to (match against preceding `[TESTING]` log lines)
+Extract test block timings:
+```
+grep "Processed" <logs> | grep "Gas gwei"
+```
+For each match, report block number, processing time (ms), slot time (ms).
+Match each block to its test scenario using the preceding `[TESTING]` log line.
 
 Sort by processing time descending. Report top 10 heaviest blocks.
 
 ### 4c. Block stats
 
-Extract `Block` stats lines (with `sload`, `sstore`, `create` counts).
+Extract block operation counts:
+```
+grep -E "Block.*sload|Block.*sstore" <logs> | grep -v "sstore     10"
+```
 Report sload/sstore/create counts for the heaviest test blocks.
 
-### 4d. Opcode tracing comparison
+### 4d. Opcode tracing comparison (only when comparing two runs)
 
-When comparing runs, download `opcodes_tracing-stateful-<network>.json` from the relevant release(s) and compare opcode counts for the specific test to confirm the workload is identical.
+When the user asks to compare runs, download the opcode tracing from each release:
+```
+gh release download <tag> --repo NethermindEth/gas-benchmarks \
+  --pattern "opcodes_tracing-stateful-<network>.json" -D /tmp/tracing-<tag> --clobber
+```
+Parse the JSON and compare opcode counts for the specific test to confirm the workload is identical.
 
 ### 4e. dotTrace analysis
 
