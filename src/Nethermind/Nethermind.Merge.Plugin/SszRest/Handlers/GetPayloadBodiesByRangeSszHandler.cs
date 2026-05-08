@@ -26,14 +26,13 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult, THandle
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body.Span);
-        ResultWrapper<IEnumerable<TResult?>> result = await TVersion.Handle(handler, start, count);
+        ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Handle(handler, start, count);
         if (result.Result != Result.Success)
         {
             await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
                 result.Result.Error ?? "Unknown error");
             return;
         }
-        IReadOnlyList<TResult?> list = result.Data as IReadOnlyList<TResult?> ?? AsReadOnlyList(result.Data!);
-        await WriteSszPooledAsync(ctx, TVersion.Encode(list));
+        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data!));
     }
 }

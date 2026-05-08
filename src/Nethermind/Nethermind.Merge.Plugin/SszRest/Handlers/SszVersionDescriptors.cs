@@ -96,7 +96,7 @@ public readonly struct PayloadBodiesByHashDescriptorV2 : IPayloadBodiesByHashVer
 public interface IPayloadBodiesByRangeVersion<TResult, THandler> where TResult : class
 {
     static abstract int VersionNumber { get; }
-    static abstract Task<ResultWrapper<IEnumerable<TResult?>>> Handle(THandler handler, long start, long count);
+    static abstract Task<ResultWrapper<IReadOnlyList<TResult?>>> Handle(THandler handler, long start, long count);
     static abstract ArrayPoolSpan<byte> Encode(IReadOnlyList<TResult?> bodies);
 }
 
@@ -104,7 +104,7 @@ public readonly struct PayloadBodiesByRangeDescriptorV1
     : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV1Result, IGetPayloadBodiesByRangeV1Handler>
 {
     public static int VersionNumber => 1;
-    public static Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> Handle(
+    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Handle(
         IGetPayloadBodiesByRangeV1Handler handler, long start, long count)
         => handler.Handle(start, count);
     public static ArrayPoolSpan<byte> Encode(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies)
@@ -115,7 +115,7 @@ public readonly struct PayloadBodiesByRangeDescriptorV2
     : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV2Result, IGetPayloadBodiesByRangeV2Handler>
 {
     public static int VersionNumber => 2;
-    public static Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> Handle(
+    public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Handle(
         IGetPayloadBodiesByRangeV2Handler handler, long start, long count)
         => handler.Handle(start, count);
     public static ArrayPoolSpan<byte> Encode(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies)

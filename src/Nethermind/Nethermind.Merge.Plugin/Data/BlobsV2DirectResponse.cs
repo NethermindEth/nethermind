@@ -19,7 +19,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <see cref="PipeWriter"/>, bypassing <see cref="System.Text.Json.Utf8JsonWriter"/>
 /// to avoid extra buffer copies for large blob payloads.
 /// </summary>
-public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobAndProofV2?>
+public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
 {
     private readonly byte[]?[] _blobs;
     private readonly ReadOnlyMemory<byte[]>[] _proofs;
@@ -32,6 +32,18 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobA
         _blobs = blobs;
         _proofs = proofs;
         _count = count;
+    }
+
+    public int Count => _count;
+
+    public BlobAndProofV2? this[int index]
+    {
+        get
+        {
+            if ((uint)index >= (uint)_count) throw new ArgumentOutOfRangeException(nameof(index));
+            byte[]? blob = _blobs[index];
+            return blob is null ? null : new BlobAndProofV2(blob, _proofs[index].ToArray());
+        }
     }
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)

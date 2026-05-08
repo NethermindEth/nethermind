@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 /// of <c>engine_getPayloadBodiesByHashV{N}</c>.
 /// </summary>
 public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
-    IHandler<IReadOnlyList<Hash256>, IEnumerable<TResult?>> handler)
+    IHandler<IReadOnlyList<Hash256>, IReadOnlyList<TResult?>> handler)
     : SszEndpointHandlerBase
     where TVersion : struct, IPayloadBodiesByHashVersion<TResult>
     where TResult : class
@@ -29,14 +29,13 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         Hash256[] hashes = SszCodec.DecodeGetPayloadBodiesByHashRequest(body.Span);
-        ResultWrapper<IEnumerable<TResult?>> result = handler.Handle(hashes);
+        ResultWrapper<IReadOnlyList<TResult?>> result = handler.Handle(hashes);
         if (result.Result != Result.Success)
         {
             await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
                 result.Result.Error ?? "Unknown error");
             return;
         }
-        IReadOnlyList<TResult?> list = result.Data as IReadOnlyList<TResult?> ?? AsReadOnlyList(result.Data!);
-        await WriteSszPooledAsync(ctx, TVersion.Encode(list));
+        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data!));
     }
 }

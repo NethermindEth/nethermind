@@ -55,12 +55,12 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
         services.Bridge<IEngineRpcModule>(ctx);
         services.Bridge<IProcessExitSource>(ctx);
 
-        services.Bridge<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(ctx);
+        services.Bridge<IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>>>(ctx);
 
-        services.Bridge<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(ctx);
+        services.Bridge<IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>>(ctx);
 
-        services.Bridge<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(ctx);
-        services.Bridge<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(ctx);
+        services.Bridge<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV1Result?>>>(ctx);
+        services.Bridge<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(ctx);
         services.Bridge<IGetPayloadBodiesByRangeV1Handler>(ctx);
         services.Bridge<IGetPayloadBodiesByRangeV2Handler>(ctx);
 

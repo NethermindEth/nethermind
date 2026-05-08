@@ -13,7 +13,7 @@ using Nethermind.Merge.Plugin.Handlers;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 public sealed class GetBlobsV1SszHandler(
-    IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> handler) : SszEndpointHandlerBase
+    IAsyncHandler<byte[][], IReadOnlyList<BlobAndProofV1?>> handler) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";
     public override string Resource => "blobs";
@@ -22,17 +22,13 @@ public sealed class GetBlobsV1SszHandler(
     public override async Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
-        ResultWrapper<IEnumerable<BlobAndProofV1?>> result = await handler.HandleAsync(hashes);
-        await WriteSszResultAsync(ctx, result, static e =>
-        {
-            IReadOnlyList<BlobAndProofV1?> list = e as IReadOnlyList<BlobAndProofV1?> ?? AsReadOnlyList(e);
-            return SszCodec.EncodeGetBlobsV1Response(list);
-        });
+        ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await handler.HandleAsync(hashes);
+        await WriteSszResultAsync(ctx, result, SszCodec.EncodeGetBlobsV1Response);
     }
 }
 
 public sealed class GetBlobsV2SszHandler<TVersion>(
-    IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> handler)
+    IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?> handler)
     : SszEndpointHandlerBase
     where TVersion : struct, IGetBlobsV2Version
 {
@@ -43,7 +39,7 @@ public sealed class GetBlobsV2SszHandler<TVersion>(
     public override async Task HandleAsync(HttpContext ctx, int v, string extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
-        ResultWrapper<IEnumerable<BlobAndProofV2?>?> result = await handler.HandleAsync(
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await handler.HandleAsync(
             new GetBlobsHandlerV2Request(hashes, AllowPartialReturn: TVersion.AllowPartialReturn));
         if (result.Result != Result.Success)
         {
@@ -56,7 +52,6 @@ public sealed class GetBlobsV2SszHandler<TVersion>(
             ctx.Response.StatusCode = StatusCodes.Status204NoContent;
             return;
         }
-        IReadOnlyList<BlobAndProofV2?> list = result.Data as IReadOnlyList<BlobAndProofV2?> ?? AsReadOnlyList(result.Data);
-        await WriteSszPooledAsync(ctx, TVersion.Encode(list));
+        await WriteSszPooledAsync(ctx, TVersion.Encode(result.Data));
     }
 }

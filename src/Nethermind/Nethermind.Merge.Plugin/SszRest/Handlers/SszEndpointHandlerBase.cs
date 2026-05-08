@@ -152,18 +152,6 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         await ctx.Response.WriteAsync(message, ctx.RequestAborted);
     }
 
-    internal static IReadOnlyList<T?> AsReadOnlyList<T>(IEnumerable<T?> source)
-    {
-        if (source is IReadOnlyList<T?> list) return list;
-        if (source is ICollection<T?> collection)
-        {
-            T?[] array = new T?[collection.Count];
-            collection.CopyTo(array, 0);
-            return array;
-        }
-        return [.. source];
-    }
-
     protected static int ErrorCodeToHttpStatus(int errorCode) => errorCode switch
     {
         MergeErrorCodes.UnknownPayload => StatusCodes.Status404NotFound,

@@ -320,7 +320,7 @@ public partial class EngineModuleTests
 
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
         Hash256[] blockHashes = [executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash];
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV1(blockHashes).Data;
         ExecutionPayloadBodyV1Result?[] expected = {
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
@@ -348,7 +348,7 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
             executionPayload2.BlockHash!, executionPayload2.BlockHash!));
 
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
@@ -360,7 +360,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = [];
 
@@ -372,7 +372,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
+        Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1025);
 
         result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
@@ -384,7 +384,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
-        Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
+        Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByHashV1(hashes);
 
         result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
@@ -395,7 +395,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
+        Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(0, 1);
 
         result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
@@ -435,7 +435,7 @@ public partial class EngineModuleTests
 
             fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-            IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+            IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
                 rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
             ExecutionPayloadBodyV1Result[] expected =
             [
@@ -464,7 +464,7 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV2(
                 new ForkchoiceStateV1(newBlock.Hash!, newBlock.Hash!, newBlock.Hash!));
 
-            IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+            IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
                 rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
             ExecutionPayloadBodyV1Result[] expected =
             [
@@ -478,7 +478,7 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(PayloadBodiesByRangeNullTrimTestCases))]
     public async Task getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies(
         (Func<CallInfo, Block?> Impl,
-            IEnumerable<ExecutionPayloadBodyV1Result?> Outcome) input)
+            IReadOnlyList<ExecutionPayloadBodyV1Result?> Outcome) input)
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
@@ -494,7 +494,7 @@ public partial class EngineModuleTests
                 }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
         payloadBodies.Should().BeEquivalentTo(input.Outcome);
@@ -517,10 +517,10 @@ public partial class EngineModuleTests
             }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 7).Result.Data;
 
-        payloadBodies.Count().Should().Be(5);
+        payloadBodies.Count.Should().Be(5);
     }
 
     [Test]
@@ -879,7 +879,7 @@ public partial class EngineModuleTests
 
     protected static IEnumerable<(
         Func<CallInfo, Block?>,
-        IEnumerable<ExecutionPayloadBodyV1Result?>
+        IReadOnlyList<ExecutionPayloadBodyV1Result?>
         )> PayloadBodiesByRangeNullTrimTestCases()
     {
         Block block = Build.A.Block.TestObject;
@@ -897,7 +897,7 @@ public partial class EngineModuleTests
 
         yield return (
             _ => block,
-            Enumerable.Repeat(result, 5)
+            (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]
         );
     }
 
