@@ -13,7 +13,6 @@ using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -147,25 +146,11 @@ public class SszMiddlewareTests
         return ms.ToArray();
     }
 
-    private static byte[] ToBytes(ArrayPoolSpan<byte> span)
+    private static byte[] EncodeToBytes<T>(T value, Func<T, IBufferWriter<byte>, int> encode)
     {
-        try { return ((ReadOnlySpan<byte>)span).ToArray(); }
-        finally { span.Dispose(); }
-    }
-
-    private static (byte[] buffer, int length) ToPooledTuple(ArrayPoolSpan<byte> span)
-    {
-        int len = span.Length;
-        byte[] rented = ArrayPool<byte>.Shared.Rent(len);
-        try
-        {
-            ((ReadOnlySpan<byte>)span).CopyTo(rented);
-        }
-        finally
-        {
-            span.Dispose();
-        }
-        return (rented, len);
+        ArrayBufferWriter<byte> w = new();
+        encode(value, w);
+        return w.WrittenSpan.ToArray();
     }
 
     [TestCase(1, "/engine/v1/payloads")]
@@ -557,7 +542,7 @@ public class SszMiddlewareTests
     }
 
     private static byte[] BuildCapabilitiesRequest(string[] capabilities) =>
-        ToBytes(SszCodec.EncodeCapabilitiesResponse(capabilities));
+        EncodeToBytes<IReadOnlyList<string>>(capabilities, SszCodec.EncodeCapabilitiesResponse);
 
     private static byte[] BuildClientVersionRequest()
     {
@@ -574,5 +559,5 @@ public class SszMiddlewareTests
     }
 
     private static byte[] BuildTransitionConfigRequest(TransitionConfigurationV1 tc) =>
-        ToBytes(SszCodec.EncodeTransitionConfigurationResponse(tc));
+        EncodeToBytes(tc, SszCodec.EncodeTransitionConfigurationResponse);
 }

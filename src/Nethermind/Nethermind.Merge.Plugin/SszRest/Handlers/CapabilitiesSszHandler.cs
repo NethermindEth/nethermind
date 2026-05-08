@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 public sealed class CapabilitiesSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "capabilities";
+    public override string Resource => SszRestPaths.Capabilities;
     public override int? Version => 1;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)

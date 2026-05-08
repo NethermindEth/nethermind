@@ -20,7 +20,7 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     where TResult : class
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "payloads/bodies/by-range";
+    public override string Resource => SszRestPaths.PayloadBodiesByRange;
     public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)

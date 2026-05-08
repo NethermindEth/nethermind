@@ -20,7 +20,7 @@ public sealed class ForkchoiceUpdatedSszHandler<TVersion, TWire>(IEngineRpcModul
     where TWire : struct, ISszCodec<TWire>
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "forkchoice";
+    public override string Resource => SszRestPaths.Forkchoice;
     public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)

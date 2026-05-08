@@ -18,7 +18,7 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule) : Ssz
     private readonly IEngineRpcModule _engineModule = engineModule;
 
     public override string HttpMethod => "POST";
-    public override string Resource => "client/version";
+    public override string Resource => SszRestPaths.ClientVersion;
     public override int? Version => 1;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)

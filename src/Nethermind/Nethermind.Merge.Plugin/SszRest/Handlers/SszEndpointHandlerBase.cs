@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.IO.Pipelines;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Base class for SSZ-REST endpoint handlers.
-/// Provides shared HTTP response-writing helpers so no handler
-/// duplicates the ArrayPool-return, status-code, or Content-Type logic.
+/// Base class for SSZ-REST endpoint handlers. Encoders write directly into the
+/// response <see cref="PipeWriter"/>; no intermediate pooled buffer is held.
 /// </summary>
 public abstract class SszEndpointHandlerBase : ISszEndpointHandler
 {
@@ -30,28 +30,25 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body);
 
-    private static async Task WriteSszPooledAsync(HttpContext ctx, ArrayPoolSpan<byte> span)
+    private static async Task WriteSszAsync<T>(HttpContext ctx, T value, Func<T, IBufferWriter<byte>, int> encode)
     {
-        try
-        {
-            ctx.Response.ContentType = OctetStream;
-            ctx.Response.ContentLength = span.Length;
-            ctx.Response.StatusCode = StatusCodes.Status200OK;
-            await ctx.Response.Body.WriteAsync(span.AsMemory(), ctx.RequestAborted);
-            await ctx.Response.CompleteAsync();
-        }
-        finally
-        {
-            span.Dispose();
-        }
+        // GetSpan/Advance buffer into the response pipe without starting the response;
+        // headers (incl. ContentLength) remain settable until FlushAsync.
+        PipeWriter pipe = ctx.Response.BodyWriter;
+        int length = encode(value, pipe);
+        ctx.Response.ContentType = OctetStream;
+        ctx.Response.ContentLength = length;
+        ctx.Response.StatusCode = StatusCodes.Status200OK;
+        await pipe.FlushAsync(ctx.RequestAborted);
+        await ctx.Response.CompleteAsync();
     }
 
-    protected static Task WriteSszResultAsync<T>(HttpContext ctx, ResultWrapper<T> result, Func<T, ArrayPoolSpan<byte>> encode) =>
+    protected static Task WriteSszResultAsync<T>(HttpContext ctx, ResultWrapper<T> result, Func<T, IBufferWriter<byte>, int> encode) =>
         result switch
         {
             { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error"),
             { Data: null } => SetNoContent(ctx),
-            { Data: var data } => WriteSszPooledAsync(ctx, encode(data))
+            { Data: var data } => WriteSszAsync(ctx, data, encode)
         };
 
     private static Task SetNoContent(HttpContext ctx)

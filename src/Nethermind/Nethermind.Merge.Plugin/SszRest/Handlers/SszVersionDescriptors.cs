@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
@@ -17,7 +17,7 @@ public interface IGetPayloadVersion<TResult> where TResult : class
 {
     static abstract int VersionNumber { get; }
     static abstract Task<ResultWrapper<TResult?>> Call(IEngineRpcModule engine, byte[] id);
-    static abstract ArrayPoolSpan<byte> Encode(TResult result);
+    static abstract int Encode(TResult result, IBufferWriter<byte> writer);
 }
 
 public interface INewPayloadVersion<TWire> where TWire : struct, ISszCodec<TWire>
@@ -127,8 +127,8 @@ public readonly struct GetPayloadDescriptorV1 : IGetPayloadVersion<ExecutionPayl
     public static int VersionNumber => EngineApiVersions.GetPayload.V1;
     public static Task<ResultWrapper<ExecutionPayload?>> Call(IEngineRpcModule engine, byte[] id)
         => engine.engine_getPayloadV1(id);
-    public static ArrayPoolSpan<byte> Encode(ExecutionPayload result)
-        => SszCodec.EncodeGetPayloadV1Response(result);
+    public static int Encode(ExecutionPayload result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV1Response(result, writer);
 }
 
 public readonly struct GetPayloadDescriptorV2 : IGetPayloadVersion<GetPayloadV2Result>
@@ -136,8 +136,8 @@ public readonly struct GetPayloadDescriptorV2 : IGetPayloadVersion<GetPayloadV2R
     public static int VersionNumber => EngineApiVersions.GetPayload.V2;
     public static Task<ResultWrapper<GetPayloadV2Result?>> Call(IEngineRpcModule engine, byte[] id)
         => engine.engine_getPayloadV2(id);
-    public static ArrayPoolSpan<byte> Encode(GetPayloadV2Result result)
-        => SszCodec.EncodeGetPayloadV2Response(result);
+    public static int Encode(GetPayloadV2Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV2Response(result, writer);
 }
 
 public readonly struct GetPayloadDescriptorV3 : IGetPayloadVersion<GetPayloadV3Result>
@@ -145,8 +145,8 @@ public readonly struct GetPayloadDescriptorV3 : IGetPayloadVersion<GetPayloadV3R
     public static int VersionNumber => EngineApiVersions.GetPayload.V3;
     public static Task<ResultWrapper<GetPayloadV3Result?>> Call(IEngineRpcModule engine, byte[] id)
         => engine.engine_getPayloadV3(id);
-    public static ArrayPoolSpan<byte> Encode(GetPayloadV3Result result)
-        => SszCodec.EncodeGetPayloadV3Response(result);
+    public static int Encode(GetPayloadV3Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV3Response(result, writer);
 }
 
 public readonly struct GetPayloadDescriptorV4 : IGetPayloadVersion<GetPayloadV4Result>
@@ -154,8 +154,8 @@ public readonly struct GetPayloadDescriptorV4 : IGetPayloadVersion<GetPayloadV4R
     public static int VersionNumber => EngineApiVersions.GetPayload.V4;
     public static Task<ResultWrapper<GetPayloadV4Result?>> Call(IEngineRpcModule engine, byte[] id)
         => engine.engine_getPayloadV4(id);
-    public static ArrayPoolSpan<byte> Encode(GetPayloadV4Result result)
-        => SszCodec.EncodeGetPayloadV4Response(result);
+    public static int Encode(GetPayloadV4Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV4Response(result, writer);
 }
 
 public readonly struct GetPayloadDescriptorV5 : IGetPayloadVersion<GetPayloadV5Result>
@@ -163,8 +163,8 @@ public readonly struct GetPayloadDescriptorV5 : IGetPayloadVersion<GetPayloadV5R
     public static int VersionNumber => EngineApiVersions.GetPayload.V5;
     public static Task<ResultWrapper<GetPayloadV5Result?>> Call(IEngineRpcModule engine, byte[] id)
         => engine.engine_getPayloadV5(id);
-    public static ArrayPoolSpan<byte> Encode(GetPayloadV5Result result)
-        => SszCodec.EncodeGetPayloadV5Response(result);
+    public static int Encode(GetPayloadV5Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV5Response(result, writer);
 }
 
 public readonly struct GetPayloadDescriptorV6 : IGetPayloadVersion<GetPayloadV6Result>
@@ -172,15 +172,15 @@ public readonly struct GetPayloadDescriptorV6 : IGetPayloadVersion<GetPayloadV6R
     public static int VersionNumber => EngineApiVersions.GetPayload.V6;
     public static Task<ResultWrapper<GetPayloadV6Result?>> Call(IEngineRpcModule engine, byte[] id)
         => engine.engine_getPayloadV6(id);
-    public static ArrayPoolSpan<byte> Encode(GetPayloadV6Result result)
-        => SszCodec.EncodeGetPayloadV6Response(result);
+    public static int Encode(GetPayloadV6Result result, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetPayloadV6Response(result, writer);
 }
 
 public interface IPayloadBodiesByHashVersion<TResult> where TResult : class
 {
     static abstract int VersionNumber { get; }
     static abstract Task<ResultWrapper<IReadOnlyList<TResult?>>> Call(IEngineRpcModule engine, IReadOnlyList<Hash256> hashes);
-    static abstract ArrayPoolSpan<byte> Encode(IReadOnlyList<TResult?> bodies);
+    static abstract int Encode(IReadOnlyList<TResult?> bodies, IBufferWriter<byte> writer);
 }
 
 public readonly struct PayloadBodiesByHashDescriptorV1 : IPayloadBodiesByHashVersion<ExecutionPayloadBodyV1Result>
@@ -188,8 +188,8 @@ public readonly struct PayloadBodiesByHashDescriptorV1 : IPayloadBodiesByHashVer
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByHash.V1;
     public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Call(IEngineRpcModule engine, IReadOnlyList<Hash256> hashes)
         => Task.FromResult(engine.engine_getPayloadBodiesByHashV1(hashes));
-    public static ArrayPoolSpan<byte> Encode(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies)
-        => SszCodec.EncodePayloadBodiesV1Response(bodies);
+    public static int Encode(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
+        => SszCodec.EncodePayloadBodiesV1Response(bodies, writer);
 }
 
 public readonly struct PayloadBodiesByHashDescriptorV2 : IPayloadBodiesByHashVersion<ExecutionPayloadBodyV2Result>
@@ -197,15 +197,15 @@ public readonly struct PayloadBodiesByHashDescriptorV2 : IPayloadBodiesByHashVer
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByHash.V2;
     public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Call(IEngineRpcModule engine, IReadOnlyList<Hash256> hashes)
         => engine.engine_getPayloadBodiesByHashV2(hashes);
-    public static ArrayPoolSpan<byte> Encode(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies)
-        => SszCodec.EncodePayloadBodiesV2Response(bodies);
+    public static int Encode(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies, IBufferWriter<byte> writer)
+        => SszCodec.EncodePayloadBodiesV2Response(bodies, writer);
 }
 
 public interface IPayloadBodiesByRangeVersion<TResult> where TResult : class
 {
     static abstract int VersionNumber { get; }
     static abstract Task<ResultWrapper<IReadOnlyList<TResult?>>> Call(IEngineRpcModule engine, long start, long count);
-    static abstract ArrayPoolSpan<byte> Encode(IReadOnlyList<TResult?> bodies);
+    static abstract int Encode(IReadOnlyList<TResult?> bodies, IBufferWriter<byte> writer);
 }
 
 public readonly struct PayloadBodiesByRangeDescriptorV1 : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV1Result>
@@ -213,8 +213,8 @@ public readonly struct PayloadBodiesByRangeDescriptorV1 : IPayloadBodiesByRangeV
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByRange.V1;
     public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> Call(IEngineRpcModule engine, long start, long count)
         => engine.engine_getPayloadBodiesByRangeV1(start, count);
-    public static ArrayPoolSpan<byte> Encode(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies)
-        => SszCodec.EncodePayloadBodiesV1Response(bodies);
+    public static int Encode(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
+        => SszCodec.EncodePayloadBodiesV1Response(bodies, writer);
 }
 
 public readonly struct PayloadBodiesByRangeDescriptorV2 : IPayloadBodiesByRangeVersion<ExecutionPayloadBodyV2Result>
@@ -222,15 +222,15 @@ public readonly struct PayloadBodiesByRangeDescriptorV2 : IPayloadBodiesByRangeV
     public static int VersionNumber => EngineApiVersions.PayloadBodiesByRange.V2;
     public static Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> Call(IEngineRpcModule engine, long start, long count)
         => engine.engine_getPayloadBodiesByRangeV2(start, count);
-    public static ArrayPoolSpan<byte> Encode(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies)
-        => SszCodec.EncodePayloadBodiesV2Response(bodies);
+    public static int Encode(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies, IBufferWriter<byte> writer)
+        => SszCodec.EncodePayloadBodiesV2Response(bodies, writer);
 }
 
 public interface IGetBlobsV2Version
 {
     static abstract int VersionNumber { get; }
     static abstract Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> Call(IEngineRpcModule engine, byte[][] hashes);
-    static abstract ArrayPoolSpan<byte> Encode(IReadOnlyList<BlobAndProofV2?> blobs);
+    static abstract int Encode(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer);
 }
 
 public readonly struct GetBlobsDescriptorV2 : IGetBlobsV2Version
@@ -238,8 +238,8 @@ public readonly struct GetBlobsDescriptorV2 : IGetBlobsV2Version
     public static int VersionNumber => EngineApiVersions.GetBlobs.V2;
     public static Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> Call(IEngineRpcModule engine, byte[][] hashes)
         => engine.engine_getBlobsV2(hashes);
-    public static ArrayPoolSpan<byte> Encode(IReadOnlyList<BlobAndProofV2?> blobs)
-        => SszCodec.EncodeGetBlobsV2Response(blobs);
+    public static int Encode(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetBlobsV2Response(blobs, writer);
 }
 
 public readonly struct GetBlobsDescriptorV3 : IGetBlobsV2Version
@@ -247,6 +247,6 @@ public readonly struct GetBlobsDescriptorV3 : IGetBlobsV2Version
     public static int VersionNumber => EngineApiVersions.GetBlobs.V3;
     public static Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> Call(IEngineRpcModule engine, byte[][] hashes)
         => engine.engine_getBlobsV3(hashes);
-    public static ArrayPoolSpan<byte> Encode(IReadOnlyList<BlobAndProofV2?> blobs)
-        => SszCodec.EncodeGetBlobsV3Response(blobs);
+    public static int Encode(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
+        => SszCodec.EncodeGetBlobsV3Response(blobs, writer);
 }

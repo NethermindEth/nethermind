@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -15,10 +15,6 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-/// <summary>
-/// Converts between Engine API domain objects and SSZ wire types.
-/// Encode/decode uses the SSZ source-generator (<see cref="ISszCodec{T}"/>)
-/// </summary>
 /// <summary>
 /// Wire-byte values for <see cref="PayloadStatusV1.Status"/> per the SSZ-REST spec
 /// (execution-apis #764, <c>PayloadStatusV1</c> definition).
@@ -32,21 +28,29 @@ internal static class SszPayloadStatus
     public const byte InvalidBlockHash = 4;
 }
 
+/// <summary>
+/// Converts between Engine API domain objects and SSZ wire types.
+/// Encode/decode uses the SSZ source-generator (<see cref="ISszCodec{T}"/>).
+/// </summary>
 public static class SszCodec
 {
-
-    private static ArrayPoolSpan<byte> EncodePooled<T>(T value) where T : ISszCodec<T>
+    /// <summary>
+    /// SSZ-encodes <paramref name="value"/> directly into <paramref name="writer"/>'s buffer
+    /// (no intermediate pooled allocation) and returns the number of bytes written.
+    /// </summary>
+    private static int EncodeToWriter<T>(T value, IBufferWriter<byte> writer) where T : ISszCodec<T>
     {
         int length = T.GetLength(value);
-        ArrayPoolSpan<byte> span = new(length);
-        T.Encode(span, value);
-        return span;
+        Span<byte> dst = writer.GetSpan(length)[..length];
+        T.Encode(dst, value);
+        writer.Advance(length);
+        return length;
     }
 
-    public static ArrayPoolSpan<byte> EncodePayloadStatus(PayloadStatusV1 ps)
-        => EncodePooled(BuildPayloadStatusWire(ps));
+    public static int EncodePayloadStatus(PayloadStatusV1 ps, IBufferWriter<byte> writer)
+        => EncodeToWriter(BuildPayloadStatusWire(ps), writer);
 
-    public static ArrayPoolSpan<byte> EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp)
+    public static int EncodeForkchoiceUpdatedResponse(ForkchoiceUpdatedV1Result resp, IBufferWriter<byte> writer)
     {
         SszBytes8[]? pidList = null;
         if (resp.PayloadId is not null)
@@ -60,11 +64,11 @@ public static class SszCodec
             pidList = [SszBytes8.FromSpan(stack)];
         }
 
-        return EncodePooled(new ForkchoiceUpdatedResponseWire
+        return EncodeToWriter(new ForkchoiceUpdatedResponseWire
         {
             PayloadStatus = BuildPayloadStatusWire(resp.PayloadStatus),
             PayloadId = pidList ?? []
-        });
+        }, writer);
     }
 
     internal static ForkchoiceStateV1 ForkchoiceStateV1FromWire(ForkchoiceStateWire w) => new(
@@ -73,54 +77,54 @@ public static class SszCodec
         safeBlockHash: w.SafeBlockHash);
 
 
-    public static ArrayPoolSpan<byte> EncodeGetPayloadV1Response(ExecutionPayload ep)
-        => EncodePooled(new SszExecutionPayloadV1(ep));
+    public static int EncodeGetPayloadV1Response(ExecutionPayload ep, IBufferWriter<byte> writer)
+        => EncodeToWriter(new SszExecutionPayloadV1(ep), writer);
 
-    public static ArrayPoolSpan<byte> EncodeGetPayloadV2Response(GetPayloadV2Result? r)
-        => EncodePooled(new GetPayloadResponseV2Wire
+    public static int EncodeGetPayloadV2Response(GetPayloadV2Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV2Wire
         {
             ExecutionPayload = new SszExecutionPayload(r!.ExecutionPayload),
             BlockValue = r.BlockValue
-        });
+        }, writer);
 
-    public static ArrayPoolSpan<byte> EncodeGetPayloadV3Response(GetPayloadV3Result? r)
-        => EncodePooled(new GetPayloadResponseV3Wire
+    public static int EncodeGetPayloadV3Response(GetPayloadV3Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV3Wire
         {
             ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder
-        });
+        }, writer);
 
-    public static ArrayPoolSpan<byte> EncodeGetPayloadV4Response(GetPayloadV4Result? r)
-        => EncodePooled(new GetPayloadResponseV4Wire
+    public static int EncodeGetPayloadV4Response(GetPayloadV4Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV4Wire
         {
             ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
             ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
-        });
+        }, writer);
 
-    public static ArrayPoolSpan<byte> EncodeGetPayloadV5Response(GetPayloadV5Result? r)
-        => EncodePooled(new GetPayloadResponseV5Wire
+    public static int EncodeGetPayloadV5Response(GetPayloadV5Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV5Wire
         {
             ExecutionPayload = new SszExecutionPayloadV3((ExecutionPayloadV3)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
             ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
-        });
+        }, writer);
 
-    public static ArrayPoolSpan<byte> EncodeGetPayloadV6Response(GetPayloadV6Result? r)
-        => EncodePooled(new GetPayloadResponseV6Wire
+    public static int EncodeGetPayloadV6Response(GetPayloadV6Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV6Wire
         {
             ExecutionPayload = new SszExecutionPayloadV4((ExecutionPayloadV4)r!.ExecutionPayload),
             BlockValue = r.BlockValue,
             BlobsBundle = r.BlobsBundle.ToWire(),
             ShouldOverrideBuilder = r.ShouldOverrideBuilder,
             ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire()
-        });
+        }, writer);
 
     public static byte[][] DecodeGetBlobsRequest(ReadOnlySpan<byte> buf)
     {
@@ -132,7 +136,7 @@ public static class SszCodec
         return result;
     }
 
-    public static ArrayPoolSpan<byte> EncodeGetBlobsV1Response(IReadOnlyList<BlobAndProofV1?> blobs)
+    public static int EncodeGetBlobsV1Response(IReadOnlyList<BlobAndProofV1?> blobs, IBufferWriter<byte> writer)
     {
         // V1 SSZ has no nullable wrapper, nulls (unknown hashes) are dropped and the CL
         // infers misses by comparing response length to request length.
@@ -144,10 +148,10 @@ public static class SszCodec
             BlobAndProofV1? b = blobs[i];
             if (b is not null) arr[filled++] = new() { Blob = b.Blob, Proof = b.Proof };
         }
-        return EncodePooled(new GetBlobsV1ResponseWire { BlobsAndProofs = arr[..filled] });
+        return EncodeToWriter(new GetBlobsV1ResponseWire { BlobsAndProofs = arr[..filled] }, writer);
     }
 
-    public static ArrayPoolSpan<byte> EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs)
+    public static int EncodeGetBlobsV2Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
     {
         // Same null-drop as V1.
         int count = blobs.Count;
@@ -158,10 +162,10 @@ public static class SszCodec
             BlobAndProofV2? b = blobs[i];
             if (b is not null) arr[filled++] = new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() };
         }
-        return EncodePooled(new GetBlobsV2ResponseWire { BlobsAndProofs = arr[..filled] });
+        return EncodeToWriter(new GetBlobsV2ResponseWire { BlobsAndProofs = arr[..filled] }, writer);
     }
 
-    public static ArrayPoolSpan<byte> EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs)
+    public static int EncodeGetBlobsV3Response(IReadOnlyList<BlobAndProofV2?> blobs, IBufferWriter<byte> writer)
     {
         int count = blobs.Count;
         NullableBlobAndProofV2Wire[] arr = new NullableBlobAndProofV2Wire[count];
@@ -172,7 +176,7 @@ public static class SszCodec
                 ? new() { BlobAndProof = [] }
                 : new() { BlobAndProof = [new() { Blob = b.Blob, Proofs = b.Proofs.ToKzgWire() }] };
         }
-        return EncodePooled(new GetBlobsV3ResponseWire { BlobsAndProofs = arr });
+        return EncodeToWriter(new GetBlobsV3ResponseWire { BlobsAndProofs = arr }, writer);
     }
 
     public static Hash256[] DecodeGetPayloadBodiesByHashRequest(ReadOnlySpan<byte> buf)
@@ -187,7 +191,7 @@ public static class SszCodec
         return ((long)wire.Start, (long)wire.Count);
     }
 
-    public static ArrayPoolSpan<byte> EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies)
+    public static int EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
     {
         int count = bodies.Count;
         NullablePayloadBodyV1Wire[] arr = new NullablePayloadBodyV1Wire[count];
@@ -196,10 +200,10 @@ public static class SszCodec
             ExecutionPayloadBodyV1Result? b = bodies[i];
             arr[i] = new() { Body = b is null ? [] : [b.ToBodyWire()] };
         }
-        return EncodePooled(new PayloadBodiesV1ResponseWire { PayloadBodies = arr });
+        return EncodeToWriter(new PayloadBodiesV1ResponseWire { PayloadBodies = arr }, writer);
     }
 
-    public static ArrayPoolSpan<byte> EncodePayloadBodiesV2Response(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies)
+    public static int EncodePayloadBodiesV2Response(IReadOnlyList<ExecutionPayloadBodyV2Result?> bodies, IBufferWriter<byte> writer)
     {
         int count = bodies.Count;
         NullablePayloadBodyV2Wire[] arr = new NullablePayloadBodyV2Wire[count];
@@ -208,7 +212,7 @@ public static class SszCodec
             ExecutionPayloadBodyV2Result? b = bodies[i];
             arr[i] = new() { Body = b is null ? [] : [b.ToBodyWire()] };
         }
-        return EncodePooled(new PayloadBodiesV2ResponseWire { PayloadBodies = arr });
+        return EncodeToWriter(new PayloadBodiesV2ResponseWire { PayloadBodies = arr }, writer);
     }
 
     public static TransitionConfigurationV1 DecodeTransitionConfigurationRequest(ReadOnlySpan<byte> buf)
@@ -223,8 +227,8 @@ public static class SszCodec
         };
     }
 
-    public static ArrayPoolSpan<byte> EncodeTransitionConfigurationResponse(TransitionConfigurationV1 tc)
-        => EncodePooled(new ExchangeTransitionConfigurationWire
+    public static int EncodeTransitionConfigurationResponse(TransitionConfigurationV1 tc, IBufferWriter<byte> writer)
+        => EncodeToWriter(new ExchangeTransitionConfigurationWire
         {
             TransitionConfiguration = new()
             {
@@ -232,15 +236,15 @@ public static class SszCodec
                 TerminalBlockHash = tc.TerminalBlockHash ?? Hash256.Zero,
                 TerminalBlockNumber = (ulong)tc.TerminalBlockNumber
             }
-        });
+        }, writer);
 
-    public static ArrayPoolSpan<byte> EncodeCapabilitiesResponse(IReadOnlyList<string> caps)
+    public static int EncodeCapabilitiesResponse(IReadOnlyList<string> caps, IBufferWriter<byte> writer)
     {
         int count = caps.Count;
         SszCapabilityName[] arr = new SszCapabilityName[count];
         for (int i = 0; i < count; i++)
             arr[i] = new() { Name = Encoding.UTF8.GetBytes(caps[i]) };
-        return EncodePooled(new ExchangeCapabilitiesResponseWire { Capabilities = arr });
+        return EncodeToWriter(new ExchangeCapabilitiesResponseWire { Capabilities = arr }, writer);
     }
 
     public static string[] DecodeCapabilitiesRequest(ReadOnlySpan<byte> buf)
@@ -266,7 +270,7 @@ public static class SszCodec
         };
     }
 
-    public static ArrayPoolSpan<byte> EncodeClientVersionResponse(ClientVersionV1[] versions)
+    public static int EncodeClientVersionResponse(ClientVersionV1[] versions, IBufferWriter<byte> writer)
     {
         ClientVersionWire[] wireVersions = new ClientVersionWire[versions.Length];
         for (int i = 0; i < versions.Length; i++)
@@ -283,7 +287,7 @@ public static class SszCodec
                 Commit = commit
             };
         }
-        return EncodePooled(new GetClientVersionResponseWire { Versions = wireVersions });
+        return EncodeToWriter(new GetClientVersionResponseWire { Versions = wireVersions }, writer);
     }
 
     private static byte EngineStatusToSsz(string status) => status switch

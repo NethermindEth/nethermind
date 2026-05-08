@@ -32,9 +32,10 @@ class SszType
 
     /// <summary>
     /// Factory for BCL primitive numerics (and bool). Pulls Name/Namespace from
-    /// <c>typeof(T)</c>; size is derived from <see cref="System.Runtime.InteropServices.Marshal.SizeOf{T}"/>
-    /// with a bool override (<see cref="System.Runtime.InteropServices.Marshal.SizeOf{T}"/>
-    /// returns 4 for <c>bool</c> due to native marshaling, but SSZ encodes it as 1 byte).
+    /// <c>typeof(T)</c>; size is the managed size from
+    /// <see cref="System.Runtime.CompilerServices.Unsafe.SizeOf{T}"/>, which returns
+    /// 1 for <c>bool</c> (matching SSZ's 1-byte encoding) and avoids the
+    /// <c>Marshal.SizeOf&lt;bool&gt;()</c> = 4 native-marshaling quirk.
     /// </summary>
     private static SszType Primitive<T>() where T : unmanaged =>
         new()
@@ -42,7 +43,7 @@ class SszType
             Namespace = typeof(T).Namespace!,
             Name = typeof(T).Name,
             Kind = Kind.Basic,
-            StaticLength = typeof(T) == typeof(bool) ? 1 : System.Runtime.InteropServices.Marshal.SizeOf<T>(),
+            StaticLength = System.Runtime.CompilerServices.Unsafe.SizeOf<T>(),
         };
 
     /// <summary>
@@ -63,6 +64,11 @@ class SszType
         };
 
     public static List<SszType> KnownTypes { get; set; } = [];
+
+    // Identity gate: avoids re-walking the namespace tree once per [SszContainer] in a
+    // single compilation, and resets KnownTypes when Roslyn hands us a fresh Compilation
+    // (incremental rebuilds, multi-project solutions) so the list doesn't grow monotonically.
+    private static WeakReference<Compilation>? _lastDiscoveredCompilation;
 
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
@@ -98,10 +104,20 @@ class SszType
 
     internal static void DiscoverKnownTypes(Compilation compilation)
     {
+        if (_lastDiscoveredCompilation?.TryGetTarget(out Compilation? prev) == true
+            && ReferenceEquals(prev, compilation))
+            return;
+
         INamedTypeSymbol? attrSymbol = compilation.GetTypeByMetadataName(
             "Nethermind.Serialization.Ssz.SszBasicTypeAttribute");
-        if (attrSymbol is null) return;
+        if (attrSymbol is null)
+        {
+            KnownTypes.Clear();
+            _lastDiscoveredCompilation = new WeakReference<Compilation>(compilation);
+            return;
+        }
 
+        List<SszType> discovered = [];
         foreach (INamedTypeSymbol type in GetAllTypes(compilation.GlobalNamespace))
         {
             AttributeData? attr = type.GetAttributes()
@@ -118,14 +134,9 @@ class SszType
             string? decodeTemplate = attr.NamedArguments
                 .FirstOrDefault(kv => kv.Key == "DecodeTemplate").Value.Value as string;
 
-            string? ns = type.ContainingNamespace?.ToString();
-
-            if (KnownTypes.Any(t => t.Name == type.Name && t.Namespace == ns))
-                continue;
-
-            KnownTypes.Add(new SszType
+            discovered.Add(new SszType
             {
-                Namespace = ns,
+                Namespace = type.ContainingNamespace?.ToString(),
                 Name = type.Name,
                 Kind = Kind.Basic,
                 StaticLength = staticLength,
@@ -134,6 +145,9 @@ class SszType
                 CustomDecodeTemplate = decodeTemplate,
             });
         }
+
+        KnownTypes = discovered;
+        _lastDiscoveredCompilation = new WeakReference<Compilation>(compilation);
     }
 
     private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns)

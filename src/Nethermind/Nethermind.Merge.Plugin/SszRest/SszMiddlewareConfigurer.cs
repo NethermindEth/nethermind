@@ -6,7 +6,6 @@ using Autofac;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
@@ -20,10 +19,11 @@ namespace Nethermind.Merge.Plugin.SszRest;
 /// Bridges the Autofac container (where Engine API domain handlers live) to ASP.NET
 /// Core's MS DI container so that <see cref="SszMiddleware"/> and its
 /// <see cref="ISszEndpointHandler"/> implementations can be resolved by Kestrel.
-/// <para>
+/// </summary>
+/// <remarks>
 /// Registered in Autofac by <c>BaseMergePluginModule</c>; called by
 /// <c>JsonRpcRunner</c> during web-host startup via <see cref="IJsonRpcServiceConfigurer"/>.
-/// </summary>
+/// </remarks>
 public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcServiceConfigurer
 {
     private static readonly Type[] SingletonHandlers =
@@ -35,6 +35,7 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
 
     public void Configure(IServiceCollection services)
     {
+        // IJsonRpcUrlCollection is registered by JsonRpcRunner.Start; we bridge only what isn't.
         services.AddTransient<IStartupFilter, SszMiddlewareStartupFilter>();
 
         services.Bridge<ILogManager>(ctx);

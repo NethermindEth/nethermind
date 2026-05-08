@@ -20,7 +20,7 @@ public sealed class NewPayloadSszHandler<TVersion, TWire>(IEngineRpcModule engin
     where TWire : struct, ISszCodec<TWire>
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "payloads";
+    public override string Resource => SszRestPaths.Payloads;
     public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)

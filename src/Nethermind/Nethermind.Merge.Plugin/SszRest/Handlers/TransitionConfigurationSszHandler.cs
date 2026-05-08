@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 public sealed class TransitionConfigurationSszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "transition-configuration";
+    public override string Resource => SszRestPaths.TransitionConfiguration;
     public override int? Version => 1;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)

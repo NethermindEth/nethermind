@@ -14,7 +14,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 public sealed class GetBlobsV1SszHandler(IEngineRpcModule engineModule) : SszEndpointHandlerBase
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "blobs";
+    public override string Resource => SszRestPaths.Blobs;
     public override int? Version => EngineApiVersions.GetBlobs.V1;
 
     public override async Task HandleAsync(HttpContext ctx, int version, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
@@ -30,13 +30,13 @@ public sealed class GetBlobsV2SszHandler<TVersion>(IEngineRpcModule engineModule
     where TVersion : struct, IGetBlobsV2Version
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "blobs";
+    public override string Resource => SszRestPaths.Blobs;
     public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
     {
         byte[][] hashes = SszCodec.DecodeGetBlobsRequest(body.Span);
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await TVersion.Call(engineModule, hashes);
-        await WriteSszResultAsync(ctx, result, static d => TVersion.Encode(d!));
+        await WriteSszResultAsync(ctx, result, static (d, w) => TVersion.Encode(d!, w));
     }
 }

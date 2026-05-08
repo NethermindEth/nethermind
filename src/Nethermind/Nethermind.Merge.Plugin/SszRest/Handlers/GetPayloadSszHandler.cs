@@ -22,7 +22,7 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
     private const int PayloadIdByteLength = 8;
 
     public override string HttpMethod => "GET";
-    public override string Resource => "payloads";
+    public override string Resource => SszRestPaths.Payloads;
     public override int? Version => TVersion.VersionNumber;
     public override bool AcceptsPathExtra => true;
 
@@ -31,7 +31,7 @@ public sealed class GetPayloadSszHandler<TVersion, TResult>(IEngineRpcModule eng
         if (TryParsePayloadId(extra.Span, out byte[] id, out string err))
         {
             ctx.Response.Headers.CacheControl = "no-store";
-            await WriteSszResultAsync(ctx, await TVersion.Call(engine, id), static d => TVersion.Encode(d!));
+            await WriteSszResultAsync(ctx, await TVersion.Call(engine, id), static (d, w) => TVersion.Encode(d!, w));
         }
         else
         {

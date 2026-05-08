@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -20,16 +20,17 @@ namespace Nethermind.Merge.Plugin.Test.SszRest;
 public class SszCodecTests
 {
 
-    private static byte[] ToBytes(ArrayPoolSpan<byte> pooled)
+    /// <summary>
+    /// Calls <paramref name="encode"/> against an <see cref="ArrayBufferWriter{T}"/>
+    /// and returns the written bytes — the test-side analogue of writing into the
+    /// response <see cref="System.IO.Pipelines.PipeWriter"/>.
+    /// </summary>
+    private static byte[] Encode<T>(T value, Func<T, IBufferWriter<byte>, int> encode)
     {
-        using (pooled)
-            return ((Span<byte>)pooled).ToArray();
-    }
-
-    private static void AssertPooledBufferConsistent(ArrayPoolSpan<byte> pooled)
-    {
-        using (pooled)
-            pooled.Length.Should().BePositive();
+        ArrayBufferWriter<byte> w = new();
+        int n = encode(value, w);
+        w.WrittenCount.Should().Be(n);
+        return w.WrittenSpan.ToArray();
     }
 
 
@@ -39,15 +40,15 @@ public class SszCodecTests
     [TestCase(PayloadStatus.Accepted, (byte)3)]
     public void EncodePayloadStatus_status_byte_is_correct(string status, byte expected)
     {
-        byte[] encoded = ToBytes(SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = status }));
+        byte[] encoded = Encode(new PayloadStatusV1 { Status = status }, SszCodec.EncodePayloadStatus);
         encoded[0].Should().Be(expected);
     }
 
     [Test]
     public void EncodePayloadStatus_with_error_is_larger_than_without()
     {
-        byte[] withError = ToBytes(SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = "bad" }));
-        byte[] withoutError = ToBytes(SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Invalid }));
+        byte[] withError = Encode(new PayloadStatusV1 { Status = PayloadStatus.Invalid, ValidationError = "bad" }, SszCodec.EncodePayloadStatus);
+        byte[] withoutError = Encode(new PayloadStatusV1 { Status = PayloadStatus.Invalid }, SszCodec.EncodePayloadStatus);
         withError.Length.Should().BeGreaterThan(withoutError.Length);
     }
 
@@ -60,8 +61,8 @@ public class SszCodecTests
             PayloadId = id
         };
 
-        byte[] withPrefix = ToBytes(SszCodec.EncodeForkchoiceUpdatedResponse(WithId("0x0102030405060708")));
-        byte[] withoutPrefix = ToBytes(SszCodec.EncodeForkchoiceUpdatedResponse(WithId("0102030405060708")));
+        byte[] withPrefix = Encode(WithId("0x0102030405060708"), SszCodec.EncodeForkchoiceUpdatedResponse);
+        byte[] withoutPrefix = Encode(WithId("0102030405060708"), SszCodec.EncodeForkchoiceUpdatedResponse);
 
         withPrefix.Should().BeEquivalentTo(withoutPrefix);
     }
@@ -76,7 +77,7 @@ public class SszCodecTests
             TerminalBlockNumber = 15_000_000
         };
 
-        byte[] encoded = ToBytes(SszCodec.EncodeTransitionConfigurationResponse(original));
+        byte[] encoded = Encode(original, SszCodec.EncodeTransitionConfigurationResponse);
         TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(encoded);
 
         decoded.TerminalTotalDifficulty.Should().Be(original.TerminalTotalDifficulty);
@@ -88,12 +89,12 @@ public class SszCodecTests
     public void TransitionConfiguration_max_uint256_roundtrip()
     {
         UInt256 max = UInt256.Parse("115792089237316195423570985008687907853269984665640564039457584007913129639935");
-        byte[] encoded = ToBytes(SszCodec.EncodeTransitionConfigurationResponse(new()
+        byte[] encoded = Encode(new TransitionConfigurationV1
         {
             TerminalTotalDifficulty = max,
             TerminalBlockHash = TestItem.KeccakA,
             TerminalBlockNumber = 1
-        }));
+        }, SszCodec.EncodeTransitionConfigurationResponse);
         TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(encoded);
 
         decoded.TerminalTotalDifficulty.Should().Be(max);
@@ -104,7 +105,7 @@ public class SszCodecTests
     {
         string[] caps = ["POST /engine/v5/payloads", "GET /engine/v6/payloads/{id}", "POST /engine/v4/forkchoice"];
 
-        byte[] encoded = ToBytes(SszCodec.EncodeCapabilitiesResponse(caps));
+        byte[] encoded = Encode<IReadOnlyList<string>>(caps, SszCodec.EncodeCapabilitiesResponse);
         string[] decoded = SszCodec.DecodeCapabilitiesRequest(encoded);
 
         decoded.Should().BeEquivalentTo(caps);
@@ -152,8 +153,8 @@ public class SszCodecTests
     [Test]
     public void EncodePayloadBodiesV1Response_null_body_encodes_as_empty_inner_list()
     {
-        byte[] withNull = ToBytes(SszCodec.EncodePayloadBodiesV1Response([null]));
-        byte[] withPresent = ToBytes(SszCodec.EncodePayloadBodiesV1Response([new ExecutionPayloadBodyV1Result([], null)]));
+        byte[] withNull = Encode<IReadOnlyList<ExecutionPayloadBodyV1Result?>>([null], SszCodec.EncodePayloadBodiesV1Response);
+        byte[] withPresent = Encode<IReadOnlyList<ExecutionPayloadBodyV1Result?>>([new ExecutionPayloadBodyV1Result([], null)], SszCodec.EncodePayloadBodiesV1Response);
 
         withPresent.Length.Should().BeGreaterThanOrEqualTo(withNull.Length);
     }
@@ -162,29 +163,33 @@ public class SszCodecTests
     public void EncodeGetBlobsV3Response_null_vs_present_entry_differ_in_size()
     {
         byte[] blob = new byte[131072];
-        byte[] withNull = ToBytes(SszCodec.EncodeGetBlobsV3Response([null]));
-        byte[] withPresent = ToBytes(SszCodec.EncodeGetBlobsV3Response([new BlobAndProofV2(blob, [new byte[48]])]));
+        byte[] withNull = Encode<IReadOnlyList<BlobAndProofV2?>>([null], SszCodec.EncodeGetBlobsV3Response);
+        byte[] withPresent = Encode<IReadOnlyList<BlobAndProofV2?>>([new BlobAndProofV2(blob, [new byte[48]])], SszCodec.EncodeGetBlobsV3Response);
 
         withPresent.Length.Should().BeGreaterThan(withNull.Length);
     }
 
     private static IEnumerable<TestCaseData> NonEmptyEncodings()
     {
-        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
-            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload())))
+        yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
+            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload(), w)))
             .SetName(nameof(Encoded_buffer_is_non_empty) + "_GetPayloadV1");
 
-        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
+        yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
         {
             ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
             Block block = ep.TryGetBlock().Block!;
-            return SszCodec.EncodeGetPayloadV3Response(new GetPayloadV3Result(block, UInt256.One, new BlobsBundleV1(block), false));
+            SszCodec.EncodeGetPayloadV3Response(new GetPayloadV3Result(block, UInt256.One, new BlobsBundleV1(block), false), w);
         })).SetName(nameof(Encoded_buffer_is_non_empty) + "_GetPayloadV3");
     }
 
     [TestCaseSource(nameof(NonEmptyEncodings))]
-    public void Encoded_buffer_is_non_empty(Func<ArrayPoolSpan<byte>> encode) =>
-        ToBytes(encode()).Should().NotBeEmpty();
+    public void Encoded_buffer_is_non_empty(Action<IBufferWriter<byte>> encode)
+    {
+        ArrayBufferWriter<byte> w = new();
+        encode(w);
+        w.WrittenSpan.ToArray().Should().NotBeEmpty();
+    }
 
     private static void AssertCommonNewPayloadFields(
         byte[]?[] hashes, Hash256[] expectedHashes,
@@ -275,18 +280,22 @@ public class SszCodecTests
 
     private static IEnumerable<TestCaseData> BufferConsistentEncodings()
     {
-        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
-            SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Valid })))
+        yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
+            SszCodec.EncodePayloadStatus(new PayloadStatusV1 { Status = PayloadStatus.Valid }, w)))
             .SetName(nameof(Encoded_buffer_length_is_consistent) + "_PayloadStatus");
 
-        yield return new TestCaseData((Func<ArrayPoolSpan<byte>>)(() =>
-            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload())))
+        yield return new TestCaseData((Action<IBufferWriter<byte>>)(w =>
+            SszCodec.EncodeGetPayloadV1Response(SszTestData.MakeMinimalPayload(), w)))
             .SetName(nameof(Encoded_buffer_length_is_consistent) + "_GetPayloadV1");
     }
 
     [TestCaseSource(nameof(BufferConsistentEncodings))]
-    public void Encoded_buffer_length_is_consistent(Func<ArrayPoolSpan<byte>> encode) =>
-        AssertPooledBufferConsistent(encode());
+    public void Encoded_buffer_length_is_consistent(Action<IBufferWriter<byte>> encode)
+    {
+        ArrayBufferWriter<byte> w = new();
+        encode(w);
+        w.WrittenCount.Should().BePositive();
+    }
 
     [Test]
     public void EncodeGetPayloadV1Response_fields_land_at_spec_defined_offsets()
@@ -294,10 +303,11 @@ public class SszCodecTests
         ExecutionPayload ep = SszTestData.MakeMinimalPayload();
         ep.BaseFeePerGas = new UInt256(0xABCDEF);
 
-        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV1Response(ep);
-        Span<byte> buffer = encoded;
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV1Response(ep, w);
+        ReadOnlySpan<byte> buffer = w.WrittenSpan;
 
-        encoded.Length.Should().BeGreaterThan(440 + 32, "encoded payload must be large enough to contain baseFeePerGas");
+        buffer.Length.Should().BeGreaterThan(440 + 32, "encoded payload must be large enough to contain baseFeePerGas");
 
         UInt256 decodedBaseFee = new(buffer.Slice(440, 32), isBigEndian: false);
         decodedBaseFee.Should().Be(ep.BaseFeePerGas,
@@ -331,8 +341,9 @@ public class SszCodecTests
             Transactions = Array.Empty<byte[]>()
         };
 
-        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV1Response(ep);
-        Span<byte> buf = encoded;
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV1Response(ep, w);
+        ReadOnlySpan<byte> buf = w.WrittenSpan;
 
         buf.Slice(0, 32).ToArray().Should()
             .BeEquivalentTo(ep.ParentHash!.Bytes.ToArray(), "parent_hash @ offset 0");
@@ -388,8 +399,9 @@ public class SszCodecTests
             LatestValidHash = TestItem.KeccakA
         };
 
-        using ArrayPoolSpan<byte> encoded = SszCodec.EncodePayloadStatus(ps);
-        Span<byte> buf = encoded;
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodePayloadStatus(ps, w);
+        ReadOnlySpan<byte> buf = w.WrittenSpan;
 
         buf[0].Should().Be(0, "status=VALID must encode as 0x00 at offset 0");
 
@@ -415,29 +427,30 @@ public class SszCodecTests
             PayloadId = "0x0102030405060708"
         };
 
-        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeForkchoiceUpdatedResponse(resp);
-        Span<byte> buf = encoded;
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeForkchoiceUpdatedResponse(resp, w);
+        ReadOnlySpan<byte> buf = w.WrittenSpan;
 
-        encoded.Length.Should().BeGreaterThanOrEqualTo(8,
+        buf.Length.Should().BeGreaterThanOrEqualTo(8,
             "encoded response must cover the 8-byte fixed section (two 4-byte offsets)");
 
         uint psOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
         psOffset.Should().BeGreaterThanOrEqualTo(8u,
             "payload_status offset @ 0 must point past the 8-byte fixed section");
-        psOffset.Should().BeLessThan((uint)encoded.Length,
+        psOffset.Should().BeLessThan((uint)buf.Length,
             "payload_status offset must be within the encoded buffer");
 
         uint pidOffset = BitConverter.ToUInt32(buf.Slice(4, 4));
         pidOffset.Should().BeGreaterThanOrEqualTo(8u,
             "payload_id offset @ 4 must point past the 8-byte fixed section");
-        pidOffset.Should().BeLessThan((uint)encoded.Length,
+        pidOffset.Should().BeLessThan((uint)buf.Length,
             "payload_id offset must be within the encoded buffer");
 
         buf[(int)psOffset].Should().Be(0,
             "first byte of the embedded PayloadStatus sub-container must be 0x00 (VALID)");
 
         int pidEnd = (int)pidOffset + 8;
-        encoded.Length.Should().BeGreaterThanOrEqualTo(pidEnd,
+        buf.Length.Should().BeGreaterThanOrEqualTo(pidEnd,
             "encoded buffer must be large enough to hold the payload_id bytes");
 
         buf.Slice((int)pidOffset, 8).ToArray().Should()
@@ -446,15 +459,13 @@ public class SszCodecTests
     }
 
     private static void AssertGetPayloadResponseHeaderOffsets(
-        ArrayPoolSpan<byte> encoded,
+        ReadOnlySpan<byte> buf,
         int fixedSectionSize,
         UInt256 expectedBlockValue,
         byte expectedShouldOverrideBuilder,
         string version)
     {
-        Span<byte> buf = encoded;
-
-        encoded.Length.Should().BeGreaterThanOrEqualTo(fixedSectionSize,
+        buf.Length.Should().BeGreaterThanOrEqualTo(fixedSectionSize,
             $"encoded {version} response must cover the {fixedSectionSize}-byte fixed section");
 
         uint epOffset = BitConverter.ToUInt32(buf.Slice(0, 4));
@@ -479,10 +490,11 @@ public class SszCodecTests
         ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
         Block block = ep.TryGetBlock().Block!;
 
-        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV3Response(
-            new GetPayloadV3Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: true));
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV3Response(
+            new GetPayloadV3Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: true), w);
 
-        AssertGetPayloadResponseHeaderOffsets(encoded, fixedSectionSize: 41, blockValue,
+        AssertGetPayloadResponseHeaderOffsets(w.WrittenSpan, fixedSectionSize: 41, blockValue,
             expectedShouldOverrideBuilder: 1, version: "V3");
     }
 
@@ -613,13 +625,15 @@ public class SszCodecTests
         ExecutionPayloadV3 ep = SszTestData.MakeV3Payload();
         Block block = ep.TryGetBlock().Block!;
 
-        using ArrayPoolSpan<byte> encoded = SszCodec.EncodeGetPayloadV4Response(
-            new GetPayloadV4Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: false, executionRequests: []));
+        ArrayBufferWriter<byte> w = new();
+        SszCodec.EncodeGetPayloadV4Response(
+            new GetPayloadV4Result(block, blockValue, new BlobsBundleV1(block), shouldOverrideBuilder: false, executionRequests: []), w);
+        ReadOnlySpan<byte> buf = w.WrittenSpan;
 
-        AssertGetPayloadResponseHeaderOffsets(encoded, fixedSectionSize: 45, blockValue,
+        AssertGetPayloadResponseHeaderOffsets(buf, fixedSectionSize: 45, blockValue,
             expectedShouldOverrideBuilder: 0, version: "V4");
 
-        uint erOffset = BitConverter.ToUInt32(((Span<byte>)encoded).Slice(41, 4));
+        uint erOffset = BitConverter.ToUInt32(buf.Slice(41, 4));
         erOffset.Should().BeGreaterThanOrEqualTo(45u,
             "execution_requests offset @ 41 must point past the 45-byte fixed section");
     }

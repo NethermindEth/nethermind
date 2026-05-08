@@ -21,7 +21,7 @@ public sealed class GetPayloadBodiesByHashSszHandler<TVersion, TResult>(IEngineR
     where TResult : class
 {
     public override string HttpMethod => "POST";
-    public override string Resource => "payloads/bodies/by-hash";
+    public override string Resource => SszRestPaths.PayloadBodiesByHash;
     public override int? Version => TVersion.VersionNumber;
 
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlyMemory<byte> body)
