@@ -12,17 +12,12 @@ namespace Nethermind.State.Flat.Storage;
 public unsafe interface IArenaWholeView : IDisposable
 {
     /// <summary>
-    /// Single-Span view over the reservation's bytes. Throws on materialisation if
-    /// the reservation exceeds <see cref="int.MaxValue"/>; use <see cref="DataPtr"/>
-    /// + <see cref="Size"/> for chunk-aware access of larger views.
-    /// </summary>
-    ReadOnlySpan<byte> GetSpan();
-
-    /// <summary>
     /// Raw pointer to the first byte of the view. Long-offset arithmetic on this
     /// pointer is valid for the entire <see cref="Size"/> range; the view's
     /// underlying memory (mmap pages or pinned byte[]) is kept alive until
-    /// <see cref="IDisposable.Dispose"/>.
+    /// <see cref="IDisposable.Dispose"/>. Reservations may exceed
+    /// <see cref="int.MaxValue"/>; consume via a pointer-backed reader rather
+    /// than a single Span.
     /// </summary>
     byte* DataPtr { get; }
 

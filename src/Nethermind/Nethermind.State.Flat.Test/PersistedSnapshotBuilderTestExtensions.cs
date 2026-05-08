@@ -33,7 +33,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
         if (snapshots.Count == 1)
         {
             using WholeReadSession session = snapshots[0].BeginWholeReadSession();
-            return session.GetSpan().ToArray();
+            return session.AsSpanIntBounded().ToArray();
         }
 
         HashSet<int> referencedIds = new();

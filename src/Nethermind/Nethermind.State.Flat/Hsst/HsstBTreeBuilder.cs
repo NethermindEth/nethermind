@@ -84,7 +84,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Callers may advance the writer past leading padding bytes before writing the
     /// real value bytes — e.g. to keep the value from crossing a 4 KiB page
     /// boundary — and then close the entry with the padding-aware overload
-    /// <see cref="FinishValueWrite(ReadOnlySpan{byte}, int)"/>. Padding sits between
+    /// <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/>. Padding sits between
     /// the BeginValueWrite snapshot and (Written - valueLength); the reader recovers
     /// the value via ValueStart = MetadataStart - ValueLength, so leading pad bytes
     /// are inert gap data that no index entry points at.
@@ -98,13 +98,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Finish value write. Computes length from snapshot taken by BeginValueWrite —
     /// every byte written since BeginValueWrite is treated as part of the value.
-    /// Use <see cref="FinishValueWrite(ReadOnlySpan{byte}, int)"/> to declare a
+    /// Use <see cref="FinishValueWrite(ReadOnlySpan{byte}, long)"/> to declare a
     /// value length smaller than the writer delta when leading padding was inserted.
     /// Key must be greater than previous key (sorted order).
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key)
     {
-        int actualLen = checked((int)(_writer.Written - _writtenBeforeValue));
+        long actualLen = _writer.Written - _writtenBeforeValue;
         FinishValueWrite(key, actualLen);
     }
 
@@ -116,7 +116,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// to keep a value from crossing a 4 KiB page boundary by padding ahead of it.
     /// Key must be greater than previous key (sorted order).
     /// </summary>
-    public void FinishValueWrite(scoped ReadOnlySpan<byte> key, int valueLength)
+    public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
         ArgumentOutOfRangeException.ThrowIfNegative(valueLength);
@@ -131,7 +131,8 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // Write [ValueLength: LEB128][KeyLength: u8][FullKey]. The full key lives in
         // the data region so the entry is self-describing; the leaf separator stored
         // in the B-tree node is recomputed at Build() time from the flushed bytes.
-        Span<byte> leb = _writer.GetSpan(5);
+        // 64-bit LEB128 takes up to 10 bytes.
+        Span<byte> leb = _writer.GetSpan(10);
         int lebLen = Leb128.Write(leb, 0, valueLength);
         _writer.Advance(lebLen);
 

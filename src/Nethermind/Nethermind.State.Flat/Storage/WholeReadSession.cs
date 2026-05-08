@@ -22,11 +22,8 @@ public sealed class WholeReadSession : IDisposable
         _view = _reservation.OpenWholeView();
     }
 
-    public ReadOnlySpan<byte> GetSpan()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        return _view.GetSpan();
-    }
+    /// <summary>Total reservation size in bytes (long-typed, may exceed 2 GiB).</summary>
+    public long Size => _view.Size;
 
     /// <summary>
     /// <see cref="IHsstByteReader{TPin}"/> over the session's view, addressed in the
@@ -37,6 +34,21 @@ public sealed class WholeReadSession : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         return new WholeReadSessionReader(_view.DataPtr, _view.Size);
+    }
+
+    /// <summary>
+    /// Materialise the entire reservation as a single <see cref="ReadOnlySpan{Byte}"/>.
+    /// <para>
+    /// Span&lt;T&gt; is intrinsically int-bounded; this overload throws via a checked
+    /// cast when the reservation exceeds <see cref="int.MaxValue"/>. Callers that
+    /// must support &gt;2 GiB reservations should use <see cref="GetReader"/>
+    /// (pointer-backed, long-bounded) instead and walk the data in int-sized chunks.
+    /// </para>
+    /// </summary>
+    public unsafe ReadOnlySpan<byte> AsSpanIntBounded()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new ReadOnlySpan<byte>(_view.DataPtr, checked((int)_view.Size));
     }
 
     public void Dispose()

@@ -192,9 +192,6 @@ public sealed unsafe class ArenaFile : IDisposable
     {
         public byte* DataPtr => dataPtr;
         public long Size => size;
-        // Span<T> is int-bounded; for >2 GiB views callers should use DataPtr + Size
-        // (or a reader built on top of them) instead of GetSpan.
-        public ReadOnlySpan<byte> GetSpan() => new(dataPtr, checked((int)size));
 
         public void Dispose()
         {

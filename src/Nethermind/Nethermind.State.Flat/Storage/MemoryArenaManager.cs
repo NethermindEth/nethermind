@@ -109,7 +109,6 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
             DataPtr = (byte*)_handle.AddrOfPinnedObject() + offset;
         }
 
-        public ReadOnlySpan<byte> GetSpan() => _buffer.AsSpan(_offset, checked((int)Size));
         public void Dispose() { if (_handle.IsAllocated) _handle.Free(); }
     }
 

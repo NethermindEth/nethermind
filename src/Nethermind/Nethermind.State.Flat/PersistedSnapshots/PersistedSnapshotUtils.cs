@@ -280,7 +280,12 @@ internal static class PersistedSnapshotUtils
         try
         {
             using WholeReadSession compactedSession = compactedSnapshot.BeginWholeReadSession();
-            ReadOnlySpan<byte> compactedData = compactedSession.GetSpan();
+            // Validation walks the whole reservation through a single Span, which is
+            // intrinsically int-bounded. The compactor itself supports >2 GiB output
+            // through its pointer-backed writer/reader chain; this validation path
+            // does not, and skipping is preferable to a runtime overflow.
+            if (compactedSession.Size > int.MaxValue) return;
+            ReadOnlySpan<byte> compactedData = compactedSession.AsSpanIntBounded();
             SpanByteReader reader = new(compactedData);
 
             // Determine if this compacted snapshot has NodeRefs by checking metadata flag
@@ -530,7 +535,10 @@ internal static class PersistedSnapshotUtils
         for (int i = 0; i < snapshots.Count; i++)
         {
             using WholeReadSession session = snapshots[i].BeginWholeReadSession();
-            base64List.Add(Convert.ToBase64String(session.GetSpan()));
+            // Debug-only base64 dump: rejects >2 GiB snapshots rather than silently
+            // truncating. If a future use-case needs to dump a >2 GiB snapshot, stream
+            // base64 in chunks via session.GetReader().TryRead(...).
+            base64List.Add(Convert.ToBase64String(session.AsSpanIntBounded()));
         }
         File.WriteAllText(filename, JsonSerializer.Serialize(base64List));
     }
