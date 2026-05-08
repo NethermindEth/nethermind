@@ -346,15 +346,15 @@ public sealed class SszMiddleware
             case "POST":
                 return ctx.Request.ContentType?.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase) == true;
             case "GET":
-            {
-                foreach (string? v in ctx.Request.Headers.Accept)
                 {
-                    if (v is not null && v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
-                        return true;
-                }
+                    foreach (string? v in ctx.Request.Headers.Accept)
+                    {
+                        if (v is not null && v.Contains(MediaTypeNames.Application.Octet, StringComparison.OrdinalIgnoreCase))
+                            return true;
+                    }
 
-                return false;
-            }
+                    return false;
+                }
             default:
                 return false;
         }
@@ -374,13 +374,13 @@ public sealed class SszMiddleware
                 throw new InvalidOperationException($"Request body too large: {contentLength} bytes exceeds limit of {MaxBodySize}");
 
             case > 0:
-            {
-                int len = (int)contentLength;
-                ReadResult rr = await reader.ReadAtLeastAsync(len, ctx.RequestAborted);
-                // Slice to the declared ContentLength even if Kestrel buffered extra bytes
-                // (HTTP keep-alive could carry the next request's framing in the same buffer).
-                return rr.Buffer.Slice(0, len);
-            }
+                {
+                    int len = (int)contentLength;
+                    ReadResult rr = await reader.ReadAtLeastAsync(len, ctx.RequestAborted);
+                    // Slice to the declared ContentLength even if Kestrel buffered extra bytes
+                    // (HTTP keep-alive could carry the next request's framing in the same buffer).
+                    return rr.Buffer.Slice(0, len);
+                }
         }
 
         // ContentLength unknown (chunked transfer): drain the pipe without consuming any
