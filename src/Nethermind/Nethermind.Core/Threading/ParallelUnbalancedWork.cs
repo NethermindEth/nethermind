@@ -220,14 +220,9 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
         /// </summary>
         public void CaptureException(Exception exception)
         {
-            // Publish the fault flag before paying for ExceptionDispatchInfo.Capture (which walks
-            // the stack and is non-trivial) so other workers can short-circuit immediately. Without
-            // this, all four workers can race through cheap iterations during the capture window.
+            // Publish the fault flag before the (non-trivial) ExceptionDispatchInfo.Capture so
+            // other workers can short-circuit during the capture window.
             if (Interlocked.CompareExchange(ref _faulted, 1, 0) != 0) return;
-
-            // Only the first faulting worker reaches here; the write must be a release so that the
-            // calling thread (which observes ActiveThreads == 0 via the semaphore) sees a non-null
-            // _exception in ThrowIfFaulted.
             Volatile.Write(ref _exception, ExceptionDispatchInfo.Capture(exception));
         }
 
