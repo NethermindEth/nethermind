@@ -463,6 +463,7 @@ public class SszMiddlewareTests
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
         await act.Should().NotThrowAsync();
+        // Per execution-apis #764: malformed SSZ encoding maps to 400 Bad Request.
         ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
     }
 

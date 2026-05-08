@@ -4,57 +4,18 @@ class SszType
 {
     private const string SelectorPropertyName = "Selector";
 
-    static SszType()
-    {
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "Byte",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(byte),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "UInt16",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(ushort),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "Int32",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(int),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "UInt32",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(uint),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "Int64",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(long),
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "UInt64",
-            Kind = Kind.Basic,
-            StaticLength = sizeof(ulong),
-        });
-
-        BasicTypes.Add(new SszType
+    // Types annotated with [SszBasicType] are discovered at generation time via
+    // DiscoverKnownTypes(Compilation) — see below. The list here covers BCL primitives
+    // and Nethermind core types that aren't (or can't be) decorated with that attribute.
+    public static List<SszType> BasicTypes { get; set; } =
+    [
+        new() { Namespace = "System", Name = "Byte", Kind = Kind.Basic, StaticLength = sizeof(byte) },
+        new() { Namespace = "System", Name = "UInt16", Kind = Kind.Basic, StaticLength = sizeof(ushort) },
+        new() { Namespace = "System", Name = "Int32", Kind = Kind.Basic, StaticLength = sizeof(int) },
+        new() { Namespace = "System", Name = "UInt32", Kind = Kind.Basic, StaticLength = sizeof(uint) },
+        new() { Namespace = "System", Name = "Int64", Kind = Kind.Basic, StaticLength = sizeof(long) },
+        new() { Namespace = "System", Name = "UInt64", Kind = Kind.Basic, StaticLength = sizeof(ulong) },
+        new()
         {
             Namespace = "Nethermind.Int256",
             Name = "UInt256",
@@ -62,32 +23,11 @@ class SszType
             StaticLength = 32,
             CustomEncodeTemplate = "{1}.ToLittleEndian({0});",
             CustomDecodeTemplate = "{1} = new UInt256({0}, isBigEndian: false);",
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System",
-            Name = "Boolean",
-            Kind = Kind.Basic,
-            StaticLength = 1,
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "System.Collections",
-            Name = "BitArray",
-            Kind = Kind.Basic,
-        });
-
-        BasicTypes.Add(new SszType
-        {
-            Namespace = "Nethermind.Serialization.Ssz",
-            Name = "SszBytes32",
-            Kind = Kind.Basic,
-            StaticLength = 32,
-        });
-
-        BasicTypes.Add(new SszType
+        },
+        new() { Namespace = "System", Name = "Boolean", Kind = Kind.Basic, StaticLength = 1 },
+        new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
+        new() { Namespace = "Nethermind.Serialization.Ssz", Name = "SszBytes32", Kind = Kind.Basic, StaticLength = 32 },
+        new()
         {
             Namespace = "Nethermind.Core.Crypto",
             Name = "Hash256",
@@ -96,9 +36,8 @@ class SszType
             IsRefType = true,
             CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
             CustomDecodeTemplate = "{1} = new Hash256({0});",
-        });
-
-        BasicTypes.Add(new SszType
+        },
+        new()
         {
             Namespace = "Nethermind.Core",
             Name = "Address",
@@ -107,9 +46,8 @@ class SszType
             IsRefType = true,
             CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
             CustomDecodeTemplate = "{1} = new Address({0});",
-        });
-
-        BasicTypes.Add(new SszType
+        },
+        new()
         {
             Namespace = "Nethermind.Core",
             Name = "Bloom",
@@ -118,14 +56,8 @@ class SszType
             IsRefType = true,
             CustomEncodeTemplate = "{1}.Bytes.CopyTo({0});",
             CustomDecodeTemplate = "{1} = new Bloom({0});",
-        });
-
-        // SszBytes8 is no longer registered here.
-        // Any type annotated with [SszBasicType] is discovered at generation time
-        // via DiscoverKnownTypes(Compilation). See that method below.
-    }
-
-    public static List<SszType> BasicTypes { get; set; } = [];
+        },
+    ];
 
     public static List<SszType> KnownTypes { get; set; } = [];
 
@@ -340,30 +272,24 @@ class SszType
 
     private bool HaveCompatibleProgressiveContainerLayout(SszType other, HashSet<(SszType, SszType)> visited)
     {
-        Dictionary<int, SszProperty> leftByIndex = (Members ?? []).ToDictionary(member => member.FieldIndex!.Value);
-        Dictionary<int, SszProperty> rightByIndex = (other.Members ?? []).ToDictionary(member => member.FieldIndex!.Value);
+        SszProperty[] leftMembers = Members ?? [];
+        SszProperty[] rightMembers = other.Members ?? [];
 
-        foreach (KeyValuePair<int, SszProperty> entry in leftByIndex)
+        Dictionary<int, SszProperty> rightByIndex = rightMembers.ToDictionary(m => m.FieldIndex!.Value);
+        Dictionary<string, SszProperty> rightByName = rightMembers.ToDictionary(m => m.Name);
+
+        foreach (SszProperty left in leftMembers)
         {
-            if (rightByIndex.TryGetValue(entry.Key, out SszProperty? rightMember))
+            if (rightByIndex.TryGetValue(left.FieldIndex!.Value, out SszProperty? byIndex)
+                && (left.Name != byIndex.Name || !left.IsCompatibleWith(byIndex, visited)))
             {
-                if (entry.Value.Name != rightMember.Name || !entry.Value.IsCompatibleWith(rightMember, visited))
-                {
-                    return false;
-                }
+                return false;
             }
-        }
 
-        Dictionary<string, SszProperty> leftByName = (Members ?? []).ToDictionary(member => member.Name);
-        Dictionary<string, SszProperty> rightByName = (other.Members ?? []).ToDictionary(member => member.Name);
-        foreach (KeyValuePair<string, SszProperty> entry in leftByName)
-        {
-            if (rightByName.TryGetValue(entry.Key, out SszProperty? rightMember))
+            if (rightByName.TryGetValue(left.Name, out SszProperty? byName)
+                && (left.FieldIndex != byName.FieldIndex || !left.IsCompatibleWith(byName, visited)))
             {
-                if (entry.Value.FieldIndex != rightMember.FieldIndex || !entry.Value.IsCompatibleWith(rightMember, visited))
-                {
-                    return false;
-                }
+                return false;
             }
         }
 

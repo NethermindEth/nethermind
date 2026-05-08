@@ -3,12 +3,10 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -33,7 +31,12 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
     /// <inheritdoc/>
     public abstract Task HandleAsync(HttpContext ctx, int version, string extra, ReadOnlyMemory<byte> body);
 
-    protected static bool TryParsePayloadId(string extra, out byte[] id, out string err)
+    // Per execution-apis #764 ssz-encoding spec: "{payload_id} MUST be validated as a
+    // well-formed hex-encoded Bytes8 before processing." Bytes8 = exactly 16 hex chars.
+    private const int PayloadIdHexLength = 16;
+    private const int PayloadIdByteLength = 8;
+
+    protected static bool TryParsePayloadId(ReadOnlySpan<char> extra, out byte[] id, out string err)
     {
         if (extra.Length == 0)
         {
@@ -41,52 +44,26 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
             err = "Missing payload ID";
             return false;
         }
-        string hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
-        if (hex.Length == 0 || hex.Length % 2 != 0)
+        ReadOnlySpan<char> hex = extra.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? extra[2..] : extra;
+        if (hex.Length != PayloadIdHexLength)
+        {
+            id = [];
+            err = $"Invalid payload ID: '{extra}' (expected {PayloadIdHexLength} hex chars)";
+            return false;
+        }
+        byte[] dest = new byte[PayloadIdByteLength];
+        OperationStatus status = Convert.FromHexString(hex, dest, out _, out _);
+        if (status != OperationStatus.Done)
         {
             id = [];
             err = $"Invalid payload ID: '{extra}'";
             return false;
         }
-        try
-        {
-            id = Bytes.FromHexString(hex);
-        }
-        catch (FormatException)
-        {
-            id = [];
-            err = $"Invalid payload ID: '{extra}'";
-            return false;
-        }
+        id = dest;
         err = string.Empty;
         return true;
     }
 
-    protected static Task WriteSszPooledAsync(HttpContext ctx, (byte[] buffer, int length) pooled)
-        => WriteSszPooledAsync(ctx, pooled.buffer, pooled.length);
-
-    protected static async Task WriteSszPooledAsync(HttpContext ctx, byte[] buffer, int length)
-    {
-        try
-        {
-            ctx.Response.ContentType = OctetStream;
-            ctx.Response.ContentLength = length;
-            ctx.Response.StatusCode = StatusCodes.Status200OK;
-            await ctx.Response.Body.WriteAsync(buffer.AsMemory(0, length), ctx.RequestAborted);
-            await ctx.Response.CompleteAsync();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
-
-    /// <summary>
-    /// Overload for encoders that return <see cref="ArrayPoolSpan{T}"/> instead of a
-    /// <c>(byte[] buffer, int length)</c> tuple. The span is written then disposed.
-    /// Uses <see cref="ArrayPoolSpan{T}.AsMemory()"/> to write directly from the rented
-    /// buffer without an intermediate copy or extra rent.
-    /// </summary>
     protected static async Task WriteSszPooledAsync(HttpContext ctx, ArrayPoolSpan<byte> span)
     {
         try
@@ -103,29 +80,6 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         }
     }
 
-    protected static async Task WriteSszResultAsync<T>(
-        HttpContext ctx,
-        ResultWrapper<T> result,
-        Func<T, (byte[] buffer, int length)> encode)
-    {
-        if (result.Result != Result.Success)
-        {
-            await WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode),
-                result.Result.Error ?? "Unknown error");
-            return;
-        }
-        if (result.Data is null)
-        {
-            ctx.Response.StatusCode = StatusCodes.Status204NoContent;
-            return;
-        }
-        await WriteSszPooledAsync(ctx, encode(result.Data));
-    }
-
-    /// <summary>
-    /// Overload for encoders that return <see cref="ArrayPoolSpan{T}"/> instead of a
-    /// <c>(byte[] buffer, int length)</c> tuple.
-    /// </summary>
     protected static async Task WriteSszResultAsync<T>(
         HttpContext ctx,
         ResultWrapper<T> result,

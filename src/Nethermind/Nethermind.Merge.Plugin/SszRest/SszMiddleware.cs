@@ -174,6 +174,10 @@ public sealed class SszMiddleware
         }
         catch (Exception ex) when (ex is InvalidDataException or IndexOutOfRangeException or EndOfStreamException)
         {
+            // Per execution-apis #764 (Engine API SSZ Transport spec, "HTTP status codes" section):
+            // malformed SSZ encoding is 400 Bad Request. 422 Unprocessable Entity is reserved
+            // for "Invalid payload attributes" and is emitted by the handler chain via
+            // ErrorCodeToHttpStatus when the engine module returns InvalidPayloadAttributes.
             Metrics.SszRestDecodeFailuresTotal++;
             Metrics.SszRestRequestsClientErrorTotal++;
             if (_logger.IsDebug) _logger.Debug($"SSZ-REST malformed body at {ctx.Request.Path.Value}: {ex.Message}");
@@ -211,16 +215,22 @@ public sealed class SszMiddleware
         span = span[(slashPos + 1)..];
         if (span.IsEmpty) return false;
 
-        // Path segments may contain ASCII alphanumerics, hyphens (kebab-case resource names),
-        // forward slashes (extra path segments), and the '0x' hex-prefix character 'x'.
+        // Allowed path-segment chars: ASCII alphanumeric, '-' (kebab-case resources),
+        // and '/' (between resource and extra). Reject runs of '/' in the same pass —
+        // saves an extra scan and gives one rejection point for both validations.
+        bool prevSlash = false;
         foreach (char c in span)
         {
-            if (!char.IsAsciiLetterOrDigit(c) && c != '-' && c != '/')
+            if (c == '/')
+            {
+                if (prevSlash) return false;
+                prevSlash = true;
+                continue;
+            }
+            if (!char.IsAsciiLetterOrDigit(c) && c != '-')
                 return false;
+            prevSlash = false;
         }
-
-        if (span.Contains("//", StringComparison.Ordinal))
-            return false;
 
         pathSegment = span;
         return true;
@@ -232,8 +242,8 @@ public sealed class SszMiddleware
         handler = null;
         extra = default;
 
-        bool isPost = method is "POST" || method.Equals("post", StringComparison.OrdinalIgnoreCase);
-        bool isGet = !isPost && (method is "GET" || method.Equals("get", StringComparison.OrdinalIgnoreCase));
+        bool isPost = HttpMethods.IsPost(method);
+        bool isGet = !isPost && HttpMethods.IsGet(method);
 
         FrozenDictionary<string, List<ISszEndpointHandler>>? exactDict =
             isPost ? _postRoutes : isGet ? _getRoutes : null;
