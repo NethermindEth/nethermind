@@ -239,6 +239,8 @@ internal class QuorumCertificateManager(
         QuorumCertificate latestQc;
         if (current.Number == spec.SwitchBlock || (current.IsGenesis && current.ExtraConsensusData is null))
         {
+            if (current.ExtraConsensusData is null && current.Number != spec.SwitchBlock && _logger.IsWarn)
+                _logger.Warn($"Block {current.ToString(BlockHeader.Format.FullHashAndNumber)} has no V2 consensus data; initializing consensus from genesis.");
             latestQc = new QuorumCertificate(new BlockRoundInfo(current.Hash, 0, current.Number), Array.Empty<Signature>(),
                     (ulong)Math.Max(0, current.Number - spec.Gap));
             _context.HighestQC = latestQc;
