@@ -20,10 +20,11 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// Flags: bit0=IsIntermediate, bits1-2=KeyType, bits3-4=ValueType, bit5=IsKeyLittleEndian, bit6=HasCommonKeyPrefix.
 ///
 /// IsKeyLittleEndian (bit 5) marks that fixed-width key slots are stored byte-reversed so an
-/// x86 LE integer load of a slot equals its semantic numeric/lex value. Set only for Uniform
-/// with KeySize ∈ {2,4,8} — the SIMD floor scan exploits this to drop its per-lane byte-swap
-/// shuffle. <see cref="GetKey"/> returns raw stored bytes (LE-reversed under this flag);
-/// <see cref="GetFullKey"/> always emits lex/original-order bytes.
+/// x86 LE integer load of a slot equals its semantic numeric/lex value. Set for Uniform
+/// with KeySize ∈ {2,4,8}, UniformWithLen with slotSize=4, and unconditionally for Variable
+/// (KeyType=0) where the prefixArr is uniformly 2 bytes/slot — the SIMD floor scan exploits
+/// this to drop its per-lane byte-swap shuffle. <see cref="GetKey"/> returns raw stored bytes
+/// (LE-reversed under this flag); <see cref="GetFullKey"/> always emits lex/original-order bytes.
 ///
 /// All header fields are fixed-width — no varint decoding on parse. With the 64 KiB
 /// node-size cap, every count/size field fits in u16. Header at the front lets the hardware
@@ -31,9 +32,18 @@ namespace Nethermind.State.Flat.BSearchIndex;
 /// the header.
 ///
 /// KeyType/ValueType:
-///   0 = Variable: raw entry bytes concatenated, then a sentinel u16 offset
-///       table of (count+1) entries at the end of the section. Length(i) =
-///       offsets[i+1] - offsets[i] — no per-entry length prefix.
+///   0 = Variable.
+///       VALUES: raw entry bytes concatenated, then a sentinel u16 offset table of (count+1)
+///           entries at the end of the section. Length(i) = offsets[i+1] - offsets[i].
+///       KEYS: SoA layout — [prefixArr: N×u16 LE][offsetArr: N×u16 LE][remainingkeys].
+///           prefixArr[i] holds the first 2 bytes of key i, byte-reversed (LE-stored) so a
+///           u16 LE load yields a value with the same unsigned-int order as a lex compare on
+///           the original 2-byte prefix. offsetArr[i] = (lenTag &lt;&lt; 14) | tailOffset:
+///           tag 00=len 0, 01=len 1, 10=len 2 (no tail), 11=len ≥ 3 (tail at tailOffset in
+///           remainingkeys; tail length sentinel-derived from offsetArr[i+1].tailOffset, with
+///           the implicit sentinel for i=N being remainingkeys.Length). Tags 00/01/10 freeze
+///           the cursor (offset == next tag-11 entry's offset). 14-bit tailOffset caps
+///           remainingkeys at 16 KiB per section.
 ///   1 = Uniform: packed fixed-width entries
 ///   2 = UniformWithLen: fixed slot size, last byte = actual length
 ///
@@ -135,7 +145,10 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ReadOnlySpan<byte> GetKey(int index) => _metadata.KeyType switch
     {
-        0 => GetVariableEntry(_keys, index, _metadata.KeyCount),
+        // Variable: SoA layout, prefix slot is byte-reversed (LE-stored). Returning the raw
+        // 2-byte slot follows the same convention as LE-stored Uniform/UniformWithLen — callers
+        // that need the full key in lex order use GetFullKey with a destination buffer.
+        0 => _keys.Slice(index * 2, 2),
         1 => _keys.Slice(index * _metadata.KeySize, _metadata.KeySize),
         2 => _metadata.IsKeyLittleEndian
             ? GetUniformWithLenEntryLe(_keys, index, _metadata.KeySize)
@@ -186,11 +199,109 @@ public readonly ref struct BSearchIndexReader
         // Sentinel offset table at end of section: (count+1) u16 entries, offsets
         // relative to section start. Length(i) = offsets[i+1] - offsets[i] —
         // load both as a single u32 to halve the per-compare load count.
+        // Used for VALUES only; the KEY section's Variable layout is SoA — see
+        // GetVariableKeyOffsetSlot / GetVariableKeyTail below.
         int tableStart = section.Length - (count + 1) * 2;
         uint pair = BinaryPrimitives.ReadUInt32LittleEndian(section[(tableStart + index * 2)..]);
         int start = (int)(ushort)pair;
         int end = (int)(ushort)(pair >> 16);
         return section.Slice(start, end - start);
+    }
+
+    // ---- Variable KEY (SoA) helpers ----
+
+    /// <summary>
+    /// Load entry <paramref name="index"/>'s prefix slot as a u16 (LE). The slot stores the
+    /// original 2-byte prefix byte-reversed, so the unsigned value returned has the same
+    /// ordering as a lex compare on the original prefix bytes.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ushort GetVariableKeyPrefixU16(ReadOnlySpan<byte> keys, int index) =>
+        Unsafe.ReadUnaligned<ushort>(
+            ref Unsafe.Add(ref MemoryMarshal.GetReference(keys), (nint)(index * 2)));
+
+    /// <summary>
+    /// Load entry <paramref name="index"/>'s offset slot. High 2 bits = lenTag (0..3),
+    /// low 14 bits = tailOffset (relative to remainingkeys section start).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetVariableKeyOffsetSlot(ReadOnlySpan<byte> keys, int count, int index)
+    {
+        int offsetArrStart = count * 2;
+        return BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + index * 2)..]);
+    }
+
+    /// <summary>
+    /// Resolve the tail bytes for entry <paramref name="index"/>. Tag &lt; 11 returns an
+    /// empty span. For tag 11 the tail spans <c>[tailOffset, nextTailOffset)</c> with the
+    /// sentinel for the last entry being <c>remainingkeys.Length</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> GetVariableKeyTail(ReadOnlySpan<byte> keys, int count, int index)
+    {
+        int offsetArrStart = count * 2;
+        int tailStart = count * 4;
+        int slot = BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + index * 2)..]);
+        if ((slot >>> 14) != 0b11) return default;
+        int tailOffset = slot & 0x3FFF;
+        int tailEnd;
+        if (index + 1 < count)
+        {
+            int nextSlot = BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + (index + 1) * 2)..]);
+            tailEnd = nextSlot & 0x3FFF;
+        }
+        else
+        {
+            tailEnd = keys.Length - tailStart;
+        }
+        return keys.Slice(tailStart + tailOffset, tailEnd - tailOffset);
+    }
+
+    /// <summary>
+    /// Encode the search key into the byte-reversed u16 form used by Variable prefixArr slots.
+    /// Zero-pads keys shorter than 2 bytes; the caller still has to apply the lenTag-aware
+    /// tie-break on prefix-equal probes (length 0/1/2 ambiguities collapse onto the same u16).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ushort EncodeVariableSearchPrefix(ReadOnlySpan<byte> q)
+    {
+        if (q.Length >= 2)
+            return BinaryPrimitives.ReverseEndianness(
+                Unsafe.ReadUnaligned<ushort>(ref MemoryMarshal.GetReference(q)));
+        return q.Length == 1 ? (ushort)(q[0] << 8) : (ushort)0;
+    }
+
+    /// <summary>
+    /// Compare query <paramref name="q"/> against entry <paramref name="index"/> using the
+    /// SoA Variable layout. Returns negative, zero, or positive matching <c>SequenceCompareTo</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CompareVariableEntry(ReadOnlySpan<byte> q, ushort searchPrefix, ReadOnlySpan<byte> keys, int count, int index)
+    {
+        ushort midPrefix = GetVariableKeyPrefixU16(keys, index);
+        if (searchPrefix != midPrefix)
+            return searchPrefix > midPrefix ? 1 : -1;
+
+        int slot = GetVariableKeyOffsetSlot(keys, count, index);
+        int tag = slot >>> 14;
+        if (tag != 0b11)
+        {
+            // Stored key length = tag (0/1/2). Prefix u16 equality (with zero padding) collapses
+            // to a length tie-break: q.Length - storedLen.
+            return q.Length - tag;
+        }
+
+        // Stored key has tail (length ≥ 3). q < stored if q exhausts within the prefix.
+        if (q.Length <= 2) return -1;
+
+        int tailOffset = slot & 0x3FFF;
+        int offsetArrStart = count * 2;
+        int tailStart = count * 4;
+        int tailEnd = index + 1 < count
+            ? BinaryPrimitives.ReadUInt16LittleEndian(keys[(offsetArrStart + (index + 1) * 2)..]) & 0x3FFF
+            : keys.Length - tailStart;
+        ReadOnlySpan<byte> tail = keys.Slice(tailStart + tailOffset, tailEnd - tailOffset);
+        return q[2..].SequenceCompareTo(tail);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -463,13 +574,13 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FindFloorIndexVariable(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
+        ushort searchPrefix = EncodeVariableSearchPrefix(key);
         int result = -1;
         int lo = 0, hi = count - 1;
         while (lo <= hi)
         {
             int mid = (lo + hi) >>> 1;
-            ReadOnlySpan<byte> midKey = GetVariableEntry(keys, mid, count);
-            int cmp = key.SequenceCompareTo(midKey);
+            int cmp = CompareVariableEntry(key, searchPrefix, keys, count, mid);
             if (cmp >= 0) { result = mid; lo = mid + 1; }
             else { hi = mid - 1; }
         }
@@ -615,14 +726,14 @@ public readonly ref struct BSearchIndexReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int FindFloorIndexVariableBranchless(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
     {
+        ushort searchPrefix = EncodeVariableSearchPrefix(key);
         int lo = 0;
         int n = count;
         while (n > 0)
         {
             int half = n >> 1;
             int probe = lo + half;
-            ReadOnlySpan<byte> probeKey = GetVariableEntry(keys, probe, count);
-            bool advance = key.SequenceCompareTo(probeKey) >= 0;
+            bool advance = CompareVariableEntry(key, searchPrefix, keys, count, probe) >= 0;
             lo = advance ? probe + 1 : lo;
             n = advance ? n - half - 1 : half;
         }
@@ -637,24 +748,45 @@ public readonly ref struct BSearchIndexReader
     /// </summary>
     public int GetFullKey(int index, Span<byte> dest)
     {
+        if (_metadata.KeyType == 0)
+        {
+            // Variable: prefix slot is byte-reversed; tail (if tag 11) lives in remainingkeys.
+            int slot = GetVariableKeyOffsetSlot(_keys, _metadata.KeyCount, index);
+            int tag = slot >>> 14;
+            ReadOnlySpan<byte> tail = tag == 0b11
+                ? GetVariableKeyTail(_keys, _metadata.KeyCount, index)
+                : default;
+            int suffixLen = tag == 0b11 ? 2 + tail.Length : tag;
+            int total = _commonKeyPrefix.Length + suffixLen;
+            if (dest.Length < total)
+                throw new ArgumentException("Destination too small for full key", nameof(dest));
+            _commonKeyPrefix.CopyTo(dest);
+            Span<byte> suffixDst = dest.Slice(_commonKeyPrefix.Length, suffixLen);
+            // Un-reverse prefix slot bytes [b, a] → lex [a, b] up to suffixLen.
+            if (suffixLen >= 1) suffixDst[0] = _keys[index * 2 + 1];
+            if (suffixLen >= 2) suffixDst[1] = _keys[index * 2];
+            if (tag == 0b11) tail.CopyTo(suffixDst[2..]);
+            return total;
+        }
+
         ReadOnlySpan<byte> suffix = GetKey(index);
-        int total = _commonKeyPrefix.Length + suffix.Length;
-        if (dest.Length < total)
+        int totalLegacy = _commonKeyPrefix.Length + suffix.Length;
+        if (dest.Length < totalLegacy)
             throw new ArgumentException("Destination too small for full key", nameof(dest));
         _commonKeyPrefix.CopyTo(dest);
-        Span<byte> suffixDst = dest.Slice(_commonKeyPrefix.Length, suffix.Length);
+        Span<byte> suffixDstLegacy = dest.Slice(_commonKeyPrefix.Length, suffix.Length);
         if (_metadata.IsKeyLittleEndian)
         {
-            // Stored slots for KeyType=1 with KeySize ∈ {2,4,8} are byte-reversed on disk.
+            // Stored slots for KeyType ∈ {1,2} with LE flag are byte-reversed on disk.
             // Reverse back into dest to recover the original lex/numeric byte order.
             int n = suffix.Length;
-            for (int i = 0; i < n; i++) suffixDst[i] = suffix[n - 1 - i];
+            for (int i = 0; i < n; i++) suffixDstLegacy[i] = suffix[n - 1 - i];
         }
         else
         {
-            suffix.CopyTo(suffixDst);
+            suffix.CopyTo(suffixDstLegacy);
         }
-        return total;
+        return totalLegacy;
     }
 
     /// <summary>
@@ -703,8 +835,10 @@ public readonly ref struct BSearchIndexReader
         public int ValueType => (Flags >> 3) & 0x03;
         /// <summary>
         /// True when fixed-width key slots are stored byte-reversed (Flags bit 5). Honored by
-        /// readers only for Uniform with <see cref="KeySize"/> ∈ {2,4,8} and UniformWithLen with
-        /// <see cref="KeySize"/> = 4. See <see cref="BSearchIndexReader"/> docs for details.
+        /// readers for Uniform with <see cref="KeySize"/> ∈ {2,4,8}, UniformWithLen with
+        /// <see cref="KeySize"/> = 4, and unconditionally for Variable (<see cref="KeyType"/>=0)
+        /// where the prefixArr slot is uniformly 2 bytes. See <see cref="BSearchIndexReader"/>
+        /// docs for details.
         /// </summary>
         public bool IsKeyLittleEndian => (Flags & 0x20) != 0;
         public bool HasCommonKeyPrefix => (Flags & 0x40) != 0;

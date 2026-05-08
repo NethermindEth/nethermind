@@ -117,9 +117,9 @@ internal static class BSearchIndexLayoutPlanner
         }
         else if (effMaxLen <= 3)
         {
-            // Variable layout costs 2 bytes/entry (sentinel offset table) plus a
-            // 2-byte sentinel — UniformWithLen wins for tiny suffixes since each
-            // slot is contiguous and SIMD-scannable.
+            // Variable layout costs 4 bytes/entry (prefixArr 2B + offsetArr 2B, no sentinel) —
+            // UniformWithLen wins for tiny suffixes since each slot is contiguous and
+            // SIMD-scannable, with smaller per-entry overhead at maxLen ≤ 3.
             keyType = 2;
             keySlotSize = effMaxLen + 1;
         }
@@ -130,9 +130,10 @@ internal static class BSearchIndexLayoutPlanner
         }
 
         commonKeyPrefixLen = lcp;
-        // Auto-enable LE storage where the SIMD floor scan can exploit it: Uniform 2/4/8 and
-        // UniformWithLen slotSize=4 (the only UniformWithLen width with a SIMD fast path).
+        // Auto-enable LE storage where the SIMD/integer-compare floor scan can exploit it:
+        // Uniform 2/4/8, UniformWithLen slotSize=4, and Variable (prefixArr is uniformly 2B/slot).
         keyLittleEndian =
+            keyType == 0 ||
             (keyType == 1 && keySlotSize is 2 or 4 or 8) ||
             (keyType == 2 && keySlotSize == 4);
     }

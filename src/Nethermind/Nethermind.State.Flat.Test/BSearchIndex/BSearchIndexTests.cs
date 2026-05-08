@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
 using Nethermind.State.Flat.Hsst;
@@ -199,46 +200,47 @@ public class BSearchIndexTests
     private static IEnumerable<TestCaseData> VariableKeysTestCases()
     {
         // Two entries: empty separator + "7A8B49" (3 bytes).
-        // Empty first entry forces Variable key format.
-        // No BaseOffset: min=0.
+        // Empty first entry forces Variable key format. Variable always sets the LE key flag
+        // (bit 5) since prefixArr is uniformly 2 bytes/slot. No BaseOffset.
         //
-        //   "08"       - Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)
+        //   "28"       - Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)|LEKey(20)
         //   "0200"     - KeyCount: 2
-        //   "0900"     - KeySize: 9 (3 data + 3*2 offsets)
+        //   "0900"     - KeySize: 9 (2*2 prefixArr + 2*2 offsetArr + 1 remainingkeys)
         //   "04"       - ValueSize: 4 (u8)
         //   "000000000000" - BaseOffset: 0
-        //   "7A8B49"   - Raw key bytes (entry 0 empty, entry 1 = 7A8B49)
-        //   "0000"     - SentinelOffsets[0]: 0  — entry 0 starts at 0
-        //   "0000"     - SentinelOffsets[1]: 0  — entry 1 starts at 0 (entry 0 had length 0)
-        //   "0300"     - SentinelOffsets[2]: 3  — sentinel; entry 1 length = 3 - 0 = 3
+        //   "0000"     - prefixArr[0]: empty key → padded zeros (LE-stored)
+        //   "8B7A"     - prefixArr[1]: byte-reversed first 2 bytes of "7A8B49" = [8B, 7A]
+        //   "0000"     - offsetArr[0]: tag=00, tailOffset=0 (no tail)
+        //   "00C0"     - offsetArr[1]: tag=11, tailOffset=0; raw u16=0xC000 → LE [00, C0]
+        //   "49"       - remainingkeys: tail of entry 1 ("49"; first 2 bytes are in prefixArr)
         //   "00000000" - Values[0]: 0 as int32 LE
         //   "37000000" - Values[1]: 55 as int32 LE
         yield return new TestCaseData(
             new[] { "", "7A8B49" }, new[] { 0, 55 },
-            "08" + "0200" + "0900" + "04" + "000000000000" + "7A8B49" + "0000" + "0000" + "0300" + "00000000" + "37000000"
+            "28" + "0200" + "0900" + "04" + "000000000000" + "0000" + "8B7A" + "0000" + "00C0" + "49" + "00000000" + "37000000"
         ).SetName("Variable_EmptyAndThreeBytes");
 
         // Three entries with varying separator lengths: 1, 2, 3 bytes.
-        // No BaseOffset: min=0.
+        // No BaseOffset.
         //
-        //   "08"         - Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)
+        //   "28"         - Flags: leaf(0)|KeyType=Variable(00)|ValueType=Uniform(08)|LEKey(20)
         //   "0300"       - KeyCount: 3
-        //   "0E00"       - KeySize: 14 (1+2+3 data + 4*2 offsets)
+        //   "0D00"       - KeySize: 13 (3*2 prefixArr + 3*2 offsetArr + 1 remainingkeys)
         //   "04"         - ValueSize: 4 (u8)
         //   "000000000000" - BaseOffset: 0
-        //   "41"         - Key bytes for entry 0
-        //   "4243"       - Key bytes for entry 1
-        //   "444546"     - Key bytes for entry 2
-        //   "0000"       - SentinelOffsets[0]: 0
-        //   "0100"       - SentinelOffsets[1]: 1
-        //   "0300"       - SentinelOffsets[2]: 3
-        //   "0600"       - SentinelOffsets[3]: 6 (sentinel)
+        //   "0041"       - prefixArr[0]: key "41" → LE-stored [00, 41]
+        //   "4342"       - prefixArr[1]: key "4243" → LE-stored [43, 42]
+        //   "4544"       - prefixArr[2]: key "444546" → LE-stored [45, 44]
+        //   "0040"       - offsetArr[0]: tag=01, tailOffset=0; u16=0x4000 → LE [00, 40]
+        //   "0080"       - offsetArr[1]: tag=10, tailOffset=0; u16=0x8000 → LE [00, 80]
+        //   "00C0"       - offsetArr[2]: tag=11, tailOffset=0; u16=0xC000 → LE [00, C0]
+        //   "46"         - remainingkeys: tail of entry 2 ("46")
         //   "00000000"   - Values[0]: 0 as int32 LE
         //   "64000000"   - Values[1]: 100 as int32 LE
         //   "C8000000"   - Values[2]: 200 as int32 LE
         yield return new TestCaseData(
             new[] { "41", "4243", "444546" }, new[] { 0, 100, 200 },
-            "08" + "0300" + "0E00" + "04" + "000000000000" + "41" + "4243" + "444546" + "0000" + "0100" + "0300" + "0600" + "00000000" + "64000000" + "C8000000"
+            "28" + "0300" + "0D00" + "04" + "000000000000" + "0041" + "4342" + "4544" + "0040" + "0080" + "00C0" + "46" + "00000000" + "64000000" + "C8000000"
         ).SetName("Variable_VaryingSeparators");
     }
 
@@ -266,19 +268,23 @@ public class BSearchIndexTests
 
         BSearchIndexReader index = BSearchIndexReader.ReadFromStart(output, 0);
         Assert.That(index.EntryCount, Is.EqualTo(separatorHexes.Length));
+        Span<byte> fullKey = stackalloc byte[256];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSep = separatorHexes[i].Length > 0 ? Convert.FromHexString(separatorHexes[i]) : [];
-            Assert.That(index.GetKey(i).ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
+            // Variable keys are LE-stored (prefix slot byte-reversed); GetFullKey reconstructs lex order.
+            int written2 = index.GetFullKey(i, fullKey);
+            Assert.That(fullKey[..written2].ToArray(), Is.EqualTo(expectedSep), $"Entry {i} separator mismatch");
         }
     }
 
     [Test]
-    public void IndexBuilder_VariableKeys_DataRegionExceeds64KiB_Throws()
+    public void IndexBuilder_VariableKeys_TailRegionExceeds16KiB_Throws()
     {
-        // 256 entries of 256-byte keys → cumulative data offset crosses ushort.MaxValue.
-        // Sentinel offsets: dataOffset(end) = 256 * 256 = 65 536 > 65 535.
-        const int entries = 256;
+        // SoA layout: tailOffset is 14 bits → remainingkeys cap is 16 KiB. With each entry
+        // contributing (keyLen - 2) tail bytes, 80 entries × 256-byte keys → 80 × 254 = 20 320
+        // tail bytes, well over 16 383.
+        const int entries = 80;
         const int keyLen = 256;
 
         byte[] keyBuf = new byte[entries * (2 + keyLen)];
@@ -300,7 +306,75 @@ public class BSearchIndexTests
         InvalidOperationException? caught = null;
         try { writer.FinalizeNode(); }
         catch (InvalidOperationException ex) { caught = ex; }
-        Assert.That(caught, Is.Not.Null, "Expected InvalidOperationException for u16 offset overflow");
+        Assert.That(caught, Is.Not.Null, "Expected InvalidOperationException for 14-bit tailOffset overflow");
+    }
+
+    /// <summary>
+    /// Mixed-tag fixture: one node with every <c>lenTag</c> value (0/1/2/3-byte and longer
+    /// keys) plus a tail-bearing 50-byte and 255-byte entry. Exercises the prefix-padding
+    /// path, sentinel-style tail-length derivation across short/long mixes, and the
+    /// last-entry tail sentinel = remainingkeys.Length boundary.
+    /// </summary>
+    [Test]
+    public void IndexBuilder_VariableKeys_MixedTagLengths_RoundTrip()
+    {
+        // Sorted by lex order: empty, 1-byte 0x05, 2-byte [0x05,0x05], 3-byte [0x05,0x05,0x05],
+        // 50-byte 0x06.., 255-byte 0x07.. — covers every lenTag {00,01,10,11} plus tail growth.
+        byte[][] keys =
+        [
+            [],
+            [0x05],
+            [0x05, 0x05],
+            [0x05, 0x05, 0x05],
+            BuildKey(50, 0x06),
+            BuildKey(255, 0x07),
+        ];
+
+        byte[] keyBuf = new byte[keys.Sum(k => 2 + k.Length)];
+        byte[] valScratch = new byte[keys.Length * (2 + 4)];
+        byte[] output = new byte[4096];
+        SpanBufferWriter bw = new(output);
+        BSearchIndexWriter<SpanBufferWriter> writer = new(ref bw,
+            new BSearchIndexMetadata { KeyType = 0 }, keyBuf, valScratch);
+        Span<byte> valBuf = stackalloc byte[4];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i * 11);
+            writer.AddKey(keys[i], valBuf);
+        }
+        writer.FinalizeNode();
+
+        BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
+        Assert.That(reader.EntryCount, Is.EqualTo(keys.Length));
+        Assert.That(reader.Metadata.KeyType, Is.EqualTo(0));
+        Assert.That(reader.Metadata.IsKeyLittleEndian, Is.True, "Variable keys are always LE-stored");
+
+        // Round-trip via GetFullKey: lex-order bytes must match the original keys.
+        Span<byte> dest = stackalloc byte[256];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            int written = reader.GetFullKey(i, dest);
+            Assert.That(dest[..written].ToArray(), Is.EqualTo(keys[i]), $"Entry {i} key mismatch");
+        }
+
+        // Floor lookup hits the right entry / value for every key.
+        for (int i = 0; i < keys.Length; i++)
+        {
+            Assert.That(reader.TryGetFloor(keys[i], out _, out ReadOnlySpan<byte> v), Is.True, $"Floor missing for entry {i}");
+            Assert.That(BinaryPrimitives.ReadInt32LittleEndian(v), Is.EqualTo(i * 11));
+        }
+
+        // Inter-entry probes: a key longer than entry 1 but lex-equal to its prefix should
+        // floor to entry 1 (not 2), since [0x05, 0x00] > [0x05] but < [0x05, 0x05].
+        Assert.That(reader.TryGetFloor([0x05, 0x00], out _, out ReadOnlySpan<byte> v05_00), Is.True);
+        Assert.That(BinaryPrimitives.ReadInt32LittleEndian(v05_00), Is.EqualTo(11), "Floor for [05,00] is entry 1 ([05])");
+
+        static byte[] BuildKey(int len, byte fill)
+        {
+            byte[] k = new byte[len];
+            Array.Fill(k, fill);
+            return k;
+        }
     }
 
     // ===== HEX FIXTURE TESTS: UNIFORM-WITH-LEN KEYS =====
@@ -501,11 +575,25 @@ public class BSearchIndexTests
         Assert.That(reader.Metadata.HasCommonKeyPrefix, Is.True);
         Assert.That(reader.CommonKeyPrefix.ToArray(), Is.EqualTo(Convert.FromHexString("DEADBEEF")));
 
-        // Per-entry decoded suffix matches (suffix only, prefix stripped).
+        // Per-entry decoded suffix matches (suffix only, prefix stripped). For Variable
+        // (KeyType=0) GetKey returns the byte-reversed 2-byte prefix slot — consistent with
+        // the LE-stored Uniform/UniformWithLen convention. GetFullKey reconstructs lex order
+        // for all encodings; use it where the test checks decoded bytes.
+        Span<byte> suffixBuf = stackalloc byte[16];
         for (int i = 0; i < separatorHexes.Length; i++)
         {
             byte[] expectedSuffix = [Convert.FromHexString(separatorHexes[i])[4]];
-            Assert.That(reader.GetKey(i).ToArray(), Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
+            if (keyType == 0)
+            {
+                int total = reader.GetFullKey(i, suffixBuf);
+                int prefixLenInDest = reader.CommonKeyPrefix.Length;
+                Assert.That(suffixBuf.Slice(prefixLenInDest, total - prefixLenInDest).ToArray(),
+                    Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
+            }
+            else
+            {
+                Assert.That(reader.GetKey(i).ToArray(), Is.EqualTo(expectedSuffix), $"Suffix {i} mismatch");
+            }
         }
 
         // GetFullKey reconstructs the original key.

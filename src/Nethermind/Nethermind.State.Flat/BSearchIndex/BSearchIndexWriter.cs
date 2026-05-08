@@ -60,9 +60,23 @@ internal struct BSearchIndexMetadata
 /// hardware prefetcher pull the entry data into L1/L2 while the search code is still parsing
 /// the header — the previous metadata-at-end layout fought the prefetcher's forward stride.
 ///
-/// Variable-encoded sections (KeyType/ValueType=0) use a sentinel-terminated offset table
+/// Variable-encoded VALUES (ValueType=0) use a sentinel-terminated offset table
 /// of (count+1) u16 entries appended after the raw entry data; length(i) =
 /// offsets[i+1] - offsets[i]. No per-entry length prefix.
+///
+/// Variable-encoded KEYS (KeyType=0) use a Structure-of-Arrays layout that inlines the
+/// first 2 bytes of every key for cache-friendly binary search:
+///   [ prefixArr: N × u16 LE ][ offsetArr: N × u16 LE ][ remainingkeys bytes ]
+/// where each <c>offsetArr[i]</c> packs <c>(lenTag &lt;&lt; 14) | tailOffset</c>:
+///   tag 00 = key length 0, tag 01 = length 1, tag 10 = length 2 (no tail),
+///   tag 11 = length ≥ 3 (tail bytes start at <c>tailOffset</c> in remainingkeys).
+/// Tail length for tag 11 is sentinel-derived: <c>offsetArr[i+1].tailOffset - offsetArr[i].tailOffset</c>
+/// (the implicit sentinel for i = N is <c>remainingkeys.Length</c>). Tags 00/01/10 don't
+/// advance the tail cursor, so their offset equals the next tag-11 entry's offset.
+/// Prefixes are byte-reversed on disk (Flags bit 5 / IsKeyLittleEndian set unconditionally
+/// for KeyType=0) so a u16 LE load yields a value with the same ordering as a lex compare
+/// on the original 2 bytes — feeding the existing 2-byte SIMD floor-scan path.
+/// The 14-bit tailOffset caps remainingkeys at 16 KiB per section.
 ///
 /// Usage: create with writer + metadata + key/value scratch buffers, call AddKey(key, value)
 /// for each entry in sorted key order, call FinalizeNode() to flush the binary layout.
@@ -221,20 +235,25 @@ internal ref struct BSearchIndexWriter<TWriter>
         _writer.Advance(12);
     }
 
+    /// <summary>14-bit tailOffset cap for the prefix-inlined Variable key section.</summary>
+    private const int MaxVariableKeyTailBytes = (1 << 14) - 1; // 16383
+
     private int ComputeVariableKeySectionSize()
     {
-        // Sentinel offset table: (count+1) u16 entries; length(i) = offsets[i+1] - offsets[i].
-        int dataBytes = 0;
+        // SoA layout: [ prefixArr N×u16 ][ offsetArr N×u16 ][ remainingkeys ].
+        // Each key contributes 4 bytes (prefix slot + offset slot) plus max(0, len-2) tail bytes.
+        int tailBytes = 0;
         int keySrc = 0;
         for (int i = 0; i < _count; i++)
         {
             int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
             keySrc += 2 + len;
-            dataBytes += len;
+            if (len > 2) tailBytes += len - 2;
         }
-        if (dataBytes > ushort.MaxValue)
-            throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
-        return dataBytes + (_count + 1) * 2;
+        if (tailBytes > MaxVariableKeyTailBytes)
+            throw new InvalidOperationException(
+                $"Variable key tail section ({tailBytes} bytes) exceeds 14-bit tailOffset cap (16 KiB); split before finalizing.");
+        return _count * 4 + tailBytes;
     }
 
     private int ComputeVariableValueSectionSize()
@@ -312,6 +331,10 @@ internal ref struct BSearchIndexWriter<TWriter>
     /// </summary>
     private bool ShouldEncodeKeyLittleEndian()
     {
+        // Variable (KeyType=0) is always LE-stored: the prefixArr is unconditionally
+        // 2-byte slots and the integer-compare floor-search relies on the byte-reversed
+        // encoding regardless of the metadata.IsKeyLittleEndian flag set on the writer.
+        if (_metadata.KeyType == 0) return true;
         if (!_metadata.IsKeyLittleEndian) return false;
         // Honored only for the shapes the SIMD direct-compare fast path supports: Uniform with
         // KeySlotSize ∈ {2,4,8} and UniformWithLen with slotSize=4. GetKey returns raw stored
@@ -377,42 +400,72 @@ internal ref struct BSearchIndexWriter<TWriter>
 
     private void WriteVariableKeys()
     {
-        // Sentinel offset table: count+1 u16 entries; offsets[i] is the start of
-        // entry i, offsets[count] is the end of data (sentinel) so each entry's
-        // length is offsets[i+1] - offsets[i] — no per-entry length prefix.
-        Span<ushort> offsets = stackalloc ushort[_count + 1];
+        // SoA layout: [ prefixArr N×u16 LE ][ offsetArr N×u16 LE ][ remainingkeys ].
+        //
+        // prefixArr[i]: first 2 bytes of key i, byte-reversed (LE-stored). A u16 LE
+        // load of the slot yields a value whose unsigned numeric order matches the
+        // lex order of the original 2-byte prefix. Keys < 2 bytes pad with 0; the
+        // length tag in offsetArr disambiguates from a real 0x00 byte.
+        //
+        // offsetArr[i]: u16 LE = (lenTag << 14) | tailOffset.
+        //   tag 00 = length 0, 01 = length 1, 10 = length 2, 11 = length ≥ 3.
+        //   tailOffset is the cumulative byte position into remainingkeys; tags
+        //   00/01/10 freeze the cursor (offset == next tag-11 entry's offset).
+        //   Tail length for tag 11 = offsetArr[i+1].tailOffset - offsetArr[i].tailOffset
+        //   (sentinel for i=N is remainingkeys.Length).
+
+        int prefixArrSize = _count * 2;
+        int offsetArrSize = _count * 2;
+        Span<byte> prefixArr = _writer.GetSpan(prefixArrSize)[..prefixArrSize];
+        // We need to fill prefixArr while walking _keyBuf, but offsetArr depends on the
+        // running tail cursor that we also build during the same walk. Compute offsetArr
+        // into a temp buffer first, then emit prefix bytes, then offset bytes, then tails.
+        Span<ushort> offsets = stackalloc ushort[_count];
+
         int keySrc = 0;
-        int dataOffset = 0;
+        int tailCursor = 0;
         for (int i = 0; i < _count; i++)
         {
             int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
-            keySrc += 2 + len;
-            offsets[i] = (ushort)dataOffset;
-            dataOffset += len;
-        }
-        if (dataOffset > ushort.MaxValue)
-            throw new InvalidOperationException("Variable section exceeds 64 KiB; offset table cannot address it");
-        offsets[_count] = (ushort)dataOffset;
+            keySrc += 2;
+            ReadOnlySpan<byte> key = _keyBuf.Slice(keySrc, len);
+            keySrc += len;
 
-        // Write key data first.
+            // Prefix slot: LE-stored = byte-reversed original prefix. Original prefix
+            // bytes [a, b] → stored [b, a]; LE u16 load of [b, a] = (a<<8)|b.
+            byte p0 = len >= 1 ? key[0] : (byte)0;
+            byte p1 = len >= 2 ? key[1] : (byte)0;
+            prefixArr[i * 2] = p1;
+            prefixArr[i * 2 + 1] = p0;
+
+            // Offset slot: lenTag is the actual key length when ≤ 2, else 0b11.
+            int lenTag = len <= 2 ? len : 0b11;
+            offsets[i] = (ushort)((lenTag << 14) | tailCursor);
+            if (len > 2) tailCursor += len - 2;
+        }
+        if (tailCursor > MaxVariableKeyTailBytes)
+            throw new InvalidOperationException(
+                $"Variable key tail section ({tailCursor} bytes) exceeds 14-bit tailOffset cap (16 KiB); split before finalizing.");
+        _writer.Advance(prefixArrSize);
+
+        // Offset array.
+        Span<byte> offsetArr = _writer.GetSpan(offsetArrSize)[..offsetArrSize];
+        for (int i = 0; i < _count; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(offsetArr[(i * 2)..], offsets[i]);
+        _writer.Advance(offsetArrSize);
+
+        // Tail bytes (only for keys with len > 2; in entry order).
         keySrc = 0;
         for (int i = 0; i < _count; i++)
         {
             int len = BinaryPrimitives.ReadUInt16LittleEndian(_keyBuf[keySrc..]);
             keySrc += 2;
-            if (len > 0)
+            if (len > 2)
             {
-                IByteBufferWriter.Copy(ref _writer, _keyBuf.Slice(keySrc, len));
+                IByteBufferWriter.Copy(ref _writer, _keyBuf.Slice(keySrc + 2, len - 2));
             }
             keySrc += len;
         }
-
-        // Then the offset table at the end of the section.
-        int tableSize = (_count + 1) * 2;
-        Span<byte> table = _writer.GetSpan(tableSize);
-        for (int i = 0; i <= _count; i++)
-            BinaryPrimitives.WriteUInt16LittleEndian(table[(i * 2)..], offsets[i]);
-        _writer.Advance(tableSize);
     }
 
     private void WriteUniformValues()
