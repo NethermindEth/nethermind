@@ -313,11 +313,11 @@ internal ref struct BSearchIndexWriter<TWriter>
     private bool ShouldEncodeKeyLittleEndian()
     {
         if (!_metadata.IsKeyLittleEndian) return false;
-        // Limited to Uniform 2/4/8: matches the SIMD direct-compare fast path. UniformWithLen
-        // is excluded because byte-reversing its variable-length payload would force GetKey to
-        // materialize results into a scratch buffer that the readonly ref-struct reader can't
-        // safely vend — keep that shape on the BE path until a benchmark justifies the surgery.
-        return _metadata.KeyType == 1 && _metadata.KeySlotSize is 2 or 4 or 8;
+        // Honored only for the shapes the SIMD direct-compare fast path supports: Uniform with
+        // KeySlotSize ∈ {2,4,8} and UniformWithLen with slotSize=4. GetKey returns raw stored
+        // bytes (LE-reversed) under this flag; GetFullKey reverses back into a caller dest.
+        return (_metadata.KeyType == 1 && _metadata.KeySlotSize is 2 or 4 or 8)
+            || (_metadata.KeyType == 2 && _metadata.KeySlotSize == 4);
     }
 
     private void WriteUniformKeys()
@@ -346,6 +346,7 @@ internal ref struct BSearchIndexWriter<TWriter>
     private void WriteUniformWithLenKeys()
     {
         int slotSize = _metadata.KeySlotSize;
+        bool reverse = ShouldEncodeKeyLittleEndian();
         int keySrc = 0;
         for (int i = 0; i < _count; i++)
         {
@@ -356,6 +357,12 @@ internal ref struct BSearchIndexWriter<TWriter>
             if (len > 0)
                 _keyBuf.Slice(keySrc, len).CopyTo(slot);
             slot[slotSize - 1] = (byte)len;
+            // LE encoding (slotSize=4 only): reverse the finalized [p0 p1 p2 len] in place to
+            // [len p2 p1 p0]. x86 LE-load of the reversed slot as uint32 yields
+            // (p0<<24)|(p1<<16)|(p2<<8)|len — the same numeric value the BE-load path produces,
+            // preserving the lex+length ordering invariant.
+            if (reverse)
+                slot[..slotSize].Reverse();
             _writer.Advance(slotSize);
             keySrc += len;
         }

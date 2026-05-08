@@ -137,7 +137,9 @@ public readonly ref struct BSearchIndexReader
     {
         0 => GetVariableEntry(_keys, index, _metadata.KeyCount),
         1 => _keys.Slice(index * _metadata.KeySize, _metadata.KeySize),
-        2 => GetUniformWithLenEntry(_keys, index, _metadata.KeySize),
+        2 => _metadata.IsKeyLittleEndian
+            ? GetUniformWithLenEntryLe(_keys, index, _metadata.KeySize)
+            : GetUniformWithLenEntry(_keys, index, _metadata.KeySize),
         _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
     };
 
@@ -200,6 +202,20 @@ public readonly ref struct BSearchIndexReader
     }
 
     /// <summary>
+    /// LE-stored UniformWithLen slot reader. The original [p0 p1 p2 len] was reversed on write
+    /// to [len p2 p1 p0], so the length byte sits at slot[0] and the payload occupies the
+    /// trailing <c>actualLen</c> bytes in reverse order. Returns the reversed payload as raw
+    /// stored bytes; callers wanting lex order use <see cref="GetFullKey"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ReadOnlySpan<byte> GetUniformWithLenEntryLe(ReadOnlySpan<byte> section, int index, int slotSize)
+    {
+        int slotStart = index * slotSize;
+        int actualLen = section[slotStart];
+        return section.Slice(slotStart + slotSize - actualLen, actualLen);
+    }
+
+    /// <summary>
     /// Strip the common key prefix from <paramref name="key"/>. Returns the residual span
     /// to binary-search against suffixes, or signals via <paramref name="shortcutResult"/>
     /// that the answer is determined entirely by the prefix relationship.
@@ -258,7 +274,9 @@ public readonly ref struct BSearchIndexReader
                 1 => keyLe
                     ? FindFloorIndexUniformBranchlessLe(q, _keys, count, _metadata.KeySize)
                     : FindFloorIndexUniformBranchless(q, _keys, count, _metadata.KeySize),
-                2 => FindFloorIndexUniformWithLenBranchless(q, _keys, count, _metadata.KeySize),
+                2 => keyLe && _metadata.KeySize == 4
+                    ? FindFloorIndexUniformWithLenBranchlessLe(q, _keys, count)
+                    : FindFloorIndexUniformWithLenBranchless(q, _keys, count, _metadata.KeySize),
                 0 => FindFloorIndexVariableBranchless(q, _keys, count),
                 _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
             };
@@ -267,7 +285,7 @@ public readonly ref struct BSearchIndexReader
         return _metadata.KeyType switch
         {
             1 => FindFloorIndexUniform(q, _keys, count, _metadata.KeySize, keyLe),
-            2 => FindFloorIndexUniformWithLen(q, _keys, count, _metadata.KeySize),
+            2 => FindFloorIndexUniformWithLen(q, _keys, count, _metadata.KeySize, keyLe),
             0 => FindFloorIndexVariable(q, _keys, count),
             _ => throw new InvalidDataException($"Unknown KeyType: {_metadata.KeyType}")
         };
@@ -387,11 +405,16 @@ public readonly ref struct BSearchIndexReader
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int FindFloorIndexUniformWithLen(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int slotSize)
+    private static int FindFloorIndexUniformWithLen(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count, int slotSize, bool isLittleEndian)
     {
         // SIMD fast path for the common slotSize=4 case (3-byte payload + 1-byte length).
-        if (BSearchIndexReaderSimd.TryFindFloorIndexUniformWithLenSimd(key, keys, count, slotSize, out int simdResult))
+        if (BSearchIndexReaderSimd.TryFindFloorIndexUniformWithLenSimd(key, keys, count, slotSize, isLittleEndian, out int simdResult))
             return simdResult;
+
+        // Scalar LE path: same encode-and-compare-as-uint32 trick the SIMD path uses
+        // (see BSearchIndexReaderSimd.cs:140-150 for the lex+length ordering invariant).
+        if (isLittleEndian && slotSize == 4)
+            return FindFloorIndexUniformWithLenLe(key, keys, count);
 
         int result = -1;
         int lo = 0, hi = count - 1;
@@ -403,6 +426,35 @@ public readonly ref struct BSearchIndexReader
             ReadOnlySpan<byte> midKey = keys.Slice(slotStart, actualLen);
             int cmp = key.SequenceCompareTo(midKey);
             if (cmp >= 0) { result = mid; lo = mid + 1; }
+            else { hi = mid - 1; }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Floor-index binary search for LE-stored UniformWithLen (slotSize=4). Encodes the search
+    /// key as <c>[k0 k1 k2 lenCap]</c> and reverses the endianness once so the broadcast value
+    /// matches the native-LE-load of each stored slot. Equal-prefix-with-longer-search-key still
+    /// yields the correct "search >= stored" floor decision via the length byte tie-break.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexUniformWithLenLe(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    {
+        Span<byte> encoded = stackalloc byte[4];
+        int payloadLen = Math.Min(key.Length, 3);
+        if (payloadLen > 0) key[..payloadLen].CopyTo(encoded);
+        encoded[3] = (byte)Math.Min(key.Length, 255);
+        uint search = BinaryPrimitives.ReverseEndianness(
+            Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(encoded)));
+
+        ref byte src = ref MemoryMarshal.GetReference(keys);
+        int result = -1;
+        int lo = 0, hi = count - 1;
+        while (lo <= hi)
+        {
+            int mid = (lo + hi) >>> 1;
+            uint midKey = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(mid * 4)));
+            if (search >= midKey) { result = mid; lo = mid + 1; }
             else { hi = mid - 1; }
         }
         return result;
@@ -525,6 +577,35 @@ public readonly ref struct BSearchIndexReader
             int actualLen = keys[slotStart + slotSize - 1];
             ReadOnlySpan<byte> probeKey = keys.Slice(slotStart, actualLen);
             bool advance = key.SequenceCompareTo(probeKey) >= 0;
+            lo = advance ? probe + 1 : lo;
+            n = advance ? n - half - 1 : half;
+        }
+        return lo - 1;
+    }
+
+    /// <summary>
+    /// LE-stored counterpart of <see cref="FindFloorIndexUniformWithLenBranchless"/> for the
+    /// slotSize=4 case: integer-compare path matching <see cref="FindFloorIndexUniformWithLenLe"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindFloorIndexUniformWithLenBranchlessLe(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    {
+        Span<byte> encoded = stackalloc byte[4];
+        int payloadLen = Math.Min(key.Length, 3);
+        if (payloadLen > 0) key[..payloadLen].CopyTo(encoded);
+        encoded[3] = (byte)Math.Min(key.Length, 255);
+        uint search = BinaryPrimitives.ReverseEndianness(
+            Unsafe.ReadUnaligned<uint>(ref MemoryMarshal.GetReference(encoded)));
+
+        ref byte src = ref MemoryMarshal.GetReference(keys);
+        int lo = 0;
+        int n = count;
+        while (n > 0)
+        {
+            int half = n >> 1;
+            int probe = lo + half;
+            uint probeKey = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref src, (nint)(probe * 4)));
+            bool advance = search >= probeKey;
             lo = advance ? probe + 1 : lo;
             n = advance ? n - half - 1 : half;
         }

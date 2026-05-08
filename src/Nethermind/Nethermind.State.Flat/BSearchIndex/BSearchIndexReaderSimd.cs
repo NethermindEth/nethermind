@@ -158,6 +158,7 @@ public static class BSearchIndexReaderSimd
         ReadOnlySpan<byte> keys,
         int count,
         int slotSize,
+        bool isLittleEndian,
         out int result)
     {
         result = 0;
@@ -176,9 +177,12 @@ public static class BSearchIndexReaderSimd
         if (payloadLen > 0) key[..payloadLen].CopyTo(encoded);
         encoded[3] = (byte)Math.Min(key.Length, 255);
 
-        // UniformWithLen always stores slots in BE form (the LE flag never applies — see
-        // BSearchIndexWriter.ShouldEncodeKeyLittleEndian), so reuse the BE FloorScan32 path.
-        result = FloorScan32(encoded, keys, count, isLittleEndian: false);
+        // The encoded search key bytes are identical in both layouts. FloorScan32 broadcasts
+        // ReverseEndianness(LE-load(encoded)), which equals BE-load(encoded). For BE-stored
+        // slots [p0 p1 p2 len] FloorScan32 byte-swaps each lane to recover that integer; for
+        // LE-stored slots [len p2 p1 p0] the native LE-load already IS that integer (the lex+
+        // length ordering invariant at lines 140-150 holds in either layout).
+        result = FloorScan32(encoded, keys, count, isLittleEndian);
         return true;
     }
 

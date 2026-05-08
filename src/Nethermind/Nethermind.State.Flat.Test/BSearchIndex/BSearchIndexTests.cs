@@ -755,8 +755,8 @@ public class BSearchIndexTests
     }
 
     /// <summary>
-    /// LayoutPlanner auto-enables the LE flag for Uniform 2/4/8 only; UniformWithLen and
-    /// non-eligible Uniform widths must opt out.
+    /// LayoutPlanner auto-enables the LE flag for Uniform 2/4/8 and UniformWithLen slotSize=4
+    /// only; non-eligible widths must opt out.
     /// </summary>
     [TestCase(2, 1, true,  TestName = "Plan_LE_Uniform2")]
     [TestCase(4, 1, true,  TestName = "Plan_LE_Uniform4")]
@@ -780,6 +780,189 @@ public class BSearchIndexTests
             out _, out int keyType, out _, out bool keyLittleEndian);
         Assert.That(keyType, Is.EqualTo(expectedKeyType));
         Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
+    }
+
+    /// <summary>
+    /// LayoutPlanner picks UniformWithLen with slotSize=secondLen+1 when the leftmost separator
+    /// is empty and all others share a length (intermediate-node niche, see
+    /// <c>BSearchIndexLayoutPlanner.cs:98-105</c>). The LE flag must auto-enable iff the
+    /// resulting slot size is exactly 4.
+    /// </summary>
+    [TestCase(3, 4, true,  TestName = "Plan_LE_UniformWithLen_Slot4")]
+    [TestCase(2, 3, false, TestName = "Plan_LE_UniformWithLen_Slot3_NotEligible")]
+    [TestCase(4, 5, false, TestName = "Plan_LE_UniformWithLen_Slot5_NotEligible")]
+    public void LayoutPlanner_AutoEnablesLeFlag_UniformWithLen(int otherLen, int expectedSlotSize, bool expectedLe)
+    {
+        // Empty leftmost + same-length others → KeyType=2 with slotSize=otherLen+1.
+        const int count = 4;
+        byte[] buf = new byte[otherLen * (count - 1)];
+        for (int i = 0; i < buf.Length; i++) buf[i] = (byte)(i + 1);
+        Span<int> offsets = stackalloc int[count];
+        Span<int> lengths = stackalloc int[count];
+        offsets[0] = 0;
+        lengths[0] = 0;
+        for (int i = 1; i < count; i++)
+        {
+            offsets[i] = (i - 1) * otherLen;
+            lengths[i] = otherLen;
+        }
+        BSearchIndexLayoutPlanner.Plan(buf, offsets, lengths,
+            out _, out int keyType, out int keySlotSize, out bool keyLittleEndian);
+        Assert.That(keyType, Is.EqualTo(2));
+        Assert.That(keySlotSize, Is.EqualTo(expectedSlotSize));
+        Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
+    }
+
+    /// <summary>
+    /// Round-trip a UniformWithLen LE-encoded leaf with slotSize=4 covering payload lengths
+    /// {0,1,2,3}: header bit 5 is set, raw on-disk slot bytes are byte-reversed,
+    /// <see cref="BSearchIndexReader.GetKey"/> returns the reversed payload tail of
+    /// <c>actualLen</c> bytes, <see cref="BSearchIndexReader.GetFullKey"/> recovers original
+    /// lex bytes, and <see cref="BSearchIndexReader.FindFloorIndex"/> matches the BE baseline
+    /// at every probe (hits, between, below-first, above-last, longer-search-key) under
+    /// branchful, branchless, and SIMD-on configurations.
+    /// </summary>
+    [Test]
+    public void UniformWithLen_LittleEndian_RoundTripAndFloorAgreesWithBigEndian()
+    {
+        const int slotSize = 4;
+        // Mixed payload lengths in lex+length-sorted order. The lex+length invariant from
+        // BSearchIndexReaderSimd.cs:140-150 is: shorter prefix-equal key < longer one. Build a
+        // sorted, unique sequence by hand to span len ∈ {0,1,2,3} including the empty-slot edge.
+        byte[][] keys =
+        [
+            [],                          // len=0
+            [0x10],                      // len=1
+            [0x10, 0x00],                // len=2 (prefix-equal w/ 0x10, longer ⇒ greater)
+            [0x10, 0x20, 0x30],          // len=3
+            [0x40],
+            [0x55, 0x66],
+            [0x55, 0x66, 0x77],
+            [0x77, 0x88, 0x99],
+            [0xAA],
+            [0xFE, 0xFF, 0xFF],
+        ];
+        int n = keys.Length;
+
+        byte[] beOut = WriteUniformWithLen(keys, slotSize, isLittleEndian: false);
+        byte[] leOut = WriteUniformWithLen(keys, slotSize, isLittleEndian: true);
+
+        BSearchIndexReader beReader = BSearchIndexReader.ReadFromStart(beOut, 0);
+        BSearchIndexReader leReader = BSearchIndexReader.ReadFromStart(leOut, 0);
+
+        Assert.That(beReader.Metadata.IsKeyLittleEndian, Is.False);
+        Assert.That(leReader.Metadata.IsKeyLittleEndian, Is.True);
+        Assert.That((leOut[0] & 0x20), Is.EqualTo(0x20));
+        Assert.That(leReader.Metadata.KeyType, Is.EqualTo(2));
+        Assert.That(leReader.Metadata.KeySize, Is.EqualTo(slotSize));
+
+        // Raw on-disk slot bytes: each LE slot is the byte-reverse of the BE slot.
+        // Header occupies the same number of bytes for both layouts (no common prefix,
+        // identical metadata except the LE flag), so the keys section starts at the same
+        // offset and we can compare slot-by-slot.
+        int hdr = HeaderSize(beReader);
+        for (int i = 0; i < n; i++)
+        {
+            ReadOnlySpan<byte> beSlot = beOut.AsSpan(hdr + i * slotSize, slotSize);
+            ReadOnlySpan<byte> leSlot = leOut.AsSpan(hdr + i * slotSize, slotSize);
+            byte[] reversed = new byte[slotSize];
+            for (int j = 0; j < slotSize; j++) reversed[j] = beSlot[slotSize - 1 - j];
+            Assert.That(leSlot.ToArray(), Is.EqualTo(reversed), $"LE slot {i} should be byte-reversed BE slot");
+        }
+
+        // GetKey: BE returns actualLen lex payload bytes; LE returns actualLen reversed bytes.
+        for (int i = 0; i < n; i++)
+        {
+            ReadOnlySpan<byte> beKey = beReader.GetKey(i);
+            ReadOnlySpan<byte> leKey = leReader.GetKey(i);
+            Assert.That(beKey.ToArray(), Is.EqualTo(keys[i]));
+            byte[] reversed = new byte[keys[i].Length];
+            for (int j = 0; j < reversed.Length; j++) reversed[j] = keys[i][keys[i].Length - 1 - j];
+            Assert.That(leKey.ToArray(), Is.EqualTo(reversed),
+                $"LE GetKey({i}) should be reversed payload of len {keys[i].Length}");
+        }
+
+        // GetFullKey under LE recovers the original lex bytes (no common prefix here).
+        Span<byte> dest = stackalloc byte[slotSize];
+        for (int i = 0; i < n; i++)
+        {
+            int len = leReader.GetFullKey(i, dest);
+            Assert.That(len, Is.EqualTo(keys[i].Length));
+            Assert.That(dest[..len].ToArray(), Is.EqualTo(keys[i]),
+                $"LE GetFullKey({i}) should equal lex bytes");
+        }
+
+        // Floor-index agreement at every probe across {branchful, branchless, SIMD-on}.
+        bool simdWasOn = BSearchIndexReaderSimd.Enabled;
+        bool branchlessWas = BSearchIndexReader.BranchlessSearch;
+        try
+        {
+            foreach ((bool branchless, bool simd) in new[] { (false, false), (true, false), (false, true) })
+            {
+                BSearchIndexReader.BranchlessSearch = branchless;
+                BSearchIndexReaderSimd.Enabled = simd;
+                for (int i = 0; i < n; i++)
+                {
+                    int beIdx = beReader.FindFloorIndex(keys[i]);
+                    int leIdx = leReader.FindFloorIndex(keys[i]);
+                    Assert.That(leIdx, Is.EqualTo(beIdx),
+                        $"Hit i={i} len={keys[i].Length} branchless={branchless} simd={simd}");
+                    Assert.That(leIdx, Is.EqualTo(i));
+                }
+                // Below-first miss (empty key matches keys[0] which is also empty → hit at 0; pick something
+                // strictly less if first key were non-empty, but here keys[0]=[] is the smallest, so we test
+                // a single-byte search below the second entry):
+                byte[] between = [0x05]; // < 0x10 (keys[1]); > [] (keys[0]) ⇒ floor = 0
+                Assert.That(leReader.FindFloorIndex(between), Is.EqualTo(beReader.FindFloorIndex(between)));
+                Assert.That(leReader.FindFloorIndex(between), Is.EqualTo(0));
+                // Above-last.
+                byte[] above = [0xFF, 0xFF, 0xFF];
+                Assert.That(leReader.FindFloorIndex(above), Is.EqualTo(beReader.FindFloorIndex(above)));
+                Assert.That(leReader.FindFloorIndex(above), Is.EqualTo(n - 1));
+                // Longer-than-slot search key (intermediate-node descent shape).
+                byte[] longProbe = [0x55, 0x66, 0x77, 0xAB, 0xCD, 0xEF];
+                Assert.That(leReader.FindFloorIndex(longProbe), Is.EqualTo(beReader.FindFloorIndex(longProbe)),
+                    $"Longer probe branchless={branchless} simd={simd}");
+            }
+        }
+        finally
+        {
+            BSearchIndexReaderSimd.Enabled = simdWasOn;
+            BSearchIndexReader.BranchlessSearch = branchlessWas;
+        }
+    }
+
+    private static int HeaderSize(BSearchIndexReader r)
+    {
+        // 12-byte fixed header + (1 + prefixLen) optional common-prefix block.
+        int hdr = 12;
+        if (r.Metadata.HasCommonKeyPrefix) hdr += 1 + r.CommonKeyPrefix.Length;
+        return hdr;
+    }
+
+    private static byte[] WriteUniformWithLen(byte[][] keys, int slotSize, bool isLittleEndian)
+    {
+        int n = keys.Length;
+        int keyBufSize = 0;
+        foreach (byte[] k in keys) keyBufSize += 2 + k.Length;
+        byte[] keyBuf = new byte[keyBufSize];
+        byte[] valScratch = new byte[n * (2 + 4)];
+        byte[] output = new byte[16 * 1024];
+        SpanBufferWriter w = new(output);
+        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
+        {
+            KeyType = 2,
+            KeySlotSize = slotSize,
+            IsKeyLittleEndian = isLittleEndian,
+        }, keyBuf, valScratch);
+        Span<byte> valBuf = stackalloc byte[4];
+        for (int i = 0; i < n; i++)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i);
+            writer.AddKey(keys[i], valBuf);
+        }
+        writer.FinalizeNode();
+        return output;
     }
 
     /// <summary>

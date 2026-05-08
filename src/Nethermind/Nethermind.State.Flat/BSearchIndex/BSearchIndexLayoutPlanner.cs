@@ -130,7 +130,10 @@ internal static class BSearchIndexLayoutPlanner
         }
 
         commonKeyPrefixLen = lcp;
-        // Auto-enable LE storage where the SIMD floor scan can exploit it: Uniform 2/4/8.
-        keyLittleEndian = keyType == 1 && keySlotSize is 2 or 4 or 8;
+        // Auto-enable LE storage where the SIMD floor scan can exploit it: Uniform 2/4/8 and
+        // UniformWithLen slotSize=4 (the only UniformWithLen width with a SIMD fast path).
+        keyLittleEndian =
+            (keyType == 1 && keySlotSize is 2 or 4 or 8) ||
+            (keyType == 2 && keySlotSize == 4);
     }
 }
