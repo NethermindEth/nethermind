@@ -48,6 +48,12 @@ public interface IOwnedReadOnlyList<T> : IReadOnlyList<T>, IDisposable
 
 public static class OwnedReadOnlyListExtensions
 {
+    public static IOwnedReadOnlyList<T> Slice<T>(this IOwnedReadOnlyList<T> list, int start, int count) =>
+        new SlicedOwnedReadOnlyList<T>(list, start, count);
+
+    public static IOwnedReadOnlyList<T> Slice<T>(this IOwnedReadOnlyList<T> list, int start) =>
+        new SlicedOwnedReadOnlyList<T>(list, start, list.Count - start);
+
     public static void DisposeRecursive<T>(this IOwnedReadOnlyList<T> list) where T : IDisposable
     {
         for (int i = 0; i < list.Count; i++)
@@ -56,5 +62,16 @@ public static class OwnedReadOnlyListExtensions
         }
 
         list.Dispose();
+    }
+
+    private sealed class SlicedOwnedReadOnlyList<T>(IOwnedReadOnlyList<T> list, int start, int count)
+        : SlicedReadOnlyList<T>(list, start, count), IOwnedReadOnlyList<T>
+    {
+        public ReadOnlySpan<T> AsSpan() => ((IOwnedReadOnlyList<T>)_list).AsSpan().Slice(_start, Count);
+
+        public void Dispose()
+        {
+            // The slice does not own the backing list; the caller disposes the original list.
+        }
     }
 }
