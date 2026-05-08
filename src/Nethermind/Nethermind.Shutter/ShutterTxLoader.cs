@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -190,7 +190,7 @@ public class ShutterTxLoader(
 
     private Transaction DecodeTransaction(ReadOnlySpan<byte> encoded)
     {
-        Transaction tx = TxDecoder.Instance.Decode(encoded, RlpBehaviors.SkipTypedWrapping);
+        Transaction tx = TxDecoder.Instance.DecodeCompleteNotNull(encoded, RlpBehaviors.SkipTypedWrapping);
         tx.SenderAddress = ecdsa.RecoverAddress(tx, true);
         return tx;
     }

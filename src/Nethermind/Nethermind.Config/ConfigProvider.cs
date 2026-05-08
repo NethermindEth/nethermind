@@ -157,10 +157,10 @@ public class ConfigProvider : IConfigProvider
             Initialize();
         }
 
-        HashSet<string> propertySet = _instances.Values
-            .SelectMany(i => i.GetType()
+        HashSet<string> propertySet = _instances
+            .SelectMany(static kvp => kvp.Value.GetType()
                 .GetProperties()
-                .Select(p => GetKey(i.GetType().Name, p.Name)))
+                .Select(p => GetKey(kvp.Value.GetType().Name, p.Name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         List<(IConfigSource Source, string? Category, string Name)> incorrectSettings = [];

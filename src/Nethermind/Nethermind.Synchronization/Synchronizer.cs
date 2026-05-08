@@ -42,6 +42,7 @@ namespace Nethermind.Synchronization
         [KeyFilter(nameof(HeadersSyncFeed))] SyncFeedComponent<HeadersSyncBatch> fastHeaderComponent,
         SyncFeedComponent<BodiesSyncBatch> oldBodiesComponent,
         SyncFeedComponent<ReceiptsSyncBatch> oldReceiptsComponent,
+        SyncFeedComponent<BlockAccessListsSyncBatch> oldBlockAccessListsComponent,
 #pragma warning disable CS9113 // Parameter is unread. But it need to be instantiated to function
         SyncDbTuner syncDbTuner,
         MallocTrimmer mallocTrimmer,
@@ -98,10 +99,23 @@ namespace Nethermind.Synchronization
 
         private void GCOnFeedFinished(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.WasModeFinished(SyncMode.StateNodes) || e.WasModeFinished(SyncMode.FastReceipts) || e.WasModeFinished(SyncMode.FastBlocks))
+            if (WasAnyModeFinished(e, SyncMode.StateNodes, SyncMode.FastReceipts, SyncMode.FastBlockAccessLists, SyncMode.FastBlocks))
             {
                 GC.Collect(2, GCCollectionMode.Aggressive, true, true);
             }
+        }
+
+        private static bool WasAnyModeFinished(SyncModeChangedEventArgs e, params ReadOnlySpan<SyncMode> modes)
+        {
+            foreach (SyncMode mode in modes)
+            {
+                if (e.WasModeFinished(mode))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void StartFullSyncComponents()
@@ -196,6 +210,21 @@ namespace Nethermind.Synchronization
                         }
                     });
                 }
+
+                if (syncConfig.DownloadBlockAccessListsInFastSync)
+                {
+                    Task blockAccessListsTask = oldBlockAccessListsComponent.Dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            if (_logger.IsError) _logger.Error("Fast block access lists sync failed", t.Exception);
+                        }
+                        else
+                        {
+                            if (_logger.IsInfo) _logger.Info("Fast blocks access lists task completed.");
+                        }
+                    });
+                }
             }
         }
 
@@ -225,7 +254,8 @@ namespace Nethermind.Synchronization
                 fastSyncComponent.Feed.FeedTask,
                 fastHeaderComponent.Feed.FeedTask,
                 oldBodiesComponent.Feed.FeedTask,
-                oldReceiptsComponent.Feed.FeedTask);
+                oldReceiptsComponent.Feed.FeedTask,
+                oldBlockAccessListsComponent.Feed.FeedTask);
             Task completedFirst = await Task.WhenAny(timeout, feedsTask);
 
             if (completedFirst == timeout)
@@ -247,6 +277,7 @@ namespace Nethermind.Synchronization
             WireFeedWithModeSelector(fastHeaderComponent.Feed);
             WireFeedWithModeSelector(oldBodiesComponent.Feed);
             WireFeedWithModeSelector(oldReceiptsComponent.Feed);
+            WireFeedWithModeSelector(oldBlockAccessListsComponent.Feed);
         }
 
         public void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
@@ -314,6 +345,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         ConfigureStateSyncComponent(builder);
         ConfigureSnapComponent(builder);
         ConfigureReceiptSyncComponent(builder);
+        ConfigureBlockAccessListsSyncComponent(builder);
         ConfigureBodiesSyncComponent(builder);
 
         builder
@@ -412,6 +444,17 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             !syncConfig.DownloadReceiptsInFastSync)
         {
             serviceCollection.AddSingleton<ISyncFeed<ReceiptsSyncBatch>, NoopSyncFeed<ReceiptsSyncBatch>>();
+        }
+    }
+
+    private void ConfigureBlockAccessListsSyncComponent(ContainerBuilder serviceCollection)
+    {
+        ConfigureSingletonSyncFeed<BlockAccessListsSyncBatch, BlockAccessListsSyncFeed, BlockAccessListsSyncDispatcher, FastBlocksPeerAllocationStrategyFactory>(serviceCollection);
+
+        if (!syncConfig.FastSync || !syncConfig.DownloadHeadersInFastSync ||
+            !syncConfig.DownloadBlockAccessListsInFastSync)
+        {
+            serviceCollection.AddSingleton<ISyncFeed<BlockAccessListsSyncBatch>, NoopSyncFeed<BlockAccessListsSyncBatch>>();
         }
     }
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,7 +14,17 @@ namespace Nethermind.Serialization.Ssz;
 public static partial class Ssz
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Decode(ReadOnlySpan<byte> span, out bool result) => result = span[0] != 0;
+    public static void Decode(ReadOnlySpan<byte> span, out bool result)
+    {
+        ValidateLength(span, sizeof(bool));
+
+        result = span[0] switch
+        {
+            0 => false,
+            1 => true,
+            var x => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {x}")
+        };
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Decode(ReadOnlySpan<byte> span, out byte result)

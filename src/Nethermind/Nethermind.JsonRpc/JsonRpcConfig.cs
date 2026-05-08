@@ -71,7 +71,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string[] CorsOrigins { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 1;
     public int IpcProcessingConcurrency { get; set; } = 1;
-    public bool EnablePerMethodMetrics { get; set; } = false;
+    public bool EnablePerMethodMetrics { get; set; } = true;
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
     public bool StrictHexFormat { get; set; } = true;

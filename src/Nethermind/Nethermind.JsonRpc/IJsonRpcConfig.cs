@@ -178,7 +178,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Concurrency level of IPC connection.", DefaultValue = "1")]
     int IpcProcessingConcurrency { get; set; }
 
-    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "false")]
+    [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]
     bool EnablePerMethodMetrics { get; set; }
 
     [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
