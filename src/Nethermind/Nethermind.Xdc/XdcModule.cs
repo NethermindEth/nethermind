@@ -135,6 +135,8 @@ public class XdcModule : Module
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
 
+        // Overrides DiscoveryApp registered in DiscoveryModule (via NethermindModule).
+        // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
         builder.RegisterType<XdcDiscoveryApp>().As<DiscoveryApp>().WithAttributeFiltering().SingleInstance().ExternallyOwned();
     }
 

@@ -19,6 +19,8 @@ public class XdcNettyDiscoveryHandler(
     NodeFilter? inboundMessageFilter = null)
     : NettyDiscoveryHandler(discoveryManager, channel, msgSerializationService, timestamper, logManager, inboundMessageFilter)
 {
+    // XDC remapped the standard disc-v4 type bytes: byte 1 (standard Ping) is unused;
+    // byte 5 is XDC's pingXDC. ENR (bytes 5/6 in standard geth) is not supported by XDC
     protected override MsgType? FromMsgTypeByte(byte b) => b switch
     {
         2 => MsgType.Pong,

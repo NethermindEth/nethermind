@@ -8,8 +8,8 @@ using Nethermind.Network.Discovery.Serializers;
 
 namespace Nethermind.Xdc.Discovery;
 
-public class XdcPingMsgSerializer : PingMsgSerializer
+public class XdcPingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
+    : PingMsgSerializer(ecdsa, nodeKey, nodeIdResolver)
 {
-    public XdcPingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver) => MsgTypeByte = 5;
+    protected override byte MsgTypeByte => 5;
 }

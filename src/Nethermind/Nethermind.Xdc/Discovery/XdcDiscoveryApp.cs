@@ -15,6 +15,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Xdc.Discovery;
 
+// Parameters mirror DiscoveryApp so Autofac resolves [KeyFilter] attributes via WithAttributeFiltering().
 public class XdcDiscoveryApp(
     [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
     INodesLocator nodesLocator,

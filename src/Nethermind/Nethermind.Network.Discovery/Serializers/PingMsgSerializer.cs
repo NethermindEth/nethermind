@@ -13,7 +13,7 @@ namespace Nethermind.Network.Discovery.Serializers;
 
 public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
 {
-    protected byte MsgTypeByte = (byte)MsgType.Ping;
+    protected virtual byte MsgTypeByte => (byte)MsgType.Ping;
 
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
     {
