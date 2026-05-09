@@ -395,11 +395,7 @@ public partial class EthRpcModule(
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
-        try
-        {
-            _wallet.Sign(tx, chainId);
-        }
-        catch (SecurityException)
+        if (!_wallet.TrySign(tx, chainId))
         {
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
         }
