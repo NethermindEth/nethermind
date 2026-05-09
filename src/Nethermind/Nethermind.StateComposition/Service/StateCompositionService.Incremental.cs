@@ -55,14 +55,17 @@ internal sealed partial class StateCompositionService
             head = _blockTree.Head;
             if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
-            BlockHeader? prevHeader = _blockTree.FindHeader(_stateHolder.IncrementalBlock, BlockTreeLookupOptions.RequireCanonical);
+            long prevBlock = _stateHolder.IncrementalBlock;
+            if (head.Number < prevBlock) return;
+
+            BlockHeader? prevHeader = _blockTree.FindHeader(prevBlock, BlockTreeLookupOptions.RequireCanonical);
             if (prevHeader is null)
             {
                 Metrics.StateCompBaselineInvalidations++;
                 _stateHolder.InvalidateBaseline();
                 if (_logger.IsWarn)
                     _logger.Warn(
-                        $"StateComposition: baseline header at block {_stateHolder.IncrementalBlock} no longer canonical " +
+                        $"StateComposition: baseline header at block {prevBlock} no longer canonical " +
                         $"(prevRoot={prevRoot}); invalidated baseline and scheduling a full rescan.");
                 ScheduleBaselineRescan(head);
                 return;
@@ -72,7 +75,6 @@ internal sealed partial class StateCompositionService
             // its own scope: under FlatDb, `BeginScope` only materialises the
             // bundle for one block, so a single resolver makes the other
             // side's nodes look Unknown and silently zeroes the diff.
-
             using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
             using IDisposable oldScope = BeginScopeOrThrowMissing(oldStore, prevHeader, prevRoot);
             using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
@@ -99,6 +101,9 @@ internal sealed partial class StateCompositionService
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
         }
+        // Two paths fold into this handler: (1) ComputeDiff hit a pruned-out node,
+        // (2) BeginScopeOrThrowMissing wrapped FlatDb's "stale bundle"
+        // InvalidOperationException as MissingTrieNodeException. Both recover identically.
         catch (MissingTrieNodeException ex)
         {
             Metrics.StateCompBaselineInvalidations++;

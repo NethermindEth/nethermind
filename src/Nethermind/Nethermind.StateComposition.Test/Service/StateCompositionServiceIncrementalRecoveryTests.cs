@@ -165,6 +165,45 @@ public class StateCompositionServiceIncrementalRecoveryTests
     }
 
     [Test]
+    public void RunIncrementalDiff_HeadBehindBaseline_DefersWithoutInvalidating()
+    {
+        long invalidationsBefore = Metrics.StateCompBaselineInvalidations;
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+
+        // Head is BEHIND the baseline (transient init state).
+        Block staleHead = Build.A.Block.WithNumber(50).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(staleHead);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompBaselineInvalidations, Is.EqualTo(invalidationsBefore),
+                "Deferred diff must NOT touch the baseline-invalidation counter.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore),
+                "Deferred diff must NOT touch the diff-errors counter.");
+            Assert.That(stateHolder.LastProcessedStateRoot, Is.EqualTo(PrevRoot),
+                "Baseline state root must be retained — the deferral leaves it untouched.");
+            Assert.That(stateHolder.IncrementalBlock, Is.EqualTo(100),
+                "Incremental block must stay at the baseline value while we wait.");
+        }
+
+        worldStateManager.DidNotReceive().CreateReadOnlyTrieStore();
+        blockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
+    }
+
+    [Test]
     [CancelAfter(10_000)]
     public async Task OnNewHeadBlock_NoBaseline_FiresDeferredBootstrapScan()
     {
