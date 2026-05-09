@@ -441,14 +441,13 @@ public partial class EthRpcModule(
 
         // Reject overflow as cap-exceeded: a wraparound multiplication would otherwise let huge
         // fee values silently slip through.
-        if (UInt256.MultiplyOverflow(perGas, (UInt256)tx.GasLimit, out UInt256 totalFee) || totalFee > capWei)
-        {
-            return ResultWrapper<SignTransactionResult>.Fail(
-                $"tx fee ({FormatWeiAsEther(totalFee)} ether) exceeds the configured cap ({FormatWeiAsEther(capWei)} ether)",
-                ErrorCodes.InvalidInput);
-        }
+        bool overflow = UInt256.MultiplyOverflow(perGas, (UInt256)tx.GasLimit, out UInt256 totalFee);
+        if (!overflow && totalFee <= capWei) return null;
+        string feeStr = overflow ? "overflow" : FormatWeiAsEther(totalFee);
+        return ResultWrapper<SignTransactionResult>.Fail(
+            $"tx fee ({feeStr} ether) exceeds the configured cap ({FormatWeiAsEther(capWei)} ether)",
+            ErrorCodes.InvalidInput);
 
-        return null;
     }
 
     private static string FormatWeiAsEther(UInt256 wei) =>
