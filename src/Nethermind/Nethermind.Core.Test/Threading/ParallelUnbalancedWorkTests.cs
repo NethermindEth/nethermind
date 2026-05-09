@@ -119,11 +119,6 @@ public class ParallelUnbalancedWorkTests
     [Test]
     public void For_WhenWorkerFaults_OtherWorkersStopFetchingWork()
     {
-        // Once one worker captures an exception, others must stop pulling new indices — otherwise
-        // we burn CPU and run side effects after the operation is already faulted. A trivial
-        // action body lets four workers race through 100k cheap iterations faster than a busy CI
-        // runner can publish the fault, so insert a small SpinWait to give fault propagation a
-        // fair chance and assert only that at least one iteration was abandoned.
         int actionCalls = 0;
         const int range = 100_000;
 
@@ -135,9 +130,7 @@ public class ParallelUnbalancedWorkTests
         });
 
         act.Should().Throw<InvalidOperationException>();
-        // Any value strictly less than the full range proves at least one worker observed the
-        // fault and bailed out instead of running every iteration.
-        actionCalls.Should().BeLessThan(range);
+        actionCalls.Should().BeLessThan(range / 2);
     }
 
     [Test]
