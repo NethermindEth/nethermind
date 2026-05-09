@@ -989,7 +989,7 @@ namespace Nethermind.Trie
                     }
 
                     // Call FindCachedOrUnknown on some path.
-                    if (node.Keccak is not null && path.Length % 2 == 1)
+                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1)
                     {
                         node = _readResolver.FindCachedOrUnknown(path, node.Keccak);
                     }
