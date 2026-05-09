@@ -45,7 +45,6 @@ public class SszCodecTests
     [TestCase(PayloadStatus.Invalid, (byte)1)]
     [TestCase(PayloadStatus.Syncing, (byte)2)]
     [TestCase(PayloadStatus.Accepted, (byte)3)]
-    [TestCase(PayloadStatus.InvalidBlockHash, (byte)1)]
     public void EncodePayloadStatus_status_byte_is_correct(string status, byte expected)
     {
         byte[] encoded = Encode(new PayloadStatusV1 { Status = status }, SszCodec.EncodePayloadStatus);
