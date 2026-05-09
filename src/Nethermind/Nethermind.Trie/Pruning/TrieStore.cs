@@ -320,7 +320,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (cachedNodeCopy.IsSealed && cachedNodeCopy.HasRlp)
         {
-            cachedNodeCopy.PreDecodeChildrenIfBranch(GetTrieStore(address), ref path);
+            cachedNodeCopy.PreDecodeChildrenIfBranch(ref path);
         }
 
         return cachedNodeCopy;
@@ -539,7 +539,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     internal TrieNode FindCachedOrUnknownShared(Hash256? address, in TreePath path, Hash256 hash)
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
-        if (_commitBuffer is { } commitBuffer)
+        if (Volatile.Read(ref _commitBuffer) is { } commitBuffer)
         {
             return commitBuffer.FindCachedOrUnknownShared(key);
         }
@@ -559,6 +559,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private TrieNode ShareOrCloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode cached)
     {
+        Metrics.LoadedFromCacheNodesCount++;
+
         Debug.Assert(cached.Keccak == key.Keccak, "Cache key/Keccak mismatch.");
         if (!cached.HasRlp)
         {

@@ -49,6 +49,10 @@ namespace Nethermind.Trie
         private ulong _rlpSeqAndLength; // normal: bits 0-31 length, 32-63 sequence. slice: bit 63, bits 0-31 length, bits 32-62 offset.
         private INodeData? _nodeData;
 
+        // In normal mode, the sequence counter shares bit 63 with the slice flag. After about
+        // 2^30 completed writes to one node, doneSeq reaches 0x80000000 and IsRlpSlice returns
+        // true for a normal value. Readers still get offset 0 and the real length, and WriteRlp
+        // resets the sequence on the next write so it cannot advance to a wrong non-zero offset.
         private const ulong RlpSliceFlag = 1UL << 63;
         private const ulong RlpSliceLengthMask = 0xFFFFFFFFUL;
         private const int RlpSliceOffsetShift = 32;
@@ -102,7 +106,7 @@ namespace Nethermind.Trie
         /// Atomically write _rlp using seqlock: odd sequence signals write-in-progress.
         /// CAS on even sequences only — if another writer is active (odd), spin until it completes.
         /// Last writer wins: all writers write the same resolved data for a given node.
-        /// Sequence uses bits 1-31 (31 bits, ~2 billion writes before wrap); bit 0 is the lock flag.
+        /// Sequence uses bits 1-31; bit 0 is the lock flag and bit 31 overlaps the slice flag.
         /// </summary>
         [MethodImpl(MethodImplOptions.NoInlining)] // CAS dominates latency; avoid code bloat at 5+ call sites
         internal void WriteRlp(CappedArray<byte> value)
@@ -111,6 +115,8 @@ namespace Nethermind.Trie
             while (true)
             {
                 ulong current = Volatile.Read(ref _rlpSeqAndLength);
+                // If a normal-mode sequence reached the slice flag bit, reset before the next
+                // completed write can publish a non-zero slice offset.
                 uint seq = IsRlpSlice(current) ? 0 : (uint)(current >> 32);
                 if ((seq & 1) != 0)
                 {
@@ -396,6 +402,7 @@ namespace Nethermind.Trie
         private TrieNode(CappedArray<byte> parentRlp, int offset, int length)
         {
             _nodeData = null;
+            // offset is relative to parentRlp's logical view; InitRlpSlice needs a backing-array index.
             InitRlpSlice(parentRlp.UnderlyingArray!, parentRlp.Offset + offset, length);
         }
 
@@ -561,7 +568,7 @@ namespace Nethermind.Trie
             return true;
         }
 
-        internal void PreDecodeChildrenIfBranch(ITrieNodeResolver tree, ref TreePath path)
+        internal void PreDecodeChildrenIfBranch(ref TreePath path)
         {
             if (_nodeData is not BranchData || !IsSealed)
             {
