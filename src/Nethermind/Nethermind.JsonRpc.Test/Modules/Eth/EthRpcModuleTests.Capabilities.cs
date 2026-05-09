@@ -99,9 +99,15 @@ public partial class EthRpcModuleTests
         };
 
         yield return new CapabilitiesScenario(
-            Name: "bodies_disabled_disables_blocks_and_receipts",
+            Name: "fast_sync_bodies_disabled_disables_blocks_and_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Disabled, ExpectedBlocks: Disabled)
+        { HeadNumber = 18_001_000, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadBodiesInFastSync = false } };
+
+        yield return new CapabilitiesScenario(
+            Name: "full_sync_with_irrelevant_bodies_flag_keeps_blocks_and_receipts",
+            ExpectedState: Available, ExpectedStateproofs: Available,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = new SyncConfig { DownloadBodiesInFastSync = false } };
 
         const long fastSyncFloor = 18_000_000;
@@ -148,9 +154,15 @@ public partial class EthRpcModuleTests
         { RetentionWindow = retention, HeadNumber = memoryHead, OldestStateBlock = recentPivot, SyncConfig = fullSync };
 
         yield return new CapabilitiesScenario(
-            Name: "no_receipts_disables_tx_logs_receipts",
+            Name: "fast_sync_no_receipts_disables_tx_logs_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Disabled, ExpectedBlocks: Available)
+        { HeadNumber = 18_001_000, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = false } };
+
+        yield return new CapabilitiesScenario(
+            Name: "full_sync_with_irrelevant_receipts_flag_keeps_receipts",
+            ExpectedState: Available, ExpectedStateproofs: Available,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = new SyncConfig { DownloadReceiptsInFastSync = false } };
 
         const long rollingFloor = 1000;

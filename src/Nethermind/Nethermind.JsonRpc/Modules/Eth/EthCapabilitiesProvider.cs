@@ -29,12 +29,13 @@ public class EthCapabilitiesProvider(
 
         bool headersAvailable = blockTree.BestSuggestedHeader is not null;
 
+        bool fastSyncing = syncConfig?.FastSync ?? false;
         long pivot = syncConfig?.PivotNumber ?? 0;
         long bodiesBarrier = pivot == 0 ? 0 : Math.Min(pivot, syncConfig!.AncientBodiesBarrier);
         long receiptsBarrier = pivot == 0 ? 0 : Math.Min(pivot, Math.Max(syncConfig!.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
 
-        bool bodiesSynced = syncConfig?.DownloadBodiesInFastSync ?? true;
-        bool receiptsSynced = bodiesSynced && (syncConfig?.DownloadReceiptsInFastSync ?? true);
+        bool bodiesSynced = !fastSyncing || syncConfig!.DownloadBodiesInFastSync;
+        bool receiptsSynced = bodiesSynced && (!fastSyncing || syncConfig!.DownloadReceiptsInFastSync);
         long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0, bodiesBarrier);
 
         long stateFloor = blockTree.OldestStateBlock ?? 0L;
