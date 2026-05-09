@@ -15,7 +15,7 @@ namespace Nethermind.Trie;
 /// will need to seek back.
 /// </summary>
 /// <param name="base"></param>
-public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
+public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNodeResolverSource
 {
     private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
 
@@ -35,5 +35,34 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         @base.BeginCommit(root, writeFlags);
-}
 
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver()
+    {
+        if (@base is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is ITrieNodeResolver readOnlyResolver)
+        {
+            return new CachedTrieNodeResolver(readOnlyResolver);
+        }
+
+        return null;
+    }
+
+    private sealed class CachedTrieNodeResolver(ITrieNodeResolver inner) : ITrieNodeResolver
+    {
+        private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
+
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+            _cachedNode.GetOrAdd((path, hash), key => inner.FindCachedOrUnknown(key.path, key.hash));
+
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.LoadRlp(in path, hash, flags);
+
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.TryLoadRlp(in path, hash, flags);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
+            new CachedTrieNodeResolver(inner.GetStorageTrieNodeResolver(address));
+
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
+    }
+}

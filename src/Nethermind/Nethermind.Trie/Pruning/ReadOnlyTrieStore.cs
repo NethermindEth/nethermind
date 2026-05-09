@@ -10,7 +10,7 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Safe to be reused for the same wrapped store.
     /// </summary>
-    public class ReadOnlyTrieStore(TrieStore trieStore) : IReadOnlyTrieStore
+    public class ReadOnlyTrieStore(TrieStore trieStore) : IReadOnlyTrieStore, IScopedReadOnlyTraversalProvider
     {
         private readonly TrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         public INodeStorage.KeyScheme Scheme => _trieStore.Scheme;
@@ -29,7 +29,7 @@ namespace Nethermind.Trie.Pruning
 
         public IDisposable BeginScope(BlockHeader? baseBlock) => new Reactive.AnonymousDisposable(() => { }); // Noop
 
-        public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedReadOnlyTrieStore(this, address);
+        public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
         public bool HasRoot(Hash256 stateRoot) => _trieStore.HasRoot(stateRoot);
 
@@ -37,22 +37,17 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose() { }
 
-        private class ScopedReadOnlyTrieStore(ReadOnlyTrieStore fullTrieStore, Hash256? address) : IScopedTrieStore
+        public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
+            new SharedReadOnlyTraversalResolver(this, address);
+
+        private sealed class SharedReadOnlyTraversalResolver(ReadOnlyTrieStore fullTrieStore, Hash256? address)
+            : ReadOnlyTraversalResolverBase(fullTrieStore, address)
         {
-            public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-                fullTrieStore.FindCachedOrUnknown(address, path, hash);
+            public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+                fullTrieStore._trieStore.FindCachedOrUnknownShared(Address, path, hash);
 
-            public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-                fullTrieStore.LoadRlp(address, path, hash, flags);
-
-            public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => fullTrieStore.TryLoadRlp(address, path, hash, flags);
-
-            public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
-                address1 == address ? this : new ScopedReadOnlyTrieStore(fullTrieStore, address1);
-
-            public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
-
-            public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => NullCommitter.Instance;
+            protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
+                new SharedReadOnlyTraversalResolver(fullTrieStore, address1);
         }
     }
 }

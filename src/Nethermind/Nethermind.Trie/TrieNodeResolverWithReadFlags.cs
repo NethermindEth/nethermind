@@ -7,7 +7,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags) : ITrieNodeResolver
+public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags) : ITrieNodeResolver, ITrieNodeResolverSource
 {
     private readonly ITrieNodeResolver _baseResolver = baseResolver;
     private readonly ReadFlags _defaultFlags = defaultFlags;
@@ -34,7 +34,18 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
         return _baseResolver.LoadRlp(treePath, hash, _defaultFlags);
     }
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
 
     public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;
+
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver()
+    {
+        if (_baseResolver is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is ITrieNodeResolver readOnlyResolver)
+        {
+            return new TrieNodeResolverWithReadFlags(readOnlyResolver, _defaultFlags);
+        }
+
+        return null;
+    }
 }

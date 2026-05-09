@@ -25,11 +25,18 @@ public readonly struct CappedArray<T> where T : struct
     public static object EmptyBoxed { get; } = _empty;
 
     private readonly T[]? _array;
+    private readonly int _offset;
     private readonly int _length;
 
     public CappedArray(T[]? array, int length)
+        : this(array, 0, length)
+    {
+    }
+
+    public CappedArray(T[]? array, int offset, int length)
     {
         _array = array;
+        _offset = offset;
         _length = length;
     }
 
@@ -38,7 +45,14 @@ public readonly struct CappedArray<T> where T : struct
         if (array is not null)
         {
             _array = array;
+            _offset = 0;
             _length = array.Length;
+        }
+        else
+        {
+            _array = null;
+            _offset = 0;
+            _length = 0;
         }
     }
 
@@ -51,22 +65,24 @@ public readonly struct CappedArray<T> where T : struct
         get
         {
             T[] array = _array!;
-            if (index >= _length || (uint)index >= (uint)array.Length)
+            int arrayIndex = _offset + index;
+            if (index >= _length || (uint)arrayIndex >= (uint)array.Length)
             {
                 ThrowArgumentOutOfRangeException();
             }
 
-            return array[index];
+            return array[arrayIndex];
         }
         set
         {
             T[] array = _array!;
-            if (index >= _length || (uint)index >= (uint)array.Length)
+            int arrayIndex = _offset + index;
+            if (index >= _length || (uint)arrayIndex >= (uint)array.Length)
             {
                 ThrowArgumentOutOfRangeException();
             }
 
-            array[index] = value;
+            array[arrayIndex] = value;
         }
     }
 
@@ -74,15 +90,16 @@ public readonly struct CappedArray<T> where T : struct
     private static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException();
 
     public int Length => _length;
+    public int Offset => _offset;
     public int UnderlyingLength => _array?.Length ?? 0;
     public T[]? UnderlyingArray => _array;
-    public bool IsUncapped => _length == _array?.Length;
+    public bool IsUncapped => _offset == 0 && _length == _array?.Length;
     public bool IsNull => _array is null;
     public bool IsNotNull => _array is not null;
     public bool IsNullOrEmpty => _length == 0;
     public bool IsNotNullOrEmpty => _length > 0;
-    public Span<T> AsSpan() => _array.AsSpan(0, _length);
-    public Span<T> AsSpan(int start, int length) => _array.AsSpan(start, length);
+    public Span<T> AsSpan() => _array.AsSpan(_offset, _length);
+    public Span<T> AsSpan(int start, int length) => _array.AsSpan(_offset + start, length);
 
     public T[]? ToArray()
     {
@@ -90,7 +107,7 @@ public readonly struct CappedArray<T> where T : struct
 
         if (array is null) return null;
         if (array.Length == 0) return [];
-        if (_length == array.Length) return array;
+        if (_offset == 0 && _length == array.Length) return array;
         return AsSpan().ToArray();
     }
 
@@ -99,5 +116,5 @@ public readonly struct CappedArray<T> where T : struct
         : base.ToString();
 
     public ArraySegment<T> AsArraySegment() => AsArraySegment(0, _length);
-    public ArraySegment<T> AsArraySegment(int start, int length) => new(_array!, start, length);
+    public ArraySegment<T> AsArraySegment(int start, int length) => new(_array!, _offset + start, length);
 }

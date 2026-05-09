@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -74,5 +75,36 @@ public class OverlayTrieStoreTests
 
         // After all this, the original should not change.
         dbProvider.StateDb.GetAllKeys().Count().Should().Be(originalKeyCount);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void OverlayStore_read_only_lookup_uses_shared_base_nodes()
+    {
+        using TrieStore existingStore = TestTrieStoreFactory.Build(new MemDb(), No.Pruning, No.Persistence, LimboLogs.Instance);
+        PatriciaTree patriciaTree = new(existingStore, LimboLogs.Instance);
+        {
+            using IBlockCommitter _ = existingStore.BeginBlockCommit(0);
+            patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
+            patriciaTree.Set(TestItem.Keccaks[1].Bytes, TestItem.Keccaks[1].BytesToArray());
+            patriciaTree.Commit();
+        }
+
+        IDbProvider dbProvider = TestMemDbProvider.Init();
+        ReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(true);
+        ITrieStore overlayStore = new OverlayTrieStore(readOnlyDbProvider.GetDb<IDb>(DbNames.State), existingStore.AsReadOnly());
+
+        long sharedHitsBefore = existingStore.SharedNodeHitCount;
+        long clonesBefore = existingStore.CloneForReadOnlyCount;
+
+        PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance)
+        {
+            RootHash = patriciaTree.RootHash
+        };
+
+        overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
+
+        existingStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+        existingStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
     }
 }

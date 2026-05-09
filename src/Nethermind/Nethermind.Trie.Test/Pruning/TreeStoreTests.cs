@@ -83,7 +83,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero); // 56B
 
-            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
+            using TrieStore fullTrieStore = CreateTrieStore();
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(1234, null))
             {
@@ -201,7 +201,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode1 = new(NodeType.Leaf, TestItem.KeccakA);
             TrieNode trieNode2 = new(NodeType.Leaf, TestItem.KeccakB);
 
-            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
+            using TrieStore fullTrieStore = CreateTrieStore();
             TreePath emptyPath = TreePath.Empty;
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(1234, null))
             {
@@ -775,9 +775,6 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 trieNode.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
             }
-
-            trieNode.Seal();
-
             MemDb memDb = new();
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
@@ -791,7 +788,6 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 committer.CommitNode(ref emptyPath, trieNode);
             }
-            using (fullTrieStore.PrepareStableState(default)) { }
 
             if (beThreadSafe)
             {
@@ -806,9 +802,9 @@ namespace Nethermind.Trie.Test.Pruning
                     {
                         trieStore.FindCachedOrUnknown(TreePath.Empty, trieNode.Keccak).GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
                     }
-                    catch (Exception)
+                    catch (Exception exception)
                     {
-                        throw new AssertionException("Failed");
+                        throw new AssertionException($"Failed: {exception}");
                     }
                 }
             }
@@ -823,7 +819,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             if (beThreadSafe)
             {
-                await Task.WhenAll();
+                await Task.WhenAll(tasks);
             }
             else
             {
@@ -874,9 +870,236 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.FullRlp[0].Should().Be(firstReadOnlyByte);
         }
 
+        [Test]
+        [NonParallelizable]
+        public void PatriciaTree_read_only_lookup_uses_shared_cached_nodes()
+        {
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
+            using TrieStore fullTrieStore = CreateTrieStore();
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+            node.ResolveKey(trieStore, ref emptyPath);
+            node.Seal();
+
+            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
+            {
+                committer.CommitNode(ref emptyPath, node);
+            }
+
+            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
+            PatriciaTree readOnlyTree = new(readOnlyScopedTrieStore, LimboLogs.Instance)
+            {
+                RootHash = node.Keccak
+            };
+
+            readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
+
+            ITrieNodeResolver sharedResolver = ((ITrieNodeResolverSource)readOnlyScopedTrieStore).GetReadOnlyTraversalResolver()!;
+            TrieNode sharedNode = sharedResolver.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
+
+            sharedNode.IsSealed.Should().BeTrue();
+            sharedNode.HasRlp.Should().BeTrue();
+            sharedNode.FullRlp.AsSpan().ToArray().Should().Equal(node.FullRlp.AsSpan().ToArray());
+            TreePath childPath = TreePath.Empty;
+            sharedNode.GetChild(sharedResolver, ref childPath, 0)!.Keccak.Should().Be(TestItem.Keccaks[0]);
+            childPath = TreePath.Empty;
+            sharedNode.GetChild(sharedResolver, ref childPath, 0)!.Keccak.Should().Be(TestItem.Keccaks[0]);
+
+            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void PreCached_read_only_lookup_uses_shared_inner_nodes()
+        {
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
+            using TrieStore fullTrieStore = CreateTrieStore();
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+            node.ResolveKey(trieStore, ref emptyPath);
+            node.Seal();
+
+            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
+            {
+                committer.CommitNode(ref emptyPath, node);
+            }
+
+            using PreCachedTrieStore preCachedTrieStore = new(fullTrieStore.AsReadOnly(), new NodeStorageCache { Enabled = true });
+
+            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            PatriciaTree readOnlyTree = new(preCachedTrieStore.GetTrieStore(null), LimboLogs.Instance)
+            {
+                RootHash = node.Keccak
+            };
+
+            readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
+
+            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Cached_read_only_lookup_uses_shared_inner_nodes()
+        {
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
+            using TrieStore fullTrieStore = CreateTrieStore();
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+            node.ResolveKey(trieStore, ref emptyPath);
+            node.Seal();
+
+            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
+            {
+                committer.CommitNode(ref emptyPath, node);
+            }
+
+            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            IScopedTrieStore cachedReadOnlyStore = new CachedTrieStore(fullTrieStore.AsReadOnly().GetTrieStore(null));
+            PatriciaTree readOnlyTree = new(cachedReadOnlyStore, LimboLogs.Instance)
+            {
+                RootHash = node.Keccak
+            };
+
+            readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
+
+            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Shared_read_only_lookup_does_not_clone_cached_ref_only_nodes()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TreePath emptyPath = TreePath.Empty;
+            fullTrieStore.FindCachedOrUnknown(null, emptyPath, TestItem.KeccakA);
+
+            long fallbacksBefore = fullTrieStore.FallbackNotShareableCount;
+            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+            IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
+            ITrieNodeResolver sharedResolver = ((ITrieNodeResolverSource)readOnlyScopedTrieStore).GetReadOnlyTraversalResolver()!;
+
+            TrieNode node = sharedResolver.FindCachedOrUnknown(emptyPath, TestItem.KeccakA);
+
+            node.NodeType.Should().Be(NodeType.Unknown);
+            node.Keccak.Should().Be(TestItem.KeccakA);
+            fullTrieStore.FallbackNotShareableCount.Should().BeGreaterThan(fallbacksBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task PatriciaTree_read_only_lookup_uses_shared_cached_nodes_in_commit_buffer()
+        {
+            ManualResetEvent writeBlocker = new(false);
+            ManualResetEventSlim writeReached = new(false);
+            TestMemDb memDb = new();
+            memDb.WriteFunc = (_, _) =>
+            {
+                writeReached.Set();
+                writeBlocker.WaitOne();
+                return true;
+            };
+
+            TestPruningStrategy pruningStrategy = new(shouldPrune: false, deleteObsoleteKeys: true);
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: pruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = 1,
+                    DirtyNodeShardBit = 4,
+                    MaxBufferedCommitCount = 20,
+                    TrackPastKeys = true
+                });
+
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            }
+
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            TreePath emptyPath = TreePath.Empty;
+            node.ResolveKey(trieStore, ref emptyPath);
+            node.Seal();
+
+            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
+            {
+                committer.CommitNode(ref emptyPath, node);
+            }
+
+            Task pruneTask = Task.Run(() =>
+            {
+                pruningStrategy.ShouldPruneEnabled = true;
+                fullTrieStore.SyncPruneQueue();
+                pruningStrategy.ShouldPruneEnabled = false;
+            });
+
+            writeReached.Wait(1000).Should().BeTrue("the pruning task must hold the trie store in commit-buffer mode");
+
+            try
+            {
+                using (fullTrieStore.BeginScope(Build.A.BlockHeader.WithStateRoot(node.Keccak).TestObject))
+                {
+                    fullTrieStore.IsInCommitBufferMode.Should().BeTrue();
+
+                    long clonesBeforeHasRoot = fullTrieStore.CloneForReadOnlyCount;
+                    fullTrieStore.HasRoot(node.Keccak!).Should().BeTrue();
+                    fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBeforeHasRoot);
+
+                    long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
+                    long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+
+                    IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
+                    PatriciaTree readOnlyTree = new(readOnlyScopedTrieStore, LimboLogs.Instance)
+                    {
+                        RootHash = node.Keccak
+                    };
+
+                    readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
+
+                    fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+                    fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+                }
+            }
+            finally
+            {
+                writeBlocker.Set();
+                await pruneTask;
+            }
+        }
+
         private long ExpectedPerNodeKeyMemorySize => (scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStoreDirtyNodesCache.Key.MemoryUsage) + MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
 
         [Test]
+        [NonParallelizable]
         public void After_commit_should_have_has_root()
         {
             MemDb db = new();
@@ -890,7 +1113,9 @@ namespace Nethermind.Trie.Test.Pruning
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Commit();
             }
+            long clonesBefore = trieStore.CloneForReadOnlyCount;
             trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
+            trieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
 
             stateTree.Get(TestItem.AddressA);
             account = account.WithChangedBalance(2);
@@ -900,7 +1125,9 @@ namespace Nethermind.Trie.Test.Pruning
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Commit();
             }
+            clonesBefore = trieStore.CloneForReadOnlyCount;
             trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
+            trieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
         }
 
         [Test]

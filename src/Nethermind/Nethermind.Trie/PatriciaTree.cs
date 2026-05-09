@@ -47,6 +47,7 @@ namespace Nethermind.Trie
 
         private static void ReturnTraverseStack(TraverseStack stack) => _threadStaticTraverseStack = stack;
         public readonly IScopedTrieStore TrieStore;
+        private readonly ITrieNodeResolver _readResolver;
         public ICappedArrayPool? _bufferPool;
 
         private readonly bool _allowCommits;
@@ -122,6 +123,7 @@ namespace Nethermind.Trie
         {
             _logger = logManager?.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _readResolver = TrieStore.AsReadOnlyTraversal();
             _allowCommits = allowCommits;
             RootHash = rootHash;
 
@@ -340,7 +342,7 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = TrieStore.FindCachedOrUnknown(TreePath.Empty, _rootHash);
+                RootRef = _readResolver.FindCachedOrUnknown(TreePath.Empty, _rootHash);
             }
         }
 
@@ -364,7 +366,7 @@ namespace Nethermind.Trie
 
                 if (rootHash is not null)
                 {
-                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    root = _readResolver.FindCachedOrUnknown(emptyPath, rootHash);
                 }
 
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
@@ -422,7 +424,7 @@ namespace Nethermind.Trie
                 TrieNode root = RootRef;
                 if (rootHash is not null)
                 {
-                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    root = _readResolver.FindCachedOrUnknown(emptyPath, rootHash);
                 }
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
                 return result.ToArray();
@@ -452,7 +454,7 @@ namespace Nethermind.Trie
                 TrieNode root = RootRef;
                 if (rootHash is not null)
                 {
-                    root = TrieStore.FindCachedOrUnknown(emptyPath, rootHash);
+                    root = _readResolver.FindCachedOrUnknown(emptyPath, rootHash);
                 }
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
 
@@ -927,7 +929,7 @@ namespace Nethermind.Trie
                         return default;
                     }
 
-                    node.ResolveNode(TrieStore, path);
+                    node.ResolveNode(_readResolver, path);
 
                     if (isNodeRead && remainingKey.Length == 0)
                     {
@@ -936,8 +938,9 @@ namespace Nethermind.Trie
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
-                        if (commonPrefixLength == node.Key!.Length)
+                        byte[] key = node.Key!;
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(key);
+                        if (commonPrefixLength == key.Length)
                         {
                             if (node.IsLeaf)
                             {
@@ -948,10 +951,9 @@ namespace Nethermind.Trie
                             }
 
                             // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                            remainingKey = remainingKey[node!.Key.Length..];
-                            node = extensionChild;
+                            path.AppendMut(key);
+                            node = node.GetChildWithChildPath(_readResolver, ref path, 0);
+                            remainingKey = remainingKey[key.Length..];
 
                             continue;
                         }
@@ -962,10 +964,7 @@ namespace Nethermind.Trie
 
                     int nib = remainingKey[0];
                     path.AppendMut(nib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nib);
-
-                    // Continue loop with child as current node
-                    node = child;
+                    node = node.GetChildWithChildPath(_readResolver, ref path, nib);
                     remainingKey = remainingKey[1..];
                 }
             }
@@ -990,13 +989,18 @@ namespace Nethermind.Trie
                     }
 
                     // Call FindCachedOrUnknown on some path.
-                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path);
+                    if (node.Keccak is not null && path.Length % 2 == 1)
+                    {
+                        node = _readResolver.FindCachedOrUnknown(path, node.Keccak);
+                    }
+
+                    node.ResolveNode(_readResolver, path);
 
                     if (node.IsLeaf || node.IsExtension)
                     {
-                        int commonPrefixLength = remainingKey.CommonPrefixLength(node.Key);
-                        if (commonPrefixLength == node.Key!.Length)
+                        byte[] key = node.Key!;
+                        int commonPrefixLength = remainingKey.CommonPrefixLength(key);
+                        if (commonPrefixLength == key.Length)
                         {
                             if (node.IsLeaf)
                             {
@@ -1005,10 +1009,9 @@ namespace Nethermind.Trie
                             }
 
                             // Continue traversal to the child of the extension
-                            path.AppendMut(node.Key);
-                            TrieNode? extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0, keepChildRef: true);
-                            remainingKey = remainingKey[node!.Key.Length..];
-                            node = extensionChild;
+                            path.AppendMut(key);
+                            node = node.GetChildWithChildPath(_readResolver, ref path, 0, keepChildRef: true);
+                            remainingKey = remainingKey[key.Length..];
 
                             continue;
                         }
@@ -1020,10 +1023,7 @@ namespace Nethermind.Trie
                     int nextNib = remainingKey[0];
 
                     path.AppendMut(nextNib);
-                    TrieNode? child = node.GetChildWithChildPath(TrieStore, ref path, nextNib, keepChildRef: true);
-
-                    // Continue loop with child as current node
-                    node = child;
+                    node = node.GetChildWithChildPath(_readResolver, ref path, nextNib, keepChildRef: true);
                     remainingKey = remainingKey[1..];
                 }
             }

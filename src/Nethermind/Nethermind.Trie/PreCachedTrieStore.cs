@@ -12,7 +12,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public sealed class PreCachedTrieStore : ITrieStore
+public sealed class PreCachedTrieStore : ITrieStore, IScopedReadOnlyTraversalProvider
 {
     private readonly ITrieStore _inner;
     private readonly NodeStorageCache _preBlockCache;
@@ -56,6 +56,24 @@ public sealed class PreCachedTrieStore : ITrieStore
             (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
+
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
+        _inner.GetTrieStore(address) is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is { } readOnlyResolver
+                ? new PreCachedReadOnlyTraversalResolver(this, address, readOnlyResolver)
+                : null;
+
+    private sealed class PreCachedReadOnlyTraversalResolver(
+        PreCachedTrieStore fullTrieStore,
+        Hash256? address,
+        ITrieNodeResolver inner) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
+    {
+        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+            inner.FindCachedOrUnknown(path, hash);
+
+        protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
+            new PreCachedReadOnlyTraversalResolver(fullTrieStore, address1, inner.GetStorageTrieNodeResolver(address1));
+    }
 }
 
 public readonly struct NodeKey : IEquatable<NodeKey>, IHash64bit<NodeKey>

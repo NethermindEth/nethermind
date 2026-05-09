@@ -14,7 +14,7 @@ namespace Nethermind.Synchronization.SnapSync;
 /// UpperBound. This is to prevent double writes on partitioned snap ranges.
 /// </summary>
 /// <param name="baseTrieStore"></param>
-public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrieStore
+public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrieStore, ITrieNodeResolverSource
 {
     public ValueHash256 UpperBound = ValueKeccak.MaxValue;
 
@@ -29,6 +29,16 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
     public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), UpperBound);
+
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver()
+    {
+        if (baseTrieStore is ITrieNodeResolverSource source)
+        {
+            return source.GetReadOnlyTraversalResolver();
+        }
+
+        return null;
+    }
 
     private sealed class BoundedSnapCommitter(ICommitter baseCommitter, ValueHash256 subtreeLimit) : ICommitter
     {

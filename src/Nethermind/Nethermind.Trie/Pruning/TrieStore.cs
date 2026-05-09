@@ -318,6 +318,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             shard.IncrementMemory(node);
         }
 
+        if (cachedNodeCopy.IsSealed && cachedNodeCopy.HasRlp)
+        {
+            cachedNodeCopy.PreDecodeChildrenIfBranch(GetTrieStore(address), ref path);
+        }
+
         return cachedNodeCopy;
     }
 
@@ -530,6 +535,46 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     }
 
     private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
+
+    internal TrieNode FindCachedOrUnknownShared(Hash256? address, in TreePath path, Hash256 hash)
+    {
+        TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
+        if (_commitBuffer is { } commitBuffer)
+        {
+            return commitBuffer.FindCachedOrUnknownShared(key);
+        }
+
+        return FindCachedOrUnknownShared(key);
+    }
+
+    private TrieNode FindCachedOrUnknownShared(in TrieStoreDirtyNodesCache.Key key)
+    {
+        if (DirtyNodesTryGetValue(key, out TrieNode? cached))
+        {
+            return ShareOrCloneForReadOnly(key, cached);
+        }
+
+        return new TrieNode(NodeType.Unknown, key.Keccak);
+    }
+
+    private TrieNode ShareOrCloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode cached)
+    {
+        Debug.Assert(cached.Keccak == key.Keccak, "Cache key/Keccak mismatch.");
+        if (!cached.HasRlp)
+        {
+            Interlocked.Increment(ref _fallbackNotShareableCount);
+            return new TrieNode(NodeType.Unknown, key.Keccak);
+        }
+
+        if (cached.IsSealed)
+        {
+            Interlocked.Increment(ref _sharedNodeHitCount);
+            return cached;
+        }
+
+        Interlocked.Increment(ref _fallbackNotShareableCount);
+        return CloneForReadOnly(key, cached);
+    }
 
     // Used only in tests
     public void Dump()
@@ -1037,6 +1082,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private long _totalCachedNodesCount;
     private long _dirtyNodesCount;
 
+    // Per-instance counters for read-only-traversal observability. Tests assert deltas on these
+    // off the specific TrieStore they constructed, so no global state or test-only reset is needed.
+    private long _cloneForReadOnlyCount;
+    private long _fallbackNotShareableCount;
+    private long _sharedNodeHitCount;
+
+    internal long CloneForReadOnlyCount => Interlocked.Read(ref _cloneForReadOnlyCount);
+    internal long FallbackNotShareableCount => Interlocked.Read(ref _fallbackNotShareableCount);
+    internal long SharedNodeHitCount => Interlocked.Read(ref _sharedNodeHitCount);
+
     private int _committedNodesCount;
 
     private int _persistedNodesCount;
@@ -1405,13 +1460,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public bool HasRoot(Hash256 stateRoot)
     {
         if (stateRoot == Keccak.EmptyTreeHash) return true;
-        TrieNode node = FindCachedOrUnknown(null, TreePath.Empty, stateRoot, true);
-        if (node.NodeType == NodeType.Unknown)
-        {
-            return TryLoadRlp(null, TreePath.Empty, node.Keccak!) is not null;
-        }
-
-        return true;
+        TrieStoreDirtyNodesCache.Key key = new(null, TreePath.Empty, stateRoot);
+        return HasCachedRlp(key) || TryLoadRlp(null, TreePath.Empty, stateRoot) is not null;
     }
 
     public bool HasRoot(Hash256 stateRoot, long blockNumber)
@@ -1712,10 +1762,62 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
             return hasInBuffer ? bufferNode : bufferShard.FindCachedOrUnknown(key);
         }
+
+        public TrieNode FindCachedOrUnknownShared(TrieStoreDirtyNodesCache.Key key)
+        {
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
+            TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
+            TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
+
+            if (bufferShard.TryGetValue(key, out TrieNode bufferNode))
+            {
+                return _trieStore.ShareOrCloneForReadOnly(key, bufferNode);
+            }
+
+            if (mainShard.TryGetRecord(key, out TrieStoreDirtyNodesCache.NodeRecord nodeRecord))
+            {
+                if (CanImportFromMainCache(nodeRecord))
+                {
+                    TrieStoreDirtyNodesCache.NodeRecord imported = bufferShard.GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(nodeRecord.Node, -1));
+                    return _trieStore.ShareOrCloneForReadOnly(key, imported.Node);
+                }
+
+                return _trieStore.ShareOrCloneForReadOnly(key, nodeRecord.Node);
+            }
+
+            return new TrieNode(NodeType.Unknown, key.Keccak);
+        }
+
+        private bool CanImportFromMainCache(TrieStoreDirtyNodesCache.NodeRecord nodeRecord) =>
+            !nodeRecord.Node.IsPersisted || nodeRecord.LastCommit >= _minCommitBlockNumber;
+
+        public bool HasCachedRlp(TrieStoreDirtyNodesCache.Key key)
+        {
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
+            return TrieStore.HasCachedRlp(_dirtyNodesBuffer[shardIdx], key) || TrieStore.HasCachedRlp(_trieStore._dirtyNodes[shardIdx], key);
+        }
+    }
+
+    private bool HasCachedRlp(in TrieStoreDirtyNodesCache.Key key) =>
+        _commitBuffer is { } commitBuffer
+            ? commitBuffer.HasCachedRlp(key)
+            : HasCachedRlp(GetDirtyNodeShard(key), key);
+
+    private static bool HasCachedRlp(TrieStoreDirtyNodesCache shard, TrieStoreDirtyNodesCache.Key key)
+    {
+        if (!shard.TryGetRecord(key, out TrieStoreDirtyNodesCache.NodeRecord nodeRecord) || nodeRecord.Node.FullRlp.IsNull)
+        {
+            return false;
+        }
+
+        Metrics.LoadedFromCacheNodesCount++;
+        return true;
     }
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
+        Interlocked.Increment(ref _cloneForReadOnlyCount);
+
         CappedArray<byte> fullRlp = node!.FullRlp;
         if (fullRlp.IsNull)
         {

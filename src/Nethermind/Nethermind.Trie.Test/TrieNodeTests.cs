@@ -298,6 +298,27 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Inline_child_slice_shares_parent_rlp_array()
+    {
+        Context ctx = new();
+        TrieNode trieNode = new(NodeType.Branch);
+
+        trieNode[11] = ctx.TiniestLeaf;
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        TrieNode decoded = new(NodeType.Branch, rlp);
+
+        TrieNode? child = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
+
+        child.Should().NotBeNull();
+        CappedArray<byte> parentRlp = decoded.FullRlp;
+        CappedArray<byte> childRlp = child!.FullRlp;
+        childRlp.UnderlyingArray.Should().BeSameAs(parentRlp.UnderlyingArray);
+        childRlp.Offset.Should().BeGreaterThan(parentRlp.Offset);
+        childRlp.AsSpan().ToArray().Should().Equal(ctx.TiniestLeaf.FullRlp.AsSpan().ToArray());
+    }
+
+    [Test]
     public void Get_child_hash_works_on_hashed_child_of_an_extension()
     {
         Context ctx = new();

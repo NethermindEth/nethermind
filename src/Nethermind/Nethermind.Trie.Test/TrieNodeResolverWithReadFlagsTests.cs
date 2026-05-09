@@ -59,4 +59,56 @@ public class TrieNodeResolverWithReadFlagsTests
 
         memDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakA, TreePath.Empty, theKeccak), theFlags);
     }
+
+    [Test]
+    public void ReadOnlyTraversal_shouldPreserveReadFlags()
+    {
+        TestResolver sourceResolver = new();
+        TrieNodeResolverWithReadFlags resolver = new(sourceResolver, ReadFlags.HintCacheMiss);
+        ITrieNodeResolver readOnlyResolver = ((ITrieNodeResolverSource)resolver).GetReadOnlyTraversalResolver()!;
+
+        readOnlyResolver.LoadRlp(TreePath.Empty, TestItem.KeccakA, ReadFlags.HintReadAhead);
+
+        Assert.That(sourceResolver.ReadOnlyResolver.LastFlags, Is.EqualTo(ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead));
+    }
+
+    private sealed class TestResolver : ITrieNodeResolver, ITrieNodeResolverSource
+    {
+        public readonly TestReadOnlyResolver ReadOnlyResolver = new();
+
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
+
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
+
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => [];
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
+
+        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+
+        public ITrieNodeResolver? GetReadOnlyTraversalResolver() => ReadOnlyResolver;
+    }
+
+    private sealed class TestReadOnlyResolver : ITrieNodeResolver
+    {
+        public ReadFlags LastFlags { get; private set; }
+
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
+
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            LastFlags = flags;
+            return [];
+        }
+
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            LastFlags = flags;
+            return [];
+        }
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
+
+        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+    }
 }
