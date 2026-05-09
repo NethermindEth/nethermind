@@ -229,7 +229,8 @@ public class PersistedSnapshotCompactorTests
         Assert.That(refIdsValue.Length, Is.EqualTo(8)); // 2 IDs × 4 bytes
 
         // ReadRefIdsFromMetadata should return both IDs
-        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(merged);
+        SpanByteReader mergedRefIdsReader = new(merged);
+        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata<SpanByteReader, NoOpPin>(in mergedRefIdsReader);
         Assert.That(refIds, Is.Not.Null);
         Assert.That(refIds, Does.Contain(0));
         Assert.That(refIds, Does.Contain(1));
@@ -453,7 +454,8 @@ public class PersistedSnapshotCompactorTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
-        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata(data);
+        SpanByteReader dataReader = new(data);
+        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata<SpanByteReader, NoOpPin>(in dataReader);
         Assert.That(refIds, Is.Null);
     }
 

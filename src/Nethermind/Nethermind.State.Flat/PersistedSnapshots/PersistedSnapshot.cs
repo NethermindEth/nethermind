@@ -249,19 +249,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Read the "ref_ids" list from a snapshot's metadata column.
-    /// Returns null if the metadata or "ref_ids" key is missing.
-    /// </summary>
-    public static int[]? ReadRefIdsFromMetadata(ReadOnlySpan<byte> snapshotData)
-    {
-        SpanByteReader reader = new(snapshotData);
-        return PersistedSnapshotReader.ReadRefIdsFromMetadata<SpanByteReader, NoOpPin>(in reader);
-    }
-
-    /// <summary>
-    /// Reader-based <see cref="ReadRefIdsFromMetadata(ReadOnlySpan{byte})"/>. Avoids the
-    /// caller having to materialise a whole-reservation span, so it works with
-    /// chunk-aware readers once those land.
+    /// Read the "ref_ids" list from a snapshot's metadata column. Avoids materialising
+    /// a whole-reservation span, so it works with chunk-aware readers.
     /// </summary>
     public static int[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
