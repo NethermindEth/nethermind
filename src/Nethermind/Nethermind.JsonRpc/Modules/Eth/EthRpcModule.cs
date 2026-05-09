@@ -359,6 +359,9 @@ public partial class EthRpcModule(
 
     public virtual ResultWrapper<SignTransactionResult> eth_signTransaction(TransactionForRpc rpcTx)
     {
+        if (!_rpcConfig.EnableEthSignTransaction)
+            return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
+
         if (rpcTx.Gas is null)
             return ResultWrapper<SignTransactionResult>.Fail("gas not specified", ErrorCodes.InvalidInput);
 
@@ -410,6 +413,8 @@ public partial class EthRpcModule(
         }
 
         tx.Hash = tx.CalculateHash();
+
+        if (_logger.IsInfo) _logger.Info($"eth_signTransaction signed tx {tx.Hash} from {tx.SenderAddress}");
 
         byte[] raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes;
 

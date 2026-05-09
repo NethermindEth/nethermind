@@ -116,6 +116,7 @@ public partial class EthRpcModuleTests
         JsonElement param = JsonSerializer.Deserialize<JsonElement>(txJson);
 
         using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", param);
         JsonRpcResponse<SignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<SignTransactionResult>>(serialized)!;
         response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
@@ -152,12 +153,14 @@ public partial class EthRpcModuleTests
     private async Task<string> SignTransaction(TransactionForRpc rpcTx)
     {
         using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         return await ctx.Test.TestEthRpc("eth_signTransaction", rpcTx);
     }
 
     private async Task<SignTransactionResult> SignTransactionForResult(TransactionForRpc rpcTx)
     {
         using Context ctx = await Context.Create();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", rpcTx);
         JsonRpcResponse<SignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<SignTransactionResult>>(serialized)!;
         response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
