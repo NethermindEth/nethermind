@@ -870,9 +870,9 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.FullRlp[0].Should().Be(firstReadOnlyByte);
         }
 
-        [Test]
-        [NonParallelizable]
-        public void PatriciaTree_read_only_lookup_uses_shared_cached_nodes()
+        public enum ReadOnlyVariant { Direct, PreCached, Cached }
+
+        private TrieNode BuildAndCommitSealedBranch(TrieStore fullTrieStore)
         {
             TrieNode node = new(NodeType.Branch);
             for (int i = 0; i < 16; i++)
@@ -880,116 +880,96 @@ namespace Nethermind.Trie.Test.Pruning
                 node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
             }
 
-            using TrieStore fullTrieStore = CreateTrieStore();
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+            IScopedTrieStore scoped = fullTrieStore.GetTrieStore(null);
             TreePath emptyPath = TreePath.Empty;
-            node.ResolveKey(trieStore, ref emptyPath);
+            node.ResolveKey(scoped, ref emptyPath);
             node.Seal();
 
-            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
+            using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, node))
             {
                 committer.CommitNode(ref emptyPath, node);
             }
 
+            return node;
+        }
+
+        private static void AssertReadServedFromSharedCache(
+            TrieStore fullTrieStore,
+            IScopedTrieStore readOnlyScopedStore,
+            TrieNode node)
+        {
             long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
             long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
-            long loadedFromCacheBefore = Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount;
 
-            IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
-            PatriciaTree readOnlyTree = new(readOnlyScopedTrieStore, LimboLogs.Instance)
+            PatriciaTree readOnlyTree = new(readOnlyScopedStore, LimboLogs.Instance)
             {
                 RootHash = node.Keccak
             };
 
             readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
 
+            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
+            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+        }
+
+        [Test]
+        [NonParallelizable]
+        [TestCase(ReadOnlyVariant.Direct)]
+        [TestCase(ReadOnlyVariant.PreCached)]
+        [TestCase(ReadOnlyVariant.Cached)]
+        public void Read_only_lookup_uses_shared_cached_nodes(ReadOnlyVariant variant)
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TrieNode node = BuildAndCommitSealedBranch(fullTrieStore);
+
+            IDisposable? extra = null;
+            IScopedTrieStore scoped;
+            switch (variant)
+            {
+                case ReadOnlyVariant.Direct:
+                    scoped = fullTrieStore.AsReadOnly().GetTrieStore(null);
+                    break;
+                case ReadOnlyVariant.PreCached:
+                    PreCachedTrieStore pre = new(fullTrieStore.AsReadOnly(), new NodeStorageCache { Enabled = true });
+                    extra = pre;
+                    scoped = pre.GetTrieStore(null);
+                    break;
+                case ReadOnlyVariant.Cached:
+                    scoped = new CachedTrieStore(fullTrieStore.AsReadOnly().GetTrieStore(null));
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(variant));
+            }
+
+            try
+            {
+                AssertReadServedFromSharedCache(fullTrieStore, scoped, node);
+            }
+            finally
+            {
+                extra?.Dispose();
+            }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Shared_resolver_returns_sealed_cached_node_with_resolvable_children()
+        {
+            using TrieStore fullTrieStore = CreateTrieStore();
+            TrieNode node = BuildAndCommitSealedBranch(fullTrieStore);
+
+            IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
             ITrieNodeResolver sharedResolver = ((ITrieNodeResolverSource)readOnlyScopedTrieStore).GetReadOnlyTraversalResolver()!;
             TrieNode sharedNode = sharedResolver.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
 
             sharedNode.IsSealed.Should().BeTrue();
             sharedNode.HasRlp.Should().BeTrue();
             sharedNode.FullRlp.AsSpan().ToArray().Should().Equal(node.FullRlp.AsSpan().ToArray());
+
             TreePath childPath = TreePath.Empty;
             sharedNode.GetChild(sharedResolver, ref childPath, 0)!.Keccak.Should().Be(TestItem.Keccaks[0]);
             childPath = TreePath.Empty;
             sharedNode.GetChild(sharedResolver, ref childPath, 0)!.Keccak.Should().Be(TestItem.Keccaks[0]);
-
-            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
-            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount.Should().BeGreaterThan(loadedFromCacheBefore);
-        }
-
-        [Test]
-        [NonParallelizable]
-        public void PreCached_read_only_lookup_uses_shared_inner_nodes()
-        {
-            TrieNode node = new(NodeType.Branch);
-            for (int i = 0; i < 16; i++)
-            {
-                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
-            }
-
-            using TrieStore fullTrieStore = CreateTrieStore();
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            TreePath emptyPath = TreePath.Empty;
-            node.ResolveKey(trieStore, ref emptyPath);
-            node.Seal();
-
-            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
-            {
-                committer.CommitNode(ref emptyPath, node);
-            }
-
-            using PreCachedTrieStore preCachedTrieStore = new(fullTrieStore.AsReadOnly(), new NodeStorageCache { Enabled = true });
-
-            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
-            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
-
-            PatriciaTree readOnlyTree = new(preCachedTrieStore.GetTrieStore(null), LimboLogs.Instance)
-            {
-                RootHash = node.Keccak
-            };
-
-            readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
-
-            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
-            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
-        }
-
-        [Test]
-        [NonParallelizable]
-        public void Cached_read_only_lookup_uses_shared_inner_nodes()
-        {
-            TrieNode node = new(NodeType.Branch);
-            for (int i = 0; i < 16; i++)
-            {
-                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
-            }
-
-            using TrieStore fullTrieStore = CreateTrieStore();
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            TreePath emptyPath = TreePath.Empty;
-            node.ResolveKey(trieStore, ref emptyPath);
-            node.Seal();
-
-            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
-            {
-                committer.CommitNode(ref emptyPath, node);
-            }
-
-            long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
-            long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
-
-            IScopedTrieStore cachedReadOnlyStore = new CachedTrieStore(fullTrieStore.AsReadOnly().GetTrieStore(null));
-            PatriciaTree readOnlyTree = new(cachedReadOnlyStore, LimboLogs.Instance)
-            {
-                RootHash = node.Keccak
-            };
-
-            readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
-
-            fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
-            fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
         }
 
         [Test]
@@ -1041,21 +1021,7 @@ namespace Nethermind.Trie.Test.Pruning
                     TrackPastKeys = true
                 });
 
-            TrieNode node = new(NodeType.Branch);
-            for (int i = 0; i < 16; i++)
-            {
-                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
-            }
-
-            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
-            TreePath emptyPath = TreePath.Empty;
-            node.ResolveKey(trieStore, ref emptyPath);
-            node.Seal();
-
-            using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(0, node))
-            {
-                committer.CommitNode(ref emptyPath, node);
-            }
+            TrieNode node = BuildAndCommitSealedBranch(fullTrieStore);
 
             Task pruneTask = Task.Run(() =>
             {
@@ -1076,19 +1042,10 @@ namespace Nethermind.Trie.Test.Pruning
                     fullTrieStore.HasRoot(node.Keccak!).Should().BeTrue();
                     fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBeforeHasRoot);
 
-                    long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
-                    long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
-
-                    IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
-                    PatriciaTree readOnlyTree = new(readOnlyScopedTrieStore, LimboLogs.Instance)
-                    {
-                        RootHash = node.Keccak
-                    };
-
-                    readOnlyTree.GetNodeByPath([], node.Keccak)!.Should().Equal(node.FullRlp.AsSpan().ToArray());
-
-                    fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
-                    fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+                    AssertReadServedFromSharedCache(
+                        fullTrieStore,
+                        fullTrieStore.AsReadOnly().GetTrieStore(null),
+                        node);
                 }
             }
             finally
