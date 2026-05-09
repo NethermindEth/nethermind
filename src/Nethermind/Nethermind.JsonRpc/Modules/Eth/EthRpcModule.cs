@@ -547,6 +547,32 @@ public partial class EthRpcModule(
         return ResultWrapper<BlockForRpc?>.Success(blockForRpc);
     }
 
+    public ResultWrapper<BlockHeaderForRpc?> eth_getHeaderByHash(Hash256 blockHash)
+        => GetHeader(new BlockParameter(blockHash));
+
+    public ResultWrapper<BlockHeaderForRpc?> eth_getHeaderByNumber(BlockParameter blockParameter)
+        => GetHeader(blockParameter);
+
+    private ResultWrapper<BlockHeaderForRpc?> GetHeader(BlockParameter blockParameter)
+    {
+        // SearchForHeader avoids loading the block body — header endpoints don't need transactions/uncles.
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<BlockHeaderForRpc?>.Success(null);
+        }
+
+        BlockHeaderForRpc result = new(searchResult.Object!, _specProvider);
+        if (blockParameter.Type == BlockParameterType.Pending)
+        {
+            result.Hash = null;
+            result.Nonce = null;
+            result.Miner = null;
+        }
+
+        return ResultWrapper<BlockHeaderForRpc?>.Success(result);
+    }
+
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
         if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
