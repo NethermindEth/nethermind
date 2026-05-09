@@ -378,8 +378,8 @@ public partial class EthRpcModule(
 
         try
         {
-            // Submit via the virtual eth_sendRawTransaction so subclass overrides (e.g. Optimism's
-            // sequencer-forward) propagate without needing a separate sync override.
+            // Submit via the virtual eth_sendRawTransaction so subclass overrides
+            // propagate without needing a separate sync override.
             ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
             if (sendResult.Result.ResultType != ResultType.Success)
             {
@@ -387,13 +387,12 @@ public partial class EthRpcModule(
             }
             Hash256 hash = sendResult.Data;
 
-            // First iteration is the fast path — tx may already be mined.
             while (true)
             {
-                ReceiptForRpc? receipt = TryGetReceipt(hash);
-                if (receipt is not null)
+                ResultWrapper<ReceiptForRpc?> receiptResult = eth_getTransactionReceipt(hash);
+                if (receiptResult.Data is not null)
                 {
-                    return ResultWrapper<ReceiptForRpc?>.Success(receipt);
+                    return receiptResult;
                 }
 
                 try
@@ -424,14 +423,6 @@ public partial class EthRpcModule(
         }
         int @default = _rpcConfig.RpcTxSyncDefaultTimeoutMs;
         return @default > 0 ? Math.Min(@default, max) : max;
-    }
-
-    private ReceiptForRpc? TryGetReceipt(Hash256 txHash)
-    {
-        (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
-        return receipt is null || gasInfo is null
-            ? null
-            : new ReceiptForRpc(txHash, receipt, blockTimestamp, gasInfo.Value, logIndexStart);
     }
 
     private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
