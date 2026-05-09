@@ -907,7 +907,7 @@ namespace Nethermind.Network.Test
             private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
                 new();
 
-            public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
+            public NetworkNode[] GetPersistedNodes() => _nodes.Select(static kvp => kvp.Value).ToArray();
 
             public void UpdateNode(NetworkNode node)
             {

@@ -26,4 +26,8 @@
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.Analyzers/Nethermind.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <ItemGroup Condition="!$(TargetFramework.StartsWith('netstandard'))">
+    <Using Include="System.Runtime.Intrinsics.Vector256&lt;byte&gt;" Alias="EvmWord" />
+  </ItemGroup>
+
 </Project>
