@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
@@ -261,12 +262,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             // Group transactions by sender to process same-sender transactions sequentially
             // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            Dictionary<AddressAsKey, SenderTxGroup>? senderGroups = GroupTransactionsBySender(block);
 
             try
             {
                 // Convert to array for parallel iteration
-                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
+                using ArrayPoolList<SenderTxGroup> groupArray = senderGroups.Values.ToPooledList();
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
@@ -276,8 +277,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     (blockState, groupArray, parallelOptions.CancellationToken),
                     static (groupIndex, tupleState) =>
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
+                        (BlockState? blockState, ArrayPoolList<SenderTxGroup> groups, CancellationToken token) = tupleState;
+                        SenderTxGroup txGroup = groups[groupIndex];
 
                         // Get thread-local processing state for this sender's transactions
                         IPreBlockCacheWarmupSource env = blockState.PreWarmer._envPool.Get();
@@ -288,9 +289,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             scope.TransactionProcessor.SetBlockExecutionContext(context);
 
                             // Sequential within the same sender-state changes propagate correctly
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
+                            if (token.IsCancellationRequested) return tupleState;
+                            WarmupTransaction(txGroup.FirstTxIndex);
+
+                            if (txGroup.RestTxIndexes is not null)
                             {
-                                if (token.IsCancellationRequested) return tupleState;
+                                foreach (int txIndex in txGroup.RestTxIndexes.AsSpan())
+                                {
+                                    if (token.IsCancellationRequested) return tupleState;
+                                    WarmupTransaction(txIndex);
+                                }
+                            }
+
+                            void WarmupTransaction(int txIndex)
+                            {
+                                Transaction tx = blockState.Block.Transactions[txIndex];
                                 WarmupSingleTransaction(scope, tx, txIndex, blockState);
                             }
                         }
@@ -304,7 +317,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
             finally
             {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
+                foreach (KeyValuePair<AddressAsKey, SenderTxGroup> kvp in senderGroups)
                     kvp.Value.Dispose();
             }
         }
@@ -318,24 +331,41 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    private static Dictionary<AddressAsKey, SenderTxGroup> GroupTransactionsBySender(Block block)
     {
-        Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
+        Dictionary<AddressAsKey, SenderTxGroup> groups = new();
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction tx = block.Transactions[i];
-            Address sender = tx.SenderAddress!;
+            AddressAsKey sender = tx.SenderAddress!;
 
-            if (!groups.TryGetValue(sender, out ArrayPoolList<(int, Transaction)> list))
+            ref SenderTxGroup group = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, sender, out bool exists);
+            if (!exists)
             {
-                list = new(4);
-                groups[sender] = list;
+                group = new(i);
             }
-            list.Add((i, tx));
+            else
+            {
+                group.Add(i);
+            }
         }
 
         return groups;
+    }
+
+    private struct SenderTxGroup(int firstTxIndex) : IDisposable
+    {
+        public readonly int FirstTxIndex = firstTxIndex;
+        public ArrayPoolList<int>? RestTxIndexes;
+
+        public void Add(int txIndex)
+        {
+            RestTxIndexes ??= new(4);
+            RestTxIndexes.Add(txIndex);
+        }
+
+        public void Dispose() => RestTxIndexes?.Dispose();
     }
 
     private static void WarmupSingleTransaction(
