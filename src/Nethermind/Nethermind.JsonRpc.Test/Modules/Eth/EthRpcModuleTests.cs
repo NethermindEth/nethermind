@@ -171,25 +171,26 @@ public partial class EthRpcModuleTests
         Assert.That(tx.IsInMempoolForm());
     }
 
-    [TestCase(true, TestName = "ByHash")]
-    [TestCase(false, TestName = "ByNumber")]
-    public async Task EthGetRawTransactionByBlockAndIndex_WhenValidIndex_ReturnsRlpHex(bool byHash)
-    {
-        using Context ctx = await Context.Create();
-        string method = byHash ? "eth_getRawTransactionByBlockHashAndIndex" : "eth_getRawTransactionByBlockNumberAndIndex";
-        string blockArg = byHash ? ctx.Test.BlockTree.FindHeadBlock()!.Hash!.ToString() : "latest";
-        string serialized = await ctx.Test.TestEthRpc(method, blockArg, "1");
-        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{ExpectedHeadTxRawAtIndex1}\",\"id\":67}}"));
-    }
-
-    [TestCase("eth_getRawTransactionByBlockHashAndIndex", null, "99", TestName = "IndexOutOfRange")]
-    [TestCase("eth_getRawTransactionByBlockNumberAndIndex", "0x9999999", "0", TestName = "BlockUnknown")]
-    public async Task EthGetRawTransactionByBlockAndIndex_WhenLookupFails_ReturnsNull(string method, string? blockOverride, string index)
+    [TestCaseSource(nameof(EthGetRawTransactionByBlockAndIndexCases))]
+    public async Task EthGetRawTransactionByBlockAndIndex(string method, string? blockOverride, string index, string expectedResult)
     {
         using Context ctx = await Context.Create();
         string blockArg = blockOverride ?? ctx.Test.BlockTree.FindHeadBlock()!.Hash!.ToString();
         string serialized = await ctx.Test.TestEthRpc(method, blockArg, index);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}"));
+    }
+
+    private static IEnumerable<TestCaseData> EthGetRawTransactionByBlockAndIndexCases()
+    {
+        string raw = $"\"{ExpectedHeadTxRawAtIndex1}\"";
+        yield return new TestCaseData("eth_getRawTransactionByBlockHashAndIndex", (string?)null, "1", raw)
+            .SetName("ByHashValidIndex");
+        yield return new TestCaseData("eth_getRawTransactionByBlockNumberAndIndex", "latest", "1", raw)
+            .SetName("ByNumberValidIndex");
+        yield return new TestCaseData("eth_getRawTransactionByBlockHashAndIndex", (string?)null, "99", "null")
+            .SetName("IndexOutOfRange");
+        yield return new TestCaseData("eth_getRawTransactionByBlockNumberAndIndex", "0x9999999", "0", "null")
+            .SetName("BlockUnknown");
     }
 
 
