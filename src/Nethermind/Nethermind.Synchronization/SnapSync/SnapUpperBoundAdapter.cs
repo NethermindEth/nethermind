@@ -30,15 +30,8 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), UpperBound);
 
-    public ITrieNodeResolver? GetReadOnlyTraversalResolver()
-    {
-        if (baseTrieStore is ITrieNodeResolverSource source)
-        {
-            return source.GetReadOnlyTraversalResolver();
-        }
-
-        return null;
-    }
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver() =>
+        baseTrieStore is ITrieNodeResolverSource source ? source.GetReadOnlyTraversalResolver() : null;
 
     private sealed class BoundedSnapCommitter(ICommitter baseCommitter, ValueHash256 subtreeLimit) : ICommitter
     {

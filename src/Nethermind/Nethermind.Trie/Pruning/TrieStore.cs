@@ -539,23 +539,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     internal TrieNode FindCachedOrUnknownShared(Hash256? address, in TreePath path, Hash256 hash)
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
-        if (Volatile.Read(ref _commitBuffer) is { } commitBuffer)
-        {
-            return commitBuffer.FindCachedOrUnknownShared(key);
-        }
-
-        return FindCachedOrUnknownShared(key);
+        return Volatile.Read(ref _commitBuffer) is { } commitBuffer
+            ? commitBuffer.FindCachedOrUnknownShared(key)
+            : FindCachedOrUnknownShared(key);
     }
 
-    private TrieNode FindCachedOrUnknownShared(in TrieStoreDirtyNodesCache.Key key)
-    {
-        if (DirtyNodesTryGetValue(key, out TrieNode? cached))
-        {
-            return ShareOrCloneForReadOnly(key, cached);
-        }
-
-        return new TrieNode(NodeType.Unknown, key.Keccak);
-    }
+    private TrieNode FindCachedOrUnknownShared(in TrieStoreDirtyNodesCache.Key key) =>
+        DirtyNodesTryGetValue(key, out TrieNode? cached)
+            ? ShareOrCloneForReadOnly(key, cached)
+            : new TrieNode(NodeType.Unknown, key.Keccak);
 
     private TrieNode ShareOrCloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode cached)
     {
@@ -564,17 +556,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         Debug.Assert(cached.Keccak == key.Keccak, "Cache key/Keccak mismatch.");
         if (!cached.HasRlp)
         {
-            Interlocked.Increment(ref _fallbackNotShareableCount);
+            IncrementFallbackNotShareableCount();
             return new TrieNode(NodeType.Unknown, key.Keccak);
         }
 
         if (cached.IsSealed)
         {
-            Interlocked.Increment(ref _sharedNodeHitCount);
+            IncrementSharedNodeHitCount();
             return cached;
         }
 
-        Interlocked.Increment(ref _fallbackNotShareableCount);
+        IncrementFallbackNotShareableCount();
         return CloneForReadOnly(key, cached);
     }
 
@@ -1084,15 +1076,40 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private long _totalCachedNodesCount;
     private long _dirtyNodesCount;
 
-    // Per-instance counters for read-only-traversal observability. Tests assert deltas on these
-    // off the specific TrieStore they constructed, so no global state or test-only reset is needed.
+    // Test-only read-only traversal counters. They are disabled until tests read one of the
+    // properties below, keeping the production read-only traversal path free of Interlocked counting.
+    private bool _collectReadOnlyTraversalStats;
     private long _cloneForReadOnlyCount;
     private long _fallbackNotShareableCount;
     private long _sharedNodeHitCount;
 
-    internal long CloneForReadOnlyCount => Interlocked.Read(ref _cloneForReadOnlyCount);
-    internal long FallbackNotShareableCount => Interlocked.Read(ref _fallbackNotShareableCount);
-    internal long SharedNodeHitCount => Interlocked.Read(ref _sharedNodeHitCount);
+    internal long CloneForReadOnlyCount => EnableReadOnlyTraversalStatsAndRead(ref _cloneForReadOnlyCount);
+    internal long FallbackNotShareableCount => EnableReadOnlyTraversalStatsAndRead(ref _fallbackNotShareableCount);
+    internal long SharedNodeHitCount => EnableReadOnlyTraversalStatsAndRead(ref _sharedNodeHitCount);
+
+    private long EnableReadOnlyTraversalStatsAndRead(ref long counter)
+    {
+        _collectReadOnlyTraversalStats = true;
+        return Interlocked.Read(ref counter);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void IncrementCloneForReadOnlyCount()
+    {
+        if (_collectReadOnlyTraversalStats) Interlocked.Increment(ref _cloneForReadOnlyCount);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void IncrementFallbackNotShareableCount()
+    {
+        if (_collectReadOnlyTraversalStats) Interlocked.Increment(ref _fallbackNotShareableCount);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void IncrementSharedNodeHitCount()
+    {
+        if (_collectReadOnlyTraversalStats) Interlocked.Increment(ref _sharedNodeHitCount);
+    }
 
     private int _committedNodesCount;
 
@@ -1818,7 +1835,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     internal TrieNode CloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode node)
     {
-        Interlocked.Increment(ref _cloneForReadOnlyCount);
+        IncrementCloneForReadOnlyCount();
 
         CappedArray<byte> fullRlp = node!.FullRlp;
         if (fullRlp.IsNull)

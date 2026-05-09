@@ -599,25 +599,7 @@ namespace Nethermind.Trie
                         continue;
                     }
 
-                    int prefix = rlpStream.ReadByte();
-                    switch (prefix)
-                    {
-                        case 0:
-                        case 128:
-                            PublishChild(ref data, _nullNode);
-                            break;
-                        case 160:
-                            rlpStream.Position--;
-                            PublishChild(ref data, rlpStream.DecodeKeccak()!);
-                            break;
-                        default:
-                            rlpStream.Position--;
-                            int offset = rlpStream.Position;
-                            int length = rlpStream.PeekNextRlpLength();
-                            PublishChild(ref data, CreateInlineChild(rlp, offset, length));
-                            rlpStream.SkipBytes(length);
-                            break;
-                    }
+                    PublishChild(ref data, DecodeChildReference(rlp, ref rlpStream));
                 }
             }
             finally
@@ -1391,6 +1373,27 @@ namespace Nethermind.Trie
             return winner ?? decoded;
         }
 
+        private static object DecodeChildReference(CappedArray<byte> rlp, ref ValueRlpStream rlpStream)
+        {
+            int prefix = rlpStream.ReadByte();
+            switch (prefix)
+            {
+                case 0:
+                case 128:
+                    return _nullNode;
+                case 160:
+                    rlpStream.Position--;
+                    return rlpStream.DecodeKeccak()!;
+                default:
+                    rlpStream.Position--;
+                    int offset = rlpStream.Position;
+                    int length = rlpStream.PeekNextRlpLength();
+                    TrieNode child = CreateInlineChild(rlp, offset, length);
+                    rlpStream.SkipBytes(length);
+                    return child;
+            }
+        }
+
         private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
         {
             object? childOrRef;
@@ -1408,36 +1411,12 @@ namespace Nethermind.Trie
                     // Allows to load children in parallel
                     ValueRlpStream rlpStream = new(rlp);
                     SeekChild(ref rlpStream, i);
-                    int prefix = rlpStream.ReadByte();
-
-                    switch (prefix)
+                    childOrRef = DecodeChildReference(rlp, ref rlpStream);
+                    if (childOrRef is Hash256 keccak)
                     {
-                        case 0:
-                        case 128:
-                            {
-                                childOrRef = PublishChild(ref data, _nullNode);
-                                break;
-                            }
-                        case 160:
-                            {
-                                rlpStream.Position--;
-                                Hash256 keccak = rlpStream.DecodeKeccak();
-
-                                TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                childOrRef = PublishChild(ref data, child);
-
-                                break;
-                            }
-                        default:
-                            {
-                                rlpStream.Position--;
-                                int offset = rlpStream.Position;
-                                int length = rlpStream.PeekNextRlpLength();
-                                TrieNode child = CreateInlineChild(rlp, offset, length);
-                                childOrRef = PublishChild(ref data, child);
-                                break;
-                            }
+                        childOrRef = tree.FindCachedOrUnknown(childPath, keccak);
                     }
+                    childOrRef = PublishChild(ref data, childOrRef);
                 }
             }
 
@@ -1593,40 +1572,13 @@ namespace Nethermind.Trie
                             _currentStreamIndex = i;
                         }
 
-                        int prefix = _rlpStream.ReadByte();
-
-                        switch (prefix)
+                        childOrRef = DecodeChildReference(rlp, ref _rlpStream);
+                        if (childOrRef is Hash256 keccak)
                         {
-                            case 0:
-                            case 128:
-                                {
-                                    childOrRef = PublishChild(ref data, _nullNode);
-                                    _currentStreamIndex++;
-                                    break;
-                                }
-                            case 160:
-                                {
-                                    _rlpStream.Position--;
-                                    Hash256 keccak = _rlpStream.DecodeKeccak();
-                                    _currentStreamIndex++;
-
-                                    TrieNode child = tree.FindCachedOrUnknown(childPath, keccak);
-                                    childOrRef = PublishChild(ref data, child);
-
-                                    break;
-                                }
-                            default:
-                                {
-                                    _rlpStream.Position--;
-                                    int offset = _rlpStream.Position;
-                                    int length = _rlpStream.PeekNextRlpLength();
-                                    TrieNode child = CreateInlineChild(rlp, offset, length);
-                                    childOrRef = PublishChild(ref data, child);
-                                    _rlpStream.SkipBytes(length);
-                                    _currentStreamIndex++;
-                                    break;
-                                }
+                            childOrRef = tree.FindCachedOrUnknown(childPath, keccak);
                         }
+                        childOrRef = PublishChild(ref data, childOrRef);
+                        _currentStreamIndex++;
                     }
                 }
 

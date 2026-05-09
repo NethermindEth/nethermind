@@ -36,16 +36,11 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNo
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         @base.BeginCommit(root, writeFlags);
 
-    public ITrieNodeResolver? GetReadOnlyTraversalResolver()
-    {
-        if (@base is ITrieNodeResolverSource source
-            && source.GetReadOnlyTraversalResolver() is ITrieNodeResolver readOnlyResolver)
-        {
-            return new CachedTrieNodeResolver(readOnlyResolver);
-        }
-
-        return null;
-    }
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver() =>
+        @base is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is ITrieNodeResolver readOnlyResolver
+            ? new CachedTrieNodeResolver(readOnlyResolver)
+            : null;
 
     private sealed class CachedTrieNodeResolver(ITrieNodeResolver inner) : ITrieNodeResolver
     {

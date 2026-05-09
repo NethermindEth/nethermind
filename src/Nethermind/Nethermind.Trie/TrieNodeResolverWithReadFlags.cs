@@ -38,14 +38,9 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
 
     public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;
 
-    public ITrieNodeResolver? GetReadOnlyTraversalResolver()
-    {
-        if (_baseResolver is ITrieNodeResolverSource source
-            && source.GetReadOnlyTraversalResolver() is ITrieNodeResolver readOnlyResolver)
-        {
-            return new TrieNodeResolverWithReadFlags(readOnlyResolver, _defaultFlags);
-        }
-
-        return null;
-    }
+    public ITrieNodeResolver? GetReadOnlyTraversalResolver() =>
+        _baseResolver is ITrieNodeResolverSource source
+            && source.GetReadOnlyTraversalResolver() is ITrieNodeResolver readOnlyResolver
+            ? new TrieNodeResolverWithReadFlags(readOnlyResolver, _defaultFlags)
+            : null;
 }
