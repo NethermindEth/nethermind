@@ -331,8 +331,15 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int candidateSize = NodeSizeUpperBound(candidateCount, newMaxSepLen, newValueSlotSize);
             int committedSize = NodeSizeUpperBound(count, maxSepLen, valueSlotSize);
 
+            // Encoding degrades only when the post-strip slot width grows past 4 — within
+            // ≤ 4 B the planner stays on the SIMD-friendly Uniform ≤ 4 / UniformWithLen ≤ 4
+            // paths, so any combination of (maxSepLen growth, commonLen shrink) that keeps
+            // effMax = maxSepLen − commonLen ≤ 4 is safe. Only force-split on sep/prefix
+            // signals when they push the effective slot above 4.
+            int effMax = newMaxSepLen - newCommonLen;
+            bool encodingForcesSplit = effMax > 4;
             if (count >= minLeafEntries &&
-                (newMaxSepLen > maxSepLen || newCommonLen < commonLen || newValueSlotSize > valueSlotSize ||
+                (encodingForcesSplit || newValueSlotSize > valueSlotSize ||
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
 
