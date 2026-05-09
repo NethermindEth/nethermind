@@ -39,6 +39,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -399,7 +400,11 @@ public partial class EthRpcModule(
         {
             _wallet.Sign(tx, chainId);
         }
-        catch (SecurityException)
+        // Each wallet implementation signals "could not sign" with its own exception type:
+        // SecurityException for keystore wallets when the account is locked, InvalidOperationException
+        // for ClefWallet on remote-signer rejection, CryptographicException via the default
+        // Sign(Transaction, ulong) when Sign(Hash256, Address) returns null (e.g. NullWallet).
+        catch (Exception ex) when (ex is SecurityException or InvalidOperationException or CryptographicException)
         {
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
         }
