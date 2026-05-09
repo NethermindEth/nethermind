@@ -7,8 +7,7 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class UInt256Decoder : IRlpValueDecoder<UInt256>, IRlpStreamEncoder<UInt256>
 {
-    private static UInt256Decoder? _instance = null;
-    public static UInt256Decoder Instance => _instance ??= new();
+    public static readonly UInt256Decoder Instance = new();
 
     public int GetLength(UInt256 item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOf(item);

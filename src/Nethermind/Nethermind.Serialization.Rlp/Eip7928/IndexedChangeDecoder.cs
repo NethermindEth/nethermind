@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -15,12 +18,19 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
+    // Nethermind internal: Eip7928Constants.PrestateIndex (uint.MaxValue) overloads the
+    // wire block_access_index space as a prestate sentinel. EIP-7928 reserves no such value;
+    // we reject it on both ends so the sentinel can never collide with a real index.
     public T Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
         T result = DecodeFields(ref ctx);
+        if (result.Index == Eip7928Constants.PrestateIndex)
+        {
+            ThrowPrestateIndexReserved();
+        }
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -32,6 +42,11 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
 
     public void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (item.Index == Eip7928Constants.PrestateIndex)
+        {
+            ThrowPrestateIndexReserved();
+        }
+
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Index);
         EncodeValue(stream, item);
@@ -48,4 +63,8 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
 
     /// <summary>Return the RLP length of the value field.</summary>
     protected abstract int GetValueLength(T item);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowPrestateIndexReserved() =>
+        throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is reserved for internal prestate tracking.");
 }

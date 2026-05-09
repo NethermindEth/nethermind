@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -121,12 +121,9 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         _hashCode = HashCode.Combine(hashCode1, hashCode2, DestroyRefund);
     }
 
-    public long RefundFromReversal<TEip8037>(bool originalIsZero)
-        where TEip8037 : struct, IFlag => originalIsZero
-            ? TEip8037.IsActive
-                ? RefundOf.SSetReversedEip8037
-                : SetReversalRefund
-            : ClearReversalRefund;
+    public long RefundFromReversal(bool originalIsZero) => originalIsZero
+        ? SetReversalRefund
+        : ClearReversalRefund;
 
     public bool Equals(SpecGasCosts? other)
     {
