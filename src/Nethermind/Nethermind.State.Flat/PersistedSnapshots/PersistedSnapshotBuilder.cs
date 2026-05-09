@@ -81,27 +81,6 @@ public static class PersistedSnapshotBuilder
         return a.Key.Slot.CompareTo(b.Key.Slot);
     };
 
-    /// <summary>
-    /// Seek <paramref name="key"/> within <paramref name="scope"/> of
-    /// <paramref name="reader"/>. Returned offset is reader-absolute. The single
-    /// long-aware seek primitive used throughout this file.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryGetBound<TReader, TPin>(
-        scoped in TReader reader, Bound scope,
-        scoped ReadOnlySpan<byte> key,
-        out long offset, out long length)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        HsstReader<TReader, TPin> hsst = new(in reader, scope);
-        if (!hsst.TrySeek(key, out _)) { offset = 0; length = 0; return false; }
-        Bound b = hsst.GetBound();
-        offset = b.Offset;
-        length = b.Length;
-        return true;
-    }
-
     public static void Build<TWriter, TReader, TPin>(Snapshot snapshot, ref TWriter writer, BloomFilter? bloom = null, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // To stay off the LOH, we keep only the unmanaged sort keys in NativeMemoryList
@@ -688,9 +667,9 @@ public static class PersistedSnapshotBuilder
 
         foreach (byte[] tag in s_columnTags)
         {
-            if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, r.Length), tag, out long colOff, out long colLen))
-                continue;
-            Bound columnScope = new(colOff, colLen);
+            HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+            if (!hsst.TrySeek(tag, out _)) continue;
+            Bound columnScope = hsst.GetBound();
 
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
 
@@ -826,54 +805,72 @@ public static class PersistedSnapshotBuilder
             using HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref perAddrWriter);
 
             // Sub-tag 0x01: storage trie top. Inner HSST values become NodeRefs.
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.StorageTopSubTag, out long subOff, out long subLen) && subLen > 0)
+            HsstReader<WholeReadSessionReader, NoOpPin> top = new(in reader, perAddrScope);
+            if (top.TrySeek(PersistedSnapshot.StorageTopSubTag, out _) && top.GetBound().Length > 0)
             {
                 ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
                 ConvertStorageTrieSubTagToNodeRefs<TWriter>(
-                    in reader, new Bound(subOff, subLen),
+                    in reader, top.GetBound(),
                     ref subWriter, snapshotId, innerKeySize: 3);
                 perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
             }
 
             // Sub-tag 0x02: storage trie compact. Same conversion, 8-byte path keys.
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.StorageCompactSubTag, out subOff, out subLen) && subLen > 0)
+            HsstReader<WholeReadSessionReader, NoOpPin> compact = new(in reader, perAddrScope);
+            if (compact.TrySeek(PersistedSnapshot.StorageCompactSubTag, out _) && compact.GetBound().Length > 0)
             {
                 ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
                 ConvertStorageTrieSubTagToNodeRefs<TWriter>(
-                    in reader, new Bound(subOff, subLen),
+                    in reader, compact.GetBound(),
                     ref subWriter, snapshotId, innerKeySize: 8);
                 perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
             }
 
             // Sub-tag 0x03: storage trie fallback. Same conversion, 33-byte path keys.
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.StorageFallbackSubTag, out subOff, out subLen) && subLen > 0)
+            HsstReader<WholeReadSessionReader, NoOpPin> fallback = new(in reader, perAddrScope);
+            if (fallback.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out _) && fallback.GetBound().Length > 0)
             {
                 ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
                 ConvertStorageTrieSubTagToNodeRefs<TWriter>(
-                    in reader, new Bound(subOff, subLen),
+                    in reader, fallback.GetBound(),
                     ref subWriter, snapshotId, innerKeySize: 33);
                 perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
             }
 
             // Sub-tag 0x04: slots — copy bytes as-is. Slot values are inline, not NodeRefs.
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.SlotSubTag, out subOff, out subLen) && subLen > 0)
+            HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in reader, perAddrScope);
+            if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out _))
             {
-                using NoOpPin pin = reader.PinBuffer(subOff, subLen);
-                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, pin.Buffer);
+                Bound b = slot.GetBound();
+                if (b.Length > 0)
+                {
+                    using NoOpPin pin = reader.PinBuffer(b.Offset, b.Length);
+                    perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, pin.Buffer);
+                }
             }
 
             // Sub-tag 0x05: account RLP — inline.
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.AccountSubTag, out subOff, out subLen) && subLen > 0)
+            HsstReader<WholeReadSessionReader, NoOpPin> acct = new(in reader, perAddrScope);
+            if (acct.TrySeek(PersistedSnapshot.AccountSubTag, out _))
             {
-                using NoOpPin pin = reader.PinBuffer(subOff, subLen);
-                perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, pin.Buffer);
+                Bound b = acct.GetBound();
+                if (b.Length > 0)
+                {
+                    using NoOpPin pin = reader.PinBuffer(b.Offset, b.Length);
+                    perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, pin.Buffer);
+                }
             }
 
             // Sub-tag 0x06: self-destruct flag — inline.
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.SelfDestructSubTag, out subOff, out subLen) && subLen > 0)
+            HsstReader<WholeReadSessionReader, NoOpPin> sd = new(in reader, perAddrScope);
+            if (sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
             {
-                using NoOpPin pin = reader.PinBuffer(subOff, subLen);
-                perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, pin.Buffer);
+                Bound b = sd.GetBound();
+                if (b.Length > 0)
+                {
+                    using NoOpPin pin = reader.PinBuffer(b.Offset, b.Length);
+                    perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, pin.Buffer);
+                }
             }
 
             perAddrBuilder.Build();
@@ -1009,8 +1006,8 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, r.Length), tag, out long colOff, out long colLen)
-                    ? (colOff, colLen) : (0, 0);
+                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+                columnBounds[i] = hsst.TrySeek(tag, out _) ? (hsst.GetBound().Offset, hsst.GetBound().Length) : (0, 0);
                 enums[i] = new HsstEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1318,8 +1315,8 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, r.Length), tag, out long colOff, out long colLen)
-                    ? (colOff, colLen) : (0, 0);
+                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+                columnBounds[i] = hsst.TrySeek(tag, out _) ? (hsst.GetBound().Offset, hsst.GetBound().Length) : (0, 0);
                 enums[i] = new HsstEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1361,8 +1358,8 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, r.Length), tag, out long colOff, out long colLen)
-                    ? (colOff, colLen) : (0, 0);
+                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+                columnBounds[i] = hsst.TrySeek(tag, out _) ? (hsst.GetBound().Offset, hsst.GetBound().Length) : (0, 0);
                 enums[i] = new HsstEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1541,8 +1538,8 @@ public static class PersistedSnapshotBuilder
             {
                 sessions[i] = snapshots[i].BeginWholeReadSession();
                 WholeReadSessionReader r = sessions[i].GetReader();
-                columnBounds[i] = TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(0, r.Length), tag, out long colOff, out long colLen)
-                    ? (colOff, colLen) : (0, 0);
+                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
+                columnBounds[i] = hsst.TrySeek(tag, out _) ? (hsst.GetBound().Offset, hsst.GetBound().Length) : (0, 0);
                 enums[i] = new HsstEnumerator(in r, new Bound(columnBounds[i].Offset, columnBounds[i].Length));
                 hasMore[i] = enums[i].MoveNext(in r);
             }
@@ -1600,8 +1597,9 @@ public static class PersistedSnapshotBuilder
                     {
                         ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
                         bloom.Add(addrKey);
-                        if (TryGetBound<WholeReadSessionReader, NoOpPin>(in srcReader, vb, PersistedSnapshot.SlotSubTag, out long slotOff, out long slotLen))
-                            AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, new Bound(slotOff, slotLen), addrKey, bloom);
+                        HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in srcReader, vb);
+                        if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out _))
+                            AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slot.GetBound(), addrKey, bloom);
                     }
                 }
                 else
@@ -1691,10 +1689,11 @@ public static class PersistedSnapshotBuilder
         for (int j = 0; j < matchCount; j++)
         {
             WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-            if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length), PersistedSnapshot.SelfDestructSubTag, out long sdOff, out long sdLen)
-                || sdLen != 1)
-                continue;
-            using NoOpPin sdPin = r.PinBuffer(sdOff, 1);
+            HsstReader<WholeReadSessionReader, NoOpPin> sd = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+            if (!sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _)) continue;
+            Bound sdb = sd.GetBound();
+            if (sdb.Length != 1) continue;
+            using NoOpPin sdPin = r.PinBuffer(sdb.Offset, 1);
             if (sdPin.Buffer[0] == 0x00)
                 destructBarrier = j;
         }
@@ -1705,8 +1704,8 @@ public static class PersistedSnapshotBuilder
 
         {
             // Collect sources that have slots in the range; opportunistically feed the
-            // bloom filter from the same TryGetBound pass — bloom and slot-merge need
-            // the exact same set of sources / sub-tag bounds, so a separate pass would
+            // bloom filter from the same seek pass — bloom and slot-merge need the
+            // exact same set of sources / sub-tag bounds, so a separate pass would
             // just duplicate the seek.
             int slotSourceCount = 0;
             int slotCapacity = matchCount - slotStart;
@@ -1717,14 +1716,16 @@ public static class PersistedSnapshotBuilder
             for (int j = slotStart; j < matchCount; j++)
             {
                 WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-                if (TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length), PersistedSnapshot.SlotSubTag, out long slotOff, out long slotLen))
+                HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+                if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out _))
                 {
+                    Bound slotBound = slot.GetBound();
                     slotSources[slotSourceCount] = j;
-                    // slotOff is reader-absolute (snapshot-absolute) since the scope was relative to the snapshot.
-                    slotBounds[slotSourceCount] = (slotOff, slotLen);
+                    // slotBound is reader-absolute (snapshot-absolute) since the scope was relative to the snapshot.
+                    slotBounds[slotSourceCount] = (slotBound.Offset, slotBound.Length);
                     slotSourceCount++;
                     if (bloom is not null)
-                        AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in r, new Bound(slotOff, slotLen), addrBloomKey, bloom);
+                        AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in r, slotBound, addrBloomKey, bloom);
                 }
             }
 
@@ -1772,10 +1773,11 @@ public static class PersistedSnapshotBuilder
             for (int j = matchCount - 1; j >= 0; j--)
             {
                 WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-                if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length), PersistedSnapshot.AccountSubTag, out long acctOff, out long acctLen)
-                    || acctLen == 0)
-                    continue;
-                using NoOpPin acctPin = r.PinBuffer(acctOff, acctLen);
+                HsstReader<WholeReadSessionReader, NoOpPin> acct = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+                if (!acct.TrySeek(PersistedSnapshot.AccountSubTag, out _)) continue;
+                Bound ab = acct.GetBound();
+                if (ab.Length == 0) continue;
+                using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
                 perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, acctPin.Buffer);
                 break;
             }
@@ -1794,24 +1796,26 @@ public static class PersistedSnapshotBuilder
             for (int j = 0; j < matchCount; j++)
             {
                 WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-                if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length), PersistedSnapshot.SelfDestructSubTag, out long sdOff, out long sdLen) || sdLen == 0)
-                    continue;
+                HsstReader<WholeReadSessionReader, NoOpPin> sd = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+                if (!sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _)) continue;
+                Bound sdb = sd.GetBound();
+                if (sdb.Length == 0) continue;
 
                 if (sdSrcJ < 0)
                 {
                     sdSrcJ = j;
-                    sdValOff = sdOff;
-                    sdValLen = sdLen;
+                    sdValOff = sdb.Offset;
+                    sdValLen = sdb.Length;
                 }
                 else
                 {
                     // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
-                    using NoOpPin firstBytePin = r.PinBuffer(sdOff, 1);
+                    using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
                     if (firstBytePin.Buffer[0] == 0x00)
                     {
                         sdSrcJ = j;
-                        sdValOff = sdOff;
-                        sdValLen = sdLen;
+                        sdValOff = sdb.Offset;
+                        sdValLen = sdb.Length;
                     }
                 }
             }
@@ -1859,14 +1863,16 @@ public static class PersistedSnapshotBuilder
         for (int j = 0; j < matchCount; j++)
         {
             WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(
-                    in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length),
-                    subTag, out long subOff, out long subLen)
-                && subLen > 0)
+            HsstReader<WholeReadSessionReader, NoOpPin> sub = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+            if (sub.TrySeek(subTag, out _))
             {
-                srcs[active] = j;
-                subBounds[active] = (subOff, subLen);
-                active++;
+                Bound sb = sub.GetBound();
+                if (sb.Length > 0)
+                {
+                    srcs[active] = j;
+                    subBounds[active] = (sb.Offset, sb.Length);
+                    active++;
+                }
             }
         }
 
@@ -1969,22 +1975,31 @@ public static class PersistedSnapshotBuilder
         // Walk metadata fields directly through the long-aware readers. Each field
         // gets a narrow PinBuffer so the resulting Span is just the field bytes —
         // no wide pin of the entire metadata blob.
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in oldestReader, new Bound(0, oldestReader.Length), PersistedSnapshot.MetadataTag, out long oldestMetaOff, out long oldestMetaLen);
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in newestReader, new Bound(0, newestReader.Length), PersistedSnapshot.MetadataTag, out long newestMetaOff, out long newestMetaLen);
-        Bound oldestMetaScope = new(oldestMetaOff, oldestMetaLen);
-        Bound newestMetaScope = new(newestMetaOff, newestMetaLen);
+        HsstReader<WholeReadSessionReader, NoOpPin> oldestRoot = new(in oldestReader, new Bound(0, oldestReader.Length));
+        oldestRoot.TrySeek(PersistedSnapshot.MetadataTag, out _);
+        Bound oldestMetaScope = oldestRoot.GetBound();
+        HsstReader<WholeReadSessionReader, NoOpPin> newestRoot = new(in newestReader, new Bound(0, newestReader.Length));
+        newestRoot.TrySeek(PersistedSnapshot.MetadataTag, out _);
+        Bound newestMetaScope = newestRoot.GetBound();
 
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in oldestReader, oldestMetaScope, "from_block"u8, out long fbOff, out long fbLen);
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in oldestReader, oldestMetaScope, "from_hash"u8, out long fhOff, out long fhLen);
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in newestReader, newestMetaScope, "to_block"u8, out long tbOff, out long tbLen);
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in newestReader, newestMetaScope, "to_hash"u8, out long thOff, out long thLen);
-        TryGetBound<WholeReadSessionReader, NoOpPin>(in newestReader, newestMetaScope, "version"u8, out long vOff, out long vLen);
+        Bound fb = SeekField(in oldestReader, oldestMetaScope, "from_block"u8);
+        Bound fh = SeekField(in oldestReader, oldestMetaScope, "from_hash"u8);
+        Bound tb = SeekField(in newestReader, newestMetaScope, "to_block"u8);
+        Bound th = SeekField(in newestReader, newestMetaScope, "to_hash"u8);
+        Bound vb = SeekField(in newestReader, newestMetaScope, "version"u8);
 
-        using NoOpPin fbPin = oldestReader.PinBuffer(fbOff, fbLen);
-        using NoOpPin fhPin = oldestReader.PinBuffer(fhOff, fhLen);
-        using NoOpPin tbPin = newestReader.PinBuffer(tbOff, tbLen);
-        using NoOpPin thPin = newestReader.PinBuffer(thOff, thLen);
-        using NoOpPin vPin = newestReader.PinBuffer(vOff, vLen);
+        using NoOpPin fbPin = oldestReader.PinBuffer(fb.Offset, fb.Length);
+        using NoOpPin fhPin = oldestReader.PinBuffer(fh.Offset, fh.Length);
+        using NoOpPin tbPin = newestReader.PinBuffer(tb.Offset, tb.Length);
+        using NoOpPin thPin = newestReader.PinBuffer(th.Offset, th.Length);
+        using NoOpPin vPin = newestReader.PinBuffer(vb.Offset, vb.Length);
+
+        static Bound SeekField(scoped in WholeReadSessionReader r, Bound scope, scoped ReadOnlySpan<byte> key)
+        {
+            HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, scope);
+            hsst.TrySeek(key, out _);
+            return hsst.GetBound();
+        }
         ReadOnlySpan<byte> fromBlock = fbPin.Buffer;
         ReadOnlySpan<byte> fromHash = fhPin.Buffer;
         ReadOnlySpan<byte> toBlock = tbPin.Buffer;

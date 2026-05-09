@@ -285,8 +285,12 @@ internal static class PersistedSnapshotUtils
 
             // Determine if this compacted snapshot has NodeRefs by checking metadata flag.
             bool hasNodeRefs = false;
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, rootScope, PersistedSnapshot.MetadataTag, out long metaOff, out long metaLen))
-                hasNodeRefs = TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, new Bound(metaOff, metaLen), "noderefs"u8, out _, out _);
+            HsstReader<WholeReadSessionReader, NoOpPin> metaCol = new(in reader, rootScope);
+            if (metaCol.TrySeek(PersistedSnapshot.MetadataTag, out _))
+            {
+                HsstReader<WholeReadSessionReader, NoOpPin> meta = new(in reader, metaCol.GetBound());
+                hasNodeRefs = meta.TrySeek("noderefs"u8, out _);
+            }
 
             // Build transitive lookup including referenced snapshots from compacted sources
             Dictionary<int, PersistedSnapshot> snapshotLookup = [];
@@ -301,13 +305,14 @@ internal static class PersistedSnapshotUtils
             }
 
             // Unified Account Column (0x01): address → per-address HSST { slots, self-destruct, account }
-            if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, rootScope, PersistedSnapshot.AccountColumnTag, out long acctColOff, out long acctColLen))
+            HsstReader<WholeReadSessionReader, NoOpPin> acctCol = new(in reader, rootScope);
+            if (acctCol.TrySeek(PersistedSnapshot.AccountColumnTag, out _))
             {
                 Span<byte> slotBytes = stackalloc byte[32];
                 Span<byte> addrKeyBuf = stackalloc byte[32];
                 Span<byte> prefixKeyBuf = stackalloc byte[31];
                 Span<byte> suffixKeyBuf = stackalloc byte[1];
-                Bound accountColumnBound = new(acctColOff, acctColLen);
+                Bound accountColumnBound = acctCol.GetBound();
                 using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> addrEnum = new(in reader, accountColumnBound);
                 while (addrEnum.MoveNext())
                 {
@@ -325,10 +330,11 @@ internal static class PersistedSnapshotUtils
                     // can no longer go through the Address-keyed bundle helpers; walk
                     // source snapshots newest-first by hash to reconstruct the expected
                     // result.
-                    if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.AccountSubTag, out long acctOff, out long acctLen)
-                        && acctLen > 0)
+                    HsstReader<WholeReadSessionReader, NoOpPin> acctSeek = new(in reader, perAddrScope);
+                    if (acctSeek.TrySeek(PersistedSnapshot.AccountSubTag, out _) && acctSeek.GetBound().Length > 0)
                     {
-                        using NoOpPin acctPin = reader.PinBuffer(acctOff, acctLen);
+                        Bound acctBound = acctSeek.GetBound();
+                        using NoOpPin acctPin = reader.PinBuffer(acctBound.Offset, acctBound.Length);
                         ReadOnlySpan<byte> accountRlp = acctPin.Buffer;
                         Account? bundleAccount = null;
                         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -360,10 +366,11 @@ internal static class PersistedSnapshotUtils
 
                     // Validate self-destruct sub-tag (0x06). Presence-marker encoding:
                     // length 0 = absent, [0x00] = destructed, [0x01] = new account.
-                    if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.SelfDestructSubTag, out long sdOff, out long sdLen)
-                        && sdLen > 0)
+                    HsstReader<WholeReadSessionReader, NoOpPin> sdSeek = new(in reader, perAddrScope);
+                    if (sdSeek.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _) && sdSeek.GetBound().Length > 0)
                     {
-                        using NoOpPin sdPin = reader.PinBuffer(sdOff, sdLen);
+                        Bound sdBound = sdSeek.GetBound();
+                        using NoOpPin sdPin = reader.PinBuffer(sdBound.Offset, sdBound.Length);
                         bool actual = sdPin.Buffer[0] != 0x00; // true = new account, false = destructed
 
                         bool? expected = null;
@@ -385,9 +392,10 @@ internal static class PersistedSnapshotUtils
 
                     // Validate storage sub-tag (0x04). Slots are nested HSST(prefix(31)
                     // → ByteTagMap(suffix(1) → SlotValue)).
-                    if (TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, perAddrScope, PersistedSnapshot.SlotSubTag, out long slotOff, out long slotLen))
+                    HsstReader<WholeReadSessionReader, NoOpPin> slotSeek = new(in reader, perAddrScope);
+                    if (slotSeek.TrySeek(PersistedSnapshot.SlotSubTag, out _))
                     {
-                        Bound slotBound = new(slotOff, slotLen);
+                        Bound slotBound = slotSeek.GetBound();
                         using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> prefixEnum = new(in reader, slotBound);
                         while (prefixEnum.MoveNext())
                         {
@@ -508,27 +516,6 @@ internal static class PersistedSnapshotUtils
     }
 
     /// <summary>
-    /// Long-aware seek: look up <paramref name="key"/> within <paramref name="scope"/>
-    /// of <paramref name="reader"/>. Returned offset is reader-absolute. Sole seek
-    /// primitive in this file — keeps SpanByteReader out of validation-internal code.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryGetBound<TReader, TPin>(
-        scoped in TReader reader, Bound scope,
-        scoped ReadOnlySpan<byte> key,
-        out long offset, out long length)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        HsstReader<TReader, TPin> hsst = new(in reader, scope);
-        if (!hsst.TrySeek(key, out _)) { offset = 0; length = 0; return false; }
-        Bound b = hsst.GetBound();
-        offset = b.Offset;
-        length = b.Length;
-        return true;
-    }
-
-    /// <summary>
     /// Walk one of the StateTop/State/StateFallback flat columns and verify each
     /// (path, value) against the bundle. Shared body for the three columns; differs
     /// only in <paramref name="keySize"/> + <paramref name="decode"/>.
@@ -539,10 +526,9 @@ internal static class PersistedSnapshotUtils
         Dictionary<int, PersistedSnapshot> snapshotLookup, bool hasNodeRefs,
         ReadOnlySnapshotBundle bundle, string label, delegate*<ReadOnlySpan<byte>, TreePath> decode)
     {
-        if (!TryGetBound<WholeReadSessionReader, NoOpPin>(in reader, rootScope, tag, out long colOff, out long colLen))
-            return;
-        Bound colBound = new(colOff, colLen);
-        using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> e = new(in reader, colBound);
+        HsstReader<WholeReadSessionReader, NoOpPin> col = new(in reader, rootScope);
+        if (!col.TrySeek(tag, out _)) return;
+        using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> e = new(in reader, col.GetBound());
         Span<byte> keyBuf = stackalloc byte[keySize];
         while (e.MoveNext())
         {
