@@ -216,6 +216,11 @@ namespace Nethermind.Core
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
 
+        /// <summary>
+        /// Clears the cached encoded length after mutating fields that affect network serialization.
+        /// </summary>
+        public void ClearLengthCache() => _size = null;
+
         public string ToShortString()
         {
             string gasPriceString =

@@ -122,11 +122,29 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
             return SubmitTransaction(peer, transaction);
         }
 
+        BlobCellMask attachedCellMask = BlobCellMask.Empty;
+        byte[][]? attachedCells = null;
+        if (transaction.NetworkWrapper is ShardBlobNetworkWrapper sparseWrapper
+            && sparseWrapper.Cells is { Length: > 0 } wrapperCells)
+        {
+            attachedCellMask = sparseWrapper.GetAvailableCellMask();
+            if (!attachedCellMask.IsEmpty)
+            {
+                attachedCells = wrapperCells;
+            }
+        }
+
         TrackedSparseBlobTx state = GetOrAdd(hash);
         lock (state.Lock)
         {
             state.Transaction ??= transaction;
             state.TransactionPeer ??= peer;
+            if (attachedCells is not null
+                && (state.Cells is not { } existingCells
+                    || (existingCells.CellMask & attachedCellMask) != attachedCellMask))
+            {
+                state.Cells = new PendingCellsBuffer(attachedCellMask, attachedCells, peer.Id);
+            }
         }
 
         return TrySubmit(hash, state);
@@ -470,9 +488,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
             return;
         }
 
-        if (submitted && _txPool.RemoveTransaction(hash) && _logger.IsDebug)
+        if (submitted && _logger.IsDebug)
         {
-            _logger.Debug($"Evicted sparse blob transaction {hash} after saturation timeout with {providers} independent provider announcements.");
+            _logger.Debug($"Keeping sparse blob transaction {hash} after saturation timeout with {providers} independent provider announcements.");
         }
     }
 
@@ -571,6 +589,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         }
 
         tx.NetworkWrapper = sparseWrapper;
+        tx.ClearLengthCache();
         return true;
     }
 

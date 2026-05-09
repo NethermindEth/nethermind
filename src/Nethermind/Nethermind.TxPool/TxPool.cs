@@ -239,7 +239,19 @@ namespace Nethermind.TxPool
             => _blobTransactions.TryGetBlobCellsAndProofsV1(blobVersionedHash, requestedMask, out availableMask, out cells, out proofs);
 
         public bool TryMergeBlobCells(Hash256 hash, BlobCellMask cellMask, byte[][] cells)
-            => _blobTransactions.TryMergeCells(hash, cellMask, cells);
+        {
+            if (!_blobTransactions.TryMergeCells(hash, cellMask, cells))
+            {
+                return false;
+            }
+
+            if (_blobTransactions.TryGetValue(hash, out Transaction? transaction))
+            {
+                _broadcaster.Broadcast(transaction, isPersistent: false);
+            }
+
+            return true;
+        }
 
         private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args) => RemovePendingDelegations(args.Value);
 
@@ -621,6 +633,7 @@ namespace Nethermind.TxPool
                 }
 
                 tx.NetworkWrapper = wrapper with { Proofs = [.. cellProofs], Version = ProofVersion.V1 };
+                tx.ClearLengthCache();
             }
         }
 

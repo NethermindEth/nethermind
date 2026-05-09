@@ -272,6 +272,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             }
 
             blobTx.NetworkWrapper = mergedWrapper;
+            blobTx.ClearLengthCache();
             OnBlobTransactionUpdatedNonLocked(blobTx);
             return true;
         }

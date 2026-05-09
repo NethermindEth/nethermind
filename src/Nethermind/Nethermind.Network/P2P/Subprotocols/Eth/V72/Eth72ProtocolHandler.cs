@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -66,6 +67,7 @@ public class Eth72ProtocolHandler(
     private readonly ConcurrentDictionary<ValueHash256, CellRequestState> _pendingCellRequests = new();
     private readonly ConcurrentDictionary<ValueHash256, CellRequestState> _sentCellRequests = new();
     private readonly ConcurrentDictionary<ValueHash256, PendingCellsState> _pendingCells = new();
+    private readonly ClockCache<ValueHash256, BlobCellMask> _announcedBlobTransactionMasks = new(MemoryAllowance.TxHashCacheSize, lockPartition: 1);
     private readonly ConcurrentQueue<CellStateKey> _pendingCellRequestOrder = new();
     private readonly ConcurrentQueue<CellStateKey> _sentCellRequestOrder = new();
     private readonly ConcurrentQueue<CellStateKey> _pendingCellsOrder = new();
@@ -149,6 +151,31 @@ public class Eth72ProtocolHandler(
         {
             SendAnnouncement([tx], GetAnnouncementMask(tx).ToBytes());
         }
+    }
+
+    protected override bool ShouldNotifyTransactionCore(Transaction tx)
+    {
+        if (!tx.SupportsBlobs || tx.Hash is null)
+        {
+            return base.ShouldNotifyTransactionCore(tx);
+        }
+
+        BlobCellMask mask = GetAnnouncementMask(tx);
+        if (mask.IsEmpty)
+        {
+            return base.ShouldNotifyTransactionCore(tx);
+        }
+
+        ValueHash256 hash = tx.Hash.ValueHash256;
+        if (_announcedBlobTransactionMasks.TryGet(hash, out BlobCellMask announcedMask)
+            && (announcedMask & mask) == mask)
+        {
+            return false;
+        }
+
+        _announcedBlobTransactionMasks.Set(hash, announcedMask | mask);
+        NotifiedTransactions.Set(hash);
+        return true;
     }
 
     protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
@@ -943,6 +970,7 @@ public class Eth72ProtocolHandler(
         Transaction clone = new();
         tx.CopyTo(clone);
         clone.NetworkWrapper = wrapper with { Blobs = CreateEmptyBlobs(wrapper.Blobs.Length) };
+        clone.ClearLengthCache();
         return clone;
 
         static byte[][] CreateEmptyBlobs(int length)

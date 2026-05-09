@@ -167,6 +167,55 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_reannounce_blob_tx_when_available_cell_mask_expands()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithNonce((UInt256)0)
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .SignedAndResolved()
+            .TestObject;
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask firstMask = BlobCellMask.FromIndices([1]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, firstMask, out byte[][] firstCells), Is.True);
+        BlobCellMask expandedMask = BlobCellMask.FromIndices([1, 3]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, expandedMask, out byte[][] expandedCells), Is.True);
+
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        for (int i = 0; i < emptyBlobs.Length; i++)
+        {
+            emptyBlobs[i] = [];
+        }
+
+        tx.NetworkWrapper = wrapper with
+        {
+            Blobs = emptyBlobs,
+            CellMask = firstMask,
+            Cells = firstCells,
+        };
+        tx.ClearLengthCache();
+        _handler.SendNewTransaction(tx);
+
+        tx.NetworkWrapper = wrapper with
+        {
+            Blobs = emptyBlobs,
+            CellMask = expandedMask,
+            Cells = expandedCells,
+        };
+        tx.ClearLengthCache();
+        _handler.SendNewTransaction(tx);
+
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            m.CellMask.SequenceEqual(firstMask.ToBytes())));
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            m.CellMask.SequenceEqual(expandedMask.ToBytes())));
+    }
+
+    [Test]
     public void should_request_blob_cells_asynchronously_after_announcement()
     {
         Transaction tx = Build.A.Transaction
@@ -215,6 +264,7 @@ public class Eth72ProtocolHandlerTests
             .WithNonce(UInt256.Zero)
             .SignedAndResolved()
             .TestObject;
+        int fullTxLength = tx.GetLength();
 
         _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
             .Returns(x =>
@@ -232,7 +282,8 @@ public class Eth72ProtocolHandlerTests
             m.EthMessage.Transactions.Count == 1 &&
             m.EthMessage.Transactions[0].NetworkWrapper != null &&
             ((ShardBlobNetworkWrapper)m.EthMessage.Transactions[0].NetworkWrapper!).Blobs.Length == ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs.Length &&
-            ((ShardBlobNetworkWrapper)m.EthMessage.Transactions[0].NetworkWrapper!).Blobs.All(static blob => blob.Length == 0)));
+            ((ShardBlobNetworkWrapper)m.EthMessage.Transactions[0].NetworkWrapper!).Blobs.All(static blob => blob.Length == 0) &&
+            m.EthMessage.Transactions[0].GetLength() < fullTxLength));
     }
 
     [Test]
@@ -573,6 +624,27 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void registry_should_submit_sparse_blob_tx_with_attached_cells()
+    {
+        Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
+        tx.NetworkWrapper = ((ShardBlobNetworkWrapper)tx.NetworkWrapper!) with { CellMask = cellMask, Cells = cells };
+        tx.ClearLengthCache();
+
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
+
+        registry.AddPeer(peer);
+        AcceptTxResult? result = registry.RecordTransaction(peer, tx);
+
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        _transactionPool.Received(1).SubmitTx(
+            Arg.Is<Transaction>(submittedTx => HasExpectedSparseCells(submittedTx, tx.Hash!, cellMask, cells.Length)),
+            TxHandlingOptions.None);
+        Assert.That(peer.Disconnects, Is.Empty);
+    }
+
+    [Test]
     public void registry_should_disconnect_cell_peer_when_cells_are_invalid()
     {
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells);
@@ -705,7 +777,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void registry_should_retry_full_fallback_before_eviction()
+    public void registry_should_retry_full_fallback_without_eviction()
     {
         Transaction tx = BuildSparseBlobTransaction(out BlobCellMask sampledMask, out byte[][] sampledCells);
         CapturingBackgroundTaskScheduler scheduler = new();
@@ -717,7 +789,6 @@ public class Eth72ProtocolHandlerTests
             maxAdmissionDelay: TimeSpan.Zero);
         TestSparseBlobPeer fullPeer = new(TestItem.PublicKeyC);
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(AcceptTxResult.Accepted);
-        _transactionPool.RemoveTransaction(tx.Hash!).Returns(true);
 
         registry.AddPeer(fullPeer);
         registry.RecordAnnouncement(fullPeer, tx.Hash!, BlobCellMask.Full);
@@ -732,7 +803,7 @@ public class Eth72ProtocolHandlerTests
         }
 
         scheduler.RunLast();
-        _transactionPool.Received(1).RemoveTransaction(tx.Hash!);
+        _transactionPool.DidNotReceive().RemoveTransaction(tx.Hash!);
     }
 
     [Test]
