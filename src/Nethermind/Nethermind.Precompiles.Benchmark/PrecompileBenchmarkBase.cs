@@ -48,6 +48,12 @@ namespace Nethermind.Precompiles.Benchmark
                     List<Param> inputs = [];
                     string inputsDir = Path.Combine(AppContext.BaseDirectory, InputsDirectory, "current");
 
+                    if (!Directory.Exists(inputsDir))
+                    {
+                        Console.Error.WriteLine($"[PrecompileBenchmark] Input directory not found, skipping: {inputsDir}");
+                        continue;
+                    }
+
                     foreach (string file in Directory.GetFiles(inputsDir, "*.csv", SearchOption.TopDirectoryOnly))
                     {
                         // take only first line from each file
