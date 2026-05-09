@@ -21,20 +21,28 @@ public class EthCapabilitiesProvider(
     public EthCapabilities GetCapabilities()
     {
         BlockHeader? head = blockTree.Head?.Header;
+        if (head is null)
+        {
+            ResourceAvailability disabled = Resource(enabled: false, oldestBlock: null);
+            return new EthCapabilities(new ChainHead(0, Keccak.Zero), disabled, disabled, disabled, disabled);
+        }
+
         bool headersAvailable = blockTree.BestSuggestedHeader is not null;
-        long lowestBlock = blockTree.LowestInsertedHeader?.Number ?? 0;
 
-        bool receiptsSynced = syncConfig?.DownloadReceiptsInFastSync ?? true;
-        // AncientReceiptsBarrierCalc returns Math.Max(1, …) which would be wrong for PivotNumber=0.
-        long oldestReceipts = (syncConfig?.PivotNumber ?? 0) == 0 ? 0 : syncConfig!.AncientReceiptsBarrierCalc;
+        long pivot = syncConfig?.PivotNumber ?? 0;
+        long bodiesBarrier = pivot == 0 ? 0 : Math.Min(pivot, syncConfig!.AncientBodiesBarrier);
+        long receiptsBarrier = pivot == 0 ? 0 : Math.Min(pivot, Math.Max(syncConfig!.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
 
-        // Floor recorded by sync completion / full-pruning runs; defaults to genesis.
+        bool bodiesSynced = syncConfig?.DownloadBodiesInFastSync ?? true;
+        bool receiptsSynced = bodiesSynced && (syncConfig?.DownloadReceiptsInFastSync ?? true);
+        long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0, bodiesBarrier);
+
         long stateFloor = blockTree.OldestStateBlock ?? 0L;
-        long? windowOldest = head is not null ? worldStateManager.GetOldestStateBlock(head.Number) : null;
+        long? windowOldest = worldStateManager.GetOldestStateBlock(head.Number);
         long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
-        // Report a window descriptor only when retention is rolling (windowOldest non-null and head is set).
-        long? retentionDepth = head is not null && windowOldest is { } w ? head.Number - w : null;
-        DeleteStrategy? stateWindow = retentionDepth > 0 ? new DeleteStrategy("window", retentionDepth.Value) : null;
+        DeleteStrategy? stateWindow = windowOldest is { } w && w >= stateFloor
+            ? new DeleteStrategy("window", head.Number - w)
+            : null;
 
         long historyFloor = historyPruner?.OldestBlockHeader?.Number ?? 0;
         DeleteStrategy? historyWindow = historyConfig?.Pruning == PruningModes.Rolling
@@ -43,11 +51,10 @@ public class EthCapabilitiesProvider(
 
         ResourceAvailability state = Resource(enabled: true, stateOldest, stateWindow);
         return new EthCapabilities(
-            Head: new ChainHead(head?.Number ?? 0, head?.Hash ?? Keccak.Zero),
+            Head: new ChainHead(head.Number, head.Hash ?? Keccak.Zero),
             State: state,
-            // Tx and Logs are computed aliases of Receipts.
-            Receipts: Resource(receiptsSynced, Math.Max(oldestReceipts, historyFloor), historyWindow),
-            Blocks: Resource(headersAvailable, Math.Max(lowestBlock, historyFloor), historyWindow),
+            Receipts: Resource(receiptsSynced, Math.Max(receiptsBarrier, historyFloor), historyWindow),
+            Blocks: Resource(headersAvailable && bodiesSynced, Math.Max(lowestBlock, historyFloor), historyWindow),
             Stateproofs: state);
     }
 
