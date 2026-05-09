@@ -717,6 +717,7 @@ public class HsstReaderTests
         private readonly byte[] _data = data;
 
         public readonly long Length => _data.Length;
+        public readonly Bound Bound => new(0, _data.Length);
 
         public readonly bool TryRead(long offset, Span<byte> output)
         {
