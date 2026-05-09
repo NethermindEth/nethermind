@@ -18,6 +18,8 @@ public readonly unsafe ref struct WholeReadSessionReader(byte* basePtr, long len
     private readonly byte* _basePtr = basePtr;
     public long Length => length;
 
+    public Bound Bound => new(0, length);
+
     public bool TryRead(long offset, scoped Span<byte> output)
     {
         if ((ulong)offset + (ulong)output.Length > (ulong)length) return false;

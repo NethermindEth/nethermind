@@ -774,7 +774,7 @@ public static class PersistedSnapshotBuilder
     {
         SpanByteReader reader = new(column);
         HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
-        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, column.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, reader.Bound);
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
         Span<byte> keyBuf = stackalloc byte[Math.Max(1, keySize)];
 
@@ -802,7 +802,7 @@ public static class PersistedSnapshotBuilder
     {
         SpanByteReader reader = new(column);
         HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
-        using HsstRefEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, column.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, reader.Bound);
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
         Span<byte> innerKeyBuf = stackalloc byte[Math.Max(1, innerKeySize)];
         // Outer (BTree) keys are storage-trie path prefixes — bounded ≤33; 64 is safe.
@@ -849,7 +849,7 @@ public static class PersistedSnapshotBuilder
     {
         SpanByteReader reader = new(column);
         using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
-        using HsstRefEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, new Bound(0, column.Length));
+        using HsstRefEnumerator<SpanByteReader, NoOpPin> outerEnum = new(in reader, reader.Bound);
         // Outer key is a 20-byte address hash.
         Span<byte> outerKeyBuf = stackalloc byte[32];
 

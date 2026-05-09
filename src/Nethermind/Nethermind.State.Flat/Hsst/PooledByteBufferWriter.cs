@@ -100,6 +100,8 @@ public sealed class PooledByteBufferWriter(int initialCapacity, long firstOffset
 
         public long Length => _length;
 
+        public Bound Bound => new(0, _length);
+
         public bool TryRead(long offset, scoped Span<byte> output)
         {
             if ((ulong)offset > (ulong)(_length - output.Length)) return false;

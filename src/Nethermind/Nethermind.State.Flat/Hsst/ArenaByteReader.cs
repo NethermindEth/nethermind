@@ -46,6 +46,8 @@ public unsafe ref struct ArenaByteReader : IHsstByteReader<NoOpPin>
 
     public long Length => _length;
 
+    public Bound Bound => new(0, _length);
+
     public bool TryRead(long offset, scoped Span<byte> output)
     {
         if ((ulong)offset + (ulong)output.Length > (ulong)_length) return false;

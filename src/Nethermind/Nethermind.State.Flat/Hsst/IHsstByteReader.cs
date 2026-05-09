@@ -88,6 +88,9 @@ public interface IHsstByteReader<TPin> where TPin : struct, IBufferPin, allows r
 {
     long Length { get; }
 
+    /// <summary>The full extent of this reader as a <see cref="Bound"/> — i.e. <c>(0, Length)</c>.</summary>
+    Bound Bound { get; }
+
     /// <summary>
     /// Copy <c>output.Length</c> bytes starting at <paramref name="offset"/> into <paramref name="output"/>.
     /// Returns false if the range is out of bounds.
@@ -114,6 +117,8 @@ public readonly ref struct SpanByteReader : IHsstByteReader<NoOpPin>
     public SpanByteReader(ReadOnlySpan<byte> data) => _data = data;
 
     public long Length => _data.Length;
+
+    public Bound Bound => new(0, _data.Length);
 
     public bool TryRead(long offset, scoped Span<byte> output)
     {
