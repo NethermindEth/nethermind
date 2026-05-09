@@ -312,54 +312,14 @@ public class BlockchainBridgeTests
             Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
     }
 
-    [Test]
-    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys(bool optimize)
     {
-        BlockHeader header = Build.A.BlockHeader.TestObject;
-        Transaction tx = Build.A.Transaction
-            .WithSenderAddress(TestItem.AddressA)
-            .WithTo(TestItem.AddressB)
-            .TestObject;
-
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(callInfo =>
-            {
-                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
-                tracer.ReportAccess(
-                    [PrecompiledAddresses.ECRecover, TestItem.AddressC],
-                    [new StorageCell(TestItem.AddressC, UInt256.One)]);
-                tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 0), Array.Empty<byte>(), Array.Empty<LogEntry>());
-                return TransactionResult.Ok;
-            });
-
-        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, true, null, default);
-
-        callOutput.AccessList.Should().NotBeNull();
-        callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover).Should().BeFalse();
-        callOutput.AccessList.Any(e => e.Address == TestItem.AddressC).Should().BeTrue();
-    }
-
-    [Test]
-    public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys_when_optimize_is_false()
-    {
-        BlockHeader header = Build.A.BlockHeader.TestObject;
-        Transaction tx = Build.A.Transaction
-            .WithSenderAddress(TestItem.AddressA)
-            .WithTo(TestItem.AddressB)
-            .TestObject;
-
-        _transactionProcessor.CallAndRestore(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
-            .Returns(callInfo =>
-            {
-                ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
-                tracer.ReportAccess(
-                    [PrecompiledAddresses.ECRecover, TestItem.AddressC],
-                    [new StorageCell(TestItem.AddressC, UInt256.One)]);
-                tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 0), Array.Empty<byte>(), Array.Empty<LogEntry>());
-                return TransactionResult.Ok;
-            });
-
-        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, false, null, default);
+        CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
+            optimize,
+            [PrecompiledAddresses.ECRecover, TestItem.AddressC],
+            [new StorageCell(TestItem.AddressC, UInt256.One)]);
 
         callOutput.AccessList.Should().NotBeNull();
         callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover).Should().BeFalse();
@@ -369,6 +329,20 @@ public class BlockchainBridgeTests
     [Test]
     public void CreateAccessList_keeps_precompile_address_when_storage_key_is_present()
     {
+        CallOutput callOutput = InvokeCreateAccessListWithMockedAccess(
+            optimize: false,
+            [PrecompiledAddresses.ECRecover],
+            [new StorageCell(PrecompiledAddresses.ECRecover, UInt256.One)]);
+
+        callOutput.AccessList.Should().NotBeNull();
+        callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover).Should().BeTrue();
+    }
+
+    private CallOutput InvokeCreateAccessListWithMockedAccess(
+        bool optimize,
+        Address[] accessedAddresses,
+        StorageCell[] accessedCells)
+    {
         BlockHeader header = Build.A.BlockHeader.TestObject;
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(TestItem.AddressA)
@@ -379,17 +353,12 @@ public class BlockchainBridgeTests
             .Returns(callInfo =>
             {
                 ITxTracer tracer = callInfo.ArgAt<ITxTracer>(1);
-                tracer.ReportAccess(
-                    [PrecompiledAddresses.ECRecover],
-                    [new StorageCell(PrecompiledAddresses.ECRecover, UInt256.One)]);
+                tracer.ReportAccess(accessedAddresses, accessedCells);
                 tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 0), Array.Empty<byte>(), Array.Empty<LogEntry>());
                 return TransactionResult.Ok;
             });
 
-        CallOutput callOutput = _blockchainBridge.CreateAccessList(header, tx, null, false, null, default);
-
-        callOutput.AccessList.Should().NotBeNull();
-        callOutput.AccessList!.Any(e => e.Address == PrecompiledAddresses.ECRecover).Should().BeTrue();
+        return _blockchainBridge.CreateAccessList(header, tx, null, optimize, null, default);
     }
 
     [Test]
