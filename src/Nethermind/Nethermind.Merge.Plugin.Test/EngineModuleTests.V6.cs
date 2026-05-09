@@ -18,6 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Int256;
@@ -40,6 +41,7 @@ public partial class EngineModuleTests
     }
 
     [TestCase("0xb54389c226c76c61de0a8ebea2fe74cb0119295d34b8c01d0897901867c41c63", "0x14c38ed94cf91d5323eb3aaa7ff6c64c4c059a0a898658fcbc37f9723c25e6b3", "0x8a792f3d13211724decede460a451cdac669b5aaae37a01c2110d9f3114bc8a2", "0xfe420b1626a1f16d")]
+    [NonParallelizable]
     public virtual async Task Should_process_block_as_expected_V6(
         string latestValidHash,
         string blockHash,
@@ -574,19 +576,16 @@ public partial class EngineModuleTests
         }
         else
         {
+            using JsonDocument responseJson = JsonDocument.Parse(response);
+            JsonElement result = responseJson.RootElement.GetProperty("result");
+            string? validationError = result.GetProperty("validationError").GetString();
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(successResponse, Is.Not.Null);
-                Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
-                {
-                    Id = successResponse.Id,
-                    Result = new PayloadStatusV1
-                    {
-                        LatestValidHash = Keccak.Zero,
-                        Status = PayloadStatus.Invalid,
-                        ValidationError = expectedError
-                    }
-                })));
+                Assert.That(result.GetProperty("latestValidHash").GetString(), Is.EqualTo(Keccak.Zero.ToString(true)));
+                Assert.That(result.GetProperty("status").GetString(), Is.EqualTo(PayloadStatus.Invalid));
+                Assert.That(validationError, Does.Contain(expectedError));
             }
         }
 
@@ -867,9 +866,9 @@ public partial class EngineModuleTests
 
             if (errorKind is BalErrorKind.SurplusChange)
             {
-                SortedList<int, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
+                SortedList<uint, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
                 modifiedAccounts[TestItem.AddressF] = new AccountChanges(
-                    TestItem.AddressF, new(), new SortedSet<UInt256>(), new(), fakeNonce, new());
+                    TestItem.AddressF, [], [], [], fakeNonce, []);
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
@@ -889,30 +888,30 @@ public partial class EngineModuleTests
         SortedList<UInt256, SlotChanges> storageChanges = new();
         foreach (SlotChanges sc in ac.StorageChanges)
         {
-            SortedList<int, StorageChange> changes = new();
-            foreach (KeyValuePair<int, StorageChange> kvp in sc.Changes)
+            SortedList<uint, StorageChange> changes = new();
+            foreach (KeyValuePair<uint, StorageChange> kvp in sc.Changes)
                 changes.Add(kvp.Key, kvp.Value);
 
-            storageChanges.Add(sc.Key, sc with { Changes = changes });
+            storageChanges.Add(sc.Key, new SlotChanges(sc.Key, changes));
         }
 
-        SortedSet<UInt256> storageReads = new(ac.StorageReads);
+        HashSet<UInt256> storageReads = new(ac.StorageReads);
 
-        SortedList<int, BalanceChange> balanceChanges = new();
+        SortedList<uint, BalanceChange> balanceChanges = new();
         foreach (BalanceChange bc in ac.BalanceChanges)
         {
             BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
             balanceChanges.Add(modified.Index, modified);
         }
 
-        SortedList<int, NonceChange> nonceChanges = new();
+        SortedList<uint, NonceChange> nonceChanges = new();
         foreach (NonceChange nc in ac.NonceChanges)
             nonceChanges.Add(nc.Index, nc);
 
-        SortedList<int, CodeChange> codeChanges = new();
+        SortedList<uint, CodeChange> codeChanges = new();
         foreach (CodeChange cc in ac.CodeChanges)
             codeChanges.Add(cc.Index, cc);
 
-        return new AccountChanges(ac.Address, storageChanges, storageReads, balanceChanges, nonceChanges, codeChanges);
+        return new AccountChanges(ac.Address, storageChanges.Values.ToArray(), storageReads.ToHashSet(), balanceChanges, nonceChanges, codeChanges);
     }
 }

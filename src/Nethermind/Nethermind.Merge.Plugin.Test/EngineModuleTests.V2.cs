@@ -35,6 +35,7 @@ public partial class EngineModuleTests
         "0xe89937a887c84cf0422c4445780f573929fa8bdec06eaac39be91cd428a9c249",
         "0x0cb5b20122ce36c5d13058d8d6ec33b9fee729730f41a3adeacfb76dd8116ab7",
         "0x0c26dbd2461b7b5d")]
+    [NonParallelizable]
     public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
