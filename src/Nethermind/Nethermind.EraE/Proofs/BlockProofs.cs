@@ -11,6 +11,8 @@ namespace Nethermind.EraE.Proofs;
 [SszContainer]
 partial struct HistoricalBatch
 {
+    private const int SlotsPerHistoricalRoot = 8192;
+
     [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
     public SszBytes32[] BlockRoots { get; set; }
 
@@ -19,10 +21,15 @@ partial struct HistoricalBatch
 
     public static HistoricalBatch From(ReadOnlySpan<ValueHash256> blockRoots, ReadOnlySpan<ValueHash256> stateRoots)
     {
-        SszBytes32[] blockRootsData = new SszBytes32[blockRoots.Length];
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(blockRoots.Length, SlotsPerHistoricalRoot);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(stateRoots.Length, SlotsPerHistoricalRoot);
+
+        SszBytes32[] blockRootsData = new SszBytes32[SlotsPerHistoricalRoot];
         for (int i = 0; i < blockRoots.Length; i++) blockRootsData[i] = SszBytes32.From(blockRoots[i]);
-        SszBytes32[] stateRootsData = new SszBytes32[stateRoots.Length];
+
+        SszBytes32[] stateRootsData = new SszBytes32[SlotsPerHistoricalRoot];
         for (int i = 0; i < stateRoots.Length; i++) stateRootsData[i] = SszBytes32.From(stateRoots[i]);
+
         return new() { BlockRoots = blockRootsData, StateRoots = stateRootsData };
     }
 }
@@ -30,13 +37,18 @@ partial struct HistoricalBatch
 [SszContainer]
 partial struct ValueHash256Vector
 {
+    private const int SlotsPerHistoricalRoot = 8192;
+
     [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
     public SszBytes32[] Data { get; set; }
 
     public static ValueHash256Vector From(ReadOnlySpan<ValueHash256> hashesAccumulator)
     {
-        SszBytes32[] data = new SszBytes32[hashesAccumulator.Length];
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(hashesAccumulator.Length, SlotsPerHistoricalRoot);
+
+        SszBytes32[] data = new SszBytes32[SlotsPerHistoricalRoot];
         for (int i = 0; i < hashesAccumulator.Length; i++) data[i] = SszBytes32.From(hashesAccumulator[i]);
+
         return new() { Data = data };
     }
 
@@ -47,4 +59,3 @@ partial struct ValueHash256Vector
         return result;
     }
 }
-

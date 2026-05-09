@@ -1,8 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -11,7 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Data
 {
-    [Parallelizable(ParallelScope.Self)]
+    [NonParallelizable]
     [TestFixture]
     public class BlockParameterConverterTests : SerializationTestBase
     {
@@ -25,9 +24,11 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"0xa\" }", 10)]
         public void Can_read_block_number(string input, long output)
         {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-
-            BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(input)!;
+            BlockParameter blockParameter = WithStrictHexFormat(false, () =>
+            {
+                IJsonSerializer serializer = new EthereumJsonSerializer();
+                return serializer.Deserialize<BlockParameter>(input)!;
+            });
 
             Assert.That(blockParameter.BlockNumber, Is.EqualTo(output));
         }
@@ -44,18 +45,25 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"100\" }", true)]
         public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
         {
+            TestDelegate action = () => WithStrictHexFormat(true, () =>
+            {
+                IJsonSerializer serializer = new EthereumJsonSerializer();
+                return serializer.Deserialize<BlockParameter>(input);
+            });
+
+            if (throws)
+                Assert.That(action, Throws.TypeOf<FormatException>());
+            else
+                Assert.That(action, Throws.Nothing);
+        }
+
+        private static T WithStrictHexFormat<T>(bool strictHexFormat, Func<T> action)
+        {
             bool original = EthereumJsonSerializer.StrictHexFormat;
             try
             {
-                EthereumJsonSerializer.StrictHexFormat = true;
-                IJsonSerializer serializer = new EthereumJsonSerializer();
-
-                Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
-
-                if (throws)
-                    action.Should().Throw<FormatException>();
-                else
-                    action.Should().NotThrow();
+                EthereumJsonSerializer.StrictHexFormat = strictHexFormat;
+                return action();
             }
             finally
             {

@@ -255,12 +255,6 @@ public class InitializeNetwork : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
 
-        await _api.RlpxPeer.Init();
-
-        await _api.StaticNodesManager.InitAsync();
-
-        await _api.TrustedNodesManager.InitAsync();
-
         _api.ProtocolsManager = CreateProtocolManager();
 
         if (_api.Config<ITxPoolConfig>().BlobsSupport.IsEnabled()
@@ -284,6 +278,14 @@ public class InitializeNetwork : IStep
         {
             await plugin.InitNetworkProtocol();
         }
+
+        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // early sessions can negotiate only the default ETH version and never upgrade.
+        await _api.RlpxPeer.Init();
+
+        await _api.StaticNodesManager.InitAsync();
+
+        await _api.TrustedNodesManager.InitAsync();
     }
 
     protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(

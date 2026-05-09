@@ -163,7 +163,7 @@ public class SyncInfoManagerTests
         ILogManager logManager = Substitute.For<ILogManager>();
 
         qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
+        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);
 
@@ -194,7 +194,7 @@ public class SyncInfoManagerTests
         ILogManager logManager = Substitute.For<ILogManager>();
 
         qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
+        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);
 
@@ -225,7 +225,7 @@ public class SyncInfoManagerTests
         ILogManager logManager = Substitute.For<ILogManager>();
 
         qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
+        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);
 
@@ -256,7 +256,7 @@ public class SyncInfoManagerTests
         ILogManager logManager = Substitute.For<ILogManager>();
 
         qcManager.VerifyCertificate(qc, out Arg.Any<string>()).Returns(true);
-        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string>()).Returns(true);
+        timeoutManager.VerifyTimeoutCertificate(tc, out Arg.Any<string?>()).Returns(true);
 
         SyncInfoManager manager = new(xdcContext, qcManager, timeoutManager, logManager);
 

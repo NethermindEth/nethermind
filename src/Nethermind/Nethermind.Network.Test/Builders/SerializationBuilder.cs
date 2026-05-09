@@ -13,6 +13,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
@@ -77,10 +78,14 @@ namespace Nethermind.Network.Test.Builders
                 .With(new BlockRangeUpdateMessageSerializer());
 
         public SerializationBuilder WithEth70(ISpecProvider specProvider) => WithEth69(specProvider)
-                .With<GetReceiptsMessage70>(new GetReceiptsMessageSerializer70(new GetReceiptsMessageSerializer()))
+                .With<GetReceiptsMessage70>(new GetReceiptsMessageSerializer70())
                 .With<ReceiptsMessage70>(new ReceiptsMessageSerializer70(specProvider));
 
-        public SerializationBuilder WithEth72(ISpecProvider specProvider) => WithEth70(specProvider)
+        public SerializationBuilder WithEth71(ISpecProvider specProvider) => WithEth70(specProvider)
+                .With(new GetBlockAccessListsMessageSerializer())
+                .With(new BlockAccessListsMessageSerializer());
+
+        public SerializationBuilder WithEth72(ISpecProvider specProvider) => WithEth71(specProvider)
                 .With(new NewPooledTransactionHashesMessageSerializer72())
                 .With(new GetCellsMessageSerializer72())
                 .With(new CellsMessageSerializer72());

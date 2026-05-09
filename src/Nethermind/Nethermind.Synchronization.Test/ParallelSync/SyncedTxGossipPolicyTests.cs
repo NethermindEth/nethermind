@@ -12,12 +12,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync;
 public class SyncedTxGossipPolicyTests
 {
     [TestCase(SyncMode.FastSync, ExpectedResult = false)]
-    [TestCase(SyncMode.SnapSync, ExpectedResult = false)]
     [TestCase(SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.FastSync | SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.FastHeaders, ExpectedResult = false)]
     [TestCase(SyncMode.BeaconHeaders, ExpectedResult = false)]
-    [TestCase(SyncMode.FastHeaders | SyncMode.BeaconHeaders | SyncMode.SnapSync, ExpectedResult = false)]
+    [TestCase(SyncMode.FastHeaders | SyncMode.BeaconHeaders | SyncMode.StateNodes, ExpectedResult = false)]
     [TestCase(SyncMode.WaitingForBlock, ExpectedResult = true)]
     [TestCase(SyncMode.FastBodies | SyncMode.WaitingForBlock, ExpectedResult = true)]
     [TestCase(SyncMode.FastReceipts | SyncMode.WaitingForBlock, ExpectedResult = true)]
@@ -28,6 +27,27 @@ public class SyncedTxGossipPolicyTests
     [TestCase(SyncMode.UpdatingPivot, ExpectedResult = false)]
     public bool can_gossip(SyncMode mode) =>
         ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossipedTransactions;
+
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = true)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = false)]
+    public bool receipts_unsynced_ignores_block_access_lists_only_mode(SyncMode mode) =>
+        mode.HaveNotSyncedReceiptsYet();
+
+    [TestCase(SyncMode.FastHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies, ExpectedResult = false)]
+    [TestCase(SyncMode.FastReceipts, ExpectedResult = false)]
+    [TestCase(SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastBodies | SyncMode.FastBlockAccessLists, ExpectedResult = true)]
+    [TestCase(SyncMode.FastSync, ExpectedResult = true)]
+    [TestCase(SyncMode.StateNodes, ExpectedResult = true)]
+    [TestCase(SyncMode.BeaconHeaders, ExpectedResult = true)]
+    [TestCase(SyncMode.UpdatingPivot, ExpectedResult = true)]
+    [TestCase(SyncMode.Full, ExpectedResult = false)]
+    [TestCase(SyncMode.WaitingForBlock, ExpectedResult = false)]
+    public bool block_access_lists_unsynced_tracks_headers_state_and_bal_phases(SyncMode mode) =>
+        mode.HaveNotSyncedBlockAccessListsYet();
 
     [Test]
     public void Composite_reflects_sync_mode_transitions()
@@ -45,7 +65,7 @@ public class SyncedTxGossipPolicyTests
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
 
         // Transition back to sync: gossip must become disabled again
-        selector.Current = SyncMode.SnapSync;
+        selector.Current = SyncMode.StateNodes;
         Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
     }
 

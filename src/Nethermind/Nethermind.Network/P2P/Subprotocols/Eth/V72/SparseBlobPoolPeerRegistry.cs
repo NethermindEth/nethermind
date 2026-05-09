@@ -17,24 +17,56 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72;
 
-public sealed class SparseBlobPoolPeerRegistry(
-    ITxPool txPool,
-    IBackgroundTaskScheduler backgroundTaskScheduler,
-    ILogManager logManager)
-    : ISparseBlobPoolPeerRegistry
+public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
 {
     private const int MaxTrackedTransactions = 8192;
     private const int MinIndependentProviderAnnouncements = 2;
-    private static readonly TimeSpan SaturationTimeout = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan MaxAdmissionDelay = TimeSpan.FromMilliseconds(64);
+    private const int MaxFullFallbackRequests = 12;
+    private static readonly TimeSpan DefaultSaturationTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ScheduledActionTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultMaxAdmissionDelay = TimeSpan.FromMilliseconds(64);
     private static readonly PublicKey NoPreferredPeer = new(new byte[PublicKey.LengthInBytes]);
 
-    private readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-    private readonly IBackgroundTaskScheduler _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
-    private readonly ILogger _logger = (logManager ?? throw new ArgumentNullException(nameof(logManager))).GetClassLogger<SparseBlobPoolPeerRegistry>();
+    private readonly ITxPool _txPool;
+    private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+    private readonly ILogger _logger;
     private readonly ConcurrentDictionary<PublicKey, ISparseBlobPoolPeer> _peers = new();
     private readonly ConcurrentDictionary<ValueHash256, TrackedSparseBlobTx> _transactions = new();
     private readonly ConcurrentQueue<ValueHash256> _transactionOrder = new();
+    private readonly TimeSpan _saturationTimeout;
+    private readonly TimeSpan _maxAdmissionDelay;
+
+    public SparseBlobPoolPeerRegistry(
+        ITxPool txPool,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ILogManager logManager)
+        : this(txPool, backgroundTaskScheduler, logManager, DefaultSaturationTimeout, DefaultMaxAdmissionDelay)
+    {
+    }
+
+    internal SparseBlobPoolPeerRegistry(
+        ITxPool txPool,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
+        ILogManager logManager,
+        TimeSpan saturationTimeout,
+        TimeSpan maxAdmissionDelay)
+    {
+        if (saturationTimeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(saturationTimeout));
+        }
+
+        if (maxAdmissionDelay < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxAdmissionDelay));
+        }
+
+        _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
+        _logger = (logManager ?? throw new ArgumentNullException(nameof(logManager))).GetClassLogger<SparseBlobPoolPeerRegistry>();
+        _saturationTimeout = saturationTimeout;
+        _maxAdmissionDelay = maxAdmissionDelay;
+    }
 
     public void AddPeer(ISparseBlobPoolPeer peer) => _peers[peer.Id] = peer;
 
@@ -43,6 +75,11 @@ public sealed class SparseBlobPoolPeerRegistry(
     public void RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask)
     {
         if (announcementMask.IsEmpty)
+        {
+            return;
+        }
+
+        if (HasFullLocalBlobTransaction(hash))
         {
             return;
         }
@@ -105,6 +142,12 @@ public sealed class SparseBlobPoolPeerRegistry(
         TrackedSparseBlobTx state = GetOrAdd(hash);
         lock (state.Lock)
         {
+            if (state.Cells is { } existingCells
+                && (existingCells.CellMask & cellMask) == cellMask)
+            {
+                return true;
+            }
+
             state.Cells = new PendingCellsBuffer(cellMask, cells, peer.Id);
         }
 
@@ -184,22 +227,32 @@ public sealed class SparseBlobPoolPeerRegistry(
         ISparseBlobPoolPeer? transactionPeer;
         PendingCellsBuffer? cells;
         DateTimeOffset notBefore;
+        bool requiresSaturation;
         lock (state.Lock)
         {
             transaction = state.Transaction;
             transactionPeer = state.TransactionPeer;
             cells = state.Cells;
             notBefore = state.NotBefore;
+            if (state.Submitted || state.Submitting)
+            {
+                return null;
+            }
+
             if (transaction is null || cells is null)
             {
                 return null;
             }
+
+            requiresSaturation = !cells.Value.CellMask.IsFull;
 
             if (DateTimeOffset.UtcNow < notBefore)
             {
                 ScheduleAdmission(hash, state, notBefore - DateTimeOffset.UtcNow);
                 return null;
             }
+
+            state.Submitting = true;
         }
 
         if (!TryAttachCells(hash, transaction, cells.Value, out string? error))
@@ -208,21 +261,41 @@ public sealed class SparseBlobPoolPeerRegistry(
             lock (state.Lock)
             {
                 state.Cells = null;
+                state.Submitting = false;
             }
 
-            return null;
-        }
-
-        if (!_transactions.TryRemove(hash.ValueHash256, out TrackedSparseBlobTx? removedState)
-            || !ReferenceEquals(removedState, state))
-        {
             return null;
         }
 
         AcceptTxResult result = SubmitTransaction(transactionPeer, transaction);
         if (result == AcceptTxResult.Invalid)
         {
+            TryRemoveState(hash, state);
             transactionPeer?.DisconnectSparseBlobPeer(DisconnectReason.InvalidTxReceived, $"Invalid sparse blob transaction {hash}");
+        }
+        else if (result == AcceptTxResult.Accepted || result == AcceptTxResult.AlreadyKnown)
+        {
+            lock (state.Lock)
+            {
+                state.Submitted = true;
+                state.Submitting = false;
+                state.Transaction = null;
+                state.TransactionPeer = null;
+                state.Cells = null;
+            }
+
+            if (requiresSaturation)
+            {
+                ScheduleSaturationCheck(hash);
+            }
+            else
+            {
+                TryRemoveState(hash, state);
+            }
+        }
+        else
+        {
+            TryRemoveState(hash, state);
         }
 
         return result;
@@ -252,23 +325,19 @@ public sealed class SparseBlobPoolPeerRegistry(
             state.AdmissionScheduled = true;
         }
 
-        _backgroundTaskScheduler.TryScheduleTask(
-            (Registry: this, Hash: hash, State: state, Delay: delay),
-            static async (request, token) =>
+        ScheduleDelayedTask(
+            (Registry: this, Hash: hash, State: state),
+            delay,
+            static (request, _) =>
             {
-                if (request.Delay > TimeSpan.Zero)
-                {
-                    await Task.Delay(request.Delay, token);
-                }
-
                 lock (request.State.Lock)
                 {
                     request.State.AdmissionScheduled = false;
                 }
 
                 request.Registry.TrySubmit(request.Hash, request.State);
-            },
-            source: nameof(SparseBlobPoolPeerRegistry));
+                return Task.CompletedTask;
+            });
     }
 
     private void ScheduleSaturationCheck(Hash256 hash)
@@ -288,14 +357,43 @@ public sealed class SparseBlobPoolPeerRegistry(
             state.SaturationCheckScheduled = true;
         }
 
-        _backgroundTaskScheduler.TryScheduleTask(
+        ScheduleDelayedTask(
             (Registry: this, Hash: hash, State: state),
-            static async (request, token) =>
+            _saturationTimeout,
+            static (request, _) =>
             {
-                await Task.Delay(SaturationTimeout, token);
                 request.Registry.CheckSaturation(request.Hash, request.State);
-            },
-            source: nameof(SparseBlobPoolPeerRegistry));
+                return Task.CompletedTask;
+            });
+    }
+
+    private void ScheduleDelayedTask<TReq>(
+        TReq request,
+        TimeSpan delay,
+        Func<TReq, CancellationToken, Task> fulfillFunc)
+        => _ = ScheduleDelayedTaskAsync(request, delay, fulfillFunc);
+
+    private async Task ScheduleDelayedTaskAsync<TReq>(
+        TReq request,
+        TimeSpan delay,
+        Func<TReq, CancellationToken, Task> fulfillFunc)
+    {
+        try
+        {
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay);
+            }
+
+            if (!_backgroundTaskScheduler.TryScheduleTask(request, fulfillFunc, timeout: ScheduledActionTimeout, source: nameof(SparseBlobPoolPeerRegistry)))
+            {
+                await fulfillFunc(request, CancellationToken.None);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"Error processing delayed sparse blob pool task.", e);
+        }
     }
 
     private void CheckSaturation(Hash256 hash, TrackedSparseBlobTx state)
@@ -306,10 +404,21 @@ public sealed class SparseBlobPoolPeerRegistry(
             return;
         }
 
+        if (HasFullLocalBlobTransaction(hash))
+        {
+            TryRemoveState(hash, state);
+            return;
+        }
+
         int providers = 0;
         bool hasFullProvider = false;
+        bool shouldRequestFull = false;
+        bool submitted;
+        int fullFallbackRequests;
         lock (state.Lock)
         {
+            state.SaturationCheckScheduled = false;
+
             foreach (BlobCellMask mask in state.Announcements.Values)
             {
                 if (mask.IsFull)
@@ -319,28 +428,63 @@ public sealed class SparseBlobPoolPeerRegistry(
                 }
             }
 
-            if (providers >= MinIndependentProviderAnnouncements)
+            submitted = state.Submitted;
+            fullFallbackRequests = state.FullFallbackRequests;
+
+            if (!submitted && providers >= MinIndependentProviderAnnouncements)
             {
+                return;
+            }
+
+            shouldRequestFull = hasFullProvider && fullFallbackRequests < MaxFullFallbackRequests;
+            if (shouldRequestFull)
+            {
+                state.FullFallbackRequests++;
+                fullFallbackRequests = state.FullFallbackRequests;
+            }
+        }
+
+        if (_logger.IsDebug)
+        {
+            _logger.Debug(
+                $"Sparse blob tx {hash} saturation check: submitted={submitted}, full providers={providers}, full fallback requests={fullFallbackRequests}, requesting full={shouldRequestFull}.");
+        }
+
+        if (shouldRequestFull)
+        {
+            bool requestSent = TryRequestCells(hash, BlobCellMask.Full, NoPreferredPeer);
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Sparse blob tx {hash} full-cell fallback request sent={requestSent}.");
+            }
+
+            if (requestSent)
+            {
+                ScheduleSaturationCheck(hash);
                 return;
             }
         }
 
-        if (hasFullProvider && TryRequestCells(hash, BlobCellMask.Full, NoPreferredPeer))
+        if (!TryRemoveState(hash, state))
         {
             return;
         }
 
-        if (!_transactions.TryRemove(hash.ValueHash256, out TrackedSparseBlobTx? removedState)
-            || !ReferenceEquals(removedState, state))
-        {
-            return;
-        }
-
-        if (_txPool.RemoveTransaction(hash) && _logger.IsDebug)
+        if (submitted && _txPool.RemoveTransaction(hash) && _logger.IsDebug)
         {
             _logger.Debug($"Evicted sparse blob transaction {hash} after saturation timeout with {providers} independent provider announcements.");
         }
     }
+
+    private bool HasFullLocalBlobTransaction(Hash256 hash)
+        => _txPool.TryGetPendingBlobTransaction(hash, out Transaction? blobTx)
+            && blobTx is not null
+            && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            && wrapper.GetAvailableCellMask().IsFull;
+
+    private bool TryRemoveState(Hash256 hash, TrackedSparseBlobTx state)
+        => ((ICollection<KeyValuePair<ValueHash256, TrackedSparseBlobTx>>)_transactions)
+            .Remove(new KeyValuePair<ValueHash256, TrackedSparseBlobTx>(hash.ValueHash256, state));
 
     private void DisconnectPeer(PublicKey peerId, DisconnectReason reason, string details)
     {
@@ -438,9 +582,9 @@ public sealed class SparseBlobPoolPeerRegistry(
         }
     }
 
-    private static TimeSpan GetAdmissionDelay(Hash256 hash)
+    private TimeSpan GetAdmissionDelay(Hash256 hash)
     {
-        int maxMilliseconds = (int)MaxAdmissionDelay.TotalMilliseconds;
+        int maxMilliseconds = (int)_maxAdmissionDelay.TotalMilliseconds;
         if (maxMilliseconds <= 0)
         {
             return TimeSpan.Zero;
@@ -462,5 +606,8 @@ public sealed class SparseBlobPoolPeerRegistry(
         public PendingCellsBuffer? Cells { get; set; }
         public bool AdmissionScheduled { get; set; }
         public bool SaturationCheckScheduled { get; set; }
+        public int FullFallbackRequests { get; set; }
+        public bool Submitted { get; set; }
+        public bool Submitting { get; set; }
     }
 }

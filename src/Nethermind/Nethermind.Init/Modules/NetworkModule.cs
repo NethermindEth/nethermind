@@ -27,6 +27,7 @@ using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using V71 = Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
@@ -133,6 +134,10 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
 
+            // V71
+            .AddMessageSerializer<V71.GetBlockAccessListsMessage, V71.GetBlockAccessListsMessageSerializer>()
+            .AddMessageSerializer<V71.BlockAccessListsMessage, V71.BlockAccessListsMessageSerializer>()
+
             // V72
             .AddMessageSerializer<V72.NewPooledTransactionHashesMessage72, V72.NewPooledTransactionHashesMessageSerializer72>()
             .AddMessageSerializer<V72.GetCellsMessage72, V72.GetCellsMessageSerializer72>()
@@ -151,6 +156,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V69.Eth69ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V71.Eth71ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
 
             ;

@@ -27,7 +27,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
@@ -38,8 +37,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
-using Nethermind.Serialization.Json;
-using System.Reflection;
 using System.Text.Json;
 
 namespace Ethereum.Test.Base;
@@ -55,6 +52,8 @@ public abstract class BlockchainTestBase
     /// Null means use the default config value.
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
+
+    protected static bool IsPostMergeSpec(IReleaseSpec spec) => spec is not NamedReleaseSpec { IsPostMerge: false };
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
     {
@@ -85,7 +84,7 @@ public abstract class BlockchainTestBase
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
 
-        if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled == true)
+        if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled is true)
         {
             await KzgPolynomialCommitments.InitializeAsync();
         }
@@ -94,19 +93,7 @@ public abstract class BlockchainTestBase
         // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
         IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
         IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-        bool isPostMerge = test.Network != London.Instance &&
-                           test.Network != Berlin.Instance &&
-                           test.Network != MuirGlacier.Instance &&
-                           test.Network != Istanbul.Instance &&
-                           test.Network != ConstantinopleFix.Instance &&
-                           test.Network != Constantinople.Instance &&
-                           test.Network != Byzantium.Instance &&
-                           test.Network != SpuriousDragon.Instance &&
-                           test.Network != TangerineWhistle.Instance &&
-                           test.Network != Dao.Instance &&
-                           test.Network != Homestead.Instance &&
-                           test.Network != Frontier.Instance &&
-                           test.Network != Olympic.Instance;
+        bool isPostMerge = IsPostMergeSpec(test.Network);
         if (isPostMerge)
         {
             rewardCalculator = NoBlockRewards.Instance;
@@ -408,8 +395,8 @@ public abstract class BlockchainTestBase
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", "Block gas limit exceeded"),
         ("TransactionException.NONCE_IS_MAX", "NonceTooHigh"),
         ("TransactionException.INITCODE_SIZE_EXCEEDED", "max initcode size exceeded"),
-        ("TransactionException.NONCE_MISMATCH_TOO_LOW", "transaction nonce is too low"),
-        ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "transaction nonce is too high"),
+        ("TransactionException.NONCE_MISMATCH_TOO_LOW", "nonce too low"),
+        ("TransactionException.NONCE_MISMATCH_TOO_HIGH", "nonce too high"),
         ("TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS", "InsufficientMaxFeePerBlobGas: Not enough to cover blob gas fee"),
         ("TransactionException.TYPE_1_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
         ("TransactionException.TYPE_2_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
@@ -444,7 +431,7 @@ public abstract class BlockchainTestBase
 
     private static readonly (string ExpectedError, Regex Pattern)[] ValidationErrorRegexMappings =
     [
-        ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
+        ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient funds for gas \* price \+ value|insufficient funds for transfer|insufficient funds for gas|insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
         ("TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", ValidationErrorRegex(@"Transaction \d+ is not valid")),
         ("TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"BlockBlobGasExceeded: A block cannot have more than \d+ blob gas, blobs count \d+, blobs gas used: \d+")),
         ("TransactionException.TYPE_3_TX_BLOB_COUNT_EXCEEDED", ValidationErrorRegex(@"BlobTxGasLimitExceeded: Transaction's totalDataGas=\d+ exceeded MaxBlobGas per transaction=\d+")),

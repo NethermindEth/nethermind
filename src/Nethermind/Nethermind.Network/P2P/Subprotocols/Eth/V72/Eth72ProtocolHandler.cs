@@ -19,7 +19,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
-using Nethermind.Network.P2P.Subprotocols.Eth.V70;
+using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -48,7 +48,7 @@ public class Eth72ProtocolHandler(
     PublicKey localNodeId,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
     ITxGossipPolicy? transactionsGossipPolicy = null)
-    : Eth70ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
+    : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
     , ISparseBlobPoolPeer
 {
     private const int ProviderThresholdBasisPoints = 1500;
@@ -83,7 +83,7 @@ public class Eth72ProtocolHandler(
 
     public new static byte Version => EthVersions.Eth72;
     public override byte ProtocolVersion => Version;
-    public override int MessageIdSpaceSize => 20;
+    public override int MessageIdSpaceSize => 22;
 
     public override void Init()
     {
@@ -286,6 +286,11 @@ public class Eth72ProtocolHandler(
         }
 
         BlobCellMask requestedMask = BlobCellMask.FromBytes(message.CellMask);
+        if (Logger.IsDebug)
+        {
+            Logger.Debug($"{Node:c} requested blob cells for {message.Hashes.Length} txs with mask {requestedMask}.");
+        }
+
         List<Hash256> responseHashes = new(message.Hashes.Length);
         List<byte[][]> cellsByTx = new(message.Hashes.Length);
         BlobCellMask responseMask = BlobCellMask.Empty;
@@ -319,6 +324,11 @@ public class Eth72ProtocolHandler(
             }
         }
 
+        if (Logger.IsDebug)
+        {
+            Logger.Debug($"{Node:c} responding with blob cells for {responseHashes.Count} txs with mask {responseMask}.");
+        }
+
         return Task.FromResult(new CellsMessage72(responseHashes.ToArray(), cellsByTx.ToArray(), responseMask.ToBytes()));
     }
 
@@ -330,6 +340,11 @@ public class Eth72ProtocolHandler(
         }
 
         BlobCellMask responseMask = BlobCellMask.FromBytes(message.CellMask);
+        if (Logger.IsDebug)
+        {
+            Logger.Debug($"{Node:c} received blob cells for {message.Hashes.Length} txs with mask {responseMask}.");
+        }
+
         if (responseMask.IsEmpty)
         {
             return;
@@ -357,7 +372,7 @@ public class Eth72ProtocolHandler(
                 {
                     RemovePendingCells(key);
                     RemoveCellRequestState(key);
-                    _sparseBlobPoolPeerRegistry.Clear(hash);
+                    ClearSparseRegistryIfFull(hash, responseMask);
                 }
 
                 continue;
@@ -372,7 +387,7 @@ public class Eth72ProtocolHandler(
             {
                 RemovePendingCells(key);
                 RemoveCellRequestState(key);
-                _sparseBlobPoolPeerRegistry.Clear(hash);
+                ClearSparseRegistryIfFull(hash, responseMask);
             }
         }
     }
@@ -442,7 +457,7 @@ public class Eth72ProtocolHandler(
             {
                 RemovePendingCells(key);
                 RemoveCellRequestState(key);
-                _sparseBlobPoolPeerRegistry.Clear(tx.Hash);
+                ClearSparseRegistryIfFull(tx.Hash, pending.CellMask);
                 appliedPendingCells = true;
             }
             else
@@ -573,6 +588,11 @@ public class Eth72ProtocolHandler(
 
     private void SendGetCells(Hash256 hash, BlobCellMask requestMask)
     {
+        if (Logger.IsDebug)
+        {
+            Logger.Debug($"{Node:c} requesting blob cells for {hash} with mask {requestMask}.");
+        }
+
         AddSentCellRequest(hash.ValueHash256, requestMask);
         Send(new GetCellsMessage72([hash], requestMask.ToBytes()));
     }
@@ -725,6 +745,14 @@ public class Eth72ProtocolHandler(
         lock (_cellStateLock)
         {
             _pendingCells.TryRemove(hash, out _);
+        }
+    }
+
+    private void ClearSparseRegistryIfFull(Hash256 hash, BlobCellMask cellMask)
+    {
+        if (cellMask.IsFull)
+        {
+            _sparseBlobPoolPeerRegistry.Clear(hash);
         }
     }
 

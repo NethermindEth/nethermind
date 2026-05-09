@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -86,6 +86,30 @@ public class BlockchainBridgeTests
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
         _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
         result.Should().BeNull();
+    }
+
+    // regression test - was throwing NRE before
+    // when receipt at txIndex had different TxHash
+    [Test]
+    public void get_transaction_returns_false_when_receipt_hash_mismatch()
+    {
+        Hash256 txHash = TestItem.KeccakA;
+        Transaction tx = Build.A.Transaction.WithHash(txHash).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TxReceipt receipt = Build.A.Receipt.WithTransactionHash(TestItem.KeccakC).TestObject;
+
+        _receiptStorage.FindBlockHash(txHash).Returns(TestItem.KeccakB);
+        _blockTree.FindBlock(TestItem.KeccakB, Arg.Any<BlockTreeLookupOptions>()).Returns(block);
+        _receiptStorage.Get(block).Returns([receipt]);
+
+        // checkTxnPool: false avoids falling through to the mempool path
+        bool found = _blockchainBridge.TryGetTransaction(txHash, out TransactionLookupResult? result, checkTxnPool: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.False);
+            Assert.That(result, Is.Null);
+        }
     }
 
     [Test]
@@ -322,7 +346,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
@@ -336,7 +360,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for transfer"));
     }
 
     [Test]
@@ -406,7 +430,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too high"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too high"));
     }
 
     [Test]
@@ -420,7 +444,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too low"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too low"));
     }
 
     [Test]
@@ -434,7 +458,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too high"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too high"));
     }
 
     [Test]
@@ -448,7 +472,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("transaction nonce is too low"));
+        Assert.That(callOutput.Error, Is.EqualTo("nonce too low"));
     }
 
     [Test]
@@ -499,8 +523,8 @@ public class BlockchainBridgeTests
         };
         yield return new TestCaseData(
             descriptiveTx,
-            TransactionResult.WithDetail(TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee, $"err: max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee} (supplied gas 56786)"),
-            $"err: max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee} (supplied gas 56786)"
+            TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee.WithDetail($"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"),
+            $"max fee per gas less than block base fee: address {sender}, maxFeePerGas: {maxFeePerGas}, baseFee: {baseFee}"
         ).SetName("Descriptive");
     }
 
@@ -622,7 +646,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
+        Assert.That(callOutput.Error, Is.EqualTo("intrinsic gas too low"));
     }
 
     [Test]
@@ -662,7 +686,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.Call(header, tx);
 
-        Assert.That(callOutput.Error, Is.EqualTo("insufficient MaxFeePerGas for sender balance"));
+        Assert.That(callOutput.Error, Is.EqualTo("insufficient funds for gas * price + value"));
     }
 
     [Test]

@@ -234,6 +234,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
         if (_logger.IsInfo) _logger.Info("Adding eth/70 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 70));
+        if (_logger.IsInfo) _logger.Info("Adding eth/71 capability");
+        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
 
         IChainHeadSpecProvider chainHeadSpecProvider = _api.Context.Resolve<IChainHeadSpecProvider>();
         if (_txPoolConfig.BlobsSupport.IsEnabled() && chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7594Enabled)
@@ -334,7 +336,6 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV4Request, IEnumerable<BlobCellsAndProofsV1?>?>, GetBlobsHandlerV4>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
                 .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
-                .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>
