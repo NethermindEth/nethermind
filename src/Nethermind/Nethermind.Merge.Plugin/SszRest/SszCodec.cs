@@ -246,6 +246,16 @@ public static class SszCodec
         return EncodeToWriter(new GetClientVersionResponseWire { Versions = wireVersions }, writer);
     }
 
+    private static byte EngineStatusToSsz(string status) => status switch
+    {
+        PayloadStatus.Valid => 0,
+        PayloadStatus.Invalid => 1,
+        PayloadStatus.Syncing => 2,
+        PayloadStatus.Accepted => 3,
+        PayloadStatus.InvalidBlockHash => 1,
+        _ => throw new InvalidOperationException($"Unknown payload status '{status}': cannot map to SSZ wire byte")
+    };
+
     private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
         const int MaxErrorBytes = 1024;
@@ -255,19 +265,9 @@ public static class SszCodec
         if (errorBytes.Length > MaxErrorBytes)
             errorBytes = errorBytes[..MaxErrorBytes];
 
-        byte status = ps.Status switch
-        {
-            PayloadStatus.Valid => 0,
-            PayloadStatus.Invalid => 1,
-            PayloadStatus.Syncing => 2,
-            PayloadStatus.Accepted => 3,
-            PayloadStatus.InvalidBlockHash => 1,
-            _ => throw new InvalidOperationException($"Unknown payload status '{ps.Status}': cannot map to SSZ wire byte")
-        };
-
         return new()
         {
-            Status = status,
+            Status = EngineStatusToSsz(ps.Status),
             LatestValidHash = ps.LatestValidHash is not null ? [ps.LatestValidHash] : [],
             ValidationError = errorBytes
         };
