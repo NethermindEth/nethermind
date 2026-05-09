@@ -900,6 +900,7 @@ namespace Nethermind.Trie.Test.Pruning
         {
             long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
             long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
+            long loadedFromCacheBefore = Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount;
 
             PatriciaTree readOnlyTree = new(readOnlyScopedStore, LimboLogs.Instance)
             {
@@ -910,6 +911,10 @@ namespace Nethermind.Trie.Test.Pruning
 
             fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
             fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
+            // Regression guard: previous metric under-reporting caused this counter to stay flat
+            // even when the read was served from cache. Keep this assertion in the shared helper
+            // so all variants (Direct/PreCached/Cached/CommitBuffer) cover it.
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount.Should().BeGreaterThan(loadedFromCacheBefore);
         }
 
         [Test]

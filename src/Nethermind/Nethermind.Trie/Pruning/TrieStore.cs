@@ -1801,7 +1801,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     }
 
     private bool HasCachedRlp(in TrieStoreDirtyNodesCache.Key key) =>
-        _commitBuffer is { } commitBuffer
+        Volatile.Read(ref _commitBuffer) is { } commitBuffer
             ? commitBuffer.HasCachedRlp(key)
             : HasCachedRlp(GetDirtyNodeShard(key), key);
 
