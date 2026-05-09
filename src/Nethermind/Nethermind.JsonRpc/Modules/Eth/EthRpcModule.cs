@@ -360,17 +360,6 @@ public partial class EthRpcModule(
 
     public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
     {
-        Transaction tx;
-        try
-        {
-            tx = TxDecoder.Instance.DecodeCompleteNotNull(transaction,
-                RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
-        }
-        catch (RlpException)
-        {
-            return ResultWrapper<ReceiptForRpc?>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
-        }
-
         int waitMs = ResolveSyncTimeoutMs(timeoutMs);
         using CancellationTokenSource cts = new(waitMs);
         // Coalescing signal — back-to-back blocks fold into a single Release; the catches handle
@@ -389,7 +378,9 @@ public partial class EthRpcModule(
 
         try
         {
-            ResultWrapper<Hash256> sendResult = await SendTx(tx);
+            // Submit via the virtual eth_sendRawTransaction so subclass overrides (e.g. Optimism's
+            // sequencer-forward) propagate without needing a separate sync override.
+            ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
             if (sendResult.Result.ResultType != ResultType.Success)
             {
                 return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
