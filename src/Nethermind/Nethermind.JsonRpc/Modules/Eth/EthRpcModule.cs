@@ -415,17 +415,9 @@ public partial class EthRpcModule(
         });
     }
 
-    private static bool HasFeeFields(TransactionForRpc rpcTx)
-    {
-        if (rpcTx is EIP1559TransactionForRpc eip1559
-            && eip1559.MaxFeePerGas is not null
-            && eip1559.MaxPriorityFeePerGas is not null)
-        {
-            return true;
-        }
-
-        return rpcTx is LegacyTransactionForRpc legacy && legacy.GasPrice is not null;
-    }
+    private static bool HasFeeFields(TransactionForRpc rpcTx) =>
+        rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: not null, MaxPriorityFeePerGas: not null }
+            or LegacyTransactionForRpc { GasPrice: not null };
 
     private ResultWrapper<SignTransactionResult>? CheckTxFeeCap(Transaction tx)
     {
@@ -435,14 +427,18 @@ public partial class EthRpcModule(
         // Cap covers execution gas only (maxFeePerGas * gasLimit). Blob gas (4844) is intentionally
         // excluded — keeps parity with the reference implementation.
         UInt256 perGas = tx.Type >= TxType.EIP1559 ? tx.MaxFeePerGas : tx.GasPrice;
-        UInt256 totalFee = perGas * (UInt256)tx.GasLimit;
         UInt256 capWei = cap;
 
-        if (totalFee <= capWei) return null;
+        // Reject overflow as cap-exceeded: a wraparound multiplication would otherwise let huge
+        // fee values silently slip through.
+        if (UInt256.MultiplyOverflow(perGas, (UInt256)tx.GasLimit, out UInt256 totalFee) || totalFee > capWei)
+        {
+            return ResultWrapper<SignTransactionResult>.Fail(
+                $"tx fee ({FormatWeiAsEther(totalFee)} ether) exceeds the configured cap ({FormatWeiAsEther(capWei)} ether)",
+                ErrorCodes.InvalidInput);
+        }
 
-        return ResultWrapper<SignTransactionResult>.Fail(
-            $"tx fee ({FormatWeiAsEther(totalFee)} ether) exceeds the configured cap ({FormatWeiAsEther(capWei)} ether)",
-            ErrorCodes.InvalidInput);
+        return null;
     }
 
     private static string FormatWeiAsEther(UInt256 wei) =>
@@ -450,19 +446,14 @@ public partial class EthRpcModule(
 
     private string? TryAttachBlobSidecar(Transaction tx, BlobTransactionForRpc blobTx)
     {
-        if (blobTx.Blobs is null || blobTx.Blobs.Length == 0)
-            return "blob transaction requires non-empty blobs";
-        if (blobTx.Commitments is null)
-            return "commitments must be provided alongside blobs";
-        if (blobTx.Proofs is null)
-            return "proofs must be provided alongside blobs";
+        if (ValidateBlobSidecarFields(blobTx) is { } error)
+            return error;
 
-        BlockHeader? head = _blockFinder.Head?.Header;
-        ProofVersion version = head is null
-            ? ProofVersion.V0
-            : _specProvider.GetSpec(head).BlobProofVersion;
+        ProofVersion version = _blockFinder.Head?.Header is { } head
+            ? _specProvider.GetSpec(head).BlobProofVersion
+            : ProofVersion.V0;
 
-        ShardBlobNetworkWrapper wrapper = new(blobTx.Blobs, blobTx.Commitments, blobTx.Proofs, version);
+        ShardBlobNetworkWrapper wrapper = new(blobTx.Blobs!, blobTx.Commitments!, blobTx.Proofs!, version);
         IBlobProofsManager manager = IBlobProofsManager.For(version);
         if (!manager.ValidateLengths(wrapper))
             return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
@@ -472,6 +463,15 @@ public partial class EthRpcModule(
         tx.NetworkWrapper = wrapper;
         return null;
     }
+
+    private static string? ValidateBlobSidecarFields(BlobTransactionForRpc blobTx) =>
+        blobTx switch
+        {
+            { Blobs: null or { Length: 0 } } => "blob transaction requires non-empty blobs",
+            { Commitments: null } => "commitments must be provided alongside blobs",
+            { Proofs: null } => "proofs must be provided alongside blobs",
+            _ => null
+        };
 
     private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
         TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
