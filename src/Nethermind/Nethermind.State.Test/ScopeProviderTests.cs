@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using NUnit.Framework;
@@ -147,5 +148,132 @@ public class ScopeProviderTests(bool useFlat)
 
             writeBatch.Set(TestItem.AddressA, null);
         }
+    }
+
+    [TestCase(true, true, 0, 1, 0, 1)]
+    [TestCase(true, false, 1, 0, 1, 0)]
+    [TestCase(false, true, 2, 0, 1, 0)]
+    public void PrewarmerScope_UsesUncachedReadersOnlyInsideExplicitWarmup(
+        bool populatePreBlockCache,
+        bool beginPreBlockCacheWarmup,
+        int expectedGetCount,
+        int expectedUncachedGetCount,
+        int expectedCreateStorageTreeCount,
+        int expectedUncachedCreateStorageTreeCount)
+    {
+        PreBlockCaches preBlockCaches = new();
+        CountingScopeProvider baseProvider = new();
+        PrewarmerScopeProvider provider = new(baseProvider, preBlockCaches, populatePreBlockCache);
+
+        if (beginPreBlockCacheWarmup)
+        {
+            using IPreBlockCacheWarmupSession warmup = ((IPreBlockCacheWarmup)provider).BeginPreBlockCacheWarmup(null);
+            warmup.WarmUp(TestItem.AddressA).Should().BeTrue();
+            warmup.WarmUp(TestItem.AddressA).Should().BeTrue();
+            warmup.Get(new StorageCell(TestItem.AddressA, 1)).Length.Should().Be(0);
+        }
+        else
+        {
+            using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);
+            scope.Get(TestItem.AddressA).Should().Be(baseProvider.Scope.Account);
+            scope.Get(TestItem.AddressA).Should().Be(baseProvider.Scope.Account);
+            scope.CreateStorageTree(TestItem.AddressA).RootHash.Should().Be(baseProvider.Scope.StorageTree.RootHash);
+        }
+
+        baseProvider.Scope.GetCount.Should().Be(expectedGetCount);
+        baseProvider.Scope.UncachedGetCount.Should().Be(expectedUncachedGetCount);
+        baseProvider.Scope.CreateStorageTreeCount.Should().Be(expectedCreateStorageTreeCount);
+        baseProvider.Scope.UncachedCreateStorageTreeCount.Should().Be(expectedUncachedCreateStorageTreeCount);
+    }
+
+    private sealed class CountingScopeProvider : IWorldStateScopeProvider
+    {
+        public CountingScope Scope { get; } = new();
+
+        public bool HasRoot(BlockHeader baseBlock) => true;
+
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => Scope;
+    }
+
+    private sealed class CountingScope : IWorldStateScopeProvider.IScope, IUncachedAccountReader, IUncachedStorageTreeProvider
+    {
+        public Account Account { get; } = new(1);
+        public IWorldStateScopeProvider.IStorageTree StorageTree { get; } = new CountingStorageTree();
+        public int GetCount { get; private set; }
+        public int UncachedGetCount { get; private set; }
+        public int CreateStorageTreeCount { get; private set; }
+        public int UncachedCreateStorageTreeCount { get; private set; }
+
+        public void Dispose()
+        {
+        }
+
+        public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+        public void UpdateRootHash()
+        {
+        }
+
+        public Account Get(Address address)
+        {
+            GetCount++;
+            return Account;
+        }
+
+        public bool CanReadAccountUncached => true;
+
+        public Account GetAccountUncached(Address address)
+        {
+            UncachedGetCount++;
+            return Account;
+        }
+
+        public void HintGet(Address address, Account account)
+        {
+        }
+
+        public IWorldStateScopeProvider.ICodeDb CodeDb => NullCodeDb.Instance;
+
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
+        {
+            CreateStorageTreeCount++;
+            return StorageTree;
+        }
+
+        public bool CanCreateStorageTreeUncachedAccount => true;
+
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTreeUncachedAccount(Address address)
+        {
+            UncachedCreateStorageTreeCount++;
+            return StorageTree;
+        }
+
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => throw new NotImplementedException();
+
+        public void Commit(long blockNumber)
+        {
+        }
+    }
+
+    private sealed class NullCodeDb : IWorldStateScopeProvider.ICodeDb
+    {
+        public static NullCodeDb Instance { get; } = new();
+
+        public byte[] GetCode(in ValueHash256 codeHash) => [];
+
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => throw new NotImplementedException();
+    }
+
+    private sealed class CountingStorageTree : IWorldStateScopeProvider.IStorageTree
+    {
+        public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+        public byte[] Get(in UInt256 index) => [];
+
+        public void HintSet(in UInt256 index, byte[] value)
+        {
+        }
+
+        public byte[] Get(in ValueHash256 hash) => [];
     }
 }
