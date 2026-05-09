@@ -88,7 +88,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _reader = reader;
             _curKey = new byte[32];
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
+            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
@@ -166,7 +166,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _reader = reader;
             _curKey = new byte[32];
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
+            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 
@@ -253,7 +253,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _curPrefix = new byte[SlotPrefixLength];
             _curSuffix = new byte[1];
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
+            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
             _level = 0;
             _curAddrHash = default;
@@ -373,7 +373,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private static HsstRefEnumerator<WholeReadSessionReader, NoOpPin> OpenColumn(scoped in WholeReadSessionReader reader, byte[] tag)
         {
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in reader);
-            Bound b = r.TrySeek(tag, out _) ? r.GetBound() : default;
+            Bound b = r.TrySeek(tag, out Bound matched) ? matched : default;
             return new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in reader, b);
         }
 
@@ -463,7 +463,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
             _level = 0;
             _curHash = default;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out _) ? r.GetBound() : default;
+            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
         }
 

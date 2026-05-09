@@ -93,7 +93,7 @@ public static class PersistedSnapshotReader
         using HsstReader<TReader, TPin> r = new(in reader, addressBound);
         // Presence-marker encoding: an entry of length 0 means "no SD record" (gap-filled
         // by DenseByteIndex); only a non-empty value (with marker [0x00]/[0x01]) counts.
-        return r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _) && r.GetBound().Length > 0;
+        return r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out Bound sd) && sd.Length > 0;
     }
 
     internal static bool? TryGetSelfDestructFlag<TReader, TPin>(scoped in TReader reader, Bound addressBound)

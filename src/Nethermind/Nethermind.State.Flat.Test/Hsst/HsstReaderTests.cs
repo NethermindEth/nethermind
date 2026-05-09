@@ -87,17 +87,17 @@ public class HsstReaderTests
     }
 
     [Test]
-    public void PreviousBound_AllowsRestoreAndReseek()
+    public void GetBound_AllowsSaveAndRestoreAcrossSeeks()
     {
         byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"), ("c", "gamma"));
         SpanByteReader reader = new(data);
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
-        // Seek to "a", save root bound
-        r.TrySeek("a"u8, out Bound rootBound);
-        Bound aBound = r.GetBound();
+        // Capture root bound, then seek to "a"
+        Bound rootBound = r.GetBound();
+        r.TrySeek("a"u8, out Bound aBound);
 
-        // Seek to "c", capturing "a"'s bound as previous
+        // Restore root, seek to "c"
         r.SetBound(rootBound);
         r.TrySeek("c"u8, out _);
         Span<byte> buf = new byte[r.GetBound().Length];
@@ -193,9 +193,9 @@ public class HsstReaderTests
         SpanByteReader reader = new(outerData);
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
-        // Descend into "addr1"
-        Assert.That(r.TrySeek("addr1"u8, out Bound outerBound), Is.True);
-        Bound addr1Bound = r.GetBound();
+        // Capture outer scope, then descend into "addr1"
+        Bound outerBound = r.GetBound();
+        Assert.That(r.TrySeek("addr1"u8, out Bound addr1Bound), Is.True);
 
         // addr1Bound now points to innerData1 bytes within outerData
         // Navigate the inner HSST
@@ -206,8 +206,7 @@ public class HsstReaderTests
 
         // Restore to outer and descend into "addr2"
         r.SetBound(outerBound);
-        r.TrySeek("addr2"u8, out _);
-        Bound addr2Bound = r.GetBound();
+        r.TrySeek("addr2"u8, out Bound addr2Bound);
 
         r.TrySeek("subtag1"u8, out _);
         Span<byte> buf2 = new byte[r.GetBound().Length];
