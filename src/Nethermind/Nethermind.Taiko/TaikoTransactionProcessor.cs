@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -52,7 +51,7 @@ public class TaikoTransactionProcessor(
         // If the account has been destroyed during the execution, the balance is already set
         // as zero. So there is no need to create the account and pay the fees to the beneficiary,
         // except for the case when a restore is required due to a failure.
-        bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary);
+        bool gasBeneficiaryNotDestroyed = !substate.DestroyList.Contains(header.GasBeneficiary!);
         if (statusCode == StatusCode.Failure || gasBeneficiaryNotDestroyed)
         {
             WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, tipFees, spec);
