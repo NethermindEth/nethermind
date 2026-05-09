@@ -893,7 +893,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             long sharedHitsBefore = fullTrieStore.SharedNodeHitCount;
             long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
-            long loadedFromCacheBefore = Metrics.LoadedFromCacheNodesCount;
+            long loadedFromCacheBefore = Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount;
 
             IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
             PatriciaTree readOnlyTree = new(readOnlyScopedTrieStore, LimboLogs.Instance)
@@ -916,7 +916,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             fullTrieStore.SharedNodeHitCount.Should().BeGreaterThan(sharedHitsBefore);
             fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
-            Metrics.LoadedFromCacheNodesCount.Should().BeGreaterThan(loadedFromCacheBefore);
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount.Should().BeGreaterThan(loadedFromCacheBefore);
         }
 
         [Test]
