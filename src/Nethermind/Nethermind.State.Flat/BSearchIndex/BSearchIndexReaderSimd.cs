@@ -6,6 +6,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.State.Flat.BSearchIndex;
 
@@ -92,6 +93,28 @@ public static class BSearchIndexReaderSimd
         59, 58, 57, 56,
         63, 62, 61, 60);
 
+    // 3-byte LE packed-key gather: each output u32 lane pulls (3n, 3n+1, 3n+2) from the
+    // raw 64-byte load and forces the high byte to zero via an out-of-range index (>=64
+    // → 0 per Vector512.Shuffle&lt;byte&gt; semantics). Cross-lane: requires AVX-512 VBMI
+    // (vpermb). The unused tail of the load (bytes 48..63) is never addressed.
+    private static readonly Vector512<byte> Pack24LeMask512 = Vector512.Create(
+        (byte)0, 1, 2, 0xFF,
+        3, 4, 5, 0xFF,
+        6, 7, 8, 0xFF,
+        9, 10, 11, 0xFF,
+        12, 13, 14, 0xFF,
+        15, 16, 17, 0xFF,
+        18, 19, 20, 0xFF,
+        21, 22, 23, 0xFF,
+        24, 25, 26, 0xFF,
+        27, 28, 29, 0xFF,
+        30, 31, 32, 0xFF,
+        33, 34, 35, 0xFF,
+        36, 37, 38, 0xFF,
+        39, 40, 41, 0xFF,
+        42, 43, 44, 0xFF,
+        45, 46, 47, 0xFF);
+
     private static readonly Vector512<byte> ByteSwap64Mask512 = Vector512.Create(
         (byte)7, 6, 5, 4, 3, 2, 1, 0,
         15, 14, 13, 12, 11, 10, 9, 8,
@@ -129,6 +152,14 @@ public static class BSearchIndexReaderSimd
         {
             case 2:
                 result = FloorScan16(key, keys, count, isLittleEndian);
+                return true;
+            case 3:
+                // 3-byte path is LE-only (the gather mask folds the AND-with-0x00FFFFFF
+                // implicitly; a BE variant would need an extra in-triple byte-reverse and
+                // is not worth the additional permute mask). Cross-lane shuffle needs VBMI.
+                if (!isLittleEndian) return false;
+                if (!Avx512Vbmi.IsSupported) return false;
+                result = FloorScan24Le(key, keys, count);
                 return true;
             case 4:
                 result = FloorScan32(key, keys, count, isLittleEndian);
@@ -261,6 +292,53 @@ public static class BSearchIndexReaderSimd
             i += 32;
         }
         return ScalarTail16(search, ref src, i, count, isLittleEndian);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FloorScan24Le(ReadOnlySpan<byte> key, ReadOnlySpan<byte> keys, int count)
+    {
+        // Pack the first 3 search-key bytes into the low 24 bits of a uint, high byte zero —
+        // matches the lane format produced by Vector512.Shuffle(raw, Pack24LeMask512).
+        ref byte keyRef = ref MemoryMarshal.GetReference(key);
+        uint search = Unsafe.ReadUnaligned<ushort>(ref keyRef)
+                      | ((uint)Unsafe.Add(ref keyRef, 2) << 16);
+        ref byte src = ref MemoryMarshal.GetReference(keys);
+
+        Vector512<uint> searchVec = Vector512.Create(search);
+        int i = 0;
+        // Each iteration consumes 16 keys (48 bytes) but the unaligned vector load reads 64
+        // bytes from offset i*3. Stop while that load still fits inside the keys span; the
+        // scalar tail handles the (up to ~22) remaining keys without overrun.
+        int keysLen = keys.Length;
+        while (i + 16 <= count && i * 3 + 64 <= keysLen)
+        {
+            Vector512<byte> raw = Vector512.LoadUnsafe(ref src, (nuint)(i * 3));
+            // vpermb: gather (3n, 3n+1, 3n+2) into each u32 lane; out-of-range index 0xFF
+            // zeros the high byte for free, so no follow-up vpand is needed.
+            Vector512<uint> lanes = Vector512.Shuffle(raw, Pack24LeMask512).AsUInt32();
+            Vector512<uint> gt = Vector512.GreaterThan(lanes, searchVec);
+            ulong mask = gt.ExtractMostSignificantBits();
+            if (mask != 0)
+            {
+                int firstGtLane = BitOperations.TrailingZeroCount(mask);
+                return i + firstGtLane - 1;
+            }
+            i += 16;
+        }
+        return ScalarTail24Le(search, ref src, i, count);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ScalarTail24Le(uint search, ref byte src, int i, int count)
+    {
+        for (; i < count; i++)
+        {
+            ref byte slot = ref Unsafe.Add(ref src, (nint)(i * 3));
+            uint k = Unsafe.ReadUnaligned<ushort>(ref slot)
+                     | ((uint)Unsafe.Add(ref slot, 2) << 16);
+            if (k > search) return i - 1;
+        }
+        return count - 1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
