@@ -920,6 +920,82 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
+    [TestCase(true, TestName = "ByHashGenesis")]
+    [TestCase(false, TestName = "ByNumberLatest")]
+    public async Task EthGetHeaderByX_WhenBlockExists_OmitsBodyFields(bool byHash)
+    {
+        using Context ctx = await Context.Create();
+        string method = byHash ? "eth_getHeaderByHash" : "eth_getHeaderByNumber";
+        string param = byHash ? ctx.Test.BlockTree.Genesis!.Hash!.ToString() : "latest";
+        string serialized = await ctx.Test.TestEthRpc(method, param);
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+
+        // Body-level fields must NOT appear in header response (Geth's RPCMarshalHeader excludes them).
+        result.ContainsKey("size").Should().BeFalse();
+        result.ContainsKey("transactions").Should().BeFalse();
+        result.ContainsKey("uncles").Should().BeFalse();
+        result.ContainsKey("totalDifficulty").Should().BeFalse();
+
+        // Core header fields must be present.
+        foreach (string field in new[] { "number", "hash", "parentHash", "nonce", "stateRoot", "transactionsRoot", "receiptsRoot", "logsBloom" })
+        {
+            result.ContainsKey(field).Should().BeTrue($"header response must include '{field}'");
+        }
+    }
+
+    [TestCase("eth_getHeaderByHash", "0x0000000000000000000000000000000000000000000000000000000000000000", TestName = "UnknownHash")]
+    [TestCase("eth_getHeaderByNumber", "0x9999999", TestName = "UnknownNumber")]
+    [TestCase("eth_getHeaderByNumber", "finalized", TestName = "FinalizedAbsent")]
+    [TestCase("eth_getHeaderByNumber", "safe", TestName = "SafeAbsent")]
+    public async Task EthGetHeaderByX_WhenBlockUnknown_ReturnsNull(string method, string blockParam)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc(method, blockParam);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+    }
+
+    [TestCase("hash")]
+    [TestCase("nonce")]
+    [TestCase("miner")]
+    public async Task EthGetHeaderByNumber_WhenPending_NilsTransientFields(string field)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "pending");
+        JToken json = JToken.Parse(serialized);
+        json["result"]![field]!.Type.Should().Be(JTokenType.Null);
+    }
+
+    [Test]
+    public async Task EthGetHeaderByHash_WhenAuraBlock_EmitsAuraFields()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain aura = ctx.AuraTest;
+        string serialized = await aura.TestEthRpc("eth_getHeaderByHash", aura.BlockTree.Genesis!.Hash!.ToString());
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+
+        // AuRa-specific fields must be present (proves the AuRa branch fired).
+        result.ContainsKey("signature").Should().BeTrue();
+        result.ContainsKey("step").Should().BeTrue();
+
+        // PoW nonce is declared with [JsonIgnoreCondition.Never] so it serializes as null on AuRa headers.
+        result["nonce"]!.Type.Should().Be(JTokenType.Null);
+
+        // PoW mixHash uses default null-omit semantics — absent or null, not a non-null value.
+        JToken? mixHashToken = result["mixHash"];
+        (mixHashToken is null || mixHashToken.Type == JTokenType.Null).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task EthGetHeaderByNumber_WhenEarliest_MatchesExpectedJson()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "earliest");
+        // Same value set as the genesis row in Eth_get_block_by_number "earliest", minus
+        // size/totalDifficulty/transactions/uncles (header endpoint excludes body-level fields).
+        const string expected = "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"timestamp\":\"0xf4240\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\"},\"id\":67}";
+        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+    }
+
     [Test]
     public async Task Eth_protocol_version()
     {
