@@ -430,6 +430,20 @@ public class SszMiddlewareTests
     }
 
     [Test]
+    public async Task Truncated_body_with_overstated_content_length_returns_400()
+    {
+        byte[] body = new byte[16];
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", body);
+        // Declare more bytes than the stream will deliver — ReadAtLeastAsync returns short.
+        ctx.Request.ContentLength = body.Length + 64;
+
+        Func<Task> act = () => _middleware.InvokeAsync(ctx);
+
+        await act.Should().NotThrowAsync();
+        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+    }
+
+    [Test]
     public async Task GetBlobsV1_null_result_data_returns_204_no_content()
     {
         _engineModule.engine_getBlobsV1(Arg.Any<byte[][]>())

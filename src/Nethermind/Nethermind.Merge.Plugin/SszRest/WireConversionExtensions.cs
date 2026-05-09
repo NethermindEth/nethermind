@@ -82,9 +82,15 @@ internal static class WireConversionExtensions
         return result;
     }
 
-    public static byte[][]? ToExecutionRequests(this SszTransaction[]? reqs)
+    public static byte[][]? ToExecutionRequests(this SszTransaction[]? reqs) => reqs switch
     {
-        if (reqs is null) return null;
+        null => null,
+        [] => [],
+        _ => BuildExecutionRequests(reqs),
+    };
+
+    private static byte[][] BuildExecutionRequests(SszTransaction[] reqs)
+    {
         byte[][] result = new byte[reqs.Length][];
         for (int i = 0; i < reqs.Length; i++) result[i] = reqs[i].Bytes ?? [];
         return result;
