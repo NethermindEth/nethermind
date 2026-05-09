@@ -33,6 +33,31 @@ public interface IByteBufferWriter
             value = value[chunk..];
         }
     }
+
+    /// <summary>
+    /// Long-aware bulk copy: stream <paramref name="src"/> bytes from <paramref name="reader"/>
+    /// into <paramref name="writer"/> in 256 B chunks. Sibling of the Span overload above
+    /// for cases where the source lives behind a long-aware reader and may not fit in a
+    /// single <see cref="ReadOnlySpan{T}"/>.
+    /// </summary>
+    static void Copy<TWriter, TReader, TPin>(ref TWriter writer, scoped in TReader reader, Bound src)
+        where TWriter : IByteBufferWriter
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+        where TPin : struct, IBufferPin, allows ref struct
+    {
+        long off = src.Offset;
+        long remaining = src.Length;
+        while (remaining > 0)
+        {
+            int chunk = (int)Math.Min(remaining, 256);
+            Span<byte> dst = writer.GetSpan(chunk);
+            if (!reader.TryRead(off, dst[..chunk]))
+                throw new InvalidOperationException($"Copy: TryRead failed at offset {off}, chunk {chunk}");
+            writer.Advance(chunk);
+            off += chunk;
+            remaining -= chunk;
+        }
+    }
 }
 
 /// <summary>
