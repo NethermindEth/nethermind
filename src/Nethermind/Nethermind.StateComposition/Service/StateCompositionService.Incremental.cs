@@ -55,6 +55,14 @@ internal sealed partial class StateCompositionService
             head = _blockTree.Head;
             if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
+            // BlockTree.Head is briefly transient during chain init — it can return a
+            // best-persisted block that's older than the snapshot we just restored. A
+            // diff in that direction has no reachable prevRoot in FlatDb (the snapshot's
+            // state isn't on the older fork) and would translate to a spurious
+            // MissingTrieNode → full rescan. Defer until head catches up; the next
+            // legitimate NewHeadBlock retriggers this method against the current state.
+            if (head.Number < _stateHolder.IncrementalBlock) return;
+
             // FlatDb's BeginScope materialises the snapshot bundle for one block,
             // so a diff across two roots needs one scope per side or the off-side
             // nodes resolve as Unknown and the walker silently emits zero deltas.
