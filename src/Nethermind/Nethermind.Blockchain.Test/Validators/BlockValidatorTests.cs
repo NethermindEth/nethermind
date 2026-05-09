@@ -269,31 +269,74 @@ public class BlockValidatorTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
-        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
             .WithGasLimit(gasLimit)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
-            .WithBlockAccessList(bal)
-            .WithEncodedBlockAccessList(encodedBal)
-            .WithBlockAccessListHash(balHash)
+            .WithBal(bal)
             .TestObject;
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = AmsterdamSut(Always.Valid);
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
-        Assert.That(isValid, Is.EqualTo(expectedValid));
-        if (expectedValid)
-        {
-            Assert.That(error, Is.Null);
-        }
-        else
-        {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
-        }
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
+    [TestCase(0u, true)]
+    [TestCase(1u, true)]
+    [TestCase(2u, true)]
+    [TestCase(3u, true)]
+    [TestCase(4u, false)]
+    public void ValidateSuggestedBlock_enforces_bal_index_bounds(uint index, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        AccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(index, 1))
+            .TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(accountChanges)
+            .TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(10_000)
+            .WithTransactions(2, Amsterdam.Instance)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockValidator sut = AmsterdamSut(Always.Valid);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        AssertValidation(expectedValid, isValid, error, "InvalidBlockLevelAccessList");
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_rejects_bal_item_when_gas_limit_allows_no_items()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        AccountChanges accountChanges = Build.An.AccountChanges
+            .WithAddress(TestItem.AddressA)
+            .WithBalanceChanges(new BalanceChange(0, 1))
+            .TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(accountChanges)
+            .TestObject;
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(0)
+            .WithTransactions([])
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        AssertValidation(false, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
     [TestCase(30_000, true)]
@@ -322,25 +365,138 @@ public class BlockValidatorTests
             .WithGasLimit(gasLimit)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
-            .WithBlockAccessList(bal)
-            .WithEncodedBlockAccessList(encodedBal)
             .WithBlockAccessListHash(balHash)
             .TestObject;
         processedBlock.GeneratedBlockAccessList = bal;
 
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = AmsterdamSut();
 
         bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
 
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
+    }
+
+    [Test]
+    public void ValidateProcessedBlock_bal_size_check_uses_fresh_item_count_when_generated_bal_instance_is_reused()
+    {
+        // BlockAccessListManager reuses the same generated-BAL instance across blocks;
+        // a stale cached ItemCount on that instance would let an oversized BAL slip past
+        // the EIP-7928 floor (or reject a valid one). This regression validates two blocks
+        // through the same BAL instance and verifies the second validation sees the new count.
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        const long gasLimit = 30_000; // floor = 30_000 / Eip7928Constants.ItemCost (2000) = 15 items
+
+        BlockAccessList sharedBal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Assert.That(sharedBal.ItemCount, Is.EqualTo(15), "fixture sized at the boundary");
+
+        BlockValidator sut = AmsterdamSut();
+
+        // Block 1 — at the boundary, must pass and cache ItemCount=15.
+        Block suggestedBlock1 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        Block processedBlock1 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        processedBlock1.GeneratedBlockAccessList = sharedBal;
+
+        bool block1Valid = sut.ValidateProcessedBlock(processedBlock1, [], suggestedBlock1, out string? error1);
+        Assert.That(block1Valid, Is.True, "block 1 sized at the floor should pass");
+        Assert.That(error1, Is.Null);
+
+        // Mutate the shared BAL to push it one item over the floor.
+        sharedBal.AddAccountRead(TestItem.AddressA);
+        Assert.That(sharedBal.ItemCount, Is.EqualTo(16), "fresh count must reflect the new account read");
+
+        // Block 2 — same gas limit, same BAL instance, now over the floor. Must fail.
+        Block suggestedBlock2 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        Block processedBlock2 = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .TestObject;
+        processedBlock2.GeneratedBlockAccessList = sharedBal;
+
+        bool block2Valid = sut.ValidateProcessedBlock(processedBlock2, [], suggestedBlock2, out string? error2);
+        Assert.That(block2Valid, Is.False, "block 2 over the floor must be rejected — stale cached count would let it through");
+        Assert.That(error2, Does.StartWith("BlockAccessListGasLimitExceeded"));
+    }
+
+    // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
+    // 1..n = transaction indices, n+1 = post-execution.
+    // For a block with 0 transactions, valid indices are 0 and 1.
+    [TestCase(0u, true)]
+    [TestCase(1u, true)]
+    [TestCase(2u, false)]
+    [TestCase(uint.MaxValue - 1u, false)]
+    public void ValidateSuggestedBlock_rejects_bal_index_above_tx_count_plus_one(uint balanceChangeIndex, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList
+            .WithPrecompileChanges(parent.Hash!, timestamp: 12)
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithBalanceChanges([new BalanceChange(balanceChangeIndex, 100)])
+                    .TestObject)
+            .TestObject;
+
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(30_000_000)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBal(bal)
+            .TestObject;
+        BlockValidator sut = AmsterdamSut();
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
         Assert.That(isValid, Is.EqualTo(expectedValid));
-        if (expectedValid)
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
+        }
+    }
+
+    private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>
+        new(tx ?? new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+    private static void AssertValidation(bool expected, bool actual, string? error, string failPrefix)
+    {
+        Assert.That(actual, Is.EqualTo(expected));
+        if (expected)
         {
             Assert.That(error, Is.Null);
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
+            Assert.That(error, Does.StartWith(failPrefix));
         }
+    }
+}
+
+file static class BalBuilderExtensions
+{
+    public static BlockBuilder WithBal(this BlockBuilder builder, BlockAccessList bal)
+    {
+        byte[] encoded = Rlp.Encode(bal).Bytes;
+        return builder
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encoded)
+            .WithBlockAccessListHash(new Hash256(ValueKeccak.Compute(encoded).Bytes));
     }
 }

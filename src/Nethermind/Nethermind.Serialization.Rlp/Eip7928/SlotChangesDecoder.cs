@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -11,10 +12,9 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncoder<SlotChanges>
 {
-    private static SlotChangesDecoder? _instance = null;
-    public static SlotChangesDecoder Instance => _instance ??= new();
+    public static readonly SlotChangesDecoder Instance = new();
 
-    private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
+    private static readonly RlpLimit _txLimit = new(Eip7928Constants.MaxTxs, "", ReadOnlyMemory<char>.Empty);
 
     public SlotChanges Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
@@ -22,19 +22,26 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
         int check = length + ctx.Position;
 
         UInt256 slot = ctx.DecodeUInt256();
-        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _codeLimit);
+        StorageChange[] changes = ctx.DecodeArray(StorageChangeDecoder.Instance, true, default, _txLimit);
 
-        int? lastIndex = null;
-        SortedList<int, StorageChange> changesList = new(changes.Length, GenericComparer.GetOptimized<int>());
+        // EIP-7928: a slot in storage_changes must have at least one change.
+        // A slot with zero changes belongs in storage_reads instead.
+        if (changes.Length == 0)
+        {
+            ThrowEmptyStorageChanges();
+        }
+
+        uint? lastIndex = null;
+        IndexedChanges<StorageChange> changesList = new(changes.Length);
         foreach (StorageChange s in changes)
         {
-            int index = s.Index;
+            uint index = s.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
-                throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
+                ThrowStorageChangesOutOfOrder(index, lastIndex.Value);
             }
             lastIndex = index;
-            changesList.Add(index, s);
+            changesList.Add(s);
         }
         SlotChanges slotChanges = new(slot, changesList);
 
@@ -53,19 +60,53 @@ public class SlotChangesDecoder : IRlpValueDecoder<SlotChanges>, IRlpStreamEncod
     {
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Key);
-        stream.EncodeArray([.. item.Changes.Values], rlpBehaviors);
+        EncodeStorageChanges(stream, item.Changes, rlpBehaviors);
     }
 
     public static int GetContentLength(SlotChanges item, RlpBehaviors rlpBehaviors)
     {
-        int storageChangesLen = 0;
-
-        foreach (StorageChange slotChange in item.Changes.Values)
-        {
-            storageChangesLen += StorageChangeDecoder.Instance.GetLength(slotChange, rlpBehaviors);
-        }
-        storageChangesLen = Rlp.LengthOfSequence(storageChangesLen);
-
-        return storageChangesLen + Rlp.LengthOf(item.Key);
+        int storageChangesLength = StorageChangesContentLength(item.Changes, rlpBehaviors);
+        return Rlp.LengthOfSequence(storageChangesLength) + Rlp.LengthOf(item.Key);
     }
+
+    private static void EncodeStorageChanges(RlpStream stream, IndexedChanges<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    {
+        int contentLength = StorageChangesContentLength(changes, rlpBehaviors);
+        stream.StartSequence(contentLength);
+        if (changes.HasPrestate)
+        {
+            StorageChangeDecoder.Instance.Encode(stream, changes.Prestate, rlpBehaviors);
+        }
+
+        ReadOnlySpan<StorageChange> blockAccessChanges = changes.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
+        {
+            StorageChangeDecoder.Instance.Encode(stream, blockAccessChanges[i], rlpBehaviors);
+        }
+    }
+
+    private static int StorageChangesContentLength(IndexedChanges<StorageChange> changes, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        if (changes.HasPrestate)
+        {
+            length += StorageChangeDecoder.Instance.GetLength(changes.Prestate, rlpBehaviors);
+        }
+
+        ReadOnlySpan<StorageChange> blockAccessChanges = changes.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
+        {
+            length += StorageChangeDecoder.Instance.GetLength(blockAccessChanges[i], rlpBehaviors);
+        }
+
+        return length;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyStorageChanges() =>
+        throw new RlpException("Empty storage_changes for slot; slot with no changes belongs in storage_reads.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageChangesOutOfOrder(uint index, uint lastIndex) =>
+        throw new RlpException($"Storage changes were in incorrect order. index={index}, lastIndex={lastIndex}");
 }
