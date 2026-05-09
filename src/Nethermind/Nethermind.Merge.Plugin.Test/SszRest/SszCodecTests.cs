@@ -45,6 +45,7 @@ public class SszCodecTests
     [TestCase(PayloadStatus.Invalid, (byte)1)]
     [TestCase(PayloadStatus.Syncing, (byte)2)]
     [TestCase(PayloadStatus.Accepted, (byte)3)]
+    [TestCase(PayloadStatus.InvalidBlockHash, (byte)1)]
     public void EncodePayloadStatus_status_byte_is_correct(string status, byte expected)
     {
         byte[] encoded = Encode(new PayloadStatusV1 { Status = status }, SszCodec.EncodePayloadStatus);
@@ -74,38 +75,6 @@ public class SszCodecTests
         withPrefix.Should().BeEquivalentTo(withoutPrefix);
     }
 
-    [Test]
-    public void TransitionConfiguration_roundtrip()
-    {
-        TransitionConfigurationV1 original = new()
-        {
-            TerminalTotalDifficulty = new UInt256(100_000_000),
-            TerminalBlockHash = TestItem.KeccakA,
-            TerminalBlockNumber = 15_000_000
-        };
-
-        byte[] encoded = Encode(original, SszCodec.EncodeTransitionConfigurationResponse);
-        TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(Seq(encoded));
-
-        decoded.TerminalTotalDifficulty.Should().Be(original.TerminalTotalDifficulty);
-        decoded.TerminalBlockHash.Should().Be(original.TerminalBlockHash);
-        decoded.TerminalBlockNumber.Should().Be(original.TerminalBlockNumber);
-    }
-
-    [Test]
-    public void TransitionConfiguration_max_uint256_roundtrip()
-    {
-        UInt256 max = UInt256.Parse("115792089237316195423570985008687907853269984665640564039457584007913129639935");
-        byte[] encoded = Encode(new TransitionConfigurationV1
-        {
-            TerminalTotalDifficulty = max,
-            TerminalBlockHash = TestItem.KeccakA,
-            TerminalBlockNumber = 1
-        }, SszCodec.EncodeTransitionConfigurationResponse);
-        TransitionConfigurationV1 decoded = SszCodec.DecodeTransitionConfigurationRequest(Seq(encoded));
-
-        decoded.TerminalTotalDifficulty.Should().Be(max);
-    }
 
     [Test]
     public void Capabilities_roundtrip()
@@ -116,6 +85,15 @@ public class SszCodecTests
         string[] decoded = SszCodec.DecodeCapabilitiesRequest(Seq(encoded));
 
         decoded.Should().BeEquivalentTo(caps);
+    }
+
+    [Test]
+    public void EncodeCapabilitiesResponse_single_capability_matches_spec_layout()
+    {
+        byte[] encoded = Encode<IReadOnlyList<string>>(["abc"], SszCodec.EncodeCapabilitiesResponse);
+
+        encoded.Length.Should().Be(11);
+        encoded[8..].Should().BeEquivalentTo("abc"u8.ToArray());
     }
 
     [Test]

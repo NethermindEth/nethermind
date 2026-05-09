@@ -71,25 +71,6 @@ public class SszMultiSegmentDecodeTests
     private static readonly int[] SegmentSizes = [1, 3, 7, 4096];
 
     [TestCaseSource(nameof(SegmentSizes))]
-    public void TransitionConfiguration_decodes_correctly_across_segments(int segSize)
-    {
-        TransitionConfigurationV1 original = new()
-        {
-            TerminalTotalDifficulty = UInt256.Parse("57896044618658097711785492504343953926634992332820282019728792003956564819968"),
-            TerminalBlockHash = TestItem.KeccakA,
-            TerminalBlockNumber = 0x_DEAD_BEEF_CAFEL,
-        };
-        byte[] encoded = EncodeBytes(original, SszCodec.EncodeTransitionConfigurationResponse);
-
-        TransitionConfigurationV1 decoded =
-            SszCodec.DecodeTransitionConfigurationRequest(Multi(encoded, segSize));
-
-        decoded.TerminalTotalDifficulty.Should().Be(original.TerminalTotalDifficulty);
-        decoded.TerminalBlockHash.Should().Be(original.TerminalBlockHash);
-        decoded.TerminalBlockNumber.Should().Be(original.TerminalBlockNumber);
-    }
-
-    [TestCaseSource(nameof(SegmentSizes))]
     public void Capabilities_decodes_correctly_across_segments(int segSize)
     {
         string[] caps = ["POST /engine/v5/payloads", "POST /engine/v4/forkchoice", "GET /engine/v6/payloads/{id}"];

@@ -30,7 +30,6 @@ public sealed class SszMiddlewareConfigurer(IComponentContext ctx) : IJsonRpcSer
     [
         typeof(ClientVersionSszHandler),
         typeof(CapabilitiesSszHandler),
-        typeof(TransitionConfigurationSszHandler),
     ];
 
     public void Configure(IServiceCollection services)

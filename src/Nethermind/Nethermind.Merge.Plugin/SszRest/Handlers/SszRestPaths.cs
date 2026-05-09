@@ -13,8 +13,6 @@ public static class SszRestPaths
 
     public const string ClientVersion = "client/version";
 
-    public const string TransitionConfiguration = "transition-configuration";
-
     public const string PayloadBodiesByHash = "payloads/bodies/by-hash";
 
     public const string PayloadBodiesByRange = "payloads/bodies/by-range";
@@ -26,7 +24,6 @@ public static class SszRestPaths
     public const string PostV1Forkchoice = "POST /engine/v1/forkchoice";
     public const string PostV1Capabilities = "POST /engine/v1/capabilities";
     public const string PostV1ClientVersion = "POST /engine/v1/client/version";
-    public const string PostV1TransitionConfig = "POST /engine/v1/transition-configuration";
 
     // Shanghai
     public const string PostV2Payloads = "POST /engine/v2/payloads";

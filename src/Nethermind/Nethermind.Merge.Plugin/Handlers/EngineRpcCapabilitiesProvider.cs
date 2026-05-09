@@ -80,7 +80,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
         }
 
         // The Merge
-        Configure(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), SszRestPaths.PostV1TransitionConfig, Gate(preCancun));
+        jsonLocal[nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1)] = Gate(preCancun);
         Configure(nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), SszRestPaths.PostV1Forkchoice, Enabled);
         Configure(nameof(IEngineRpcModule.engine_getPayloadV1), SszRestPaths.GetV1Payloads, Enabled);
         Configure(nameof(IEngineRpcModule.engine_newPayloadV1), SszRestPaths.PostV1Payloads, Enabled);

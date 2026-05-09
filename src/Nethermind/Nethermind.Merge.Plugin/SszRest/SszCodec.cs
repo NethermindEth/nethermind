@@ -8,30 +8,12 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-/// <summary>
-/// Wire-byte values for <see cref="PayloadStatusV1.Status"/> per the SSZ-REST spec
-/// (execution-apis #764, <c>PayloadStatusV1</c> definition).
-/// </summary>
-internal static class SszPayloadStatus
-{
-    public const byte Valid = 0;
-    public const byte Invalid = 1;
-    public const byte Syncing = 2;
-    public const byte Accepted = 3;
-    public const byte InvalidBlockHash = 4;
-}
-
-/// <summary>
-/// Converts between Engine API domain objects and SSZ wire types.
-/// Encode/decode uses the SSZ source-generator (<see cref="ISszCodec{T}"/>).
-/// </summary>
 public static class SszCodec
 {
     /// <summary>
@@ -212,29 +194,6 @@ public static class SszCodec
         return EncodeToWriter(new PayloadBodiesV2ResponseWire { PayloadBodies = arr }, writer);
     }
 
-    public static TransitionConfigurationV1 DecodeTransitionConfigurationRequest(ReadOnlySequence<byte> buf)
-    {
-        ExchangeTransitionConfigurationWire.Decode(buf, out ExchangeTransitionConfigurationWire wire);
-        TransitionConfigurationV1Wire tc = wire.TransitionConfiguration;
-        return new TransitionConfigurationV1
-        {
-            TerminalTotalDifficulty = tc.TerminalTotalDifficulty,
-            TerminalBlockHash = tc.TerminalBlockHash,
-            TerminalBlockNumber = (long)tc.TerminalBlockNumber
-        };
-    }
-
-    public static int EncodeTransitionConfigurationResponse(TransitionConfigurationV1 tc, IBufferWriter<byte> writer)
-        => EncodeToWriter(new ExchangeTransitionConfigurationWire
-        {
-            TransitionConfiguration = new()
-            {
-                TerminalTotalDifficulty = tc.TerminalTotalDifficulty ?? UInt256.Zero,
-                TerminalBlockHash = tc.TerminalBlockHash ?? Hash256.Zero,
-                TerminalBlockNumber = (ulong)tc.TerminalBlockNumber
-            }
-        }, writer);
-
     public static int EncodeCapabilitiesResponse(IReadOnlyList<string> caps, IBufferWriter<byte> writer)
     {
         int count = caps.Count;
@@ -287,16 +246,6 @@ public static class SszCodec
         return EncodeToWriter(new GetClientVersionResponseWire { Versions = wireVersions }, writer);
     }
 
-    private static byte EngineStatusToSsz(string status) => status switch
-    {
-        PayloadStatus.Valid => SszPayloadStatus.Valid,
-        PayloadStatus.Invalid => SszPayloadStatus.Invalid,
-        PayloadStatus.Syncing => SszPayloadStatus.Syncing,
-        PayloadStatus.Accepted => SszPayloadStatus.Accepted,
-        PayloadStatus.InvalidBlockHash => SszPayloadStatus.InvalidBlockHash,
-        _ => throw new InvalidOperationException($"Unknown payload status '{status}': cannot map to SSZ wire byte")
-    };
-
     private static PayloadStatusWire BuildPayloadStatusWire(PayloadStatusV1 ps)
     {
         const int MaxErrorBytes = 1024;
@@ -306,9 +255,19 @@ public static class SszCodec
         if (errorBytes.Length > MaxErrorBytes)
             errorBytes = errorBytes[..MaxErrorBytes];
 
+        byte status = ps.Status switch
+        {
+            PayloadStatus.Valid => 0,
+            PayloadStatus.Invalid => 1,
+            PayloadStatus.Syncing => 2,
+            PayloadStatus.Accepted => 3,
+            PayloadStatus.InvalidBlockHash => 1,
+            _ => throw new InvalidOperationException($"Unknown payload status '{ps.Status}': cannot map to SSZ wire byte")
+        };
+
         return new()
         {
-            Status = EngineStatusToSsz(ps.Status),
+            Status = status,
             LatestValidHash = ps.LatestValidHash is not null ? [ps.LatestValidHash] : [],
             ValidationError = errorBytes
         };

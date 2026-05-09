@@ -98,7 +98,6 @@ public class SszMiddlewareTests
 
             new ClientVersionSszHandler(_engineModule),
             new CapabilitiesSszHandler(_engineModule),
-            new TransitionConfigurationSszHandler(_engineModule),
         ];
 
         return new SszMiddleware(
@@ -352,27 +351,6 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task TransitionConfiguration_calls_engine_module_and_returns_200()
-    {
-        TransitionConfigurationV1 tc = new()
-        {
-            TerminalTotalDifficulty = UInt256.One,
-            TerminalBlockHash = TestItem.KeccakA,
-            TerminalBlockNumber = 1
-        };
-        _engineModule.engine_exchangeTransitionConfigurationV1(Arg.Any<TransitionConfigurationV1>())
-            .Returns(ResultWrapper<TransitionConfigurationV1>.Success(tc));
-
-        byte[] body = BuildTransitionConfigRequest(tc);
-        DefaultHttpContext ctx = MakePostContext("/engine/v1/transition-configuration", body);
-
-        await _middleware.InvokeAsync(ctx);
-
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        _engineModule.Received(1).engine_exchangeTransitionConfigurationV1(Arg.Any<TransitionConfigurationV1>());
-    }
-
-    [Test]
     public async Task Authentication_failure_returns_401_and_does_not_call_engine_module()
     {
         _auth.Authenticate(Arg.Any<string>()).Returns(false);
@@ -616,6 +594,4 @@ public class SszMiddlewareTests
         return request;
     }
 
-    private static byte[] BuildTransitionConfigRequest(TransitionConfigurationV1 tc) =>
-        EncodeToBytes(tc, SszCodec.EncodeTransitionConfigurationResponse);
 }

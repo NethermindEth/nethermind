@@ -309,7 +309,7 @@ public partial struct GetBlobsV1ResponseWire
     [SszList(128)] public BlobAndProofV1Wire[]? BlobsAndProofs { get; set; }
 }
 
-[SszContainer]
+[SszContainer(isCollectionItself: true)]
 public partial struct SszCapabilityName
 {
     [SszList(64)] public byte[]? Name { get; set; }
@@ -435,17 +435,3 @@ public partial struct GetBlobsV3ResponseWire
     [SszList(128)] public NullableBlobAndProofV2Wire[]? BlobsAndProofs { get; set; }
 }
 
-[SszContainer]
-public partial struct TransitionConfigurationV1Wire
-{
-    // uint256 encoded little-endian (same convention as BaseFeePerGas)
-    public UInt256 TerminalTotalDifficulty { get; set; }
-    public Hash256 TerminalBlockHash { get; set; }
-    public ulong TerminalBlockNumber { get; set; }
-}
-
-[SszContainer]
-public partial struct ExchangeTransitionConfigurationWire
-{
-    public TransitionConfigurationV1Wire TransitionConfiguration { get; set; }
-}

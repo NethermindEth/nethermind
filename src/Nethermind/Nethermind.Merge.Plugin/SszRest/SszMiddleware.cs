@@ -381,8 +381,9 @@ public sealed class SszMiddleware
                 {
                     int len = (int)contentLength;
                     ReadResult rr = await reader.ReadAtLeastAsync(len, ctx.RequestAborted);
-                    // Slice to the declared ContentLength even if Kestrel buffered extra bytes
-                    // (HTTP keep-alive could carry the next request's framing in the same buffer).
+                    if (rr.Buffer.Length < len)
+                        throw new EndOfStreamException($"Expected {len} bytes but stream ended with {rr.Buffer.Length}");
+                    // Slice to ContentLength: keep-alive can pack the next request's framing into the same buffer.
                     return rr.Buffer.Slice(0, len);
                 }
         }
