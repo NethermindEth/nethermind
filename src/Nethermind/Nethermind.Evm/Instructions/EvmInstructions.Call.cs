@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -191,13 +192,10 @@ public static partial class EvmInstructions
 
         if (newAccountOutOfGas) goto OutOfGas;
 
+        // EIP-7702: load the delegated code only after charging cold-access gas for the delegation target above.
         if (delegated is not null)
         {
-            codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(
-                delegated,
-                followDelegation: false,
-                vmSpec: spec,
-                delegationAddress: out _);
+            codeInfo = vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
@@ -206,6 +204,7 @@ public static partial class EvmInstructions
         if (spec.Use63Over64Rule)
         {
             // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
+            Debug.Assert(gasAvailable >= 0, "GetRemainingGas must be non-negative; (ulong)cap below would otherwise wrap.");
             long cap = gasAvailable - gasAvailable / 64;
             gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
                 ? (long)gasLimit.u0
