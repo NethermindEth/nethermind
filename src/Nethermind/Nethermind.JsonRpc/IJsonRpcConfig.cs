@@ -32,7 +32,7 @@ public interface IJsonRpcConfig : IConfig
 
             `0` to lift the limit.
             """,
-        DefaultValue = "500")]
+        DefaultValue = "2000")]
     int RequestQueueLimit { get; set; }
 
     [ConfigItem(
