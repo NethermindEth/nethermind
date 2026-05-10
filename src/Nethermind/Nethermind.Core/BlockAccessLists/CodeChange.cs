@@ -8,23 +8,21 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public struct CodeChange(int index, byte[] code) : IIndexedChange, IEquatable<CodeChange>
+public readonly struct CodeChange(uint index, byte[] code) : IIndexedChange, IEquatable<CodeChange>
 {
-    public readonly int Index { get; init; } = index;
+    public uint Index { get; init; } = index;
 
     [JsonConverter(typeof(ByteArrayConverter))]
-    public readonly byte[] Code { get; init; } = code;
+    public byte[] Code { get; init; } = code;
 
-    public ValueHash256 CodeHash => _hash ??= ValueKeccak.Compute(Code);
-
-    private ValueHash256? _hash;
+    public ValueHash256 CodeHash { get; init; } = code is null ? default : ValueKeccak.Compute(code);
 
     public bool Equals(CodeChange other) =>
         Index == other.Index &&
         CodeHash == other.CodeHash;
 
-    public override readonly int GetHashCode() =>
+    public override int GetHashCode() =>
         HashCode.Combine(Index, Code);
 
-    public override readonly string ToString() => $"{Index}:0x{Convert.ToHexString(Code ?? [])}";
+    public override string ToString() => $"{Index}:0x{Convert.ToHexString(Code ?? [])}";
 }

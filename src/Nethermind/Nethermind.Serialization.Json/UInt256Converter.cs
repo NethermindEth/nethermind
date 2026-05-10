@@ -104,7 +104,7 @@ public class UInt256Converter : JsonConverter<UInt256>
         UInt256 value,
         JsonSerializerOptions options)
     {
-        NumberConversion conversion = ForcedNumberConversion.GetFinalConversion();
+        NumberConversion conversion = ForcedNumberConversion.Value;
         switch (conversion)
         {
             case NumberConversion.Hex:
@@ -129,7 +129,7 @@ public class UInt256Converter : JsonConverter<UInt256>
 
     public override void WriteAsPropertyName(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options)
     {
-        NumberConversion conversion = ForcedNumberConversion.GetFinalConversion();
+        NumberConversion conversion = ForcedNumberConversion.Value;
         switch (conversion)
         {
             case NumberConversion.Hex:
