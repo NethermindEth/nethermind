@@ -166,8 +166,13 @@ public static partial class EvmInstructions
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+
+        // Retrieve code information for the call and schedule background analysis if needed.
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(
+            codeSource,
+            followDelegation: false,
+            vmSpec: spec,
+            delegationAddress: out Address? delegated);
 
         if (spec.UseHotAndColdStorage && delegated is not null)
         {
@@ -186,23 +191,32 @@ public static partial class EvmInstructions
 
         if (newAccountOutOfGas) goto OutOfGas;
 
-
-        // Retrieve code information for the call and schedule background analysis if needed.
-        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
-
-        // Get remaining gas for 63/64 calculation
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // Apply the 63/64 gas rule if enabled.
-        if (spec.Use63Over64Rule)
+        if (delegated is not null)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(
+                delegated,
+                followDelegation: false,
+                vmSpec: spec,
+                delegationAddress: out _);
         }
 
-        // If gasLimit exceeds the host's representable range, treat as out-of-gas.
-        if (gasLimit >= long.MaxValue) goto OutOfGas;
+        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        long gasLimitUl;
 
-        long gasLimitUl = (long)gasLimit;
+        if (spec.Use63Over64Rule)
+        {
+            // EIP-150: cap is a non-negative long, so min(gasLimit, cap) fits without 256-bit math.
+            long cap = gasAvailable - gasAvailable / 64;
+            gasLimitUl = gasLimit.IsUint64 && gasLimit.u0 <= (ulong)cap
+                ? (long)gasLimit.u0
+                : cap;
+        }
+        else
+        {
+            if (!gasLimit.IsUint64 || gasLimit.u0 >= long.MaxValue) goto OutOfGas;
+            gasLimitUl = (long)gasLimit.u0;
+        }
+
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
