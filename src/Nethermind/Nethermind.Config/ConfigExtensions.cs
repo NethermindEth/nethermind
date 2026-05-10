@@ -52,26 +52,30 @@ public static class ConfigExtensions
     /// operator has actually changed, rather than dumping every value.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The default is taken from a freshly constructed instance of the
     /// implementing type, so initializers and constructors are honoured exactly
     /// as production wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
+    /// </para>
+    /// <para>
+    /// Properties marked with <see cref="ConfigItemAttribute.IsSensitive"/>
+    /// (passwords, API keys, private keys, ...) are skipped to avoid leaking
+    /// secrets into logs.
+    /// </para>
     /// </remarks>
     /// <param name="configProvider">The provider to query.</param>
     /// <returns>
     /// Tuples of <c>(category, propertyName, currentValue, defaultValue)</c> for
-    /// every property whose current value is not equal to its default.
+    /// every non-sensitive property whose current value is not equal to its default.
     /// </returns>
     public static IEnumerable<(string Category, string Name, object? CurrentValue, object? DefaultValue)>
         GetNonDefaultValues(this IConfigProvider configProvider)
     {
         ArgumentNullException.ThrowIfNull(configProvider);
 
-        foreach (Type configInterface in TypeDiscovery
-                     .FindNethermindBasedTypes(typeof(IConfig))
-                     .Where(static t => t.IsInterface))
+        foreach (Type configInterface in TypeDiscovery.FindNethermindBasedTypes(typeof(IConfig)))
         {
-            Type? implementation = configInterface.GetDirectInterfaceImplementation();
-            if (implementation is null) continue;
+            if (!configInterface.IsInterface) continue;
 
             IConfig current;
             try
@@ -86,9 +90,12 @@ public static class ConfigExtensions
             IConfig fresh;
             try
             {
-                fresh = (IConfig)Activator.CreateInstance(implementation)!;
+                fresh = (IConfig)Activator.CreateInstance(current.GetType())!;
             }
-            catch (MissingMethodException)
+            catch (Exception e) when (e is MissingMethodException
+                                       or TargetInvocationException
+                                       or TypeLoadException
+                                       or MethodAccessException)
             {
                 continue;
             }
@@ -98,6 +105,7 @@ public static class ConfigExtensions
             foreach (PropertyInfo property in configInterface.GetProperties())
             {
                 if (!property.CanRead) continue;
+                if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) continue;
 
                 object? actual = property.GetValue(current);
                 object? defaultValue = property.GetValue(fresh);

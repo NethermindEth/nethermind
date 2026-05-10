@@ -188,20 +188,30 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo)
     {
-        List<string> nonDefaultLines = [];
-        foreach ((string category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues())
+        _ = Task.Run(() =>
         {
-            nonDefaultLines.Add($"  {category}.{name} = {serializer.Serialize(currentValue)}");
-        }
+            try
+            {
+                List<string> nonDefaultLines = [];
+                foreach ((string category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues())
+                {
+                    nonDefaultLines.Add($"  {category}.{name} = {serializer.Serialize(currentValue)}");
+                }
 
-        if (nonDefaultLines.Count == 0)
-        {
-            logger.Info("Configuration: all values at defaults.");
-        }
-        else
-        {
-            logger.Info($"Configuration: {nonDefaultLines.Count} non-default value(s):\n{string.Join('\n', nonDefaultLines)}");
-        }
+                if (nonDefaultLines.Count == 0)
+                {
+                    logger.Info("Configuration: all values at defaults.");
+                }
+                else
+                {
+                    logger.Info($"Configuration: {nonDefaultLines.Count} non-default value(s):\n{string.Join('\n', nonDefaultLines)}");
+                }
+            }
+            catch (Exception e)
+            {
+                if (logger.IsWarn) logger.Warn($"Failed to enumerate non-default config values: {e.Message}");
+            }
+        });
     }
 
     if (logger.IsDebug)

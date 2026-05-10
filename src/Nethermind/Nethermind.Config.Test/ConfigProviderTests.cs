@@ -8,6 +8,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
+using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using NUnit.Framework;
 
@@ -159,6 +160,28 @@ namespace Nethermind.Config.Test
 
             Assert.That(keys, Does.Contain("Network.DiscoveryPort"));
             Assert.That(keys, Does.Contain("JsonRpc.Enabled"));
+        }
+
+        [Test]
+        public void Skips_sensitive_properties()
+        {
+            Dictionary<string, string> args = new()
+            {
+                { "KeyStore.TestNodeKey", "0xdeadbeef" },
+                { "KeyStore.Passwords", "[\"hunter2\"]" },
+                { "KeyStore.KeyStoreDirectory", "custom-keystore" }
+            };
+            ConfigProvider configProvider = new();
+            configProvider.AddSource(new ArgsConfigSource(args));
+            configProvider.Initialize();
+
+            HashSet<string> keys = configProvider.GetNonDefaultValues()
+                .Select(static x => $"{x.Category}.{x.Name}")
+                .ToHashSet();
+
+            Assert.That(keys, Does.Not.Contain($"KeyStore.{nameof(IKeyStoreConfig.TestNodeKey)}"));
+            Assert.That(keys, Does.Not.Contain($"KeyStore.{nameof(IKeyStoreConfig.Passwords)}"));
+            Assert.That(keys, Does.Contain($"KeyStore.{nameof(IKeyStoreConfig.KeyStoreDirectory)}"));
         }
     }
 }
