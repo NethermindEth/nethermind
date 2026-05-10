@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 /// returns VALID immediately, so the difference is transport + codec, not consensus work.
 /// </summary>
 [MemoryDiagnoser]
-public class NewPayloadE2EBenchmarks : IDisposable
+public class NewPayloadSerializationBenchmarks : IDisposable
 {
     private const int EnginePort = 8551;
     private const string BearerToken =
@@ -61,7 +61,7 @@ public class NewPayloadE2EBenchmarks : IDisposable
         ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid });
     private static readonly Task<ResultWrapper<PayloadStatusV1>> ValidTask = Task.FromResult(ValidResult);
 
-    [Params(0, 1, 3, 6)]
+    [Params(0, 1, 3, 6, 12, 24, 36, 72)]
     public int Blobs;
 
     private IHost _sszHost = null!;
@@ -186,14 +186,11 @@ public class NewPayloadE2EBenchmarks : IDisposable
 
     private static byte[][] BuildTransactions(int count, int sizeEach)
     {
-        Random rng = new(1337);
         byte[][] txs = new byte[count][];
         for (int i = 0; i < count; i++)
         {
-            byte[] tx = new byte[sizeEach];
-            tx[0] = 0x02; // EIP-1559 type byte
-            rng.NextBytes(tx.AsSpan(1));
-            txs[i] = tx;
+            txs[i] = new byte[sizeEach];
+            txs[i][0] = 0x02; // EIP-1559 type byte
         }
         return txs;
     }
@@ -201,10 +198,10 @@ public class NewPayloadE2EBenchmarks : IDisposable
     private static Hash256[] BuildBlobVersionedHashes(int count)
     {
         Hash256[] hashes = new Hash256[count];
+        Span<byte> bytes = stackalloc byte[32];
+        bytes[0] = 0x01; // BLOB_COMMITMENT_VERSION_KZG
         for (int i = 0; i < count; i++)
         {
-            byte[] bytes = new byte[32];
-            bytes[0] = 0x01; // BLOB_COMMITMENT_VERSION_KZG
             bytes[31] = (byte)(i + 1);
             hashes[i] = new Hash256(bytes);
         }

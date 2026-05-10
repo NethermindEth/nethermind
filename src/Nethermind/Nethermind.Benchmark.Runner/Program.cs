@@ -56,7 +56,7 @@ namespace Nethermind.Benchmark.Runner
                 typeof(Benchmarks.Core.Keccak256Benchmarks).Assembly,
                 typeof(Evm.Benchmark.EvmStackBenchmarks).Assembly,
                 typeof(Network.Benchmarks.DiscoveryBenchmarks).Assembly,
-                typeof(NewPayloadE2EBenchmarks).Assembly,
+                typeof(NewPayloadSerializationBenchmarks).Assembly,
             ];
 
             List<Assembly> simpleJobAssemblies = [
