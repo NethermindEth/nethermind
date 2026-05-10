@@ -194,15 +194,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// Regression test for the EIP-7928 BAL recording of an EIP-7702 delegated EOA whose delegation target is a precompile.
+    /// EIP-7928 regression: delegated precompile target is recorded in BAL when <see cref="PrecompileCachedCodeInfoRepository"/> is active.
     /// </summary>
     /// <remarks>
-    /// When <see cref="PrecompileCachedCodeInfoRepository"/> is installed in the processing pipeline, its precompile
-    /// fast-path returns the cached <see cref="CodeInfo"/> without going through the world state. The base
-    /// <see cref="CodeInfoRepository"/> compensates by calling <c>AddAccountRead</c> directly, but the decorator
-    /// does not. <see cref="EvmInstructions.InstructionCall"/> resolves the delegated code via a second
-    /// <c>GetCachedCodeInfoNoDelegation</c> call after charging the EIP-2929 cold-access gas, so without an explicit
-    /// <c>AddAccountRead</c> the delegated precompile address would be omitted from the generated BAL.
+    /// The decorator's precompile fast-path bypasses the world state, so <see cref="EvmInstructions.InstructionCall"/>
+    /// must call <c>AddAccountRead</c> explicitly on the delegation target.
     /// </remarks>
     [Test]
     public void Delegated_precompile_target_is_recorded_in_BAL_under_PrecompileCachedCodeInfoRepository()
@@ -249,16 +245,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     /// <summary>
-    /// Regression test for EIP-7702 spec semantics: a delegation pointing at a precompile address must NOT execute the precompile.
+    /// EIP-7702 regression: delegation to a precompile must NOT execute the precompile (FastCall returns 1).
     /// </summary>
     /// <remarks>
-    /// The CALL is treated as if the EOA had no executable code (FastCall path), unconditionally returning success.
-    /// This regresses easily because the <see cref="PrecompileCachedCodeInfoRepository"/> decorator's <c>IsPrecompile</c>
-    /// fast-path tempts callers to resolve the delegation target's <see cref="CodeInfo"/> via the cached precompile -
-    /// which would run the precompile. <see cref="EvmInstructions.InstructionCall"/> must short-circuit to
-    /// <see cref="CodeInfo.Empty"/> for precompile delegation targets.
-    /// The test forces discrimination by passing <c>0</c> gas to the inner call: a real precompile execution would OOG and
-    /// push <c>0</c>; FastCall returns <c>1</c> regardless of forwarded gas.
+    /// Inner gas is 0 to discriminate: precompile execution OOGs and pushes 0, FastCall pushes 1 regardless of forwarded gas.
     /// </remarks>
     [Test]
     public void Calling_account_delegated_to_precompile_uses_FastCall_per_EIP_7702()
