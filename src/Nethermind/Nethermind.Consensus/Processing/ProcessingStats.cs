@@ -363,16 +363,16 @@ namespace Nethermind.Consensus.Processing
 
             if (_logger.IsInfo)
             {
-                // Execution-mode indicator (⛓️ = parallel BAL executor, 🔗 = sequential). Appended at
-                // end-of-line so emoji-cell-width variation across terminals can't drift the
-                // mid-line pipes against the Blocks/Throughput rows below.
+                // Execution-mode indicator (⛓️ = parallel BAL executor, 🔗 = sequential). Appended after
+                // the ops count on the Block throughput row so emoji-cell-width variation across terminals
+                // can't drift the mid-line pipes on the rows above.
                 string execMode = BlockProcessor.ParallelBlockValidationTransactionsExecutor.LastBlockUsedParallelExecution
                     ? " \u26D3\uFE0F"
                     : " \U0001f517";
 
                 if (chunkBlocks > 1)
                 {
-                    _logger.Info($"Processed    {chunkFirstBlockNumber,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}{execMode}");
+                    _logger.Info($"Processed    {chunkFirstBlockNumber,10}...{block.Number,9}   | {chunkMs,10:N1} ms  | slot    {runMs,11:N0} ms |{blockGas}");
                 }
                 else
                 {
@@ -399,7 +399,7 @@ namespace Nethermind.Consensus.Processing
                         < 2000 => orangeText,
                         _ => redText
                     };
-                    _logger.Info($"Processed          {block.Number,10}         | {chunkColor}{chunkMs,10:N1}{resetColor} ms  | slot    {runMs,11:N0} ms |{blockGas}{execMode}");
+                    _logger.Info($"Processed          {block.Number,10}         | {chunkColor}{chunkMs,10:N1}{resetColor} ms  | slot    {runMs,11:N0} ms |{blockGas}");
                 }
 
                 string mgasPerSecondColor = (mgasPerSecond / (block.GasLimit / 1_000_000.0)) switch
@@ -452,11 +452,11 @@ namespace Nethermind.Consensus.Processing
 
                 if (recoveryQueue > 0 || processingQueue > 0)
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| recover {recoveryQueue,5:N0} | process {processingQueue,5:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
                 else
                 {
-                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}");
+                    _logger.Info($" Block throughput {mgasPerSecondColor}{mgasPerSecond,11:F2}{resetColor} MGas/s{(mgasPerSecond > 1000 ? "🔥" : "  ")}| {txps,10:N1} tps |{blobsOrBlocksPerSec}| exec code{resetColor} cache {cachedContractsUsed,7:N0} |{resetColor} new {contractsAnalysed,6:N0} | ops {chunkOpCodes,11:N0}{execMode}");
                 }
             }
 
