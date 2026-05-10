@@ -17,7 +17,7 @@ namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 public sealed class SszRpcEndpointHandler(
     IEngineRpcModule engineModule,
     MethodInfo method,
-    SszRestMethodAttribute metadata) : SszEndpointHandlerBase
+    SszRestMetadata metadata) : SszEndpointHandlerBase
 {
     private const int PayloadIdHexLength = 16;
     private const int PayloadIdByteLength = 8;
@@ -50,7 +50,7 @@ public sealed class SszRpcEndpointHandler(
 
     public static ISszEndpointHandler[] CreateHandlers(IEngineRpcModule engineModule)
     {
-        (MethodInfo Method, SszRestMethodAttribute Metadata)[] endpoints = GetEndpoints();
+        (MethodInfo Method, SszRestMetadata Metadata)[] endpoints = GetEndpoints();
         ISszEndpointHandler[] handlers = new ISszEndpointHandler[endpoints.Length];
 
         for (int i = 0; i < endpoints.Length; i++)
@@ -59,15 +59,15 @@ public sealed class SszRpcEndpointHandler(
         return handlers;
     }
 
-    public static (MethodInfo Method, SszRestMethodAttribute Metadata)[] GetEndpoints()
+    public static (MethodInfo Method, SszRestMetadata Metadata)[] GetEndpoints()
     {
-        List<(MethodInfo Method, SszRestMethodAttribute Metadata)> endpoints = [];
+        List<(MethodInfo Method, SszRestMetadata Metadata)> endpoints = [];
 
         foreach (MethodInfo methodInfo in typeof(IEngineRpcModule).GetMethods())
         {
-            SszRestMethodAttribute? attribute = methodInfo.GetCustomAttribute<SszRestMethodAttribute>();
+            SszRestAttribute? attribute = methodInfo.GetCustomAttribute<SszRestAttribute>();
             if (attribute is not null)
-                endpoints.Add((methodInfo, attribute));
+                endpoints.Add((methodInfo, attribute.ToMetadata(methodInfo)));
         }
 
         endpoints.Sort(static (a, b) => StringComparer.Ordinal.Compare(a.Metadata.Capability, b.Metadata.Capability));

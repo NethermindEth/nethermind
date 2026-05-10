@@ -16,14 +16,13 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the currently supported list of Engine API methods.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszRestMethod("POST", 1, SszRestPaths.Capabilities, SszRestRequest.Capabilities, SszRestResponse.Capabilities)]
+    [SszPost]
     ResultWrapper<IReadOnlyList<string>> engine_exchangeCapabilities(IEnumerable<string> methods);
 
     [JsonRpcMethod(
         Description = "Returns the client version specification.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszRestMethod("POST", 1, SszRestPaths.ClientVersion, SszRestRequest.ClientVersion, SszRestResponse.ClientVersion)]
-
+    [SszPost]
     ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1);
 }
