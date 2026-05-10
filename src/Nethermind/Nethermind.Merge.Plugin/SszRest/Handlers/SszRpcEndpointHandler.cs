@@ -35,31 +35,31 @@ public abstract class SszRpcEndpointHandler : SszEndpointHandlerBase
 
     public static ISszEndpointHandler[] CreateHandlers(IEngineRpcModule engineModule)
     {
-        (MethodInfo Method, SszRestMetadata Metadata)[] endpoints = GetEndpoints();
+        SszRestEndpoint[] endpoints = GetEndpoints();
         ISszEndpointHandler[] handlers = new ISszEndpointHandler[endpoints.Length];
 
         for (int i = 0; i < endpoints.Length; i++)
-            handlers[i] = CreateHandler(engineModule, endpoints[i].Method, endpoints[i].Metadata);
+            handlers[i] = CreateHandler(engineModule, endpoints[i]);
 
         return handlers;
     }
 
-    internal static ISszEndpointHandler CreateHandler(IEngineRpcModule engineModule, MethodInfo method, SszRestMetadata metadata)
+    internal static ISszEndpointHandler CreateHandler(IEngineRpcModule engineModule, SszRestEndpoint endpoint)
     {
-        Type resultType = GetResultType(method);
-        Type handlerType = typeof(Handler<,,>).MakeGenericType(metadata.RequestType, metadata.ResponseType, resultType);
-        return (ISszEndpointHandler)Activator.CreateInstance(handlerType, engineModule, method, metadata)!;
+        Type resultType = GetResultType(endpoint.Method);
+        Type handlerType = typeof(Handler<,,>).MakeGenericType(endpoint.RequestType, endpoint.ResponseType, resultType);
+        return (ISszEndpointHandler)Activator.CreateInstance(handlerType, engineModule, endpoint.Method, endpoint.Metadata)!;
     }
 
-    internal static (MethodInfo Method, SszRestMetadata Metadata)[] GetEndpoints()
+    internal static SszRestEndpoint[] GetEndpoints()
     {
-        List<(MethodInfo Method, SszRestMetadata Metadata)> endpoints = [];
+        List<SszRestEndpoint> endpoints = [];
 
         foreach (MethodInfo methodInfo in typeof(IEngineRpcModule).GetMethods())
         {
             SszRestAttribute? attribute = methodInfo.GetCustomAttribute<SszRestAttribute>();
             if (attribute is not null)
-                endpoints.Add((methodInfo, attribute.ToMetadata(methodInfo)));
+                endpoints.Add(attribute.ToEndpoint(methodInfo));
         }
 
         endpoints.Sort(static (a, b) => StringComparer.Ordinal.Compare(a.Metadata.Capability, b.Metadata.Capability));

@@ -85,7 +85,7 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
             MethodInfo? methodInfo = typeof(IEngineRpcModule).GetMethod(method);
             SszRestAttribute? attribute = methodInfo?.GetCustomAttribute<SszRestAttribute>();
             if (attribute is not null && methodInfo is not null)
-                sszLocal[attribute.ToMetadata(methodInfo).Capability] = options;
+                sszLocal[attribute.ToEndpoint(methodInfo).Metadata.Capability] = options;
         }
 
         // The Merge

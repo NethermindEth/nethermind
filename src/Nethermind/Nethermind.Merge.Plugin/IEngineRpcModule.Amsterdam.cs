@@ -19,7 +19,7 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszGet<PayloadIdRequest, GetPayloadResponseV6Wire>(SszRestPaths.Payloads, "payload_id", noStore: true)]
+    [SszGet<PayloadIdRequest, GetPayloadResponseV6Wire>(SszRestPaths.Payloads, noStore: true)]
     Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId);
 
     [JsonRpcMethod(
