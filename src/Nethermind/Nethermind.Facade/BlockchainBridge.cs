@@ -64,11 +64,6 @@ namespace Nethermind.Facade
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
 
-        // Serializes the state-override path because processingEnv holds a single _worldScopeCloser
-        // and throws on concurrent reentry. The fast path (no overrides) goes through
-        // shareableTxProcessorSource's pool and never touches this lock.
-        private readonly SemaphoreSlim _exclusiveCallLock = new(1, 1);
-
         public Block? HeadBlock
         {
             get
@@ -169,19 +164,11 @@ namespace Nethermind.Facade
 
         private CallOutput CallExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            _exclusiveCallLock.Wait(cancellationToken);
-            try
-            {
-                using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-                // Dual-write: BlobBaseFeeOverrideCalculatorDecorator reads from RequestState during VM execution;
-                // RunCall also receives the value directly to apply it during pre-VM header preparation.
-                scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-                return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
-            }
-            finally
-            {
-                _exclusiveCallLock.Release();
-            }
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            // Dual-write: BlobBaseFeeOverrideCalculatorDecorator reads from RequestState during VM execution;
+            // RunCall also receives the value directly to apply it during pre-VM header preparation.
+            scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+            return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
         }
 
         private CallOutput RunCall(IStateReader nonceReader, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
@@ -224,18 +211,10 @@ namespace Nethermind.Facade
 
         private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            _exclusiveCallLock.Wait(cancellationToken);
-            try
-            {
-                using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-                BlockProcessingComponents components = scope.Component;
-                components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-                return RunEstimateGas(components.StateReader, components.TransactionProcessor, components.WorldState, header, tx, errorMargin, blobBaseFeeOverride, cancellationToken);
-            }
-            finally
-            {
-                _exclusiveCallLock.Release();
-            }
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            BlockProcessingComponents components = scope.Component;
+            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+            return RunEstimateGas(components.StateReader, components.TransactionProcessor, components.WorldState, header, tx, errorMargin, blobBaseFeeOverride, cancellationToken);
         }
 
         private CallOutput RunEstimateGas(IStateReader nonceReader, ITransactionProcessor txProcessor, IWorldState worldState, BlockHeader header, Transaction tx, int errorMargin, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
@@ -297,26 +276,18 @@ namespace Nethermind.Facade
 
         private CallOutput CreateAccessListExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            _exclusiveCallLock.Wait(cancellationToken);
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            BlockProcessingComponents components = scope.Component;
+            components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
+
+            AccessList? originalAccessList = tx.AccessList;
             try
             {
-                using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-                BlockProcessingComponents components = scope.Component;
-                components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-
-                AccessList? originalAccessList = tx.AccessList;
-                try
-                {
-                    return ConvergeAccessList(components.StateReader, components.TransactionProcessor, blobBaseFeeOverride, header, tx, optimize, cancellationToken);
-                }
-                finally
-                {
-                    tx.AccessList = originalAccessList;
-                }
+                return ConvergeAccessList(components.StateReader, components.TransactionProcessor, blobBaseFeeOverride, header, tx, optimize, cancellationToken);
             }
             finally
             {
-                _exclusiveCallLock.Release();
+                tx.AccessList = originalAccessList;
             }
         }
 
@@ -603,13 +574,32 @@ namespace Nethermind.Facade
     public class BlockchainBridgeFactory(
         ISimulateReadOnlyBlocksProcessingEnvFactory simulateEnvFactory,
         IOverridableEnvFactory envFactory,
-        ILifetimeScope rootLifetimeScope
+        ILifetimeScope rootLifetimeScope,
+        int overridableEnvPoolSize
     ) : IBlockchainBridgeFactory
     {
         public IBlockchainBridge CreateBlockchainBridge()
         {
-            IOverridableEnv env = envFactory.Create();
+            PooledOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = new(
+                BuildSingleEnv, overridableEnvPoolSize);
 
+            ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                .AddScoped<BlockchainBridge>()
+                .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
+                .AddScoped<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>(blockProcessingEnv));
+
+            blockchainBridgeLifetime.Disposer.AddInstanceForDisposal(blockProcessingEnv);
+            rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
+
+            return blockchainBridgeLifetime.Resolve<BlockchainBridge>();
+        }
+
+        // Each invocation produces an independent IOverridableEnv<BlockProcessingComponents> with its
+        // own _worldScopeCloser, SingleCallRequestState and decorator chain so concurrent renters
+        // share no mutable state.
+        private IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
+        {
+            IOverridableEnv env = envFactory.Create();
             ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddModule(env)
                 .AddScoped<SingleCallRequestState>()
@@ -617,19 +607,8 @@ namespace Nethermind.Facade
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
-            // Split it out to isolate the world state and processing components
-            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = overridableScopeLifetime
-                .Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
-
-            ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddScoped<BlockchainBridge>()
-                .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
-                .AddScoped(blockProcessingEnv));
-
-            blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
-            rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
-
-            return blockchainBridgeLifetime.Resolve<BlockchainBridge>();
+            rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
+            return overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
         }
     }
 }
