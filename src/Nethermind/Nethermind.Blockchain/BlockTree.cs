@@ -1744,6 +1744,7 @@ namespace Nethermind.Blockchain
             get => _oldestStateBlock;
             set
             {
+                if (_oldestStateBlock == value) return;
                 _oldestStateBlock = value;
                 if (value.HasValue)
                 {

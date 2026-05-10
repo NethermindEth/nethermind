@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
@@ -41,6 +42,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
+using Nethermind.History;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -184,7 +186,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ForkInfo,
             @this.LogIndexConfig,
             @this.BlocksConfig.SecondsPerSlot,
-            new EthCapabilitiesProvider(@this.BlockTree, @this.WorldStateManager));
+            new EthCapabilitiesProvider(@this.BlockTree.AsReadOnly(), @this.WorldStateManager,
+                @this.Container.Resolve<ISyncConfig>(),
+                Substitute.For<ISyncPointers>(),
+                Substitute.For<IHistoryConfig>(),
+                Substitute.For<IHistoryPruner>()));
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {

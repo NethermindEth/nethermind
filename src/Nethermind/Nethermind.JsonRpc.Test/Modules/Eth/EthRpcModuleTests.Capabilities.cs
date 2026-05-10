@@ -37,7 +37,7 @@ public partial class EthRpcModuleTests
         IHistoryPruner? historyPruner = null)
     {
         Block head = Build.A.Block.WithNumber(headNumber).TestObject;
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IReadOnlyBlockTree blockTree = Substitute.For<IReadOnlyBlockTree>();
         blockTree.Head.Returns(head);
         blockTree.BestSuggestedHeader.Returns(head.Header);
         blockTree.OldestStateBlock.Returns(oldestStateBlock);
@@ -46,15 +46,15 @@ public partial class EthRpcModuleTests
         wsm.GetOldestStateBlock(Arg.Any<long>()).Returns(call =>
             retentionWindow is { } w ? Math.Max(0L, (long)call[0] - w) : (long?)null);
 
-        ISyncPointers? syncPointers = null;
-        if (lowestInsertedBody is not null || lowestInsertedReceipt is not null)
-        {
-            syncPointers = Substitute.For<ISyncPointers>();
-            syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
-            syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceipt);
-        }
+        ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
+        syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
+        syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceipt);
 
-        return new EthCapabilitiesProvider(blockTree, wsm, syncConfig, syncPointers, historyConfig, historyPruner).GetCapabilities();
+        return new EthCapabilitiesProvider(blockTree, wsm,
+            syncConfig ?? new SyncConfig(),
+            syncPointers,
+            historyConfig ?? Substitute.For<IHistoryConfig>(),
+            historyPruner ?? Substitute.For<IHistoryPruner>()).GetCapabilities();
     }
 
     private static IHistoryPruner MockHistoryPruner(long oldestBlockNumber)
@@ -242,11 +242,15 @@ public partial class EthRpcModuleTests
     [Test]
     public void eth_capabilities_no_head_disables_all_resources()
     {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IReadOnlyBlockTree blockTree = Substitute.For<IReadOnlyBlockTree>();
         blockTree.Head.Returns((Block?)null);
         IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
 
-        EthCapabilities caps = new EthCapabilitiesProvider(blockTree, wsm).GetCapabilities();
+        EthCapabilities caps = new EthCapabilitiesProvider(blockTree, wsm,
+            new SyncConfig(),
+            Substitute.For<ISyncPointers>(),
+            Substitute.For<IHistoryConfig>(),
+            Substitute.For<IHistoryPruner>()).GetCapabilities();
 
         Assert.That(caps.Head, Is.EqualTo(new ChainHead(0, Hash256.Zero)));
         Assert.That(caps.State, Is.EqualTo(Disabled));
@@ -259,7 +263,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(CapabilitiesScenarios))]
-    public void eth_capabilities_scenario(CapabilitiesScenario s)
+    public void eth_capabilities_returns_expected_availability_for(CapabilitiesScenario s)
     {
         EthCapabilities caps = GetCaps(s.RetentionWindow, s.HeadNumber, s.OldestStateBlock, s.SyncConfig,
             s.LowestInsertedBody, s.LowestInsertedReceipt, s.HistoryConfig, s.HistoryPruner);

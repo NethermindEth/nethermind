@@ -12,68 +12,68 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class EthCapabilitiesProvider(
-    IBlockTree blockTree,
+public sealed class EthCapabilitiesProvider(
+    IReadOnlyBlockTree blockTree,
     IWorldStateManager worldStateManager,
-    ISyncConfig? syncConfig = null,
-    ISyncPointers? syncPointers = null,
-    IHistoryConfig? historyConfig = null,
-    IHistoryPruner? historyPruner = null) : IEthCapabilitiesProvider
+    ISyncConfig syncConfig,
+    ISyncPointers syncPointers,
+    IHistoryConfig historyConfig,
+    IHistoryPruner historyPruner) : IEthCapabilitiesProvider
 {
+    private static readonly ResourceAvailability Disabled = new(true);
+
     public EthCapabilities GetCapabilities()
     {
         BlockHeader? head = blockTree.Head?.Header;
         if (head is null)
         {
-            ResourceAvailability disabled = Resource(enabled: false, oldestBlock: null);
-            return new EthCapabilities(new ChainHead(0, Keccak.Zero), disabled, disabled, disabled, disabled);
+            return new EthCapabilities(new ChainHead(0, Keccak.Zero), Disabled, Disabled, Disabled, Disabled);
         }
 
-        bool headersAvailable = blockTree.BestSuggestedHeader is not null;
+        bool fastSyncing = syncConfig.FastSync;
+        long pivot = syncConfig.PivotNumber;
+        long bodiesBarrier = pivot == 0 ? 0 : Math.Min(pivot, syncConfig.AncientBodiesBarrier);
+        long receiptsBarrier = pivot == 0 ? 0 : Math.Min(pivot, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
 
-        bool fastSyncing = syncConfig?.FastSync ?? false;
-        long pivot = syncConfig?.PivotNumber ?? 0;
-        long bodiesBarrier = pivot == 0 ? 0 : Math.Min(pivot, syncConfig!.AncientBodiesBarrier);
-        long receiptsBarrier = pivot == 0 ? 0 : Math.Min(pivot, Math.Max(syncConfig!.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
+        bool bodiesSynced = !fastSyncing || syncConfig.DownloadBodiesInFastSync;
+        bool receiptsSynced = bodiesSynced && (!fastSyncing || syncConfig.DownloadReceiptsInFastSync);
 
-        bool bodiesSynced = !fastSyncing || syncConfig!.DownloadBodiesInFastSync;
-        bool receiptsSynced = bodiesSynced && (!fastSyncing || syncConfig!.DownloadReceiptsInFastSync);
+        long historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0;
+        DeleteStrategy? historyWindow = BuildWindow(
+            historyConfig.Pruning == PruningModes.Rolling ? historyConfig.RetentionEpochs * HistoryPruner.SlotsPerEpoch : 0);
 
-        // Mid-sync: actual progress (LowestInserted*) tracks above the configured barrier and clamps
-        // OldestBlock to what's currently available. Post-sync the pointer reaches the barrier and
-        // the Math.Max collapses to the static floor.
-        long lowestBody = Math.Max(syncPointers?.LowestInsertedBodyNumber ?? 0L, bodiesBarrier);
-        long lowestReceipt = Math.Max(syncPointers?.LowestInsertedReceiptBlockNumber ?? 0L, receiptsBarrier);
+        long lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0L, receiptsBarrier);
+        long lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0L, bodiesBarrier);
         long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0L, lowestBody);
 
-        // During fast sync, state isn't queryable until StateSyncRunner finalises and writes
-        // OldestStateBlock — disable State/Stateproofs in the gap so callers don't get told that
-        // historical state exists when only the latest snapshot is being filled in.
-        bool stateAvailable = !fastSyncing || blockTree.OldestStateBlock is not null;
-        long stateFloor = blockTree.OldestStateBlock ?? 0L;
-        long? windowOldest = worldStateManager.GetOldestStateBlock(head.Number);
-        long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
-        // Only emit window descriptor when window is the binding constraint, not the static floor.
-        DeleteStrategy? stateWindow = windowOldest is { } w && w >= stateFloor
-            ? new DeleteStrategy("window", head.Number - w)
-            : null;
+        ResourceAvailability state = BuildState(head, fastSyncing);
 
-        long historyFloor = historyPruner?.OldestBlockHeader?.Number ?? 0;
-        DeleteStrategy? historyWindow = historyConfig?.Pruning == PruningModes.Rolling
-            ? new DeleteStrategy("window", historyConfig.RetentionEpochs * HistoryPruner.SlotsPerEpoch)
-            : null;
-
-        ResourceAvailability state = Resource(stateAvailable, stateOldest, stateWindow);
         return new EthCapabilities(
-            Head: new ChainHead(head.Number, head.Hash ?? Keccak.Zero),
+            Head: new ChainHead(head.Number, head.Hash!),
             State: state,
-            Receipts: Resource(receiptsSynced, Math.Max(lowestReceipt, historyFloor), historyWindow),
-            Blocks: Resource(headersAvailable && bodiesSynced, Math.Max(lowestBlock, historyFloor), historyWindow),
+            Receipts: BuildResource(receiptsSynced, Math.Max(lowestReceipt, historyFloor), historyWindow),
+            Blocks: BuildResource(blockTree.BestSuggestedHeader is not null && bodiesSynced, Math.Max(lowestBlock, historyFloor), historyWindow),
             Stateproofs: state);
     }
 
-    private static ResourceAvailability Resource(bool enabled, long? oldestBlock, DeleteStrategy? deleteStrategy = null) =>
-        new(Disabled: !enabled,
-            OldestBlock: enabled ? oldestBlock : null,
-            DeleteStrategy: enabled ? deleteStrategy : null);
+    private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
+    {
+        // During fast sync, state isn't queryable until StateSyncRunner finalises and writes the
+        // pivot floor — disable the resource until then so callers don't see "available from genesis".
+        if (fastSyncing && blockTree.OldestStateBlock is null) return Disabled;
+
+        long stateFloor = blockTree.OldestStateBlock ?? 0L;
+        long? windowOldest = worldStateManager.GetOldestStateBlock(head.Number);
+        long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
+        // Only emit the window descriptor when the rolling window is the binding constraint;
+        // when the static floor dominates, advertising "window:N" would mislead routers.
+        DeleteStrategy? window = windowOldest is { } w && w >= stateFloor ? BuildWindow(head.Number - w) : null;
+        return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
+    }
+
+    private static ResourceAvailability BuildResource(bool enabled, long oldestBlock, DeleteStrategy? deleteStrategy) =>
+        enabled ? new ResourceAvailability(false, oldestBlock, deleteStrategy) : Disabled;
+
+    private static DeleteStrategy? BuildWindow(long retentionBlocks) =>
+        retentionBlocks > 0 ? new DeleteStrategy("window", retentionBlocks) : null;
 }

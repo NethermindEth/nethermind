@@ -13,15 +13,19 @@ using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
+using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Config;
 using Nethermind.Db.LogIndex;
 using Nethermind.Network;
 using Nethermind.State;
+using Nethermind.Synchronization;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -58,7 +62,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new BlocksConfig(),
                 Substitute.For<IForkInfo>(),
                 Substitute.For<ILogIndexConfig>(),
-                new EthCapabilitiesProvider(blockTree, Substitute.For<IWorldStateManager>()));
+                new EthCapabilitiesProvider(blockTree.AsReadOnly(), Substitute.For<IWorldStateManager>(),
+                    new SyncConfig(), Substitute.For<ISyncPointers>(),
+                    Substitute.For<IHistoryConfig>(), Substitute.For<IHistoryPruner>()));
             return Task.CompletedTask;
         }
 
