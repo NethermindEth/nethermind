@@ -91,7 +91,7 @@ configs = {
         "isPoS": False
     },
     "xdc-testnet": {
-        "url": "https://rpc.apothem.network/",
+        "url": "https://rpc.apothem.network",
         "blockReduced": 8192,
         "multiplierRequirement": 10000,
         "isPoS": False
