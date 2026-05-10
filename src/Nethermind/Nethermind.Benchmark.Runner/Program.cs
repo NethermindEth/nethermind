@@ -34,6 +34,7 @@ namespace Nethermind.Benchmark.Runner
             AddExporter(BenchmarkDotNet.Exporters.Json.JsonExporter.FullCompressed);
             AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
             WithSummaryStyle(SummaryStyle.Default.WithMaxParameterColumnWidth(100));
+            BuildTimeout = TimeSpan.FromMinutes(10);
         }
     }
 
