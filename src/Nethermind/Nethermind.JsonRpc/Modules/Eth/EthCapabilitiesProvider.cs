@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.History;
 using Nethermind.State;
+using Nethermind.Synchronization;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -15,6 +16,7 @@ public class EthCapabilitiesProvider(
     IBlockTree blockTree,
     IWorldStateManager worldStateManager,
     ISyncConfig? syncConfig = null,
+    ISyncPointers? syncPointers = null,
     IHistoryConfig? historyConfig = null,
     IHistoryPruner? historyPruner = null) : IEthCapabilitiesProvider
 {
@@ -36,8 +38,18 @@ public class EthCapabilitiesProvider(
 
         bool bodiesSynced = !fastSyncing || syncConfig!.DownloadBodiesInFastSync;
         bool receiptsSynced = bodiesSynced && (!fastSyncing || syncConfig!.DownloadReceiptsInFastSync);
-        long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0, bodiesBarrier);
 
+        // Mid-sync: actual progress (LowestInserted*) tracks above the configured barrier and clamps
+        // OldestBlock to what's currently available. Post-sync the pointer reaches the barrier and
+        // the Math.Max collapses to the static floor.
+        long lowestBody = Math.Max(syncPointers?.LowestInsertedBodyNumber ?? 0L, bodiesBarrier);
+        long lowestReceipt = Math.Max(syncPointers?.LowestInsertedReceiptBlockNumber ?? 0L, receiptsBarrier);
+        long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0L, lowestBody);
+
+        // During fast sync, state isn't queryable until StateSyncRunner finalises and writes
+        // OldestStateBlock — disable State/Stateproofs in the gap so callers don't get told that
+        // historical state exists when only the latest snapshot is being filled in.
+        bool stateAvailable = !fastSyncing || blockTree.OldestStateBlock is not null;
         long stateFloor = blockTree.OldestStateBlock ?? 0L;
         long? windowOldest = worldStateManager.GetOldestStateBlock(head.Number);
         long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
@@ -51,11 +63,11 @@ public class EthCapabilitiesProvider(
             ? new DeleteStrategy("window", historyConfig.RetentionEpochs * HistoryPruner.SlotsPerEpoch)
             : null;
 
-        ResourceAvailability state = Resource(enabled: true, stateOldest, stateWindow);
+        ResourceAvailability state = Resource(stateAvailable, stateOldest, stateWindow);
         return new EthCapabilities(
             Head: new ChainHead(head.Number, head.Hash ?? Keccak.Zero),
             State: state,
-            Receipts: Resource(receiptsSynced, Math.Max(receiptsBarrier, historyFloor), historyWindow),
+            Receipts: Resource(receiptsSynced, Math.Max(lowestReceipt, historyFloor), historyWindow),
             Blocks: Resource(headersAvailable && bodiesSynced, Math.Max(lowestBlock, historyFloor), historyWindow),
             Stateproofs: state);
     }

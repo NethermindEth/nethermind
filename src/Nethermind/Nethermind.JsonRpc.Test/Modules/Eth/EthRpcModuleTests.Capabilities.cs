@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -30,6 +31,8 @@ public partial class EthRpcModuleTests
         long headNumber = 1000,
         long? oldestStateBlock = null,
         SyncConfig? syncConfig = null,
+        long? lowestInsertedBody = null,
+        long? lowestInsertedReceipt = null,
         IHistoryConfig? historyConfig = null,
         IHistoryPruner? historyPruner = null)
     {
@@ -43,7 +46,15 @@ public partial class EthRpcModuleTests
         wsm.GetOldestStateBlock(Arg.Any<long>()).Returns(call =>
             retentionWindow is { } w ? Math.Max(0L, (long)call[0] - w) : (long?)null);
 
-        return new EthCapabilitiesProvider(blockTree, wsm, syncConfig, historyConfig, historyPruner).GetCapabilities();
+        ISyncPointers? syncPointers = null;
+        if (lowestInsertedBody is not null || lowestInsertedReceipt is not null)
+        {
+            syncPointers = Substitute.For<ISyncPointers>();
+            syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
+            syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceipt);
+        }
+
+        return new EthCapabilitiesProvider(blockTree, wsm, syncConfig, syncPointers, historyConfig, historyPruner).GetCapabilities();
     }
 
     private static IHistoryPruner MockHistoryPruner(long oldestBlockNumber)
@@ -63,6 +74,8 @@ public partial class EthRpcModuleTests
         public long? RetentionWindow { get; init; }
         public long HeadNumber { get; init; } = 1000;
         public long? OldestStateBlock { get; init; }
+        public long? LowestInsertedBody { get; init; }
+        public long? LowestInsertedReceipt { get; init; }
         public SyncConfig? SyncConfig { get; init; }
         public IHistoryConfig? HistoryConfig { get; init; }
         public IHistoryPruner? HistoryPruner { get; init; }
@@ -79,14 +92,14 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = fullSync };
 
-        // Fast-synced node with default barriers (= 0): receipts are present from genesis.
+        // Fast-synced node (state finalised) with default barriers (= 0): receipts present from genesis.
         yield return new CapabilitiesScenario(
             Name: "fast_sync_default_barriers_reports_genesis_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { HeadNumber = 18_001_000, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true } };
+        { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true } };
 
-        // Fast-synced node with AncientBodiesBarrier > 0: bodies (and therefore blocks/receipts) are missing below the barrier.
+        // Fast-synced (state finalised) with AncientBodiesBarrier > 0: bodies (and therefore blocks/receipts) missing below the barrier.
         const long bodiesBarrier = 5_000_000;
         ResourceAvailability barrierBound = new(Disabled: false, OldestBlock: bodiesBarrier);
         yield return new CapabilitiesScenario(
@@ -95,6 +108,7 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: barrierBound, ExpectedBlocks: barrierBound)
         {
             HeadNumber = 18_001_000,
+            OldestStateBlock = 0,
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true, AncientBodiesBarrier = bodiesBarrier },
         };
 
@@ -102,13 +116,44 @@ public partial class EthRpcModuleTests
             Name: "fast_sync_bodies_disabled_disables_blocks_and_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Disabled, ExpectedBlocks: Disabled)
-        { HeadNumber = 18_001_000, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadBodiesInFastSync = false } };
+        { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadBodiesInFastSync = false } };
 
         yield return new CapabilitiesScenario(
             Name: "full_sync_with_irrelevant_bodies_flag_keeps_blocks_and_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         { SyncConfig = new SyncConfig { DownloadBodiesInFastSync = false } };
+
+        // Mid-sync: bodies/receipts caught up to block 12M from pivot 18M; blocks/receipts oldest
+        // tracks the actual progress, not the eventual barrier. State sync is finished
+        // (OldestStateBlock = pivot) but historical block sync continues.
+        const long midSyncBody = 12_000_000;
+        const long midSyncReceipt = 12_500_000;
+        const long midSyncStateFloor = 18_000_000;
+        ResourceAvailability midSyncBlocks = new(Disabled: false, OldestBlock: midSyncBody);
+        ResourceAvailability midSyncReceipts = new(Disabled: false, OldestBlock: midSyncReceipt);
+        ResourceAvailability midSyncState = new(Disabled: false, OldestBlock: midSyncStateFloor);
+        yield return new CapabilitiesScenario(
+            Name: "fast_sync_mid_progress_reports_actual_lowest_inserted",
+            ExpectedState: midSyncState, ExpectedStateproofs: midSyncState,
+            ExpectedReceipts: midSyncReceipts, ExpectedBlocks: midSyncBlocks)
+        {
+            HeadNumber = 18_001_000,
+            OldestStateBlock = midSyncStateFloor,
+            LowestInsertedBody = midSyncBody,
+            LowestInsertedReceipt = midSyncReceipt,
+            SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true },
+        };
+
+        // Pre-state-sync: fast-sync configured but OldestStateBlock not yet written → State disabled.
+        yield return new CapabilitiesScenario(
+            Name: "fast_sync_before_state_finalised_disables_state",
+            ExpectedState: Disabled, ExpectedStateproofs: Disabled,
+            ExpectedReceipts: Available, ExpectedBlocks: Available)
+        {
+            HeadNumber = 18_001_000,
+            SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true },
+        };
 
         const long fastSyncFloor = 18_000_000;
         ResourceAvailability fastSyncedState = new(Disabled: false, OldestBlock: fastSyncFloor);
@@ -157,7 +202,7 @@ public partial class EthRpcModuleTests
             Name: "fast_sync_no_receipts_disables_tx_logs_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Disabled, ExpectedBlocks: Available)
-        { HeadNumber = 18_001_000, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = false } };
+        { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = false } };
 
         yield return new CapabilitiesScenario(
             Name: "full_sync_with_irrelevant_receipts_flag_keeps_receipts",
@@ -216,7 +261,8 @@ public partial class EthRpcModuleTests
     [TestCaseSource(nameof(CapabilitiesScenarios))]
     public void eth_capabilities_scenario(CapabilitiesScenario s)
     {
-        EthCapabilities caps = GetCaps(s.RetentionWindow, s.HeadNumber, s.OldestStateBlock, s.SyncConfig, s.HistoryConfig, s.HistoryPruner);
+        EthCapabilities caps = GetCaps(s.RetentionWindow, s.HeadNumber, s.OldestStateBlock, s.SyncConfig,
+            s.LowestInsertedBody, s.LowestInsertedReceipt, s.HistoryConfig, s.HistoryPruner);
 
         Assert.That(caps.Head.Number, Is.EqualTo(s.HeadNumber));
         Assert.That(caps.Head.Hash, Is.Not.EqualTo(Hash256.Zero));
