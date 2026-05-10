@@ -43,7 +43,7 @@ namespace Nethermind.Facade
 {
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge(
-        IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
+        IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> processingEnv,
         IShareableTxProcessorSource shareableTxProcessorSource,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
         Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
@@ -580,13 +580,13 @@ namespace Nethermind.Facade
     {
         public IBlockchainBridge CreateBlockchainBridge()
         {
-            PooledOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = new(
+            ShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = new(
                 BuildSingleEnv, overridableEnvPoolSize);
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
                 .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
-                .AddScoped<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>(blockProcessingEnv));
+                .AddScoped<IShareableOverridableEnvSource<BlockchainBridge.BlockProcessingComponents>>(blockProcessingEnv));
 
             blockchainBridgeLifetime.Disposer.AddInstanceForDisposal(blockProcessingEnv);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
