@@ -195,12 +195,18 @@ public static partial class EvmInstructions
         // EIP-7702: load the delegated code only after charging cold-access gas for the delegation target above.
         if (delegated is not null)
         {
-            // EIP-7928 BAL: when the delegation target is a precompile and PrecompileCachedCodeInfoRepository
-            // is active, the lookup below short-circuits without touching world state, so the read would
-            // otherwise be omitted from the generated access list. AddAccountRead is idempotent on the
-            // tracing world state and a no-op on plain ones, so this is safe in all configurations.
+            // EIP-7928 BAL: AddAccountRead is required even when the lookup below short-circuits or is skipped.
+            // Idempotent on the tracing world state, no-op on plain ones - safe in all configurations.
             state.AddAccountRead(delegated);
-            codeInfo = vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
+
+            // EIP-7702: a delegation pointing at a precompile address does NOT execute the precompile - the EOA
+            // is treated as having no executable code (FastCall path). Loading the actual stored code matches
+            // this: precompile addresses have no deployed code (codeHash == EmptyKeccak), so it returns Empty.
+            // GetCachedCodeInfoNoDelegation through PrecompileCachedCodeInfoRepository would WRONGLY return the
+            // precompile's CodeInfo via its IsPrecompile fast-path, so short-circuit here.
+            codeInfo = spec.IsPrecompile(delegated)
+                ? CodeInfo.Empty
+                : vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
         long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
