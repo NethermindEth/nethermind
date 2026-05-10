@@ -64,9 +64,10 @@ namespace Nethermind.Facade
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
 
-        // Serializes calls that go through the singleton processingEnv (state-override path).
-        // The fast path (no overrides) goes through shareableTxProcessorSource and does not use this lock.
-        private readonly System.Threading.SemaphoreSlim _exclusiveCallLock = new(1, 1);
+        // Serializes the state-override path because processingEnv holds a single _worldScopeCloser
+        // and throws on concurrent reentry. The fast path (no overrides) goes through
+        // shareableTxProcessorSource's pool and never touches this lock.
+        private readonly SemaphoreSlim _exclusiveCallLock = new(1, 1);
 
         public Block? HeadBlock
         {
@@ -155,63 +156,50 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
-        {
-            // Fast path: no overrides means we can use the shared elastic pool of read-only envs,
-            // bypassing the singleton processingEnv entirely. This eliminates head-of-line blocking
-            // for the >95% of eth_call traffic that has no overrides.
-            if (stateOverride is null && blobBaseFeeOverride is null)
-            {
-                return CallShareable(header, tx, cancellationToken);
-            }
-            return CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, cancellationToken);
-        }
+        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
+            HasOverrides(stateOverride, blobBaseFeeOverride)
+                ? CallExclusive(header, tx, stateOverride, blobBaseFeeOverride, cancellationToken)
+                : CallShareable(header, tx, cancellationToken);
 
         private CallOutput CallShareable(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             using IReadOnlyTxProcessingScope scope = shareableTxProcessorSource.Build(header);
-
-            CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(stateReader, scope.TransactionProcessor, header, tx, false,
-                blobBaseFeeOverride: null, callOutputTracer.WithCancellation(cancellationToken));
-
-            return new CallOutput
-            {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                GasSpent = callOutputTracer.GasSpent,
-                OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted,
-                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
-            };
+            return RunCall(stateReader, scope.TransactionProcessor, header, tx, blobBaseFeeOverride: null, cancellationToken);
         }
 
         private CallOutput CallExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
-            // The processingEnv is single-threaded (singleton _worldScopeCloser); serialize concurrent override calls.
             _exclusiveCallLock.Wait(cancellationToken);
             try
             {
                 using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
                 scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
-
-                CallOutputTracer callOutputTracer = new();
-                TransactionResult tryCallResult = TryCallAndRestore(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, false,
-                    blobBaseFeeOverride, callOutputTracer.WithCancellation(cancellationToken));
-
-                return new CallOutput
-                {
-                    Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                    GasSpent = callOutputTracer.GasSpent,
-                    OutputData = callOutputTracer.ReturnValue,
-                    InputError = !tryCallResult.TransactionExecuted,
-                    ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
-                };
+                return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
             }
             finally
             {
                 _exclusiveCallLock.Release();
             }
         }
+
+        private CallOutput RunCall(IStateReader nonceReader, ITransactionProcessor txProcessor, BlockHeader header, Transaction tx, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
+        {
+            CallOutputTracer tracer = new();
+            TransactionResult result = TryCallAndRestore(nonceReader, txProcessor, header, tx, treatBlockHeaderAsParentBlock: false,
+                blobBaseFeeOverride, tracer.WithCancellation(cancellationToken));
+
+            return new CallOutput
+            {
+                Error = ConstructError(result, tracer.Error),
+                GasSpent = tracer.GasSpent,
+                OutputData = tracer.ReturnValue,
+                InputError = !result.TransactionExecuted,
+                ExecutionReverted = result.EvmExceptionType == EvmExceptionType.Revert,
+            };
+        }
+
+        private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride) =>
+            stateOverride is not null || blobBaseFeeOverride is not null;
 
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
         {
@@ -221,15 +209,10 @@ namespace Nethermind.Facade
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
-        {
-            // Fast path: no overrides means we can use the shared elastic pool (no head-of-line blocking).
-            if (stateOverride is null && blobBaseFeeOverride is null)
-            {
-                return EstimateGasShareable(header, tx, errorMargin, cancellationToken);
-            }
-            return EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, cancellationToken);
-        }
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
+            HasOverrides(stateOverride, blobBaseFeeOverride)
+                ? EstimateGasExclusive(header, tx, errorMargin, stateOverride, blobBaseFeeOverride, cancellationToken)
+                : EstimateGasShareable(header, tx, errorMargin, cancellationToken);
 
         private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
@@ -291,15 +274,10 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
-        {
-            // Fast path: no overrides means we can use the shared elastic pool (no head-of-line blocking).
-            if (stateOverride is null && blobBaseFeeOverride is null)
-            {
-                return CreateAccessListShareable(header, tx, optimize, cancellationToken);
-            }
-            return CreateAccessListExclusive(header, tx, stateOverride, optimize, blobBaseFeeOverride, cancellationToken);
-        }
+        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken) =>
+            HasOverrides(stateOverride, blobBaseFeeOverride)
+                ? CreateAccessListExclusive(header, tx, stateOverride, optimize, blobBaseFeeOverride, cancellationToken)
+                : CreateAccessListShareable(header, tx, optimize, cancellationToken);
 
         private CallOutput CreateAccessListShareable(BlockHeader header, Transaction tx, bool optimize, CancellationToken cancellationToken)
         {
