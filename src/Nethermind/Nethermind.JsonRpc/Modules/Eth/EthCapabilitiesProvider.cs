@@ -41,6 +41,7 @@ public class EthCapabilitiesProvider(
         long stateFloor = blockTree.OldestStateBlock ?? 0L;
         long? windowOldest = worldStateManager.GetOldestStateBlock(head.Number);
         long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
+        // Only emit window descriptor when window is the binding constraint, not the static floor.
         DeleteStrategy? stateWindow = windowOldest is { } w && w >= stateFloor
             ? new DeleteStrategy("window", head.Number - w)
             : null;
