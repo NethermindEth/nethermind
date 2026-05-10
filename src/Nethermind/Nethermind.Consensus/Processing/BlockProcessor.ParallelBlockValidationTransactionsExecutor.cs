@@ -38,11 +38,16 @@ public partial class BlockProcessor
         private int[] _txExecutionOrder = [];
         private TxExecutionSortKey[] _txExecutionSortKeys = [];
 
-        // Reflects how the most recent block was executed; consumed by ProcessingStats to label
-        // the "Processed" log line. Per-chunk (last block wins on multi-block batches), which is
-        // fine for the typical live-head case of one block per slot. volatile so cross-thread
-        // monitoring readers (Prometheus scrapers, dashboards) see fresh writes without barriers.
-        public static volatile bool LastBlockUsedParallelExecution;
+        // Reflects how the most recent block was executed on the current processing thread; consumed by
+        // ProcessingStats on the same thread to label the Block-throughput log line. ThreadStatic so
+        // concurrent processing pipelines (tests, multi-context hosts) cannot overwrite each other's
+        // value, and so a stale write from one BlockProcessor instance cannot leak into another's log.
+        [ThreadStatic] private static bool _lastBlockUsedParallelExecution;
+        public static bool LastBlockUsedParallelExecution
+        {
+            get => _lastBlockUsedParallelExecution;
+            private set => _lastBlockUsedParallelExecution = value;
+        }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -77,6 +82,10 @@ public partial class BlockProcessor
             return receipts;
         }
 
+        // Recomputes effective gas price for each tx serially after parallel workers join; the
+        // alternative (per-worker thread-local accumulators merged after join) was rejected because
+        // avg/median don't compose losslessly across partitions and the cost here is bounded:
+        // ~150 txs/block * (one Min/Add UInt256 op + a few float ops) ~ <20us, vs ~100ms block work.
         private void AggregateBlockGasPriceMetrics(Block block)
         {
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
