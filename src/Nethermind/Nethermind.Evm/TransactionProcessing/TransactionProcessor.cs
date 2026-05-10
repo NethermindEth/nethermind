@@ -198,7 +198,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
-            UpdateMetrics(opts, effectiveGasPrice);
+            UpdateMetrics(opts, in effectiveGasPrice);
 
             bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
@@ -446,18 +446,14 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual IReleaseSpec GetSpec(BlockHeader header) => VirtualMachine.BlockExecutionContext.Spec;
 
-        private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
+        // Parallel BAL workers set Metrics.SuppressInlineGasPriceUpdate so racy folds
+        // defer to a serial post-pass in the parallel executor.
+        private static void UpdateMetrics(ExecutionOptions opts, in UInt256 effectiveGasPrice)
         {
-            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp && (effectiveGasPrice[2] | effectiveGasPrice[3]) == 0)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None or ExecutionOptions.BuildUp
+                && !Metrics.SuppressInlineGasPriceUpdate)
             {
-                float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
-
-                Metrics.BlockMinGasPrice = Math.Min(gasPrice, Metrics.BlockMinGasPrice);
-                Metrics.BlockMaxGasPrice = Math.Max(gasPrice, Metrics.BlockMaxGasPrice);
-
-                Metrics.BlockAveGasPrice = (Metrics.BlockAveGasPrice * Metrics.BlockTransactions + gasPrice) / (Metrics.BlockTransactions + 1);
-                Metrics.BlockEstMedianGasPrice += Metrics.BlockAveGasPrice * 0.01f * float.Sign(gasPrice - Metrics.BlockEstMedianGasPrice);
-                Metrics.BlockTransactions++;
+                Metrics.UpdateBlockGasPrice(in effectiveGasPrice);
             }
         }
 

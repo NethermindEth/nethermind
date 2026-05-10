@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Threading;
@@ -10,6 +11,8 @@ using System.Threading;
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 
 namespace Nethermind.Evm;
+
+using Int256;
 
 public class Metrics
 {
@@ -225,5 +228,40 @@ public class Metrics
         BlockMaxGasPrice = 0.0f;
         BlockEstMedianGasPrice = 0.0f;
         BlockMinGasPrice = float.MaxValue;
+    }
+
+    // Parallel BAL workers race on the static aggregates; setter-restorer dance around
+    // each worker invocation defers folding to a serial post-pass.
+    [ThreadStatic] private static bool _suppressInlineGasPriceUpdate;
+    internal static bool SuppressInlineGasPriceUpdate
+    {
+        get => _suppressInlineGasPriceUpdate;
+        set => _suppressInlineGasPriceUpdate = value;
+    }
+
+    // Gas prices fit in ulong in practice (ulong.MaxValue ~ 1.8e19 wei == 1.8e10 gwei,
+    // far above any realistic effective gas price). Using .u0 dodges the multi-limb
+    // UInt256 -> double conversion in favour of a single cvtsi2sd.
+    internal static void UpdateBlockGasPrice(in UInt256 effectiveGasPrice)
+    {
+        if (!effectiveGasPrice.IsUint64) return;
+        float gasPrice = (float)(effectiveGasPrice.u0 / 1_000_000_000.0);
+        BlockMinGasPrice = Math.Min(gasPrice, BlockMinGasPrice);
+        BlockMaxGasPrice = Math.Max(gasPrice, BlockMaxGasPrice);
+        BlockAveGasPrice = (BlockAveGasPrice * BlockTransactions + gasPrice) / (BlockTransactions + 1);
+        BlockEstMedianGasPrice += BlockAveGasPrice * 0.01f * float.Sign(gasPrice - BlockEstMedianGasPrice);
+        BlockTransactions++;
+    }
+
+    // No-op when at least one user tx already folded (BlockMinGasPrice has moved off MaxValue).
+    internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee)
+    {
+        if (BlockMinGasPrice != float.MaxValue) return;
+        if (!baseFee.IsUint64) return;
+        float gasPrice = (float)(baseFee.u0 / 1_000_000_000.0);
+        BlockMinGasPrice = gasPrice;
+        BlockMaxGasPrice = gasPrice;
+        BlockAveGasPrice = gasPrice;
+        BlockEstMedianGasPrice = gasPrice;
     }
 }
