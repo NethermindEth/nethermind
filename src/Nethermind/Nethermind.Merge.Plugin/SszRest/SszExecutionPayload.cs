@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -62,19 +63,34 @@ public partial class SszExecutionPayloadV1(ExecutionPayload inner)
     public ulong BlockNumber
     {
         get => (ulong)inner.BlockNumber;
-        set => inner.BlockNumber = (long)value;
+        set
+        {
+            if (value > (ulong)long.MaxValue)
+                throw new InvalidDataException($"SSZ uint64 value {value} exceeds valid range for BlockNumber");
+            inner.BlockNumber = (long)value;
+        }
     }
 
     public ulong GasLimit
     {
         get => (ulong)inner.GasLimit;
-        set => inner.GasLimit = (long)value;
+        set
+        {
+            if (value > (ulong)long.MaxValue)
+                throw new InvalidDataException($"SSZ uint64 value {value} exceeds valid range for GasLimit");
+            inner.GasLimit = (long)value;
+        }
     }
 
     public ulong GasUsed
     {
         get => (ulong)inner.GasUsed;
-        set => inner.GasUsed = (long)value;
+        set
+        {
+            if (value > (ulong)long.MaxValue)
+                throw new InvalidDataException($"SSZ uint64 value {value} exceeds valid range for GasUsed");
+            inner.GasUsed = (long)value;
+        }
     }
 
     public ulong Timestamp
@@ -185,19 +201,34 @@ public partial class SszExecutionPayload(ExecutionPayload inner)
     public ulong BlockNumber
     {
         get => (ulong)_inner.BlockNumber;
-        set => _inner.BlockNumber = (long)value;
+        set
+        {
+            if (value > (ulong)long.MaxValue)
+                throw new InvalidDataException($"SSZ uint64 value {value} exceeds valid range for BlockNumber");
+            _inner.BlockNumber = (long)value;
+        }
     }
 
     public ulong GasLimit
     {
         get => (ulong)_inner.GasLimit;
-        set => _inner.GasLimit = (long)value;
+        set
+        {
+            if (value > (ulong)long.MaxValue)
+                throw new InvalidDataException($"SSZ uint64 value {value} exceeds valid range for GasLimit");
+            _inner.GasLimit = (long)value;
+        }
     }
 
     public ulong GasUsed
     {
         get => (ulong)_inner.GasUsed;
-        set => _inner.GasUsed = (long)value;
+        set
+        {
+            if (value > (ulong)long.MaxValue)
+                throw new InvalidDataException($"SSZ uint64 value {value} exceeds valid range for GasUsed");
+            _inner.GasUsed = (long)value;
+        }
     }
 
     public ulong Timestamp

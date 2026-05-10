@@ -20,6 +20,8 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     where TVersion : struct, IPayloadBodiesByRangeVersion<TResult>
     where TResult : class
 {
+    private const int MaxPayloadBodiesRequest = 32;
+
     public override string HttpMethod => "POST";
     public override string Resource => SszRestPaths.PayloadBodiesByRange;
     public override int? Version => TVersion.VersionNumber;
@@ -27,6 +29,12 @@ public sealed class GetPayloadBodiesByRangeSszHandler<TVersion, TResult>(IEngine
     public override async Task HandleAsync(HttpContext ctx, int v, ReadOnlyMemory<char> extra, ReadOnlySequence<byte> body)
     {
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(body);
+        if (count > MaxPayloadBodiesRequest)
+        {
+            await WriteErrorAsync(ctx, StatusCodes.Status400BadRequest,
+                $"count {count} exceeds the SSZ limit of {MaxPayloadBodiesRequest}");
+            return;
+        }
         ResultWrapper<IReadOnlyList<TResult?>> result = await TVersion.Call(engineModule, start, count);
         await WriteSszResultAsync(ctx, result, TVersion.Encode);
     }

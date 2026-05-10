@@ -540,8 +540,11 @@ internal static class SszCodecHelpers
             string remainderGuard = property.Kind == Kind.List
                 ? $"if ({sliceExpression}.Length % {itemSize} != 0) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: expected a multiple of {itemSize} bytes, got {{{sliceExpression}.Length}}\");"
                 : string.Empty;
+            string limitGuard = (property.Kind == Kind.List && property.Limit.HasValue)
+                ? $"if (__count > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: list count {{__count}} exceeds SSZ limit {property.Limit.Value}\");"
+                : string.Empty;
             string validation = ValidationStatement(decl, property, $"container.{property.Name}");
-            string loop = $"{{ {remainderGuard} int __count = {countExpr}; {property.Type.Name}[] {variableName} = new {property.Type.Name}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
+            string loop = $"{{ {remainderGuard} int __count = {countExpr}; {limitGuard} {property.Type.Name}[] {variableName} = new {property.Type.Name}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
             return string.IsNullOrEmpty(validation) ? loop : $"{loop} {validation}";
         }
 
@@ -562,7 +565,16 @@ internal static class SszCodecHelpers
 
         string assignment2 = property.IsCollection ? $"container.{property.Name} = [ ..{variableName}];" : $"container.{property.Name} = {variableName};";
         string validation2 = ValidationStatement(decl, property, $"container.{property.Name}");
-        return string.IsNullOrEmpty(validation2) ? $"{decode} {assignment2}" : $"{decode} {assignment2} {validation2}";
+
+        string preAllocationListGuard = string.Empty;
+        if (property.Kind == Kind.List && property.Limit.HasValue && !property.HandledByStd)
+        {
+            preAllocationListGuard = property.Type.IsVariable
+                ? $"if ({sliceExpression}.Length >= {SszType.PointerLength}) {{ SszLib.Decode({sliceExpression}.Slice(0, {SszType.PointerLength}), out int __firstOffset); int __preCount = __firstOffset / {SszType.PointerLength}; if (__preCount > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: list count {{__preCount}} exceeds SSZ limit {property.Limit.Value}\"); }}"
+                : $"{{ int __preCount = {sliceExpression}.Length / {property.Type.StaticLength}; if (__preCount > {property.Limit.Value}) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: list count {{__preCount}} exceeds SSZ limit {property.Limit.Value}\"); }}";
+        }
+
+        return string.IsNullOrEmpty(validation2) ? $"{preAllocationListGuard} {decode} {assignment2}" : $"{preAllocationListGuard} {decode} {assignment2} {validation2}";
     }
 
     private static string RefTypeBasicMerkleizeStatement(SszProperty property, string expression, string rootName)
