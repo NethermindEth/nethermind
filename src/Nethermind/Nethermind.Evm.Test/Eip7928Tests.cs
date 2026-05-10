@@ -302,6 +302,98 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// EIP-7928 regression: DELEGATECALL to a precompile records the precompile (codeSource) in BAL.
+    /// </summary>
+    /// <remarks>
+    /// For DELEGATECALL/CALLCODE, target == ExecutingAccount, so the indirect <c>AccountExists(target)</c> records
+    /// the caller, not the precompile. The decorator's <c>IsPrecompile</c> fast-path otherwise skips AddAccountRead.
+    /// </remarks>
+    [Test]
+    public void DelegateCall_to_precompile_records_codeSource_in_BAL_under_PrecompileCachedCodeInfoRepository()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+
+        InitWorldState(TestState);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessorWithPrecompileCache();
+
+        Block block = Build.A.Block.TestObject;
+
+        byte[] code = Prepare.EvmCode
+            .DelegateCall(precompileAddress, 50_000)
+            .Done;
+
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .WithValue(_testAccountBalance)
+            .TestObject;
+        long intrinsicGas = IntrinsicGasCalculator
+            .Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
+        long gasLimit = intrinsicGas + _gasLimit;
+
+        Transaction tx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(gasLimit)
+            .WithValue(_testAccountBalance)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
+        AccountChanges? precompileChanges = bal.GetAccountChanges(precompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(precompileChanges, Is.Not.Null,
+                "DELEGATECALL codeSource (precompile) must be recorded in BAL even when the decorator's fast-path is active");
+        }
+    }
+
+    /// <summary>
+    /// EIP-7928 regression: top-level transaction with <c>tx.to == precompile_address</c> records the recipient in BAL.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TransactionProcessor"/>'s <c>BuildExecutionEnvironment</c> only calls <c>accessTracker.WarmUp</c> (EIP-2929)
+    /// on the recipient. With <c>tx.value == 0</c> there is no incidental <c>AddBalanceChange</c> to create the entry.
+    /// </remarks>
+    [Test]
+    public void Direct_transaction_to_precompile_records_recipient_in_BAL_under_PrecompileCachedCodeInfoRepository()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+
+        InitWorldState(TestState);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessorWithPrecompileCache();
+
+        Block block = Build.A.Block.TestObject;
+
+        Transaction tx = Build.A.Transaction
+            .To(precompileAddress)
+            .WithData([1, 2, 3])
+            .WithGasLimit(50_000)
+            .WithValue(UInt256.Zero)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
+        AccountChanges? precompileChanges = bal.GetAccountChanges(precompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(precompileChanges, Is.Not.Null,
+                "Top-level transaction recipient that is a precompile must be recorded in BAL");
+        }
+    }
+
     private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessorWithPrecompileCache(bool? parallelOverride = null)
     {
         bool useParallel = parallelOverride ?? parallel;
@@ -311,7 +403,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumPrecompileProvider precompileProvider = new();
         EthereumCodeInfoRepository baseRepo = new(tracedState);
-        PrecompileCachedCodeInfoRepository codeInfoRepo = new(precompileProvider, baseRepo, precompileCache: null);
+        PrecompileCachedCodeInfoRepository codeInfoRepo = new(tracedState, precompileProvider, baseRepo, precompileCache: null);
         EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
         TransactionProcessor<EthereumGasPolicy> processor = new(
             BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
