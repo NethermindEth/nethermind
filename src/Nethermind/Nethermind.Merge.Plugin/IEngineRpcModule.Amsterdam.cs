@@ -19,34 +19,34 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszGet<PayloadIdRequest, GetPayloadResponseV6Wire>]
+    [SszGet<PayloadIdRequest, GetPayloadResponseV6Wire>(SszRestPaths.Payloads, "payload_id", noStore: true)]
     Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost<NewPayloadV5RequestWire, PayloadStatusWire>]
+    [SszPost<NewPayloadV5RequestWire, PayloadStatusWire>(SszRestPaths.Payloads)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV5(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
 
     [JsonRpcMethod(
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost<ForkchoiceUpdatedRequestWire, ForkchoiceUpdatedResponseWire>]
+    [SszPost<ForkchoiceUpdatedRequestWire, ForkchoiceUpdatedResponseWire>(SszRestPaths.Forkchoice)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost<GetPayloadBodiesByHashRequestWire, PayloadBodiesV2ResponseWire>]
+    [SszPost<GetPayloadBodiesByHashRequestWire, PayloadBodiesV2ResponseWire>(SszRestPaths.PayloadBodiesByHash)]
     Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the provided number range",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost<GetPayloadBodiesByRangeRequestWire, PayloadBodiesV2ResponseWire>]
+    [SszPost<GetPayloadBodiesByRangeRequestWire, PayloadBodiesV2ResponseWire>(SszRestPaths.PayloadBodiesByRange)]
     Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count);
 }

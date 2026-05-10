@@ -20,27 +20,27 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost<ForkchoiceUpdatedV3RequestWire, ForkchoiceUpdatedResponseWire>]
+    [SszPost<ForkchoiceUpdatedV3RequestWire, ForkchoiceUpdatedResponseWire>(SszRestPaths.Forkchoice)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost<NewPayloadV3RequestWire, PayloadStatusWire>]
+    [SszPost<NewPayloadV3RequestWire, PayloadStatusWire>(SszRestPaths.Payloads)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
 
     [JsonRpcMethod(
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszGet<PayloadIdRequest, GetPayloadResponseV3Wire>]
+    [SszGet<PayloadIdRequest, GetPayloadResponseV3Wire>(SszRestPaths.Payloads, "payload_id", noStore: true)]
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost<GetBlobsRequestWire, GetBlobsV1ResponseWire>]
+    [SszPost<GetBlobsRequestWire, GetBlobsV1ResponseWire>(SszRestPaths.Blobs)]
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes);
 }

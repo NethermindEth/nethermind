@@ -8,66 +8,58 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-internal sealed class SszGetAttribute<TRequest, TResponse>()
-    : SszRestAttribute("GET", typeof(TRequest), typeof(TResponse))
+internal sealed class SszGetAttribute<TRequest, TResponse>(
+    string resource,
+    string extraPathName = "",
+    bool noStore = false)
+    : SszRestAttribute("GET", resource, typeof(TRequest), typeof(TResponse), extraPathName.Length != 0, extraPathName, noStore)
     where TRequest : ISszRpcRequest<TRequest>
     where TResponse : ISszCodec<TResponse>;
 
-internal sealed class SszPostAttribute<TRequest, TResponse>()
-    : SszRestAttribute("POST", typeof(TRequest), typeof(TResponse))
+internal sealed class SszPostAttribute<TRequest, TResponse>(string resource)
+    : SszRestAttribute("POST", resource, typeof(TRequest), typeof(TResponse))
     where TRequest : ISszRpcRequest<TRequest>
     where TResponse : ISszCodec<TResponse>;
 
 [AttributeUsage(AttributeTargets.Method)]
-internal abstract class SszRestAttribute(string httpMethod, Type requestType, Type responseType) : Attribute
+internal abstract class SszRestAttribute(
+    string httpMethod,
+    string resource,
+    Type requestType,
+    Type responseType,
+    bool acceptsPathExtra = false,
+    string extraPathName = "",
+    bool noStore = false) : Attribute
 {
     private const string EnginePrefix = "engine_";
-    private const string PayloadIdPathExtraName = "payload_id";
 
     public string HttpMethod { get; } = httpMethod;
+    public string Resource { get; } = resource;
     public Type RequestType { get; } = requestType;
     public Type ResponseType { get; } = responseType;
+    public bool AcceptsPathExtra { get; } = acceptsPathExtra;
+    public string ExtraPathName { get; } = extraPathName;
+    public bool NoStore { get; } = noStore;
 
     internal SszRestMetadata ToMetadata(MethodInfo method)
-    {
-        SszRestMetadata metadata = Infer(method, RequestType, ResponseType);
-        if (!StringComparer.Ordinal.Equals(HttpMethod, metadata.HttpMethod))
-            throw new InvalidOperationException($"{method.Name} is an SSZ REST {metadata.HttpMethod} endpoint, but is marked as {HttpMethod}.");
-
-        return metadata;
-    }
-
-    private static SszRestMetadata Infer(MethodInfo method, Type requestType, Type responseType)
     {
         if (!method.Name.StartsWith(EnginePrefix, StringComparison.Ordinal))
             throw Unsupported(method);
 
-        (string family, int version) = SplitVersion(method.Name[EnginePrefix.Length..]);
-
-        return family switch
-        {
-            "exchangeCapabilities" => new("POST", version, SszRestPaths.Capabilities, requestType, responseType),
-            "forkchoiceUpdated" => new("POST", version, SszRestPaths.Forkchoice, requestType, responseType),
-            "getBlobs" => new("POST", version, SszRestPaths.Blobs, requestType, responseType),
-            "getClientVersion" => new("POST", version, SszRestPaths.ClientVersion, requestType, responseType),
-            "getPayload" => new("GET", version, SszRestPaths.Payloads, requestType, responseType, true, PayloadIdPathExtraName, true),
-            "getPayloadBodiesByHash" => new("POST", version, SszRestPaths.PayloadBodiesByHash, requestType, responseType),
-            "getPayloadBodiesByRange" => new("POST", version, SszRestPaths.PayloadBodiesByRange, requestType, responseType),
-            "newPayload" => new("POST", version, SszRestPaths.Payloads, requestType, responseType),
-            _ => throw Unsupported(method)
-        };
+        int version = GetVersion(method.Name[EnginePrefix.Length..]);
+        return new SszRestMetadata(HttpMethod, version, Resource, RequestType, ResponseType, AcceptsPathExtra, ExtraPathName, NoStore);
     }
 
-    private static (string Family, int Version) SplitVersion(string name)
+    private static int GetVersion(string name)
     {
         int versionStart = name.Length - 1;
         while (versionStart >= 0 && char.IsDigit(name[versionStart]))
             versionStart--;
 
         if (versionStart >= 0 && versionStart < name.Length - 1 && name[versionStart] == 'V')
-            return (name[..versionStart], int.Parse(name[(versionStart + 1)..], CultureInfo.InvariantCulture));
+            return int.Parse(name[(versionStart + 1)..], CultureInfo.InvariantCulture);
 
-        return (name, 1);
+        return 1;
     }
 
     private static InvalidOperationException Unsupported(MethodInfo method) =>
