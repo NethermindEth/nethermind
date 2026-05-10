@@ -64,6 +64,10 @@ public class NewPayloadSerializationBenchmarks : IDisposable
     [Params(0, 1, 3, 6, 12, 24, 36, 72)]
     public int Blobs;
 
+    // Heavy-block baseline: 250 × 600 B ≈ 150 KB of tx data — matches a typical
+    // mainnet block. Bump for worst-case stress (~2500 × 600 B ≈ 1.5 MB).
+    private const int Txs = 250;
+
     private IHost _sszHost = null!;
     private IHost _jsonHost = null!;
     private TestServer _sszServer = null!;
@@ -77,7 +81,7 @@ public class NewPayloadSerializationBenchmarks : IDisposable
     [GlobalSetup]
     public void GlobalSetup()
     {
-        ExecutionPayloadV3 payload = BuildMaxBlobPayload(Blobs);
+        ExecutionPayloadV3 payload = BuildMaxBlobPayload(Blobs, Txs);
         Hash256[] blobHashes = BuildBlobVersionedHashes(Blobs);
         Hash256 parentRoot = TestItem.KeccakA;
 
@@ -158,7 +162,9 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         return (int)response.StatusCode;
     }
 
-    private static ExecutionPayloadV3 BuildMaxBlobPayload(int blobs) => new()
+    private const int CapellaMaxWithdrawals = 16;
+
+    private static ExecutionPayloadV3 BuildMaxBlobPayload(int blobs, int txs) => new()
     {
         ParentHash = TestItem.KeccakA,
         FeeRecipient = TestItem.AddressA,
@@ -176,13 +182,25 @@ public class NewPayloadSerializationBenchmarks : IDisposable
         BlobGasUsed = (ulong)(blobs * 0x20000),
         ExcessBlobGas = 0x40000,
         ParentBeaconBlockRoot = TestItem.KeccakA,
-        Transactions = BuildTransactions(count: 50, sizeEach: 300),
-        Withdrawals =
-        [
-            new Withdrawal { Index = 0, ValidatorIndex = 1, Address = TestItem.AddressA, AmountInGwei = 1000 },
-            new Withdrawal { Index = 1, ValidatorIndex = 2, Address = TestItem.AddressB, AmountInGwei = 2000 },
-        ],
+        Transactions = BuildTransactions(count: txs, sizeEach: 600),
+        Withdrawals = BuildWithdrawals(CapellaMaxWithdrawals),
     };
+
+    private static Withdrawal[] BuildWithdrawals(int count)
+    {
+        Withdrawal[] withdrawals = new Withdrawal[count];
+        for (int i = 0; i < count; i++)
+        {
+            withdrawals[i] = new Withdrawal
+            {
+                Index = (ulong)i,
+                ValidatorIndex = (ulong)(i + 1),
+                Address = TestItem.Addresses[i % TestItem.Addresses.Length],
+                AmountInGwei = (ulong)((i + 1) * 1000),
+            };
+        }
+        return withdrawals;
+    }
 
     private static byte[][] BuildTransactions(int count, int sizeEach)
     {
