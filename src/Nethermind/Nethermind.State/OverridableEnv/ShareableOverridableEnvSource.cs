@@ -22,7 +22,7 @@ public sealed class ShareableOverridableEnvSource<T>(
 {
     private readonly ConcurrentStack<IOverridableEnv<T>> _idle = new();
     private int _retainedCount;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null)
     {
