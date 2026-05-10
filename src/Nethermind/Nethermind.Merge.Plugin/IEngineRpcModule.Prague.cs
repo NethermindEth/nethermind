@@ -17,13 +17,13 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost]
+    [SszPost<NewPayloadV4RequestWire, PayloadStatusWire>]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests);
 
     [JsonRpcMethod(
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszGet]
+    [SszGet<PayloadIdRequest, GetPayloadResponseV4Wire>]
     public Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId);
 }

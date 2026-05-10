@@ -48,7 +48,7 @@ file static class ServiceCollectionExtensions
     {
         foreach ((System.Reflection.MethodInfo method, SszRestMetadata metadata) in SszRpcEndpointHandler.GetEndpoints())
             services.AddSingleton<ISszEndpointHandler>(sp =>
-                new SszRpcEndpointHandler(sp.GetRequiredService<IEngineRpcModule>(), method, metadata));
+                SszRpcEndpointHandler.CreateHandler(sp.GetRequiredService<IEngineRpcModule>(), method, metadata));
     }
 }
 

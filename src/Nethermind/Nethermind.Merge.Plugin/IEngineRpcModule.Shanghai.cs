@@ -19,34 +19,34 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost]
+    [SszPost<ForkchoiceUpdatedV2RequestWire, ForkchoiceUpdatedResponseWire>]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV2(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
 
     [JsonRpcMethod(
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszGet]
+    [SszGet<PayloadIdRequest, GetPayloadResponseV2Wire>]
     Task<ResultWrapper<GetPayloadV2Result?>> engine_getPayloadV2(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost]
+    [SszPost<GetPayloadBodiesByHashRequestWire, PayloadBodiesV1ResponseWire>]
     ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>> engine_getPayloadBodiesByHashV1(IReadOnlyList<Hash256> blockHashes);
 
     [JsonRpcMethod(
         Description = "Returns an array of execution payload bodies for the provided number range",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost]
+    [SszPost<GetPayloadBodiesByRangeRequestWire, PayloadBodiesV1ResponseWire>]
     Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> engine_getPayloadBodiesByRangeV1(long start, long count);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost]
+    [SszPost<NewPayloadV2RequestWire, PayloadStatusWire>]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload);
 }

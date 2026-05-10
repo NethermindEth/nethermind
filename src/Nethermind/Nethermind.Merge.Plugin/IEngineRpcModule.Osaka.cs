@@ -17,20 +17,20 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszGet]
+    [SszGet<PayloadIdRequest, GetPayloadResponseV5Wire>]
     public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost]
+    [SszPost<GetBlobsRequestWire, GetBlobsV2ResponseWire>]
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV2(byte[][] blobVersionedHashes);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
-    [SszPost]
+    [SszPost<GetBlobsRequestWire, GetBlobsV3ResponseWire>]
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes);
 }
