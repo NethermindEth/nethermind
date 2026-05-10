@@ -7,7 +7,7 @@ class SszType
     // Types annotated with [SszBasicType] are discovered at generation time via
     // DiscoverKnownTypes(Compilation) — see below. The list here covers BCL primitives
     // and Nethermind core types that aren't (or can't be) decorated with that attribute.
-    public static List<SszType> BasicTypes { get; set; } =
+    public static List<SszType> BasicTypes { get; } =
     [
         Primitive<byte>(),
         Primitive<ushort>(),
