@@ -316,6 +316,9 @@ public class TrieNodeTests
         childRlp.UnderlyingArray.Should().BeSameAs(parentRlp.UnderlyingArray);
         childRlp.Offset.Should().BeGreaterThan(parentRlp.Offset);
         childRlp.AsSpan().ToArray().Should().Equal(ctx.TiniestLeaf.FullRlp.AsSpan().ToArray());
+
+        TrieNode clone = child.Clone();
+        clone.FullRlp.AsSpan().ToArray().Should().Equal(childRlp.AsSpan().ToArray());
     }
 
     [Test]
@@ -1183,6 +1186,21 @@ public class TrieNodeTests
         result.IsNotNull.Should().BeTrue();
         result.Length.Should().Be(10);
         result.UnderlyingArray.Should().BeSameAs(small);
+    }
+
+    [Test]
+    public void WriteRlp_preserves_non_zero_offset()
+    {
+        byte[] backing = [0, 1, 2, 3, 4];
+        CappedArray<byte> slice = new(backing, 2, 2);
+        TrieNode node = new(NodeType.Leaf, CappedArray<byte>.Empty);
+
+        node.WriteRlp(slice);
+
+        CappedArray<byte> result = node.FullRlp;
+        result.UnderlyingArray.Should().BeSameAs(backing);
+        result.Offset.Should().Be(2);
+        result.AsSpan().ToArray().Should().Equal(new byte[] { 2, 3 });
     }
 
     [Test]

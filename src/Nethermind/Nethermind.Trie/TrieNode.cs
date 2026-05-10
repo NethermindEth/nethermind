@@ -131,7 +131,7 @@ namespace Nethermind.Trie
                     Volatile.Write(ref _rlpArray, value.UnderlyingArray);
                     // Advance sequence by 2 and clear lock bit (even), store final length
                     uint doneSeq = (seq + 2) & 0xFFFFFFFE;
-                    Volatile.Write(ref _rlpSeqAndLength, (ulong)doneSeq << 32 | (uint)value.Length);
+                    Volatile.Write(ref _rlpSeqAndLength, CreateRlpMetadata(value, doneSeq));
                     return;
                 }
                 spin.SpinOnce(); // CAS failed — another writer raced; back off before retry
@@ -145,15 +145,25 @@ namespace Nethermind.Trie
         private void InitRlp(CappedArray<byte> value)
         {
             _rlpArray = value.UnderlyingArray;
-            _rlpSeqAndLength = (uint)value.Length;
+            _rlpSeqAndLength = CreateRlpMetadata(value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void InitRlpSlice(byte[] parentRlp, int offset, int length)
         {
             _rlpArray = parentRlp;
-            _rlpSeqAndLength = RlpSliceFlag | ((ulong)(uint)offset << RlpSliceOffsetShift) | (uint)length;
+            _rlpSeqAndLength = CreateRlpSliceMetadata(offset, length);
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong CreateRlpMetadata(CappedArray<byte> value, uint normalSeq = 0) =>
+            value.Offset == 0
+                ? ((ulong)normalSeq << 32) | (uint)value.Length
+                : CreateRlpSliceMetadata(value.Offset, value.Length);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong CreateRlpSliceMetadata(int offset, int length) =>
+            RlpSliceFlag | ((ulong)(uint)offset << RlpSliceOffsetShift) | (uint)length;
 
         /// <summary>
         /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
