@@ -308,14 +308,7 @@ public class NewPayloadSerializationBenchmarks : IDisposable
 
     private static IHost BuildSszServer(IEngineRpcModule engine)
     {
-        ISszEndpointHandler[] handlers =
-        [
-            new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(engine),
-            new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(engine),
-            new NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>(engine),
-            new NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>(engine),
-            new NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>(engine),
-        ];
+        ISszEndpointHandler[] handlers = SszRpcEndpointHandler.CreateHandlers(engine);
 
         return BuildEngineHost(
             services =>

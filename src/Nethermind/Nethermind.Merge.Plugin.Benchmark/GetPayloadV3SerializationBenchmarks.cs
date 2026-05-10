@@ -316,14 +316,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
 
     private static IHost BuildSszServer(IEngineRpcModule engine)
     {
-        ISszEndpointHandler[] handlers =
-        [
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(engine),
-            new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(engine),
-            new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(engine),
-            new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(engine),
-            new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(engine),
-        ];
+        ISszEndpointHandler[] handlers = SszRpcEndpointHandler.CreateHandlers(engine);
 
         return BuildEngineHost(
             services =>

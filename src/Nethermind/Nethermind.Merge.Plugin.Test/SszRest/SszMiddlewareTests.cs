@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
@@ -66,39 +65,7 @@ public class SszMiddlewareTests
     {
         RequestDelegate passthrough = next ?? (_ => Task.CompletedTask);
 
-        ISszEndpointHandler[] handlers =
-        [
-            new NewPayloadSszHandler<NewPayloadDescriptorV1, NewPayloadV1RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV2, NewPayloadV2RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV3, NewPayloadV3RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV4, NewPayloadV4RequestWire>(_engineModule),
-            new NewPayloadSszHandler<NewPayloadDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
-
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV1, ForkchoiceUpdatedV1RequestWire>(_engineModule),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV2, ForkchoiceUpdatedV2RequestWire>(_engineModule),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV3, ForkchoiceUpdatedV3RequestWire>(_engineModule),
-            new ForkchoiceUpdatedSszHandler<ForkchoiceUpdatedDescriptorV4, ForkchoiceUpdatedRequestWire>(_engineModule),
-
-            new GetPayloadSszHandler<GetPayloadDescriptorV1, ExecutionPayload>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV2, GetPayloadV2Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV3, GetPayloadV3Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
-            new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
-
-            new GetBlobsV1SszHandler(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV2>(_engineModule),
-            new GetBlobsV2SszHandler<GetBlobsDescriptorV3>(_engineModule),
-
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
-            new GetPayloadBodiesByHashSszHandler<PayloadBodiesByHashDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
-
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV1, ExecutionPayloadBodyV1Result>(_engineModule),
-            new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule),
-
-            new ClientVersionSszHandler(_engineModule),
-            new CapabilitiesSszHandler(_engineModule),
-        ];
+        ISszEndpointHandler[] handlers = SszRpcEndpointHandler.CreateHandlers(_engineModule);
 
         return new SszMiddleware(
             passthrough,
@@ -167,8 +134,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.ContentType.Should().Contain(OctetStream);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
         await _engineModule.Received(version == 1 ? 1 : 0).engine_newPayloadV1(Arg.Any<ExecutionPayload>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_newPayloadV2(Arg.Any<ExecutionPayload>());
     }
@@ -186,8 +153,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.Headers["Cache-Control"].ToString().Should().Contain("no-store");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.Headers["Cache-Control"].ToString(), Does.Contain("no-store"));
         await _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadV1(Arg.Any<byte[]>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadV2(Arg.Any<byte[]>());
     }
@@ -216,7 +183,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
 
         int v1Calls = version == 1 ? 1 : 0;
         int v2Calls = version == 2 ? 1 : 0;
@@ -242,7 +209,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         await _engineModule.Received(1).engine_getBlobsV1(Arg.Any<byte[][]>());
         await _engineModule.DidNotReceive().engine_getBlobsV2(Arg.Any<byte[][]>());
         await _engineModule.DidNotReceive().engine_getBlobsV3(Arg.Any<byte[][]>());
@@ -261,7 +228,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
         await _engineModule.Received(isV3 ? 0 : 1).engine_getBlobsV2(Arg.Any<byte[][]>());
         await _engineModule.Received(isV3 ? 1 : 0).engine_getBlobsV3(Arg.Any<byte[][]>());
     }
@@ -282,7 +249,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         _engineModule.Received(version == 1 ? 1 : 0).engine_getPayloadBodiesByHashV1(Arg.Any<IReadOnlyList<Hash256>>());
         await _engineModule.Received(version == 2 ? 1 : 0).engine_getPayloadBodiesByHashV2(Arg.Any<IReadOnlyList<Hash256>>());
     }
@@ -313,8 +280,8 @@ public class SszMiddlewareTests
 
         long capturedStart = version == 1 ? v1Start : v2Start;
         long capturedCount = version == 1 ? v1Count : v2Count;
-        capturedStart.Should().Be(expectedStart);
-        capturedCount.Should().Be(expectedCount);
+        Assert.That(capturedStart, Is.EqualTo(expectedStart));
+        Assert.That(capturedCount, Is.EqualTo(expectedCount));
     }
 
     [Test]
@@ -329,8 +296,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.ContentType.Should().Contain(OctetStream);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
     }
 
     [Test]
@@ -345,9 +312,9 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status200OK);
-        ctx.Response.ContentType.Should().Contain(OctetStream);
-        ResponseBytes(ctx).Length.Should().BeGreaterThan(0);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
+        Assert.That(ResponseBytes(ctx).Length, Is.GreaterThan(0));
     }
 
     [Test]
@@ -360,7 +327,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status401Unauthorized));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -373,7 +340,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -386,8 +353,8 @@ public class SszMiddlewareTests
 
         await mw.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
-        nextInvoked.Should().BeFalse("SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
+        Assert.That(nextInvoked, Is.False, "SSZ middleware should reply 404 itself, not delegate to JSON-RPC");
     }
 
     [Test]
@@ -397,7 +364,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -410,7 +377,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
         await _engineModule.DidNotReceive().engine_newPayloadV1(Arg.Any<ExecutionPayload>());
     }
 
@@ -424,9 +391,9 @@ public class SszMiddlewareTests
 
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
-        await act.Should().NotThrowAsync();
+        Assert.DoesNotThrowAsync(async () => await act());
         // Per execution-apis #764: malformed SSZ encoding maps to 400 Bad Request.
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
     }
 
     [Test]
@@ -439,8 +406,8 @@ public class SszMiddlewareTests
 
         Func<Task> act = () => _middleware.InvokeAsync(ctx);
 
-        await act.Should().NotThrowAsync();
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+        Assert.DoesNotThrowAsync(async () => await act());
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
     }
 
     [Test]
@@ -454,8 +421,8 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
-        ResponseBytes(ctx).Should().BeEmpty("204 responses must have no body");
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+        Assert.That(ResponseBytes(ctx), Is.Empty, "204 responses must have no body");
     }
 
     [Test]
@@ -465,7 +432,7 @@ public class SszMiddlewareTests
 
         await _middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
     }
 
     [Test]
@@ -493,8 +460,8 @@ public class SszMiddlewareTests
         // With the fix: the outer catch sees RequestAborted is cancelled and does NOT
         // call WriteErrorAsync. StatusCode remains the DefaultHttpContext default (200);
         // crucially it must NOT be 500.
-        ctx.Response.StatusCode.Should().NotBe(StatusCodes.Status500InternalServerError);
-        ResponseBytes(ctx).Should().BeEmpty("aborted request must not have an error body written");
+        Assert.That(ctx.Response.StatusCode, Is.Not.EqualTo(StatusCodes.Status500InternalServerError));
+        Assert.That(ResponseBytes(ctx), Is.Empty, "aborted request must not have an error body written");
     }
 
     [Test]
@@ -511,8 +478,8 @@ public class SszMiddlewareTests
 
         await middleware.InvokeAsync(ctx);
 
-        ctx.Response.StatusCode.Should().Be(StatusCodes.Status204NoContent);
-        ResponseBytes(ctx).Should().BeEmpty();
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status204NoContent));
+        Assert.That(ResponseBytes(ctx), Is.Empty);
     }
 
     private sealed class ZeroLengthEncodeHandler : SszEndpointHandlerBase

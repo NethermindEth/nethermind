@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -21,17 +23,20 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("POST", EngineApiVersions.Fcu.V1, SszRestPaths.Forkchoice, SszRestRequest.ForkchoiceUpdatedV1, SszRestResponse.ForkchoiceUpdated)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
 
     [JsonRpcMethod(
         Description = "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("GET", EngineApiVersions.GetPayload.V1, SszRestPaths.Payloads, SszRestRequest.PayloadId, SszRestResponse.GetPayloadV1, acceptsPathExtra: true, extraPathName: "payload_id", noStore: true)]
     Task<ResultWrapper<ExecutionPayload?>> engine_getPayloadV1(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("POST", EngineApiVersions.NewPayload.V1, SszRestPaths.Payloads, SszRestRequest.NewPayloadV1, SszRestResponse.PayloadStatus)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayload executionPayload);
 }

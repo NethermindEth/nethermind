@@ -3,11 +3,13 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -18,23 +20,27 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Applies fork choice and starts building a new block if payload attributes are present.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("POST", EngineApiVersions.Fcu.V3, SszRestPaths.Forkchoice, SszRestRequest.ForkchoiceUpdatedV3, SszRestResponse.ForkchoiceUpdated)]
     Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
 
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("POST", EngineApiVersions.NewPayload.V3, SszRestPaths.Payloads, SszRestRequest.NewPayloadV3, SszRestResponse.PayloadStatus)]
     Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot);
 
     [JsonRpcMethod(
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("GET", EngineApiVersions.GetPayload.V3, SszRestPaths.Payloads, SszRestRequest.PayloadId, SszRestResponse.GetPayloadV3, acceptsPathExtra: true, extraPathName: "payload_id", noStore: true)]
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("POST", EngineApiVersions.GetBlobs.V1, SszRestPaths.Blobs, SszRestRequest.GetBlobs, SszRestResponse.GetBlobsV1)]
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes);
 }

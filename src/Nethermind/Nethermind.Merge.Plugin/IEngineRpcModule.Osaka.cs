@@ -3,9 +3,11 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -15,17 +17,20 @@ public partial interface IEngineRpcModule : IRpcModule
         Description = "Returns the most recent version of an execution payload and fees with respect to the transaction set contained by the mempool.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("GET", EngineApiVersions.GetPayload.V5, SszRestPaths.Payloads, SszRestRequest.PayloadId, SszRestResponse.GetPayloadV5, acceptsPathExtra: true, extraPathName: "payload_id", noStore: true)]
     public Task<ResultWrapper<GetPayloadV5Result?>> engine_getPayloadV5(byte[] payloadId);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("POST", EngineApiVersions.GetBlobs.V2, SszRestPaths.Blobs, SszRestRequest.GetBlobs, SszRestResponse.GetBlobsV2)]
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV2(byte[][] blobVersionedHashes);
 
     [JsonRpcMethod(
         Description = "Returns requested blobs and proofs.",
         IsSharable = true,
         IsImplemented = true)]
+    [SszRestMethod("POST", EngineApiVersions.GetBlobs.V3, SszRestPaths.Blobs, SszRestRequest.GetBlobs, SszRestResponse.GetBlobsV3)]
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes);
 }
