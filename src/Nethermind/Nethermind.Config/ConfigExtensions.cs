@@ -52,24 +52,19 @@ public static class ConfigExtensions
     /// operator has actually changed, rather than dumping every value.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The default is taken from a freshly constructed instance of the
-    /// implementing type, so initializers and constructors are honoured exactly
-    /// as production wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
-    /// </para>
-    /// <para>
-    /// Properties marked with <see cref="ConfigItemAttribute.IsSensitive"/>
-    /// (passwords, API keys, private keys, ...) are skipped to avoid leaking
-    /// secrets into logs.
-    /// </para>
+    /// Defaults come from a freshly constructed instance of the implementing
+    /// type, so initializers and constructors are honoured exactly as production
+    /// wiring would do (no parsing of the <see cref="ConfigItemAttribute.DefaultValue"/> string).
+    /// Properties flagged <see cref="ConfigItemAttribute.IsSensitive"/> are skipped.
     /// </remarks>
     /// <param name="configProvider">The provider to query.</param>
-    /// <returns>
-    /// Tuples of <c>(category, propertyName, currentValue, defaultValue)</c> for
-    /// every non-sensitive property whose current value is not equal to its default.
-    /// </returns>
+    /// <param name="onConfigError">
+    /// Optional callback invoked when a single config interface cannot be enumerated
+    /// (provider lookup or fresh-default construction throws). Enumeration of the
+    /// remaining interfaces continues regardless. If <c>null</c>, failures are silent.
+    /// </param>
     public static IEnumerable<(string Category, string Name, object? CurrentValue, object? DefaultValue)>
-        GetNonDefaultValues(this IConfigProvider configProvider)
+        GetNonDefaultValues(this IConfigProvider configProvider, Action<Type, Exception>? onConfigError = null)
     {
         ArgumentNullException.ThrowIfNull(configProvider);
 
@@ -78,72 +73,43 @@ public static class ConfigExtensions
             if (!configInterface.IsInterface) continue;
 
             IConfig current;
+            IConfig fresh;
+            string category;
             try
             {
                 current = configProvider.GetConfig(configInterface);
-            }
-            catch (ArgumentException)
-            {
-                continue;
-            }
-
-            IConfig fresh;
-            try
-            {
                 fresh = (IConfig)Activator.CreateInstance(current.GetType())!;
+                category = GetCategoryName(configInterface) ?? string.Empty;
             }
-            catch (Exception e) when (e is MissingMethodException
-                                       or TargetInvocationException
-                                       or TypeLoadException
-                                       or MethodAccessException)
+            catch (Exception e)
             {
+                onConfigError?.Invoke(configInterface, e);
                 continue;
             }
-
-            string category = GetCategoryName(configInterface) ?? string.Empty;
 
             foreach (PropertyInfo property in configInterface.GetProperties())
             {
                 if (!property.CanRead) continue;
                 if (property.GetCustomAttribute<ConfigItemAttribute>()?.IsSensitive == true) continue;
 
-                object? actual = property.GetValue(current);
-                object? defaultValue = property.GetValue(fresh);
+                object? actual;
+                object? defaultValue;
+                try
+                {
+                    actual = property.GetValue(current);
+                    defaultValue = property.GetValue(fresh);
+                }
+                catch (Exception e)
+                {
+                    onConfigError?.Invoke(configInterface, e);
+                    continue;
+                }
 
-                if (!ValuesEqual(actual, defaultValue))
+                if (!StructuralComparisons.StructuralEqualityComparer.Equals(actual, defaultValue))
                 {
                     yield return (category, property.Name, actual, defaultValue);
                 }
             }
         }
-    }
-
-    private static bool ValuesEqual(object? a, object? b)
-    {
-        if (a is null) return b is null;
-        if (b is null) return false;
-        if (a is string || b is string) return a.Equals(b);
-        if (a is IEnumerable enumerableA && b is IEnumerable enumerableB)
-        {
-            IEnumerator iteratorA = enumerableA.GetEnumerator();
-            IEnumerator iteratorB = enumerableB.GetEnumerator();
-            try
-            {
-                while (true)
-                {
-                    bool hasA = iteratorA.MoveNext();
-                    bool hasB = iteratorB.MoveNext();
-                    if (hasA != hasB) return false;
-                    if (!hasA) return true;
-                    if (!ValuesEqual(iteratorA.Current, iteratorB.Current)) return false;
-                }
-            }
-            finally
-            {
-                (iteratorA as IDisposable)?.Dispose();
-                (iteratorB as IDisposable)?.Dispose();
-            }
-        }
-        return a.Equals(b);
     }
 }

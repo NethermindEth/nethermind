@@ -188,30 +188,25 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo)
     {
-        _ = Task.Run(() =>
+        List<string> nonDefaultLines = [];
+        Action<Type, Exception> onConfigError = (configType, error) =>
         {
-            try
-            {
-                List<string> nonDefaultLines = [];
-                foreach ((string category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues())
-                {
-                    nonDefaultLines.Add($"  {category}.{name} = {serializer.Serialize(currentValue)}");
-                }
+            if (logger.IsWarn) logger.Warn($"Skipped {configType.Name} in non-default config diff: {error.Message}");
+        };
 
-                if (nonDefaultLines.Count == 0)
-                {
-                    logger.Info("Configuration: all values at defaults.");
-                }
-                else
-                {
-                    logger.Info($"Configuration: {nonDefaultLines.Count} non-default value(s):\n{string.Join('\n', nonDefaultLines)}");
-                }
-            }
-            catch (Exception e)
-            {
-                if (logger.IsWarn) logger.Warn($"Failed to enumerate non-default config values: {e.Message}");
-            }
-        });
+        foreach ((string category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues(onConfigError))
+        {
+            nonDefaultLines.Add($"  {category}.{name} = {serializer.Serialize(currentValue)}");
+        }
+
+        if (nonDefaultLines.Count == 0)
+        {
+            logger.Info("Configuration: all values at defaults.");
+        }
+        else
+        {
+            logger.Info($"Configuration: {nonDefaultLines.Count} non-default value(s):\n{string.Join('\n', nonDefaultLines)}");
+        }
     }
 
     if (logger.IsDebug)

@@ -183,5 +183,36 @@ namespace Nethermind.Config.Test
             Assert.That(keys, Does.Not.Contain($"KeyStore.{nameof(IKeyStoreConfig.Passwords)}"));
             Assert.That(keys, Does.Contain($"KeyStore.{nameof(IKeyStoreConfig.KeyStoreDirectory)}"));
         }
+
+        [Test]
+        public void Failing_provider_for_one_type_does_not_poison_others()
+        {
+            Dictionary<string, string> args = new() { { "Network.DiscoveryPort", "12345" } };
+            ConfigProvider inner = new();
+            inner.AddSource(new ArgsConfigSource(args));
+            inner.Initialize();
+
+            FailingProvider failing = new(inner, typeof(IJsonRpcConfig));
+            List<(Type ConfigType, Exception Error)> errors = [];
+
+            HashSet<string> keys = failing.GetNonDefaultValues((t, e) => errors.Add((t, e)))
+                .Select(static x => $"{x.Category}.{x.Name}")
+                .ToHashSet();
+
+            Assert.That(keys, Does.Contain("Network.DiscoveryPort"));
+            Assert.That(errors, Has.Some.Matches<(Type, Exception)>(static x => x.Item1 == typeof(IJsonRpcConfig)));
+        }
+
+        private sealed class FailingProvider(IConfigProvider inner, Type failingType) : IConfigProvider
+        {
+            public T GetConfig<T>() where T : IConfig => (T)GetConfig(typeof(T));
+
+            public IConfig GetConfig(Type configType) =>
+                configType == failingType
+                    ? throw new InvalidOperationException("simulated failure")
+                    : inner.GetConfig(configType);
+
+            public object? GetRawValue(string category, string name) => inner.GetRawValue(category, name);
+        }
     }
 }
