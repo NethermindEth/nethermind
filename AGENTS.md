@@ -15,6 +15,10 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 - Keep changes minimal and focused — don't touch unrelated code
 - When fixing a bug, always add a regression test
 - Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
+- Avoid code duplication, especially in tests:
+  - When tests differ only by inputs and expected outputs, parameterize a single test with `[TestCase(...)]` or `[TestCaseSource(...)]` rather than copy-pasting the body. Before adding a new test, check whether an existing one can be extended with another `[TestCase]`.
+  - When only _parts_ of tests are similar (shared setup, common assertions, recurring scenarios), factor those parts into helper methods or helper types (e.g. a builder, a shared static helper, a test fixture base). Keep each test body focused on what makes the case unique.
+  - See [`.agents/rules/test-infrastructure.md`](./.agents/rules/test-infrastructure.md) "Test guidelines" for details.
 
 ---
 
