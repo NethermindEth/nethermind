@@ -537,8 +537,11 @@ internal static class SszCodecHelpers
             string countExpr = property.Kind == Kind.Vector
                 ? property.Length!.Value.ToString()
                 : $"{sliceExpression}.Length / {itemSize}";
+            string remainderGuard = property.Kind == Kind.List
+                ? $"if ({sliceExpression}.Length % {itemSize} != 0) throw new System.IO.InvalidDataException($\"{decl.Name}.{property.Name}: expected a multiple of {itemSize} bytes, got {{{sliceExpression}.Length}}\");"
+                : string.Empty;
             string validation = ValidationStatement(decl, property, $"container.{property.Name}");
-            string loop = $"{{ int __count = {countExpr}; {property.Type.Name}[] {variableName} = new {property.Type.Name}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
+            string loop = $"{{ {remainderGuard} int __count = {countExpr}; {property.Type.Name}[] {variableName} = new {property.Type.Name}[__count]; for (int __i = 0; __i < __count; __i++) {{ {decodeBody} {variableName}[__i] = __item; }} container.{property.Name} = {variableName}; }}";
             return string.IsNullOrEmpty(validation) ? loop : $"{loop} {validation}";
         }
 

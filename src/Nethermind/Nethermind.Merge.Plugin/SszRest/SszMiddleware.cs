@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -118,7 +119,7 @@ public sealed class SszMiddleware
         {
             ctx.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
         }
-        else if (!_urlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated)
+        else if (!_urlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated || !url.RpcEndpoint.HasFlag(RpcEndpoint.Http))
         {
             await _next(ctx);
         }

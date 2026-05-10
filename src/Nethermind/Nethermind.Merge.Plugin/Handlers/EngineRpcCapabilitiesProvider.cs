@@ -3,6 +3,7 @@
 
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
@@ -51,10 +52,10 @@ public class EngineRpcCapabilitiesProvider(ISpecProvider specProvider) : IRpcCap
 
     private void EnsureBuilt()
     {
-        if (_jsonRpc is not null) return;
+        if (Volatile.Read(ref _jsonRpc) is not null) return;
         Build(specProvider.GetFinalSpec(), out Dictionary<string, RpcCapabilityOptions> json, out Dictionary<string, RpcCapabilityOptions> ssz);
-        _jsonRpc = json.ToFrozenDictionary();
         _ssz = ssz.ToFrozenDictionary();
+        Volatile.Write(ref _jsonRpc, json.ToFrozenDictionary());
     }
 
     /// <summary>

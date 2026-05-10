@@ -275,9 +275,14 @@ public partial class SszExecutionPayload(ExecutionPayload inner)
         set
         {
             field = value;
-            if (value is null || value.Length == 0)
+            if (value is null)
             {
                 _inner.Withdrawals = null;
+                return;
+            }
+            if (value.Length == 0)
+            {
+                _inner.Withdrawals = [];
                 return;
             }
             Withdrawal[] result = new Withdrawal[value.Length];

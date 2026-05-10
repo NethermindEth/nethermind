@@ -68,13 +68,18 @@ public abstract class SszEndpointHandlerBase : ISszEndpointHandler
         await ctx.Response.CompleteAsync();
     }
 
-    protected static Task WriteSszResultAsync<T>(HttpContext ctx, ResultWrapper<T> result, Func<T, IBufferWriter<byte>, int> encode) =>
-        result switch
+    protected static async Task WriteSszResultAsync<T>(HttpContext ctx, ResultWrapper<T> result, Func<T, IBufferWriter<byte>, int> encode)
+    {
+        using (result)
         {
-            { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error"),
-            { Data: null } => SetNoContent(ctx),
-            { Data: var data } => WriteSszAsync(ctx, data, encode)
-        };
+            await (result switch
+            {
+                { Result.ResultType: not ResultType.Success } => WriteErrorAsync(ctx, ErrorCodeToHttpStatus(result.ErrorCode), result.Result.Error ?? "Unknown error"),
+                { Data: null } => SetNoContent(ctx),
+                { Data: var data } => WriteSszAsync(ctx, data, encode)
+            });
+        }
+    }
 
     private static Task SetNoContent(HttpContext ctx)
     {
