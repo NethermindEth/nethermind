@@ -18,7 +18,9 @@ namespace Nethermind.Consensus.Processing;
 /// <param name="envFactory"></param>
 public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFactory) : IShareableTxProcessorSource
 {
-    ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPoolProvider().Create(new EnvPoolPolicy(envFactory));
+    ObjectPool<IReadOnlyTxProcessorSource> _envPool =
+        new DefaultObjectPoolProvider { MaximumRetained = Environment.ProcessorCount * 16 }
+            .Create(new EnvPoolPolicy(envFactory));
 
     public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
     {
