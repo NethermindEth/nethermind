@@ -59,7 +59,18 @@ namespace Nethermind.JsonRpc.Modules
             _sharedAsTask = Task.FromResult(_shared);
         }
 
-        public Task<T> GetModule(bool canBeShared) => canBeShared ? _sharedAsTask : SlowPath();
+        public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : SlowPath();
+
+        // Sharable methods use the singleton instance instead of a pool slot. Track in-flight count
+        // here so RequestQueueLimit applies uniformly to both sharable and exclusive heavy methods.
+        // Without this, sharable eth_call/eth_estimateGas/eth_createAccessList would have no
+        // concurrency cap — protection against burst-driven OOM relies on this.
+        private Task<T> SharedPath()
+        {
+            RpcLimits.EnsureLimits();
+            RpcLimits.IncrementQueuedCalls();
+            return _sharedAsTask;
+        }
 
         private async Task<T> SlowPath()
         {
@@ -81,6 +92,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (ReferenceEquals(module, _shared))
             {
+                RpcLimits.DecrementQueuedCalls();
                 return;
             }
 
