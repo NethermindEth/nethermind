@@ -248,6 +248,70 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>
+    /// Regression test for EIP-7702 spec semantics: a delegation pointing at a precompile address must NOT execute the precompile.
+    /// </summary>
+    /// <remarks>
+    /// The CALL is treated as if the EOA had no executable code (FastCall path), unconditionally returning success.
+    /// This regresses easily because the <see cref="PrecompileCachedCodeInfoRepository"/> decorator's <c>IsPrecompile</c>
+    /// fast-path tempts callers to resolve the delegation target's <see cref="CodeInfo"/> via the cached precompile -
+    /// which would run the precompile. <see cref="EvmInstructions.InstructionCall"/> must short-circuit to
+    /// <see cref="CodeInfo.Empty"/> for precompile delegation targets.
+    /// The test forces discrimination by passing <c>0</c> gas to the inner call: a real precompile execution would OOG and
+    /// push <c>0</c>; FastCall returns <c>1</c> regardless of forwarded gas.
+    /// </remarks>
+    [Test]
+    public void Calling_account_delegated_to_precompile_uses_FastCall_per_EIP_7702()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+
+        InitWorldStateWithPrecompileDelegation(TestState, precompileAddress);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessorWithPrecompileCache();
+
+        Block block = Build.A.Block.TestObject;
+
+        byte[] code = Prepare.EvmCode
+            .Call(_callTargetAddress, 0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .WithValue(_testAccountBalance)
+            .TestObject;
+        long intrinsicGas = IntrinsicGasCalculator
+            .Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
+        long gasLimit = intrinsicGas + _gasLimit;
+
+        Transaction tx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(gasLimit)
+            .WithValue(_testAccountBalance)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
+        AccountChanges? testAddressChanges = bal.GetAccountChanges(_testAddress);
+        SlotChanges? slot0 = testAddressChanges?.StorageChanges
+            .FirstOrDefault(s => s.Key == UInt256.Zero);
+        StorageChange? change = slot0?.Changes.Values is { Count: > 0 } values ? values[0] : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(change, Is.Not.Null,
+                "EIP-7702 FastCall must succeed and propagate via SSTORE; missing slot 0 entry indicates the call failed.");
+            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One.ToBigEndianWord()),
+                "EIP-7702: delegation to a precompile must NOT execute the precompile - FastCall returns 1 regardless of forwarded gas.");
+        }
+    }
+
     private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessorWithPrecompileCache(bool? parallelOverride = null)
     {
         bool useParallel = parallelOverride ?? parallel;
