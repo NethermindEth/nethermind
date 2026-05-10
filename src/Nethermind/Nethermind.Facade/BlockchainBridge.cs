@@ -596,7 +596,8 @@ namespace Nethermind.Facade
 
         // Each invocation produces an independent IOverridableEnv<BlockProcessingComponents> with its
         // own _worldScopeCloser, SingleCallRequestState and decorator chain so concurrent renters
-        // share no mutable state.
+        // share no mutable state. The returned wrapper carries the underlying lifetime scope so the
+        // pool can dispose it mid-run when capacity overflows or when an env is poisoned.
         private IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
         {
             IOverridableEnv env = envFactory.Create();
@@ -607,8 +608,26 @@ namespace Nethermind.Facade
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
+            // Safety net: if the bridge is torn down while envs are still rented out, the rented
+            // envs would otherwise leak their lifetime scopes. Autofac's Dispose is idempotent, so
+            // a later DisposeEnv call from the pool is a no-op.
             rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
-            return overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner =
+                overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+            return new DisposableOverridableEnv(inner, overridableScopeLifetime);
+        }
+
+        private sealed class DisposableOverridableEnv(
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner,
+            IDisposable scope) : IOverridableEnv<BlockchainBridge.BlockProcessingComponents>, IDisposable
+        {
+            public Scope<BlockchainBridge.BlockProcessingComponents> BuildAndOverride(
+                BlockHeader? header,
+                Dictionary<Address, AccountOverride>? stateOverride = null) =>
+                inner.BuildAndOverride(header, stateOverride);
+
+            public void Dispose() => scope.Dispose();
         }
     }
 }
