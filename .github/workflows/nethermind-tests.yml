@@ -112,7 +112,7 @@ jobs:
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
           dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
           set +e
@@ -196,7 +196,7 @@ jobs:
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
           dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
           set +e
@@ -290,7 +290,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           dotnet build ${{ matrix.test.project }}.csproj -c release
-          dotnet build-server shutdown
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           test_args=(--no-build --no-restore)
 
           set +e

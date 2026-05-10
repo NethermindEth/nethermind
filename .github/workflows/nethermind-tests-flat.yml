@@ -282,7 +282,7 @@ jobs:
           # parallel-variant fixture. Default Pyspec chunks instead exclude the variant
           # classes by name so they don't double-run the heavy Amsterdam fixture set.
           dotnet build ${{ matrix.project }}.csproj -c release
-          dotnet build-server shutdown
+          dotnet build-server shutdown || true  # macOS VB/C# server sometimes fails to shut down; harmless
           run_test --no-build --no-restore
 
   tests-summary:
