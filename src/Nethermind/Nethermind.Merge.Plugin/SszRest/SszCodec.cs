@@ -167,7 +167,7 @@ public static class SszCodec
     public static (long start, long count) DecodeGetPayloadBodiesByRangeRequest(ReadOnlySequence<byte> buf)
     {
         GetPayloadBodiesByRangeRequestWire.Decode(buf, out GetPayloadBodiesByRangeRequestWire wire);
-        return ((long)wire.Start, (long)wire.Count);
+        return (SszNumericChecks.CheckedLong(wire.Start), SszNumericChecks.CheckedLong(wire.Count));
     }
 
     public static int EncodePayloadBodiesV1Response(IReadOnlyList<ExecutionPayloadBodyV1Result?> bodies, IBufferWriter<byte> writer)
