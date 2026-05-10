@@ -146,6 +146,9 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
+            // Snapshot the ThreadStatic exec-mode flag now (block-processing thread); GenerateReport
+            // runs on a thread-pool thread where the TLS slot is the default false.
+            blockData.UsedParallelExecution = BlockProcessor.ParallelBlockValidationTransactionsExecutor.LastBlockUsedParallelExecution;
 
             CaptureReportData(blockData);
         }
@@ -366,7 +369,7 @@ namespace Nethermind.Consensus.Processing
                 // Execution-mode indicator (⛓️ = parallel BAL executor, 🔗 = sequential). Appended after
                 // the ops count on the Block throughput row so emoji-cell-width variation across terminals
                 // can't drift the mid-line pipes on the rows above.
-                string execMode = BlockProcessor.ParallelBlockValidationTransactionsExecutor.LastBlockUsedParallelExecution
+                string execMode = data.UsedParallelExecution
                     ? " \u26D3\uFE0F"
                     : " \U0001f517";
 
@@ -500,6 +503,7 @@ namespace Nethermind.Consensus.Processing
                 data.GasUsed = 0;
                 data.TransactionCount = 0;
                 data.BlobCount = 0;
+                data.UsedParallelExecution = false;
 
                 return true;
             }
@@ -535,6 +539,7 @@ namespace Nethermind.Consensus.Processing
             public long StartCallOps;
             public long StartSStoreOps;
             public long StartSLoadOps;
+            public bool UsedParallelExecution;
         }
     }
 }
