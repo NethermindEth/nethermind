@@ -20,20 +20,29 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = """
-            The max number of concurrent requests in the queue for:
+            The max number of concurrent requests waiting in the exclusive (non-sharable) queue for:
 
-            - `eth_call`
-            - `eth_estimateGas`
             - `eth_getLogs`
             - `eth_newFilter`
             - `eth_newBlockFilter`
             - `eth_newPendingTransactionFilter`
             - `eth_uninstallFilter`
 
-            `0` to lift the limit.
+            Calls beyond the limit return HTTP 503 immediately. `0` to lift the limit.
             """,
-        DefaultValue = "2000")]
+        DefaultValue = "500")]
     int RequestQueueLimit { get; set; }
+
+    [ConfigItem(
+        Description = """
+            The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
+            Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
+            `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
+            Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
+            effectively never approach this limit. `0` to lift the limit.
+            """,
+        DefaultValue = "10000")]
+    int MaxConcurrentSharedRequests { get; set; }
 
     [ConfigItem(
         Description = "The path to the base file for diagnostic recording.",

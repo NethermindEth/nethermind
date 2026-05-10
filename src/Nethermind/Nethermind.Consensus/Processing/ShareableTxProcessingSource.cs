@@ -18,8 +18,12 @@ namespace Nethermind.Consensus.Processing;
 /// <param name="envFactory"></param>
 public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFactory) : IShareableTxProcessorSource
 {
+    // ProcessorCount * 16 keeps the working set warm under sustained RPC load without changing the
+    // scale-with-cores property of the default. Absolute cap protects 64+ core hosts from allocating
+    // ~1 GB+ of pooled envs that don't pay back at extreme core counts.
+    private const int MaxRetainedAbsoluteCap = 256;
     ObjectPool<IReadOnlyTxProcessorSource> _envPool =
-        new DefaultObjectPoolProvider { MaximumRetained = Environment.ProcessorCount * 16 }
+        new DefaultObjectPoolProvider { MaximumRetained = Math.Min(Environment.ProcessorCount * 16, MaxRetainedAbsoluteCap) }
             .Create(new EnvPoolPolicy(envFactory));
 
     public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)

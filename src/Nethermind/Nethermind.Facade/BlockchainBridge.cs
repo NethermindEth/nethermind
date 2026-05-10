@@ -173,6 +173,8 @@ namespace Nethermind.Facade
             try
             {
                 using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+                // Dual-write: BlobBaseFeeOverrideCalculatorDecorator reads from RequestState during VM execution;
+                // RunCall also receives the value directly to apply it during pre-VM header preparation.
                 scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
                 return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
             }
