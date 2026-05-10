@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -190,6 +191,102 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             AccountChanges actual = bal.GetAccountChanges(expectedAccountChanges.Address);
             Assert.That(actual, Is.EqualTo(expectedAccountChanges));
         }
+    }
+
+    /// <summary>
+    /// Regression test for the EIP-7928 BAL recording of an EIP-7702 delegated EOA whose delegation target is a precompile.
+    /// </summary>
+    /// <remarks>
+    /// When <see cref="PrecompileCachedCodeInfoRepository"/> is installed in the processing pipeline, its precompile
+    /// fast-path returns the cached <see cref="CodeInfo"/> without going through the world state. The base
+    /// <see cref="CodeInfoRepository"/> compensates by calling <c>AddAccountRead</c> directly, but the decorator
+    /// does not. <see cref="EvmInstructions.InstructionCall"/> resolves the delegated code via a second
+    /// <c>GetCachedCodeInfoNoDelegation</c> call after charging the EIP-2929 cold-access gas, so without an explicit
+    /// <c>AddAccountRead</c> the delegated precompile address would be omitted from the generated BAL.
+    /// </remarks>
+    [Test]
+    public void Delegated_precompile_target_is_recorded_in_BAL_under_PrecompileCachedCodeInfoRepository()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+
+        InitWorldStateWithPrecompileDelegation(TestState, precompileAddress);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessorWithPrecompileCache();
+
+        Block block = Build.A.Block.TestObject;
+        byte[] code = Prepare.EvmCode
+            .Call(_callTargetAddress, 50_000)
+            .Done;
+
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .WithValue(_testAccountBalance)
+            .TestObject;
+        long intrinsicGas = IntrinsicGasCalculator
+            .Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
+        long gasLimit = intrinsicGas + _gasLimit;
+
+        Transaction tx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(gasLimit)
+            .WithValue(_testAccountBalance)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
+        AccountChanges? precompileChanges = bal.GetAccountChanges(precompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(precompileChanges, Is.Not.Null,
+                "delegated precompile target must be recorded in the BAL even when the PrecompileCachedCodeInfoRepository fast-path is active");
+        }
+    }
+
+    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessorWithPrecompileCache(bool? parallelOverride = null)
+    {
+        bool useParallel = parallelOverride ?? parallel;
+        TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
+        ILogManager logManager = LimboLogs.Instance;
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
+        EthereumPrecompileProvider precompileProvider = new();
+        EthereumCodeInfoRepository baseRepo = new(tracedState);
+        PrecompileCachedCodeInfoRepository codeInfoRepo = new(precompileProvider, baseRepo, precompileCache: null);
+        EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
+        TransactionProcessor<EthereumGasPolicy> processor = new(
+            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
+        return (tracedState, processor);
+    }
+
+    private void InitWorldStateWithPrecompileDelegation(IWorldState worldState, Address precompileAddress)
+    {
+        worldState.CreateAccount(TestItem.AddressA, _accountBalance);
+
+        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, SpecProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
+        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, SpecProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
+        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
+
+        worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
+        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
+
+        worldState.CreateAccount(_callTargetAddress, 0);
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. precompileAddress.Bytes];
+        worldState.InsertCode(_callTargetAddress, ValueKeccak.Compute(delegationCode), delegationCode, SpecProvider.GenesisSpec);
+
+        worldState.Commit(SpecProvider.GenesisSpec);
+        worldState.CommitTree(0);
+        worldState.RecalculateStateRoot();
     }
 
     private void InitWorldState(IWorldState worldState, byte[]? extraCode = null)

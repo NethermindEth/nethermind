@@ -195,6 +195,11 @@ public static partial class EvmInstructions
         // EIP-7702: load the delegated code only after charging cold-access gas for the delegation target above.
         if (delegated is not null)
         {
+            // EIP-7928 BAL: when the delegation target is a precompile and PrecompileCachedCodeInfoRepository
+            // is active, the lookup below short-circuits without touching world state, so the read would
+            // otherwise be omitted from the generated access list. AddAccountRead is idempotent on the
+            // tracing world state and a no-op on plain ones, so this is safe in all configurations.
+            state.AddAccountRead(delegated);
             codeInfo = vm.CodeInfoRepository.GetCachedCodeInfoNoDelegation(delegated, spec);
         }
 
