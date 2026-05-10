@@ -111,8 +111,12 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown
+          test_args=(--no-build --no-restore)
+
           set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release $flags
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -121,7 +125,7 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.project }}.csproj -c release $flags
+            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           fi
 
       - name: Upload coverage report
@@ -191,8 +195,12 @@ jobs:
           TEST_CHUNK: ${{ matrix.chunk }}
         run: |
           flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings ../codecoverage.json' || '' }}"
+          dotnet build ${{ matrix.project }}.csproj -c release
+          dotnet build-server shutdown
+          test_args=(--no-build --no-restore)
+
           set +e
-          dotnet test --project ${{ matrix.project }}.csproj -c release $flags
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -201,7 +209,7 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.project }}.csproj -c release $flags
+            dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" $flags
           fi
 
       - name: Upload coverage report
@@ -261,6 +269,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -280,8 +289,12 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
+          dotnet build ${{ matrix.test.project }}.csproj -c release
+          dotnet build-server shutdown
+          test_args=(--no-build --no-restore)
+
           set +e
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -290,7 +303,7 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.test.project }}.csproj -c release
+            dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}"
           fi
 
   tests-summary:

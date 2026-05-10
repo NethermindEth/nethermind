@@ -111,7 +111,12 @@ jobs:
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
         run: |
-          dotnet test --project ${{ matrix.project }}.csproj -c release \
+          dotnet build ${{ matrix.project }}.csproj -c release \
+            ${{ matrix.variant.dotnet-args }}
+          dotnet build-server shutdown
+          test_args=(--no-build --no-restore)
+
+          dotnet test --project ${{ matrix.project }}.csproj -c release "${test_args[@]}" \
             ${{ matrix.variant.dotnet-args }}
 
   tests-chunked:
@@ -148,6 +153,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -169,7 +175,12 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release \
+          dotnet build ${{ matrix.test.project }}.csproj -c release \
+            ${{ matrix.variant.dotnet-args }}
+          dotnet build-server shutdown
+          test_args=(--no-build --no-restore)
+
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release "${test_args[@]}" \
             ${{ matrix.variant.dotnet-args }}
 
   tests-summary:
