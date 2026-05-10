@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -274,6 +275,7 @@ public class NewPayloadSerializationBenchmarks : IDisposable
     private static IHost BuildEngineHost(Action<IServiceCollection> configureServices, Action<IApplicationBuilder> configureApp)
     {
         IHost host = Host.CreateDefaultBuilder()
+            .ConfigureLogging(static b => b.ClearProviders())
             .ConfigureWebHostDefaults(web =>
             {
                 web.UseTestServer();
