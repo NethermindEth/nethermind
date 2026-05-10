@@ -253,11 +253,13 @@ public class Metrics
         BlockTransactions++;
     }
 
-    // No-op when at least one user tx already folded (BlockMinGasPrice has moved off MaxValue).
+    // No-op when at least one user tx already folded (BlockMinGasPrice has moved off MaxValue),
+    // or when baseFee is zero (pre-EIP-1559 chains, some rollups, genesis) - rendering "0.000"
+    // for empty zero-baseFee blocks would be less informative than the prior blank output.
     internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee)
     {
         if (BlockMinGasPrice != float.MaxValue) return;
-        if (!baseFee.IsUint64) return;
+        if (!baseFee.IsUint64 || baseFee.IsZero) return;
         float gasPrice = (float)(baseFee.u0 / 1_000_000_000.0);
         BlockMinGasPrice = gasPrice;
         BlockMaxGasPrice = gasPrice;

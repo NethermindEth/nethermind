@@ -40,8 +40,9 @@ public partial class BlockProcessor
 
         // Reflects how the most recent block was executed; consumed by ProcessingStats to label
         // the "Processed" log line. Per-chunk (last block wins on multi-block batches), which is
-        // fine for the typical live-head case of one block per slot.
-        public static bool LastBlockUsedParallelExecution { get; private set; }
+        // fine for the typical live-head case of one block per slot. volatile so cross-thread
+        // monitoring readers (Prometheus scrapers, dashboards) see fresh writes without barriers.
+        public static volatile bool LastBlockUsedParallelExecution;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
