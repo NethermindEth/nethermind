@@ -3,31 +3,18 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.IO.Abstractions;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Authentication;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
@@ -47,7 +34,6 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 [MemoryDiagnoser]
 public class GetPayloadV3SerializationBenchmarks : IDisposable
 {
-    private const int EnginePort = 8551;
     private const int BlobBytes = (int)Eip4844Constants.GasPerBlob;  // 131,072 — 4096 BLS field elements × 32 B
     private const int CommitmentBytes = 48;    // KZG commitment (BLS12-381 G1 compressed)
     private const int ProofBytes = 48;         // KZG proof
@@ -55,21 +41,8 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
     // Heavy-block baseline: 250 × ~600 B RLP ≈ 150 KB of tx data — typical mainnet block.
     private const int Txs = 250;
     private const int TxDataBytes = 460;       // ~600 B RLP-encoded after envelope + signature
-    private const int CapellaMaxWithdrawals = 16;
 
-    private const string BearerToken =
-        "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
-        ".eyJpYXQiOjE3MDAwMDAwMDB9" +
-        ".stubTokenForBenchmarkingOnly";
-
-    private static readonly byte[] PayloadId = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
     private const string PayloadIdHex = "0x0001020304050607";
-
-    private static readonly MediaTypeHeaderValue ApplicationJson = new("application/json");
-    private static readonly AuthenticationHeaderValue Authorization = AuthenticationHeaderValue.Parse(BearerToken);
-    private static readonly MediaTypeWithQualityHeaderValue OctetAccept = new("application/octet-stream");
-
-    private static readonly EthereumJsonSerializer Serializer = new();
 
     [Params(0, 1, 3, 6, 12, 24, 36, 72)]
     public int Blobs;
@@ -96,7 +69,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
 
         IEngineRpcModule engine = BuildEngineStub(_result);
         _sszHost = BuildSszServer(engine);
-        _jsonHost = BuildJsonServer(engine);
+        _jsonHost = EngineBenchmarkHost.BuildJsonServer(engine);
         _sszServer = _sszHost.GetTestServer();
         _jsonServer = _jsonHost.GetTestServer();
         _sszClient = _sszServer.CreateClient();
@@ -153,8 +126,8 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
     public async Task<int> SszRoundTrip()
     {
         using HttpRequestMessage req = new(HttpMethod.Get, $"/engine/v3/payloads/{PayloadIdHex}");
-        req.Headers.Authorization = Authorization;
-        req.Headers.Accept.Add(OctetAccept);
+        req.Headers.Authorization = EngineBenchmarkHost.Authorization;
+        req.Headers.Accept.Add(EngineBenchmarkHost.OctetAccept);
 
         using HttpResponseMessage response = await _sszClient.SendAsync(req);
         response.EnsureSuccessStatusCode();
@@ -167,10 +140,10 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
     public async Task<int> JsonRoundTrip()
     {
         using ByteArrayContent content = new(_jsonRequestBody);
-        content.Headers.ContentType = ApplicationJson;
+        content.Headers.ContentType = EngineBenchmarkHost.ApplicationJson;
 
         using HttpRequestMessage req = new(HttpMethod.Post, "/") { Content = content };
-        req.Headers.Authorization = Authorization;
+        req.Headers.Authorization = EngineBenchmarkHost.Authorization;
 
         using HttpResponseMessage response = await _jsonClient.SendAsync(req);
         response.EnsureSuccessStatusCode();
@@ -212,7 +185,7 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
             .WithExcessBlobGas(0x40000)
             .WithParentBeaconBlockRoot(TestItem.KeccakA)
             .WithTransactions(txs)
-            .WithWithdrawals(BuildWithdrawals(CapellaMaxWithdrawals))
+            .WithWithdrawals(EngineBenchmarkHost.BuildWithdrawals(EngineBenchmarkHost.CapellaMaxWithdrawals))
             .TestObject;
     }
 
@@ -231,22 +204,6 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
             proofs[i][0] = (byte)(i + 1);
         }
         return new BlobsBundleV1(commits, blobBytes, proofs);
-    }
-
-    private static Withdrawal[] BuildWithdrawals(int count)
-    {
-        Withdrawal[] withdrawals = new Withdrawal[count];
-        for (int i = 0; i < count; i++)
-        {
-            withdrawals[i] = new Withdrawal
-            {
-                Index = (ulong)i,
-                ValidatorIndex = (ulong)(i + 1),
-                Address = TestItem.Addresses[i % TestItem.Addresses.Length],
-                AmountInGwei = (ulong)((i + 1) * 1000),
-            };
-        }
-        return withdrawals;
     }
 
     private static byte[] EncodeSsz(GetPayloadV3Result result)
@@ -283,37 +240,6 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
         return engine;
     }
 
-    private static IHost BuildEngineHost(Action<IServiceCollection> configureServices, Action<IApplicationBuilder> configureApp)
-    {
-        IHost host = Host.CreateDefaultBuilder()
-            .ConfigureLogging(static b => b.ClearProviders())
-            .ConfigureWebHostDefaults(web =>
-            {
-                web.UseTestServer();
-                web.ConfigureServices(services =>
-                {
-                    JsonRpcUrl url = new("http", "localhost", EnginePort, RpcEndpoint.Http, isAuthenticated: true, ["engine"]);
-                    services.AddSingleton<IJsonRpcUrlCollection>(new StubUrlCollection(EnginePort, url));
-                    services.AddSingleton<IRpcAuthentication>(new StubRpcAuthentication());
-                    services.AddSingleton<ILogManager>(LimboLogs.Instance);
-                    configureServices(services);
-                });
-                web.Configure(app =>
-                {
-                    app.Use(async (ctx, next) =>
-                    {
-                        ctx.Connection.LocalPort = EnginePort;
-                        await next();
-                    });
-                    configureApp(app);
-                });
-            })
-            .Build();
-
-        host.Start();
-        return host;
-    }
-
     private static IHost BuildSszServer(IEngineRpcModule engine)
     {
         ISszEndpointHandler[] handlers =
@@ -325,102 +251,12 @@ public class GetPayloadV3SerializationBenchmarks : IDisposable
             new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(engine),
         ];
 
-        return BuildEngineHost(
+        return EngineBenchmarkHost.Build(
             services =>
             {
-                services.AddSingleton<IProcessExitSource>(new StubProcessExitSource());
                 foreach (ISszEndpointHandler h in handlers)
                     services.AddSingleton<ISszEndpointHandler>(h);
             },
             app => app.UseMiddleware<SszMiddleware>());
-    }
-
-    private static IHost BuildJsonServer(IEngineRpcModule engine)
-    {
-        JsonRpcConfig config = new();
-        IFileSystem fs = Substitute.For<IFileSystem>();
-
-        RpcModuleProvider modules = new(fs, config, Serializer, LimboLogs.Instance);
-        modules.Register(new SingletonModulePool<IEngineRpcModule>(engine, allowExclusive: true));
-
-        JsonRpcService service = new(modules, LimboLogs.Instance, config);
-        JsonRpcProcessor processor = new(service, config, fs, LimboLogs.Instance);
-
-        return BuildEngineHost(
-            _ => { },
-            app => app.Use(async (ctx, next) =>
-            {
-                if (ctx.Request.Method != "POST" ||
-                    !(ctx.Request.ContentType?.Contains("application/json") ?? false))
-                {
-                    await next();
-                    return;
-                }
-
-                IJsonRpcUrlCollection urls = ctx.RequestServices.GetRequiredService<IJsonRpcUrlCollection>();
-                if (!urls.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated)
-                {
-                    await next();
-                    return;
-                }
-
-                IRpcAuthentication auth = ctx.RequestServices.GetRequiredService<IRpcAuthentication>();
-                string? authHeader = ctx.Request.Headers.Authorization;
-                if (authHeader is null || !await auth.Authenticate(authHeader))
-                {
-                    ctx.Response.StatusCode = 401;
-                    return;
-                }
-
-                using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
-                await foreach (JsonRpcResult result in processor.ProcessAsync(ctx.Request.BodyReader, rpcContext))
-                {
-                    using (result)
-                    {
-                        ctx.Response.StatusCode = 200;
-                        ctx.Response.ContentType = "application/json";
-                        await Serializer.SerializeAsync(ctx.Response.BodyWriter, result.Response!);
-                        await ctx.Response.CompleteAsync();
-                        break;
-                    }
-                }
-            }));
-    }
-
-    private sealed class StubUrlCollection(int port, JsonRpcUrl url) : IJsonRpcUrlCollection
-    {
-        private readonly Dictionary<int, JsonRpcUrl> _inner = new() { [port] = url };
-
-        public string[] Urls { get; } = [url.ToString()];
-        public JsonRpcUrl this[int key] => _inner[key];
-        public IEnumerable<int> Keys => _inner.Keys;
-        public IEnumerable<JsonRpcUrl> Values => _inner.Values;
-        public int Count => _inner.Count;
-        public bool ContainsKey(int key) => _inner.ContainsKey(key);
-
-        public bool TryGetValue(int key, out JsonRpcUrl value)
-        {
-            if (_inner.TryGetValue(key, out JsonRpcUrl? found))
-            {
-                value = found;
-                return true;
-            }
-            value = default!;
-            return false;
-        }
-
-        public IEnumerator<KeyValuePair<int, JsonRpcUrl>> GetEnumerator() => _inner.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
-    }
-
-    private sealed class StubRpcAuthentication : IRpcAuthentication
-    {
-        public Task<bool> Authenticate(string token) => Task.FromResult(true);
-    }
-
-    private sealed class StubProcessExitSource : IProcessExitSource
-    {
-        public CancellationToken Token => CancellationToken.None;
-        public void Exit(int exitCode) { }
     }
 }
