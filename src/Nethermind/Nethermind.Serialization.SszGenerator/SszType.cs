@@ -4,9 +4,8 @@ class SszType
 {
     private const string SelectorPropertyName = "Selector";
 
-    // Types annotated with [SszBasicType] are discovered at generation time via
-    // DiscoverKnownTypes(Compilation) — see below. The list here covers BCL primitives
-    // and Nethermind core types that aren't (or can't be) decorated with that attribute.
+    // BCL primitives and Nethermind core types with hand-rolled SSZ encoders.
+    // Add a new entry here when introducing a new fixed-length basic SSZ type.
     public static List<SszType> BasicTypes { get; } =
     [
         Primitive<byte>(),
@@ -25,6 +24,8 @@ class SszType
         },
         new() { Namespace = "System.Collections", Name = "BitArray", Kind = Kind.Basic },
         new() { Namespace = "Nethermind.Serialization.Ssz", Name = "SszBytes32", Kind = Kind.Basic, StaticLength = 32 },
+        FixedRefBytes("Nethermind.Serialization.Ssz", "SszBytes8", 8),
+        FixedRefBytes("Nethermind.Serialization.Ssz", "SszKzgCommitment", 48),
         BytesRef("Nethermind.Core.Crypto", "Hash256", 32),
         BytesRef("Nethermind.Core", "Address", 20),
         BytesRef("Nethermind.Core", "Bloom", 256),
@@ -63,12 +64,22 @@ class SszType
             CustomDecodeTemplate = $"{{1}} = new {name}({{0}});",
         };
 
-    public static List<SszType> KnownTypes { get; set; } = [];
-
-    // Identity gate: avoids re-walking the namespace tree once per [SszContainer] in a
-    // single compilation, and resets KnownTypes when Roslyn hands us a fresh Compilation
-    // (incremental rebuilds, multi-project solutions) so the list doesn't grow monotonically.
-    private static WeakReference<Compilation>? _lastDiscoveredCompilation;
+    /// <summary>
+    /// Factory for fixed-length value-type SSZ wrappers that expose <c>AsSpan()</c> +
+    /// <c>FromSpan(...)</c> (e.g. <c>SszBytes8</c>, <c>SszKzgCommitment</c>). The
+    /// encode/decode templates round-trip through the span helpers.
+    /// </summary>
+    private static SszType FixedRefBytes(string @namespace, string name, int byteLength) =>
+        new()
+        {
+            Namespace = @namespace,
+            Name = name,
+            Kind = Kind.Basic,
+            StaticLength = byteLength,
+            IsRefType = true,
+            CustomEncodeTemplate = "{1}.AsSpan().CopyTo({0});",
+            CustomDecodeTemplate = $"{{1}} = {name}.FromSpan({{0}});",
+        };
 
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
@@ -102,69 +113,6 @@ class SszType
 
     public const int PointerLength = 4;
 
-    internal static void DiscoverKnownTypes(Compilation compilation)
-    {
-        // Only short-circuit if the previous discovery for this exact Compilation produced
-        // results. A null/empty cache (e.g. if SszBasicTypeAttribute wasn't yet resolvable
-        // during a parallel-build race) must NOT be cached — otherwise every subsequent
-        // emit in the same compilation silently treats `[SszBasicType]` types like
-        // SszBytes8 as plain containers and produces references to nonexistent
-        // `Type.GetLength/Encode/Decode/MerkleizeList` methods.
-        if (_lastDiscoveredCompilation?.TryGetTarget(out Compilation? prev) == true
-            && ReferenceEquals(prev, compilation)
-            && KnownTypes.Count > 0)
-            return;
-
-        INamedTypeSymbol? attrSymbol = compilation.GetTypeByMetadataName(
-            "Nethermind.Serialization.Ssz.SszBasicTypeAttribute");
-        if (attrSymbol is null) return;
-
-        List<SszType> discovered = [];
-        foreach (INamedTypeSymbol type in GetAllTypes(compilation.GlobalNamespace))
-        {
-            AttributeData? attr = type.GetAttributes()
-                .FirstOrDefault(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, attrSymbol));
-            if (attr is null) continue;
-
-            int staticLength = attr.ConstructorArguments.Length > 0
-                ? (int)attr.ConstructorArguments[0].Value! : 0;
-
-            bool isRefType = attr.NamedArguments
-                .FirstOrDefault(kv => kv.Key == "IsRefType").Value.Value is true;
-            string? encodeTemplate = attr.NamedArguments
-                .FirstOrDefault(kv => kv.Key == "EncodeTemplate").Value.Value as string;
-            string? decodeTemplate = attr.NamedArguments
-                .FirstOrDefault(kv => kv.Key == "DecodeTemplate").Value.Value as string;
-
-            discovered.Add(new SszType
-            {
-                Namespace = type.ContainingNamespace?.ToString(),
-                Name = type.Name,
-                Kind = Kind.Basic,
-                StaticLength = staticLength,
-                IsRefType = isRefType,
-                CustomEncodeTemplate = encodeTemplate,
-                CustomDecodeTemplate = decodeTemplate,
-            });
-        }
-
-        // Only cache when we got something useful; an empty discovery is worse than a
-        // re-walk because it produces wrong code rather than a slow build.
-        if (discovered.Count == 0) return;
-
-        KnownTypes = discovered;
-        _lastDiscoveredCompilation = new WeakReference<Compilation>(compilation);
-    }
-
-    private static IEnumerable<INamedTypeSymbol> GetAllTypes(INamespaceSymbol ns)
-    {
-        foreach (INamedTypeSymbol type in ns.GetTypeMembers())
-            yield return type;
-        foreach (INamespaceSymbol nested in ns.GetNamespaceMembers())
-            foreach (INamedTypeSymbol type in GetAllTypes(nested))
-                yield return type;
-    }
-
     internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type)
     {
         string? @namespace = GetNamespace(type);
@@ -174,13 +122,6 @@ class SszType
         if (existingType is not null)
         {
             return existingType;
-        }
-
-        SszType? knownType = KnownTypes.FirstOrDefault(t => t.Name == name && t.Namespace == @namespace);
-        if (knownType is not null)
-        {
-            types.Add(knownType);
-            return knownType;
         }
 
         INamedTypeSymbol? enumType = (type as INamedTypeSymbol)?.EnumUnderlyingType;

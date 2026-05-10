@@ -12,36 +12,6 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.Merge.Plugin.SszRest;
 
 /// <summary>
-/// An allocation-free 8-byte value type used wherever the Engine API wire format
-/// requires a fixed-length 8-byte field (e.g. PayloadId).
-/// </summary>
-[StructLayout(LayoutKind.Sequential, Size = 8)]
-[SszBasicType(8,
-    IsRefType = true,
-    EncodeTemplate = "{1}.AsSpan().CopyTo({0});",
-    DecodeTemplate = "{1} = SszBytes8.FromSpan({0});")]
-public struct SszBytes8
-{
-    private ulong _value;
-
-    /// <summary>
-    /// Creates an <see cref="SszBytes8"/> from exactly 8 bytes without any heap allocation.
-    /// </summary>
-    public static SszBytes8 FromSpan(ReadOnlySpan<byte> span)
-    {
-        if (span.Length != 8)
-            throw new ArgumentException("SszBytes8 requires exactly 8 bytes", nameof(span));
-
-        SszBytes8 result = default;
-        span.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref result, 1)));
-        return result;
-    }
-
-    public ReadOnlySpan<byte> AsSpan() =>
-        MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
-}
-
-/// <summary>
 /// SSZ representation of a single variable-length transaction byte-string.
 /// Wraps ByteList[<c>MAX_BYTES_PER_TRANSACTION</c>] as a container so it can be used in lists,
 /// where <c>MAX_BYTES_PER_TRANSACTION</c> = <c>2**30</c> (1073741824)
@@ -186,40 +156,6 @@ public partial struct NewPayloadV5RequestWire
     [SszList(4096)] public Hash256[]? ExpectedBlobVersionedHashes { get; set; }
     public Hash256 ParentBeaconBlockRoot { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
-}
-
-/// <summary>
-/// 48-byte fixed-size byte vector used for KZG commitments and proofs in
-/// <see cref="BlobsBundleV1Wire"/>, <see cref="BlobsBundleV2Wire"/>, and
-/// <see cref="BlobAndProofV2Wire"/>. Stored inline so an
-/// <c>SszKzgCommitment[]</c> is a single contiguous heap allocation of
-/// <c>count * 48</c> bytes — no per-element <c>byte[48]</c> headers.
-/// SSZ wire format for a fixed-size byte vector is just the raw bytes,
-/// so the basic-type custom encode/decode templates produce identical output
-/// to the previous <c>[SszContainer]</c>-with-<c>byte[]</c> shape.
-/// </summary>
-[InlineArray(KzgCommitmentLength)]
-[SszBasicType(KzgCommitmentLength,
-    IsRefType = true,
-    EncodeTemplate = "{1}.AsSpan().CopyTo({0});",
-    DecodeTemplate = "{1} = SszKzgCommitment.FromSpan({0});")]
-public struct SszKzgCommitment
-{
-    public const int KzgCommitmentLength = 48;
-    private byte _e0;
-
-    public static SszKzgCommitment FromSpan(ReadOnlySpan<byte> span)
-    {
-        if (span.Length != KzgCommitmentLength)
-            throw new ArgumentException($"SszKzgCommitment requires exactly {KzgCommitmentLength} bytes", nameof(span));
-
-        SszKzgCommitment result = default;
-        span.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.As<SszKzgCommitment, byte>(ref result), KzgCommitmentLength));
-        return result;
-    }
-
-    public ReadOnlySpan<byte> AsSpan() =>
-        MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<SszKzgCommitment, byte>(ref Unsafe.AsRef(in this)), KzgCommitmentLength);
 }
 
 [SszContainer]
