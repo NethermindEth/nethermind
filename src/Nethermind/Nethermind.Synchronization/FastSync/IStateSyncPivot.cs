@@ -13,4 +13,5 @@ public interface IStateSyncPivot
     void UpdateHeaderForcefully();
     ConcurrentHashSet<Hash256> UpdatedStorages { get; }
     long Diff { get; }
+    bool CanFinalize(BlockHeader pivot);
 }
