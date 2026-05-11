@@ -295,7 +295,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TrieNode node,
         long blockNumber)
     {
-        ValueHash256 nodeKeccak = node.KeccakValue;
+        // Pre-A1, when past-key tracking was on, GetNodeShardIdx tolerated a missing keccak
+        // (only path was hashed). Preserve that behavior: pass default if missing so the
+        // shard select still works in that mode; the dirty-cache key with default keccak will
+        // be an orphan but matches the original (best-effort) behavior.
+        node.TryGetKeccak(out ValueHash256 nodeKeccak);
         TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, in nodeKeccak)];
         return SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
     }
@@ -884,14 +888,16 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistedNodeRecorder(TreePath treePath, Hash256 address, TrieNode tn)
     {
-        if (treePath.Length <= TinyTreePath.MaxNibbleLength)
-        {
-            ValueHash256 tnKeccak = tn.KeccakValue;
-            int shardIdx = GetNodeShardIdx(treePath, in tnKeccak);
+        // Skip nodes that have no separate keccak (inline children stored within the parent
+        // RLP). Pre-A1 this path tolerated null silently when past-key tracking was on because
+        // GetNodeShardIdx only reads the hash in the non-tracking branch. KeccakValue would
+        // throw on a missing keccak, so guard explicitly.
+        if (treePath.Length > TinyTreePath.MaxNibbleLength) return;
+        if (!tn.TryGetKeccak(out ValueHash256 tnKeccak)) return;
 
-            HashAndTinyPath key = new(address, new TinyTreePath(treePath));
-            RecordPersistedHash(_persistedHashes[shardIdx], key, tn.Keccak, _deleteOldNodes);
-        }
+        int shardIdx = GetNodeShardIdx(treePath, in tnKeccak);
+        HashAndTinyPath key = new(address, new TinyTreePath(treePath));
+        RecordPersistedHash(_persistedHashes[shardIdx], key, new Hash256(in tnKeccak), _deleteOldNodes);
     }
 
     internal static void RecordPersistedHash(

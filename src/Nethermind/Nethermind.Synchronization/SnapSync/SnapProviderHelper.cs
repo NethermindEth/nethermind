@@ -279,9 +279,12 @@ namespace Nethermind.Synchronization.SnapSync
                                 {
                                     // Leaf are range proof, proof that the range covers the requested path.
                                     // But we dont persist them as it should be persisted by the range itself through
-                                    // other range.
-                                    ValueHash256 boundaryChildKeccak = child.KeccakValue;
-                                    node.SetUnresolvedChildHashAt(ci, in boundaryChildKeccak);
+                                    // other range. Inline leaves have no separate hash to record - skip them silently
+                                    // (matches pre-A1 behavior where child.Keccak == null wrote a null slot).
+                                    if (child.TryGetKeccak(out ValueHash256 boundaryChildKeccak))
+                                    {
+                                        node.SetUnresolvedChildHashAt(ci, in boundaryChildKeccak);
+                                    }
                                 }
                             }
                         }
