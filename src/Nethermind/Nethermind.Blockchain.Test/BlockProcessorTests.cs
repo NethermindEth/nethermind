@@ -975,13 +975,8 @@ public class BlockProcessorTests
     [NonParallelizable]
     public void Parallel_validation_aggregates_block_gas_price_metrics_after_processing()
     {
-        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
-        Nethermind.Evm.Metrics.ResetBlockStats();
-
         const int txCount = 4;
         const ulong oneGwei = 1_000_000_000UL;
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction[] transactions = new Transaction[txCount];
         for (int i = 0; i < txCount; i++)
@@ -995,21 +990,9 @@ public class BlockProcessorTests
                 .TestObject;
         }
 
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithGasLimit(txCount * 21_000)
-            .WithBaseFeePerGas((UInt256)oneGwei)
-            .WithTransactions(transactions)
-            .WithBlockAccessList(new BlockAccessList())
-            .TestObject;
+        (float Min, float EstMedian, float Ave, float Max)? prices =
+            RunParallelValidationAndGetGasPrices((UInt256)oneGwei, transactions);
 
-        using RecordingTransactionProcessorAdapter txProcessor = new();
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
-            CreateParallelValidationExecutor(stateProvider, txProcessor);
-
-        executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
-
-        (float Min, float EstMedian, float Ave, float Max)? prices = Nethermind.Evm.Metrics.GetBlockGasPrices();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(prices, Is.Not.Null,
@@ -1021,44 +1004,42 @@ public class BlockProcessorTests
         }
     }
 
-    [Test]
+    [TestCase(2_000_000_000UL, 2f, TestName = "Parallel_validation_seeds_block_gas_price_with_baseFee_for_empty_block")]
+    [TestCase(0UL, null, TestName = "Parallel_validation_does_not_seed_block_gas_price_for_zero_baseFee_empty_block")]
     [NonParallelizable]
-    public void Parallel_validation_seeds_block_gas_price_with_baseFee_for_empty_block()
+    public void Parallel_validation_empty_block_seeding(ulong baseFeeWei, float? expectedSeedGwei)
     {
-        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
-        Nethermind.Evm.Metrics.ResetBlockStats();
+        (float Min, float EstMedian, float Ave, float Max)? prices =
+            RunParallelValidationAndGetGasPrices((UInt256)baseFeeWei, []);
 
-        const ulong twoGwei = 2_000_000_000UL;
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        if (expectedSeedGwei is null)
+        {
+            Assert.That(prices, Is.Null,
+                "Zero-baseFee empty block must leave aggregates uninitialized so the log row stays blank rather than rendering 0.000.");
+            return;
+        }
 
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithGasLimit(21_000)
-            .WithBaseFeePerGas((UInt256)twoGwei)
-            .WithTransactions([])
-            .WithBlockAccessList(new BlockAccessList())
-            .TestObject;
-
-        using RecordingTransactionProcessorAdapter txProcessor = new();
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor =
-            CreateParallelValidationExecutor(stateProvider, txProcessor);
-
-        executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
-
-        (float Min, float EstMedian, float Ave, float Max)? prices = Nethermind.Evm.Metrics.GetBlockGasPrices();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(prices, Is.Not.Null, "Empty block with non-zero baseFee must seed the aggregates.");
-            Assert.That(prices!.Value.Min, Is.EqualTo(2f).Within(0.001f));
-            Assert.That(prices!.Value.Max, Is.EqualTo(2f).Within(0.001f));
-            Assert.That(prices!.Value.Ave, Is.EqualTo(2f).Within(0.001f));
+            Assert.That(prices!.Value.Min, Is.EqualTo(expectedSeedGwei.Value).Within(0.001f));
+            Assert.That(prices!.Value.Max, Is.EqualTo(expectedSeedGwei.Value).Within(0.001f));
+            Assert.That(prices!.Value.Ave, Is.EqualTo(expectedSeedGwei.Value).Within(0.001f));
         }
     }
 
-    [Test]
-    [NonParallelizable]
-    public void Parallel_validation_does_not_seed_block_gas_price_for_zero_baseFee_empty_block()
+    /// <summary>
+    /// Runs the parallel validation executor over a single block with the given baseFee and transaction set,
+    /// then returns the aggregated <see cref="Nethermind.Evm.Metrics.GetBlockGasPrices"/> tuple (or <see langword="null"/>
+    /// if the block produced no aggregate).
+    /// </summary>
+    /// <remarks>
+    /// Skips via <see cref="Assume"/> on single-CPU hosts (parallel executor degrades there) and resets the
+    /// static block-stats metrics before running so callers see only this block's contribution.
+    /// </remarks>
+    private static (float Min, float EstMedian, float Ave, float Max)? RunParallelValidationAndGetGasPrices(
+        UInt256 baseFeePerGas,
+        Transaction[] transactions)
     {
         Assume.That(Environment.ProcessorCount, Is.GreaterThan(1));
         Nethermind.Evm.Metrics.ResetBlockStats();
@@ -1066,11 +1047,12 @@ public class BlockProcessorTests
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
 
+        long gasLimit = Math.Max(transactions.Length, 1) * 21_000;
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithGasLimit(21_000)
-            .WithBaseFeePerGas(UInt256.Zero)
-            .WithTransactions([])
+            .WithGasLimit(gasLimit)
+            .WithBaseFeePerGas(baseFeePerGas)
+            .WithTransactions(transactions)
             .WithBlockAccessList(new BlockAccessList())
             .TestObject;
 
@@ -1080,8 +1062,7 @@ public class BlockProcessorTests
 
         executor.ProcessTransactions(block, ProcessingOptions.None, new BlockReceiptsTracer(), CancellationToken.None);
 
-        Assert.That(Nethermind.Evm.Metrics.GetBlockGasPrices(), Is.Null,
-            "Zero-baseFee empty block must leave aggregates uninitialized so the log row stays blank rather than rendering 0.000.");
+        return Nethermind.Evm.Metrics.GetBlockGasPrices();
     }
 
     private static BlockAccessListManager CreateAmsterdamBalManager()
