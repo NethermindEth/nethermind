@@ -93,7 +93,7 @@ namespace Nethermind.Facade
                     {
                         transaction = block.Transactions[txIndex];
                         receipt = receipts.Length > txIndex && receipts[txIndex].TxHash == txHash ? receipts[txIndex] : null;
-                        return true;
+                        return receipt is not null;
                     }
                 }
             }
