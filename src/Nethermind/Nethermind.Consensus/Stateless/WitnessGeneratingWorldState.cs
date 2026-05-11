@@ -58,7 +58,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
             ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
             TreePath path = TreePath.Empty;
             TrieNode node = stateResolver.FindCachedOrUnknown(path, parentHeader.StateRoot!);
-            node.ResolveNode(stateResolver, path);
+            TrieNode.ResolveNode(ref node, stateResolver, in path);
         }
 
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);

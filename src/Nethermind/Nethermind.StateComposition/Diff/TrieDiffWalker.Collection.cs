@@ -75,7 +75,7 @@ internal sealed partial class TrieDiffWalker
                             int prevLen = path.Length;
                             path.AppendMut(i);
                             TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                            child.ResolveNode(resolver, in path);
+                            TrieNode.ResolveNode(ref child, resolver, in path);
                             WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                             path.TruncateMut(prevLen);
                         }
@@ -86,7 +86,7 @@ internal sealed partial class TrieDiffWalker
                             TrieNode? child = node.GetChildWithChildPath(resolver, ref path, i);
                             if (child is not null)
                             {
-                                child.ResolveNode(resolver, in path);
+                                TrieNode.ResolveNode(ref child, resolver, in path);
                                 WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                             }
                             path.TruncateMut(prevLen);
@@ -106,7 +106,7 @@ internal sealed partial class TrieDiffWalker
                     if (childHash is not null)
                     {
                         TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                        child.ResolveNode(resolver, in path);
+                        TrieNode.ResolveNode(ref child, resolver, in path);
                         WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                     }
                     else
@@ -115,7 +115,7 @@ internal sealed partial class TrieDiffWalker
                         TrieNode? child = node.GetChildWithChildPath(resolver, ref childPath, 0);
                         if (child is not null)
                         {
-                            child.ResolveNode(resolver, in path);
+                            TrieNode.ResolveNode(ref child, resolver, in path);
                             WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                         }
                     }
@@ -208,7 +208,7 @@ internal sealed partial class TrieDiffWalker
             Hash256 storageRoot = new(account.StorageRoot);
 
             TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, storageRoot);
-            storageRootNode.ResolveNode(storageResolver, in storagePath);
+            TrieNode.ResolveNode(ref storageRootNode, storageResolver, in storagePath);
 
             BeginContractStorage(addressHash.ValueHash256);
             try

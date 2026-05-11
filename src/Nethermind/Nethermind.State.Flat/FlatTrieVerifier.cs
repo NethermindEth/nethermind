@@ -664,7 +664,7 @@ public class FlatTrieVerifier
             // Resolve the node (loads RLP for non-inline, no-op for already resolved inline nodes)
             try
             {
-                currentNode.ResolveNode(trieStore, currentPath);
+                TrieNode.ResolveNode(ref currentNode, trieStore, in currentPath);
             }
             catch (TrieNodeException ex)
             {
@@ -689,7 +689,7 @@ public class FlatTrieVerifier
 
                         try
                         {
-                            child.ResolveNode(trieStore, childPath);
+                            TrieNode.ResolveNode(ref child, trieStore, in childPath);
                             return "X";
                         }
                         catch (TrieNodeException)
@@ -800,7 +800,7 @@ public class FlatTrieVerifier
                 TrieNode node = new(NodeType.Unknown, actualHash, zeroHashRlp);
                 try
                 {
-                    node.ResolveNode(trieStore, currentPath);
+                    TrieNode.ResolveNode(ref node, trieStore, in currentPath);
                     if (_logger.IsInfo) _logger.Info($"    -> Type: {node.NodeType}, Key: {node.Key?.ToHexString() ?? "null"}");
                 }
                 catch (TrieNodeException ex)

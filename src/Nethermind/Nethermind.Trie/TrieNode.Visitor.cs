@@ -41,7 +41,8 @@ namespace Nethermind.Trie
         {
             try
             {
-                node.ResolveNode(nodeResolver, path);
+                // Resolve may replace the placeholder with a typed instance.
+                TrieNode.ResolveNode(ref node, nodeResolver, in path);
             }
             catch (TrieException)
             {

@@ -156,7 +156,7 @@ public partial class PatriciaTree
         }
         else
         {
-            node.ResolveNode(TrieStore, path);
+            TrieNode.ResolveNode(ref node, TrieStore, in path);
 
             if (!node.IsBranch)
             {

@@ -274,7 +274,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
                 try
                 {
-                    trieNode.ResolveNode(_resolver, emptyPath);
+                    TrieNode.ResolveNode(ref trieNode, _resolver, in emptyPath);
                     Interlocked.Increment(ref _activeJobs);
                     AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, ref recursiveResult);
                     QueueNextNodes(ref recursiveResult);
@@ -348,18 +348,19 @@ public class BatchedTrieVisitor<TNodeContext>
                     {
                         int idx = resolveOrdering[i];
 
-                        (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
+                        ref (TrieNode Node, TNodeContext NodeContext, SmallTrieVisitContext Ctx) slot = ref currentBatch.GetRef(idx);
                         try
                         {
-                            // Save/restore the inline value directly; ResolveNode may clear it via key publishing.
-                            // Skip the restore when there was no keccak to begin with so we don't publish a zero hash.
-                            bool hadKeccak = nodeToResolve.TryGetKeccak(out ValueHash256 theKeccak);
-                            nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
-                            if (hadKeccak) nodeToResolve.SetKeccak(in theKeccak);
+                            // Save/restore the inline value directly; resolve may publish a typed
+                            // replacement that does not yet carry a keccak. Skip the restore when
+                            // there was no keccak so we don't publish a zero hash.
+                            bool hadKeccak = slot.Node.TryGetKeccak(out ValueHash256 theKeccak);
+                            TrieNode.ResolveNode(ref slot.Node, _resolver, in emptyPath, flags);
+                            if (hadKeccak) slot.Node.SetKeccak(in theKeccak);
                         }
                         catch (TrieException)
                         {
-                            _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
+                            _visitor.VisitMissingNode(slot.NodeContext, slot.Node.Keccak);
                         }
                     }
 

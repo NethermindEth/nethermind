@@ -411,6 +411,29 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>
+        /// Copy non-keccak flags (<see cref="_dirtyMask"/>, <see cref="_persistedMask"/>,
+        /// <see cref="_boundaryProof"/>) from <paramref name="source"/> onto <c>this</c>.
+        /// Used by the typed-resolve path so a freshly-allocated derived instance inherits
+        /// dirty / boundary-proof state from the placeholder it replaces. Optionally OR-in
+        /// <see cref="_persistedMask"/> when the caller pulled RLP from the backing store.
+        /// </summary>
+        internal void CopyFlagsFrom(TrieNode source, bool markPersisted)
+        {
+            byte sourceFlags = (byte)(Volatile.Read(ref source._blockAndFlags) & (_dirtyMask | _persistedMask | _boundaryProof));
+            if (markPersisted) sourceFlags |= _persistedMask;
+
+            byte previous = Volatile.Read(ref _blockAndFlags);
+            byte current;
+            do
+            {
+                current = previous;
+                byte next = (byte)((current & _hasKeccakMask) | sourceFlags);
+                if (next == current) return;
+                previous = Interlocked.CompareExchange(ref _blockAndFlags, next, current);
+            } while (previous != current);
+        }
+
         public bool HasRlp => Volatile.Read(ref _rlpArray) is not null;
 
         public CappedArray<byte> FullRlp => ReadRlp();
@@ -602,13 +625,6 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode(CappedArray<byte> parentRlp, int offset, int length)
-        {
-            _nodeData = null;
-            // offset is relative to parentRlp's logical view; InitRlpSlice needs a backing-array index.
-            InitRlpSlice(parentRlp.UnderlyingArray!, parentRlp.Offset + offset, length);
-        }
-
         /// <summary>
         /// Build a fully decoded inline child node from a parent RLP slice. Inline nodes
         /// have no separate Keccak (RLP &lt; 32 bytes) and share the parent buffer.
@@ -616,14 +632,17 @@ namespace Nethermind.Trie
         /// <remarks>
         /// Phase B requires that no <see cref="NodeType.Unknown"/> node ever leaves
         /// <see cref="DecodeChildReference"/>: the parent RLP is already in hand, so
-        /// header decoding (no IO) gives the correct typed shape immediately.
+        /// header decoding (no IO) gives the correct typed runtime shape immediately.
         /// </remarks>
         private static TrieNode CreateInlineChild(in TreePath parentPath, CappedArray<byte> parentRlp, int offset, int length)
         {
-            TrieNode child = new(parentRlp, offset, length);
+            int sliceOffset = parentRlp.Offset + offset;
+            CappedArray<byte> slice = new(parentRlp.UnderlyingArray!, sliceOffset, length);
+            TrieNode? typed;
             try
             {
-                if (!child.DecodeRlp(new ValueRlpStream(child.ReadRlp()), bufferPool: null, out int numberOfItems))
+                typed = AllocateTypedFromRlp(slice, bufferPool: null, out int numberOfItems);
+                if (typed is null)
                 {
                     ThrowUnexpectedNumberOfItems(numberOfItems, parentPath);
                 }
@@ -631,8 +650,11 @@ namespace Nethermind.Trie
             catch (RlpException rlpException)
             {
                 ThrowInlineDecodingError(rlpException, parentPath);
+                return null!; // unreachable
             }
-            return child;
+
+            typed.InitRlpSlice(parentRlp.UnderlyingArray!, sliceOffset, length);
+            return typed;
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowInlineDecodingError(RlpException rlpException, in TreePath parentPath) =>
@@ -662,35 +684,53 @@ namespace Nethermind.Trie
 #endif
 
 
-        public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
-            ICappedArrayPool? bufferPool = null)
+        /// <summary>
+        /// Resolve <paramref name="node"/> to a fully-decoded typed instance
+        /// (<see cref="TrieNodeBranch"/>, <see cref="TrieNodeLeaf"/>, or
+        /// <see cref="TrieNodeExtension"/>). When <paramref name="node"/> is already
+        /// typed this is a no-op. When it is a base <see cref="TrieNode"/> placeholder
+        /// (<see cref="NodeType.Unknown"/>), a new typed instance is allocated from
+        /// the RLP payload and <paramref name="node"/> is rebound to it; the original
+        /// placeholder is discarded.
+        /// </summary>
+        /// <remarks>
+        /// C# cannot change the runtime type of an existing object, so this contract
+        /// rebinds the caller's reference rather than mutating <paramref name="node"/>
+        /// in place. The <c>ref</c> parameter forces every caller to surface the
+        /// rebind, which keeps the cache slot, branch child slot, root ref, snap-stitch
+        /// holder, or local in sync with the typed result. The B3 invariant is: every
+        /// <see cref="TrieNode"/> reachable past a successful resolve is one of the
+        /// typed derived classes. Throws <see cref="TrieNodeException"/> wrapping the
+        /// underlying <see cref="RlpException"/> on malformed input or a
+        /// <see cref="TrieException"/> when RLP is missing entirely.
+        /// </remarks>
+        public static void ResolveNode(ref TrieNode node, ITrieNodeResolver tree, in TreePath path,
+            ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
         {
-            if (NodeType != NodeType.Unknown) return;
+            if (node.NodeType != NodeType.Unknown)
+            {
+                return;
+            }
 
             try
             {
-                ResolveUnknownNode(tree, path, readFlags, bufferPool);
+                node = ResolveUnknown(node, tree, path, readFlags, bufferPool);
             }
             catch (RlpException rlpException)
             {
-                ThrowDecodingError(rlpException, path);
+                throw new TrieNodeException($"Error when decoding node {node.Keccak}", path,
+                    node.Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
             }
-
-            [DoesNotReturn, StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
-                    Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
         }
 
-        /// <summary>
-        /// Highly optimized
-        /// </summary>
-        internal void ResolveUnknownNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
-            ICappedArrayPool? bufferPool = null)
+        private static TrieNode ResolveUnknown(TrieNode placeholder, ITrieNodeResolver tree, in TreePath path,
+            ReadFlags readFlags, ICappedArrayPool? bufferPool)
         {
-            CappedArray<byte> rlp = ReadRlp();
+            CappedArray<byte> rlp = placeholder.ReadRlp();
+            bool loadedFromStore = false;
             if (rlp.IsNull)
             {
-                if (!TryGetKeccak(out ValueHash256 keccak))
+                if (!placeholder.TryGetKeccak(out ValueHash256 keccak))
                 {
                     ThrowMissingKeccak();
                 }
@@ -699,65 +739,90 @@ namespace Nethermind.Trie
 
                 if (fullRlp == null)
                 {
-                    ThrowNullRlp();
+                    ThrowNullRlp(placeholder);
                 }
 
-                WriteRlp(rlp = new CappedArray<byte>(fullRlp));
-                IsPersisted = true;
+                rlp = new CappedArray<byte>(fullRlp);
+                loadedFromStore = true;
             }
 
-            if (!DecodeRlp(new ValueRlpStream(rlp), bufferPool, out int numberOfItems))
+            TrieNode? typed = AllocateTypedFromRlp(rlp, bufferPool, out int numberOfItems);
+            if (typed is null)
             {
-                ThrowUnexpectedNumberOfItems(numberOfItems, path);
+                ThrowUnexpectedNumberOfItems(numberOfItems, path, placeholder);
             }
+
+            typed.InitRlp(rlp);
+            if (placeholder.TryGetKeccak(out ValueHash256 placeholderKeccak))
+            {
+                typed.SetKeccak(in placeholderKeccak);
+            }
+            // Preserve dirty / boundary-proof flags from the placeholder; mark persisted
+            // when we just pulled the RLP from the backing store.
+            typed.CopyFlagsFrom(placeholder, markPersisted: loadedFromStore || placeholder.IsPersisted);
+            return typed;
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
+            static void ThrowNullRlp(TrieNode placeholder) => throw new TrieException($"Trie returned a NULL RLP for node {placeholder.Keccak}");
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path) => throw new TrieNodeException(
-                    $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})",
-                    path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
+            static void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path, TrieNode placeholder) =>
+                throw new TrieNodeException(
+                    $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({placeholder.FullRlp.AsSpan().ToHexString()})",
+                    path, placeholder.Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
         }
 
         /// <summary>
-        /// Highly optimized
+        /// Try-style sibling of <see cref="ResolveNode(ref TrieNode, ITrieNodeResolver, in TreePath, ReadFlags, ICappedArrayPool?)"/>.
+        /// On success rebinds <paramref name="node"/> to the typed instance and returns
+        /// <c>true</c>; on failure leaves <paramref name="node"/> untouched and returns
+        /// <c>false</c>. Failure cases: store cannot produce RLP, placeholder has no
+        /// keccak to look up by, or decoding throws an <see cref="RlpException"/>.
         /// </summary>
-        public bool TryResolveNode(ITrieNodeResolver tree, ref TreePath path, ReadFlags readFlags = ReadFlags.None,
-            ICappedArrayPool? bufferPool = null)
+        public static bool TryResolveNode(ref TrieNode node, ITrieNodeResolver tree, ref TreePath path,
+            ReadFlags readFlags = ReadFlags.None, ICappedArrayPool? bufferPool = null)
         {
+            if (node.NodeType != NodeType.Unknown)
+            {
+                return true;
+            }
+
             try
             {
-                CappedArray<byte> rlp = ReadRlp();
-                if (NodeType == NodeType.Unknown)
+                CappedArray<byte> rlp = node.ReadRlp();
+                if (rlp.IsNull)
                 {
-                    if (rlp.IsNull)
+                    if (!node.TryGetKeccak(out ValueHash256 keccak))
                     {
-                        if (!TryGetKeccak(out ValueHash256 keccak))
-                        {
-                            return false;
-                        }
-
-                        byte[] fullRlp = tree.TryLoadRlp(path, in keccak, readFlags);
-
-                        if (fullRlp is null)
-                        {
-                            return false;
-                        }
-
-                        WriteRlp(rlp = new CappedArray<byte>(fullRlp));
-                        IsPersisted = true;
+                        return false;
                     }
-                }
-                else
-                {
-                    return true;
+
+                    byte[]? fullRlp = tree.TryLoadRlp(path, in keccak, readFlags);
+                    if (fullRlp is null)
+                    {
+                        return false;
+                    }
+
+                    rlp = new CappedArray<byte>(fullRlp);
                 }
 
-                return DecodeRlp(new ValueRlpStream(rlp), bufferPool, out _);
+                TrieNode? typed = AllocateTypedFromRlp(rlp, bufferPool, out _);
+                if (typed is null)
+                {
+                    return false;
+                }
+
+                typed.InitRlp(rlp);
+                if (node.TryGetKeccak(out ValueHash256 nodeKeccak))
+                {
+                    typed.SetKeccak(in nodeKeccak);
+                }
+                typed.CopyFlagsFrom(node, markPersisted: true);
+                node = typed;
+                return true;
             }
             catch (RlpException)
             {
@@ -767,8 +832,9 @@ namespace Nethermind.Trie
 
         /// <summary>
         /// Decode RLP into a fully resolved <see cref="TrieNode"/> with the correct
-        /// <see cref="NodeType"/> set. Used by resolvers that fuse load+decode so they
-        /// never publish an <see cref="NodeType.Unknown"/> placeholder.
+        /// runtime type (<see cref="TrieNodeBranch"/>, <see cref="TrieNodeLeaf"/>, or
+        /// <see cref="TrieNodeExtension"/>). Used by resolvers that fuse load+decode so
+        /// they never publish an <see cref="NodeType.Unknown"/> placeholder.
         /// </summary>
         /// <remarks>
         /// The returned node carries the supplied <paramref name="hash"/> as its keccak
@@ -780,12 +846,11 @@ namespace Nethermind.Trie
         {
             if (rlp is null) ThrowNullRlp(in hash);
 
-            TrieNode node = new(NodeType.Unknown, in hash);
-            node.InitRlp(new CappedArray<byte>(rlp));
-            node.IsPersisted = true;
+            TrieNode? typed;
             try
             {
-                if (!node.DecodeRlp(new ValueRlpStream(node.ReadRlp()), bufferPool, out int numberOfItems))
+                typed = AllocateTypedFromRlp(new CappedArray<byte>(rlp), bufferPool, out int numberOfItems);
+                if (typed is null)
                 {
                     ThrowUnexpectedNumberOfItems(numberOfItems, path, in hash, rlp);
                 }
@@ -793,8 +858,13 @@ namespace Nethermind.Trie
             catch (RlpException rlpException)
             {
                 ThrowDecodingError(rlpException, path, in hash);
+                return null!; // unreachable
             }
-            return node;
+
+            typed.InitRlp(new CappedArray<byte>(rlp));
+            typed.SetKeccak(in hash);
+            typed.IsPersisted = true;
+            return typed;
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowNullRlp(in ValueHash256 hash) => throw new TrieException($"Cannot decode node {hash} from null RLP");
@@ -824,61 +894,65 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            TrieNode created = new(NodeType.Unknown, in hash);
-            created.InitRlp(new CappedArray<byte>(rlp));
-            created.IsPersisted = true;
+            TrieNode? typed;
             try
             {
-                if (!created.DecodeRlp(new ValueRlpStream(created.ReadRlp()), bufferPool, out _))
-                {
-                    node = null;
-                    return false;
-                }
+                typed = AllocateTypedFromRlp(new CappedArray<byte>(rlp), bufferPool, out _);
             }
             catch (RlpException)
             {
                 node = null;
                 return false;
             }
-            node = created;
+
+            if (typed is null)
+            {
+                node = null;
+                return false;
+            }
+
+            typed.InitRlp(new CappedArray<byte>(rlp));
+            typed.SetKeccak(in hash);
+            typed.IsPersisted = true;
+            node = typed;
             return true;
         }
 
-        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)
+        /// <summary>
+        /// Peek the RLP header to determine branch/leaf/extension shape and allocate
+        /// the matching typed <see cref="TrieNode"/> derived instance with its
+        /// <c>_nodeData</c> populated. Returns <c>null</c> when the RLP contains fewer
+        /// than two items. The returned node carries no RLP or keccak yet; callers
+        /// publish those after the typed shell is in hand.
+        /// </summary>
+        private static TrieNode? AllocateTypedFromRlp(CappedArray<byte> rlp, ICappedArrayPool? bufferPool, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
 
+            ValueRlpStream rlpStream = new(rlp);
             rlpStream.ReadSequenceLength();
-
-            // micro optimization to prevent searches beyond 3 items for branches (search up to three)
             int numberOfItems = itemsCount = rlpStream.PeekNumberOfItemsRemaining(null, 3);
 
             if (numberOfItems < 2)
             {
-                return false;
+                return null;
             }
-            else if (numberOfItems > 2)
+            if (numberOfItems > 2)
             {
-                _nodeData = new BranchData();
-            }
-            else
-            {
-                ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
-                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
-                if (isLeaf)
-                {
-                    valueSpan = rlpStream.DecodeByteArraySpan();
-                    CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
-                    valueSpan.CopyTo(buffer.AsSpan());
-                    _nodeData = new LeafData(key, buffer);
-                }
-                else
-                {
-                    _nodeData = new ExtensionData(key);
-                }
+                return new TrieNodeBranch();
             }
 
-            return true;
+            ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
+            (byte[] key, bool isLeaf) = HexPrefix.FromBytes(valueSpan);
+            if (isLeaf)
+            {
+                valueSpan = rlpStream.DecodeByteArraySpan();
+                CappedArray<byte> buffer = bufferPool.SafeRent(valueSpan.Length);
+                valueSpan.CopyTo(buffer.AsSpan());
+                return new TrieNodeLeaf(new LeafData(key, buffer));
+            }
+
+            return new TrieNodeExtension(new ExtensionData(key));
         }
 
         internal void PreDecodeChildrenIfBranch(ref TreePath path)

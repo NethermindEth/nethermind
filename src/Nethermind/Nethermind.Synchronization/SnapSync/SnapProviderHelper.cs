@@ -225,7 +225,8 @@ namespace Nethermind.Synchronization.SnapSync
                             if (inlineRlp is not null)
                             {
                                 child = new TrieNode(NodeType.Unknown, inlineRlp);
-                                child.ResolveNode(NullTrieNodeResolver.Instance, path.Append(ci));
+                                TreePath inlinePath = path.Append(ci);
+                                TrieNode.ResolveNode(ref child, NullTrieNodeResolver.Instance, in inlinePath);
                             }
                         }
 
@@ -306,7 +307,7 @@ namespace Nethermind.Synchronization.SnapSync
                 node.IsBoundaryProofNode = true;
 
                 TreePath emptyPath = TreePath.Empty;
-                node.ResolveNode(UnknownNodeResolver.Instance, emptyPath);
+                TrieNode.ResolveNode(ref node, UnknownNodeResolver.Instance, in emptyPath);
                 node.ResolveKey(UnknownNodeResolver.Instance, ref emptyPath);
 
                 dict[node.Keccak] = node;

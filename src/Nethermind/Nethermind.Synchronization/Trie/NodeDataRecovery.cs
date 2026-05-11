@@ -63,7 +63,7 @@ public class NodeDataRecovery(ISyncPeerPool peerPool, INodeStorage nodeStorage, 
             recoveredNodes.Add((currentPath, nodeRlp));
 
             TrieNode? node = new(NodeType.Unknown, nodeRlp);
-            node.ResolveNode(EmptyTrieNodeResolver.Instance, currentPath);
+            TrieNode.ResolveNode(ref node, EmptyTrieNodeResolver.Instance, in currentPath);
 
             if (node.IsBranch)
             {

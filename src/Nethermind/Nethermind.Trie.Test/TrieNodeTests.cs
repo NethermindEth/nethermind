@@ -60,7 +60,8 @@ public class TrieNodeTests
     public void Throws_trie_exception_on_missing_node()
     {
         TrieNode trieNode = new(NodeType.Unknown);
-        Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
+        TreePath emptyPath = TreePath.Empty;
+        Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
 
     [Test]
@@ -69,9 +70,10 @@ public class TrieNodeTests
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
         resolver.LoadRlp(TreePath.Empty, TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
         TrieNode trieNode = new(NodeType.Unknown, TestItem.KeccakA);
+        TreePath emptyPath = TreePath.Empty;
         try
         {
-            Assert.Throws<TrieException>(() => trieNode.ResolveNode(resolver, TreePath.Empty, ReadFlags.HintReadAhead));
+            Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, resolver, in emptyPath, ReadFlags.HintReadAhead));
         }
         catch (TrieException)
         {
@@ -83,21 +85,24 @@ public class TrieNodeTests
     public void Throws_trie_exception_on_unexpected_format()
     {
         TrieNode trieNode = new(NodeType.Unknown, new byte[42]);
-        Assert.Throws<TrieNodeException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
+        TreePath emptyPath = TreePath.Empty;
+        Assert.Throws<TrieNodeException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
 
     [Test]
     public void When_resolving_an_unknown_node_without_keccak_and_rlp_trie_exception_should_be_thrown()
     {
         TrieNode trieNode = new(NodeType.Unknown);
-        Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
+        TreePath emptyPath = TreePath.Empty;
+        Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
 
     [Test]
     public void When_resolving_an_unknown_node_without_rlp_trie_exception_should_be_thrown()
     {
         TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
-        Assert.Throws<TrieException>(() => trieNode.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty));
+        TreePath emptyPath = TreePath.Empty;
+        Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
 
     [Test]
@@ -190,9 +195,9 @@ public class TrieNodeTests
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
-        decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+        TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
         TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
-        decodedTiniest.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+        TrieNode.ResolveNode(ref decodedTiniest, NullTrieNodeResolver.Instance, in emptyPath);
 
         Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
         Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)), "key");
@@ -209,7 +214,7 @@ public class TrieNodeTests
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
-        decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+        TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
         TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
 
         Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(11)), "value");
@@ -227,9 +232,12 @@ public class TrieNodeTests
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
-        decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+        TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
         TrieNode? decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0);
-        decodedTiniest?.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+        if (decodedTiniest is not null)
+        {
+            TrieNode.ResolveNode(ref decodedTiniest, NullTrieNodeResolver.Instance, in emptyPath);
+        }
 
         Assert.That(decodedTiniest.Value.ToArray(), Is.EqualTo(ctx.TiniestLeaf.Value.ToArray()), "value");
         Assert.That(HexPrefix.ToBytes(decodedTiniest.Key!, true), Is.EqualTo(HexPrefix.ToBytes(ctx.TiniestLeaf.Key!, true)),
@@ -248,7 +256,7 @@ public class TrieNodeTests
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
-        decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+        TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
         TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0);
 
         Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(0)), "keccak");
@@ -902,7 +910,12 @@ public class TrieNodeTests
 
         trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
         trieNode.GetChild(trieStore, ref emptyPath, 0);
-        Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, ref emptyPath, 0).ResolveNode(trieStore, TreePath.Empty));
+        Assert.Throws<TrieException>(() =>
+        {
+            TrieNode child = trieNode.GetChild(trieStore, ref emptyPath, 0)!;
+            TreePath rootPath = TreePath.Empty;
+            TrieNode.ResolveNode(ref child, trieStore, in rootPath);
+        });
     }
 
     [Test]
@@ -978,7 +991,8 @@ public class TrieNodeTests
         TrieNode clone = restoredBranch.Clone();
         TrieNode restoredLeaf1 = clone.GetChild(trieStore, ref emptyPath, 1);
         restoredLeaf1.Should().NotBeNull();
-        restoredLeaf1.ResolveNode(trieStore, TreePath.Empty);
+        TreePath rootPath = TreePath.Empty;
+        TrieNode.ResolveNode(ref restoredLeaf1, trieStore, in rootPath);
         restoredLeaf1.Value.ToArray().Should().BeEquivalentTo(leaf1.Value.ToArray());
     }
 

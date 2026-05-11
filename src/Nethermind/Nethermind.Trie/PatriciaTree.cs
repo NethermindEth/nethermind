@@ -68,7 +68,12 @@ namespace Nethermind.Trie
         {
             get
             {
-                RootRef?.ResolveNode(TrieStore, TreePath.Empty);
+                if (RootRef is { } root)
+                {
+                    TreePath emptyPath = TreePath.Empty;
+                    TrieNode.ResolveNode(ref root, TrieStore, in emptyPath);
+                    RootRef = root;
+                }
                 return RootRef;
             }
         }
@@ -589,7 +594,7 @@ namespace Nethermind.Trie
                     break;
                 }
 
-                node.ResolveNode(TrieStore, path);
+                TrieNode.ResolveNode(ref node, TrieStore, in path);
 
                 if (node.IsLeaf || node.IsExtension)
                 {
@@ -762,7 +767,21 @@ namespace Nethermind.Trie
         {
             if (parent is null) return true;
             if (oldChild is null && newChild is null) return false;
-            if (!ReferenceEquals(oldChild, newChild)) return true;
+            if (!ReferenceEquals(oldChild, newChild))
+            {
+                // B3b: ResolveNode rebinds the caller's reference to a typed instance,
+                // so a placeholder->typed resolve looks like a "different child" by ref
+                // identity. Treat both as the same child when both carry the same keccak;
+                // the structural payload is identical and a re-encode would be wasteful.
+                if (oldChild is not null && newChild is not null
+                    && oldChild.TryGetKeccak(out ValueHash256 oldKeccak)
+                    && newChild.TryGetKeccak(out ValueHash256 newKeccak)
+                    && oldKeccak == newKeccak)
+                {
+                    return false;
+                }
+                return true;
+            }
             // So that recalculate root knows to recalculate the parent root.
             // Parent's hash can also be null depending on nesting level - still need to update child, otherwise combine will remain original value
             return newChild.Keccak is null;
@@ -807,7 +826,7 @@ namespace Nethermind.Trie
             if (onlyChildIdx == -1) return null; // No child at all.
 
             path.AppendMut(onlyChildIdx);
-            onlyChildNode.ResolveNode(TrieStore, path);
+            TrieNode.ResolveNode(ref onlyChildNode, TrieStore, in path);
             path.TruncateOne();
 
             if (onlyChildNode.IsBranch)
@@ -931,7 +950,7 @@ namespace Nethermind.Trie
                         return default;
                     }
 
-                    node.ResolveNode(_readResolver, path);
+                    TrieNode.ResolveNode(ref node, _readResolver, in path);
 
                     if (isNodeRead && remainingKey.Length == 0)
                     {
@@ -999,7 +1018,7 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        node.ResolveNode(_readResolver, path);
+                        TrieNode.ResolveNode(ref node, _readResolver, in path);
                     }
 
                     if (node.IsLeaf || node.IsExtension)
@@ -1112,7 +1131,7 @@ namespace Nethermind.Trie
                     if (RootHash == rootHash)
                     {
                         rootRef = RootRef;
-                        if (rootRef is null || !rootRef.TryResolveNode(resolver, ref emptyPath))
+                        if (rootRef is null || !TrieNode.TryResolveNode(ref rootRef, resolver, ref emptyPath))
                         {
                             visitor.VisitMissingNode(default, rootHash);
                             return false;

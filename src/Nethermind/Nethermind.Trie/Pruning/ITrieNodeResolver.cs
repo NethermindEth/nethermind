@@ -37,7 +37,7 @@ namespace Nethermind.Trie.Pruning
         TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
             TrieNode node = FindCachedOrUnknown(in path, in hash);
-            node.ResolveNode(this, in path, flags);
+            TrieNode.ResolveNode(ref node, this, in path, flags);
             return node;
         }
 
@@ -50,7 +50,7 @@ namespace Nethermind.Trie.Pruning
         {
             TrieNode candidate = FindCachedOrUnknown(in path, in hash);
             TreePath pathCopy = path;
-            if (!candidate.TryResolveNode(this, ref pathCopy, flags))
+            if (!TrieNode.TryResolveNode(ref candidate, this, ref pathCopy, flags))
             {
                 node = null;
                 return false;

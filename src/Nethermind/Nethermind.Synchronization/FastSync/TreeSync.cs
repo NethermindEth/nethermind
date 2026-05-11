@@ -803,7 +803,7 @@ namespace Nethermind.Synchronization.FastSync
             TreePath path = currentStateSyncItem.Path;
 
             TrieNode trieNode = new(NodeType.Unknown, currentResponseItem);
-            trieNode.ResolveNode(NullTrieNodeResolver.Instance, path); // TODO: will this work now?
+            TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in path); // TODO: will this work now?
             switch (trieNode.NodeType)
             {
                 case NodeType.Unknown:
