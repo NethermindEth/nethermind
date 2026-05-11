@@ -300,6 +300,12 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         return enqueued;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void PushSlotJobMpmc(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
+    {
+        if (_jobBufferMultiThreaded.TryEnqueue(new Job(storageTree, null, index, sequenceId))) MaybeWakeupFast();
+    }
+
     public void OnEnterScope() => _primaryWorkerLatch.Set();
 
     public void OnExitScope() { }

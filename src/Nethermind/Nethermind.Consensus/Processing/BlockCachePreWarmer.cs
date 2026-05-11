@@ -394,7 +394,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 if (Bal is not null && Bal.AccountChanges.Count > 0)
                 {
-                    WarmupFromBal(parallelOptions, envPool);
+                    HintBalFromAddressWarmer(envPool);
                 }
                 else
                 {
@@ -421,67 +421,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        private void WarmupFromBal(ParallelOptions parallelOptions, ObjectPool<IReadOnlyTxProcessorSource> envPool)
+        // The address warmer runs on a single ThreadPool work item, so this satisfies the
+        // single-producer invariant assumed by FlatWorldStateScope.HintBal's background Task.
+        // The flat scope spawns its own internal Task to fan slot warmups onto the trie warmer's
+        // MPMC queue; we just need to drive HintBal once per block from a stable scope.
+        private void HintBalFromAddressWarmer(ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
-            using ArrayPoolList<AccountChanges> accounts = Bal!.AccountChanges.ToPooledList(Bal!.AccountChanges.Count);
-
-            WarmingState<ArrayPoolList<AccountChanges>> baseState = new(envPool, accounts, parent);
-
-            ParallelUnbalancedWork.For(
-                0,
-                accounts.Count,
-                parallelOptions,
-                baseState.InitThreadState,
-                static (i, state) =>
-                {
-                    AccountChanges ac = state.Payload[i];
-                    IWorldState worldState = state.Scope!.WorldState;
-
-                    WarmupBalAccount(ac, worldState);
-
-                    return state;
-                },
-                WarmingState<ArrayPoolList<AccountChanges>>.FinallyAction);
-        }
-
-        private static void WarmupBalAccount(AccountChanges ac, IWorldState worldState)
-        {
+            IReadOnlyTxProcessorSource env = envPool.Get();
             try
             {
-                Address address = ac.Address;
-                worldState.WarmUp(address);
-
-                // Merge two sorted sequences (ChangedSlots, SortedStorageReads) into one
-                // ascending pass for better trie path locality
-                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
-                ReadOnlySpan<UInt256> reads = ac.SortedStorageReads;
-                int slotIndex = 0;
-                int readIndex = 0;
-
-                while (slotIndex < changed.Length || readIndex < reads.Length)
-                {
-                    UInt256 slot;
-                    if (readIndex >= reads.Length)
-                    {
-                        slot = changed[slotIndex++];
-                    }
-                    else
-                    {
-                        slot = reads[readIndex];
-                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
-                        {
-                            slot = changed[slotIndex++];
-                        }
-                        else
-                        {
-                            readIndex++;
-                        }
-                    }
-                    worldState.Get(new StorageCell(address, slot));
-                }
+                using IReadOnlyTxProcessingScope scope = env.Build(parent);
+                scope.WorldState.HintBal(Bal!);
             }
             catch (MissingTrieNodeException)
             {
+            }
+            finally
+            {
+                envPool.Return(env);
             }
         }
 

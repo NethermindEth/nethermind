@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -66,6 +67,103 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         }
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
+
+        public void HintBal(BlockAccessList bal) { }
+
+        public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
+        {
+            int accountCount = 0;
+            foreach (AccountChanges _ in bal.AccountChanges)
+                accountCount++;
+
+            if (accountCount == 0)
+                return Task.CompletedTask;
+
+            using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
+            int copyIdx = 0;
+            foreach (AccountChanges ac in bal.AccountChanges)
+                accountChangesList[copyIdx++] = ac;
+
+            // Phase 1 uses a private StateTree so the main-path tree instance is not touched
+            // from the BAL reader thread pool.
+            StateTree privateStateTree = _scopeProvider.CreateStateTree();
+            privateStateTree.RootHash = _backingStateTree.RootHash;
+
+            ParallelOptions options = new() { CancellationToken = cancellationToken };
+            using ArrayPoolList<Account?> accounts = new(accountCount, accountCount);
+
+            try
+            {
+                Parallel.For(0, accountCount, options, (i) =>
+                {
+                    Address address = accountChangesList[i].Address;
+                    if (!sink.StillNeeded(address, out Account? cached))
+                    {
+                        accounts[i] = cached;
+                        return;
+                    }
+
+                    Account? account = privateStateTree.Get(address);
+                    accounts[i] = account;
+                    sink.OnAccountRead(address, account);
+                });
+            }
+            catch (OperationCanceledException) { return Task.CompletedTask; }
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Phase 2: flat (address, private-tree, slot) jobs in one parallel pass
+            int totalSlots = 0;
+            for (int i = 0; i < accountCount; i++)
+            {
+                Account? account = accounts[i];
+                if (account is null) continue;
+                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                if (storageRoot == Keccak.EmptyTreeHash) continue;
+                totalSlots += accountChangesList[i].StorageChanges.Length + accountChangesList[i].StorageReads.Count;
+            }
+
+            if (totalSlots > 0)
+            {
+                using ArrayPoolList<(Address Address, StorageTree Tree, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+                int jobIdx = 0;
+                for (int i = 0; i < accountCount; i++)
+                {
+                    Account? account = accounts[i];
+                    if (account is null) continue;
+                    Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                    if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                    AccountChanges accountChanges = accountChangesList[i];
+                    Address address = accountChanges.Address;
+                    // Private per-account storage tree; main thread's LookupStorageTree creates its own.
+                    StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+
+                    foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                        jobs[jobIdx++] = (address, storageTree, slotChanges.Key);
+
+                    foreach (UInt256 storageReadKey in accountChanges.StorageReads)
+                        jobs[jobIdx++] = (address, storageTree, storageReadKey);
+                }
+
+                try
+                {
+                    Parallel.For(0, totalSlots, options, (s) =>
+                    {
+                        (Address address, StorageTree tree, UInt256 slot) = jobs[s];
+                        StorageCell cell = new(address, in slot);
+                        if (!sink.StillNeeded(in cell))
+                            return;
+
+                        byte[] value = tree.Get(in slot);
+                        sink.OnStorageRead(in cell, value);
+                    });
+                }
+                catch (OperationCanceledException) { }
+            }
+
+            return Task.CompletedTask;
+        }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 

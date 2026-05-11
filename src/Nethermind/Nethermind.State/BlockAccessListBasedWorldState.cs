@@ -91,6 +91,8 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
+    public void HintBal(BlockAccessList bal) => _innerWorldState.HintBal(bal);
+
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         (IWorldState parentReader, AccountChanges accountChanges) = ResolveContext(storageCell.Address);

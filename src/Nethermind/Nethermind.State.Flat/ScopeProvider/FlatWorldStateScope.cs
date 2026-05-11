@@ -6,10 +6,13 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -28,14 +31,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
+    private readonly Lock _storagesLock = new();
     private bool _isDisposed = false;
 
-    // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
-    // tasks within the trie warmer's ring buffer.
-    private int _hintSequenceId = 0;
+    // tasks within the trie warmer's ring buffer. Volatile so the background HintBal task sees increments without
+    // conflicting with the Interlocked writer.
+    private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
-    internal bool _pausePrewarmer = false;
+    internal volatile bool _pausePrewarmer = false;
+
+    // Tracked HintBal background task — mirrors PrewarmerScopeProvider's _balCts/_balTask pattern.
+    private CancellationTokenSource? _hintBalCts;
+    private Task? _hintBalTask;
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -80,6 +88,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -106,6 +115,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             spinWait.SpinOnce();
         }
+    }
+
+    private void CancelHintBal()
+    {
+        _hintBalCts?.Cancel();
+        try { _hintBalTask?.GetAwaiter().GetResult(); }
+        catch { }
+        _hintBalCts?.Dispose();
+        _hintBalCts = null;
+        _hintBalTask = null;
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
@@ -139,6 +158,159 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
+    public void HintBal(BlockAccessList bal)
+    {
+        // Cancel any previous HintBal task and start a new one. Tracks the task so
+        // Dispose / next HintBal can stop it cleanly, matching PrewarmerScopeProvider's pattern.
+        CancelHintBal();
+        _hintBalCts = new CancellationTokenSource();
+        CancellationToken token = _hintBalCts.Token;
+        int snapshot = _hintSequenceId;
+
+        _hintBalTask = Task.Run(() =>
+        {
+            try
+            {
+                foreach (AccountChanges accountChanges in bal.AccountChanges)
+                {
+                    if (token.IsCancellationRequested) return;
+                    if (_hintSequenceId != snapshot || _pausePrewarmer) return;
+
+                    Address address = accountChanges.Address;
+                    _warmer.PushAddressJob(this, address, snapshot);
+
+                    int slotCount = accountChanges.StorageChanges.Length + accountChanges.StorageReads.Count;
+                    if (slotCount == 0) continue;
+
+                    Account? account = _snapshotBundle.GetAccount(address);
+                    Hash256 storageRoot = account?.StorageRoot ?? Keccak.EmptyTreeHash;
+                    if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                    // Non-cached per-warmup tree — the main thread's CreateStorageTreeImpl still
+                    // builds its own cached instance the first time it's asked.
+                    FlatStorageTree storageWarmer = new(
+                        this,
+                        _warmer,
+                        _snapshotBundle,
+                        _configuration,
+                        _concurrencyQuota,
+                        storageRoot,
+                        address,
+                        _logManager);
+
+                    foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                    {
+                        if (token.IsCancellationRequested) return;
+                        _warmer.PushSlotJobMpmc(storageWarmer, slotChanges.Key, snapshot);
+                    }
+
+                    foreach (UInt256 storageReadKey in accountChanges.StorageReads)
+                    {
+                        if (token.IsCancellationRequested) return;
+                        _warmer.PushSlotJobMpmc(storageWarmer, storageReadKey, snapshot);
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (ObjectDisposedException) { }
+        }, token);
+    }
+
+    public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
+    {
+        int accountCount = 0;
+        foreach (AccountChanges _ in bal.AccountChanges)
+            accountCount++;
+
+        if (accountCount == 0)
+            return Task.CompletedTask;
+
+        using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
+        int copyIdx = 0;
+        foreach (AccountChanges ac in bal.AccountChanges)
+            accountChangesList[copyIdx++] = ac;
+
+        ParallelOptions parallelOptions = new() { CancellationToken = cancellationToken };
+
+        // Phase 1: parallel account fetch, gated by the sink
+        using ArrayPoolList<Account?> accounts = new(accountCount, accountCount);
+        try
+        {
+            Parallel.For(0, accountCount, parallelOptions, (i) =>
+            {
+                Address address = accountChangesList[i].Address;
+                if (!sink.StillNeeded(address, out Account? cached))
+                {
+                    accounts[i] = cached;
+                    return;
+                }
+
+                Account? account = _snapshotBundle.GetAccount(address);
+                accounts[i] = account;
+                sink.OnAccountRead(address, account);
+            });
+        }
+        catch (OperationCanceledException) { return Task.CompletedTask; }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Phase 2: flatten (address, tree, slot) jobs and read in one parallel pass
+        int totalSlots = 0;
+        for (int i = 0; i < accountCount; i++)
+        {
+            Account? account = accounts[i];
+            if (account is null) continue;
+            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+            if (storageRoot == Keccak.EmptyTreeHash) continue;
+            totalSlots += accountChangesList[i].StorageChanges.Length + accountChangesList[i].StorageReads.Count;
+        }
+
+        if (totalSlots > 0)
+        {
+            // Read via the snapshot bundle directly, skipping the cached FlatStorageTree wrapper.
+            // The wrapper's Get calls HintGet -> PushSlotJob, which enqueues into the SPMC slot buffer;
+            // letting parallel workers share the cached tree would corrupt that buffer.
+            // HintBal still drives trie warmup via a per-account non-cached FlatStorageTree + PushSlotJobMpmc.
+            using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+            int jobIdx = 0;
+            for (int i = 0; i < accountCount; i++)
+            {
+                Account? account = accounts[i];
+                if (account is null) continue;
+                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                AccountChanges accountChanges = accountChangesList[i];
+                Address address = accountChanges.Address;
+                int selfDestructIdx = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+
+                foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                    jobs[jobIdx++] = (address, selfDestructIdx, slotChanges.Key);
+
+                foreach (UInt256 storageReadKey in accountChanges.StorageReads)
+                    jobs[jobIdx++] = (address, selfDestructIdx, storageReadKey);
+            }
+
+            try
+            {
+                Parallel.For(0, totalSlots, parallelOptions, (s) =>
+                {
+                    (Address address, int selfDestructIdx, UInt256 slot) = jobs[s];
+                    StorageCell cell = new(address, in slot);
+                    if (!sink.StillNeeded(in cell))
+                        return;
+
+                    byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+                    byte[] value = raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw;
+                    sink.OnStorageRead(in cell, value);
+                });
+            }
+            catch (OperationCanceledException) { }
+        }
+
+        return Task.CompletedTask;
+    }
+
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
@@ -169,29 +341,43 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private FlatStorageTree CreateStorageTreeImpl(Address address)
     {
-        ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-        if (exists) return storage!;
+        // _storages is accessed concurrently — the HintBal/ReadBalAsync Task.Run may call
+        // CreateStorageTree from a worker thread while the main processing thread also
+        // reads/writes via scope.Get/WriteBatch paths. Dictionary is not thread-safe.
+        lock (_storagesLock)
+        {
+            ref FlatStorageTree? storage = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+            if (exists) return storage!;
 
-        Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-        storage = new FlatStorageTree(
-            this,
-            _warmer,
-            _snapshotBundle,
-            _configuration,
-            _concurrencyQuota,
-            storageRoot,
-            address,
-            _logManager);
+            Hash256 storageRoot = Get(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            storage = new FlatStorageTree(
+                this,
+                _warmer,
+                _snapshotBundle,
+                _configuration,
+                _concurrencyQuota,
+                storageRoot,
+                address,
+                _logManager);
 
-        return storage;
+            return storage;
+        }
     }
 
-    public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-        new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
+    {
+        // Cancel HintBal background warmup — write batches are processor-intensive and already parallelized,
+        // so the warmer thread shouldn't compete for CPU or touch _storages while we mutate it.
+        CancelHintBal();
+        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    }
 
     public void Commit(long blockNumber)
     {
         _pausePrewarmer = true;
+        // Drain HintBal task before iterating _storages — Commit's foreach isn't locked
+        // and the task may otherwise be mid-CreateStorageTreeImpl when we start iterating.
+        CancelHintBal();
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.
