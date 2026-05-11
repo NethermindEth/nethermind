@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -38,10 +39,19 @@ public class TestingRpcModule(
     ILogManager logManager)
     : ITestingRpcModule, IDisposable
 {
-    private static readonly TimeSpan CommitHeadTimeout = TimeSpan.FromSeconds(30);
-
     private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
     private readonly SemaphoreSlim _commitLock = new(1, 1);
+
+    // Reused across calls: serialised by _commitLock, so a single instance is safe.
+    // Matches the pattern BlockProcessor.ReceiptsTracer uses in the main pipeline.
+    private readonly BlockReceiptsTracer _receiptsTracer = new();
+
+    // CreatePersistent's lifetime is tied to the root container; the testing
+    // endpoint reuses one producer env across every call instead of spinning a
+    // fresh DI scope per block. BranchProcessor.Process opens a new world-state
+    // scope on entry, so there's no cross-call mutable state to leak.
+    private IBlockProducerEnv? _env;
+    private IBlockProducerEnv Env => _env ??= blockProducerEnvFactory.CreatePersistent();
 
     public void Dispose() => _commitLock.Dispose();
 
@@ -51,12 +61,16 @@ public class TestingRpcModule(
         if (parentBlock is null)
             return ResultWrapper<object>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
 
-        ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(parentBlock.Header, payloadAttributes, txRlps, extraData, nameof(testing_buildBlockV1), processExitSource.Token);
+        FeesTracer feesTracer = new();
+        ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(
+            parentBlock.Header, payloadAttributes, txRlps, extraData,
+            nameof(testing_buildBlockV1), processExitSource.Token,
+            feesTracer, ProcessingOptions.ProducingBlock);
         if (produced.Result.ResultType == ResultType.Failure)
             return ResultWrapper<object>.Fail(produced.Result.Error!, produced.ErrorCode);
 
         if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {produced.Data.Block.Header.ToString(BlockHeader.Format.Short)}.");
-        return ResultWrapper<object>.Success(CreateGetPayloadResult(produced.Data.Block, produced.Data.Fees, produced.Data.Spec));
+        return ResultWrapper<object>.Success(CreateGetPayloadResult(produced.Data.Block, feesTracer.Fees, produced.Data.Spec));
     }
 
     public async Task<ResultWrapper<Hash256>> testing_commitBlockV1(
@@ -77,11 +91,19 @@ public class TestingRpcModule(
             if (blockTree.Head?.Header is not BlockHeader chainHead)
                 return ResultWrapper<Hash256>.Fail("chain head not found", ErrorCodes.InternalError);
 
-            ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(chainHead, payloadAttributes, txRlps, extraData, nameof(testing_commitBlockV1), exitToken);
+            // StoreReceipts moves receipt persistence from the main BlockProcessor
+            // (which we no longer run) into the producer pass. The receipts tracer
+            // collects them; the inner BlockProcessor inserts them into the
+            // receipt store when the StoreReceipts flag is set.
+            _receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
+            ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(
+                chainHead, payloadAttributes, txRlps, extraData,
+                nameof(testing_commitBlockV1), exitToken,
+                _receiptsTracer, ProcessingOptions.ProducingBlock | ProcessingOptions.StoreReceipts);
             if (produced.Result.ResultType == ResultType.Failure)
                 return ResultWrapper<Hash256>.Fail(produced.Result.Error!, produced.ErrorCode);
 
-            return await SuggestAndWaitForHeadAsync(produced.Data.Block, exitToken);
+            return CommitAsMainChain(produced.Data.Block);
         }
         finally
         {
@@ -89,20 +111,22 @@ public class TestingRpcModule(
         }
     }
 
-    private readonly record struct ProducedBlock(Block Block, UInt256 Fees, IReleaseSpec Spec);
+    private readonly record struct ProducedBlock(Block Block, IReleaseSpec Spec);
 
-    private async Task<ResultWrapper<ProducedBlock>> ProduceBlockAsync(
+    private Task<ResultWrapper<ProducedBlock>> ProduceBlockAsync(
         BlockHeader parent,
         PayloadAttributes payloadAttributes,
         IEnumerable<byte[]>? txRlps,
         byte[]? extraData,
         string operationName,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IBlockTracer tracer,
+        ProcessingOptions options)
     {
         IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parent.Number + 1, payloadAttributes.Timestamp));
         BlockHeader header = PrepareBlockHeader(parent, payloadAttributes, spec, extraData);
 
-        await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
+        IBlockProducerEnv env = Env;
 
         Transaction[] transactions;
         try
@@ -115,79 +139,55 @@ public class TestingRpcModule(
         }
         catch (RlpException e)
         {
-            return ResultWrapper<ProducedBlock>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
+            return Task.FromResult(ResultWrapper<ProducedBlock>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput));
         }
 
         header.TxRoot = TxTrie.CalculateRoot(transactions);
         BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
 
-        FeesTracer feesTracer = new();
-        Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer, cancellationToken);
+        Block? processedBlock = env.ChainProcessor.Process(block, options, tracer, cancellationToken);
 
         if (processedBlock is null)
-            return cancellationToken.IsCancellationRequested
+            return Task.FromResult(cancellationToken.IsCancellationRequested
                 ? ResultWrapper<ProducedBlock>.Fail("node is shutting down", ErrorCodes.InternalError)
-                : ResultWrapper<ProducedBlock>.Fail("payload processing failed", ErrorCodes.InternalError);
+                : ResultWrapper<ProducedBlock>.Fail("payload processing failed", ErrorCodes.InternalError));
 
         if (txRlps is not null && processedBlock.Transactions.Length != transactions.Length)
         {
             string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
             if (_logger.IsWarn) _logger.Warn($"{operationName} failed: {error}");
-            return ResultWrapper<ProducedBlock>.Fail(error, ErrorCodes.InvalidInput);
+            return Task.FromResult(ResultWrapper<ProducedBlock>.Fail(error, ErrorCodes.InvalidInput));
         }
 
-        return ResultWrapper<ProducedBlock>.Success(new ProducedBlock(processedBlock, feesTracer.Fees, spec));
+        return Task.FromResult(ResultWrapper<ProducedBlock>.Success(new ProducedBlock(processedBlock, spec)));
     }
 
-    private async Task<ResultWrapper<Hash256>> SuggestAndWaitForHeadAsync(Block processedBlock, CancellationToken exitToken)
+    /// <summary>
+    /// Add the already-processed block to the chain and advance the canonical head.
+    /// Skips the main BlockchainProcessor (which would re-execute every transaction):
+    /// the producer's pass already committed the state trie and persisted receipts via
+    /// <see cref="ProcessingOptions.StoreReceipts"/>. UpdateMainChain fires
+    /// <c>NewHeadBlock</c>, <c>BlockAddedToMain</c>, and <c>OnUpdateMainChain</c>
+    /// synchronously on this thread; downstream consumers wired to <c>BlockProcessed</c>
+    /// (FilterManager, BackgroundTaskScheduler, AuRa finalisation) do not fire — this
+    /// endpoint is testing-only and callers do not depend on those events.
+    /// </summary>
+    private ResultWrapper<Hash256> CommitAsMainChain(Block processedBlock)
     {
         if (processedBlock.Hash is null)
             return ResultWrapper<Hash256>.Fail("processed block has no hash", ErrorCodes.InternalError);
 
-        Hash256 expectedHash = processedBlock.Hash;
-        TaskCompletionSource<bool> headAdvanced = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnNewHead(object? _, BlockEventArgs args)
+        AddBlockResult addBlockResult = blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.None);
+        if (addBlockResult != AddBlockResult.Added)
         {
-            if (args.Block.Hash == expectedHash)
-                headAdvanced.TrySetResult(true);
+            if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
+            return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
         }
 
-        blockTree.NewHeadBlock += OnNewHead;
+        blockTree.UpdateMainChain([processedBlock], wereProcessed: true);
 
-        try
-        {
-            if (blockTree.Head?.Hash == expectedHash)
-                headAdvanced.TrySetResult(true);
-
-            AddBlockResult addBlockResult = await blockTree.SuggestBlockAsync(processedBlock, BlockTreeSuggestOptions.ShouldProcess);
-            if (addBlockResult != AddBlockResult.Added)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Failed to commit block: {addBlockResult}");
-                return ResultWrapper<Hash256>.Fail($"failed to commit block: {addBlockResult}", ErrorCodes.InternalError);
-            }
-
-            using CancellationTokenSource timeoutCts = new(CommitHeadTimeout);
-            using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, exitToken);
-            try
-            {
-                await headAdvanced.Task.WaitAsync(linkedCts.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                string message = exitToken.IsCancellationRequested
-                    ? "node is shutting down"
-                    : $"block was suggested but did not become head within {CommitHeadTimeout.TotalSeconds:0}s";
-                return ResultWrapper<Hash256>.Fail(message, ErrorCodes.InternalError);
-            }
-        }
-        finally
-        {
-            blockTree.NewHeadBlock -= OnNewHead;
-        }
-
-        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {expectedHash}");
-        return ResultWrapper<Hash256>.Success(expectedHash);
+        if (_logger.IsDebug) _logger.Debug($"testing_commitBlockV1 committed block {processedBlock.Header.ToString(BlockHeader.Format.Short)} with hash {processedBlock.Hash}");
+        return ResultWrapper<Hash256>.Success(processedBlock.Hash);
     }
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)

@@ -221,11 +221,63 @@ public class TestingRpcModuleTests
         result.Result.ResultType.Should().Be(ResultType.Success);
 
         Block suggested = (Block)blockTree.ReceivedCalls()
-            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlockAsync))
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
             .GetArguments()[0]!;
         suggested.Header.Number.Should().Be(chainHeadHeader.Number + 1);
         suggested.Hash.Should().NotBeNull();
         result.Data.Should().Be(suggested.Hash!);
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_skips_reprocessing_by_setting_main_chain_directly()
+    {
+        // Regression: the endpoint MUST avoid pass F (main-processor re-execution) by
+        // suggesting with BlockTreeSuggestOptions.None and advancing the head via
+        // UpdateMainChain([block], wereProcessed: true). This halves the EVM cost
+        // per call and is the core optimisation of this PR.
+        (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.Added);
+
+        ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
+            CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+
+        BlockTreeSuggestOptions suggestOptions = (BlockTreeSuggestOptions)blockTree.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.SuggestBlock))
+            .GetArguments()[1]!;
+        suggestOptions.Should().Be(BlockTreeSuggestOptions.None,
+            "ShouldProcess would force the main BlockchainProcessor to re-execute every tx");
+
+        // UpdateMainChain([block], wereProcessed: true) is the synchronous head-advance path.
+        System.Collections.IList updatedBlocks = (System.Collections.IList)blockTree.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.UpdateMainChain))
+            .GetArguments()[0]!;
+        bool wereProcessed = (bool)blockTree.ReceivedCalls()
+            .Single(c => c.GetMethodInfo().Name == nameof(IBlockTree.UpdateMainChain))
+            .GetArguments()[1]!;
+        updatedBlocks.Count.Should().Be(1);
+        wereProcessed.Should().BeTrue("the producer already executed the block; the main chain must reflect that");
+    }
+
+    [Test]
+    public async Task Testing_commitBlockV1_passes_StoreReceipts_to_producer()
+    {
+        // Regression: with main-processor pass F gone, receipts must be persisted in
+        // the producer pass D. That requires ProcessingOptions.StoreReceipts in the
+        // call to ChainProcessor.Process; without it BlockProcessor.StoreTxReceipts
+        // is gated off and eth_getTransactionReceipt would return null forever.
+        ProcessingOptions? observedOptions = null;
+        (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
+            CreateCommitTestingModule(suggestResult: AddBlockResult.Added,
+                onProcess: (block, opts) => observedOptions = opts);
+
+        await module.testing_commitBlockV1(CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
+
+        observedOptions.Should().NotBeNull();
+        observedOptions!.Value.ContainsFlag(ProcessingOptions.StoreReceipts).Should().BeTrue(
+            "receipts must persist in the producer pass since the main processor pass is skipped");
+        observedOptions!.Value.ContainsFlag(ProcessingOptions.ProducingBlock).Should().BeTrue();
     }
 
     [Test]
@@ -247,7 +299,7 @@ public class TestingRpcModuleTests
     public async Task Testing_commitBlockV1_fails_when_block_commit_fails()
     {
         (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
-            CreateCommitTestingModule(suggestResult: AddBlockResult.InvalidBlock, fireNewHeadEvent: false);
+            CreateCommitTestingModule(suggestResult: AddBlockResult.InvalidBlock);
 
         ResultWrapper<Hash256> result = await module.testing_commitBlockV1(
             CreateDefaultPayloadAttributes(chainHeadHeader),
@@ -278,7 +330,8 @@ public class TestingRpcModuleTests
         ulong? slotNumber = null,
         Action<Block>? onProcess = null,
         Func<Block, Block?>? processOverride = null,
-        ITxSource? txSource = null)
+        ITxSource? txSource = null,
+        Action<Block, ProcessingOptions>? onProcessWithOptions = null)
     {
         BlockHeader parentHeader = CreateDefaultParentHeader(slotNumber);
 
@@ -288,7 +341,7 @@ public class TestingRpcModuleTests
         IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
         gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
 
-        IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess);
+        IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess, onProcessWithOptions);
 
         IBlockProducerEnv blockProducerEnv = Substitute.For<IBlockProducerEnv>();
         blockProducerEnv.ChainProcessor.Returns(blockchainProcessor);
@@ -296,7 +349,7 @@ public class TestingRpcModuleTests
             blockProducerEnv.TxSource.Returns(txSource);
 
         IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
-        blockProducerEnvFactory.CreateTransient().Returns(new ScopedBlockProducerEnv(blockProducerEnv, Substitute.For<IAsyncDisposable>()));
+        blockProducerEnvFactory.CreatePersistent().Returns(blockProducerEnv);
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -325,31 +378,17 @@ public class TestingRpcModuleTests
 
     private (TestingRpcModule module, IBlockTree blockTree, BlockHeader chainHeadHeader) CreateCommitTestingModule(
         AddBlockResult suggestResult = AddBlockResult.Added,
-        bool fireNewHeadEvent = true,
-        bool nullChainHead = false)
+        bool nullChainHead = false,
+        Action<Block, ProcessingOptions>? onProcess = null)
     {
-        (TestingRpcModule module, IBlockTree blockTree, _, BlockHeader chainHeadHeader) = CreateModuleWithMocks();
+        (TestingRpcModule module, IBlockTree blockTree, _, BlockHeader chainHeadHeader) =
+            CreateModuleWithMocks(onProcessWithOptions: onProcess);
         Block chainHeadBlock = new(chainHeadHeader, [], [], []);
 
         blockTree.Head.Returns(nullChainHead ? null : chainHeadBlock);
-
-        // Raise NewHeadBlock inside Returns() so the event fires before SuggestBlockAsync
-        // returns — matches the production subscribe-then-suggest ordering the endpoint relies on.
-        if (fireNewHeadEvent && suggestResult == AddBlockResult.Added)
-        {
-            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
-                .Returns(callInfo =>
-                {
-                    Block block = callInfo.Arg<Block>();
-                    blockTree.NewHeadBlock += Raise.EventWith(blockTree, new BlockEventArgs(block));
-                    return suggestResult;
-                });
-        }
-        else
-        {
-            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
-                .Returns(suggestResult);
-        }
+        // After the fast-path refactor the endpoint uses the synchronous
+        // SuggestBlock + UpdateMainChain pair instead of SuggestBlockAsync.
+        blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()).Returns(suggestResult);
 
         return (module, blockTree, chainHeadHeader);
     }
@@ -379,7 +418,8 @@ public class TestingRpcModuleTests
 
     private static IBlockchainProcessor CreateBlockProcessor(
         Func<Block, Block?>? processOverride = null,
-        Action<Block>? onProcess = null)
+        Action<Block>? onProcess = null,
+        Action<Block, ProcessingOptions>? onProcessWithOptions = null)
     {
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
 
@@ -416,6 +456,13 @@ public class TestingRpcModuleTests
             processor
                 .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
                 .Do(callInfo => onProcess(callInfo.Arg<Block>()));
+        }
+
+        if (onProcessWithOptions is not null)
+        {
+            processor
+                .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
+                .Do(callInfo => onProcessWithOptions(callInfo.Arg<Block>(), callInfo.Arg<ProcessingOptions>()));
         }
 
         return processor;
