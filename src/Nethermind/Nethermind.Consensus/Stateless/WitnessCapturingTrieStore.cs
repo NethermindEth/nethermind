@@ -25,21 +25,21 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 
     public void Dispose() => _baseStore.Dispose();
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
-        TrieNode node = _baseStore.FindCachedOrUnknown(address, in path, hash);
+        TrieNode node = _baseStore.FindCachedOrUnknown(address, in path, in hash);
         CaptureNode(node);
         return node;
     }
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        TryLoadRlp(address, in path, hash, flags)
-        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, in hash, flags)
+        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, new Hash256(in hash));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? rlp = _baseStore.TryLoadRlp(address, in path, hash, flags);
-        CaptureRlp(hash, rlp);
+        byte[]? rlp = _baseStore.TryLoadRlp(address, in path, in hash, flags);
+        CaptureRlp(in hash, rlp);
         return rlp;
     }
 
@@ -58,17 +58,18 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 
     private void CaptureNode(TrieNode node)
     {
-        if (node.NodeType != NodeType.Unknown)
+        if (node.NodeType != NodeType.Unknown && node.TryGetKeccak(out ValueHash256 keccak))
         {
-            _rlpCollector.TryAdd(node.Keccak, node.FullRlp.ToArray());
+            // Keep Hash256AsKey externally; the collector is consumed as a witness lookup outside the trie cache.
+            _rlpCollector.TryAdd(new Hash256(in keccak), node.FullRlp.ToArray());
         }
     }
 
-    private void CaptureRlp(Hash256 hash, byte[]? rlp)
+    private void CaptureRlp(in ValueHash256 hash, byte[]? rlp)
     {
         if (rlp is not null)
         {
-            _rlpCollector.TryAdd(hash, rlp);
+            _rlpCollector.TryAdd(new Hash256(in hash), rlp);
         }
     }
 
@@ -83,9 +84,9 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
         Hash256? address,
         ITrieNodeResolver inner) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
         {
-            TrieNode node = inner.FindCachedOrUnknown(path, hash);
+            TrieNode node = inner.FindCachedOrUnknown(path, in hash);
             fullTrieStore.CaptureNode(node);
             return node;
         }

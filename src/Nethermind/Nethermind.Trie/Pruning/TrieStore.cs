@@ -244,7 +244,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
     }
 
-    private int GetNodeShardIdx(in TreePath path, Hash256 hash)
+    private int GetNodeShardIdx(in TreePath path, in ValueHash256 hash)
     {
         // When enabled, the shard have dictionaries for tracking past path hash also.
         // So the same path need to be in the same shard for the remove logic to work.
@@ -255,7 +255,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return (int)(hashCode % _shardedDirtyNodeCount);
     }
 
-    private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Path, key.Keccak)];
+    private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TrieStoreDirtyNodesCache.Key key) => _dirtyNodes[GetNodeShardIdx(key.Path, in key.Keccak)];
 
     private long NodesCount()
     {
@@ -295,7 +295,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         TrieNode node,
         long blockNumber)
     {
-        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, node.Keccak)];
+        ValueHash256 nodeKeccak = node.KeccakValue;
+        TrieStoreDirtyNodesCache shard = _dirtyNodes[GetNodeShardIdx(path, in nodeKeccak)];
         return SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
     }
 
@@ -491,7 +492,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         byte[]? rlp = _nodeStorage.Get(address, path, keccak, readFlags);
 
@@ -503,31 +504,29 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
     }
 
-    public byte[] LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public byte[] LoadRlp(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
-        byte[]? rlp = TryLoadRlp(address, path, keccak, readFlags);
+        byte[]? rlp = TryLoadRlp(address, path, in keccak, readFlags);
         if (rlp is null)
         {
-            ThrowMissingNode(address, path, keccak);
+            ThrowMissingNode(address, path, in keccak);
         }
 
         return rlp;
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak) => throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
+        static void ThrowMissingNode(Hash256? address, in TreePath path, in ValueHash256 keccak) => throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, new Hash256(in keccak));
     }
 
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
 
-    public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, hash));
+    public bool IsNodeCached(Hash256? address, in TreePath path, in ValueHash256 hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, in hash));
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
-        FindCachedOrUnknown(address, path, hash, false);
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) =>
+        FindCachedOrUnknown(address, path, in hash, false);
 
-    internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
+    internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash, bool isReadOnly)
     {
-        ArgumentNullException.ThrowIfNull(hash);
-
         TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
         return _commitBuffer is { } commitBuffer
             ? commitBuffer.FindCachedOrUnknown(key, isReadOnly)
@@ -536,7 +535,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
 
-    internal TrieNode FindCachedOrUnknownShared(Hash256? address, in TreePath path, Hash256 hash)
+    internal TrieNode FindCachedOrUnknownShared(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
         return Volatile.Read(ref _commitBuffer) is { } commitBuffer
@@ -887,7 +886,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         if (treePath.Length <= TinyTreePath.MaxNibbleLength)
         {
-            int shardIdx = GetNodeShardIdx(treePath, tn.Keccak);
+            ValueHash256 tnKeccak = tn.KeccakValue;
+            int shardIdx = GetNodeShardIdx(treePath, in tnKeccak);
 
             HashAndTinyPath key = new(address, new TinyTreePath(treePath));
             RecordPersistedHash(_persistedHashes[shardIdx], key, tn.Keccak, _deleteOldNodes);
@@ -1547,7 +1547,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 // During commit it PatriciaTrie, the root may get resolved to an existing node (same keccak).
                 // This ensure that the root that we use here is the same.
                 // This is only needed for state tree as the root need to be put in the block commit set.
-                if (address == null) blockCommitter.StateRoot = ((IScopableTrieStore)trieStore).FindCachedOrUnknown(address, TreePath.Empty, root?.Keccak);
+                if (address == null && root is not null && root.TryGetKeccak(out ValueHash256 rootKeccak))
+                    blockCommitter.StateRoot = ((IScopableTrieStore)trieStore).FindCachedOrUnknown(address, TreePath.Empty, in rootKeccak);
             }
         }
 
@@ -1732,7 +1733,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             if (_logger.IsDebug) _logger.Debug($"Flushed {count} commit buffers in {elapsed.Milliseconds}ms");
         }
 
-        private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TreePath path, Hash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(path, keccak)];
+        private TrieStoreDirtyNodesCache GetDirtyNodeShard(in TreePath path, in ValueHash256 keccak) => _dirtyNodesBuffer[_trieStore.GetNodeShardIdx(path, in keccak)];
 
         public TrieNode SaveOrReplaceInDirtyNodesCache(Hash256? address, ref TreePath path, in TrieNode node, long blockNumber)
         {
@@ -1743,7 +1744,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
         {
-            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, in key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
@@ -1784,7 +1785,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public TrieNode FindCachedOrUnknownShared(TrieStoreDirtyNodesCache.Key key)
         {
-            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, in key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
@@ -1804,7 +1805,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 return _trieStore.ShareOrCloneForReadOnly(key, nodeRecord.Node);
             }
 
-            return new TrieNode(NodeType.Unknown, key.Keccak);
+            return new TrieNode(NodeType.Unknown, in key.Keccak);
         }
 
         private bool CanImportFromMainCache(TrieStoreDirtyNodesCache.NodeRecord nodeRecord) =>
@@ -1812,7 +1813,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         public bool HasCachedRlp(TrieStoreDirtyNodesCache.Key key)
         {
-            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
+            int shardIdx = _trieStore.GetNodeShardIdx(key.Path, in key.Keccak);
             return TrieStore.HasCachedRlp(_dirtyNodesBuffer[shardIdx], key) || TrieStore.HasCachedRlp(_trieStore._dirtyNodes[shardIdx], key);
         }
     }
@@ -1842,14 +1843,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             // // this happens in SyncProgressResolver
             // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
-            return new TrieNode(NodeType.Unknown, key.Keccak);
+            return new TrieNode(NodeType.Unknown, in key.Keccak);
         }
 
         // AsSpan forces an owned copy via the ReadOnlySpan ctor overload: node.FullRlp may be
         // pool-backed and returned to the pool while this read-only clone is still in use.
-        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, fullRlp.AsSpan());
+        TrieNode trieNode = new(NodeType.Unknown, new Hash256(in key.Keccak), fullRlp.AsSpan());
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
-        trieNode.Keccak = key.Keccak;
+        trieNode.SetKeccak(in key.Keccak);
         return trieNode;
     }
 
@@ -1859,19 +1860,17 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <param name="baseTrieStore"></param>
     private class InPruningTrieStore(TrieStore baseTrieStore) : IScopableTrieStore
     {
-        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash)
+        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash)
         {
-            ArgumentNullException.ThrowIfNull(hash);
-
             TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
             return baseTrieStore.FindCachedOrUnknown(key, false);
         }
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
-        public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(address, in path, hash, flags);
+        public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(address, in path, in hash, flags);
 
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, hash, flags);
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(address, in path, in hash, flags);
 
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
     }

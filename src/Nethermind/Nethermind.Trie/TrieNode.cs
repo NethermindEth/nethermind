@@ -551,7 +551,18 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, Hash256 keccak)
         {
-            Keccak = keccak ?? throw new ArgumentNullException(nameof(keccak));
+            ArgumentNullException.ThrowIfNull(keccak);
+            SetKeccak(in keccak.ValueHash256);
+            _nodeData = CreateNodeData(nodeType);
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
+        public TrieNode(NodeType nodeType, in ValueHash256 keccak)
+        {
+            SetKeccak(in keccak);
             _nodeData = CreateNodeData(nodeType);
             if (nodeType == NodeType.Unknown)
             {

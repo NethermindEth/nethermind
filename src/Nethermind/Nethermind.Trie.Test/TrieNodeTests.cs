@@ -860,7 +860,7 @@ public class TrieNodeTests
 
         trieNode.PrunePersistedRecursively(1);
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
+        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
         trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
         trieNode.GetChild(trieStore, ref emptyPath, 1).Should().BeNull();
@@ -876,7 +876,7 @@ public class TrieNodeTests
 
         trieNode.PrunePersistedRecursively(1);
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
+        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
         trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
     }
@@ -895,12 +895,12 @@ public class TrieNodeTests
         trieNode.Seal();
 
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-        trieStore.LoadRlp(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Throws(new TrieException());
+        trieStore.LoadRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Throws(new TrieException());
         TreePath emptyPath = TreePath.Empty;
         child.ResolveKey(trieStore, ref emptyPath);
         child.IsPersisted = true;
 
-        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
+        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
         trieNode.GetChild(trieStore, ref emptyPath, 0);
         Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, ref emptyPath, 0).ResolveNode(trieStore, TreePath.Empty));
     }
@@ -1042,11 +1042,11 @@ public class TrieNodeTests
 
         private TrieNode GetOrAddNode(in TreePath path, TrieNode node) => _nodes.GetOrAdd(path, node);
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
+        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, in hash));
 
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+        public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => null;
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+        public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => null;
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new InvalidOperationException($"{nameof(GetStorageTrieNodeResolver)} not supported");
 

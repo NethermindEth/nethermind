@@ -843,31 +843,31 @@ public class FlatTrieVerifier
 
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
+        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => inner.FindCachedOrUnknown(path, in hash);
 
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[]? rlp = inner.LoadRlp(path, hash, flags);
+            byte[]? rlp = inner.LoadRlp(path, in hash, flags);
             if (rlp is not null)
             {
-                VerifyHash(rlp, hash, path);
+                VerifyHash(rlp, in hash, path);
             }
             return rlp;
         }
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[]? rlp = inner.TryLoadRlp(path, hash, flags);
-            if (rlp is not null && hash != Keccak.Zero)
+            byte[]? rlp = inner.TryLoadRlp(path, in hash, flags);
+            if (rlp is not null && hash != default)
             {
-                VerifyHash(rlp, hash, path);
+                VerifyHash(rlp, in hash, path);
             }
             return rlp;
         }
 
-        private void VerifyHash(byte[] rlp, Hash256 expectedHash, in TreePath path)
+        private void VerifyHash(byte[] rlp, in ValueHash256 expectedHash, in TreePath path)
         {
-            Hash256 computed = Keccak.Compute(rlp);
+            ValueHash256 computed = ValueKeccak.Compute(rlp);
             if (computed != expectedHash)
             {
                 Interlocked.Increment(ref _hashMismatchCount);

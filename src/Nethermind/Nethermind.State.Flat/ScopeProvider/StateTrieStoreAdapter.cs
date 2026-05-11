@@ -14,14 +14,15 @@ internal sealed class StateTrieStoreAdapter(
     ConcurrencyController concurrencyQuota
 ) : AbstractMinimalTrieStore
 {
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
     {
-        TrieNode node = bundle.FindStateNodeOrUnknown(path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        Hash256 hashRef = new(in hash);
+        TrieNode node = bundle.FindStateNodeOrUnknown(path, hashRef);
+        return node.Keccak != hashRef ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hashRef}") : node;
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        bundle.TryLoadStateRlp(path, new Hash256(in hash), flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         new Committer(bundle, concurrencyQuota);
@@ -46,14 +47,15 @@ internal sealed class StateTrieStoreWarmerAdapter(
     SnapshotBundle bundle
 ) : AbstractMinimalTrieStore
 {
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
     {
-        TrieNode node = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        Hash256 hashRef = new(in hash);
+        TrieNode node = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hashRef);
+        return node.Keccak != hashRef ? throw new NodeHashMismatchException($"Node hash mismatch. Path: {path}. Hash: {node.Keccak} vs Requested: {hashRef}") : node;
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        bundle.TryLoadStateRlp(path, new Hash256(in hash), flags);
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
@@ -68,14 +70,15 @@ internal sealed class StorageTrieStoreAdapter(
     Hash256AsKey addressHash
 ) : AbstractMinimalTrieStore
 {
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
     {
-        TrieNode node = bundle.FindStorageNodeOrUnknown(addressHash, path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        Hash256 hashRef = new(in hash);
+        TrieNode node = bundle.FindStorageNodeOrUnknown(addressHash, path, hashRef);
+        return node.Keccak != hashRef ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hashRef}") : node;
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        bundle.TryLoadStorageRlp(addressHash, in path, new Hash256(in hash), flags);
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         new Committer(bundle, addressHash, concurrencyQuota);
@@ -95,12 +98,13 @@ internal sealed class StorageTrieStoreWarmerAdapter(
     Hash256AsKey addressHash
 ) : AbstractMinimalTrieStore
 {
-    public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+    public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
     {
-        TrieNode node = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hash);
-        return node.Keccak != hash ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hash}") : node;
+        Hash256 hashRef = new(in hash);
+        TrieNode node = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hashRef);
+        return node.Keccak != hashRef ? throw new NodeHashMismatchException($"Node hash mismatch. Address {addressHash.Value}. Path: {path}. Hash: {node.Keccak} vs Requested: {hashRef}") : node;
     }
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+    public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        bundle.TryLoadStorageRlp(addressHash, in path, new Hash256(in hash), flags);
 }

@@ -283,10 +283,10 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     /// </summary>
     private class FlatSyncTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            new(NodeType.Unknown, hash);
+        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
+            new(NodeType.Unknown, in hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStateRlp(path, flags);
     }
 }

@@ -21,15 +21,15 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 
     public void Dispose() => _baseStore.Dispose();
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) =>
         // We always return Unknown even if baseStore return unknown, like archive node.
-        _baseStore.FindCachedOrUnknown(address, in path, hash);
+        _baseStore.FindCachedOrUnknown(address, in path, in hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        TryLoadRlp(address, in path, hash, flags)
-        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        TryLoadRlp(address, in path, in hash, flags)
+        ?? throw new MissingTrieNodeException("Missing RLP node", address, path, new Hash256(in hash));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? _baseStore.TryLoadRlp(address, in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? _baseStore.TryLoadRlp(address, in path, in hash, flags);
 
     public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || _baseStore.HasRoot(stateRoot);
 
@@ -55,8 +55,8 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
         Hash256? address,
         ITrieNodeResolver baseReadResolver) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            baseReadResolver.FindCachedOrUnknown(path, hash);
+        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
+            baseReadResolver.FindCachedOrUnknown(path, in hash);
 
         protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
             new SharedOverlayTraversalResolver(

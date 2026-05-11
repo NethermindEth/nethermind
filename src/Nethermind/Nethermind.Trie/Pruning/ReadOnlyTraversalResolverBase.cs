@@ -16,13 +16,13 @@ public abstract class ReadOnlyTraversalResolverBase(IScopableTrieStore fullTrieS
 {
     protected Hash256? Address => address;
 
-    public abstract TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash);
+    public abstract TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        fullTrieStore.LoadRlp(address, path, hash, flags);
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        fullTrieStore.LoadRlp(address, path, in hash, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        fullTrieStore.TryLoadRlp(address, path, hash, flags);
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        fullTrieStore.TryLoadRlp(address, path, in hash, flags);
 
     public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
 

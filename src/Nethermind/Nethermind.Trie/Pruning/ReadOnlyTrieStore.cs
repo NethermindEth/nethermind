@@ -15,13 +15,13 @@ namespace Nethermind.Trie.Pruning
         private readonly TrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         public INodeStorage.KeyScheme Scheme => _trieStore.Scheme;
 
-        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath treePath, Hash256 hash) =>
-            _trieStore.FindCachedOrUnknown(address, treePath, hash, true);
+        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath treePath, in ValueHash256 hash) =>
+            _trieStore.FindCachedOrUnknown(address, treePath, in hash, true);
 
-        public byte[] LoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
-            _trieStore.LoadRlp(address, treePath, hash, flags);
-        public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, Hash256 hash, ReadFlags flags) =>
-            _trieStore.TryLoadRlp(address, treePath, hash, flags);
+        public byte[] LoadRlp(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
+            _trieStore.LoadRlp(address, treePath, in hash, flags);
+        public byte[]? TryLoadRlp(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
+            _trieStore.TryLoadRlp(address, treePath, in hash, flags);
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 
@@ -43,8 +43,8 @@ namespace Nethermind.Trie.Pruning
         private sealed class SharedReadOnlyTraversalResolver(ReadOnlyTrieStore fullTrieStore, Hash256? address)
             : ReadOnlyTraversalResolverBase(fullTrieStore, address)
         {
-            public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-                fullTrieStore._trieStore.FindCachedOrUnknownShared(Address, path, hash);
+            public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
+                fullTrieStore._trieStore.FindCachedOrUnknownShared(Address, path, in hash);
 
             protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
                 new SharedReadOnlyTraversalResolver(fullTrieStore, address1);

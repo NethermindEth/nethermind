@@ -12,26 +12,26 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
     private readonly ITrieNodeResolver _baseResolver = baseResolver;
     private readonly ReadFlags _defaultFlags = defaultFlags;
 
-    public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => _baseResolver.FindCachedOrUnknown(treePath, hash);
+    public TrieNode FindCachedOrUnknown(in TreePath treePath, in ValueHash256 hash) => _baseResolver.FindCachedOrUnknown(treePath, in hash);
 
-    public byte[]? TryLoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? TryLoadRlp(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {
-            return _baseResolver.TryLoadRlp(treePath, hash, flags | _defaultFlags);
+            return _baseResolver.TryLoadRlp(treePath, in hash, flags | _defaultFlags);
         }
 
-        return _baseResolver.TryLoadRlp(treePath, hash, _defaultFlags);
+        return _baseResolver.TryLoadRlp(treePath, in hash, _defaultFlags);
     }
 
-    public byte[]? LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[]? LoadRlp(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (flags != ReadFlags.None)
         {
-            return _baseResolver.LoadRlp(treePath, hash, flags | _defaultFlags);
+            return _baseResolver.LoadRlp(treePath, in hash, flags | _defaultFlags);
         }
 
-        return _baseResolver.LoadRlp(treePath, hash, _defaultFlags);
+        return _baseResolver.LoadRlp(treePath, in hash, _defaultFlags);
     }
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);

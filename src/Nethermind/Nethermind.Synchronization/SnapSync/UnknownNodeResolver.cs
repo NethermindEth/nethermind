@@ -19,13 +19,13 @@ internal sealed class UnknownNodeResolver : ITrieNodeResolver
 
     private UnknownNodeResolver() { }
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-        new(NodeType.Unknown, hash);
+    public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
+        new(NodeType.Unknown, in hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags) =>
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
         throw new NotSupportedException("Proof nodes have RLP embedded");
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags) => null;
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags) => null;
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
 

@@ -11,18 +11,18 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 {
-    public abstract TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash);
+    public abstract TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash);
 
-    public abstract byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+    public abstract byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);
 
     public virtual ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         throw new NotSupportedException("Commit not supported");
 
 
-    public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public byte[] LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? value = TryLoadRlp(path, hash, flags);
-        return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
+        byte[]? value = TryLoadRlp(path, in hash, flags);
+        return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, new Hash256(in hash));
     }
 
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");

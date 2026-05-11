@@ -9,14 +9,14 @@ namespace Nethermind.Trie.Pruning;
 public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? address)
     : IScopedTrieStore, ITrieNodeResolverSource
 {
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-        fullTrieStore.FindCachedOrUnknown(address, path, hash);
+    public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
+        fullTrieStore.FindCachedOrUnknown(address, path, in hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        fullTrieStore.LoadRlp(address, path, hash, flags);
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        fullTrieStore.LoadRlp(address, path, in hash, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        fullTrieStore.TryLoadRlp(address, path, hash, flags);
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        fullTrieStore.TryLoadRlp(address, path, in hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
         address1 == address ? this : new ScopedTrieStore(fullTrieStore, address1);

@@ -38,9 +38,9 @@ namespace Nethermind.Trie.Pruning
     public interface IScopableTrieStore
     {
         ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags);
-        TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
-        byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
-        byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash);
+        byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);
+        byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);
         INodeStorage.KeyScheme Scheme { get; }
     }
 

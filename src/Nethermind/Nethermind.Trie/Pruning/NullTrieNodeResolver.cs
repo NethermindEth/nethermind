@@ -12,9 +12,9 @@ namespace Nethermind.Trie.Pruning
 
         public static readonly NullTrieNodeResolver Instance = new();
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => new(NodeType.Unknown, new Hash256(in hash));
+        public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => null;
+        public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => null;
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storage) => this;
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;

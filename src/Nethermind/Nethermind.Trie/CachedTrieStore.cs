@@ -17,16 +17,16 @@ namespace Nethermind.Trie;
 /// <param name="base"></param>
 public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNodeResolverSource
 {
-    private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
+    private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode = new();
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+    public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
         _cachedNode.GetOrAdd((path, hash), (key) => @base.FindCachedOrUnknown(key.path, key.hash));
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        @base.LoadRlp(in path, hash, flags);
+    public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        @base.LoadRlp(in path, in hash, flags);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        @base.TryLoadRlp(in path, hash, flags);
+    public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        @base.TryLoadRlp(in path, in hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
         throw new InvalidOperationException("unsupported");
@@ -44,16 +44,16 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNo
 
     private sealed class CachedTrieNodeResolver(ITrieNodeResolver inner) : ITrieNodeResolver
     {
-        private readonly NonBlocking.ConcurrentDictionary<(TreePath path, Hash256 hash), TrieNode> _cachedNode = new();
+        private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode = new();
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
+        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
             _cachedNode.GetOrAdd((path, hash), key => inner.FindCachedOrUnknown(key.path, key.hash));
 
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            inner.LoadRlp(in path, hash, flags);
+        public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.LoadRlp(in path, in hash, flags);
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            inner.TryLoadRlp(in path, hash, flags);
+        public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.TryLoadRlp(in path, in hash, flags);
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             new CachedTrieNodeResolver(inner.GetStorageTrieNodeResolver(address));

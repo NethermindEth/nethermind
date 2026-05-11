@@ -22,14 +22,14 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
     public virtual ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) =>
         new RawScopedTrieStore.Committer(nodeStorage, address, writeFlags);
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
-        new(NodeType.Unknown, hash);
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) =>
+        new(NodeType.Unknown, new Hash256(in hash));
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
         nodeStorage.Get(address, path, hash, flags)
-        ?? throw new MissingTrieNodeException("Node missing", address, path, hash);
+        ?? throw new MissingTrieNodeException("Node missing", address, path, new Hash256(in hash));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags) =>
         nodeStorage.Get(address, path, hash, flags);
 
     public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;

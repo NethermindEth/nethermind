@@ -43,15 +43,15 @@ public sealed class PreCachedTrieStore : ITrieStore, IScopedReadOnlyTraversalPro
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => _inner.FindCachedOrUnknown(address, in path, hash);
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) => _inner.FindCachedOrUnknown(address, in path, in hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _preBlockCache.GetOrAdd(new(address, in path, hash),
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _preBlockCache.GetOrAdd(new(address, in path, in hash),
             flags == ReadFlags.None ? _loadRlp :
             (in NodeKey key) => _inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        _preBlockCache.GetOrAdd(new(address, in path, hash),
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _preBlockCache.GetOrAdd(new(address, in path, in hash),
             flags == ReadFlags.None ? _tryLoadRlp :
             (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
@@ -68,8 +68,8 @@ public sealed class PreCachedTrieStore : ITrieStore, IScopedReadOnlyTraversalPro
         Hash256? address,
         ITrieNodeResolver inner) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            inner.FindCachedOrUnknown(path, hash);
+        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
+            inner.FindCachedOrUnknown(path, in hash);
 
         protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
             new PreCachedReadOnlyTraversalResolver(fullTrieStore, address1, inner.GetStorageTrieNodeResolver(address1));

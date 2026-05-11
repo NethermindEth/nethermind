@@ -20,14 +20,14 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     private ReadOnlyStateTrieStoreAdapter? _adapter;
 
     // IScopableTrieStore — delegate to adapter (set after BeginScope)
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
-        Resolve(address).FindCachedOrUnknown(in path, hash);
+    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) =>
+        Resolve(address).FindCachedOrUnknown(in path, in hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        Resolve(address).LoadRlp(in path, hash, flags);
+    public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).LoadRlp(in path, in hash, flags);
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        Resolve(address).TryLoadRlp(in path, hash, flags);
+    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        Resolve(address).TryLoadRlp(in path, in hash, flags);
 
     public INodeStorage.KeyScheme Scheme =>
         _adapter?.Scheme ?? INodeStorage.KeyScheme.HalfPath;
