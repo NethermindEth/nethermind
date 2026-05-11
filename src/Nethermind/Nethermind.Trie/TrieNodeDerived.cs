@@ -31,6 +31,10 @@ namespace Nethermind.Trie
             : base(new BranchData(), rlp, isDirty) { }
         internal TrieNodeBranch(in ValueHash256 keccak, CappedArray<byte> rlp)
             : base(new BranchData(), rlp, in keccak) { }
+
+        /// <summary>Typed accessor for the still-shared <see cref="BranchData"/>; B4 will
+        /// inline these fields and delete <see cref="NodeData"/>.</summary>
+        internal new BranchData NodeData => Unsafe.As<BranchData>(base.NodeData!);
     }
 
     internal sealed class TrieNodeLeaf : TrieNode
@@ -42,6 +46,10 @@ namespace Nethermind.Trie
             : base(new LeafData(), rlp, isDirty) { }
         internal TrieNodeLeaf(in ValueHash256 keccak, CappedArray<byte> rlp)
             : base(new LeafData(), rlp, in keccak) { }
+
+        /// <summary>Typed accessor for the still-shared <see cref="LeafData"/>; B4 will
+        /// inline these fields and delete <see cref="NodeData"/>.</summary>
+        internal new LeafData NodeData => Unsafe.As<LeafData>(base.NodeData!);
     }
 
     internal sealed class TrieNodeExtension : TrieNode
@@ -53,6 +61,10 @@ namespace Nethermind.Trie
             : base(new ExtensionData(), rlp, isDirty) { }
         internal TrieNodeExtension(in ValueHash256 keccak, CappedArray<byte> rlp)
             : base(new ExtensionData(), rlp, in keccak) { }
+
+        /// <summary>Typed accessor for the still-shared <see cref="ExtensionData"/>; B4 will
+        /// inline these fields and delete <see cref="NodeData"/>.</summary>
+        internal new ExtensionData NodeData => Unsafe.As<ExtensionData>(base.NodeData!);
     }
 
     public partial class TrieNode

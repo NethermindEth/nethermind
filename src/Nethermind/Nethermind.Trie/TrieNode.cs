@@ -458,14 +458,15 @@ namespace Nethermind.Trie
 
         public byte[]? Key
         {
-            get { return _nodeData is INodeWithKey node ? node?.Key : null; }
+            get => this is TrieNodeLeaf or TrieNodeExtension ? ((INodeWithKey)_nodeData!).Key : null;
             internal set
             {
-                if (_nodeData is not INodeWithKey node)
+                if (this is not (TrieNodeLeaf or TrieNodeExtension))
                 {
                     ThrowDoesNotSupportKey();
                 }
 
+                INodeWithKey node = (INodeWithKey)_nodeData!;
                 if (IsSealed)
                 {
                     if (node.Key.AsSpan().SequenceEqual(value))
@@ -494,9 +495,9 @@ namespace Nethermind.Trie
         {
             get
             {
-                if (_nodeData is LeafData data)
+                if (this is TrieNodeLeaf leafNode)
                 {
-                    return data.Value;
+                    return leafNode.NodeData.Value;
                 }
 
                 // branches that we use for state will never have value set as all the keys are equal length
@@ -504,11 +505,12 @@ namespace Nethermind.Trie
             }
             set
             {
-                if (_nodeData is not LeafData leafData)
+                if (this is not TrieNodeLeaf leafNode)
                 {
                     ThrowNoValueOnBranches();
                 }
 
+                LeafData leafData = leafNode.NodeData;
                 if (IsSealed)
                 {
                     CappedArray<byte> current = leafData.Value;
@@ -554,11 +556,23 @@ namespace Nethermind.Trie
             }
         }
 
-        private TrieNode(TrieNode node)
+        private protected TrieNode(TrieNode node)
         {
             _blockAndFlags = _dirtyMask;
             _nodeData = node._nodeData?.Clone();
         }
+
+        // Type-preserving clone helper. Branch/Leaf/Extension instances must
+        // clone to their own runtime types so that `this is TrieNodeX` type tests
+        // continue to hold across mutation paths like CloneWithChangedKey.
+        // Base TrieNode (Unknown placeholders) clones to a base TrieNode.
+        private TrieNode CloneShape() => this switch
+        {
+            TrieNodeBranch => new TrieNodeBranch((BranchData)_nodeData!.Clone()),
+            TrieNodeLeaf => new TrieNodeLeaf((LeafData)_nodeData!.Clone()),
+            TrieNodeExtension => new TrieNodeExtension((ExtensionData)_nodeData!.Clone()),
+            _ => new TrieNode(this),
+        };
 
         public TrieNode(NodeType nodeType)
         {
@@ -989,7 +1003,7 @@ namespace Nethermind.Trie
 
         internal void PreDecodeChildrenIfBranch(ref TreePath path)
         {
-            if (_nodeData is not BranchData || !IsSealed)
+            if (this is not TrieNodeBranch || !IsSealed)
             {
                 return;
             }
@@ -1414,8 +1428,9 @@ namespace Nethermind.Trie
             int objectOverhead = MemorySizes.ObjectHeaderMethodTable;
             int blockAndFlagsSize = sizeof(long);
 
-            if (_nodeData is BranchData data)
+            if (this is TrieNodeBranch branchNode)
             {
+                BranchData data = branchNode.NodeData;
                 for (int i = 0; i < data.Length; i++)
                 {
                     object child = data[i];
@@ -1430,8 +1445,9 @@ namespace Nethermind.Trie
                     };
                 }
             }
-            else if (_nodeData is ExtensionData extensionData)
+            else if (this is TrieNodeExtension extensionNode)
             {
+                ExtensionData extensionData = extensionNode.NodeData;
                 dataSize += extensionData.Value switch
                 {
                     null => 0,
@@ -1461,7 +1477,7 @@ namespace Nethermind.Trie
 
         public TrieNode Clone()
         {
-            TrieNode trieNode = new(this);
+            TrieNode trieNode = CloneShape();
 
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNotNull)
@@ -1527,9 +1543,9 @@ namespace Nethermind.Trie
                 return;
             }
 
-            if (_nodeData is BranchData branchData)
+            if (this is TrieNodeBranch branchNode)
             {
-                ref readonly BranchArray data = ref branchData.Branches;
+                ref readonly BranchArray data = ref branchNode.NodeData.Branches;
                 int previousLength = AppendChildPath(ref currentPath, 0);
                 for (int i = 0; i < BranchArray.Length; i++)
                 {
@@ -1544,8 +1560,9 @@ namespace Nethermind.Trie
 
                 currentPath.TruncateMut(previousLength);
             }
-            else if (_nodeData is ExtensionData extensionData)
+            else if (this is TrieNodeExtension extensionNode)
             {
+                ExtensionData extensionData = extensionNode.NodeData;
                 if (extensionData.Value is TrieNode child)
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on child 0 {child} of {this}");
@@ -1555,8 +1572,9 @@ namespace Nethermind.Trie
                     currentPath.TruncateMut(previousLength);
                 }
             }
-            else if (_nodeData is LeafData leafData)
+            else if (this is TrieNodeLeaf leafNode)
             {
+                LeafData leafData = leafNode.NodeData;
                 TrieNode? storageRoot = leafData.StorageRoot;
                 if (resolveStorageRoot && (storageRoot is not null ||
                                            TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
@@ -1604,7 +1622,7 @@ namespace Nethermind.Trie
                 return action(this, storageAddress, currentPath);
             }
 
-            if (_nodeData is not LeafData leafData)
+            if (this is not TrieNodeLeaf leafNode)
             {
                 if (_nodeData is null)
                 {
@@ -1625,7 +1643,7 @@ namespace Nethermind.Trie
                     storageAddress,
                     currentPath,
                     resolver,
-                    leafData,
+                    leafNode.NodeData,
                     logger);
             }
         }
@@ -1637,8 +1655,9 @@ namespace Nethermind.Trie
             ITrieNodeResolver resolver,
             ILogger logger)
         {
-            if (_nodeData is BranchData branchData)
+            if (this is TrieNodeBranch branchNode)
             {
+                BranchData branchData = branchNode.NodeData;
                 for (int i = 0; i < BranchArray.Length; i++)
                 {
                     if (branchData.Branches[i] is TrieNode child)
@@ -1650,8 +1669,9 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (_nodeData is ExtensionData extensionData)
+            else if (this is TrieNodeExtension extensionNode)
             {
+                ExtensionData extensionData = extensionNode.NodeData;
                 if (extensionData.Value is TrieNode child)
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on child 0 {child} of {this}");
@@ -1714,11 +1734,11 @@ namespace Nethermind.Trie
         public void PrunePersistedRecursively(int maxLevelsDeep)
         {
             maxLevelsDeep--;
-            if (_nodeData is not LeafData leafData)
+            if (this is not TrieNodeLeaf leafNode)
             {
-                if (_nodeData is BranchData branchData)
+                if (this is TrieNodeBranch branchNode)
                 {
-                    ref readonly BranchArray data = ref branchData.Branches;
+                    ref readonly BranchArray data = ref branchNode.NodeData.Branches;
                     for (int i = 0; i < BranchArray.Length; i++)
                     {
                         object o = data[i];
@@ -1736,8 +1756,9 @@ namespace Nethermind.Trie
                         }
                     }
                 }
-                else if (_nodeData is ExtensionData extension)
+                else if (this is TrieNodeExtension extensionNode)
                 {
+                    ExtensionData extension = extensionNode.NodeData;
                     if (extension.Value is TrieNode child)
                     {
                         if (child.IsPersisted)
@@ -1752,9 +1773,13 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (leafData.StorageRoot?.IsPersisted == true)
+            else
             {
-                leafData.StorageRoot = null;
+                LeafData leafData = leafNode.NodeData;
+                if (leafData.StorageRoot?.IsPersisted == true)
+                {
+                    leafData.StorageRoot = null;
+                }
             }
 
             // else
@@ -1770,8 +1795,9 @@ namespace Nethermind.Trie
         {
             bool hasStorage = false;
 
-            if (_nodeData is LeafData data)
+            if (this is TrieNodeLeaf leafNode)
             {
+                LeafData data = leafNode.NodeData;
                 storageRoot = data.StorageRoot;
                 if (storageRoot is not null)
                 {
