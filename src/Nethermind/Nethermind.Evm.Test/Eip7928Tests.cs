@@ -58,11 +58,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
     /// and a matching <see cref="TransactionProcessor{EthereumGasPolicy}"/> wired to it.
     /// </summary>
-    /// <remarks>
-    /// Pass <paramref name="wrapPrecompileCache"/> to wire the processor through
-    /// <see cref="PrecompileCachedCodeInfoRepository"/> (the decorator's fast-path is what EIP-7702/EIP-7928
-    /// regressions in this file exercise).
-    /// </remarks>
     private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(
         bool? parallelOverride = null,
         bool wrapPrecompileCache = false)
@@ -82,11 +77,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return (tracedState, processor);
     }
 
-    /// <summary>
-    /// Builds the standard signed contract-creation transaction used throughout these tests:
-    /// computes intrinsic gas for the given code, adds <paramref name="executionGas"/>, signs with
-    /// <see cref="TestItem.PrivateKeyA"/>.
-    /// </summary>
     private static Transaction BuildContractTx(byte[] code, long executionGas, UInt256 value, BlockHeader header)
     {
         Transaction templateTx = Build.A.Transaction
@@ -338,16 +328,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    /// <summary>
-    /// Seeds the world state with the system-contract predeploys and the call target.
-    /// </summary>
-    /// <param name="worldState">The world state to seed.</param>
-    /// <param name="extraCode">If supplied, deployed at <see cref="_callTargetAddress"/>; otherwise the call target is set to delegate.</param>
-    /// <param name="delegationTarget">
-    /// When <paramref name="extraCode"/> is null, the call target delegates here. Defaults to
-    /// <see cref="_delegationTargetAddress"/>, which is itself populated with <see cref="_delegatedCode"/>.
-    /// Pass another address (e.g. a precompile) to skip the intermediate hop and delegate directly.
-    /// </param>
     private void InitWorldState(IWorldState worldState, byte[]? extraCode = null, Address? delegationTarget = null)
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
