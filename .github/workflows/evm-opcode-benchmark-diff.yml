@@ -91,6 +91,7 @@ jobs:
         with:
           large-packages: false
           tool-cache: false
+          swap-storage: false
 
       - name: Check out PR head
         uses: actions/checkout@v6

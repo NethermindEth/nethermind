@@ -19,36 +19,40 @@ public abstract class GetPayloadBodiesByRangeHandler<TResult>(IBlockTree blockTr
 
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeHandler<>));
 
-    public Task<ResultWrapper<IEnumerable<TResult?>>> Handle(long start, long count)
+    public Task<ResultWrapper<IReadOnlyList<TResult?>>> Handle(long start, long count)
     {
         if (start < 1 || count < 1)
         {
             const string error = $"'{nameof(start)}' and '{nameof(count)}' must be positive numbers";
             if (_logger.IsError) _logger.Error($"{GetType().Name}: ${error}");
-            return ResultWrapper<IEnumerable<TResult?>>.Fail(error, ErrorCodes.InvalidParams);
+            return ResultWrapper<IReadOnlyList<TResult?>>.Fail(error, ErrorCodes.InvalidParams);
         }
 
         if (count > MaxCount)
         {
             string error = $"The number of requested bodies must not exceed {MaxCount}";
             if (_logger.IsError) _logger.Error($"{GetType().Name}: {error}");
-            return ResultWrapper<IEnumerable<TResult?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IReadOnlyList<TResult?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
-        return ResultWrapper<IEnumerable<TResult?>>.Success(GetRequests(start, count));
+        return ResultWrapper<IReadOnlyList<TResult?>>.Success(GetRequests(start, count));
     }
 
     protected abstract TResult? CreateResult(Block block);
 
-    private IEnumerable<TResult?> GetRequests(long start, long count)
+    private TResult?[] GetRequests(long start, long count)
     {
         long headNumber = blockTree.Head?.Number ?? 0;
+        long end = Math.Min(start + count - 1, headNumber);
+        if (end < start) return [];
 
-        for (long i = start, c = Math.Min(start + count - 1, headNumber); i <= c; i++)
+        TResult?[] results = new TResult?[end - start + 1];
+        for (long i = start; i <= end; i++)
         {
             Block? block = blockTree.FindBlock(i);
-            yield return block is null ? null : CreateResult(block);
+            results[i - start] = block is null ? null : CreateResult(block);
         }
+        return results;
     }
 }
 
