@@ -139,6 +139,68 @@ public class PersistedSnapshotRepositoryTests
     }
 
     [Test]
+    public void ConvertSnapshot_RoundTrip_AllDataCategories()
+    {
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using BlobArenaCatalog blobCatalog = new(new MemDb());
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        repo.LoadFromCatalog();
+
+        StateId s0 = new(0, Keccak.EmptyTreeHash);
+        StateId s1 = new(1, Keccak.Compute("1"));
+
+        Address acctAddr = TestItem.AddressA;
+        Address selfDestructAddr = TestItem.AddressB;
+        Address storageAddr = TestItem.AddressC;
+        UInt256 slotIndex = (UInt256)42;
+        byte[] slotBytes = new byte[32];
+        slotBytes[31] = 0xAB;
+        slotBytes[30] = 0xCD;
+        SlotValue slotValue = new(slotBytes);
+
+        TreePath statePath = new(Keccak.Compute("state_path"), 4);
+        byte[] stateRlp = [0xC2, 0x80, 0x80];
+        Hash256 storageTrieAddr = Keccak.Compute("storage_trie_addr");
+        TreePath storagePath = new(Keccak.Compute("storage_path"), 6);
+        byte[] storageRlp = [0xC1, 0x80];
+
+        SnapshotContent content = new();
+        content.Accounts[acctAddr] = Build.An.Account.WithBalance(500).TestObject;
+        content.Storages[(storageAddr, slotIndex)] = slotValue;
+        content.SelfDestructedStorageAddresses[selfDestructAddr] = false;
+        content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, stateRlp);
+        content.StorageNodes[(storageTrieAddr, storagePath)] = new TrieNode(NodeType.Branch, storageRlp);
+        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+
+        repo.ConvertSnapshotToPersistedSnapshot(snap);
+
+        Assert.That(repo.TryLeaseSnapshotTo(s1, out PersistedSnapshot? persisted), Is.True);
+        using PersistedSnapshot _ = persisted!;
+
+        // 1. Account
+        Assert.That(persisted!.TryGetAccount(ValueKeccak.Compute(acctAddr.Bytes), out Account? account), Is.True);
+        Assert.That(account, Is.Not.Null);
+        Assert.That(account!.Balance, Is.EqualTo((UInt256)500));
+
+        // 2. Storage slot
+        SlotValue readSlot = default;
+        Assert.That(persisted.TryGetSlot(ValueKeccak.Compute(storageAddr.Bytes), slotIndex, ref readSlot), Is.True);
+        Assert.That(readSlot.AsReadOnlySpan.ToArray(), Is.EqualTo(slotBytes));
+
+        // 3. Self-destruct flag
+        Assert.That(persisted.IsSelfDestructed(ValueKeccak.Compute(selfDestructAddr.Bytes)), Is.True);
+
+        // 4. State trie node
+        Assert.That(persisted.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);
+        Assert.That(stateResult, Is.EqualTo(stateRlp));
+
+        // 5. Storage trie node
+        Assert.That(persisted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, storagePath, out byte[]? storageResult), Is.True);
+        Assert.That(storageResult, Is.EqualTo(storageRlp));
+    }
+
+    [Test]
     public void PruneBefore_RemovesOldSnapshots()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
