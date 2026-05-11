@@ -157,20 +157,13 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public void HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+        public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
-            // One fused pass — baseScope.HintBal walks the BAL in parallel, enqueues trie-warmer
-            // jobs, and uses our CacheSink to populate preBlockCaches off the same per-account
-            // GetAccount lookup that trie warmup already pays for.
-            CacheSink cacheSink = new(preBlockCache, storageCache);
-            try
-            {
-                baseScope.HintBal(bal, cacheSink);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error("HintBal faulted", ex);
-            }
+            // One fused background pass — baseScope.HintBal walks the BAL in parallel, enqueues
+            // trie-warmer jobs, and uses our CacheSink to populate preBlockCaches off the same
+            // per-account GetAccount lookup that trie warmup already pays for.
+            sink ??= new CacheSink(preBlockCache, storageCache);
+            return baseScope.HintBal(bal, sink);
         }
 
         private sealed class CacheSink(

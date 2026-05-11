@@ -392,11 +392,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                if (Bal is not null && Bal.AccountChanges.Count > 0)
-                {
-                    HintBalFromAddressWarmer(envPool);
-                }
-                else
+                // BAL warmup is driven from BlockProcessor.HintBal on the main scope —
+                // when Bal is set here we just skip the speculative per-tx WarmupSender loop.
+                if (Bal is null)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
 
@@ -418,26 +416,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
-            }
-        }
-
-        // The address warmer runs on a single ThreadPool work item, which is our async boundary.
-        // HintBal itself runs synchronously here — the flat scope just enqueues trie-warmer jobs,
-        // and the BAL read pass that populates preBlockCaches is parallel internally.
-        private void HintBalFromAddressWarmer(ObjectPool<IReadOnlyTxProcessorSource> envPool)
-        {
-            IReadOnlyTxProcessorSource env = envPool.Get();
-            try
-            {
-                using IReadOnlyTxProcessingScope scope = env.Build(parent);
-                scope.WorldState.HintBal(Bal!);
-            }
-            catch (MissingTrieNodeException)
-            {
-            }
-            finally
-            {
-                envPool.Return(env);
             }
         }
 

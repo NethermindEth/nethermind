@@ -75,6 +75,12 @@ public partial class BlockProcessor(
 
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
 
+        // Fire-and-forget BAL warmup on the main worldstate. The Task is owned by the scope and
+        // runs in parallel with the rest of block processing; FlatWorldStateScope's pause/sequence
+        // gates wind it down when the scope writes or commits.
+        if (suggestedBlock.BlockAccessList is not null)
+            _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
+
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);

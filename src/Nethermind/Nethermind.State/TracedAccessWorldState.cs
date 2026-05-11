@@ -72,7 +72,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public void HintBal(BlockAccessList bal) => _innerWorldState.HintBal(bal);
+    public Task HintBal(BlockAccessList bal) => _innerWorldState.HintBal(bal);
 
     public IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
 

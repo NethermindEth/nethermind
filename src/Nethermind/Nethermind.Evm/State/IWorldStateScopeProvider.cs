@@ -81,11 +81,8 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
         /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
-        /// <remarks>
-        /// Synchronous on purpose: the prewarmer drives this from a dedicated ThreadPool work
-        /// item, and the walk is itself parallel internally. Wrapping in another Task buys nothing.
-        /// </remarks>
-        void HintBal(BlockAccessList bal, IAsyncBalReaderSink? sink = null);
+        /// <returns>A task that completes when the asynchronous warmup finishes.</returns>
+        Task HintBal(BlockAccessList bal, IAsyncBalReaderSink? sink = null);
     }
 
     /// <summary>

@@ -197,7 +197,7 @@ public class ScopeProviderTests(bool useFlat)
         CollectingBalSink sink = new();
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            scope.HintBal(bal, sink);
+            scope.HintBal(bal, sink).Wait();
 
             // Verify accounts match individual reads
             sink.Accounts.Should().ContainKey(TestItem.AddressA);

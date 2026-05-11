@@ -142,7 +142,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public void HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+    public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
         // Single parallel walk that fuses trie warmup with the (optional) BAL read pass.
         //
@@ -155,67 +155,71 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         //     EIP-2200 / EIP-3529 gas refund accounting, so changed slots are genuinely read
         //     at runtime; StorageReads ⊥ StorageChanges by BAL construction, so no duplication.
         int accountCount = bal.AccountChanges.Count;
-        if (accountCount == 0) return;
+        if (accountCount == 0) return Task.CompletedTask;
 
         int snapshot = _hintSequenceId;
-        ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
-        // Span isn't capturable into a Parallel.For body; project to a pooled list.
-        using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
-        for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChanges[i];
 
-        Parallel.For(0, accountCount, (i) =>
+        return Task.Run(() =>
         {
-            if (_hintSequenceId != snapshot || _pausePrewarmer) return;
+            // Span isn't capturable into a Parallel.For body; project to a pooled list.
+            ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
+            using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
+            for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChanges[i];
 
-            AccountChanges ac = accountChangesList[i];
-            Address address = ac.Address;
-
-            // Trie warmup: address path.
-            if (_warmer.PushAddressJob(this, address, snapshot))
-                Interlocked.Increment(ref _outstandingWarmups);
-
-            // One GetAccount per account — feeds both the sink and the storage-tree seed.
-            Account? account = sink is null && ac.StorageChanges.Length == 0
-                ? null // no consumer needs the account in this case
-                : _snapshotBundle.GetAccount(address);
-
-            if (sink is not null && sink.StillNeeded(address, out _))
-                sink.OnAccountRead(address, account);
-
-            int slotCount = ac.StorageChanges.Length + ac.StorageReads.Count;
-            if (account is null || slotCount == 0) return;
-
-            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-            if (storageRoot == Keccak.EmptyTreeHash) return;
-
-            // Per-account non-cached tree just for trie warmup pushes — the main thread's
-            // CreateStorageTreeImpl builds its own cached instance on first use.
-            FlatStorageTree storageWarmer = ac.StorageChanges.Length > 0
-                ? new FlatStorageTree(
-                    this,
-                    _warmer,
-                    _snapshotBundle,
-                    _configuration,
-                    _concurrencyQuota,
-                    storageRoot,
-                    address,
-                    _logManager)
-                : null!;
-
-            int selfDestructIdx = sink is null ? 0 : _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-
-            foreach (SlotChanges slotChanges in ac.StorageChanges)
+            Parallel.For(0, accountCount, (i) =>
             {
-                UInt256 key = slotChanges.Key;
-                _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot);
-                if (sink is not null) ReadSlotToSink(sink, address, in key, selfDestructIdx);
-            }
+                if (_hintSequenceId != snapshot || _pausePrewarmer) return;
 
-            if (sink is not null)
-            {
-                foreach (UInt256 readKey in ac.StorageReads)
-                    ReadSlotToSink(sink, address, in readKey, selfDestructIdx);
-            }
+                AccountChanges ac = accountChangesList[i];
+                Address address = ac.Address;
+
+                // Trie warmup: address path.
+                if (_warmer.PushAddressJob(this, address, snapshot))
+                    Interlocked.Increment(ref _outstandingWarmups);
+
+                // One GetAccount per account — feeds both the sink and the storage-tree seed.
+                Account? account = sink is null && ac.StorageChanges.Length == 0
+                    ? null // no consumer needs the account in this case
+                    : _snapshotBundle.GetAccount(address);
+
+                if (sink is not null && sink.StillNeeded(address, out _))
+                    sink.OnAccountRead(address, account);
+
+                int slotCount = ac.StorageChanges.Length + ac.StorageReads.Count;
+                if (account is null || slotCount == 0) return;
+
+                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                if (storageRoot == Keccak.EmptyTreeHash) return;
+
+                // Per-account non-cached tree just for trie warmup pushes — the main thread's
+                // CreateStorageTreeImpl builds its own cached instance on first use.
+                FlatStorageTree storageWarmer = ac.StorageChanges.Length > 0
+                    ? new FlatStorageTree(
+                        this,
+                        _warmer,
+                        _snapshotBundle,
+                        _configuration,
+                        _concurrencyQuota,
+                        storageRoot,
+                        address,
+                        _logManager)
+                    : null!;
+
+                int selfDestructIdx = sink is null ? 0 : _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+
+                foreach (SlotChanges slotChanges in ac.StorageChanges)
+                {
+                    UInt256 key = slotChanges.Key;
+                    _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot);
+                    if (sink is not null) ReadSlotToSink(sink, address, in key, selfDestructIdx);
+                }
+
+                if (sink is not null)
+                {
+                    foreach (UInt256 readKey in ac.StorageReads)
+                        ReadSlotToSink(sink, address, in readKey, selfDestructIdx);
+                }
+            });
         });
     }
 
