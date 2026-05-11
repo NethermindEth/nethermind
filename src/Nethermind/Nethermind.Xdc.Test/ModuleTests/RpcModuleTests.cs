@@ -123,8 +123,6 @@ public class RpcModuleTests
             TradingStateAddressBinary = Address.Zero,
             FoundationWallet = Address.Zero,
             MasternodeVotingContract = Address.Zero,
-            RelayerRegistrationSMC = Address.Zero,
-            TRC21IssuerSMC = Address.Zero,
 
             // Feature flags
             IsBlackListingEnabled = false,

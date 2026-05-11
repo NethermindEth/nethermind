@@ -513,9 +513,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             NetworkId = (UInt256)specProvider.NetworkId,
             XDCValidatorAddress = spec.MasternodeVotingContract,
             LendingAddress = spec.XDCXLendingAddressBinary,
-            RelayerRegistrationAddress = spec.RelayerRegistrationSMC,
             XDCXListingAddress = spec.XDCXAddressBinary,
-            XDCZAddress = spec.TRC21IssuerSMC,
             ConsensusConfigs = new XDPoSConfig
             {
                 Epoch = spec.EpochLength,
