@@ -144,7 +144,8 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, trieNode3);
             }
             fullTrieStore.WaitForPruning();
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 856 : 628);
+            // B4: -8 per node, 3 nodes -> -24
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 832 : 604);
         }
 
         [Test]
@@ -173,7 +174,8 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
             trieStore.WaitForPruning();
-            trieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 576 : 348);
+            // B4: -8 per Unknown placeholder, 3 placeholders -> -24
+            trieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 552 : 324);
         }
 
         [Test]
@@ -238,7 +240,8 @@ namespace Nethermind.Trie.Test.Pruning
                 tree.Commit();
             }
 
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 513580 : 616104L);
+            // B4: -8 per typed node (1349 nodes) -> -10792
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 502788 : 605312L);
             fullTrieStore.CommittedNodesCount.Should().Be(1349);
         }
 
@@ -1398,7 +1401,8 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(1);
-            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 10496 : 15360);
+            // B4: -8 per node, 64 nodes -> -512
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.Hash ? 9984 : 14848);
 
             fullTrieStore.PersistCache(default);
             memDb.Count.Should().Be(64);

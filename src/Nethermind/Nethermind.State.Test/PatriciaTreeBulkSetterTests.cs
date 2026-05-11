@@ -311,8 +311,10 @@ public class PatriciaTreeBulkSetterTests
             // B3b: ResolveNode rebinds the caller's reference to a typed instance, so
             // placeholders that were resolved in-place pre-B3b now look like a different
             // ref to the parent's slot, occasionally tripping the "child changed" path
-            // and writing a few extra nodes. Allow a small absolute slack here; B3c/B4
-            // will eliminate placeholders entirely and this slack can come back down.
+            // and writing a few extra nodes. Reattempted in B4 (with _nodeData gone)
+            // but the deviation persists for one branch-build topology - it stems
+            // from the placeholder rebind contract itself, not from where the shape
+            // data lives. Slack stays at +4 until placeholders are eliminated.
             newWriteCount.Should().BeLessOrEqualTo(baselineWriteCount + 4);
             pTree.RootHash.Should().Be(root);
         }

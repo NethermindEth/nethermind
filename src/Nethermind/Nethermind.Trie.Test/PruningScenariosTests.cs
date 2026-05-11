@@ -1116,7 +1116,8 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
-                .AssertThatTotalMemoryUsedIs(823096);
+                // B4: -8 per node * 951 = -7608
+                .AssertThatTotalMemoryUsedIs(815488);
         }
 
         [Test]
@@ -1144,7 +1145,8 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(2)
                 .AssertThatCachedNodeCountIs(3)
-                .AssertThatTotalMemoryUsedIs(1608);
+                // B4: -8 per node * 3 = -24
+                .AssertThatTotalMemoryUsedIs(1584);
         }
 
         [Test]

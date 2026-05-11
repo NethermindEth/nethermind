@@ -2,69 +2,175 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
-    // B3a introduced sealed runtime types for branch / leaf / extension as empty
-    // subclasses of TrieNode. The base class still owns _nodeData and every
-    // behavior; these subclasses exist so that B3b can rebind callers to typed
-    // instances (returned from a non-mutating decode) and B3c can replace the
-    // remaining `_nodeData is X` type-tests with `this is TrieNodeX`. C# does
-    // not allow changing an object's runtime type, so the typed identity must
-    // be established at construction. Decoders that already know the shape from
-    // the RLP header route through the CreateXxxTyped static factories below.
-    //
-    // B3pre extends the typed factories so every test-construction site that
-    // used to call `new TrieNode(NodeType.Branch|Leaf|Extension, ...)` allocates
-    // a typed instance. The base TrieNode still owns _nodeData; B4 will move
-    // shape state into the derived classes and delete NodeData.cs.
+    // B4 endpoint: branch / leaf / extension state now lives directly on the
+    // derived sealed types. Base TrieNode no longer carries _nodeData; bare
+    // TrieNode instances are placeholder Unknown nodes produced by legacy
+    // FindCachedOrUnknown contracts (TrieStore / SnapshotBundle / CommitSetQueue).
+    // Once every resolver in the tree exposes typed load/decode APIs (and only
+    // when), TrieNode can become abstract; that work is out of scope here.
+
+    /// <summary>16-slot inline storage for branch children. Each slot holds
+    /// <see langword="null"/>, the empty sentinel, a <see cref="Hash256"/> for
+    /// an unresolved by-hash child, or a resolved <see cref="TrieNode"/>.</summary>
+    [InlineArray(Length)]
+    internal struct BranchArray
+    {
+        public const int Length = TrieNode.BranchesCount;
+        private object? _element0;
+    }
 
     internal sealed class TrieNodeBranch : TrieNode
     {
-        internal TrieNodeBranch() : base(new BranchData()) { }
-        internal TrieNodeBranch(BranchData data) : base(data) { }
-        internal TrieNodeBranch(in ValueHash256 keccak) : base(new BranchData(), in keccak) { }
-        internal TrieNodeBranch(CappedArray<byte> rlp, bool isDirty)
-            : base(new BranchData(), rlp, isDirty) { }
-        internal TrieNodeBranch(in ValueHash256 keccak, CappedArray<byte> rlp)
-            : base(new BranchData(), rlp, in keccak) { }
+        internal BranchArray _branches;
 
-        /// <summary>Typed accessor for the still-shared <see cref="BranchData"/>; B4 will
-        /// inline these fields and delete <see cref="NodeData"/>.</summary>
-        internal new BranchData NodeData => Unsafe.As<BranchData>(base.NodeData!);
+        internal TrieNodeBranch() { }
+        internal TrieNodeBranch(in ValueHash256 keccak) : base(in keccak) { }
+        internal TrieNodeBranch(CappedArray<byte> rlp, bool isDirty) : base(rlp, isDirty) { }
+        internal TrieNodeBranch(in ValueHash256 keccak, CappedArray<byte> rlp)
+            : base(rlp, in keccak) { }
+
+        // Clone constructor: copy each branch slot and the dirty mask.
+        private TrieNodeBranch(TrieNodeBranch source) : base(source)
+        {
+            // Shallow copy of the 16 slots — references to TrieNode / Hash256 are shared
+            for (int i = 0; i < BranchArray.Length; i++)
+            {
+                _branches[i] = source._branches[i];
+            }
+        }
+
+        internal override TrieNode CloneTyped() => new TrieNodeBranch(this);
+
+        public override NodeType NodeType => NodeType.Branch;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal override ref object GetSlotRef(int index) => ref _branches[index];
+
+        internal override int MemorySizeOfData =>
+            MemorySizes.RefSize * BranchArray.Length;
     }
 
     internal sealed class TrieNodeLeaf : TrieNode
     {
-        internal TrieNodeLeaf() : base(new LeafData()) { }
-        internal TrieNodeLeaf(LeafData data) : base(data) { }
-        internal TrieNodeLeaf(in ValueHash256 keccak) : base(new LeafData(), in keccak) { }
-        internal TrieNodeLeaf(CappedArray<byte> rlp, bool isDirty)
-            : base(new LeafData(), rlp, isDirty) { }
-        internal TrieNodeLeaf(in ValueHash256 keccak, CappedArray<byte> rlp)
-            : base(new LeafData(), rlp, in keccak) { }
+        internal byte[]? _key;
+        internal CappedArray<byte> _value;
+        internal TrieNode? _storageRoot;
 
-        /// <summary>Typed accessor for the still-shared <see cref="LeafData"/>; B4 will
-        /// inline these fields and delete <see cref="NodeData"/>.</summary>
-        internal new LeafData NodeData => Unsafe.As<LeafData>(base.NodeData!);
+        internal TrieNodeLeaf() => _value = CappedArray<byte>.Empty;
+
+        internal TrieNodeLeaf(byte[] key, CappedArray<byte> value)
+        {
+            _key = key;
+            _value = value;
+        }
+
+        internal TrieNodeLeaf(in ValueHash256 keccak) : base(in keccak) => _value = CappedArray<byte>.Empty;
+
+        internal TrieNodeLeaf(CappedArray<byte> rlp, bool isDirty) : base(rlp, isDirty) => _value = CappedArray<byte>.Empty;
+
+        internal TrieNodeLeaf(in ValueHash256 keccak, CappedArray<byte> rlp)
+            : base(rlp, in keccak) => _value = CappedArray<byte>.Empty;
+
+        private TrieNodeLeaf(TrieNodeLeaf source) : base(source)
+        {
+            _key = source._key;
+            _value = source._value;
+            _storageRoot = source._storageRoot;
+        }
+
+        internal override TrieNode CloneTyped() => new TrieNodeLeaf(this);
+
+        public override NodeType NodeType => NodeType.Leaf;
+
+        internal override byte[]? KeyInternal
+        {
+            get => _key;
+            set => _key = value;
+        }
+
+        internal override ref CappedArray<byte> ValueRef => ref _value;
+
+        internal override ref TrieNode? StorageRootRef => ref _storageRoot;
+
+        // Leaf has no indexed child slots; slot 0 is the value-only Path used by some
+        // decoders that walk extension/leaf children uniformly. Leaf RLP encoding uses
+        // Key + Value, not slot-based child decoding, so callers should never invoke
+        // GetSlotRef on a leaf. Throw to surface accidental misuse.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal override ref object GetSlotRef(int index) => throw new IndexOutOfRangeException();
+
+        internal override int MemorySizeOfData =>
+            MemorySizes.RefSize + // storage root reference
+            MemorySizes.RefSize + // key reference
+            (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0) +
+            MemorySizes.RefSize + // value array reference
+            (_value.IsNotNullOrEmpty ? (int)MemorySizes.Align(_value.UnderlyingLength + MemorySizes.ArrayOverhead) : 0);
+
+        internal TrieNodeLeaf CloneWithNewValue(CappedArray<byte> value)
+        {
+            TrieNodeLeaf clone = new(_key!, value);
+            clone._storageRoot = _storageRoot;
+            return clone;
+        }
     }
 
     internal sealed class TrieNodeExtension : TrieNode
     {
-        internal TrieNodeExtension() : base(new ExtensionData()) { }
-        internal TrieNodeExtension(ExtensionData data) : base(data) { }
-        internal TrieNodeExtension(in ValueHash256 keccak) : base(new ExtensionData(), in keccak) { }
-        internal TrieNodeExtension(CappedArray<byte> rlp, bool isDirty)
-            : base(new ExtensionData(), rlp, isDirty) { }
-        internal TrieNodeExtension(in ValueHash256 keccak, CappedArray<byte> rlp)
-            : base(new ExtensionData(), rlp, in keccak) { }
+        internal byte[]? _key;
+        internal object? _child;
 
-        /// <summary>Typed accessor for the still-shared <see cref="ExtensionData"/>; B4 will
-        /// inline these fields and delete <see cref="NodeData"/>.</summary>
-        internal new ExtensionData NodeData => Unsafe.As<ExtensionData>(base.NodeData!);
+        internal TrieNodeExtension() { }
+
+        internal TrieNodeExtension(byte[] key) => _key = key;
+
+        internal TrieNodeExtension(byte[] key, TrieNode child)
+        {
+            _key = key;
+            _child = child;
+        }
+
+        internal TrieNodeExtension(in ValueHash256 keccak) : base(in keccak) { }
+
+        internal TrieNodeExtension(CappedArray<byte> rlp, bool isDirty) : base(rlp, isDirty) { }
+
+        internal TrieNodeExtension(in ValueHash256 keccak, CappedArray<byte> rlp)
+            : base(rlp, in keccak) { }
+
+        private TrieNodeExtension(TrieNodeExtension source) : base(source)
+        {
+            _key = source._key;
+            _child = source._child;
+        }
+
+        internal override TrieNode CloneTyped() => new TrieNodeExtension(source: this);
+
+        public override NodeType NodeType => NodeType.Extension;
+
+        internal override byte[]? KeyInternal
+        {
+            get => _key;
+            set => _key = value;
+        }
+
+        // Extension stores the child reference at slot 0. Index is ignored — callers
+        // pass 0 when handling extensions explicitly and (i + 1) when iterating uniformly
+        // with branches (i is always 0 in that case).
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal override ref object GetSlotRef(int index) => ref _child!;
+
+        internal override int MemorySizeOfData =>
+            MemorySizes.RefSize + // child reference
+            MemorySizes.RefSize + // key reference
+            (_key is not null ? (int)MemorySizes.Align(_key.Length + MemorySizes.ArrayOverhead) : 0);
     }
 
     public partial class TrieNode
@@ -104,11 +210,10 @@ namespace Nethermind.Trie
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static TrieNode CreateLeafTyped(byte[] hexPrefixedKey, CappedArray<byte> value)
-            => new TrieNodeLeaf(new LeafData(hexPrefixedKey, value));
+            => new TrieNodeLeaf(hexPrefixedKey, value);
 
         /// <summary>
-        /// Allocate a typed empty leaf node. The key and value are filled in by the
-        /// caller (used by mutating builders).
+        /// Allocate a typed empty leaf node. The key and value are filled in by the caller.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static TrieNode CreateLeafTyped() => new TrieNodeLeaf();
@@ -162,7 +267,7 @@ namespace Nethermind.Trie
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static TrieNode CreateExtensionTyped(byte[] hexPrefixedKey)
-            => new TrieNodeExtension(new ExtensionData(hexPrefixedKey));
+            => new TrieNodeExtension(hexPrefixedKey);
 
         /// <summary>
         /// Allocate a typed extension node carrying an already hex-prefixed key
@@ -170,7 +275,7 @@ namespace Nethermind.Trie
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal static TrieNode CreateExtensionTyped(byte[] hexPrefixedKey, TrieNode child)
-            => new TrieNodeExtension(new ExtensionData(hexPrefixedKey, child));
+            => new TrieNodeExtension(hexPrefixedKey, child);
 
         /// <summary>
         /// Allocate a typed empty extension node.

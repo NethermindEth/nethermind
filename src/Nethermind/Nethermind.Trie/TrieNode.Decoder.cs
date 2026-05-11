@@ -54,7 +54,7 @@ namespace Nethermind.Trie
                 TrieNode? nodeRef = null;
                 ValueHash256 childKeccak = default;
                 bool hasChildKeccak;
-                if (item._nodeData[0] is Hash256 storedHash)
+                if (item.GetSlotRef(0) is Hash256 storedHash)
                 {
                     childKeccak = storedHash.ValueHash256;
                     hasChildKeccak = true;
@@ -171,7 +171,7 @@ namespace Nethermind.Trie
                     int nonNullChildren = 0;
                     for (int i = 0; i < BranchesCount; i++)
                     {
-                        object? data = item._nodeData[i];
+                        object? data = item.GetSlotRef(i);
                         if (data is not null && !ReferenceEquals(data, _nullNode) && ++nonNullChildren >= MinChildrenForParallel)
                         {
                             return true;
@@ -201,7 +201,7 @@ namespace Nethermind.Trie
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
-                        object? data = state.item._nodeData[i];
+                        object? data = state.item.GetSlotRef(i);
                         if (ReferenceEquals(data, _nullNode) || data is null)
                         {
                             state.local++;
@@ -234,7 +234,7 @@ namespace Nethermind.Trie
                 int totalLength = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object? data = item._nodeData[i];
+                    object? data = item.GetSlotRef(i);
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         totalLength++;
@@ -264,7 +264,7 @@ namespace Nethermind.Trie
                     {
                         ValueRlpStream rlpStream = state.item.RlpStream;
                         state.item.SeekChild(ref rlpStream, i);
-                        object? data = state.item._nodeData[i];
+                        object? data = state.item.GetSlotRef(i);
                         if (data is null)
                         {
                             state.local += rlpStream.PeekNextRlpLength();
@@ -304,7 +304,7 @@ namespace Nethermind.Trie
                 item.SeekChild(ref rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item._nodeData[i];
+                    object data = item.GetSlotRef(i);
                     if (data is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
@@ -356,7 +356,7 @@ namespace Nethermind.Trie
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item._nodeData[i];
+                    object data = item.GetSlotRef(i);
                     if (ReferenceEquals(data, _nullNode) || data is null)
                     {
                         destination[position++] = 128;
@@ -394,7 +394,7 @@ namespace Nethermind.Trie
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item._nodeData[i];
+                    object data = item.GetSlotRef(i);
                     if (data is null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
