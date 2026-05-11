@@ -51,9 +51,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             parent._updateMetrics(parent._stateMerkleizationTime);
         }
 
-        public void HintBal(BlockAccessList bal) => baseScope.HintBal(bal);
-
-        public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
-            => baseScope.ReadBalAsync(bal, sink, cancellationToken);
+        public void HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
+            => baseScope.HintBal(bal, sink);
     }
 }

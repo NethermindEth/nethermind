@@ -142,103 +142,89 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public void HintBal(BlockAccessList bal)
+    public void HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
-        // Synchronous: BlockCachePreWarmer already drives HintBal from its own ThreadPool work
-        // item, and what runs here is just enqueuing trie-warmer jobs — fast non-blocking pushes
-        // into the MPMC ring buffer, no IO.
-        int snapshot = _hintSequenceId;
+        // Single parallel walk that fuses trie warmup with the (optional) BAL read pass.
+        //
+        // GetAccount(address) is the only blocking op per account, so we do it once per account
+        // and reuse the result for both sides:
+        //   - trie warmup needs the StorageRoot to seed a per-account FlatStorageTree before
+        //     enqueuing slot jobs for StorageChanges (only writes warm the trie — mirrors HintSet);
+        //   - the sink (when provided) receives OnAccountRead + OnStorageRead for both
+        //     StorageChanges and StorageReads. SSTORE consults the original value for
+        //     EIP-2200 / EIP-3529 gas refund accounting, so changed slots are genuinely read
+        //     at runtime; StorageReads ⊥ StorageChanges by BAL construction, so no duplication.
+        int accountCount = bal.AccountChanges.Count;
+        if (accountCount == 0) return;
 
-        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        int snapshot = _hintSequenceId;
+        ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
+        // Span isn't capturable into a Parallel.For body; project to a pooled list.
+        using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
+        for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChanges[i];
+
+        Parallel.For(0, accountCount, (i) =>
         {
             if (_hintSequenceId != snapshot || _pausePrewarmer) return;
 
-            Address address = accountChanges.Address;
+            AccountChanges ac = accountChangesList[i];
+            Address address = ac.Address;
+
+            // Trie warmup: address path.
             if (_warmer.PushAddressJob(this, address, snapshot))
                 Interlocked.Increment(ref _outstandingWarmups);
 
-            if (accountChanges.StorageChanges.Length == 0) continue;
+            // One GetAccount per account — feeds both the sink and the storage-tree seed.
+            Account? account = sink is null && ac.StorageChanges.Length == 0
+                ? null // no consumer needs the account in this case
+                : _snapshotBundle.GetAccount(address);
 
-            Account? account = _snapshotBundle.GetAccount(address);
-            Hash256 storageRoot = account?.StorageRoot ?? Keccak.EmptyTreeHash;
-            if (storageRoot == Keccak.EmptyTreeHash) continue;
+            if (sink is not null && sink.StillNeeded(address, out _))
+                sink.OnAccountRead(address, account);
 
-            // Non-cached per-warmup tree — only writes need the trie warmed, so we mirror the
-            // HintSet write-path warmup over BAL StorageChanges. StorageReads are deliberately
-            // skipped (they fill caches via ReadBalAsync but do not touch the trie).
-            FlatStorageTree storageWarmer = new(
-                this,
-                _warmer,
-                _snapshotBundle,
-                _configuration,
-                _concurrencyQuota,
-                storageRoot,
-                address,
-                _logManager);
+            int slotCount = ac.StorageChanges.Length + ac.StorageReads.Count;
+            if (account is null || slotCount == 0) return;
 
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                _warmer.PushSlotJobMpmc(storageWarmer, slotChanges.Key, snapshot);
-        }
-    }
+            Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+            if (storageRoot == Keccak.EmptyTreeHash) return;
 
-    public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
-    {
-        try
-        {
-            int accountCount = bal.AccountChanges.Count;
-            if (accountCount == 0) return Task.CompletedTask;
+            // Per-account non-cached tree just for trie warmup pushes — the main thread's
+            // CreateStorageTreeImpl builds its own cached instance on first use.
+            FlatStorageTree storageWarmer = ac.StorageChanges.Length > 0
+                ? new FlatStorageTree(
+                    this,
+                    _warmer,
+                    _snapshotBundle,
+                    _configuration,
+                    _concurrencyQuota,
+                    storageRoot,
+                    address,
+                    _logManager)
+                : null!;
 
-            // Flatten BAL entries into one job list — accounts get a sentinel slot index, storage
-            // slots carry their key. One parallel pass handles both account and slot reads.
-            //
-            // Both StorageChanges and StorageReads are pre-fetched: SSTORE consults the original
-            // slot value to compute its gas cost / refund (EIP-2200, EIP-3529), so changed slots
-            // are read as part of block execution even though they end up overwritten.
-            ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
-            int totalJobs = accountCount;
-            for (int i = 0; i < accountCount; i++)
-                totalJobs += accountChanges[i].StorageChanges.Length + accountChanges[i].StorageReads.Count;
+            int selfDestructIdx = sink is null ? 0 : _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
 
-            using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot, bool IsAccount)> jobs = new(totalJobs, totalJobs);
-            int jobIdx = 0;
-            for (int i = 0; i < accountCount; i++)
+            foreach (SlotChanges slotChanges in ac.StorageChanges)
             {
-                AccountChanges ac = accountChanges[i];
-                Address address = ac.Address;
-                jobs[jobIdx++] = (address, 0, default, true);
-
-                if (ac.StorageChanges.Length == 0 && ac.StorageReads.Count == 0) continue;
-                int selfDestructIdx = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
-                foreach (SlotChanges slotChanges in ac.StorageChanges)
-                    jobs[jobIdx++] = (address, selfDestructIdx, slotChanges.Key, false);
-                foreach (UInt256 storageReadKey in ac.StorageReads)
-                    jobs[jobIdx++] = (address, selfDestructIdx, storageReadKey, false);
+                UInt256 key = slotChanges.Key;
+                _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot);
+                if (sink is not null) ReadSlotToSink(sink, address, in key, selfDestructIdx);
             }
 
-            // Read via the snapshot bundle directly, skipping the cached FlatStorageTree wrapper —
-            // the wrapper's Get calls HintGet -> PushSlotJob (SPMC) and parallel workers would
-            // corrupt that buffer. Trie warmup is handled separately by HintBal.
-            ParallelOptions parallelOptions = new() { CancellationToken = cancellationToken };
-            Parallel.For(0, totalJobs, parallelOptions, (j) =>
+            if (sink is not null)
             {
-                (Address address, int selfDestructIdx, UInt256 slot, bool isAccount) = jobs[j];
-                if (isAccount)
-                {
-                    if (!sink.StillNeeded(address, out _)) return;
-                    sink.OnAccountRead(address, _snapshotBundle.GetAccount(address));
-                }
-                else
-                {
-                    StorageCell cell = new(address, in slot);
-                    if (!sink.StillNeeded(in cell)) return;
-                    byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
-                    sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
-                }
-            });
-        }
-        catch (OperationCanceledException) { }
+                foreach (UInt256 readKey in ac.StorageReads)
+                    ReadSlotToSink(sink, address, in readKey, selfDestructIdx);
+            }
+        });
+    }
 
-        return Task.CompletedTask;
+    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
+    {
+        StorageCell cell = new(address, in slot);
+        if (!sink.StillNeeded(in cell)) return;
+        byte[]? raw = _snapshotBundle.GetSlot(address, in slot, selfDestructIdx);
+        sink.OnStorageRead(in cell, raw is null || raw.Length == 0 ? StorageTree.ZeroBytes : raw);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

@@ -72,27 +72,20 @@ public interface IWorldStateScopeProvider
 
         /// <summary>
         /// Hint that the given Block Access List will be accessed during block execution.
-        /// For prewarmer scopes, this triggers asynchronous prefetching of all addresses
-        /// and storage slots listed in the BAL into the prewarmer cache.
-        /// Non-prewarmer scopes may ignore this hint.
+        /// Walks the BAL in parallel and, per account, enqueues trie-warmer jobs for the
+        /// addresses + changed storage slots. When <paramref name="sink"/> is supplied, the
+        /// same pass also reads each account and slot value (changed + read-only) and forwards
+        /// them to the sink — letting the prewarmer populate its caches without paying a
+        /// second <c>GetAccount</c> per entry.
+        /// Non-prewarmer scopes may ignore the hint or treat it as a no-op.
         /// </summary>
         /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
+        /// <param name="sink">Optional sink that receives each account/slot value read during the pass.</param>
         /// <remarks>
-        /// Synchronous on purpose: the prewarmer already drives this from a dedicated ThreadPool
-        /// work item, and the work this method does (enqueuing trie-warmer jobs, running the BAL
-        /// read pass) is already itself parallel internally. Wrapping in another Task buys nothing.
+        /// Synchronous on purpose: the prewarmer drives this from a dedicated ThreadPool work
+        /// item, and the walk is itself parallel internally. Wrapping in another Task buys nothing.
         /// </remarks>
-        void HintBal(BlockAccessList bal);
-
-        /// <summary>
-        /// Reads all account and storage data referenced by the Block Access List from
-        /// the underlying trie/db and pushes the results to <paramref name="sink"/>.
-        /// </summary>
-        /// <param name="bal">The Block Access List to read.</param>
-        /// <param name="sink">The sink that receives each account/storage read result.</param>
-        /// <param name="cancellationToken">Token to cancel the operation.</param>
-        /// <returns>A task that completes when all BAL entries have been read.</returns>
-        Task ReadBalAsync(BlockAccessList bal, IAsyncBalReaderSink sink, CancellationToken cancellationToken);
+        void HintBal(BlockAccessList bal, IAsyncBalReaderSink? sink = null);
     }
 
     /// <summary>

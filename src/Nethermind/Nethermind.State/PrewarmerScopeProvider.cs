@@ -157,41 +157,21 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public void HintBal(BlockAccessList bal)
+        public void HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
-            // The prewarmer (BlockCachePreWarmer.AddressWarmer) already runs us on a dedicated
-            // ThreadPool work item. Within that we still parallelise two things:
-            //  - baseScope.HintBal (trie warmup) — does a blocking _snapshotBundle.GetAccount
-            //    per BAL account to fetch storage roots before enqueuing slot jobs.
-            //  - baseScope.ReadBalAsync (BAL read pass) — parallel internally; populates caches.
-            // Running them concurrently overlaps the GetAccount latency with the read pass.
+            // One fused pass — baseScope.HintBal walks the BAL in parallel, enqueues trie-warmer
+            // jobs, and uses our CacheSink to populate preBlockCaches off the same per-account
+            // GetAccount lookup that trie warmup already pays for.
             CacheSink cacheSink = new(preBlockCache, storageCache);
-            Task trieTask = Task.Run(() =>
-            {
-                try
-                {
-                    baseScope.HintBal(bal);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error("HintBal trie warmup faulted", ex);
-                }
-            });
-
             try
             {
-                baseScope.ReadBalAsync(bal, cacheSink, CancellationToken.None).GetAwaiter().GetResult();
+                baseScope.HintBal(bal, cacheSink);
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error("HintBal cache population faulted", ex);
+                if (_logger.IsError) _logger.Error("HintBal faulted", ex);
             }
-
-            trieTask.GetAwaiter().GetResult();
         }
-
-        public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
-            => baseScope.ReadBalAsync(bal, sink, cancellationToken);
 
         private sealed class CacheSink(
             SeqlockCache<AddressAsKey, Account> stateCache,

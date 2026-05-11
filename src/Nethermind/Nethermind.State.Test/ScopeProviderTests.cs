@@ -155,7 +155,7 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_ReadBalAsync_MatchesIndividualReads()
+    public void Test_HintBalWithSink_MatchesIndividualReads()
     {
         using Context ctx = new(useFlat);
 
@@ -193,11 +193,11 @@ public class ScopeProviderTests(bool useFlat)
         bal.AddStorageRead(TestItem.AddressA, 2);
         bal.AddStorageRead(TestItem.AddressB, 5);
 
-        // Collect results via ReadBalAsync
+        // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
         CollectingBalSink sink = new();
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            scope.ReadBalAsync(bal, sink, CancellationToken.None).Wait();
+            scope.HintBal(bal, sink);
 
             // Verify accounts match individual reads
             sink.Accounts.Should().ContainKey(TestItem.AddressA);
