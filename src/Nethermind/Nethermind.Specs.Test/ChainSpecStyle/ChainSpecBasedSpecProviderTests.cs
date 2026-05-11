@@ -710,13 +710,17 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
-    [TestCase("Berlin")]
-    [TestCase("Cancun")]
-    [TestCase("Prague")]
-    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName)
+    [TestCase("Berlin", BlockchainIds.Mainnet)]
+    [TestCase("Cancun", BlockchainIds.Mainnet)]
+    [TestCase("Prague", BlockchainIds.Mainnet)]
+    [TestCase("LondonGnosis", BlockchainIds.Gnosis)]
+    [TestCase("CancunGnosis", BlockchainIds.Gnosis)]
+    [TestCase("OsakaGnosis", BlockchainIds.Gnosis)]
+    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId)
     {
         ChainSpec chainSpec = new()
         {
+            ChainId = chainId,
             Parameters = new ChainParameters(),
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };

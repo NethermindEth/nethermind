@@ -387,15 +387,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             BlockHeader adjusted = header.Clone();
 
-    adjusted.BaseFeePerGas = spec.IsEip1559Enabled
-        ? adjusted.BaseFeePerGas.IsZero
-            ? BaseFeeCalculator.Calculate(parentHeader, spec)
-            : adjusted.BaseFeePerGas
-        : UInt256.Zero;
+            adjusted.BaseFeePerGas = spec.IsEip1559Enabled
+                ? adjusted.BaseFeePerGas.IsZero
+                    ? BaseFeeCalculator.Calculate(parentHeader, spec)
+                    : adjusted.BaseFeePerGas
+                : UInt256.Zero;
 
-    adjusted.ExcessBlobGas = spec.IsEip4844Enabled
-        ? BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec)
-        : null;
+            adjusted.ExcessBlobGas = spec.IsEip4844Enabled
+                ? BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec)
+                : null;
 
             return adjusted;
         }

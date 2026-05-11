@@ -273,10 +273,10 @@ public class TestBlockchain : IDisposable
 
     private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider)
     {
-ISpecProvider unwrapped =
-    specProvider is Nethermind.State.OverridableEnv.OverridableSpecProvider envSpecProvider
-        ? envSpecProvider.SpecProvider
-        : specProvider;
+        ISpecProvider unwrapped =
+            specProvider is Nethermind.State.OverridableEnv.OverridableSpecProvider envSpecProvider
+                ? envSpecProvider.SpecProvider
+                : specProvider;
 
         return unwrapped is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
