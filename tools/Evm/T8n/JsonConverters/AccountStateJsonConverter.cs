@@ -15,10 +15,7 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
 {
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
 
-    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        return _ethereumJsonSerializer.Deserialize<AccountState>(ref reader);
-    }
+    public override AccountState? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => _ethereumJsonSerializer.Deserialize<AccountState>(ref reader);
 
     public override void Write(Utf8JsonWriter writer, AccountState value, JsonSerializerOptions options)
     {
@@ -46,7 +43,7 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
             ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
             if (value.Storage.Count > 0)
             {
-                var storage = value.Storage.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToUInt256());
+                Dictionary<UInt256, UInt256> storage = value.Storage.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToUInt256());
                 writer.WritePropertyName("storage"u8);
                 JsonSerializer.Serialize(writer, storage, options);
             }

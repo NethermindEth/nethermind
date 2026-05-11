@@ -5,20 +5,13 @@ using Nethermind.Tools.Kute.SystemClock;
 
 namespace Nethermind.Tools.Kute.Auth;
 
-public sealed class TtlAuth : IAuth
+public sealed class TtlAuth(IAuth auth, ISystemClock clock, TimeSpan ttl) : IAuth
 {
-    private readonly IAuth _auth;
-    private readonly ISystemClock _clock;
-    private readonly TimeSpan _ttl;
+    private readonly IAuth _auth = auth;
+    private readonly ISystemClock _clock = clock;
+    private readonly TimeSpan _ttl = ttl;
 
     private LastAuth? _lastAuth;
-
-    public TtlAuth(IAuth auth, ISystemClock clock, TimeSpan ttl)
-    {
-        _auth = auth;
-        _clock = clock;
-        _ttl = ttl;
-    }
 
     public string AuthToken
     {
