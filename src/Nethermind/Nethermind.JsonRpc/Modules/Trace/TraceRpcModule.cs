@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 (writer, ct) => new ChannelParityLikeBlockTracer(traceTypeByTransaction, writer, ct),
                 static (tracer, b, blockTracer) => tracer.Trace(b, blockTracer));
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(
-                new ParityTxTraceFromReplayStreamingResult(ToReplayTracesAsync(traces)));
+                new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(ToReplayTracesAsync(traces)));
         }
 
         /// <summary>
@@ -220,7 +220,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 (writer, ct) => new ChannelParityLikeBlockTracer(traceTypes1, writer, ct),
                 static (tracer, b, blockTracer) => tracer.Execute(b, blockTracer));
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(
-                new ParityTxTraceFromReplayStreamingResult(ToReplayTracesAsync(txTraces, includeTransactionHash: true)));
+                new ParityTxTraceStreamingResult<ParityTxTraceFromReplay>(ToReplayTracesAsync(txTraces, includeTransactionHash: true)));
         }
 
         /// <summary>
@@ -242,7 +242,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     ErrorCodes.InvalidInput);
 
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(
-                new ParityTxTraceFromStoreStreamingResult(StreamFilterAsync(traceFilterForRpc)));
+                new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(StreamFilterAsync(traceFilterForRpc)));
         }
 
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter)
@@ -275,7 +275,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 static (writer, ct) => new ChannelParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.Rewards, writer, ct),
                 static (tracer, b, blockTracer) => tracer.Execute(b, blockTracer));
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(
-                new ParityTxTraceFromStoreStreamingResult(ToStoreTracesAsync(txTraces)));
+                new ParityTxTraceStreamingResult<ParityTxTraceFromStore>(ToStoreTracesAsync(txTraces)));
         }
 
         /// <summary>

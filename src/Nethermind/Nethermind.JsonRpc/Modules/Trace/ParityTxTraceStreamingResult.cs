@@ -14,8 +14,8 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.JsonRpc.Modules.Trace;
 
 /// <summary>
-/// Streams an array of <see cref="ParityTxTraceFromReplay"/> items directly to the response
-/// pipe, flushing after each item to avoid buffering the entire result in memory.
+/// Streams an array of <typeparamref name="T"/> items directly to the response pipe,
+/// flushing after each item to avoid buffering the entire result in memory.
 /// </summary>
 /// <remarks>
 /// When the HTTP pipeline detects <see cref="IStreamableResult"/> on the response, it calls
@@ -25,9 +25,9 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 /// The <see cref="IEnumerable{T}"/> implementation provides a synchronous fallback used by
 /// buffered-response paths (e.g. batch requests) and unit tests.
 /// </remarks>
-[JsonConverter(typeof(ParityTxTraceFromReplayStreamingResultConverter))]
-public sealed class ParityTxTraceFromReplayStreamingResult(IAsyncEnumerable<ParityTxTraceFromReplay> source)
-    : IStreamableResult, IEnumerable<ParityTxTraceFromReplay>
+[JsonConverter(typeof(ParityTxTraceStreamingResultConverterFactory))]
+public sealed class ParityTxTraceStreamingResult<T>(IAsyncEnumerable<T> source)
+    : IStreamableResult, IEnumerable<T>
 {
     public async ValueTask WriteToAsync(PipeWriter pipeWriter, CancellationToken cancellationToken)
     {
@@ -37,7 +37,7 @@ public sealed class ParityTxTraceFromReplayStreamingResult(IAsyncEnumerable<Pari
         jsonWriter.Flush();
         await pipeWriter.FlushAsync(cancellationToken);
 
-        await foreach (ParityTxTraceFromReplay item in source.WithCancellation(cancellationToken))
+        await foreach (T item in source.WithCancellation(cancellationToken))
         {
             JsonSerializer.Serialize(jsonWriter, item, EthereumJsonSerializer.JsonOptions);
             jsonWriter.Flush();
@@ -50,21 +50,35 @@ public sealed class ParityTxTraceFromReplayStreamingResult(IAsyncEnumerable<Pari
         jsonWriter.Flush();
     }
 
-    public IEnumerator<ParityTxTraceFromReplay> GetEnumerator() =>
+    public IEnumerator<T> GetEnumerator() =>
         source.ToBlockingEnumerable().GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
 
-public sealed class ParityTxTraceFromReplayStreamingResultConverter : JsonConverter<ParityTxTraceFromReplayStreamingResult>
+public sealed class ParityTxTraceStreamingResultConverterFactory : JsonConverterFactory
 {
-    public override ParityTxTraceFromReplayStreamingResult? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override bool CanConvert(Type typeToConvert) =>
+        typeToConvert.IsGenericType &&
+        typeToConvert.GetGenericTypeDefinition() == typeof(ParityTxTraceStreamingResult<>);
+
+    public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options)
+    {
+        Type itemType = typeToConvert.GetGenericArguments()[0];
+        Type converterType = typeof(ParityTxTraceStreamingResultConverter<>).MakeGenericType(itemType);
+        return (JsonConverter)Activator.CreateInstance(converterType)!;
+    }
+}
+
+public sealed class ParityTxTraceStreamingResultConverter<T> : JsonConverter<ParityTxTraceStreamingResult<T>>
+{
+    public override ParityTxTraceStreamingResult<T>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         => throw new NotSupportedException();
 
-    public override void Write(Utf8JsonWriter writer, ParityTxTraceFromReplayStreamingResult value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, ParityTxTraceStreamingResult<T> value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();
-        foreach (ParityTxTraceFromReplay item in value)
+        foreach (T item in value)
         {
             JsonSerializer.Serialize(writer, item, options);
         }
