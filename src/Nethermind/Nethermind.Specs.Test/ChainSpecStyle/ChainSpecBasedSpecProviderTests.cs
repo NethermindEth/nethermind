@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.GnosisForks;
 using NSubstitute;
 using NUnit.Framework;
 using System;
@@ -710,13 +711,13 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
-    [TestCase("Berlin", BlockchainIds.Mainnet)]
-    [TestCase("Cancun", BlockchainIds.Mainnet)]
-    [TestCase("Prague", BlockchainIds.Mainnet)]
-    [TestCase("London", BlockchainIds.Gnosis)]
-    [TestCase("Cancun", BlockchainIds.Gnosis)]
-    [TestCase("Osaka", BlockchainIds.Gnosis)]
-    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId)
+    [TestCase("Berlin", BlockchainIds.Mainnet, null)]
+    [TestCase("Cancun", BlockchainIds.Mainnet, null)]
+    [TestCase("Prague", BlockchainIds.Mainnet, null)]
+    [TestCase("London", BlockchainIds.Gnosis, typeof(LondonGnosis))]
+    [TestCase("Cancun", BlockchainIds.Gnosis, typeof(CancunGnosis))]
+    [TestCase("Osaka", BlockchainIds.Gnosis, typeof(OsakaGnosis))]
+    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId, Type? expectedSpecType)
     {
         ChainSpec chainSpec = new()
         {
@@ -731,7 +732,9 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider, Is.InstanceOf<IForkAwareSpecProvider>());
             Assert.That(provider.AvailableForks, Does.Contain(forkName));
-            Assert.That(provider.TryGetForkSpec(forkName.ToLowerInvariant(), out _), Is.True);
+            Assert.That(provider.TryGetForkSpec(forkName.ToLowerInvariant(), out IReleaseSpec? spec), Is.True);
+            if (expectedSpecType is not null)
+                Assert.That(spec, Is.InstanceOf(expectedSpecType));
         }
     }
 

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -18,6 +21,15 @@ public class ChiadoSpecProvider : ISpecProvider
     public const ulong OsakaTimestamp = 0x69b7ce4c;
 
     public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
+
+    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
+    {
+        [nameof(London)] = London.Instance,
+        [nameof(Shanghai)] = ShanghaiGnosis.Instance,
+        [nameof(Cancun)] = CancunGnosis.Instance,
+        [nameof(Prague)] = PragueGnosis.Instance,
+        [nameof(Osaka)] = OsakaGnosis.Instance,
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     private ChiadoSpecProvider() { }
 
