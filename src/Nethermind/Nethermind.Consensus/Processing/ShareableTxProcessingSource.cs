@@ -51,8 +51,8 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
 
         public void Dispose()
         {
-            _scope.Dispose();
-            _envPool.Return(_source);
+            try { _scope.Dispose(); }
+            finally { _envPool.Return(_source); }
         }
 
         public ITransactionProcessor TransactionProcessor => _scope.TransactionProcessor;
