@@ -190,4 +190,20 @@ public class ChainSpecParamsJson
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
+
+    /// <summary>Shorthand activation timestamp for the full Shanghai hardfork (EIPs 3651, 3855, 3860, 4895).</summary>
+    /// <remarks>Equivalent to setting each constituent <c>EipXxxTransitionTimestamp</c>. If both this label and a constituent are set to different values the chainspec is rejected at load.</remarks>
+    public ulong? Shanghai { get; set; }
+
+    /// <summary>Shorthand activation timestamp for the full Cancun hardfork (EIPs 1153, 4788, 4844, 5656, 6780).</summary>
+    /// <inheritdoc cref="Shanghai"/>
+    public ulong? Cancun { get; set; }
+
+    /// <summary>Shorthand activation timestamp for the full Prague hardfork (EIPs 2537, 2935, 6110, 7002, 7251, 7623, 7702).</summary>
+    /// <inheritdoc cref="Shanghai"/>
+    public ulong? Prague { get; set; }
+
+    /// <summary>Shorthand activation timestamp for the full Osaka hardfork (EIPs 7594, 7823, 7825, 7883, 7918, 7934, 7939, 7951).</summary>
+    /// <inheritdoc cref="Shanghai"/>
+    public ulong? Osaka { get; set; }
 }

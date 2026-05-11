@@ -93,6 +93,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
 
+        ExpandHardforkLabels(chainSpecJson.Params);
         ValidateParams(chainSpecJson.Params);
 
         chainSpec.Parameters = new ChainParameters
@@ -243,6 +244,75 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
                     ExitCodes.MissingChainspecEipConfiguration)
                 : value
             : default;
+
+    /// <summary>
+    /// Expands hardfork shorthand labels (Shanghai/Cancun/Prague/Osaka) into their constituent
+    /// per-EIP transition timestamps. A label and an explicit EIP timestamp set to different
+    /// values is rejected.
+    /// </summary>
+    /// <remarks>
+    /// Resolves at JSON-load time so the rest of the pipeline keeps reading individual
+    /// <c>EipXxxTransitionTimestamp</c> fields and stays unaware of the shorthand.
+    /// </remarks>
+    private static void ExpandHardforkLabels(ChainSpecParamsJson p)
+    {
+        if (p.Shanghai is { } shanghai)
+        {
+            ApplyHardforkLabel(nameof(p.Shanghai), shanghai,
+                (nameof(p.Eip3651TransitionTimestamp), p.Eip3651TransitionTimestamp, v => p.Eip3651TransitionTimestamp = v),
+                (nameof(p.Eip3855TransitionTimestamp), p.Eip3855TransitionTimestamp, v => p.Eip3855TransitionTimestamp = v),
+                (nameof(p.Eip3860TransitionTimestamp), p.Eip3860TransitionTimestamp, v => p.Eip3860TransitionTimestamp = v),
+                (nameof(p.Eip4895TransitionTimestamp), p.Eip4895TransitionTimestamp, v => p.Eip4895TransitionTimestamp = v));
+        }
+
+        if (p.Cancun is { } cancun)
+        {
+            ApplyHardforkLabel(nameof(p.Cancun), cancun,
+                (nameof(p.Eip1153TransitionTimestamp), p.Eip1153TransitionTimestamp, v => p.Eip1153TransitionTimestamp = v),
+                (nameof(p.Eip4788TransitionTimestamp), p.Eip4788TransitionTimestamp, v => p.Eip4788TransitionTimestamp = v),
+                (nameof(p.Eip4844TransitionTimestamp), p.Eip4844TransitionTimestamp, v => p.Eip4844TransitionTimestamp = v),
+                (nameof(p.Eip5656TransitionTimestamp), p.Eip5656TransitionTimestamp, v => p.Eip5656TransitionTimestamp = v),
+                (nameof(p.Eip6780TransitionTimestamp), p.Eip6780TransitionTimestamp, v => p.Eip6780TransitionTimestamp = v));
+        }
+
+        if (p.Prague is { } prague)
+        {
+            ApplyHardforkLabel(nameof(p.Prague), prague,
+                (nameof(p.Eip2537TransitionTimestamp), p.Eip2537TransitionTimestamp, v => p.Eip2537TransitionTimestamp = v),
+                (nameof(p.Eip2935TransitionTimestamp), p.Eip2935TransitionTimestamp, v => p.Eip2935TransitionTimestamp = v),
+                (nameof(p.Eip6110TransitionTimestamp), p.Eip6110TransitionTimestamp, v => p.Eip6110TransitionTimestamp = v),
+                (nameof(p.Eip7002TransitionTimestamp), p.Eip7002TransitionTimestamp, v => p.Eip7002TransitionTimestamp = v),
+                (nameof(p.Eip7251TransitionTimestamp), p.Eip7251TransitionTimestamp, v => p.Eip7251TransitionTimestamp = v),
+                (nameof(p.Eip7623TransitionTimestamp), p.Eip7623TransitionTimestamp, v => p.Eip7623TransitionTimestamp = v),
+                (nameof(p.Eip7702TransitionTimestamp), p.Eip7702TransitionTimestamp, v => p.Eip7702TransitionTimestamp = v));
+        }
+
+        if (p.Osaka is { } osaka)
+        {
+            ApplyHardforkLabel(nameof(p.Osaka), osaka,
+                (nameof(p.Eip7594TransitionTimestamp), p.Eip7594TransitionTimestamp, v => p.Eip7594TransitionTimestamp = v),
+                (nameof(p.Eip7823TransitionTimestamp), p.Eip7823TransitionTimestamp, v => p.Eip7823TransitionTimestamp = v),
+                (nameof(p.Eip7825TransitionTimestamp), p.Eip7825TransitionTimestamp, v => p.Eip7825TransitionTimestamp = v),
+                (nameof(p.Eip7883TransitionTimestamp), p.Eip7883TransitionTimestamp, v => p.Eip7883TransitionTimestamp = v),
+                (nameof(p.Eip7918TransitionTimestamp), p.Eip7918TransitionTimestamp, v => p.Eip7918TransitionTimestamp = v),
+                (nameof(p.Eip7934TransitionTimestamp), p.Eip7934TransitionTimestamp, v => p.Eip7934TransitionTimestamp = v),
+                (nameof(p.Eip7939TransitionTimestamp), p.Eip7939TransitionTimestamp, v => p.Eip7939TransitionTimestamp = v),
+                (nameof(p.Eip7951TransitionTimestamp), p.Eip7951TransitionTimestamp, v => p.Eip7951TransitionTimestamp = v));
+        }
+    }
+
+    private static void ApplyHardforkLabel(string label, ulong labelValue, params (string Name, ulong? Current, Action<ulong?> Setter)[] eips)
+    {
+        foreach ((string name, ulong? current, Action<ulong?> setter) in eips)
+        {
+            if (current is null)
+                setter(labelValue);
+            else if (current.Value != labelValue)
+                throw new InvalidConfigurationException(
+                    $"Chainspec hardfork label '{label}' = 0x{labelValue:x} conflicts with explicit {name} = 0x{current.Value:x}. Either remove the conflicting field or align both values.",
+                    ExitCodes.MissingChainspecEipConfiguration);
+        }
+    }
 
     private static void ValidateParams(ChainSpecParamsJson parameters)
     {
