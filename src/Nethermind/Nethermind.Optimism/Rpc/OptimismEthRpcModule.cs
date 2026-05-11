@@ -56,7 +56,8 @@ public class OptimismEthRpcModule(
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
     ILogIndexConfig? logIndexConfig,
-    IOptimismSpecHelper opSpecHelper)
+    IOptimismSpecHelper opSpecHelper,
+    HeadBlockSignal headBlockSignal)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
@@ -74,7 +75,8 @@ public class OptimismEthRpcModule(
         protocolsManager,
         forkInfo,
         logIndexConfig,
-        secondsPerSlot), IOptimismEthRpcModule
+        secondsPerSlot,
+        headBlockSignal), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)
     {

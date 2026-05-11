@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
@@ -50,6 +51,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly ILogIndexConfig _logIndexConfig;
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
+    private readonly HeadBlockSignal _headBlockSignal;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
@@ -110,6 +112,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         ITxSigner txSigner = new WalletTxSigner(wallet, specProvider.ChainId);
         TxSealer sealer = new(txSigner, timestamper);
         _sealer = sealer;
+        _headBlockSignal = new HeadBlockSignal(blockTree);
     }
 
     public override IOptimismEthRpcModule Create() => new OptimismEthRpcModule(
@@ -134,6 +137,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _ecdsa,
             _sealer,
             _logIndexConfig,
-            _opSpecHelper
+            _opSpecHelper,
+            _headBlockSignal
         );
 }

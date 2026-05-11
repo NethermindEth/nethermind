@@ -71,7 +71,8 @@ public partial class EthRpcModule(
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
-    ulong? secondsPerSlot) : IEthRpcModule
+    ulong? secondsPerSlot,
+    HeadBlockSignal headBlockSignal) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -92,6 +93,7 @@ public partial class EthRpcModule(
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -362,54 +364,39 @@ public partial class EthRpcModule(
     {
         int waitMs = ResolveSyncTimeoutMs(timeoutMs);
         using CancellationTokenSource cts = new(waitMs);
-        // Coalescing signal — back-to-back blocks fold into a single Release; the catches handle
-        // both the at-capacity case and the in-flight-after-dispose race (event dispatch snapshots
-        // the invocation list, so an unsubscribe in finally cannot stop a handler already running).
-        using SemaphoreSlim signal = new(0, 1);
-        void OnNewHead(object? sender, BlockEventArgs _)
+
+        // Submit via the virtual eth_sendRawTransaction so subclass overrides
+        // propagate without needing a separate sync override.
+        ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
+        if (sendResult.Result.ResultType != ResultType.Success)
         {
-            try { signal.Release(); }
-            catch (SemaphoreFullException) { }
-            catch (ObjectDisposedException) { }
+            return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
         }
+        Hash256 hash = sendResult.Data;
 
-        // Subscribe before submit to avoid losing a fast inclusion to a race.
-        _blockTree.NewHeadBlock += OnNewHead;
-
-        try
+        while (true)
         {
-            // Submit via the virtual eth_sendRawTransaction so subclass overrides
-            // propagate without needing a separate sync override.
-            ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
-            if (sendResult.Result.ResultType != ResultType.Success)
-            {
-                return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
-            }
-            Hash256 hash = sendResult.Data;
+            // Snapshot the next-head Task BEFORE the receipt check: if a head arrives between
+            // the check and the await, the snapshot is already completed and the loop re-checks
+            // immediately. Snapshotting after the check would miss that signal.
+            Task nextHead = _headBlockSignal.NextHeadTask;
 
-            while (true)
+            ResultWrapper<ReceiptForRpc?> receiptResult = eth_getTransactionReceipt(hash);
+            if (receiptResult.Data is not null)
             {
-                ResultWrapper<ReceiptForRpc?> receiptResult = eth_getTransactionReceipt(hash);
-                if (receiptResult.Data is not null)
-                {
-                    return receiptResult;
-                }
-
-                try
-                {
-                    await signal.WaitAsync(cts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return ResultWrapper<ReceiptForRpc?>.Fail(
-                        $"Transaction {hash} was added to the pool but not included within {waitMs}ms.",
-                        ErrorCodes.Timeout);
-                }
+                return receiptResult;
             }
-        }
-        finally
-        {
-            _blockTree.NewHeadBlock -= OnNewHead;
+
+            try
+            {
+                await nextHead.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return ResultWrapper<ReceiptForRpc?>.Fail(
+                    $"Transaction {hash} was added to the pool but not included within {waitMs}ms.",
+                    ErrorCodes.Timeout);
+            }
         }
     }
 

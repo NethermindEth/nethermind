@@ -184,7 +184,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.ProtocolsManager,
             @this.ForkInfo,
             @this.LogIndexConfig,
-            @this.BlocksConfig.SecondsPerSlot);
+            @this.BlocksConfig.SecondsPerSlot,
+            new HeadBlockSignal(@this.BlockTree));
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
