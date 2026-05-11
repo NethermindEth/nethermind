@@ -213,8 +213,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     AccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    // Trie warmup: address path.
-                    if (_warmer.PushAddressJob(this, address, snapshot))
+                    // Trie warmup: address path. Gate on ShouldQueuePrewarm so we don't queue
+                    // warmup for addresses the snapshot already covers (mirrors HintGet).
+                    if (_snapshotBundle.ShouldQueuePrewarm(address)
+                        && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
 
                     SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
@@ -249,9 +251,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         foreach (SlotChanges slotChanges in storageChanges)
                         {
                             UInt256 key = slotChanges.Key;
-                            // Pair every successful push with an increment — the warmer's
-                            // WarmUpStorageTrie always decrements in its finally block.
-                            if (_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                            // Gate on ShouldQueuePrewarm (mirrors HintSet/WarmUpSlot) so we don't
+                            // queue slot warmup for cells the snapshot already covers. Pair every
+                            // successful push with an increment — the warmer's WarmUpStorageTrie
+                            // always decrements in its finally block.
+                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
                                 Interlocked.Increment(ref _outstandingWarmups);
                         }
                     }
