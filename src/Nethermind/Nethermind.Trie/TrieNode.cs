@@ -1506,6 +1506,30 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
+        /// Set an unresolved by-hash child reference directly into branch slot
+        /// <paramref name="i"/> without materializing a placeholder <see cref="TrieNode"/>.
+        /// Used by tests that previously called
+        /// <c>SetChild(i, new TrieNode(NodeType.Unknown, hash))</c> to seed a branch
+        /// with known child hashes; the branch encoder is already able to read a
+        /// <see cref="Hash256"/> slot directly via <c>DecodeChildReference</c>.
+        /// </summary>
+        internal void SetChildHash(int i, Hash256 hash)
+        {
+            ArgumentNullException.ThrowIfNull(hash);
+            if (IsSealed)
+            {
+                ThrowAlreadySealed();
+            }
+
+            GetSlotRef(i) = hash;
+            ClearKeccak();
+
+            [DoesNotReturn, StackTraceHidden]
+            void ThrowAlreadySealed() => throw new InvalidOperationException(
+                    $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
+        }
+
+        /// <summary>
         /// Method to avoid expensive Stelem_Ref covariant checks
         /// when setting to object[] array
         /// </summary>

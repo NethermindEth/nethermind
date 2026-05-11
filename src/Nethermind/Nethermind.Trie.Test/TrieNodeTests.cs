@@ -926,7 +926,7 @@ public class TrieNodeTests
         TrieNode trieNode = TrieNode.CreateBranchTyped();
         for (int i = 0; i < 16; i++)
         {
-            trieNode.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+            trieNode.SetChildHash(i, TestItem.Keccaks[i]);
         }
 
         trieNode.Seal();

@@ -776,7 +776,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode = TrieNode.CreateBranchTyped();
             for (int i = 0; i < 16; i++)
             {
-                trieNode.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+                trieNode.SetChildHash(i, TestItem.Keccaks[i]);
             }
             MemDb memDb = new();
             using TrieStore fullTrieStore = CreateTrieStore(
@@ -837,7 +837,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = TrieNode.CreateBranchTyped();
             for (int i = 0; i < 16; i++)
             {
-                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+                node.SetChildHash(i, TestItem.Keccaks[i]);
             }
 
             TreePath emptyPath = TreePath.Empty;
@@ -880,7 +880,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode node = TrieNode.CreateBranchTyped();
             for (int i = 0; i < 16; i++)
             {
-                node.SetChild(i, new TrieNode(NodeType.Unknown, TestItem.Keccaks[i]));
+                node.SetChildHash(i, TestItem.Keccaks[i]);
             }
 
             IScopedTrieStore scoped = fullTrieStore.GetTrieStore(null);
