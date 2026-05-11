@@ -19,7 +19,7 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <see cref="PipeWriter"/>, bypassing <see cref="System.Text.Json.Utf8JsonWriter"/>
 /// to avoid extra buffer copies for large blob payloads.
 /// </summary>
-public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobAndProofV2?>
+public sealed class BlobsV2DirectResponse : IStreamableResult, IReadOnlyList<BlobAndProofV2?>
 {
     private readonly byte[]?[] _blobs;
     private readonly ReadOnlyMemory<byte[]>[] _proofs;
@@ -27,11 +27,21 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobA
 
     public BlobsV2DirectResponse(byte[]?[] blobs, ReadOnlyMemory<byte[]>[] proofs, int count)
     {
-        Debug.Assert(count <= blobs.Length && count <= proofs.Length,
-            "count must not exceed array lengths");
+        Debug.Assert(count <= blobs.Length && count <= proofs.Length, "count must not exceed array lengths");
         _blobs = blobs;
         _proofs = proofs;
         _count = count;
+    }
+
+    public int Count => _count;
+
+    public BlobAndProofV2? this[int index]
+    {
+        get
+        {
+            if ((uint)index >= (uint)_count) throw new ArgumentOutOfRangeException(nameof(index));
+            return BuildBlobAndProofV2(index);
+        }
     }
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
@@ -80,9 +90,14 @@ public sealed class BlobsV2DirectResponse : IStreamableResult, IEnumerable<BlobA
     {
         for (int i = 0; i < _count; i++)
         {
-            byte[]? blob = _blobs[i];
-            yield return blob is null ? null : new BlobAndProofV2(blob, _proofs[i].ToArray());
+            yield return BuildBlobAndProofV2(i);
         }
+    }
+
+    private BlobAndProofV2? BuildBlobAndProofV2(int i)
+    {
+        byte[]? blob = _blobs[i];
+        return blob is null ? null : new BlobAndProofV2(blob, _proofs[i].ToArray());
     }
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobAndProofV2?>)this).GetEnumerator();

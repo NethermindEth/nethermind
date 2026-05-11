@@ -708,23 +708,28 @@ namespace Nethermind.Synchronization.Blocks
                 case AddBlockResult.UnknownParent:
                     {
                         if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} ignored (unknown parent)");
-                        if (isFirstInBatch)
-                        {
-                            const string message = "Peer sent orphaned blocks/headers inside the batch";
-                            _logger.Error(message);
-                            throw new EthSyncException(message);
-                        }
-                        else
-                        {
-                            const string message = "Peer sent an inconsistent batch of blocks/headers";
-                            _logger.Error(message);
-                            throw new EthSyncException(message);
-                        }
+                        string blockId = $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
+                        string message = isFirstInBatch
+                            ? $"Peer {peerInfo} sent orphaned blocks/headers inside the batch: {blockId}"
+                            : $"Peer {peerInfo} sent an inconsistent batch of blocks/headers: {blockId}";
+                        _logger.Error(message);
+                        throw new EthSyncException(message);
                     }
                 case AddBlockResult.CannotAccept:
-                    throw new EthSyncException("Block tree rejected block/header");
+                    {
+                        string message = $"Block tree rejected block/header from peer {peerInfo}: " +
+                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
+                        throw new EthSyncException(message);
+                    }
                 case AddBlockResult.InvalidBlock:
-                    throw new EthSyncException("Peer sent an invalid block/header");
+                    {
+                        // Validator-level reason (e.g. InvalidReceiptsRoot, BAL hash mismatch) is logged
+                        // separately via InvalidBlockException by the validator/processor; see preceding
+                        // 'Rejected invalid block' log lines and the RLP dump at /tmp/block_<hash>.rlp.
+                        string message = $"Peer {peerInfo} sent an invalid block/header: " +
+                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
+                        throw new EthSyncException(message);
+                    }
                 case AddBlockResult.Added:
                     UpdatePeerInfo(peerInfo, block);
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} suggested for processing");
