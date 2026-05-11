@@ -31,6 +31,14 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore]
     public SlotChanges[]? StorageChangesOrNull => _sortedStorageChanges;
 
+    /// <summary>
+    /// Returns the cached sorted storage reads array if already built, otherwise <c>null</c>.
+    /// Pairs with <see cref="StorageChangesOrNull"/> for background consumers that want the
+    /// raw array (avoids the <c>ReadOnlySpan</c> capture limitation of <see cref="SortedStorageReads"/>).
+    /// </summary>
+    [JsonIgnore]
+    public UInt256[]? SortedStorageReadsOrNull => _sortedStorageReads;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
     public UInt256[] ChangedSlots => GetSortedChangedSlots();
 

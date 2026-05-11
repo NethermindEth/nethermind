@@ -206,10 +206,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (_warmer.PushAddressJob(this, address, snapshot))
                     Interlocked.Increment(ref _outstandingWarmups);
 
-                // Use the pre-sorted storage changes directly. If they aren't built yet, skip
-                // the per-account storage warmup rather than trigger an on-demand sort here.
+                // Use the pre-sorted storage arrays directly. If not built, skip that side of
+                // the per-account warmup rather than trigger an on-demand sort here.
                 SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
+                UInt256[]? storageReads = ac.SortedStorageReadsOrNull;
                 int storageChangeCount = storageChanges?.Length ?? 0;
+                int storageReadCount = storageReads?.Length ?? 0;
 
                 // One GetAccount per account — feeds both the sink and the storage-tree seed.
                 Account? account = sink is null && storageChangeCount == 0
@@ -219,8 +221,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (sink is not null && sink.StillNeeded(address, out _))
                     sink.OnAccountRead(address, account);
 
-                int slotCount = storageChangeCount + ac.StorageReads.Count;
-                if (account is null || slotCount == 0) return;
+                if (account is null || storageChangeCount + storageReadCount == 0) return;
 
                 Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                 if (storageRoot == Keccak.EmptyTreeHash) return;
@@ -254,9 +255,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     }
                 }
 
-                if (sink is not null)
+                if (sink is not null && storageReads is not null)
                 {
-                    foreach (UInt256 readKey in ac.StorageReads)
+                    foreach (UInt256 readKey in storageReads)
                         ReadSlotToSink(sink, address, in readKey, selfDestructIdx);
                 }
                 });

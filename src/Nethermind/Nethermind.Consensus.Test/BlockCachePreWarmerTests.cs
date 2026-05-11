@@ -400,7 +400,10 @@ public class BlockCachePreWarmerTests
         if (block.BlockAccessList is not null)
         {
             foreach (AccountChanges ac in block.BlockAccessList.AccountChangesByAddress)
+            {
                 _ = ac.StorageChanges;
+                _ = ac.SortedStorageReads;
+            }
         }
 
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();

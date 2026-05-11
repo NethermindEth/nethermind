@@ -138,8 +138,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                         }
 
                         SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
+                        UInt256[]? storageReads = ac.SortedStorageReadsOrNull;
                         int storageChangeCount = storageChanges?.Length ?? 0;
-                        if (account is null || (storageChangeCount == 0 && ac.StorageReads.Count == 0)) return;
+                        int storageReadCount = storageReads?.Length ?? 0;
+                        if (account is null || storageChangeCount + storageReadCount == 0) return;
                         Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                         if (storageRoot == Keccak.EmptyTreeHash) return;
 
@@ -154,11 +156,14 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                                 sink.OnStorageRead(in cell, storageTree.Get(in key));
                             }
                         }
-                        foreach (UInt256 storageReadKey in ac.StorageReads)
+                        if (storageReads is not null)
                         {
-                            StorageCell cell = new(address, in storageReadKey);
-                            if (!sink.StillNeeded(in cell)) continue;
-                            sink.OnStorageRead(in cell, storageTree.Get(in storageReadKey));
+                            foreach (UInt256 storageReadKey in storageReads)
+                            {
+                                StorageCell cell = new(address, in storageReadKey);
+                                if (!sink.StillNeeded(in cell)) continue;
+                                sink.OnStorageRead(in cell, storageTree.Get(in storageReadKey));
+                            }
                         }
                     });
                 }

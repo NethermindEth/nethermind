@@ -193,8 +193,12 @@ public class ScopeProviderTests(bool useFlat)
         bal.AddStorageRead(TestItem.AddressA, 2);
         bal.AddStorageRead(TestItem.AddressB, 5);
 
-        // HintBal consumes the BAL's pre-sorted array; force the sort once (mirrors RLP-decode).
-        _ = bal.AccountChangesByAddress;
+        // HintBal consumes the BAL's pre-sorted arrays; force the sort once (mirrors RLP-decode).
+        foreach (AccountChanges ac in bal.AccountChangesByAddress)
+        {
+            _ = ac.StorageChanges;
+            _ = ac.SortedStorageReads;
+        }
 
         // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
         CollectingBalSink sink = new();
