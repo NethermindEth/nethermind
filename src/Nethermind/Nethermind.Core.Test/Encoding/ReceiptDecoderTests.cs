@@ -64,12 +64,12 @@ namespace Nethermind.Core.Test.Encoding
             if (valueDecoder)
             {
                 Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
-                deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
+                deserialized = decoder.DecodeComplete(ref valueContext, RlpBehaviors.Storage);
             }
             else
             {
                 Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
-                deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
+                deserialized = decoder.DecodeComplete(ref ctx, RlpBehaviors.Storage);
             }
 
             deserialized.Should().BeEquivalentTo(GetExpected());
