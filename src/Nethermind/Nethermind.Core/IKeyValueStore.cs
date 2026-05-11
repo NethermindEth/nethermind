@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 
@@ -79,6 +80,23 @@ namespace Nethermind.Core
         {
             byte[]? data = Get(key, flags);
             return data is null or { Length: 0 } ? null : ArrayMemoryManager.From(data);
+        }
+
+        /// <summary>
+        /// Batched read for multiple keys. Default falls back to per-key <see cref="Get(ReadOnlySpan{byte}, ReadFlags)"/>.
+        /// Stores backed by an engine with native multi-get (e.g. RocksDB) should override for an order-of-magnitude
+        /// speedup on bulk lookups.
+        /// </summary>
+        /// <param name="keys">Keys to read. Result at index <c>i</c> corresponds to <c>keys[i]</c>.</param>
+        /// <returns>Aligned array of key/value pairs; value is <c>null</c> if the key is missing.</returns>
+        KeyValuePair<byte[], byte[]?>[] MultiGet(byte[][] keys)
+        {
+            KeyValuePair<byte[], byte[]?>[] result = new KeyValuePair<byte[], byte[]?>[keys.Length];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                result[i] = new KeyValuePair<byte[], byte[]?>(keys[i], Get(keys[i]));
+            }
+            return result;
         }
     }
 

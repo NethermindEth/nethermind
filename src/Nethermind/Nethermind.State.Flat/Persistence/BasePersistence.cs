@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -174,6 +177,19 @@ public static class BasePersistence
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref SlotValue outValue);
+
+        /// <summary>
+        /// Bulk variant of <see cref="GetAccount"/>. Writes the raw RLP bytes per input address into <paramref name="rlpResults"/>;
+        /// <c>null</c> means the account was missing. Default falls back to single-key reads.
+        /// </summary>
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> rlpResults);
+
+        /// <summary>
+        /// Bulk variant of <see cref="TryGetStorage"/>. Writes the raw db value bytes (variable length up to 32) per (addr, slot) pair;
+        /// <c>null</c> means the slot was missing. Default falls back to single-key reads.
+        /// </summary>
+        public void GetStorages(ReadOnlySpan<(ValueHash256 Addr, ValueHash256 Slot)> pairs, Span<byte[]?> rawResults);
+
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -200,6 +216,17 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue);
+
+        /// <summary>
+        /// Bulk variant of <see cref="GetAccount"/>. Writes one <see cref="Account"/> per input address; <c>null</c> means missing.
+        /// </summary>
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results);
+
+        /// <summary>
+        /// Bulk variant of <see cref="TryGetSlot"/>. Writes one <see cref="SlotValue"/> per input pair; <c>null</c> means missing.
+        /// </summary>
+        public void GetSlots(ReadOnlySpan<(Address Addr, UInt256 Slot)> pairs, Span<SlotValue?> results);
+
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -324,6 +351,73 @@ public static class BasePersistence
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            int count = addresses.Length;
+            if (count == 0) return;
+            ValueHash256[] hashes = new ValueHash256[count];
+            for (int i = 0; i < count; i++) hashes[i] = addresses[i].ToAccountPath;
+
+            byte[]?[] rlps = new byte[]?[count];
+            _flatReader.GetAccounts(hashes, rlps);
+
+            for (int i = 0; i < count; i++)
+            {
+                byte[]? rlp = rlps[i];
+                if (rlp is null || rlp.Length == 0)
+                {
+                    results[i] = null;
+                    continue;
+                }
+                Rlp.ValueDecoderContext ctx = new(rlp);
+                results[i] = _accountDecoder.Decode(ref ctx);
+            }
+        }
+
+        public void GetSlots(ReadOnlySpan<(Address Addr, UInt256 Slot)> pairs, Span<SlotValue?> results)
+        {
+            int count = pairs.Length;
+            if (count == 0) return;
+
+            (ValueHash256 Addr, ValueHash256 Slot)[] hashed = new (ValueHash256, ValueHash256)[count];
+            for (int i = 0; i < count; i++)
+            {
+                ValueHash256 slotHash = ValueKeccak.Zero;
+                StorageTree.ComputeKeyWithLookup(pairs[i].Slot, ref slotHash);
+                hashed[i] = (pairs[i].Addr.ToAccountPath, slotHash);
+            }
+
+            byte[]?[] raws = new byte[]?[count];
+            _flatReader.GetStorages(hashed, raws);
+
+            for (int i = 0; i < count; i++)
+            {
+                byte[]? raw = raws[i];
+                if (raw is null || raw.Length == 0)
+                {
+                    results[i] = null;
+                    continue;
+                }
+                SlotValue slotValue = default;
+                int len = raw.Length;
+                if (len == SlotValue.ByteCount)
+                {
+                    slotValue = Unsafe.As<byte, SlotValue>(ref MemoryMarshal.GetArrayDataReference(raw));
+                }
+                else
+                {
+                    ref byte destBase = ref Unsafe.As<SlotValue, byte>(ref slotValue);
+                    Unsafe.InitBlockUnaligned(ref destBase, 0, (uint)(SlotValue.ByteCount - len));
+                    ref byte destPtr = ref Unsafe.Add(ref destBase, SlotValue.ByteCount - len);
+                    Unsafe.CopyBlockUnaligned(
+                        ref destPtr,
+                        ref MemoryMarshal.GetArrayDataReference(raw),
+                        (uint)len);
+                }
+                results[i] = slotValue;
+            }
+        }
+
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
             _flatReader.CreateAccountIterator(startKey, endKey);
 
@@ -366,6 +460,12 @@ public static class BasePersistence
 
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) =>
             _flatReader.TryGetSlotRaw(addrHash, slotHash, ref value);
+
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results) =>
+            _flatReader.GetAccounts(addresses, results);
+
+        public void GetSlots(ReadOnlySpan<(Address Addr, UInt256 Slot)> pairs, Span<SlotValue?> results) =>
+            _flatReader.GetSlots(pairs, results);
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
             _flatReader.CreateAccountIterator(startKey, endKey);

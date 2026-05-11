@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -112,6 +113,36 @@ public static class BaseFlatPersistence
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);
+
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> rlpResults)
+        {
+            int count = addresses.Length;
+            if (count == 0) return;
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < count; i++)
+            {
+                byte[] key = new byte[AccountKeyLength];
+                addresses[i].Bytes[..AccountKeyLength].CopyTo(key);
+                keys[i] = key;
+            }
+            KeyValuePair<byte[], byte[]?>[] results = state.MultiGet(keys);
+            for (int i = 0; i < count; i++) rlpResults[i] = results[i].Value;
+        }
+
+        public void GetStorages(ReadOnlySpan<(ValueHash256 Addr, ValueHash256 Slot)> pairs, Span<byte[]?> rawResults)
+        {
+            int count = pairs.Length;
+            if (count == 0) return;
+            byte[][] keys = new byte[count][];
+            for (int i = 0; i < count; i++)
+            {
+                byte[] key = new byte[StorageKeyLength];
+                EncodeStorageKeyHashedWithShortPrefix(key, pairs[i].Addr, pairs[i].Slot);
+                keys[i] = key;
+            }
+            KeyValuePair<byte[], byte[]?>[] results = storage.MultiGet(keys);
+            for (int i = 0; i < count; i++) rawResults[i] = results[i].Value;
+        }
 
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey)
         {

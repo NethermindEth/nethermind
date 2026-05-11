@@ -26,6 +26,10 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
 
+    public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results) => results[..addresses.Length].Clear();
+
+    public void GetSlots(ReadOnlySpan<(Address Addr, UInt256 Slot)> pairs, Span<SlotValue?> results) => results[..pairs.Length].Clear();
+
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => new EmptyIterator();
 
     public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => new EmptyIterator();

@@ -141,6 +141,88 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
+    /// <summary>
+    /// Pre-warms the persistence-reader cache for a batch of addresses via RocksDB <c>MultiGet</c>.
+    /// Subsequent <see cref="GetAccount"/> calls for these addresses skip the disk roundtrip when no
+    /// overlay short-circuits the lookup. Addresses already satisfied by an overlay are filtered out.
+    /// </summary>
+    public void PrefetchAccounts(ReadOnlySpan<Address> addresses)
+    {
+        GuardDispose();
+        int total = addresses.Length;
+        if (total == 0) return;
+
+        using ArrayPoolList<Address> miss = new(total);
+        for (int i = 0; i < total; i++)
+        {
+            Address address = addresses[i];
+            HashedKey<Address> key = new(address);
+            if (_changedAccounts.ContainsKey(key)) continue;
+
+            bool snapshotHit = false;
+            for (int s = _snapshots.Count - 1; s >= 0; s--)
+            {
+                if (_snapshots[s].TryGetAccount(key, out _))
+                {
+                    snapshotHit = true;
+                    break;
+                }
+            }
+            if (snapshotHit) continue;
+
+            miss.Add(address);
+        }
+
+        if (miss.Count > 0) _readOnlySnapshotBundle.PrefetchAccounts(miss.AsSpan());
+    }
+
+    /// <summary>
+    /// Pre-warms the persistence-reader cache for a batch of (address, slot) pairs via RocksDB <c>MultiGet</c>.
+    /// Honors the per-job self-destruct boundary. Slots already satisfied by an overlay are filtered out.
+    /// </summary>
+    public void PrefetchSlots(ReadOnlySpan<(Address Addr, UInt256 Slot, int SelfDestructStateIdx)> jobs)
+    {
+        GuardDispose();
+        int total = jobs.Length;
+        if (total == 0) return;
+
+        using ArrayPoolList<(Address Addr, UInt256 Slot, int SelfDestructStateIdx)> miss = new(total);
+        int readOnlyCount = _readOnlySnapshotBundle.SnapshotCount;
+        for (int i = 0; i < total; i++)
+        {
+            (Address addr, UInt256 slot, int selfDestructIdx) = jobs[i];
+            HashedKey<(Address, UInt256)> key = new((addr, slot));
+
+            if (_changedSlots.ContainsKey(key)) continue;
+
+            if (selfDestructIdx == _snapshots.Count + readOnlyCount) continue;
+
+            int currentBundleSelfDestructIdx = selfDestructIdx - readOnlyCount;
+            bool resolved = false;
+            for (int s = _snapshots.Count - 1; s >= 0; s--)
+            {
+                if (_snapshots[s].TryGetStorage(key, out _))
+                {
+                    resolved = true;
+                    break;
+                }
+                if (s <= currentBundleSelfDestructIdx)
+                {
+                    // Self-destruct cut in the mutable snapshots stack — GetSlot will short-circuit
+                    // to null without ever consulting the read-only bundle or the prefetch cache.
+                    resolved = true;
+                    break;
+                }
+            }
+            if (resolved) continue;
+
+            // Below the mutable stack, the read-only bundle owns the self-destruct semantics.
+            miss.Add((addr, slot, selfDestructIdx));
+        }
+
+        if (miss.Count > 0) _readOnlySnapshotBundle.PrefetchSlots(miss.AsSpan());
+    }
+
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
     {
         GuardDispose();

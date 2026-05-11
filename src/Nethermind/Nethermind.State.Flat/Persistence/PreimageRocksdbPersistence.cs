@@ -218,6 +218,20 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db) : IPersist
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref SlotValue outValue) =>
             _flatReader.TryGetStorage(address, slotHash, ref outValue);
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results)
+        {
+            for (int i = 0; i < addresses.Length; i++) results[i] = GetAccount(addresses[i]);
+        }
+
+        public void GetSlots(ReadOnlySpan<(Address Addr, UInt256 Slot)> pairs, Span<SlotValue?> results)
+        {
+            for (int i = 0; i < pairs.Length; i++)
+            {
+                SlotValue v = default;
+                results[i] = TryGetSlot(pairs[i].Addr, pairs[i].Slot, ref v) ? v : null;
+            }
+        }
+
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) =>
             _flatReader.CreateAccountIterator(startKey, endKey);
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -27,6 +28,18 @@ public sealed class ReadOnlySnapshotBundle(
     public int SnapshotCount => snapshots.Count;
     private bool _isDisposed;
 
+    // Prefetch caches populated by HintBal via PrefetchAccounts / PrefetchSlots.
+    // Consulted on the disk-bound path after the in-memory snapshots overlay misses.
+    // Null sentinel ("missing") is stored as KeyValuePair<_, null>; we use a wrapper struct for slot
+    // to encode the missing-vs-zero distinction the same way SlotValue? does.
+    private readonly ConcurrentDictionary<HashedKey<Address>, Account?> _prefetchedAccounts = new();
+    private readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, PrefetchedSlot> _prefetchedSlots = new();
+
+    private readonly struct PrefetchedSlot(SlotValue? value)
+    {
+        public readonly SlotValue? Value = value;
+    }
+
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
@@ -52,6 +65,11 @@ public sealed class ReadOnlySnapshotBundle(
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
                 return acc;
             }
+        }
+
+        if (_prefetchedAccounts.TryGetValue(key, out Account? prefetched))
+        {
+            return prefetched;
         }
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -105,6 +123,11 @@ public sealed class ReadOnlySnapshotBundle(
             }
         }
 
+        if (_prefetchedSlots.TryGetValue(key, out PrefetchedSlot prefetched))
+        {
+            return prefetched.Value?.ToEvmBytes();
+        }
+
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -124,6 +147,109 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         return value;
+    }
+
+    /// <summary>
+    /// Batch-fetches accounts from disk via the persistence reader's MultiGet path and stores them in the
+    /// prefetch cache so that subsequent <see cref="GetAccount(Address,HashedKey{Address})"/> calls hit the
+    /// cache instead of going to disk. Addresses already satisfied by the in-memory snapshots overlay or by
+    /// a prior prefetch are skipped.
+    /// </summary>
+    public void PrefetchAccounts(ReadOnlySpan<Address> addresses)
+    {
+        GuardDispose();
+        int total = addresses.Length;
+        if (total == 0) return;
+
+        using ArrayPoolList<Address> missList = new(total);
+        using ArrayPoolList<HashedKey<Address>> missKeys = new(total);
+        for (int i = 0; i < total; i++)
+        {
+            Address address = addresses[i];
+            HashedKey<Address> key = new(address);
+
+            if (_prefetchedAccounts.ContainsKey(key)) continue;
+
+            bool snapshotHit = false;
+            for (int s = snapshots.Count - 1; s >= 0; s--)
+            {
+                if (snapshots[s].TryGetAccount(key, out _))
+                {
+                    snapshotHit = true;
+                    break;
+                }
+            }
+            if (snapshotHit) continue;
+
+            missList.Add(address);
+            missKeys.Add(key);
+        }
+
+        if (missList.Count == 0) return;
+
+        Account?[] results = new Account?[missList.Count];
+        persistenceReader.GetAccounts(missList.AsSpan(), results);
+
+        for (int i = 0; i < missList.Count; i++)
+        {
+            _prefetchedAccounts.TryAdd(missKeys[i], results[i]);
+        }
+    }
+
+    /// <summary>
+    /// Batch-fetches storage slots from disk via the persistence reader's MultiGet path and stores them in
+    /// the prefetch cache. Honors the per-job self-destruct boundary (slots cut by self-destruct are cached
+    /// as <c>null</c>). Jobs already satisfied by the in-memory snapshots overlay or by a prior prefetch
+    /// are skipped.
+    /// </summary>
+    public void PrefetchSlots(ReadOnlySpan<(Address Addr, UInt256 Slot, int SelfDestructStateIdx)> jobs)
+    {
+        GuardDispose();
+        int total = jobs.Length;
+        if (total == 0) return;
+
+        using ArrayPoolList<(Address Addr, UInt256 Slot)> missList = new(total);
+        using ArrayPoolList<HashedKey<(Address, UInt256)>> missKeys = new(total);
+
+        for (int i = 0; i < total; i++)
+        {
+            (Address addr, UInt256 slot, int selfDestructIdx) = jobs[i];
+            HashedKey<(Address, UInt256)> key = new((addr, slot));
+
+            if (_prefetchedSlots.ContainsKey(key)) continue;
+
+            bool resolved = false;
+            for (int s = snapshots.Count - 1; s >= 0; s--)
+            {
+                if (snapshots[s].TryGetStorage(key, out _))
+                {
+                    resolved = true;
+                    break;
+                }
+
+                if (s <= selfDestructIdx)
+                {
+                    // Self-destruct cut — cache as missing without hitting disk.
+                    _prefetchedSlots.TryAdd(key, new PrefetchedSlot(null));
+                    resolved = true;
+                    break;
+                }
+            }
+            if (resolved) continue;
+
+            missList.Add((addr, slot));
+            missKeys.Add(key);
+        }
+
+        if (missList.Count == 0) return;
+
+        SlotValue?[] results = new SlotValue?[missList.Count];
+        persistenceReader.GetSlots(missList.AsSpan(), results);
+
+        for (int i = 0; i < missList.Count; i++)
+        {
+            _prefetchedSlots.TryAdd(missKeys[i], new PrefetchedSlot(results[i]));
+        }
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>

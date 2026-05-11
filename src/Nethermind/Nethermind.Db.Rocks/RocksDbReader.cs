@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
@@ -94,6 +95,17 @@ public class RocksDbReader(DbOnTheRocks mainDb,
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, readOptions);
+    }
+
+    public KeyValuePair<byte[], byte[]?>[] MultiGet(byte[][] keys)
+    {
+        ColumnFamilyHandle[]? cfs = null;
+        if (_columnFamily is not null)
+        {
+            cfs = new ColumnFamilyHandle[keys.Length];
+            Array.Fill(cfs, _columnFamily);
+        }
+        return _mainDb._db.MultiGet(keys, cfs, _options);
     }
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _mainDb.DangerousReleaseMemory(span);

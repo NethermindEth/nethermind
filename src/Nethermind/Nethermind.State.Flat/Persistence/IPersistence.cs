@@ -39,6 +39,16 @@ public interface IPersistence
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
         bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value);
 
+        /// <summary>
+        /// Bulk variant of <see cref="GetAccount"/>. Writes <c>null</c> at index <c>i</c> when address[i] is missing.
+        /// </summary>
+        void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> results);
+
+        /// <summary>
+        /// Bulk variant of <see cref="TryGetSlot"/>. Writes <c>null</c> at index <c>i</c> when pair[i] is missing.
+        /// </summary>
+        void GetSlots(ReadOnlySpan<(Address Addr, UInt256 Slot)> pairs, Span<SlotValue?> results);
+
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateAccountIterator() => CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);

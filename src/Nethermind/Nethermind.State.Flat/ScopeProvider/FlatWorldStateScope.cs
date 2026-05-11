@@ -202,6 +202,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             try
             {
+                // Bulk-prefetch every account this phase will touch via a single RocksDB MultiGet.
+                // Subsequent _snapshotBundle.GetAccount(...) calls inside the parallel loop hit the
+                // prefetched cache rather than the disk.
+                if (!token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer)
+                {
+                    Address[] addresses = new Address[accountCount];
+                    for (int i = 0; i < accountCount; i++) addresses[i] = accountChanges[i].Address;
+                    _snapshotBundle.PrefetchAccounts(addresses);
+                }
+
                 // Phase 1: per-account work — trie warmup pushes, GetAccount, sink.OnAccountRead.
                 // Slot reads via the sink are deferred to phase 2 where they're parallelised across
                 // a flat job list, so a single account with thousands of slots doesn't bottleneck
@@ -313,6 +323,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 foreach (UInt256 readKey in storageReads)
                     jobs[idx++] = (address, selfDestructIdx, readKey);
             }
+        }
+
+        // Bulk-prefetch every slot this phase will touch via a single RocksDB MultiGet, so that the
+        // parallel sink reads below hit the prefetched cache instead of issuing per-key disk Gets.
+        if (!parallelOptions.CancellationToken.IsCancellationRequested)
+        {
+            (Address Addr, UInt256 Slot, int SelfDestructStateIdx)[] prefetchJobs =
+                new (Address, UInt256, int)[idx];
+            for (int j = 0; j < idx; j++)
+            {
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
+                prefetchJobs[j] = (address, slot, selfDestructIdx);
+            }
+            _snapshotBundle.PrefetchSlots(prefetchJobs);
         }
 
         Parallel.For(0, idx, parallelOptions, (j) =>
