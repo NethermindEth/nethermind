@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
@@ -16,7 +16,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
+            Rlp rlp = Rlp.Encode(account);
             Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
             (Hash256 codeHash, Hash256 storageRoot) = decoder.DecodeHashesOnly(ref ctx);
             Assert.That(TestItem.KeccakA, Is.EqualTo(codeHash));
@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedCodeHash(TestItem.KeccakA).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
+            Rlp rlp = Rlp.Encode(account);
             Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
             Account decoded = decoder.Decode(ref ctx)!;
             Assert.That((int)decoded.Balance, Is.EqualTo(100));
@@ -42,7 +42,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             Account account = new Account(100).WithChangedStorageRoot(TestItem.KeccakB);
             AccountDecoder decoder = new();
-            Rlp rlp = decoder.Encode(account);
+            Rlp rlp = Rlp.Encode(account);
             Rlp.ValueDecoderContext ctx = new(rlp.Bytes);
 
             int positionBefore = ctx.Position;
@@ -57,5 +57,6 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(storageRoot, Is.EqualTo(TestItem.KeccakB));
             Assert.That(ctx.Position, Is.GreaterThan(positionBeforeStorageRoot));
         }
+
     }
 }

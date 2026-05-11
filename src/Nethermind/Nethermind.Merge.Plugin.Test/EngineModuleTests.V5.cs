@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -74,7 +74,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = payloadResult.ExecutionPayload;
         executionPayload.ExecutionRequests = payloadResult.ExecutionRequests;
-        executionPayload.TryGetBlock().Block!.CalculateHash().Should().Be(executionPayload.BlockHash);
+        executionPayload.TryGetBlock().Data!.CalculateHash().Should().Be(executionPayload.BlockHash);
 
         ResultWrapper<PayloadStatusV1> newPayloadResult = await chain.EngineRpcModule.engine_newPayloadV4(
             executionPayload,

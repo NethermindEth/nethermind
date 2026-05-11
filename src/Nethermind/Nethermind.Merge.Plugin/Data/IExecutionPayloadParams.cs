@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -82,14 +82,14 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
             return result;
         }
 
-        TransactionDecodingResult transactionDecodingResult = executionPayload.TryGetTransactions();
-        if (transactionDecodingResult.Error is not null)
+        Result<Transaction[]> transactionDecodingResult = executionPayload.TryGetTransactions();
+        if (transactionDecodingResult.IsError)
         {
             error = transactionDecodingResult.Error;
             return ValidationResult.Invalid;
         }
 
-        if (!FlattenedHashesEqual(transactionDecodingResult.Transactions, blobVersionedHashes))
+        if (!FlattenedHashesEqual(transactionDecodingResult.Data, blobVersionedHashes))
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;

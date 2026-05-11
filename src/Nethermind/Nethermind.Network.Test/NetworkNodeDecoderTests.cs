@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
-            Rlp encoded = networkNodeDecoder.Encode(node);
+            Rlp encoded = Rlp.Encode(node);
             NetworkNode decoded = networkNodeDecoder.Decode((ReadOnlySpan<byte>)encoded.Bytes);
             Assert.That(decoded.Host, Is.EqualTo(node.Host));
             Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, -100L);
-            Rlp encoded = networkNodeDecoder.Encode(node);
+            Rlp encoded = Rlp.Encode(node);
             NetworkNode decoded = networkNodeDecoder.Decode((ReadOnlySpan<byte>)encoded.Bytes);
             Assert.That(decoded.Host, Is.EqualTo(node.Host));
             Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
@@ -58,12 +58,13 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder networkNodeDecoder = new();
             NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", -1, -100L);
-            Rlp encoded = networkNodeDecoder.Encode(node);
+            Rlp encoded = Rlp.Encode(node);
             NetworkNode decoded = networkNodeDecoder.Decode((ReadOnlySpan<byte>)encoded.Bytes);
             Assert.That(decoded.Host, Is.EqualTo(node.Host));
             Assert.That(decoded.NodeId, Is.EqualTo(node.NodeId));
             Assert.That(decoded.Port, Is.EqualTo(node.Port));
             Assert.That(decoded.Reputation, Is.EqualTo(node.Reputation));
         }
+
     }
 }

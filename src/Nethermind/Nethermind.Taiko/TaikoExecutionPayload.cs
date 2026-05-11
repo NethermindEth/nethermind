@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -90,7 +90,7 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
     // but that value is never read by the Taiko code path. Removing the previous (also 3-returning)
     // Taiko override eliminates dead code without changing observable behaviour.
 
-    public override BlockDecodingResult TryGetBlock(UInt256? totalDifficulty = null)
+    public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         if (Withdrawals is null && Transactions is null)
         {
@@ -120,17 +120,18 @@ public class TaikoExecutionPayload : ExecutionPayload, IExecutionPayloadParams, 
             };
 
             ApplyUnzenPinnedFields(header);
-            return new BlockDecodingResult(new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>()));
+            return new Block(header, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
         }
 
-        BlockDecodingResult result = base.TryGetBlock(totalDifficulty);
-        if (result.Block is not null)
+        Result<Block> result = base.TryGetBlock(totalDifficulty);
+        if (result.IsSuccess)
         {
+            Block block = result.Data;
             if (HeaderDifficulty is not null)
             {
-                result.Block.Header.Difficulty = HeaderDifficulty.Value;
+                block.Header.Difficulty = HeaderDifficulty.Value;
             }
-            ApplyUnzenPinnedFields(result.Block.Header);
+            ApplyUnzenPinnedFields(block.Header);
         }
         return result;
     }

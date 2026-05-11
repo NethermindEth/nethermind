@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -121,7 +121,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             ValueHash256 slotPath = default;
             if (acc.PathAndAccounts.Count > 0)
             {
-                accountRlp = _accountDecoder.Encode(acc.PathAndAccounts[0].Account).Bytes;
+                accountRlp = Rlp.Encode(acc.PathAndAccounts[0].Account).Bytes;
                 slotPath = acc.PathAndAccounts[0].Path;
             }
 

@@ -412,9 +412,9 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Encode_object_with_null_items_produces_empty_list()
+        public void Encode_array_with_null_items_produces_empty_list()
         {
-            Rlp result = AccountDecoder.Instance.Encode((Account[]?)null);
+            Rlp result = Rlp.Encode<Account>((Account[]?)null!);
             Assert.That(result, Is.EqualTo(Rlp.OfEmptyList));
         }
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -66,13 +66,13 @@ public class ValidateSubmissionHandler(
         if (_logger.IsInfo)
             _logger.Info($"blobs bundle blobs {blobsBundle.Blobs.Length} commits {blobsBundle.Commitments.Length} proofs {blobsBundle.Proofs.Length} commitments");
 
-        BlockDecodingResult decodingResult = payload.TryGetBlock();
-        Block? block = decodingResult.Block;
-        if (block is null)
+        Result<Block> decodingResult = payload.TryGetBlock();
+        if (decodingResult.IsError)
         {
             if (_logger.IsTrace) _logger.Trace($"Invalid block: {decodingResult.Error}. Result of {payloadStr}.");
             return FlashbotsResult.Invalid($"Block {payload} could not be parsed as a block: {decodingResult.Error}");
         }
+        Block block = decodingResult.Data;
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 

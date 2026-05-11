@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -28,22 +28,6 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return result;
-        }
-
-        public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (items is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            Rlp[] rlpSequence = new Rlp[items.Length];
-            for (int i = 0; i < items.Length; i++)
-            {
-                rlpSequence[i] = items[i] is null ? Rlp.OfEmptyList : decoder.Encode(items[i], behaviors);
-            }
-
-            return Rlp.Encode(rlpSequence);
         }
 
         public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamEncoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -162,23 +146,6 @@ namespace Nethermind.Serialization.Rlp
             return buffer;
         }
 
-        public static Rlp Encode<T>(this IRlpObjectDecoder<T> decoder, IReadOnlyCollection<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (items is null)
-            {
-                return Rlp.OfEmptyList;
-            }
-
-            Rlp[] rlpSequence = new Rlp[items.Count];
-            int i = 0;
-            foreach (T? item in items)
-            {
-                rlpSequence[i++] = item is null ? Rlp.OfEmptyList : decoder.Encode(item, behaviors);
-            }
-
-            return Rlp.Encode(rlpSequence);
-        }
-
         public static void Encode<T>(this IRlpStreamEncoder<T> decoder, RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (items is null)
@@ -213,7 +180,7 @@ namespace Nethermind.Serialization.Rlp
             int contentLength = 0;
             for (int i = 0; i < items.Length; i++)
             {
-                contentLength += decoder.GetLength(items[i], behaviors);
+                contentLength += items[i] is null ? Rlp.OfEmptyList.Length : decoder.GetLength(items[i], behaviors);
             }
 
             return contentLength;

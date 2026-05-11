@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt txReceipt = BuildReceipt();
 
             CompactReceiptStorageDecoder encoder = new();
-            Rlp rlp = encoder.Encode(txReceipt, encodeBehaviors);
+            Rlp rlp = EncodeReceipt(encoder, txReceipt, encodeBehaviors);
 
             CompactReceiptStorageDecoder decoder = new();
             Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
@@ -101,7 +101,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.StatusCode = 1;
 
             CompactReceiptStorageDecoder decoder = new();
-            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            Rlp rlp = EncodeReceipt(decoder, txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -125,7 +125,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            byte[] rlpStreamResult = EncodeReceipt(decoder, txReceipt, RlpBehaviors.Storage).Bytes;
             Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
             decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out TxReceiptStructRef deserialized);
 
@@ -159,7 +159,7 @@ namespace Nethermind.Core.Test.Encoding
 
             CompactReceiptStorageDecoder decoder = new();
 
-            byte[] rlpStreamResult = decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes;
+            byte[] rlpStreamResult = EncodeReceipt(decoder, txReceipt, RlpBehaviors.Storage).Bytes;
             Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
@@ -184,7 +184,7 @@ namespace Nethermind.Core.Test.Encoding
             txReceipt.TxType = TxType.AccessList;
 
             CompactReceiptStorageDecoder decoder = new();
-            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            Rlp rlp = EncodeReceipt(decoder, txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -203,7 +203,7 @@ namespace Nethermind.Core.Test.Encoding
             };
 
             CompactReceiptStorageDecoder decoder = new();
-            Rlp rlp = decoder.Encode(receipts);
+            Rlp rlp = EncodeReceipts(decoder, receipts);
             using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
             {
                 byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
@@ -225,7 +225,7 @@ namespace Nethermind.Core.Test.Encoding
             TxReceipt txReceipt = testCase.TxReceipt;
 
             CompactReceiptStorageDecoder decoder = new();
-            Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            Rlp rlp = EncodeReceipt(decoder, txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
             Rlp.ValueDecoderContext ctx = rlp.Bytes.AsRlpValueContext();
             TxReceipt? deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
@@ -262,6 +262,20 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(deserialized.Bloom, Is.EqualTo(txReceipt.Bloom), "bloom");
             Assert.That(deserialized.Recipient, Is.EqualTo(txReceipt.Recipient), "recipient");
             Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
+        }
+
+        private static Rlp EncodeReceipt(CompactReceiptStorageDecoder decoder, TxReceipt txReceipt, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            RlpStream stream = new(decoder.GetLength(txReceipt, behaviors));
+            decoder.Encode(stream, txReceipt, behaviors);
+            return new Rlp(stream.Data.ToArray()!);
+        }
+
+        private static Rlp EncodeReceipts(CompactReceiptStorageDecoder decoder, TxReceipt[] receipts, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            RlpStream stream = new(decoder.GetLength(receipts, behaviors));
+            decoder.Encode(stream, receipts, behaviors);
+            return new Rlp(stream.Data.ToArray()!);
         }
 
     }
