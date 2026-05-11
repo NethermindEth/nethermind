@@ -42,9 +42,10 @@ namespace Nethermind.State.Proofs
                 }
             }
 
-            TrieNode trieNode = new(NodeType.Unknown, proof.Last());
-            TreePath emptyPath = TreePath.Empty;
-            TrieNode.ResolveNode(ref trieNode, null, in emptyPath);
+            // The deepest proof node's RLP was just verified above. Decode it directly into a
+            // typed TrieNode instead of publishing an Unknown placeholder and rebinding via
+            // ResolveNode; proof verification has no resolver to consult, only the proof bytes.
+            TrieNode trieNode = TrieNode.DecodeRootFromRlp(proof.Last());
 
             return trieNode.Value;
         }
