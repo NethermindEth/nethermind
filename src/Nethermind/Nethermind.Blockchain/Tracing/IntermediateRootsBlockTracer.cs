@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -19,14 +20,14 @@ namespace Nethermind.Blockchain.Tracing;
 /// System-level calls (EIP-4788, EIP-2935) and withdrawals do not produce entries
 /// because <see cref="BlockTracerBase{TTrace,TTracer}"/> only dispatches on user transactions.
 /// </remarks>
-public class IntermediateRootsBlockTracer(IWorldState worldState)
+public class IntermediateRootsBlockTracer(IWorldState worldState, IReleaseSpec spec)
     : BlockTracerBase<Hash256, IntermediateRootsBlockTracer.IntermediateRootsTxTracer>
 {
-    protected override IntermediateRootsTxTracer OnStart(Transaction? tx) => new(worldState);
+    protected override IntermediateRootsTxTracer OnStart(Transaction? tx) => new(worldState, spec);
 
     protected override Hash256 OnEnd(IntermediateRootsTxTracer txTracer) => txTracer.StateRoot;
 
-    public class IntermediateRootsTxTracer(IWorldState worldState) : TxTracer
+    public class IntermediateRootsTxTracer(IWorldState worldState, IReleaseSpec spec) : TxTracer
     {
         public override bool IsTracingReceipt => true;
 
@@ -46,8 +47,11 @@ public class IntermediateRootsBlockTracer(IWorldState worldState)
                 return;
             }
 
-            // Post-Byzantium (EIP-658) the processor does not pre-compute the root,
-            // so we force a recalculation to read it from the live world state.
+            // Post-Byzantium (EIP-658): TransactionProcessor commits with commitRoots=false,
+            // which buffers changes into _blockChanges without flushing them to the trie.
+            // Force a flush so the recomputed root reflects this transaction's effect — the
+            // BlockProcessor's later end-of-block commit is idempotent for already-flushed entries.
+            worldState.Commit(spec, commitRoots: true);
             worldState.RecalculateStateRoot();
             StateRoot = worldState.StateRoot;
         }

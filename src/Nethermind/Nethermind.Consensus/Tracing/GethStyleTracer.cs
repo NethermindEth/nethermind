@@ -139,7 +139,7 @@ public class GethStyleTracer(
         BlockHeader? parent = FindParent(block);
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState);
+        IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState, specProvider.GetSpec(block.Header));
         try
         {
             scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
