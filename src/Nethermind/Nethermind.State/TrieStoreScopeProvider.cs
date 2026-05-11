@@ -68,7 +68,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public Task HintBal(BlockAccessList bal) => Task.CompletedTask;
+        public void HintBal(BlockAccessList bal) { }
 
         public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
         {

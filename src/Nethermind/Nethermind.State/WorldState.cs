@@ -247,10 +247,10 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public Task HintBal(BlockAccessList bal)
+        public void HintBal(BlockAccessList bal)
         {
             GuardInScope();
-            return _currentScope!.HintBal(bal);
+            _currentScope!.HintBal(bal);
         }
 
         public UInt256 GetBalance(Address address)

@@ -290,7 +290,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
     public void ResetTransient() => inner.ResetTransient();
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
-    public Task HintBal(BlockAccessList bal) => inner.HintBal(bal);
+    public void HintBal(BlockAccessList bal) => inner.HintBal(bal);
 
     public void CreateEmptyAccountIfDeleted(Address address)
     {

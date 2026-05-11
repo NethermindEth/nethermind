@@ -40,10 +40,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private StateId _currentStateId;
     internal volatile bool _pausePrewarmer = false;
 
-    // Tracked HintBal background task — mirrors PrewarmerScopeProvider's _balCts/_balTask pattern.
-    private CancellationTokenSource? _hintBalCts;
-    private Task? _hintBalTask;
-
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -87,7 +83,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
-        CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -114,16 +109,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
             spinWait.SpinOnce();
         }
-    }
-
-    private void CancelHintBal()
-    {
-        _hintBalCts?.Cancel();
-        try { _hintBalTask?.GetAwaiter().GetResult(); }
-        catch { }
-        _hintBalCts?.Dispose();
-        _hintBalCts = null;
-        _hintBalTask = null;
     }
 
     public Hash256 RootHash => _stateTree.RootHash;
@@ -157,58 +142,43 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
-    public Task HintBal(BlockAccessList bal)
+    public void HintBal(BlockAccessList bal)
     {
-        // Cancel any previous HintBal task and start a new one. Tracks the task so
-        // Dispose / StartWriteBatch can stop it cleanly. Returns the task so callers
-        // running on a short-lived scope can await it before disposing.
-        CancelHintBal();
-        _hintBalCts = new CancellationTokenSource();
-        CancellationToken token = _hintBalCts.Token;
+        // Synchronous: BlockCachePreWarmer already drives HintBal from its own ThreadPool work
+        // item, and what runs here is just enqueuing trie-warmer jobs — fast non-blocking pushes
+        // into the MPMC ring buffer, no IO.
         int snapshot = _hintSequenceId;
 
-        return _hintBalTask = Task.Run(() =>
+        foreach (AccountChanges accountChanges in bal.AccountChanges)
         {
-            try
-            {
-                foreach (AccountChanges accountChanges in bal.AccountChanges)
-                {
-                    if (token.IsCancellationRequested) return;
-                    if (_hintSequenceId != snapshot || _pausePrewarmer) return;
+            if (_hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                    Address address = accountChanges.Address;
-                    if (_warmer.PushAddressJob(this, address, snapshot))
-                        Interlocked.Increment(ref _outstandingWarmups);
+            Address address = accountChanges.Address;
+            if (_warmer.PushAddressJob(this, address, snapshot))
+                Interlocked.Increment(ref _outstandingWarmups);
 
-                    if (accountChanges.StorageChanges.Length == 0) continue;
+            if (accountChanges.StorageChanges.Length == 0) continue;
 
-                    Account? account = _snapshotBundle.GetAccount(address);
-                    Hash256 storageRoot = account?.StorageRoot ?? Keccak.EmptyTreeHash;
-                    if (storageRoot == Keccak.EmptyTreeHash) continue;
+            Account? account = _snapshotBundle.GetAccount(address);
+            Hash256 storageRoot = account?.StorageRoot ?? Keccak.EmptyTreeHash;
+            if (storageRoot == Keccak.EmptyTreeHash) continue;
 
-                    // Non-cached per-warmup tree — only writes need the trie warmed, so we mirror
-                    // the HintSet write-path warmup over BAL StorageChanges. StorageReads are
-                    // deliberately skipped (they fill caches via ReadBalAsync but do not touch the trie).
-                    FlatStorageTree storageWarmer = new(
-                        this,
-                        _warmer,
-                        _snapshotBundle,
-                        _configuration,
-                        _concurrencyQuota,
-                        storageRoot,
-                        address,
-                        _logManager);
+            // Non-cached per-warmup tree — only writes need the trie warmed, so we mirror the
+            // HintSet write-path warmup over BAL StorageChanges. StorageReads are deliberately
+            // skipped (they fill caches via ReadBalAsync but do not touch the trie).
+            FlatStorageTree storageWarmer = new(
+                this,
+                _warmer,
+                _snapshotBundle,
+                _configuration,
+                _concurrencyQuota,
+                storageRoot,
+                address,
+                _logManager);
 
-                    foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                    {
-                        if (token.IsCancellationRequested) return;
-                        _warmer.PushSlotJobMpmc(storageWarmer, slotChanges.Key, snapshot);
-                    }
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch (ObjectDisposedException) { }
-        }, token);
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                _warmer.PushSlotJobMpmc(storageWarmer, slotChanges.Key, snapshot);
+        }
     }
 
     public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
@@ -319,12 +289,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
-    {
-        // Cancel HintBal background warmup — write batches are processor-intensive and already parallelized,
-        // so the warmer thread shouldn't compete for CPU or touch _storages while we mutate it.
-        CancelHintBal();
-        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
-    }
+        => new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
 
     public void Commit(long blockNumber)
     {

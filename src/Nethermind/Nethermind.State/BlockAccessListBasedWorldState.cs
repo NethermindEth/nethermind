@@ -92,7 +92,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public Task HintBal(BlockAccessList bal) => _innerWorldState.HintBal(bal);
+    public void HintBal(BlockAccessList bal) => _innerWorldState.HintBal(bal);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {

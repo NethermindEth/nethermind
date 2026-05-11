@@ -25,7 +25,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
-    Task HintBal(BlockAccessList bal);
+    void HintBal(BlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new UInt256 GetBalance(Address address);

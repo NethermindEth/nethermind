@@ -421,16 +421,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        // The address warmer runs on a single ThreadPool work item. HintBal spawns its own
-        // background Task on the flat scope; we must keep the scope alive until that Task
-        // completes, otherwise disposal would cancel the warmup mid-flight.
+        // The address warmer runs on a single ThreadPool work item, which is our async boundary.
+        // HintBal itself runs synchronously here — the flat scope just enqueues trie-warmer jobs,
+        // and the BAL read pass that populates preBlockCaches is parallel internally.
         private void HintBalFromAddressWarmer(ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
             IReadOnlyTxProcessorSource env = envPool.Get();
             try
             {
                 using IReadOnlyTxProcessingScope scope = env.Build(parent);
-                scope.WorldState.HintBal(Bal!).GetAwaiter().GetResult();
+                scope.WorldState.HintBal(Bal!);
             }
             catch (MissingTrieNodeException)
             {

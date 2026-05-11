@@ -77,8 +77,12 @@ public interface IWorldStateScopeProvider
         /// Non-prewarmer scopes may ignore this hint.
         /// </summary>
         /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
-        /// <returns>A task that completes when the asynchronous warmup finishes (or is cancelled).</returns>
-        Task HintBal(BlockAccessList bal);
+        /// <remarks>
+        /// Synchronous on purpose: the prewarmer already drives this from a dedicated ThreadPool
+        /// work item, and the work this method does (enqueuing trie-warmer jobs, running the BAL
+        /// read pass) is already itself parallel internally. Wrapping in another Task buys nothing.
+        /// </remarks>
+        void HintBal(BlockAccessList bal);
 
         /// <summary>
         /// Reads all account and storage data referenced by the Block Access List from

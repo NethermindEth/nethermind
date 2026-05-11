@@ -157,27 +157,22 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public Task HintBal(BlockAccessList bal)
+        public void HintBal(BlockAccessList bal)
         {
-            // Drive trie warmup on the flat scope (own background Task there) and asynchronously
-            // populate preBlockCaches via ReadBalAsync + CacheSink. Return a task that completes
-            // when both finish, so short-lived callers can await before disposing the scope.
-            Task trieTask = baseScope.HintBal(bal);
+            // Synchronous — the prewarmer (BlockCachePreWarmer.AddressWarmer) already runs us on
+            // a dedicated ThreadPool work item, so we don't need our own Task to be async.
+            // Trie-warmup enqueues are fast; the BAL read pass is parallel internally.
+            baseScope.HintBal(bal);
 
             CacheSink cacheSink = new(preBlockCache, storageCache);
-            Task cacheTask = Task.Run(async () =>
+            try
             {
-                try
-                {
-                    await baseScope.ReadBalAsync(bal, cacheSink, CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error("HintBal cache population faulted", ex);
-                }
-            });
-
-            return Task.WhenAll(trieTask, cacheTask);
+                baseScope.ReadBalAsync(bal, cacheSink, CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error("HintBal cache population faulted", ex);
+            }
         }
 
         public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
