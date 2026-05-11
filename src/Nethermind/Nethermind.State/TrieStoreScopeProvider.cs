@@ -45,11 +45,31 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
     {
+        // Tracked HintBal background task — StartWriteBatch / Dispose cancel and drain it.
+        private CancellationTokenSource? _hintBalCts;
+        private Task? _hintBalTask;
+
         public void Dispose()
         {
+            CancelHintBal();
             _trieStoreCloser.Dispose();
             _backingStateTree.RootHash = Keccak.EmptyTreeHash;
             _storages.Clear();
+        }
+
+        private void CancelHintBal()
+        {
+            _hintBalCts?.Cancel();
+            try { _hintBalTask?.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
+                if (logger.IsError) logger.Error("HintBal background task faulted during cancel/drain", ex);
+            }
+            _hintBalCts?.Dispose();
+            _hintBalCts = null;
+            _hintBalTask = null;
         }
 
         public Hash256 RootHash => _backingStateTree.RootHash;
@@ -85,16 +105,22 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             // original slot value for EIP-2200 / EIP-3529 gas accounting, so changed slots
             // are genuinely read at runtime; the two collections are disjoint by BAL
             // construction so there's no duplicate work.
+            CancelHintBal();
+            _hintBalCts = new CancellationTokenSource();
+            CancellationToken token = _hintBalCts.Token;
+
             ReadOnlySpan<AccountChanges> accountChangesSpan = bal.AccountChangesByAddress;
             ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
             for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChangesSpan[i];
 
-            return Task.Run(() =>
+            return _hintBalTask = Task.Run(() =>
             {
                 try
                 {
-                    Parallel.For(0, accountCount, (i) =>
+                    ParallelOptions parallelOptions = new() { CancellationToken = token };
+                    Parallel.For(0, accountCount, parallelOptions, (i) =>
                     {
+                        if (token.IsCancellationRequested) return;
                         AccountChanges ac = accountChangesList[i];
                         Address address = ac.Address;
 
@@ -132,11 +158,12 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                         }
                     });
                 }
+                catch (OperationCanceledException) { }
                 finally
                 {
                     accountChangesList.Dispose();
                 }
-            });
+            }, token);
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -149,7 +176,12 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
         private readonly ILogManager _logManager = logManager;
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber) => new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
+        {
+            // Cancel + drain any in-flight HintBal so it doesn't race the writer or hold trie caches busy.
+            CancelHintBal();
+            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
+        }
 
         public void Commit(long blockNumber)
         {
