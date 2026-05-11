@@ -16,6 +16,8 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
 
     private NullBlobArenaManager() { }
 
+    public void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> allEntries) { }
+
     public BlobArenaWriter CreateWriter(long estimatedSize, string tag) =>
         throw new InvalidOperationException("NullBlobArenaManager cannot create writers.");
 

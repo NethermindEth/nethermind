@@ -91,10 +91,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 // Small pool lives at "arenas/" (legacy name from when it was the base arena).
                 ArenaManager smallArena = new(Path.Combine(basePath, "arenas"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
                 IArenaManager largeArena = ctx.Resolve<IArenaManager>();
-                BlobArenaManager smallBlobs = new(Path.Combine(basePath, "blobs", "small"), cfg.ArenaFileSizeBytes);
-                BlobArenaManager largeBlobs = new(Path.Combine(basePath, "blobs", "large"), cfg.ArenaFileSizeBytes);
-                IDb catalogDb = ctx.Resolve<IColumnsDb<FlatDbColumns>>().GetColumnDb(FlatDbColumns.PersistedSnapshotCatalog);
-                PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, catalogDb, cfg);
+                IColumnsDb<FlatDbColumns> columns = ctx.Resolve<IColumnsDb<FlatDbColumns>>();
+                BlobArenaCatalog blobArenaCatalog = new(columns.GetColumnDb(FlatDbColumns.BlobArenaCatalog));
+                BlobArenaManager smallBlobs = new(Path.Combine(basePath, "blobs", "small"), cfg.ArenaFileSizeBytes, blobArenaCatalog, BlobArenaPool.Small);
+                BlobArenaManager largeBlobs = new(Path.Combine(basePath, "blobs", "large"), cfg.ArenaFileSizeBytes, blobArenaCatalog, BlobArenaPool.Large);
+                IDb catalogDb = columns.GetColumnDb(FlatDbColumns.PersistedSnapshotCatalog);
+                PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobArenaCatalog, catalogDb, cfg);
                 repo.LoadFromCatalog();
                 return repo;
             })

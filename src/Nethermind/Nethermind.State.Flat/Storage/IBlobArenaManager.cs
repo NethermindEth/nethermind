@@ -35,6 +35,13 @@ namespace Nethermind.State.Flat.Storage;
 public interface IBlobArenaManager : IDisposable
 {
     /// <summary>
+    /// Rehydrate the in-memory reservation map from the blob arena catalog
+    /// (entries for this manager's pool only). Must run before any
+    /// <c>PersistedSnapshot</c> is constructed.
+    /// </summary>
+    void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> allEntries);
+
+    /// <summary>
     /// Open a writer that appends RLP items to a freshly-allocated reservation.
     /// The returned writer exposes <see cref="BlobArenaWriter.WriteRlp"/>, which
     /// returns the <see cref="NodeRef"/> to embed in the metadata HSST for the

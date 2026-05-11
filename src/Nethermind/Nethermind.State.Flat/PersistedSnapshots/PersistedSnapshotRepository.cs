@@ -22,6 +22,7 @@ public sealed class PersistedSnapshotRepository(
     IBlobArenaManager smallBlobArenaManager,
     IArenaManager largeArenaManager,
     IBlobArenaManager largeBlobArenaManager,
+    BlobArenaCatalog blobArenaCatalog,
     IDb catalogDb,
     IFlatDbConfig config) : IPersistedSnapshotRepository
 {
@@ -29,6 +30,7 @@ public sealed class PersistedSnapshotRepository(
     private readonly IBlobArenaManager _smallBlobArenaManager = smallBlobArenaManager;
     private readonly IArenaManager _largeArenaManager = largeArenaManager;
     private readonly IBlobArenaManager _largeBlobArenaManager = largeBlobArenaManager;
+    private readonly BlobArenaCatalog _blobArenaCatalog = blobArenaCatalog;
     private readonly SnapshotCatalog _catalog = new(catalogDb);
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
@@ -60,6 +62,13 @@ public sealed class PersistedSnapshotRepository(
     {
         lock (_catalogLock)
         {
+            // Blob arena catalog first — rehydrates each BlobArenaManager so the
+            // PersistedSnapshot ctor's TryAcquireBlobArena calls (driven by each
+            // snapshot's ref_ids metadata) can resolve the ids.
+            _blobArenaCatalog.Load();
+            _smallBlobArenaManager.Initialize(_blobArenaCatalog.Entries);
+            _largeBlobArenaManager.Initialize(_blobArenaCatalog.Entries);
+
             _catalog.Load();
             List<SnapshotCatalog.CatalogEntry> smallEntries = [];
             List<SnapshotCatalog.CatalogEntry> largeEntries = [];
@@ -154,7 +163,7 @@ public sealed class PersistedSnapshotRepository(
             _persistedSnapshotSize.WithLabels(isPersistable ? "is_persistable" : "base").Observe(arenaWriter.GetWriter().Written);
             (location, reservation) = arenaWriter.Complete();
         }
-        ArenaReservation blobReservation = blobWriter.Complete();
+        blobWriter.Complete();
         blobArenaId = blobWriter.BlobArenaId;
 
         lock (_catalogLock)
@@ -177,12 +186,11 @@ public sealed class PersistedSnapshotRepository(
         // Drop freshly-written pages from the kernel page cache for both reservations —
         // neither is on the read working set yet.
         reservation.AdviseDontNeed();
-        blobReservation.AdviseDontNeed();
 
         // Release the writers' "creation" leases. PersistedSnapshot took its own
         // (metadata reservation + each blob arena id) via AcquireLease in the ctor.
         reservation.Dispose();
-        blobReservation.Dispose();
+        blobMgr.ReleaseBlobArena(blobArenaId);
     }
 
     /// <summary>

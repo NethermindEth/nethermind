@@ -20,7 +20,8 @@ internal static class PersistedSnapshotBuilderTestExtensions
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
         using MemoryArenaManager blobArena = new();
-        using BlobArenaManager blobs = new(blobArena);
+        BlobArenaCatalog blobCatalog = new(new Nethermind.Db.MemDb());
+        using BlobArenaManager blobs = new(blobArena, blobCatalog, BlobArenaPool.Small);
         using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize, "TestBlob");
         PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
             snapshot, ref pooled.GetWriter(), blobWriter);

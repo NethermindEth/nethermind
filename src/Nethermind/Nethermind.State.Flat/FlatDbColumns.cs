@@ -13,4 +13,5 @@ public enum FlatDbColumns
     StorageNodes,
     FallbackNodes,
     PersistedSnapshotCatalog,
+    BlobArenaCatalog,
 }

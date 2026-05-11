@@ -91,15 +91,17 @@ public sealed class BlobArenaWriter : IDisposable
     /// <summary>
     /// Finalise the underlying arena reservation and register it with the manager
     /// under <see cref="BlobArenaId"/>. After this call the blob arena is readable
-    /// via <see cref="BlobArenaManager.RandomRead"/>.
+    /// via <see cref="BlobArenaManager.RandomRead"/>. The writer-creation lease
+    /// is owned by the manager — drop it via
+    /// <see cref="BlobArenaManager.ReleaseBlobArena"/> once the snapshot that
+    /// references this blob arena has acquired its own lease.
     /// </summary>
-    public ArenaReservation Complete()
+    public void Complete()
     {
         if (_completed) throw new InvalidOperationException("BlobArenaWriter already completed.");
         (SnapshotLocation _, ArenaReservation reservation) = _inner.Complete();
         _completed = true;
         _manager.RegisterCompleted(_blobArenaId, reservation);
-        return reservation;
     }
 
     public void Dispose()
