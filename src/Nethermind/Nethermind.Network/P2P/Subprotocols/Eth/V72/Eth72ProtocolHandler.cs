@@ -309,7 +309,7 @@ public class Eth72ProtocolHandler(
         using GetCellsMessage72 message = getCellsMessage;
         if (ShouldDisconnectForCellRequestAbuse(message.Hashes.Length))
         {
-            return Task.FromResult(new CellsMessage72([], [], BlobCellMask.Empty.ToBytes()));
+            return Task.FromResult(new CellsMessage72(message.RequestId, [], [], BlobCellMask.Empty.ToBytes()));
         }
 
         BlobCellMask requestedMask = BlobCellMask.FromBytes(message.CellMask);
@@ -356,7 +356,7 @@ public class Eth72ProtocolHandler(
             Logger.Debug($"{Node:c} responding with blob cells for {responseHashes.Count} txs with mask {responseMask}.");
         }
 
-        return Task.FromResult(new CellsMessage72(responseHashes.ToArray(), cellsByTx.ToArray(), responseMask.ToBytes()));
+        return Task.FromResult(new CellsMessage72(message.RequestId, responseHashes.ToArray(), cellsByTx.ToArray(), responseMask.ToBytes()));
     }
 
     private void Handle(CellsMessage72 message)

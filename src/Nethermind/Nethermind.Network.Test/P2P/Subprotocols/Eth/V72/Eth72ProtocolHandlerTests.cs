@@ -245,6 +245,7 @@ public class Eth72ProtocolHandlerTests
             m.EthMessage.Hashes[0] == hash));
         _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
             m.Hashes.Length == 1 &&
+            m.PacketType == Eth72MessageCode.GetCells &&
             m.Hashes[0] == hash &&
             m.CellMask.SequenceEqual(announcementMask.ToBytes())));
 
@@ -252,6 +253,39 @@ public class Eth72ProtocolHandlerTests
 
         _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
             m.Hashes.Length == 1 &&
+            m.PacketType == Eth72MessageCode.GetCells &&
+            m.Hashes[0] == hash &&
+            m.CellMask.SequenceEqual(announcementMask.ToBytes())));
+    }
+
+    [Test]
+    public void should_use_canonical_cell_request_code_for_geth_peer()
+    {
+        _session.Node!.ClientId = "Geth/v1.16.0-unstable/windows-amd64/go1.24.2";
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+
+        BlobCellMask announcementMask = BlobCellMask.FromIndices([2, 7]);
+        _blobCustodyTracker.Update(announcementMask);
+        Hash256 hash = tx.Hash!;
+        _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 message = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [hash],
+            announcementMask.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.PacketType == Eth72MessageCode.GetCells &&
             m.Hashes[0] == hash &&
             m.CellMask.SequenceEqual(announcementMask.ToBytes())));
     }
@@ -313,12 +347,14 @@ public class Eth72ProtocolHandlerTests
                 return true;
             });
 
-        using GetCellsMessage72 request = new([tx.Hash!], requestedMask.ToBytes());
+        using GetCellsMessage72 request = new(1234, [tx.Hash!], requestedMask.ToBytes());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth72MessageCode.GetCells);
 
         _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
+            m.RequestId == request.RequestId &&
+            m.PacketType == Eth72MessageCode.Cells &&
             m.Hashes.SequenceEqual(new[] { tx.Hash! }) &&
             m.CellMask.SequenceEqual(availableMask.ToBytes()) &&
             m.Cells.Length == 1 &&
