@@ -224,9 +224,11 @@ namespace Nethermind.Synchronization.SnapSync
                             byte[]? inlineRlp = node.GetInlineNodeRlp(ci);
                             if (inlineRlp is not null)
                             {
-                                child = new TrieNode(NodeType.Unknown, inlineRlp);
+                                // Inline RLP is already in hand; fold load+decode into a single
+                                // typed allocation so no NodeType.Unknown placeholder leaves
+                                // this loop.
                                 TreePath inlinePath = path.Append(ci);
-                                TrieNode.ResolveNode(ref child, NullTrieNodeResolver.Instance, in inlinePath);
+                                child = TrieNode.DecodeInlineFromRlp(inlineRlp, in inlinePath);
                             }
                         }
 

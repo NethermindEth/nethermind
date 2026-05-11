@@ -38,7 +38,10 @@ public class PatriciaTreeSyncStore(INodeStorage nodeStorage, ILogManager logMana
         private static StateTree CreateStateTree(INodeStorage nodeStorage, byte[] rootNodeData, ILogManager logManager)
         {
             StateTree stateTree = new(new RawScopedTrieStore(nodeStorage, null), logManager);
-            stateTree.RootRef = new TrieNode(NodeType.Unknown, rootNodeData);
+            // Decode the supplied root RLP directly to a typed TrieNode so RootRef never
+            // holds an NodeType.Unknown placeholder. The hash is computed lazily by the
+            // first traversal that needs it (ResolveKey).
+            stateTree.RootRef = TrieNode.DecodeRootFromRlp(rootNodeData);
             return stateTree;
         }
 

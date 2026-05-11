@@ -973,6 +973,96 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
+        /// Decode <paramref name="rlp"/> into a typed <see cref="TrieNode"/> without a known
+        /// Keccak. The returned node carries the RLP and is marked persisted but has no
+        /// hash set; callers compute the hash on demand via <see cref="ResolveKey"/>.
+        /// </summary>
+        /// <remarks>
+        /// Used by sync-store verification contexts that receive a serialized root node and
+        /// need a typed <see cref="TrieNode"/> immediately, without going through the
+        /// placeholder + <see cref="ResolveNode"/> two-step that previously produced an
+        /// <see cref="NodeType.Unknown"/> stand-in.
+        /// </remarks>
+        public static TrieNode DecodeRootFromRlp(byte[] rlp, ICappedArrayPool? bufferPool = null)
+        {
+            ArgumentNullException.ThrowIfNull(rlp);
+
+            TrieNode? typed;
+            try
+            {
+                typed = AllocateTypedFromRlp(new CappedArray<byte>(rlp), bufferPool, out int numberOfItems);
+                if (typed is null)
+                {
+                    ThrowUnexpectedNumberOfItems(numberOfItems, rlp);
+                }
+            }
+            catch (RlpException rlpException)
+            {
+                ThrowDecodingError(rlpException);
+                return null!; // unreachable
+            }
+
+            typed.InitRlp(new CappedArray<byte>(rlp));
+            typed.IsPersisted = true;
+            return typed;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowDecodingError(RlpException rlpException) =>
+                throw new TrieNodeException("Error when decoding root node from RLP", default, Nethermind.Core.Crypto.Keccak.Zero, rlpException);
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedNumberOfItems(int numberOfItems, byte[] rlp) =>
+                throw new TrieNodeException(
+                    $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({rlp.AsSpan().ToHexString()})",
+                    default, Nethermind.Core.Crypto.Keccak.Zero);
+        }
+
+        /// <summary>
+        /// Decode an inline child whose RLP is already in hand (length &lt; 32) into a typed
+        /// <see cref="TrieNode"/>. Inline nodes have no separate Keccak; their identity is
+        /// the RLP itself.
+        /// </summary>
+        /// <remarks>
+        /// Used by snap-sync boundary stitching where a branch slot inlines a small child
+        /// node. Previously the call site built an <see cref="NodeType.Unknown"/> placeholder
+        /// with the inline RLP and then invoked <see cref="ResolveNode"/> with a
+        /// <see cref="NullTrieNodeResolver"/>; this helper folds that into one typed
+        /// decode so no placeholder is ever observable.
+        /// </remarks>
+        public static TrieNode DecodeInlineFromRlp(byte[] inlineRlp, in TreePath path, ICappedArrayPool? bufferPool = null)
+        {
+            ArgumentNullException.ThrowIfNull(inlineRlp);
+
+            TrieNode? typed;
+            try
+            {
+                typed = AllocateTypedFromRlp(new CappedArray<byte>(inlineRlp), bufferPool, out int numberOfItems);
+                if (typed is null)
+                {
+                    ThrowUnexpectedNumberOfItems(numberOfItems, path);
+                }
+            }
+            catch (RlpException rlpException)
+            {
+                ThrowDecodingError(rlpException, path);
+                return null!; // unreachable
+            }
+
+            typed.InitRlp(new CappedArray<byte>(inlineRlp));
+            return typed;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowDecodingError(RlpException rlpException, in TreePath path) =>
+                throw new TrieNodeException("Error when decoding inline child", path, Nethermind.Core.Crypto.Keccak.Zero, rlpException);
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path) =>
+                throw new TrieNodeException(
+                    $"Unexpected number of items = {numberOfItems} when decoding inline child from RLP",
+                    path, Nethermind.Core.Crypto.Keccak.Zero);
+        }
+
+        /// <summary>
         /// Peek the RLP header to determine branch/leaf/extension shape and allocate
         /// the matching typed <see cref="TrieNode"/> derived instance with its shape
         /// state initialized. Returns <c>null</c> when the RLP contains fewer

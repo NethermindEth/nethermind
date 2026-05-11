@@ -263,9 +263,12 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         public FlatVerificationContext(IPersistence persistence, byte[] rootNodeData, ILogManager logManager)
         {
             _reader = persistence.CreateReader();
+            // Decode the supplied root RLP directly to a typed TrieNode so RootRef never
+            // holds an NodeType.Unknown placeholder. The hash is computed lazily by the
+            // first traversal that needs it (ResolveKey).
             _stateTree = new StateTree(new FlatSyncTrieStore(_reader), logManager)
             {
-                RootRef = new TrieNode(NodeType.Unknown, rootNodeData)
+                RootRef = TrieNode.DecodeRootFromRlp(rootNodeData)
             };
         }
 

@@ -12,7 +12,11 @@ namespace Nethermind.Trie.Pruning
         public long BlockNumber { get; } = blockNumber;
 
         public TrieNode? Root { get; private set; }
-        public Hash256 StateRoot => Root?.Keccak ?? Keccak.EmptyTreeHash;
+        // Allows callers (sorted-set range bounds) to fix the StateRoot used for comparisons
+        // without having to construct an Unknown TrieNode placeholder solely for its keccak.
+        // When set, this wins over Root.Keccak; in normal sealed sets it is null and Root drives.
+        private Hash256? _stateRootOverride;
+        public Hash256 StateRoot => _stateRootOverride ?? Root?.Keccak ?? Keccak.EmptyTreeHash;
 
         private bool _isSealed;
 
@@ -25,6 +29,18 @@ namespace Nethermind.Trie.Pruning
         public void Seal(TrieNode? root)
         {
             Root = root;
+            _isSealed = true;
+        }
+
+        /// <summary>
+        /// Seal this commit set as a comparison bound for sorted-set range queries. The
+        /// supplied <paramref name="stateRoot"/> is used by <see cref="CompareTo"/> via
+        /// <see cref="StateRoot"/> so callers can build min / max bounds without allocating
+        /// an <see cref="NodeType.Unknown"/> <see cref="TrieNode"/> as a stand-in.
+        /// </summary>
+        internal void SealAsBound(Hash256 stateRoot)
+        {
+            _stateRootOverride = stateRoot;
             _isSealed = true;
         }
 
