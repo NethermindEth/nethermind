@@ -201,12 +201,19 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
         Batch batch = new(maxBytesPerTxList, txSource.Length, txDecoder);
 
+        void Restore(Snapshot snapshot, long gasUsed)
+        {
+            worldState.Restore(snapshot);
+            blockHeader.GasUsed = gasUsed;
+        }
+
         try
         {
             for (int i = 0; i < txSource.Length;)
             {
                 Transaction tx = txSource[i];
                 Snapshot snapshot = worldState.TakeSnapshot(true);
+                long gasUsedBefore = blockHeader.GasUsed;
 
                 try
                 {
@@ -214,7 +221,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
                     if (!executionResult)
                     {
-                        worldState.Restore(snapshot);
+                        Restore(snapshot, gasUsedBefore);
 
                         if (executionResult == TransactionResult.BlockGasLimitExceeded && batch.Transactions.Count is not 0)
                         {
@@ -237,21 +244,21 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
                     // For Surge, filter out any transaction with very high gas limit
                     if (surgeConfig.MaxGasLimitRatio > 0 && tx.GasLimit > tx.SpentGas * surgeConfig.MaxGasLimitRatio)
                     {
-                        worldState.Restore(snapshot);
+                        Restore(snapshot, gasUsedBefore);
                         while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                         continue;
                     }
                 }
                 catch
                 {
-                    worldState.Restore(snapshot);
+                    Restore(snapshot, gasUsedBefore);
                     while (i < txSource.Length && txSource[i].SenderAddress == tx.SenderAddress) i++;
                     continue;
                 }
 
                 if (!batch.TryAddTx(tx))
                 {
-                    worldState.Restore(snapshot);
+                    Restore(snapshot, gasUsedBefore);
 
                     if (batch.Transactions.Count is 0)
                     {
