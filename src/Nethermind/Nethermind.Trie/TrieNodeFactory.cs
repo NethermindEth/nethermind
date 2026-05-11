@@ -8,19 +8,20 @@ namespace Nethermind.Trie;
 
 public static class TrieNodeFactory
 {
-    public static TrieNode CreateBranch() => new(new BranchData());
+    public static TrieNode CreateBranch() => TrieNode.CreateBranchTyped();
 
     public static TrieNode CreateLeaf(ReadOnlySpan<byte> path, CappedArray<byte> value)
     {
         byte[] pathArray = HexPrefix.GetArray(path);
-        return new(new LeafData(pathArray, value));
+        return TrieNode.CreateLeafTyped(pathArray, value);
     }
 
     public static TrieNode CreateExtension(ReadOnlySpan<byte> path, TrieNode child)
     {
         byte[] pathArray = HexPrefix.GetArray(path);
-        return new(new ExtensionData(pathArray, child));
+        return TrieNode.CreateExtensionTyped(pathArray, child);
     }
 
-    public static TrieNode CreateExtension(byte[] pathArray, TrieNode child) => new(new ExtensionData(pathArray, child));
+    public static TrieNode CreateExtension(byte[] pathArray, TrieNode child) =>
+        TrieNode.CreateExtensionTyped(pathArray, child);
 }

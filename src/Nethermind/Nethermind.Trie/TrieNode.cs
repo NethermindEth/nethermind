@@ -25,7 +25,7 @@ using static Nethermind.Trie.BranchData;
 namespace Nethermind.Trie
 {
     [StructLayout(LayoutKind.Sequential)]
-    public sealed partial class TrieNode
+    public partial class TrieNode
     {
         internal const int BranchesCount = 16;
 #if DEBUG
