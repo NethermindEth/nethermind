@@ -266,7 +266,7 @@ namespace Nethermind.Serialization.Rlp
             => Encode<Account>(item, behaviors);
 
         public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
-            => LogEntryDecoder.Instance.Encode(item, behaviors);
+            => Encode<LogEntry>(item, behaviors);
 
         public static Rlp Encode(BlockAccessList item, RlpBehaviors behaviors = RlpBehaviors.None)
             => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));

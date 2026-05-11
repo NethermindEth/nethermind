@@ -31,7 +31,7 @@ public class LogEntryDecoderTests
         LogEntry logEntry = CreateSampleLogEntry();
 
         Rlp rlp = useDecoderInstance
-            ? LogEntryDecoder.Instance.Encode(logEntry)
+            ? EncodeLogEntry(LogEntryDecoder.Instance, logEntry)
             : Rlp.Encode(logEntry);
 
         LogEntry decoded;
@@ -48,6 +48,13 @@ public class LogEntryDecoderTests
         }
 
         AssertLogEntriesEqual(logEntry, decoded);
+    }
+
+    private static Rlp EncodeLogEntry(LogEntryDecoder decoder, LogEntry logEntry)
+    {
+        RlpStream stream = new(decoder.GetLength(logEntry, RlpBehaviors.None));
+        decoder.Encode(stream, logEntry, RlpBehaviors.None);
+        return new Rlp(stream.Data.ToArray()!);
     }
 
     [Test]
