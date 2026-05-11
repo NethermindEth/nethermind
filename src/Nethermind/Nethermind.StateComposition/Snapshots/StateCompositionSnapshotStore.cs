@@ -16,6 +16,26 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Snapshots;
 
+/// <summary>
+/// Persists the StateComposition plugin's cached baseline so a restart doesn't
+/// require a multi-hour full state scan.
+///
+/// Storage layout (generation-rotated, stable-prefix):
+/// <list type="bullet">
+///   <item><c>LatestKey</c> (8 bytes of 0xFF) → 9-byte value: <c>&lt;gen:1&gt;&lt;blockNumber:8&gt;</c>.
+///         Atomic commit point — RocksDB guarantees per-key Put atomicity.</item>
+///   <item>Main blob: <c>&lt;gen:1&gt;&lt;0xFE:1&gt;</c> (2 bytes). Value = RLP-encoded scalar stats + depth distribution.</item>
+///   <item>Tracker-map chunk: <c>&lt;gen:1&gt;&lt;kind:1&gt;&lt;chunkIdx:4&gt;</c> (6 bytes). Value = fixed-width entries.</item>
+/// </list>
+///
+/// Each <see cref="WriteSnapshot"/> writes into the *other* generation, then
+/// flips the gen byte in <c>LatestKey</c>, then deletes the previous generation.
+/// This bounds the on-disk footprint to two generations (worst case during a
+/// flush) and avoids the put-then-delete tombstone pattern that previously
+/// accumulated thousands of orphaned SSTs in RocksDB (1.6 TB observed in a
+/// half-day bloating run before this fix).
+///
+/// </summary>
 internal sealed class StateCompositionSnapshotStore
 {
     public const string DbName = "stateComposition";
@@ -26,17 +46,22 @@ internal sealed class StateCompositionSnapshotStore
     // lands ~3.5 trillion years out at 12s blocks, so no schema migration needed.
     private static readonly byte[] LatestKey = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
 
-    // The three tracker maps scale with the contract count (134M+ on mainnet,
-    // ~5 GB encoded) and would overflow the int-bounded RLP buffer if written as
-    // a single blob. They are written as fixed-width chunks under
-    // <blockNumber:8> || <kind:1> || <chunkIdx:4> = 13-byte composite keys,
-    // distinguished from the 8-byte main-snapshot key.
+    // Marker byte for the main-blob key, picked so it does not collide with any
+    // tracker-map kind below. Both share the same gen-prefixed namespace.
+    private const byte MainBlobMarker = 0xFE;
+
+    // The three tracker maps scale with the contract count (147 M on bloatnet,
+    // ~5 GB encoded each) and would overflow the int-bounded RLP buffer if
+    // written as a single blob. They are written as fixed-width chunks keyed
+    // by <gen:1> || <kind:1> || <chunkIdx:4> = 6-byte composite keys.
     private const byte SlotCountKind = 0x01;
     private const byte CodeRefcountKind = 0x02;
     private const byte CodeSizeKind = 0x03;
     private const int DefaultEntriesPerChunk = 1_000_000;
-    private const int MainKeyLength = 8;
-    private const int ChunkKeyLength = 13;
+
+    private const int ChunkKeyLength = 6;
+    private const int MainBlobKeyLength = 2;
+    private const int LatestValueLength = 9;       // <gen:1><blockNumber:8>
 
     private readonly IDb _db;
     private readonly int _entriesPerChunk;
@@ -58,49 +83,40 @@ internal sealed class StateCompositionSnapshotStore
 
     public void WriteSnapshot(StateCompositionSnapshot snapshot)
     {
-        // Write order: main blob → map chunks → LatestKey → purge old block. A
-        // crash anywhere before the LatestKey update leaves the previous block
-        // reachable; a crash after leaves the next boot's PurgeOldEntries to
-        // reconcile orphaned partial chunks.
-        long prevBlock = long.MinValue;
-        byte[]? prevBytes = _db.Get(LatestKey);
-        if (prevBytes is not null && prevBytes.Length >= MainKeyLength)
-            prevBlock = BinaryPrimitives.ReadInt64BigEndian(prevBytes);
+        // 1. Determine the live generation. If LatestKey is absent (first
+        //    write) start at gen 0; next write flips to 1. We always write to
+        //    the OTHER generation so the current one stays intact until the
+        //    commit at step 3.
+        byte currentGen = ReadCurrentGen();
+        byte nextGen = (byte)(currentGen ^ 1);
 
-        Span<byte> key = stackalloc byte[MainKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(key, snapshot.BlockNumber);
+        // 2. Write nextGen's tracker chunks + main blob. These keys live in a
+        //    namespace disjoint from currentGen's, so we never collide with
+        //    the live data being served to readers.
+        WriteLongMap(nextGen, SlotCountKind, snapshot.SlotCountByAddress);
+        WriteIntMap(nextGen, CodeRefcountKind, snapshot.CodeHashRefcounts);
+        WriteIntMap(nextGen, CodeSizeKind, snapshot.CodeHashSizes);
 
-        int length = Decoder.GetLength(snapshot);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
-        try
-        {
-            RlpStream stream = new(buffer);
-            Decoder.Encode(stream, snapshot);
-            _db.PutSpan(key, buffer.AsSpan(0, length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        WriteMainBlob(nextGen, snapshot);
 
-        WriteLongMap(snapshot.BlockNumber, SlotCountKind, snapshot.SlotCountByAddress);
-        WriteIntMap(snapshot.BlockNumber, CodeRefcountKind, snapshot.CodeHashRefcounts);
-        WriteIntMap(snapshot.BlockNumber, CodeSizeKind, snapshot.CodeHashSizes);
+        // 3. ATOMIC COMMIT — Put on LatestKey is single-key, RocksDB guarantees
+        //    WAL atomicity per Put. After this returns, readers see nextGen.
+        Span<byte> latestValue = stackalloc byte[LatestValueLength];
+        latestValue[0] = nextGen;
+        BinaryPrimitives.WriteInt64BigEndian(latestValue[1..], snapshot.BlockNumber);
+        _db.PutSpan(LatestKey, latestValue);
 
-        Span<byte> blockBytes = stackalloc byte[MainKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(blockBytes, snapshot.BlockNumber);
-        _db.PutSpan(LatestKey, blockBytes);
-
-        if (prevBlock != long.MinValue && prevBlock != snapshot.BlockNumber)
-            RemoveBlockEntries(prevBlock);
+        // 4. Delete currentGen. First-write case is a no-op (no prior commit).
+        RemoveGeneration(currentGen);
     }
 
-    public StateCompositionSnapshot? ReadSnapshot(long blockNumber)
+    public StateCompositionSnapshot? ReadSnapshot(byte gen)
     {
-        Span<byte> key = stackalloc byte[MainKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(key, blockNumber);
+        Span<byte> mainKey = stackalloc byte[MainBlobKeyLength];
+        mainKey[0] = gen;
+        mainKey[1] = MainBlobMarker;
 
-        byte[]? data = _db.Get(key);
+        byte[]? data = _db.Get(mainKey);
         if (data is null) return null;
 
         StateCompositionSnapshot snapshot;
@@ -112,14 +128,14 @@ internal sealed class StateCompositionSnapshotStore
         catch (Exception ex) when (ex is RlpException or InvalidDataException or EndOfStreamException or IOException)
         {
             if (_logger.IsWarn)
-                _logger.Warn($"StateComposition: persisted snapshot at block {blockNumber} could not be decoded " +
+                _logger.Warn($"StateComposition: persisted snapshot in gen {gen} could not be decoded " +
                              $"(reason: {ex.Message}). Falling back to a fresh scan to rebuild the cached baseline.");
             return null;
         }
 
-        Dictionary<ValueHash256, long> slotCounts = ReadLongMap(blockNumber, SlotCountKind);
-        Dictionary<ValueHash256, int> codeRefcounts = ReadIntMap(blockNumber, CodeRefcountKind);
-        Dictionary<ValueHash256, int> codeSizes = ReadIntMap(blockNumber, CodeSizeKind);
+        Dictionary<ValueHash256, long> slotCounts = ReadLongMap(gen, SlotCountKind);
+        Dictionary<ValueHash256, int> codeRefcounts = ReadIntMap(gen, CodeRefcountKind);
+        Dictionary<ValueHash256, int> codeSizes = ReadIntMap(gen, CodeSizeKind);
 
         return snapshot with
         {
@@ -132,54 +148,62 @@ internal sealed class StateCompositionSnapshotStore
     public StateCompositionSnapshot? ReadLatestSnapshot()
     {
         byte[]? latestBytes = _db.Get(LatestKey);
-        if (latestBytes is null || latestBytes.Length < MainKeyLength) return null;
+        if (latestBytes is null || latestBytes.Length != LatestValueLength) return null;
 
-        long latestBlock = BinaryPrimitives.ReadInt64BigEndian(latestBytes);
-        return ReadSnapshot(latestBlock);
+        byte gen = latestBytes[0];
+        if (gen > 1)
+        {
+            if (_logger.IsWarn)
+                _logger.Warn($"StateComposition: LatestKey gen byte {gen} out of range; treating as no snapshot.");
+            return null;
+        }
+
+        return ReadSnapshot(gen);
     }
 
+    /// <summary>
+    /// Boot-time cleanup. Removes orphan keys in the non-current generation
+    /// left by a crash mid-WriteSnapshot. Safe to call on a fresh DB.
+    /// </summary>
     public void PurgeOldEntries()
     {
         byte[]? latestBytes = _db.Get(LatestKey);
-        long latestBlock = -1;
-        if (latestBytes is not null && latestBytes.Length >= MainKeyLength)
-            latestBlock = BinaryPrimitives.ReadInt64BigEndian(latestBytes);
+        if (latestBytes is null || latestBytes.Length != LatestValueLength) return;
 
-        int removed = 0;
-        foreach (byte[] key in _db.GetAllKeys())
-        {
-            ReadOnlySpan<byte> span = key;
-            if (span.SequenceEqual(LatestKey)) continue;
-
-            long blockOfKey = (span.Length == MainKeyLength || span.Length == ChunkKeyLength)
-                ? BinaryPrimitives.ReadInt64BigEndian(span[..MainKeyLength])
-                : long.MinValue;
-
-            if (latestBlock >= 0 && blockOfKey == latestBlock) continue;
-
-            _db.Remove(key);
-            removed++;
-        }
-
-        if (removed > 0 && _logger.IsInfo)
-            _logger.Info($"StateComposition: purged {removed} old snapshot entries");
+        byte currentGen = latestBytes[0];
+        byte otherGen = (byte)(currentGen ^ 1);
+        RemoveGeneration(otherGen);
     }
 
-    private void RemoveBlockEntries(long blockNumber)
+    private byte ReadCurrentGen()
     {
-        Span<byte> mainKey = stackalloc byte[MainKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(mainKey, blockNumber);
+        byte[]? latestBytes = _db.Get(LatestKey);
+        if (latestBytes is null || latestBytes.Length != LatestValueLength) return 0;
+        byte gen = latestBytes[0];
+        return gen <= 1 ? gen : (byte)0;
+    }
+
+    private void RemoveGeneration(byte gen)
+    {
+        // Main blob.
+        Span<byte> mainKey = stackalloc byte[MainBlobKeyLength];
+        mainKey[0] = gen;
+        mainKey[1] = MainBlobMarker;
         _db.Remove(mainKey);
 
+        // Chunks. We don't know the exact count, so iterate per kind until a
+        // Get returns null. With stable-prefix overwrite-in-place, this is
+        // bounded by the live tracker-map chunk count (~150 per kind at
+        // mainnet scale, ~450 total) — cheap compared to a GetAllKeys scan.
         Span<byte> chunkKey = stackalloc byte[ChunkKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..MainKeyLength], blockNumber);
+        chunkKey[0] = gen;
         foreach (byte kind in (ReadOnlySpan<byte>)[SlotCountKind, CodeRefcountKind, CodeSizeKind])
         {
-            chunkKey[8] = kind;
+            chunkKey[1] = kind;
             int chunkIdx = 0;
             while (true)
             {
-                BinaryPrimitives.WriteInt32BigEndian(chunkKey[9..13], chunkIdx);
+                BinaryPrimitives.WriteInt32BigEndian(chunkKey[2..6], chunkIdx);
                 if (_db.Get(chunkKey) is null) break;
                 _db.Remove(chunkKey);
                 chunkIdx++;
@@ -187,26 +211,46 @@ internal sealed class StateCompositionSnapshotStore
         }
     }
 
-    private void WriteLongMap(long blockNumber, byte kind, IReadOnlyDictionary<ValueHash256, long> map)
+    private void WriteMainBlob(byte gen, StateCompositionSnapshot snapshot)
+    {
+        Span<byte> mainKey = stackalloc byte[MainBlobKeyLength];
+        mainKey[0] = gen;
+        mainKey[1] = MainBlobMarker;
+
+        int length = Decoder.GetLength(snapshot);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            RlpStream stream = new(buffer);
+            Decoder.Encode(stream, snapshot);
+            _db.PutSpan(mainKey, buffer.AsSpan(0, length));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private void WriteLongMap(byte gen, byte kind, IReadOnlyDictionary<ValueHash256, long> map)
     {
         if (map.Count == 0) return;
 
         const int entrySize = 32 + 8;
         using IEnumerator<KeyValuePair<ValueHash256, long>> entries = map.GetEnumerator();
-        WriteMap(blockNumber, kind, map.Count, entries, entrySize, static (kvp, dst) =>
+        WriteMap(gen, kind, map.Count, entries, entrySize, static (kvp, dst) =>
         {
             kvp.Key.Bytes.CopyTo(dst);
             BinaryPrimitives.WriteInt64BigEndian(dst[32..40], kvp.Value);
         });
     }
 
-    private void WriteIntMap(long blockNumber, byte kind, IReadOnlyDictionary<ValueHash256, int> map)
+    private void WriteIntMap(byte gen, byte kind, IReadOnlyDictionary<ValueHash256, int> map)
     {
         if (map.Count == 0) return;
 
         const int entrySize = 32 + 4;
         using IEnumerator<KeyValuePair<ValueHash256, int>> entries = map.GetEnumerator();
-        WriteMap(blockNumber, kind, map.Count, entries, entrySize, static (kvp, dst) =>
+        WriteMap(gen, kind, map.Count, entries, entrySize, static (kvp, dst) =>
         {
             kvp.Key.Bytes.CopyTo(dst);
             BinaryPrimitives.WriteInt32BigEndian(dst[32..36], kvp.Value);
@@ -216,7 +260,7 @@ internal sealed class StateCompositionSnapshotStore
     private delegate void EntryWriter<TValue>(KeyValuePair<ValueHash256, TValue> kvp, Span<byte> dst);
 
     private void WriteMap<TValue>(
-        long blockNumber,
+        byte gen,
         byte kind,
         int count,
         IEnumerator<KeyValuePair<ValueHash256, TValue>> entries,
@@ -224,8 +268,8 @@ internal sealed class StateCompositionSnapshotStore
         EntryWriter<TValue> writeEntry)
     {
         Span<byte> chunkKey = stackalloc byte[ChunkKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..MainKeyLength], blockNumber);
-        chunkKey[8] = kind;
+        chunkKey[0] = gen;
+        chunkKey[1] = kind;
 
         int chunkIdx = 0;
         int remaining = count;
@@ -245,7 +289,7 @@ internal sealed class StateCompositionSnapshotStore
                     writeEntry(entries.Current, buf.AsSpan(pos, entrySize));
                     pos += entrySize;
                 }
-                BinaryPrimitives.WriteInt32BigEndian(chunkKey[9..13], chunkIdx);
+                BinaryPrimitives.WriteInt32BigEndian(chunkKey[2..6], chunkIdx);
                 _db.PutSpan(chunkKey, buf.AsSpan(0, payloadLength));
             }
             finally
@@ -257,10 +301,10 @@ internal sealed class StateCompositionSnapshotStore
         }
     }
 
-    private Dictionary<ValueHash256, long> ReadLongMap(long blockNumber, byte kind)
+    private Dictionary<ValueHash256, long> ReadLongMap(byte gen, byte kind)
     {
         Dictionary<ValueHash256, long> result = [];
-        ReadMap(blockNumber, kind, 32 + 8, (entry, dict) =>
+        ReadMap(gen, kind, 32 + 8, (entry, dict) =>
         {
             ValueHash256 hash = new(entry[..32]);
             long value = BinaryPrimitives.ReadInt64BigEndian(entry[32..40]);
@@ -269,10 +313,10 @@ internal sealed class StateCompositionSnapshotStore
         return result;
     }
 
-    private Dictionary<ValueHash256, int> ReadIntMap(long blockNumber, byte kind)
+    private Dictionary<ValueHash256, int> ReadIntMap(byte gen, byte kind)
     {
         Dictionary<ValueHash256, int> result = [];
-        ReadMap(blockNumber, kind, 32 + 4, (entry, dict) =>
+        ReadMap(gen, kind, 32 + 4, (entry, dict) =>
         {
             ValueHash256 hash = new(entry[..32]);
             int value = BinaryPrimitives.ReadInt32BigEndian(entry[32..36]);
@@ -282,19 +326,19 @@ internal sealed class StateCompositionSnapshotStore
     }
 
     private void ReadMap<TDict>(
-        long blockNumber,
+        byte gen,
         byte kind,
         int entrySize,
         EntryReader<TDict> readEntry,
         TDict dict)
     {
         Span<byte> chunkKey = stackalloc byte[ChunkKeyLength];
-        BinaryPrimitives.WriteInt64BigEndian(chunkKey[..MainKeyLength], blockNumber);
-        chunkKey[8] = kind;
+        chunkKey[0] = gen;
+        chunkKey[1] = kind;
         int chunkIdx = 0;
         while (true)
         {
-            BinaryPrimitives.WriteInt32BigEndian(chunkKey[9..13], chunkIdx);
+            BinaryPrimitives.WriteInt32BigEndian(chunkKey[2..6], chunkIdx);
             byte[]? data = _db.Get(chunkKey);
             if (data is null) break;
 
@@ -307,13 +351,13 @@ internal sealed class StateCompositionSnapshotStore
             // discrepancy isn't silent.
             if (data.Length < 4)
             {
-                LogChunkTruncated(blockNumber, kind, chunkIdx);
+                LogChunkTruncated(gen, kind, chunkIdx);
                 break;
             }
             int chunkCount = BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(0, 4));
             if (chunkCount < 0 || data.Length < 4 + (long)chunkCount * entrySize)
             {
-                LogChunkTruncated(blockNumber, kind, chunkIdx);
+                LogChunkTruncated(gen, kind, chunkIdx);
                 break;
             }
             int pos = 4;
@@ -328,10 +372,10 @@ internal sealed class StateCompositionSnapshotStore
 
     private delegate void EntryReader<TDict>(ReadOnlySpan<byte> entry, TDict dict);
 
-    private void LogChunkTruncated(long blockNumber, byte kind, int chunkIdx)
+    private void LogChunkTruncated(byte gen, byte kind, int chunkIdx)
     {
         if (chunkIdx > 0 && _logger.IsWarn)
-            _logger.Warn($"StateComposition: corrupt chunk {chunkIdx} for block {blockNumber} kind {kind:x2}; " +
+            _logger.Warn($"StateComposition: corrupt chunk {chunkIdx} for gen {gen} kind {kind:x2}; " +
                          $"loaded {chunkIdx} valid chunk(s) before truncation. Plugin will rescan.");
     }
 }
