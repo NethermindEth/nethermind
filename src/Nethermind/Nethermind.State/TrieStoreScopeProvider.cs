@@ -82,9 +82,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                 // sequentially through its own tree on one Parallel.For iteration; addresses run
                 // in parallel relative to each other.
                 //
-                // Only StorageReads are pre-fetched. StorageChanges (writes) are intentionally
-                // skipped: block execution will overwrite those slots so caching pre-state is
-                // useless, and trie warmup of write paths is handled separately by HintBal.
+                // Both StorageChanges and StorageReads are pre-fetched: SSTORE consults the
+                // original slot value to compute its gas cost / refund (EIP-2200, EIP-3529), so
+                // changed slots are read as part of block execution even though they end up
+                // overwritten.
                 ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
                 using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
                 for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChanges[i];
@@ -110,11 +111,18 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                         account = cached;
                     }
 
-                    if (account is null || ac.StorageReads.Count == 0) return;
+                    if (account is null || (ac.StorageChanges.Length == 0 && ac.StorageReads.Count == 0)) return;
                     Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                     if (storageRoot == Keccak.EmptyTreeHash) return;
 
                     StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+                    foreach (SlotChanges slotChanges in ac.StorageChanges)
+                    {
+                        UInt256 key = slotChanges.Key;
+                        StorageCell cell = new(address, in key);
+                        if (!sink.StillNeeded(in cell)) continue;
+                        sink.OnStorageRead(in cell, storageTree.Get(in key));
+                    }
                     foreach (UInt256 storageReadKey in ac.StorageReads)
                     {
                         StorageCell cell = new(address, in storageReadKey);

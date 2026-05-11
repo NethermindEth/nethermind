@@ -221,13 +221,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             // Flatten BAL entries into one job list — accounts get a sentinel slot index, storage
             // slots carry their key. One parallel pass handles both account and slot reads.
             //
-            // Only StorageReads are pre-fetched. StorageChanges (writes) are intentionally skipped:
-            // block execution will overwrite those slots, so caching their pre-state offers no
-            // hit, and the trie-side warmup of those write paths is already handled by HintBal.
-            int totalJobs = accountCount;
+            // Both StorageChanges and StorageReads are pre-fetched: SSTORE consults the original
+            // slot value to compute its gas cost / refund (EIP-2200, EIP-3529), so changed slots
+            // are read as part of block execution even though they end up overwritten.
             ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
+            int totalJobs = accountCount;
             for (int i = 0; i < accountCount; i++)
-                totalJobs += accountChanges[i].StorageReads.Count;
+                totalJobs += accountChanges[i].StorageChanges.Length + accountChanges[i].StorageReads.Count;
 
             using ArrayPoolList<(Address Address, int SelfDestructIdx, UInt256 Slot, bool IsAccount)> jobs = new(totalJobs, totalJobs);
             int jobIdx = 0;
@@ -237,8 +237,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 Address address = ac.Address;
                 jobs[jobIdx++] = (address, 0, default, true);
 
-                if (ac.StorageReads.Count == 0) continue;
+                if (ac.StorageChanges.Length == 0 && ac.StorageReads.Count == 0) continue;
                 int selfDestructIdx = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                foreach (SlotChanges slotChanges in ac.StorageChanges)
+                    jobs[jobIdx++] = (address, selfDestructIdx, slotChanges.Key, false);
                 foreach (UInt256 storageReadKey in ac.StorageReads)
                     jobs[jobIdx++] = (address, selfDestructIdx, storageReadKey, false);
             }
