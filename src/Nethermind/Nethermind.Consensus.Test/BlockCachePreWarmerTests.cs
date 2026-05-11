@@ -87,7 +87,7 @@ public class BlockCachePreWarmerTests
         (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 1);
 
-        await RunPreWarmCaches(preWarmer,BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
         // With pool capacity 1 and two parallel workers, at least one eviction must occur.
         created.Count.Should().BeGreaterThanOrEqualTo(2,
@@ -108,7 +108,7 @@ public class BlockCachePreWarmerTests
         (BlockCachePreWarmer preWarmer, ConcurrentBag<IReadOnlyTxProcessorSource> created,
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed) = CreatePreWarmer(maxPoolSize: 10);
 
-        await RunPreWarmCaches(preWarmer,BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
         disposed.Count.Should().Be(0, "no eviction should have occurred with a large pool");
         created.Count.Should().BeGreaterThanOrEqualTo(1, "at least one env must have been created");
@@ -140,7 +140,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await RunPreWarmCaches(preWarmer,block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
         preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().BeTrue(
             "AddressA is in the BAL and should be pre-warmed");
@@ -176,7 +176,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await RunPreWarmCaches(preWarmer,block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
         // Changed slot should be warmed — SSTORE consults the original value for EIP-2200/3529
         // gas accounting, so the pre-state is genuinely read during execution.
@@ -211,7 +211,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await RunPreWarmCaches(preWarmer,block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
         preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _).Should().BeFalse(
             "BAL path should be skipped when ParallelExecutionBatchRead is disabled");
@@ -240,7 +240,7 @@ public class BlockCachePreWarmerTests
             .TestObject;
 
         // Use Osaka which does NOT have EIP-7928 — BAL path should not trigger
-        await RunPreWarmCaches(preWarmer,block, BuildParentHeader(), Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
         // AddressA should still be warmed via speculative tx execution (not BAL path)
         // since it's a sender in the transactions
@@ -279,7 +279,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await RunPreWarmCaches(preWarmer,block, BuildParentHeader(), spec);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), spec);
 
         preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().Be(expectWarmed,
             $"ParallelExec={parallelExecution}, BALs={hasBal}, BatchRead={batchRead} => warmed={expectWarmed}");
@@ -305,7 +305,7 @@ public class BlockCachePreWarmerTests
             .WithBlockAccessList(bal)
             .TestObject;
 
-        await RunPreWarmCaches(preWarmer,block, BuildParentHeader(), Amsterdam.Instance);
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
         AddressAsKey warmedAddress = TestItem.AddressA;
         preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _).Should().BeTrue();

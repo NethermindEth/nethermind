@@ -3,8 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
@@ -13,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using NUnit.Framework;
