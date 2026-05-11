@@ -37,7 +37,6 @@ public class PersistenceManager(
     private readonly int _maxInMemoryReorgDepth = configuration.MaxInMemoryReorgDepth;
     private readonly int _longFinalityReorgDepth = configuration.LongFinalityReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly int _persistedSnapshotMaxCompactSize = configuration.PersistedSnapshotMaxCompactSize;
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
@@ -121,17 +120,17 @@ public class PersistenceManager(
                 continue;
             }
 
-            int compactSize = (int)Math.Min(b & -b, _persistedSnapshotMaxCompactSize);
+            // Non-boundary: lowest-set-bit alignment is strictly < _compactSize.
+            int compactSize = (int)(b & -b);
             if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
                 buckets[compactSize] = bucket = [];
             bucket.Add(s);
         }
 
+        // Non-boundary states live only in the small repo (see AddToPersistence:
+        // _smallRepo.ConvertSnapshotToPersistedSnapshot for non-boundary blocks).
         foreach (KeyValuePair<int, List<StateId>> kv in buckets)
-        {
-            IPersistedSnapshotCompactor compactor = kv.Key > _compactSize ? _largeCompactor : _smallCompactor;
-            Parallel.ForEach(kv.Value, state => compactor.DoCompactSnapshot(state));
-        }
+            Parallel.ForEach(kv.Value, state => _smallCompactor.DoCompactSnapshot(state));
 
         foreach (StateId boundary in boundaries)
             _boundaryCompactJobs.Writer.WriteAsync(boundary).AsTask().Wait();
@@ -145,12 +144,9 @@ public class PersistenceManager(
             {
                 try
                 {
-                    // Route by the block's natural compactSize alignment. State at
-                    // alignment <= _compactSize means short-range — small compactor.
-                    long b = state.BlockNumber;
-                    int alignment = b == 0 ? 0 : (int)Math.Min(b & -b, _persistedSnapshotMaxCompactSize);
-                    IPersistedSnapshotCompactor compactor = alignment > _compactSize ? _largeCompactor : _smallCompactor;
-                    compactor.DoCompactSnapshot(state);
+                    // Boundary snapshots always live in the large repo (see AddToPersistence:
+                    // _largeRepo.ConvertSnapshotToPersistedSnapshot at the boundary block).
+                    _largeCompactor.DoCompactSnapshot(state);
                 }
                 catch (Exception ex)
                 {
