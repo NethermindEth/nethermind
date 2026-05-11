@@ -17,7 +17,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Taiko;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.ZkGas;
@@ -290,6 +289,9 @@ public class CertainBatchLookupTests
 
         TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId, blockFinder);
 
+        // Only the scan-fallback methods are asserted: taikoAuth_lastCertain*ByBatchID have
+        // no scan fallback, so with an empty batch→block mapping they already return null
+        // before the threshold gate is reached and would not prove the gate fired.
         Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Null);
         Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
     }
