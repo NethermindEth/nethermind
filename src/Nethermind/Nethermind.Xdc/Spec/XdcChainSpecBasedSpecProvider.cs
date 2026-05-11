@@ -72,12 +72,16 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.RelayerRegistrationSMC = chainSpecEngineParameters.RelayerRegistrationSMC;
         releaseSpec.TRC21IssuerSMC = chainSpecEngineParameters.TRC21IssuerSMC;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
+        releaseSpec.MasternodeReward = chainSpecEngineParameters.MasternodeReward;
+        releaseSpec.ProtectorReward = chainSpecEngineParameters.ProtectorReward;
+        releaseSpec.ObserverReward = chainSpecEngineParameters.ObserverReward;
 
         releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
         releaseSpec.IsBlackListingEnabled = chainSpecEngineParameters.BlackListHFNumber <= releaseStartBlock;
         releaseSpec.IsTIP2019 = chainSpecEngineParameters.TIP2019Block <= releaseStartBlock;
         releaseSpec.IsTIPXDCXMiner = chainSpecEngineParameters.TipXDCX <= releaseStartBlock && releaseStartBlock < chainSpecEngineParameters.TIPXDCXMinerDisable;
         releaseSpec.IsDynamicGasLimitBlock = chainSpecEngineParameters.DynamicGasLimitBlock <= releaseStartBlock;
+        releaseSpec.IsTipUpgradeRewardEnabled = (chainSpecEngineParameters.TipUpgradeReward ?? long.MaxValue) <= releaseStartBlock;
         releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? long.MaxValue) <= releaseStartBlock;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;

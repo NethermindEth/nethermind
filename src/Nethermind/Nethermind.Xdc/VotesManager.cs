@@ -55,7 +55,7 @@ internal class VotesManager(
     public Task CastVote(BlockRoundInfo blockInfo)
     {
         EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash) ??
-            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
+            throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(blockInfo));
         //Optimize this by fetching with block number and round only
 
         if (_blockTree.FindHeader(blockInfo.Hash) is not XdcBlockHeader header)
@@ -139,8 +139,8 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (ulong key in _qcBuildStartedByRound.Keys)
-            if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
+        foreach (KeyValuePair<ulong, byte> kvp in _qcBuildStartedByRound)
+            if (kvp.Key <= round) _qcBuildStartedByRound.TryRemove(kvp.Key, out _);
     }
 
     public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>

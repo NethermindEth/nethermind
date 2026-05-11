@@ -83,25 +83,34 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [TestCase((NumberConversion)99)]
     public void Undefined_not_supported(NumberConversion notSupportedConversion)
     {
-        ForcedNumberConversion.ForcedConversion.Value = notSupportedConversion;
-
-        UInt256Converter converter = new();
-        Assert.Throws<NotSupportedException>(
-            () => TestConverter(int.MaxValue, Equals, converter));
-        Assert.Throws<NotSupportedException>(
-            () => TestConverter(UInt256.One, Equals, converter));
-
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+        ForcedNumberConversion.Value = notSupportedConversion;
+        try
+        {
+            UInt256Converter converter = new();
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(int.MaxValue, Equals, converter));
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(UInt256.One, Equals, converter));
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [Test]
     public void Raw_works_with_zero_and_this_is_ok()
     {
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
-        UInt256Converter converter = new();
-        TestConverter(0, Equals, converter);
-
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
+        try
+        {
+            UInt256Converter converter = new();
+            TestConverter(0, Equals, converter);
+        }
+        finally
+        {
+            ForcedNumberConversion.Value = NumberConversion.Hex;
+        }
     }
 
     [TestCase("\"0xa00000\"", "10485760")]
@@ -170,7 +179,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [Test]
     public void Writes_zero_padded_hex()
     {
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+        ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
         try
         {
             string result = JsonSerializer.Serialize(UInt256.One, options);
@@ -184,14 +193,14 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
         }
     }
 
     [Test]
     public void Writes_zero_padded_hex_roundtrip()
     {
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+        ForcedNumberConversion.Value = NumberConversion.ZeroPaddedHex;
         try
         {
             UInt256 value = new(0xdeadbeef, 0xcafebabe, 0x12345678, 0x9abcdef0);
@@ -201,7 +210,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
         }
     }
 
@@ -210,7 +219,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
     [TestCase(1UL, "\"0x0000000000000000000000000000000000000000000000000000000000000001\"", NumberConversion.ZeroPaddedHex)]
     public void Writes_property_name(ulong value, string expectedKey, NumberConversion conversion)
     {
-        ForcedNumberConversion.ForcedConversion.Value = conversion;
+        ForcedNumberConversion.Value = conversion;
         try
         {
             using System.IO.MemoryStream stream = new();
@@ -227,7 +236,7 @@ public class UInt256ConverterTests : ConverterTestBase<UInt256>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
         }
     }
 }

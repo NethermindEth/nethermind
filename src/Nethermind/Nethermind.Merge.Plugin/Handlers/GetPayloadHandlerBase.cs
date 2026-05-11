@@ -25,6 +25,9 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
 {
     private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadHandlerBase<>));
 
+    /// <summary>The spec provider passed to this handler.</summary>
+    protected ISpecProvider SpecProvider => specProvider;
+
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {
         string payloadStr = payloadId.ToHexString(true);

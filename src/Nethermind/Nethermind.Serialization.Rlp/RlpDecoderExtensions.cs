@@ -184,6 +184,7 @@ namespace Nethermind.Serialization.Rlp
             if (items is null)
             {
                 stream.Encode(Rlp.OfEmptyList);
+                return;
             }
 
             stream.StartSequence(decoder.GetContentLength(items, behaviors));

@@ -225,8 +225,9 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     public void EnsureStorageEmpty(Hash256 address)
     {
         // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
-        // because the trie is always traversed from the account's storage root hash — if the root
-        // is EmptyTreeHash, no storage trie nodes will ever be reached.
+        // because the trie is always traversed from the account's storage root hash — when the
+        // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
+        // ever be reached.
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         ValueHash256 addressHash = address.ValueHash256;
         writeBatch.DeleteStorageRange(addressHash, ValueKeccak.Zero, ValueKeccak.MaxValue);
