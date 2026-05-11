@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using NUnit.Framework;
@@ -63,5 +64,51 @@ internal class XdcBlockAndHeaderStoreTests
         Block? retrievedBlock = _blockStore.Get(block.Number, block.Hash!);
         // Assert
         retrievedBlock.Should().BeEquivalentTo(block, options => options.Excluding(h => h.EncodedSize));
+    }
+
+    [Test]
+    public void XdcBlockHeader_CreateSimulatedChild_ShouldKeepXdcHeaderTypeWithExplicitDefaults()
+    {
+        XdcBlockHeader parent = Build.A.XdcBlockHeader()
+            .WithHash(TestItem.KeccakA)
+            .WithGeneratedExtraConsensusData()
+            .TestObject;
+        parent.Validators = [1, 2, 3];
+        parent.Validator = [4, 5, 6];
+        parent.Penalties = [7, 8, 9];
+
+        BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
+
+        child.Should().BeOfType<XdcBlockHeader>();
+        XdcBlockHeader xdcChild = (XdcBlockHeader)child;
+        xdcChild.ParentHash.Should().Be(parent.Hash);
+        xdcChild.Number.Should().Be(parent.Number + 1);
+        xdcChild.Timestamp.Should().Be(parent.Timestamp + 12);
+        xdcChild.ExtraData.Should().BeEmpty();
+        xdcChild.MixHash.Should().Be(Hash256.Zero);
+        xdcChild.RequestsHash.Should().Be(parent.RequestsHash);
+        xdcChild.Validators.Should().BeNull();
+        xdcChild.Validator.Should().BeNull();
+        xdcChild.Penalties.Should().BeNull();
+        xdcChild.ExtraConsensusData.Should().BeNull();
+    }
+
+    [Test]
+    public void XdcSubnetBlockHeader_CreateSimulatedChild_ShouldKeepSubnetHeaderType()
+    {
+        XdcSubnetBlockHeader parent = Build.A.XdcSubnetBlockHeader().WithGeneratedExtraConsensusData().TestObject;
+        parent.Hash = TestItem.KeccakA;
+        parent.NextValidators = [1, 2, 3];
+
+        BlockHeader child = parent.CreateSimulatedChild(parent.Timestamp + 12);
+
+        child.Should().BeOfType<XdcSubnetBlockHeader>();
+        XdcSubnetBlockHeader subnetChild = (XdcSubnetBlockHeader)child;
+        subnetChild.ParentHash.Should().Be(parent.Hash);
+        subnetChild.Number.Should().Be(parent.Number + 1);
+        subnetChild.Timestamp.Should().Be(parent.Timestamp + 12);
+        subnetChild.ExtraData.Should().BeEmpty();
+        subnetChild.MixHash.Should().Be(Hash256.Zero);
+        subnetChild.NextValidators.Should().BeNull();
     }
 }

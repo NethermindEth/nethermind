@@ -244,37 +244,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return transaction;
     }
 
-    internal (BlockHeader, IReleaseSpec) GetCallHeader(
+    private (BlockHeader, IReleaseSpec) GetCallHeader(
         ISpecProvider specProvider,
         BlockStateCall<TransactionWithSourceDetails> block,
         BlockHeader parent,
         bool validate)
     {
-        BlockHeader result = parent.Clone();
-        result.ParentHash = parent.Hash!;
-        result.UnclesHash = Keccak.OfAnEmptySequenceRlp;
-        result.Author = null;
-        result.StateRoot = null;
-        result.TxRoot = null;
-        result.ReceiptsRoot = null;
-        result.Bloom = null;
-        result.Difficulty = UInt256.Zero;
-        result.Number = parent.Number + 1;
-        result.GasUsed = 0;
-        result.Timestamp = parent.Timestamp + blocksConfig.SecondsPerSlot;
-        result.MixHash = Hash256.Zero;
-        result.Nonce = 0;
-        result.Hash = null;
-        result.TotalDifficulty = null;
-        result.ExtraData = [];
-        result.AuRaSignature = null;
-        result.AuRaStep = null;
-        result.WithdrawalsRoot = null;
-        result.ParentBeaconBlockRoot = null;
-        result.BlockAccessListHash = null;
-        result.BlobGasUsed = null;
-        result.ExcessBlobGas = null;
-        result.SlotNumber = null;
+        BlockHeader result = parent.CreateSimulatedChild(parent.Timestamp + blocksConfig.SecondsPerSlot);
 
         if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
         {
