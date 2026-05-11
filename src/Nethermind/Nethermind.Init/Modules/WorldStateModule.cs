@@ -40,8 +40,11 @@ public class WorldStateModule(IInitConfig initConfig) : Module
                         : dbFactory,
                     () => Interlocked.Increment(ref Nethermind.Db.Metrics.StateDbInPruningWrites));
                 // Register the outer wrapper so GatherMetric() always reflects the currently active
-                // inner DB, even across full-pruning cycles. Inner DBs are excluded from tracking
-                // via SkipMetricsTracking (set by FullPruningInnerDbFactory) to avoid stale entries.
+                // inner DB, even across full-pruning cycles. The inner DBs are not tracked:
+                // - via FullPruningInnerDbFactory they get SkipMetricsTracking = true so the
+                //   DbFactoryInterceptor skips registration.
+                // - via the MemDbFactory branch they're MemDbs created outside any interceptor and
+                //   therefore never reach the tracker either.
                 ctx.ResolveOptional<DbMonitoringModule.DbTracker>()?.AddDb(stateDbSettings.DbName, db);
                 return db;
             })

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -26,6 +27,26 @@ namespace Nethermind.Db.Test;
 
 public class DbTrackerTests
 {
+    // Names mutated across tests are reset here so test order does not cause flakiness.
+    private static readonly string[] TouchedMetricKeys =
+    {
+        "TestDb", "GoodDb", "ThrowingDb", "SkippedDb", "TrackedDb", "PrunedState",
+    };
+
+    [TearDown]
+    public void TearDown()
+    {
+        foreach (string key in TouchedMetricKeys)
+        {
+            ((IDictionary<string, long>)Metrics.DbReads).Remove(key);
+            ((IDictionary<string, long>)Metrics.DbWrites).Remove(key);
+            ((IDictionary<string, long>)Metrics.DbSize).Remove(key);
+            ((IDictionary<string, long>)Metrics.DbMemtableSize).Remove(key);
+            ((IDictionary<string, long>)Metrics.DbBlockCacheSize).Remove(key);
+            ((IDictionary<string, long>)Metrics.DbIndexFilterSize).Remove(key);
+        }
+    }
+
     [Test]
     public void TestTrackOnlyCreatedDb()
     {
@@ -100,8 +121,8 @@ public class DbTrackerTests
         dbFactory.CreateDb(skipped);
         dbFactory.CreateDb(tracked);
 
-        tracker.GetAllDbMeta().Count().Should().Be(1);
-        tracker.GetAllDbMeta().First().Key.Should().Be("TrackedDb");
+        List<KeyValuePair<string, IDbMeta>> entries = tracker.GetAllDbMeta().ToList();
+        entries.Should().ContainSingle().Which.Key.Should().Be("TrackedDb");
     }
 
     [Parallelizable(ParallelScope.None)]
@@ -142,6 +163,56 @@ public class DbTrackerTests
 
         Assert.That(Metrics.DbReads.ContainsKey("GoodDb"), Is.True);
         Assert.That(Metrics.DbReads["GoodDb"], Is.EqualTo(42));
+    }
+
+    [Parallelizable(ParallelScope.None)]
+    [Test]
+    public void FullPruningDbTrackedWrapper_SurvivesPruningCycle()
+    {
+        IMonitoringService monitoringService = Substitute.For<IMonitoringService>();
+        Action updateAction = null!;
+        monitoringService
+            .When(m => m.AddMetricsUpdateAction(Arg.Any<Action>()))
+            .Do(c => updateAction = (Action)c[0]);
+
+        // Inner factory returns a new FakeDb per call with a distinct size, so we can tell which
+        // inner DB the FullPruningDb wrapper is currently pointing at.
+        IDbFactory innerFactory = Substitute.For<IDbFactory>();
+        FakeDb innerDbV0 = new(new IDbMeta.DbMetric { Size = 100 });
+        FakeDb innerDbV1 = new(new IDbMeta.DbMetric { Size = 200 });
+        innerFactory.CreateDb(Arg.Any<DbSettings>()).Returns(innerDbV0, innerDbV1);
+
+        // DbMetricIntervalSeconds = 0 disables the interval guard so we can update twice in a row.
+        MetricsConfig metricsConfig = new() { DbMetricIntervalSeconds = 0 };
+
+        using IContainer container = new ContainerBuilder()
+            .AddSingleton<DbMonitoringModule.DbTracker>()
+            .AddSingleton<IDbConfig>(new DbConfig())
+            .AddSingleton<HyperClockCacheWrapper>()
+            .AddSingleton<IMetricsConfig>(metricsConfig)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton<IMonitoringService>(monitoringService)
+            .Build();
+
+        DbMonitoringModule.DbTracker tracker = container.Resolve<DbMonitoringModule.DbTracker>();
+        FullPruningDb pruningDb = new(new DbSettings("PrunedState", "PrunedState"), innerFactory);
+
+        // Mirror WorldStateModule's behavior: register the outer wrapper, not the inner DBs.
+        tracker.AddDb("PrunedState", pruningDb);
+
+        updateAction!();
+        Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(100));
+
+        // Trigger and commit a full pruning cycle; pruningDb._currentDb now points to innerDbV1.
+        pruningDb.TryStartPruning(out IPruningContext context).Should().BeTrue();
+        context.Commit();
+        context.Dispose();
+
+        updateAction!();
+
+        // After pruning, the wrapper delegates GatherMetric() to the new inner DB. No stale entry.
+        Assert.That(Metrics.DbSize["PrunedState"], Is.EqualTo(200));
+        tracker.GetAllDbMeta().Should().ContainSingle().Which.Key.Should().Be("PrunedState");
     }
 
     [Parallelizable(ParallelScope.None)]

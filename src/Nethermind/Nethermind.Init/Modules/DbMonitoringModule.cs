@@ -46,6 +46,7 @@ public class DbMonitoringModule : Module
     public class DbTracker
     {
         private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
+        private readonly HashSet<string> _failingDbs = new();
         private readonly int _intervalSec;
         private readonly Lazy<HyperClockCacheWrapper> _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;
@@ -94,10 +95,16 @@ public class DbMonitoringModule : Module
                         Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
                         Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
                         Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
+                        if (_failingDbs.Remove(kv.Key) && _logger.IsInfo)
+                            _logger.Info($"DB metric collection recovered for '{kv.Key}'");
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Failed to gather metrics for DB '{kv.Key}': {e}");
+                        // Remove stale entries so Prometheus does not report old values indefinitely.
+                        RemoveStaleMetricEntry(kv.Key);
+                        // Log only on the first failure of a streak; recovery is logged when GatherMetric succeeds again.
+                        if (_failingDbs.Add(kv.Key) && _logger.IsWarn)
+                            _logger.Warn($"Failed to gather metrics for DB '{kv.Key}': {e.Message}");
                     }
                 }
 
@@ -109,6 +116,24 @@ public class DbMonitoringModule : Module
             {
                 if (_logger.IsError) _logger.Error("Error during updating db metrics", e);
             }
+        }
+
+        // Uses IDictionary<TKey,TValue>.Remove so it works for both the default NonBlocking.ConcurrentDictionary
+        // and the plain Dictionary used under the ZK_EVM compile flag.
+        private static void RemoveStaleMetricEntry(string name)
+        {
+            IDictionary<string, long> reads = Db.Metrics.DbReads;
+            IDictionary<string, long> writes = Db.Metrics.DbWrites;
+            IDictionary<string, long> size = Db.Metrics.DbSize;
+            IDictionary<string, long> memtable = Db.Metrics.DbMemtableSize;
+            IDictionary<string, long> blockCache = Db.Metrics.DbBlockCacheSize;
+            IDictionary<string, long> indexFilter = Db.Metrics.DbIndexFilterSize;
+            reads.Remove(name);
+            writes.Remove(name);
+            size.Remove(name);
+            memtable.Remove(name);
+            blockCache.Remove(name);
+            indexFilter.Remove(name);
         }
 
         public class DbFactoryInterceptor(DbTracker tracker, IDbFactory baseFactory) : IDbFactory
