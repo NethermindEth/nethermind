@@ -20,7 +20,7 @@ defaults:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }} (${{ matrix.variant.label }})
+    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -100,13 +100,10 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
         with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+          cache: true
+          cache-dependency-path: |
+            src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: ${{ matrix.project }}
         id: test
@@ -118,7 +115,7 @@ jobs:
             ${{ matrix.variant.dotnet-args }}
 
   tests-chunked:
-    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}, ${{ matrix.variant.label }})
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -159,13 +156,10 @@ jobs:
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Cache NuGet packages
-        uses: actions/cache@v5
         with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+          cache: true
+          cache-dependency-path: |
+            src/Nethermind/Nethermind.Runner/packages.lock.json
 
       - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
         id: test

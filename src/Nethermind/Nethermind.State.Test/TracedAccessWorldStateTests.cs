@@ -9,11 +9,13 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -51,6 +53,7 @@ public class TracedAccessWorldStateTests(bool parallel)
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
         TracedAccessWorldState tws = new(inner, parallel: parallel);
+        tws.SetGeneratingBlockAccessList(new());
         IDisposable scope = tws.BeginScope(baseBlock);
         tws.SetIndex(0);
         return (tws, scope);
@@ -74,7 +77,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 tws.SubtractFromBalance(TestItem.AddressA, delta, Spec, out _);
             }
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
@@ -102,7 +105,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 tws.SetNonce(TestItem.AddressA, value);
             }
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
@@ -123,12 +126,61 @@ public class TracedAccessWorldStateTests(bool parallel)
             ValueHash256 codeHash = ValueKeccak.Compute(code);
             tws.InsertCode(TestItem.AddressA, codeHash, code, Spec);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
                 Assert.That(ac!.CodeChanges, Has.Count.EqualTo(1));
                 Assert.That(ac.CodeChanges[0].Code, Is.EquivalentTo(code));
+            }
+        }
+    }
+
+    [Test]
+    public void TryGetAccount_UsesCurrentCodeChange_WhenInnerStateDoesNotMutateCode()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        BlockAccessList suggestedBal = new();
+        AccountChanges accountChanges = new(TestItem.AddressA)
+        {
+            ExistedBeforeBlock = true
+        };
+        accountChanges.AddBalanceChange(new(Eip7928Constants.PrestateIndex, 0));
+        accountChanges.AddNonceChange(new(Eip7928Constants.PrestateIndex, 0));
+        accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex, []));
+        suggestedBal.AddAccountChanges(accountChanges);
+
+        BlockAccessListBasedWorldState balWorldState = new(inner, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(0);
+        balWorldState.SetParentReader(inner);
+        Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
+        balWorldState.Setup(block);
+
+        TracedAccessWorldState tws = new(balWorldState, parallel: true);
+        tws.SetGeneratingBlockAccessList(new());
+        using (tws.BeginScope(baseBlock))
+        {
+            tws.SetIndex(0);
+            byte[] code = [0x60, 0x00];
+            ValueHash256 codeHash = ValueKeccak.Compute(code);
+            tws.InsertCode(TestItem.AddressA, codeHash, code, Spec);
+
+            bool exists = tws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exists, Is.True);
+                Assert.That(account.CodeHash, Is.EqualTo(codeHash));
+                Assert.That(account.HasCode, Is.True);
             }
         }
     }
@@ -143,11 +195,11 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             tws.Set(cell, [0x01]);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
+                Assert.That(ac!.StorageChanges, Has.Length.EqualTo(1));
                 Assert.That(ac.StorageChanges[0].Key, Is.EqualTo((UInt256)1));
             }
         }
@@ -168,7 +220,7 @@ public class TracedAccessWorldStateTests(bool parallel)
                 _ = tws.GetOriginal(cell);
             }
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
             Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
             Assert.That(ac.StorageReads.First(), Is.EqualTo((UInt256)2));
@@ -259,7 +311,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             using (Assert.EnterMultipleScope())
             {
                 readAndAssert(tws);
-                Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
+                Assert.That(tws.GetGeneratingBlockAccessList()!.HasAccount(TestItem.AddressA), Is.True);
             }
         }
     }
@@ -274,7 +326,7 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             tws.CreateAccount(TestItem.AddressA, balance, nonce);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
@@ -302,7 +354,7 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             tws.DeleteAccount(TestItem.AddressA);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
             using (Assert.EnterMultipleScope())
             {
@@ -321,8 +373,8 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             tws.AddAccountRead(TestItem.AddressA);
 
-            Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            Assert.That(tws.GetGeneratingBlockAccessList()!.HasAccount(TestItem.AddressA), Is.True);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac!.BalanceChanges, Is.Empty);
@@ -341,13 +393,13 @@ public class TracedAccessWorldStateTests(bool parallel)
             Snapshot snap = tws.TakeSnapshot();
             tws.AddToBalance(TestItem.AddressA, 50, Spec, out _);
 
-            Assert.That(tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA)!
+            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!
                 .BalanceChanges, Has.Count.EqualTo(1));
 
             tws.Restore(snap);
 
             // Balance change must be rolled back by the snapshot restore.
-            Assert.That(tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA)!
+            Assert.That(tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA)!
                 .BalanceChanges, Is.Empty);
         }
     }
@@ -360,7 +412,7 @@ public class TracedAccessWorldStateTests(bool parallel)
         {
             tws.SubtractFromBalance(Address.SystemUser, 0u, Spec, out _);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(Address.SystemUser);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(Address.SystemUser);
             Assert.That(ac, Is.Null);
         }
     }
@@ -381,7 +433,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.AddToBalance(TestItem.AddressA, 100, Spec, out UInt256 oldBalance1);
             tws.AddToBalance(TestItem.AddressA, 100, Spec, out UInt256 oldBalance2);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(oldBalance1, Is.EqualTo((UInt256)1000), "first old balance from inner state");
@@ -404,7 +456,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce1);
             tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce2);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(oldNonce1, Is.EqualTo((UInt256)0), "first old nonce from inner");
@@ -429,7 +481,7 @@ public class TracedAccessWorldStateTests(bool parallel)
             // Second InsertCode should see code1 as old code (from BAL), not empty (from inner)
             tws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code2), code2, Spec);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
@@ -453,15 +505,15 @@ public class TracedAccessWorldStateTests(bool parallel)
             tws.Set(cell, [0x01]);
             tws.Set(cell, [0x02]);
 
-            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(ac, Is.Not.Null);
-                Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
+                Assert.That(ac!.StorageChanges, Has.Length.EqualTo(1));
                 SlotChanges slotChanges = ac.StorageChanges[0];
                 // Storage changes also Pop+Push at same Index, so Count stays 1
                 Assert.That(slotChanges.Changes, Has.Count.EqualTo(1));
-                Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo((UInt256)2));
+                Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo(((UInt256)2).ToBigEndianWord()));
             }
         }
     }
@@ -488,7 +540,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     public void AccountChanges_GetBalance_ReturnsPreBlockValue_WhenOnlyPreStateExists()
     {
         AccountChanges ac = new(TestItem.AddressA);
-        ac.AddBalanceChange(new BalanceChange(-1, 500));
+        ac.AddBalanceChange(new BalanceChange(Eip7928Constants.PrestateIndex, 500));
         UInt256? balance = ac.GetBalance(0);
         Assert.That(balance, Is.EqualTo((UInt256)500));
     }
@@ -497,7 +549,7 @@ public class TracedAccessWorldStateTests(bool parallel)
     public void AccountChanges_GetNonce_ReturnsPreBlockValue_WhenOnlyPreStateExists()
     {
         AccountChanges ac = new(TestItem.AddressA);
-        ac.AddNonceChange(new NonceChange(-1, 3));
+        ac.AddNonceChange(new NonceChange(Eip7928Constants.PrestateIndex, 3));
         UInt256? nonce = ac.GetNonce(0);
         Assert.That(nonce, Is.EqualTo((UInt256)3));
     }

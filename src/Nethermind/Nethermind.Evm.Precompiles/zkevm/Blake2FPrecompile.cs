@@ -3,10 +3,9 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
 
@@ -19,28 +18,15 @@ public partial class Blake2FPrecompile
 
         byte[] result = GC.AllocateUninitializedArray<byte>(64);
 
-        Span<ulong> state = stackalloc ulong[8];
-        Span<ulong> message = stackalloc ulong[16];
-        Span<ulong> offset = stackalloc ulong[2];
+        inputSpan.Slice(sizeof(uint), result.Length).CopyTo(result);
 
-        ref byte inputSrc = ref MemoryMarshal.GetReference(inputSpan);
-        ref byte stateDst = ref Unsafe.As<ulong, byte>(ref MemoryMarshal.GetReference(state));
-        ref byte messageDst = ref Unsafe.As<ulong, byte>(ref MemoryMarshal.GetReference(message));
-        ref byte offsetDst = ref Unsafe.As<ulong, byte>(ref MemoryMarshal.GetReference(offset));
-
-        Unsafe.CopyBlockUnaligned(ref stateDst, ref Unsafe.Add(ref inputSrc, 4), 64);
-        Unsafe.CopyBlockUnaligned(ref messageDst, ref Unsafe.Add(ref inputSrc, 68), 128);
-        Unsafe.CopyBlockUnaligned(ref offsetDst, ref Unsafe.Add(ref inputSrc, 196), 16);
-
-        ZiskBindings.Crypto.blake2b_compress_c(
+        Accelerators.Blake2F(
             BinaryPrimitives.ReadUInt32BigEndian(inputSpan),
-            state,
-            message,
-            offset,
+            result,
+            inputSpan.Slice(68, 128),
+            inputSpan.Slice(196, 16),
             inputSpan[212]
         );
-
-        Unsafe.CopyBlockUnaligned(ref MemoryMarshal.GetReference(result), ref stateDst, (uint)result.Length);
 
         return result;
     }

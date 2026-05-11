@@ -59,6 +59,39 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public void When_initialized_with_no_inserted_headers_progress_starts_at_zero()
+    {
+        // Regression test for issue #11447: Reset() with a null LowestInsertedBlockHeader used to fall
+        // back to 0, producing a current value of (_pivotNumber + 1) — visible as "Old Headers
+        // 24,998,904 / 24,998,903 (100.00 %)" right after a fresh FlatDB sync started.
+        const long pivotNumber = 1000;
+        BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        blockTree.SyncPivot = (pivotNumber, TestItem.KeccakA);
+
+        ISyncReport syncReport = new NullSyncReport();
+        using HeadersSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: Substitute.For<ISyncPeerPool>(),
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = pivotNumber,
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000"
+            },
+            poSSwitcher: Substitute.For<IPoSSwitcher>(),
+            syncReport: syncReport,
+            logManager: LimboLogs.Instance,
+            chainLevelInfoRepository: Substitute.For<IChainLevelInfoRepository>(),
+            headerStore: Substitute.For<IHeaderStore>());
+
+        feed.InitializeFeed();
+
+        syncReport.FastBlocksHeaders.CurrentValue.Should().Be(0);
+        syncReport.FastBlocksHeaders.TargetValue.Should().Be(pivotNumber);
+    }
+
+    [Test]
     public async Task Can_prepare_3_requests_in_a_row()
     {
         BlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
@@ -393,6 +426,44 @@ public class FastHeadersSyncTests
 
         using HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
+    }
+
+    [Test]
+    public async Task Does_not_prepare_batch_when_destination_moves_past_request_cursor()
+    {
+        const long pivotNumber = 1000;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.SyncPivot.Returns((pivotNumber, TestItem.KeccakA));
+
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        syncPeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, default)
+            .Returns(Task.FromResult<int?>(10));
+
+        using DestinationHeaderSyncFeed feed = new(
+            blockTree: blockTree,
+            syncPeerPool: syncPeerPool,
+            syncConfig: new TestSyncConfig
+            {
+                FastSync = true,
+                PivotNumber = pivotNumber,
+                PivotHash = TestItem.KeccakA.ToString(),
+                PivotTotalDifficulty = "1000"
+            },
+            syncReport: new NullSyncReport(),
+            logManager: LimboLogs.Instance,
+            destinationNumber: 995);
+
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch? firstBatch = await feed.PrepareRequest();
+        firstBatch.Should().NotBeNull();
+        firstBatch!.StartNumber.Should().Be(995);
+        firstBatch.RequestSize.Should().Be(6);
+
+        feed.DestinationNumber = 996;
+
+        using HeadersSyncBatch? overrunBatch = await feed.PrepareRequest();
+        overrunBatch.Should().BeNull();
     }
 
     [Test]
@@ -908,6 +979,21 @@ public class FastHeadersSyncTests
                 }
             }
         }
+    }
+
+    private class DestinationHeaderSyncFeed(
+        IBlockTree? blockTree,
+        ISyncPeerPool? syncPeerPool,
+        ISyncConfig? syncConfig,
+        ISyncReport? syncReport,
+        ILogManager? logManager,
+        long destinationNumber
+        ) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager,
+            Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>())
+    {
+        public long DestinationNumber { get; set; } = destinationNumber;
+
+        protected override long HeadersDestinationNumber => DestinationNumber;
     }
 
 }

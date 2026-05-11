@@ -36,8 +36,7 @@ internal class TaikoForkchoiceUpdatedHandler(
     ISpecProvider specProvider,
     ISyncPeerPool syncPeerPool,
     IMergeConfig mergeConfig,
-    ILogManager logManager
-) : ForkchoiceUpdatedHandler(
+    ILogManager logManager) : ForkchoiceUpdatedHandler(
     blockTree,
     manualBlockFinalizationManager,
     poSSwitcher,
@@ -53,11 +52,11 @@ internal class TaikoForkchoiceUpdatedHandler(
     mergeConfig,
     logManager)
 {
-    protected override bool IsOnMainChainBehindHead(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
-        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
+    protected override bool IsOnMainChainBehindFinalized(BlockHeader newHeadHeader, ForkchoiceStateV1 forkchoiceState,
+        [NotNullWhen(true)] out ResultWrapper<ForkchoiceUpdatedV1Result>? result)
     {
-        errorResult = null;
-        return true;
+        result = null;
+        return false;
     }
 
     // Taiko finality follows L1 and may regress on L1 reorgs, so Ethereum's spec-ordering bounds

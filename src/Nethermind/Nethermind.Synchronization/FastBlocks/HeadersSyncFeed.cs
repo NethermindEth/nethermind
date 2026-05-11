@@ -195,7 +195,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
-            HeadersSyncProgressLoggerReport.Reset(_pivotNumber - (LowestInsertedBlockHeader?.Number ?? 0) + 1, TotalBlocks);
+            // null lowest header means nothing inserted yet — without this guard the bar would briefly read 100%.
+            long currentValue = LowestInsertedBlockHeader is null ? 0 : _pivotNumber - LowestInsertedBlockHeader.Number + 1;
+            HeadersSyncProgressLoggerReport.Reset(currentValue, TotalBlocks);
         }
 
         protected virtual void ResetPivot()
@@ -254,7 +256,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool ShouldBuildANewBatch()
         {
-            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationNumber;
+            // `<=` because `HeadersDestinationNumber` (beacon: `PivotDestinationNumber`) can advance
+            // above `_lowestRequestedHeaderNumber` mid-sync; `==` would let `BuildNewBatch` produce a negative `RequestSize`.
+            bool destinationHeaderRequested = _lowestRequestedHeaderNumber <= HeadersDestinationNumber;
 
             bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
@@ -284,7 +288,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void ClearDependencies()
         {
-            _dependencies.Values.DisposeItems();
+            foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+            {
+                kvp.Value.Dispose();
+            }
             _dependencies.Clear();
             MarkDirty();
         }
@@ -408,7 +415,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return batch;
         }
 
-        private HeadersSyncBatch BuildNewBatch(int requestSize)
+        private HeadersSyncBatch? BuildNewBatch(int requestSize)
         {
             HeadersSyncBatch batch = new();
             batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - requestSize);
@@ -856,7 +863,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _sent.DisposeItems();
                 _pending.DisposeItems();
-                _dependencies.Values.DisposeItems();
+                foreach (KeyValuePair<long, HeadersSyncBatch> kvp in _dependencies)
+                {
+                    kvp.Value.Dispose();
+                }
                 base.Dispose();
                 _disposed = true;
             }

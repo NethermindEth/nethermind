@@ -19,6 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -247,13 +248,14 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// Verifies the prewarmer gate logic: ParallelExecution ON disables prewarming unless
-    /// ParallelExecutionBatchRead is ON and BALs are available.
+    /// Verifies the prewarmer gate logic: ParallelExecution ON skips speculative prewarming
+    /// only when BAL is active for the spec (so parallel execution can actually run); when
+    /// BAL is not active, speculative prewarming runs regardless of ParallelExecution.
     /// </summary>
     [TestCase(true, true, true, true, TestName = "ParallelExec ON, BALs ON, BatchRead ON => BAL warming")]
     [TestCase(true, true, false, false, TestName = "ParallelExec ON, BALs ON, BatchRead OFF => skipped")]
-    [TestCase(true, false, true, false, TestName = "ParallelExec ON, BALs OFF, BatchRead ON => skipped")]
-    [TestCase(true, false, false, false, TestName = "ParallelExec ON, BALs OFF, BatchRead OFF => skipped")]
+    [TestCase(true, false, true, true, TestName = "ParallelExec ON, BALs OFF, BatchRead ON => speculative")]
+    [TestCase(true, false, false, true, TestName = "ParallelExec ON, BALs OFF, BatchRead OFF => speculative")]
     [TestCase(false, true, true, true, TestName = "ParallelExec OFF, BALs ON, BatchRead ON => BAL warming")]
     [TestCase(false, false, false, true, TestName = "ParallelExec OFF, BALs OFF, BatchRead OFF => speculative")]
     public async Task PreWarmCaches_GateLogic(bool parallelExecution, bool hasBal, bool batchRead, bool expectWarmed)
@@ -280,6 +282,60 @@ public class BlockCachePreWarmerTests
 
         preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().Be(expectWarmed,
             $"ParallelExec={parallelExecution}, BALs={hasBal}, BatchRead={batchRead} => warmed={expectWarmed}");
+    }
+
+    [Test]
+    public async Task ParentReaderEnvPolicy_SharesBalWarmupCachesAndPopulatesMisses()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: true, parallelExecutionBatchRead: true);
+
+        StorageCell warmedCell = new(TestItem.AddressA, 1);
+        BlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges
+                    .WithAddress(TestItem.AddressA)
+                    .WithStorageReads(1)
+                    .TestObject)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithGasLimit(30_000_000)
+            .WithBlockAccessList(bal)
+            .TestObject;
+
+        await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
+
+        AddressAsKey warmedAddress = TestItem.AddressA;
+        preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _).Should().BeTrue();
+        preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _).Should().BeTrue();
+
+        preBlockCaches.StateCache.Set(in warmedAddress, new Account((UInt256)777));
+        preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
+
+        AddressAsKey missedAddress = TestItem.AddressB;
+        StorageCell missedCell = new(TestItem.AddressB, 10);
+        preBlockCaches.StateCache.TryGetValue(in missedAddress, out _).Should().BeFalse();
+        preBlockCaches.StorageCache.TryGetValue(in missedCell, out _).Should().BeFalse();
+
+        BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy validationPolicy = new(envFactory, preBlockCaches);
+        using IReadOnlyTxProcessorSource source = validationPolicy.Create();
+        using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
+
+        IPreBlockCaches scopedCaches = (IPreBlockCaches)scope.WorldState.ScopeProvider;
+        scopedCaches.Caches.Should().BeSameAs(preBlockCaches);
+        scopedCaches.IsWarmWorldState.Should().BeFalse("parallel validation parent readers must populate cache misses");
+
+        scope.WorldState.GetBalance(TestItem.AddressA).Should().Be((UInt256)777);
+        new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true).Should().Be((UInt256)0x24);
+
+        scope.WorldState.GetBalance(TestItem.AddressB).Should().Be(1_000_000.Ether);
+        new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true).Should().Be((UInt256)0x99);
+
+        preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount).Should().BeTrue();
+        populatedAccount!.Balance.Should().Be(1_000_000.Ether);
+        preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage).Should().BeTrue();
+        new UInt256(populatedStorage, isBigEndian: true).Should().Be((UInt256)0x99);
     }
 
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)

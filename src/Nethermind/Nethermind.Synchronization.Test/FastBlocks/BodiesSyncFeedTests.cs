@@ -243,6 +243,30 @@ public class BodiesSyncFeedTests
         _feed.IsFinished.Should().BeTrue();
     }
 
+    // Regression for #9002: decreasing AncientBodiesBarrier after a partial sync must not leave the feed stuck.
+    [Test]
+    public async Task When_AncientBodiesBarrier_decreased_after_partial_sync_feed_resumes_download()
+    {
+        // Previous run downloaded bodies from pivot (99) down to block 60.
+        for (int i = 60; i <= 99; i++)
+        {
+            _syncingToBlockTree.Insert(_syncingFromBlockTree.FindBlock(i, BlockTreeLookupOptions.None)!);
+        }
+        _syncPointers.LowestInsertedBodyNumber = 60;
+
+        // Restart with a lower barrier — blocks 40..59 still need downloading.
+        _syncConfig.AncientBodiesBarrier = 40;
+        _feed.InitializeFeed();
+
+        _feed.IsFinished.Should().BeFalse();
+
+        using BodiesSyncBatch? batch = await _feed.PrepareRequest();
+        batch.Should().NotBeNull();
+        batch!.Infos
+            .Where(static i => i is not null)
+            .Should().AllSatisfy(i => i!.BlockNumber.Should().BeInRange(40, 59));
+    }
+
     [Test]
     public async Task ShouldLimitBatchSizeToPeerEstimate()
     {
