@@ -19,8 +19,12 @@ internal static class PersistedSnapshotBuilderTestExtensions
     {
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
+        using MemoryArenaManager blobArena = new();
+        using BlobArenaManager blobs = new(blobArena);
+        using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize, "TestBlob");
         PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-            snapshot, ref pooled.GetWriter());
+            snapshot, ref pooled.GetWriter(), blobWriter);
+        blobWriter.Complete();
         return pooled.WrittenSpan.ToArray();
     }
 
@@ -39,12 +43,8 @@ internal static class PersistedSnapshotBuilderTestExtensions
         HashSet<int> referencedIds = new();
         for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshots[i].Type == PersistedSnapshotType.Full)
-                referencedIds.Add(snapshots[i].Id);
-            else if (snapshots[i].ReferencedSnapshotIds is int[] ids)
-            {
-                for (int j = 0; j < ids.Length; j++) referencedIds.Add(ids[j]);
-            }
+            foreach (int id in snapshots[i].ReferencedBlobArenaIds)
+                referencedIds.Add(id);
         }
 
         long totalSize = 0;

@@ -53,9 +53,11 @@ public class FlatDbManagerPersistedTests
     [Test]
     public async Task ConstructorAcceptsPersistedRepository()
     {
-        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
+        using BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         await using FlatDbManager manager = new(
@@ -87,9 +89,11 @@ public class FlatDbManagerPersistedTests
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
 
-        using ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
-        using PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
+        using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        using ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
+        using BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
         repo.ConvertSnapshotToPersistedSnapshot(snap);
 
@@ -128,9 +132,11 @@ public class FlatDbManagerPersistedTests
     [Test]
     public async Task DisposeAsync_DisposesPersistedRepository()
     {
-        ArenaManager baseArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        ArenaManager compactedArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
-        PersistedSnapshotRepository repo = new(baseArena, compactedArena, new MemDb(), new FlatDbConfig());
+        ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
+        ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
+        BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024);
+        BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024);
+        PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         // Persist something to verify cleanup
@@ -154,7 +160,7 @@ public class FlatDbManagerPersistedTests
             persistedSnapshotRepository: repo);
 
         await manager.DisposeAsync();
-        compactedArena.Dispose();
+        largeArena.Dispose();
 
         // Repository should be disposed - accessing it should be safe
         // (no crash, but data might not be accessible)

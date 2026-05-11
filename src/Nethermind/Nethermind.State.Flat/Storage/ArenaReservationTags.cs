@@ -12,16 +12,19 @@ namespace Nethermind.State.Flat.Storage;
 /// </summary>
 public static class ArenaReservationTags
 {
-    /// <summary>Base arena, Full snapshot (raw, not yet compacted to RocksDB).</summary>
-    public const string FullBase = "FullBase";
+    /// <summary>Metadata reservation for a small-tier snapshot (To-From &lt; CompactSize).</summary>
+    public const string BlobBackedSmall = "BlobBackedSmall";
 
-    /// <summary>Compacted arena, Full snapshot at compactSize boundary (ready to persist to RocksDB).</summary>
-    public const string FullPersistable = "FullPersistable";
+    /// <summary>Metadata reservation for a large-tier snapshot (To-From &gt;= CompactSize).</summary>
+    public const string BlobBackedLarge = "BlobBackedLarge";
 
-    /// <summary>Compacted arena, Linked compacted snapshot produced by the compactor.</summary>
-    public const string LinkedCompacted = "LinkedCompacted";
+    /// <summary>Blob arena reservation in the small-tier blob pool.</summary>
+    public const string BlobSmall = "BlobSmall";
 
-    /// <summary>In-memory temp arena used during NWayMergeSnapshots (Full→Linked conversion).</summary>
+    /// <summary>Blob arena reservation in the large-tier blob pool.</summary>
+    public const string BlobLarge = "BlobLarge";
+
+    /// <summary>In-memory temp arena used during NWayMergeSnapshots (metadata merge).</summary>
     public const string TempLinkedConversion = "TempLinkedConversion";
 
     /// <summary>Tests / benchmarks creating reservations directly.</summary>

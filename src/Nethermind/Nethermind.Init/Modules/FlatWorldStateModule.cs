@@ -80,16 +80,21 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), cfg.PersistedSnapshotCompactedArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
+                // The on-disk subdirectory name "arenas/compacted" predates the
+                // Compacted→Large rename and stays put so existing data dirs keep working.
+                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
             })
             .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                ArenaManager baseArena = new(Path.Combine(basePath, "arenas"), cfg.PersistedSnapshotBaseArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
-                IArenaManager compactedArena = ctx.Resolve<IArenaManager>();
+                // Small pool lives at "arenas/" (legacy name from when it was the base arena).
+                ArenaManager smallArena = new(Path.Combine(basePath, "arenas"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
+                IArenaManager largeArena = ctx.Resolve<IArenaManager>();
+                BlobArenaManager smallBlobs = new(Path.Combine(basePath, "blobs", "small"), cfg.ArenaFileSizeBytes);
+                BlobArenaManager largeBlobs = new(Path.Combine(basePath, "blobs", "large"), cfg.ArenaFileSizeBytes);
                 IDb catalogDb = ctx.Resolve<IColumnsDb<FlatDbColumns>>().GetColumnDb(FlatDbColumns.PersistedSnapshotCatalog);
-                PersistedSnapshotRepository repo = new(baseArena, compactedArena, catalogDb, cfg);
+                PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, catalogDb, cfg);
                 repo.LoadFromCatalog();
                 return repo;
             })

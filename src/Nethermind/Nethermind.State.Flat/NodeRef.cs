@@ -8,46 +8,43 @@ using System.Runtime.InteropServices;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Reference to a value stored in another persisted snapshot.
-/// Used by compacted snapshots to avoid duplicating data from base snapshots.
+/// Reference to a trie-node RLP stored in a blob arena. Persisted snapshots store
+/// only metadata HSST locally; the RLP bytes live in a separate <c>BlobArena</c>
+/// addressed by <see cref="BlobArenaId"/>.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct NodeRef(int snapshotId, int rlpDataOffset)
+public readonly struct NodeRef(int blobArenaId, int rlpDataOffset)
 {
     public const int Size = 8;
 
-    /// <summary>ID of the referenced snapshot.</summary>
-    public int SnapshotId { get; } = snapshotId;
+    /// <summary>ID of the blob arena that holds the RLP bytes.</summary>
+    public int BlobArenaId { get; } = blobArenaId;
 
     /// <summary>
-    /// Absolute byte offset of the RLP item's first byte in the referenced snapshot's HSST data.
+    /// Byte offset of the RLP item's first byte within the blob arena reservation.
     /// Length is recovered by parsing the RLP header (see <c>RlpHelpers.PeekNextRlpLength</c>),
-    /// so the referenced index does not need to carry per-entry value-length metadata.
+    /// so the index does not carry per-entry value-length metadata.
     ///
-    /// 32-bit is sufficient because a Full persisted snapshot — the only thing a NodeRef
-    /// ever points into — is always under the 2 GiB ceiling (see
-    /// <see cref="PersistedSnapshots.PersistedSnapshotBuilder"/> class doc and
-    /// <see cref="PersistedSnapshots.PersistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot"/>).
-    /// Any byte past 2 GiB would be unreachable from this offset, which is why
-    /// <c>ConvertFullToLinked</c> asserts the source-snapshot size up front and
-    /// throws with snapshot identity if violated.
+    /// 32-bit is sufficient because a single blob arena reservation cannot exceed
+    /// the 2 GiB ceiling — <see cref="BlobArenaWriter"/> rolls over to a fresh
+    /// blob arena id before the offset can overflow.
     /// </summary>
     public int RlpDataOffset { get; } = rlpDataOffset;
 
-    public bool IsEmpty => SnapshotId == 0 && RlpDataOffset == 0;
+    public bool IsEmpty => BlobArenaId == 0 && RlpDataOffset == 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static NodeRef Read(ReadOnlySpan<byte> data)
     {
-        int sid = BinaryPrimitives.ReadInt32LittleEndian(data);
+        int id = BinaryPrimitives.ReadInt32LittleEndian(data);
         int offset = BinaryPrimitives.ReadInt32LittleEndian(data[4..]);
-        return new NodeRef(sid, offset);
+        return new NodeRef(id, offset);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Write(Span<byte> data, in NodeRef nodeRef)
     {
-        BinaryPrimitives.WriteInt32LittleEndian(data, nodeRef.SnapshotId);
+        BinaryPrimitives.WriteInt32LittleEndian(data, nodeRef.BlobArenaId);
         BinaryPrimitives.WriteInt32LittleEndian(data[4..], nodeRef.RlpDataOffset);
     }
 }

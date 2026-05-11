@@ -4,15 +4,13 @@
 using System.Buffers.Binary;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
 /// Persists snapshot metadata in a key-value store (RocksDB column or MemDb).
 /// Each entry is stored under a 4-byte big-endian id key. The reserved key
-/// <c>0x00000000</c> stores the next-id metadata word so an id is durable as
-/// soon as <see cref="Add"/> commits — no separate flush needed.
+/// <c>0x00000000</c> stores the next-id + catalog-version metadata word.
 /// </summary>
 public sealed class SnapshotCatalog(IDb db)
 {
@@ -23,14 +21,17 @@ public sealed class SnapshotCatalog(IDb db)
         int Id,
         StateId From,
         StateId To,
-        PersistedSnapshotType Type,
         SnapshotLocation Location);
 
-    // Binary layout per entry: Id(4) + From.Block(8) + From.Root(32) + To.Block(8) + To.Root(32) + Type(1) + ArenaId(4) + Offset(8) + Size(4) = 101
-    // Layout: id(4) + fromBlock(8) + fromRoot(32) + toBlock(8) + toRoot(32) + type(1) + arenaId(4) + offset(8) + size(8) = 105
-    internal const int EntrySize = 105;
+    // Binary layout per entry: id(4) + fromBlock(8) + fromRoot(32) + toBlock(8) + toRoot(32) + arenaId(4) + offset(8) + size(8) = 104
+    internal const int EntrySize = 104;
 
-    // Reserved id 0 holds (nextId:int32). Entry ids start at 1.
+    // Catalog version: bumped when the on-disk binary layout changes incompatibly. Old
+    // directories will fail to load with a clear "wipe and resync" message. v2 is the
+    // BlobArena-backed layout (no PersistedSnapshotType byte, ref_ids are blob arena ids).
+    internal const int CurrentVersion = 2;
+
+    // Reserved id 0 holds (nextId:int32 LE, version:int32 LE). Entry ids start at 1.
     private static readonly byte[] MetadataKey = new byte[4];
 
     private readonly IDb _db = db;
@@ -122,8 +123,23 @@ public sealed class SnapshotCatalog(IDb db)
         _nextId = 1;
 
         byte[]? meta = _db.Get(MetadataKey);
-        if (meta is { Length: 4 })
+        if (meta is { Length: >= 4 })
             _nextId = BinaryPrimitives.ReadInt32LittleEndian(meta);
+        if (meta is { Length: >= 8 })
+        {
+            int version = BinaryPrimitives.ReadInt32LittleEndian(meta.AsSpan(4));
+            if (version != CurrentVersion)
+                throw new InvalidOperationException(
+                    $"Persisted snapshot catalog version mismatch: on-disk v{version}, runtime expects v{CurrentVersion}. " +
+                    "The persisted_snapshots/ directory has an incompatible layout — wipe and resync.");
+        }
+        else if (meta is { Length: 4 })
+        {
+            // Length-4 metadata existed before the version word was introduced (pre-v2).
+            throw new InvalidOperationException(
+                $"Persisted snapshot catalog is pre-v{CurrentVersion} (no version word). " +
+                "The persisted_snapshots/ directory has an incompatible layout — wipe and resync.");
+        }
 
         foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))
         {
@@ -143,8 +159,9 @@ public sealed class SnapshotCatalog(IDb db)
 
     private void WriteMetadata()
     {
-        byte[] value = new byte[4];
+        byte[] value = new byte[8];
         BinaryPrimitives.WriteInt32LittleEndian(value, _nextId);
+        BinaryPrimitives.WriteInt32LittleEndian(value.AsSpan(4), CurrentVersion);
         _db.Set(MetadataKey, value);
     }
 
@@ -155,10 +172,9 @@ public sealed class SnapshotCatalog(IDb db)
         entry.From.StateRoot.BytesAsSpan.CopyTo(span[12..]);
         BinaryPrimitives.WriteInt64LittleEndian(span[44..], entry.To.BlockNumber);
         entry.To.StateRoot.BytesAsSpan.CopyTo(span[52..]);
-        span[84] = (byte)entry.Type;
-        BinaryPrimitives.WriteInt32LittleEndian(span[85..], entry.Location.ArenaId);
-        BinaryPrimitives.WriteInt64LittleEndian(span[89..], entry.Location.Offset);
-        BinaryPrimitives.WriteInt64LittleEndian(span[97..], entry.Location.Size);
+        BinaryPrimitives.WriteInt32LittleEndian(span[84..], entry.Location.ArenaId);
+        BinaryPrimitives.WriteInt64LittleEndian(span[88..], entry.Location.Offset);
+        BinaryPrimitives.WriteInt64LittleEndian(span[96..], entry.Location.Size);
     }
 
     private static CatalogEntry ReadEntry(ReadOnlySpan<byte> span)
@@ -173,11 +189,10 @@ public sealed class SnapshotCatalog(IDb db)
         ValueHash256 toRoot = new(span.Slice(52, 32));
         StateId to = new(toBlock, toRoot);
 
-        PersistedSnapshotType type = (PersistedSnapshotType)span[84];
-        int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[85..]);
-        long offset = BinaryPrimitives.ReadInt64LittleEndian(span[89..]);
-        long size = BinaryPrimitives.ReadInt64LittleEndian(span[97..]);
+        int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[84..]);
+        long offset = BinaryPrimitives.ReadInt64LittleEndian(span[88..]);
+        long size = BinaryPrimitives.ReadInt64LittleEndian(span[96..]);
 
-        return new CatalogEntry(id, from, to, type, new SnapshotLocation(arenaId, offset, size));
+        return new CatalogEntry(id, from, to, new SnapshotLocation(arenaId, offset, size));
     }
 }

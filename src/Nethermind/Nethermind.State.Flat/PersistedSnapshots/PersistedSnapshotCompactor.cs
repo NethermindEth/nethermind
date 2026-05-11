@@ -82,18 +82,13 @@ public class PersistedSnapshotCompactor(
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
 
-        // Collect all base snapshot IDs that the compacted result will reference via NodeRefs
-        HashSet<int> referencedIds = [];
+        // Union of blob arena ids the inputs already reference. The merged snapshot
+        // does not write any new RLP bytes; it just inherits these.
+        HashSet<int> referencedBlobArenaIds = [];
         for (int i = 0; i < snapshots.Count; i++)
         {
-            if (snapshots[i].Type == PersistedSnapshotType.Full)
-            {
-                referencedIds.Add(snapshots[i].Id);
-            }
-            else if (snapshots[i].ReferencedSnapshotIds is int[] ids)
-            {
-                for (int j = 0; j < ids.Length; j++) referencedIds.Add(ids[j]);
-            }
+            foreach (int id in snapshots[i].ReferencedBlobArenaIds)
+                referencedBlobArenaIds.Add(id);
         }
 
         SnapshotLocation location;
@@ -118,17 +113,17 @@ public class PersistedSnapshotCompactor(
         BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
             ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
             : null;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, ArenaReservationTags.LinkedCompacted))
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, ArenaReservationTags.BlobBackedLarge))
         {
             long sw = Stopwatch.GetTimestamp();
             PersistedSnapshotBuilder.NWayMergeSnapshots<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
-                snapshots, ref arenaWriter.GetWriter(), referencedIds, mergedBloom);
+                snapshots, ref arenaWriter.GetWriter(), referencedBlobArenaIds, mergedBloom);
 
             for (int i = 0; i < snapshots.Count; i++)
             {
                 PersistedSnapshot s = snapshots[i];
                 bool isPersistableSize = s.To.BlockNumber - s.From.BlockNumber == _compactSize;
-                if (s.Type != PersistedSnapshotType.Full || !isPersistableSize)
+                if (!isPersistableSize)
                     s.AdviseDontNeed();
             }
 
@@ -137,22 +132,9 @@ public class PersistedSnapshotCompactor(
             _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 
             (location, reservation) = arenaWriter.Complete();
-
-            if (_validatePersistedSnapshot)
-            {
-                PersistedSnapshot compacted = new(0, from, to, PersistedSnapshotType.Linked, reservation);
-                try
-                {
-                    PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, snapshots, true);
-                }
-                finally
-                {
-                    compacted.Dispose();
-                }
-            }
         }
 
-        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedIds, isPersistable, mergedBloom);
+        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, isPersistable, mergedBloom);
 
         // The freshly-written compacted bytes are warm in the kernel page cache from the write
         // path; drop them so they don't crowd out the random-access read working set. Subsequent

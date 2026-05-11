@@ -15,21 +15,25 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// A persisted snapshot backed by columnar HSST data on disk (or in memory).
+/// A persisted snapshot backed by columnar HSST metadata on disk. Trie-node RLP
+/// values are not stored inline — every trie-node slot in the HSST holds an
+/// 8-byte <see cref="NodeRef"/> pointing into a blob arena. The reservation
+/// owned by this snapshot stores the metadata bytes only.
+///
 /// The outer HSST has 5 column entries, each containing an inner HSST.
 /// Inner HSST keys are the entity keys without the tag prefix:
-///   Column 0x00: Metadata — String key → version, block range, state root values
-///   Column 0x01: AddressHash (20 bytes, keccak256(address)[..20]) → per-address HSST {
-///       0x01 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → Storage trie node RLP, path length 0-5)
-///       0x02 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → Storage trie node RLP, path length 6-15)
-///       0x03 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → Storage trie node RLP, path length 16+)
-///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(31) → nested ByteTagMap(SlotSuffix(1 byte) → SlotValue))
+///   Column 0x00: Metadata — String key → version, block range, ref_ids list, state root values
+///   Column 0x01: AddressHash (20 bytes) → per-address HSST {
+///       0x01 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → NodeRef, path length 0-5)
+///       0x02 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → NodeRef, path length 6-15)
+///       0x03 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → NodeRef, path length 16+)
+///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(31) → nested ByteTagMap(SlotSuffix(1) → SlotValue))
 ///       0x05 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
 ///       0x06 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
 ///   }
-///   Column 0x03: TreePath (8 bytes compact) → State trie node RLP (path length 6-15)
-///   Column 0x05: TreePath (3 bytes: PathByte0, PathByte1, Length) → State trie node RLP (path length 0-5)
-///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → State trie node RLP (path length 16+)
+///   Column 0x03: TreePath (8 bytes compact) → NodeRef (path length 6-15)
+///   Column 0x05: TreePath (3 bytes) → NodeRef (path length 0-5)
+///   Column 0x06: TreePath.Path (32 bytes) + PathLength (1 byte) → NodeRef (path length 16+)
 /// </summary>
 public sealed class PersistedSnapshot : RefCountingDisposable
 {
@@ -40,8 +44,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] StateTopNodesTag = [0x05];
     internal static readonly byte[] StateNodeFallbackTag = [0x06];
 
-    // Sub-tags within per-address HSST (sorted byte order). Storage trie nodes come
-    // first so unchanged accounts keep their account/SD entries at low offsets.
+    // Sub-tags within per-address HSST (sorted byte order).
     internal static readonly byte[] StorageTopSubTag = [0x01];
     internal static readonly byte[] StorageCompactSubTag = [0x02];
     internal static readonly byte[] StorageFallbackSubTag = [0x03];
@@ -49,109 +52,100 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] AccountSubTag = [0x05];
     internal static readonly byte[] SelfDestructSubTag = [0x06];
 
-    // Tiny per-snapshot seqlock cache that skips the outer-column + address-hash seek on
-    // repeat lookups. The cached Bound is the per-address inner-HSST bound after seeking
-    // (AccountColumnTag, addressHash[..20]). Since accounts, slots, self-destruct, and
-    // both storage-trie partitions all live under that single bound, every per-address
-    // path shares this cache. Bounds are stable for the lifetime of the snapshot since
-    // the data is immutable; we only cache successful seeks (negative lookups are filtered
-    // upstream by the bloom held in ReadOnlySnapshotBundle). Lock-free reads on hot paths.
-    // 8 sets × 2 ways = 16 entries — slight bump from the previous 8-entry ClockCache,
-    // chosen as the smallest power of two that keeps per-snapshot footprint negligible.
     private const int AddressBoundCacheSets = 8;
 
     private readonly ArenaReservation _reservation;
-    private readonly Dictionary<int, PersistedSnapshot>? _referencedSnapshots;
+    // Two blob managers — a snapshot's referenced blob arena ids can come from either
+    // tier (e.g. a compacted snapshot inherits ids from small-tier base inputs). We
+    // probe small first, fall through to large.
+    private readonly IBlobArenaManager _smallBlobs;
+    private readonly IBlobArenaManager _largeBlobs;
+    private readonly int[] _referencedBlobArenaIds;
     private readonly SeqlockValueCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheSets);
-
-    internal ICollection<PersistedSnapshot>? ReferencedSnapshots => _referencedSnapshots?.Values;
-    internal Dictionary<int, PersistedSnapshot>? ReferencedSnapshotsLookup => _referencedSnapshots;
-    internal bool HasNodeRefs { get; }
 
     public int Id { get; }
     public StateId From { get; }
     public StateId To { get; }
-    public PersistedSnapshotType Type { get; }
 
     /// <summary>
-    /// IDs of base snapshots referenced by NodeRefs in this compacted snapshot.
-    /// Null for base snapshots or compacted snapshots with no NodeRef references.
+    /// Blob arena ids whose contents this snapshot references via <see cref="NodeRef"/>s
+    /// stored in its metadata HSST. Each id is leased on construction and released on cleanup.
     /// </summary>
-    public int[]? ReferencedSnapshotIds { get; }
+    public int[] ReferencedBlobArenaIds => _referencedBlobArenaIds;
 
     public long Size => _reservation.Size;
 
     internal ArenaReservation Reservation => _reservation;
 
     /// <summary>
-    /// Begin a scoped whole-buffer read over this snapshot's reservation. Forwards to
-    /// <see cref="ArenaReservation.BeginWholeReadSession"/>.
+    /// Begin a scoped whole-buffer read over this snapshot's reservation.
     /// </summary>
     public WholeReadSession BeginWholeReadSession() => _reservation.BeginWholeReadSession();
 
     /// <summary>
-    /// Construct a reader over this snapshot's bytes. Delegates to
-    /// <see cref="ArenaReservation.CreateReader"/> so the storage layer owns the
-    /// reader-construction policy.
+    /// Construct a reader over this snapshot's bytes.
     /// </summary>
     internal ArenaByteReader CreateReader() => _reservation.CreateReader();
 
-    /// <summary>
-    /// Materialise the value at <paramref name="localBound"/> in this snapshot's bytes,
-    /// dereferencing across snapshots when this snapshot stores NodeRefs. Reads via the
-    /// reader abstraction (no GetSpan), copying directly into a heap-allocated byte[].
-    /// </summary>
-    internal byte[] ResolveTrieRlp(Bound localBound)
-    {
-        ArenaByteReader reader = _reservation.CreateReader();
-        if (!HasNodeRefs || _referencedSnapshots is null)
-        {
-            byte[] result = new byte[localBound.Length];
-            reader.TryRead(localBound.Offset, result);
-            return result;
-        }
-
-        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
-        Span<byte> nr = nrBuf[..checked((int)localBound.Length)];
-        reader.TryRead(localBound.Offset, nr);
-        NodeRef nodeRef = NodeRef.Read(nr);
-        if (!_referencedSnapshots.TryGetValue(nodeRef.SnapshotId, out PersistedSnapshot? snap))
-            throw new InvalidOperationException($"Referenced snapshot {nodeRef.SnapshotId} not found");
-        return snap.ReadRlpItem(nodeRef.RlpDataOffset);
-    }
-
-    public PersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, ArenaReservation reservation,
-        PersistedSnapshot[]? referencedSnapshots = null)
+    public PersistedSnapshot(int id, StateId from, StateId to, ArenaReservation reservation,
+        IBlobArenaManager smallBlobs, IBlobArenaManager largeBlobs, int[]? referencedBlobArenaIds = null)
     {
         Id = id;
         From = from;
         To = to;
-        Type = type;
         _reservation = reservation;
-        _reservation.AcquireLease();
-        ArenaByteReader bootReader = CreateReader();
-        HasNodeRefs = PersistedSnapshotReader.CheckHasNodeRefsFlag<ArenaByteReader, NoOpPin>(in bootReader);
+        _smallBlobs = smallBlobs;
+        _largeBlobs = largeBlobs;
+        _referencedBlobArenaIds = referencedBlobArenaIds ?? [];
 
-        if (referencedSnapshots is { Length: > 0 })
+        _reservation.AcquireLease();
+        // Acquire blob arena leases up-front. If any id is unknown to both managers,
+        // release what we've already taken before bubbling out.
+        int acquired = 0;
+        try
         {
-            _referencedSnapshots = new Dictionary<int, PersistedSnapshot>(referencedSnapshots.Length);
-            ReferencedSnapshotIds = new int[referencedSnapshots.Length];
-            for (int i = 0; i < referencedSnapshots.Length; i++)
+            foreach (int blobId in _referencedBlobArenaIds)
             {
-                referencedSnapshots[i].TryAcquireLease();
-                ReferencedSnapshotIds[i] = referencedSnapshots[i].Id;
-                _referencedSnapshots[referencedSnapshots[i].Id] = referencedSnapshots[i];
+                if (!_smallBlobs.TryAcquireBlobArena(blobId) && !_largeBlobs.TryAcquireBlobArena(blobId))
+                    throw new InvalidOperationException($"Blob arena {blobId} referenced by snapshot {id} not registered in either tier");
+                acquired++;
             }
         }
+        catch
+        {
+            for (int i = 0; i < acquired; i++)
+                ReleaseBlobArena(_referencedBlobArenaIds[i]);
+            _reservation.Dispose();
+            throw;
+        }
+    }
+
+    private void ReleaseBlobArena(int blobArenaId)
+    {
+        // ReleaseBlobArena is idempotent on unknown ids in both managers, so call on
+        // both — only the owning one does work.
+        _smallBlobs.ReleaseBlobArena(blobArenaId);
+        _largeBlobs.ReleaseBlobArena(blobArenaId);
+    }
+
+    /// <summary>
+    /// Materialise the trie-node RLP at <paramref name="localBound"/>. The bound holds an
+    /// 8-byte <see cref="NodeRef"/>; the actual RLP bytes live in a blob arena.
+    /// </summary>
+    internal byte[] ResolveTrieRlp(Bound localBound)
+    {
+        Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
+        Span<byte> nr = nrBuf[..checked((int)localBound.Length)];
+        ArenaByteReader reader = _reservation.CreateReader();
+        reader.TryRead(localBound.Offset, nr);
+        NodeRef nodeRef = NodeRef.Read(nr);
+        return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
     }
 
     /// <summary>
     /// Resolve the per-address inner-HSST bound, hitting the address-hash LRU first so
     /// repeat lookups for the same address-hash skip the outer column-tag + 20-byte
-    /// address-hash seeks. The same bound serves account / slot / self-destruct / storage
-    /// trie sub-tags. Returns false (with default <paramref name="addressBound"/>) when
-    /// the address-hash is not present in this snapshot. Bloom filtering is the caller's
-    /// responsibility (see <see cref="ReadOnlySnapshotBundle"/>).
+    /// address-hash seeks.
     /// </summary>
     private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound)
     {
@@ -172,10 +166,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             account = null;
             return false;
         }
-        // Presence-marker encoding: PersistedSnapshotReader.TryGetAccount filters out
-        // length-0 (absent) entries; a present entry is either [0x00] = deleted or
-        // RLP-bytes = present. Slim account RLP starts with a list header (0xc0+) so
-        // the 0x00 marker never collides with a valid RLP first byte.
         int bLenInt = checked((int)b.Length);
         Span<byte> buf = bLenInt <= 256 ? stackalloc byte[256] : new byte[bLenInt];
         Span<byte> rlp = buf[..bLenInt];
@@ -210,11 +200,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
             && PersistedSnapshotReader.IsSelfDestructed<ArenaByteReader, NoOpPin>(in reader, addrBound);
     }
 
-    /// <summary>
-    /// Get the self-destruct flag with boolean distinction.
-    /// Returns null if no self-destruct entry exists for this address-hash.
-    /// Returns true if this is a new account (value = 0x01), false if destructed (value = empty).
-    /// </summary>
     public bool? TryGetSelfDestructFlag(in ValueHash256 addressHash)
     {
         ArenaByteReader reader = CreateReader();
@@ -249,42 +234,29 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Read the "ref_ids" list from a snapshot's metadata column. Avoids materialising
-    /// a whole-reservation span, so it works with chunk-aware readers.
+    /// Read the "ref_ids" list from a snapshot's metadata column — now interpreted as
+    /// referenced <c>BlobArenaId</c>s rather than referenced snapshot ids.
     /// </summary>
     public static int[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct =>
         PersistedSnapshotReader.ReadRefIdsFromMetadata<TReader, TPin>(in reader);
 
-    /// <summary>
-    /// Read a self-describing RLP item starting at <paramref name="rlpDataOffset"/>. Peeks the
-    /// RLP header (≤ 9 bytes) to recover the total item length via
-    /// <see cref="Rlp.ValueDecoderContext.PeekNextRlpLength"/>, then copies the full item
-    /// into a heap-allocated array. Used to deref <see cref="NodeRef"/> values, which now
-    /// point directly at the RLP rather than at a per-entry length-metadata cursor.
-    ///
-    /// Reads via <see cref="ArenaReservation.RandomRead"/> (pread) rather than the
-    /// mmap-backed reader so the referenced Full snapshot's pages are not faulted into
-    /// our resident set or registered in its <see cref="PageResidencyTracker"/> — the
-    /// referrer's own working set should not crowd out the Full snapshot's.
-    /// </summary>
     // Worst-case Merkle-Patricia branch node: 17 entries × (1-byte prefix + 32-byte hash)
     // plus a 3-byte long-list framing header ≈ 564 bytes. Round up to 568 so the read
-    // covers any branch node in one pread; the result byte[] is always sized to the
-    // parsed length so tail bytes are discarded for shorter nodes.
+    // covers any branch node in one pread.
     private const int MaxTrieNodeRlpBytes = 568;
 
-    public byte[] ReadRlpItem(int rlpDataOffset)
+    private byte[] ReadBlobArenaRlp(int blobArenaId, int offset)
     {
-        long remaining = _reservation.Size - rlpDataOffset;
-        int readSize = (int)Math.Min(MaxTrieNodeRlpBytes, remaining);
-        byte[] rented = ArrayPool<byte>.Shared.Rent(readSize);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(MaxTrieNodeRlpBytes);
         try
         {
-            Span<byte> buf = rented.AsSpan(0, readSize);
-            _reservation.RandomRead(rlpDataOffset, buf);
-            Rlp.ValueDecoderContext ctx = new(buf);
+            Span<byte> buf = rented.AsSpan(0, MaxTrieNodeRlpBytes);
+            int bytesRead = _smallBlobs.RandomRead(blobArenaId, offset, buf);
+            if (bytesRead == 0)
+                bytesRead = _largeBlobs.RandomRead(blobArenaId, offset, buf);
+            Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
             int totalLength = ctx.PeekNextRlpLength();
             byte[] result = new byte[totalLength];
             buf[..totalLength].CopyTo(result);
@@ -303,10 +275,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     protected override void CleanUp()
     {
         _reservation.Dispose();
-        if (_referencedSnapshots is not null)
-        {
-            foreach (PersistedSnapshot snapshot in _referencedSnapshots.Values)
-                snapshot.Dispose();
-        }
+        foreach (int blobId in _referencedBlobArenaIds)
+            ReleaseBlobArena(blobId);
     }
 }
