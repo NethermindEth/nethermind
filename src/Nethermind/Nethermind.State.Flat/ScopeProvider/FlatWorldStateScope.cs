@@ -40,6 +40,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private StateId _currentStateId;
     internal volatile bool _pausePrewarmer = false;
 
+    // Tracked background HintBal task — StartWriteBatch / Dispose cancel and drain it so the
+    // warmer thread isn't competing with the write batch for CPU or for the snapshot bundle.
+    private CancellationTokenSource? _hintBalCts;
+    private Task? _hintBalTask;
+
     public FlatWorldStateScope(
         StateId currentStateId,
         SnapshotBundle snapshotBundle,
@@ -83,9 +88,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
+        CancelHintBal();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
+    }
+
+    private void CancelHintBal()
+    {
+        _hintBalCts?.Cancel();
+        try { _hintBalTask?.GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            ILogger logger = _logManager.GetClassLogger<FlatWorldStateScope>();
+            if (logger.IsError) logger.Error("HintBal background task faulted during cancel/drain", ex);
+        }
+        _hintBalCts?.Dispose();
+        _hintBalCts = null;
+        _hintBalTask = null;
     }
 
     // Exposed for tests to observe when the wait loop is entered.
@@ -157,18 +178,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int accountCount = bal.AccountChanges.Count;
         if (accountCount == 0) return Task.CompletedTask;
 
+        // Cancel and drain any previous in-flight HintBal task before starting a new one —
+        // never overlap two warmups on the same scope.
+        CancelHintBal();
+
+        _hintBalCts = new CancellationTokenSource();
+        CancellationToken token = _hintBalCts.Token;
         int snapshot = _hintSequenceId;
 
-        return Task.Run(() =>
+        return _hintBalTask = Task.Run(() =>
         {
             // Span isn't capturable into a Parallel.For body; project to a pooled list.
             ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
             using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
             for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChanges[i];
 
-            Parallel.For(0, accountCount, (i) =>
+            ParallelOptions parallelOptions = new() { CancellationToken = token };
+            try
             {
-                if (_hintSequenceId != snapshot || _pausePrewarmer) return;
+                Parallel.For(0, accountCount, parallelOptions, (i) =>
+                {
+                    if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
                 AccountChanges ac = accountChangesList[i];
                 Address address = ac.Address;
@@ -219,8 +249,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     foreach (UInt256 readKey in ac.StorageReads)
                         ReadSlotToSink(sink, address, in readKey, selfDestructIdx);
                 }
-            });
-        });
+                });
+            }
+            catch (OperationCanceledException) { }
+        }, token);
     }
 
     private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
@@ -279,7 +311,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
-        => new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    {
+        // Cancel + drain any in-flight HintBal: write batches are CPU-intensive and the warmer
+        // task would otherwise race with the writer for the snapshot bundle and for CPU.
+        CancelHintBal();
+        return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
+    }
 
     public void Commit(long blockNumber)
     {
