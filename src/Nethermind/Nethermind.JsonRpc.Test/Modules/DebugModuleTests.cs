@@ -454,4 +454,18 @@ public class DebugModuleTests
         actual.Result.ResultType.Should().Be(ResultType.Failure);
         actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
     }
+
+    [Test]
+    public void Debug_intermediateRoots_fails_when_block_not_found()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        _blockFinder.FindHeader(blockHash).ReturnsNull();
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        ResultWrapper<IReadOnlyCollection<Hash256>> actual = rpcModule.debug_intermediateRoots(blockHash);
+
+        actual.Result.ResultType.Should().Be(ResultType.Failure);
+        actual.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
+        actual.Result.Error.Should().Contain("Cannot find header");
+    }
 }
