@@ -1444,8 +1444,6 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task EthSendRawTransactionSync_WhenAlreadyMined_FastPathReturnsReceipt()
     {
-        // The fast-path: TxSender returns the hash, the receipt is already in the bridge, so the
-        // first loop iteration finds it and returns without ever waiting on the semaphore.
         Transaction tx = Build.A.Transaction
             .WithNonce(3)
             .WithGasLimit(21_000)
