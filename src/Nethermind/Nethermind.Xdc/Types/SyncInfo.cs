@@ -6,15 +6,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Xdc.Types;
 
-public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate highestTimeoutCert) : IXdcPoolItem
+public class SyncInfo(QuorumCertificate highestQuorumCert, TimeoutCertificate highestTimeoutCert)
 {
     private static readonly SyncInfoDecoder _decoder = new();
     public QuorumCertificate HighestQuorumCert { get; set; } = highestQuorumCert;
     public TimeoutCertificate HighestTimeoutCert { get; set; } = highestTimeoutCert;
 
-    public (ulong Round, Hash256 hash) PoolKey()
+    public (ulong Round, Hash256 Hash) GetSyncInfoKey()
     {
-        var hash = Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes);
+        Hash256 hash = Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes);
 
         if (HighestQuorumCert is not null)
         {

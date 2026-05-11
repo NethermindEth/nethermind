@@ -4,7 +4,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -55,8 +54,7 @@ internal class VotesManager(
 
     public Task CastVote(BlockRoundInfo blockInfo)
     {
-        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash);
-        if (epochSwitchInfo is null)
+        EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(blockInfo.Hash) ??
             throw new ArgumentException($"Cannot find epoch info for block {blockInfo.Hash}", nameof(EpochSwitchInfo));
         //Optimize this by fetching with block number and round only
 
@@ -324,5 +322,5 @@ internal class VotesManager(
 
     public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
 
-    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Vote>> GetReceivedVotes() => _votePool.Items;
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> GetReceivedVotes() => _votePool.Items;
 }

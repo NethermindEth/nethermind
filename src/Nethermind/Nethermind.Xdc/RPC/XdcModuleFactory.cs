@@ -4,9 +4,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.RPC;
 
@@ -20,9 +17,7 @@ internal class XdcModuleFactory(
         ITimeoutCertificateManager timeoutCertificateManager,
         ISyncInfoManager syncInfoManager) : ModuleFactoryBase<IXdcRpcModule>
 {
-    public override IXdcRpcModule Create()
-    {
-        return new XdcRpcModule(
+    public override IXdcRpcModule Create() => new XdcRpcModule(
             blockTree,
             snapshotManager,
             specProvider,
@@ -31,5 +26,4 @@ internal class XdcModuleFactory(
             votesManager,
             timeoutCertificateManager,
             syncInfoManager);
-    }
 }

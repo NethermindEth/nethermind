@@ -4,7 +4,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -244,8 +243,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private void SendTimeout()
     {
         long gapNumber = 0;
-        XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
-        if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
+        XdcBlockHeader currentHeader = (XdcBlockHeader)_blockTree.Head?.Header ??
+                                       throw new InvalidOperationException("Failed to retrieve current header");
         ulong currentRound = _consensusContext.CurrentRound;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
         if (_epochSwitchManager.IsEpochSwitchAtRound(currentRound, currentHeader))
@@ -255,8 +254,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
         else
         {
-            EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader);
-            if (epochSwitchInfo is null)
+            EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHeader) ??
                 throw new DataExtractionException(nameof(EpochSwitchInfo));
 
             long currentNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
@@ -291,8 +289,5 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     public long GetTimeoutsCount(Timeout timeout) => _timeouts.GetCount(timeout);
 
-    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Timeout>> GetReceivedTimeouts()
-    {
-        return _timeouts.Items;
-    }
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> GetReceivedTimeouts() => _timeouts.Items;
 }

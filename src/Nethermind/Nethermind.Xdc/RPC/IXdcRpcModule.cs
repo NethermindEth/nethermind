@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Xdc.RPC;
-using System.Numerics;
 
 namespace Nethermind.Xdc;
 

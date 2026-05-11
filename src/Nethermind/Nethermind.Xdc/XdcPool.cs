@@ -75,7 +75,7 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
-    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<T>> Items => _items;
+    public Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> Items => _items;
 
     // Forensics needs same-round votes across different pool keys to detect signer equivocation.
     public IReadOnlyCollection<T> GetItemsFromRoundExcludingKey(T item)

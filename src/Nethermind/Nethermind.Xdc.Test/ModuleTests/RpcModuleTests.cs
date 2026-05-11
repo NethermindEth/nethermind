@@ -3,14 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using FluentAssertions;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Clique;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -40,7 +36,7 @@ public class RpcModuleTests
 
     private EpochSwitchInfo[] GenerateEpochSwitchInfos(long begin, long end, int switchEpoch, int epochLength)
     {
-        var epochSwitchInfos = new List<EpochSwitchInfo>();
+        List<EpochSwitchInfo> epochSwitchInfos = new();
         for (long blockNum = begin; blockNum <= end; blockNum += epochLength)
         {
             ulong epochNumber = (ulong)(blockNum / epochLength);
@@ -66,7 +62,7 @@ public class RpcModuleTests
         int? minePeriod = null,
         int? configsCount = null)
     {
-        var v2Configs = new List<V2ConfigParams>();
+        List<V2ConfigParams> v2Configs = new();
 
         int count = configsCount ?? 1;
 
@@ -84,7 +80,7 @@ public class RpcModuleTests
         }
 
 
-        var spec = new XdcReleaseSpec
+        XdcReleaseSpec spec = new()
         {
             // Epoch configuration
             SwitchEpoch = switchEpoch ?? 0,
@@ -173,11 +169,8 @@ public class RpcModuleTests
     #region CalculateBlockInfoByV1EpochNum Tests
 
     [Test]
-    public void CalculateBlockInfoByV1EpochNum_ShouldThrowNotSupportedException()
-    {
-        // Act & Assert
+    public void CalculateBlockInfoByV1EpochNum_ShouldThrowNotSupportedException() =>
         Assert.Throws<NotSupportedException>(() => _rpcModule.CalculateBlockInfoByV1EpochNum(1));
-    }
 
     #endregion
 
@@ -466,17 +459,17 @@ public class RpcModuleTests
 
         _epochSwitchManager.GetEpochSwitchInfo(header).Returns(epochSwitchInfo);
 
-        var receivedVotes = new Dictionary<(ulong Round, Hash256 Hash), ArrayPoolList<Nethermind.Xdc.Types.Vote>>();
-        var voteList = new ArrayPoolList<Nethermind.Xdc.Types.Vote>(2);
-        Nethermind.Xdc.Types.Vote vote1 = new(new BlockRoundInfo(TestItem.KeccakA, 10, 100), 0) { Signer = TestItem.AddressA };
-        Nethermind.Xdc.Types.Vote vote2 = new(new BlockRoundInfo(TestItem.KeccakA, 10, 100), 0) { Signer = TestItem.AddressB };
-        voteList.Add(vote1);
-        voteList.Add(vote2);
+        Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> receivedVotes = new();
+        Dictionary<Address, Vote> voteList = new();
+        Vote vote1 = new(new BlockRoundInfo(TestItem.KeccakA, 10, 100), 0) { Signer = TestItem.AddressA };
+        Vote vote2 = new(new BlockRoundInfo(TestItem.KeccakA, 10, 100), 0) { Signer = TestItem.AddressB };
+        voteList[TestItem.AddressA] = vote1;
+        voteList[TestItem.AddressB] = vote2;
         receivedVotes[(10UL, TestItem.KeccakA)] = voteList;
 
         _votesManager.GetReceivedVotes().Returns(receivedVotes);
-        _timeoutCertificateManager.GetReceivedTimeouts().Returns(new Dictionary<(ulong, Hash256), ArrayPoolList<Timeout>>());
-        _syncInfoManager.GetReceivedSyncInfos().Returns(new Dictionary<(ulong, Hash256), ArrayPoolList<SyncInfo>>());
+        _timeoutCertificateManager.GetReceivedTimeouts().Returns(new Dictionary<(ulong, Hash256), Dictionary<Address, Timeout>>());
+        _syncInfoManager.GetReceivedSyncInfos().Returns(new Dictionary<(ulong, Hash256), SyncInfoTypes>());
 
         // Act
         ResultWrapper<PoolStatus> result = _rpcModule.GetLatestPoolStatus();
@@ -591,7 +584,7 @@ public class RpcModuleTests
         _blockTree.FindHeader(header.Hash!).Returns(header);
 
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: 5, epochLength: 10, configsCount: 200);
-        _specProvider.GetSpec(header).Returns(spec);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] masternodes = new[] { TestItem.AddressA };
         EpochSwitchInfo epochSwitchInfo = new(
@@ -707,7 +700,7 @@ public class RpcModuleTests
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA, TestItem.AddressB };
-        Nethermind.Xdc.Types.Snapshot snapshot = new Types.Snapshot(header.Number, header.Hash!, expectedSigners);
+        Snapshot snapshot = new(header.Number, header.Hash!, expectedSigners);
 
         _snapshotManager.GetSnapshotByBlockNumber(100, spec).Returns(snapshot);
 
@@ -734,7 +727,7 @@ public class RpcModuleTests
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         Address[] expectedSigners = new[] { TestItem.AddressA };
-        Nethermind.Xdc.Types.Snapshot snapshot = new Types.Snapshot(header.Number, header.Hash!, expectedSigners);
+        Snapshot snapshot = new(header.Number, header.Hash!, expectedSigners);
 
         _snapshotManager.GetSnapshotByBlockNumber(50, spec).Returns(snapshot);
 
@@ -830,12 +823,9 @@ public class RpcModuleTests
     #region GetRewardByAccount Tests
 
     [Test]
-    public void GetRewardByAccount_ShouldThrowNotImplementedException()
-    {
-        // Act & Assert
+    public void GetRewardByAccount_ShouldThrowNotImplementedException() =>
         Assert.Throws<NotImplementedException>(() =>
             _rpcModule.GetRewardByAccount(TestItem.AddressA, 0, 100));
-    }
 
     #endregion
 }

@@ -4,37 +4,30 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.RPC;
 
 internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager) : IXdcRpcModule
 {
-    public ResultWrapper<EpochNumInfo> CalculateBlockInfoByV1EpochNum(ulong targetEpochNum)
-    {
+    public ResultWrapper<EpochNumInfo> CalculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         throw new NotSupportedException("Calculating block info by V1 epoch number is not supported because only XDC V2 is supported");
-    }
 
     public ResultWrapper<EpochNumInfo> GetBlockInfoByEpochNum(ulong epochNumber)
     {
-        var spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
 
-        if (epochNumber < (ulong)spec.SwitchEpoch)
-        {
-            return CalculateBlockInfoByV1EpochNum(epochNumber);
-        }
-
-        return GetBlockInfoByV2EpochNum(epochNumber);
+        return epochNumber < (ulong)spec.SwitchEpoch ?
+            CalculateBlockInfoByV1EpochNum(epochNumber):
+            GetBlockInfoByV2EpochNum(epochNumber);
     }
 
     public ResultWrapper<EpochNumInfo> GetBlockInfoByV2EpochNum(ulong epochNumber)
@@ -45,7 +38,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<EpochNumInfo>.Fail($"Cannot find epoch {epochNumber}");
         }
 
-        EpochNumInfo info = new EpochNumInfo
+        EpochNumInfo info = new()
         {
             EpochBlockHash = thisEpoch.Hash,
             EpochRound = thisEpoch.Round,
@@ -86,10 +79,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<ulong[]>.Fail("block range over limit of 50,000 blocks");
         }
 
-        XdcBlockHeader xdcBeginHeader = beginHeader as XdcBlockHeader;
-        XdcBlockHeader xdcEndHeader = endHeader as XdcBlockHeader;
-
-        if (xdcBeginHeader is null || xdcEndHeader is null)
+        if (beginHeader is not XdcBlockHeader xdcBeginHeader || endHeader is not XdcBlockHeader xdcEndHeader)
         {
             return ResultWrapper<ulong[]>.Fail("Headers are not XDC block headers");
         }
@@ -110,33 +100,28 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
     }
 
     private static IDictionary<(ulong Round, Hash256 Hash), SignerTypes> CalculateSigners<T>(
-        IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<T>> pool,
-        Address[] masternodes,
-        Func<T, Address?> getSignerFunc)
+        IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pool,
+        Address[] masternodes)
     {
-        var message = new Dictionary<(ulong Round, Hash256 Hash), SignerTypes>();
+        Dictionary<(ulong Round, Hash256 Hash), SignerTypes> message = new();
 
-        foreach (var (key, objs) in pool)
+        foreach (((ulong, Hash256) key, Dictionary<Address, T> objs) in pool)
         {
-            List<Address> currentSigners = new List<Address>();
-            List<Address> missingSigners = new List<Address>(masternodes);
+            List<Address> currentSigners = new();
+            HashSet<Address> missingSigners = new(masternodes);
 
             int num = objs.Count;
-            foreach (var obj in objs)
+            foreach (Address signer in objs.Keys)
             {
-                Address? signer = getSignerFunc(obj);
-                if (signer != null)
-                {
-                    currentSigners.Add(signer);
-                    missingSigners.Remove(signer);
-                }
+                currentSigners.Add(signer);
+                missingSigners.Remove(signer);
             }
 
             message[key] = new SignerTypes
             {
                 CurrentNumber = num,
-                CurrentSigners = currentSigners.ToArray(),
-                MissingSigners = missingSigners.ToArray()
+                CurrentSigners = [.. currentSigners],
+                MissingSigners = [.. missingSigners]
             };
         }
 
@@ -151,12 +136,10 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PoolStatus>.Fail("Cannot get current block header");
         }
 
-        XdcBlockHeader? xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader is null)
+        if (header is not XdcBlockHeader xdcHeader)
         {
             return ResultWrapper<PoolStatus>.Fail("Current header is not an XDC block header");
         }
-
         EpochSwitchInfo? epochSwitchInfo = epochSwitchManager.GetEpochSwitchInfo(xdcHeader);
         if (epochSwitchInfo is null)
         {
@@ -165,37 +148,15 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         Address[] masternodes = epochSwitchInfo.Masternodes;
 
-        var receivedVotes = voteManager.GetReceivedVotes();
-        var receivedTimeouts = timeoutCertificateManager.GetReceivedTimeouts();
-        var receivedSyncInfo = syncInfoManager.GetReceivedSyncInfos();
+        IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Vote>> receivedVotes = voteManager.GetReceivedVotes();
+        IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, Timeout>> receivedTimeouts = timeoutCertificateManager.GetReceivedTimeouts();
+        IDictionary<(ulong Round, Hash256 Hash), SyncInfoTypes> receivedSyncInfo = syncInfoManager.GetReceivedSyncInfos();
 
-        PoolStatus info = new PoolStatus();
+        PoolStatus info = new();
 
-        info.Timeout = CalculateSigners(receivedTimeouts, masternodes, timeout => timeout.Signer);
-        info.Vote = CalculateSigners(receivedVotes, masternodes, vote => vote.Signer);
-
-
-        var syncInfoMessage = new Dictionary<(ulong Round, Hash256 Hash), SyncInfoTypes>();
-
-        foreach (var (name, objList) in receivedSyncInfo)
-        {
-            foreach (var syncInfo in objList)
-            {
-                (ulong round, Hash256 hash) key = syncInfo.PoolKey();
-
-                int qcSigners = syncInfo.HighestQuorumCert?.Signatures?.Length ?? 0;
-                int tcSigners = syncInfo.HighestTimeoutCert?.Signatures?.Length ?? 0;
-
-                syncInfoMessage[key] = new SyncInfoTypes
-                {
-                    Hash = key.hash,
-                    QCSigners = qcSigners,
-                    TCSigners = tcSigners
-                };
-            }
-        }
-
-        info.SyncInfo = syncInfoMessage;
+        info.Timeout = CalculateSigners(receivedTimeouts, masternodes);
+        info.Vote = CalculateSigners(receivedVotes, masternodes);
+        info.SyncInfo = receivedSyncInfo;
 
         return ResultWrapper<PoolStatus>.Success(info);
     }
@@ -209,7 +170,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
         else if (blockNumber.Type == BlockParameterType.Finalized)
         {
-            var latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
+            BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
             if (latestCommittedBlock != null)
             {
                 header = tree.FindHeader(latestCommittedBlock.Hash);
@@ -233,20 +194,18 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<MasternodesStatus>.Fail($"can not get header by number {blockNumber.BlockNumber}");
         }
 
-        XdcBlockHeader? xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader is null)
+        if (header is not XdcBlockHeader xdcHeader)
         {
             return ResultWrapper<MasternodesStatus>.Fail("Header is not an XDC block header");
         }
 
         if (xdcHeader.ExtraConsensusData is null)
         {
-
             return ResultWrapper<MasternodesStatus>.Fail($"Block {header.Number} does not contain consensus data (round information)");
         }
 
         ulong round = xdcHeader.ExtraConsensusData.BlockRound;
-        var spec = specProvider.GetXdcSpec(xdcHeader);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(xdcHeader);
 
         ulong epochNum = (ulong)spec.SwitchEpoch + round / (ulong)spec.EpochLength;
 
@@ -260,7 +219,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         Address[] penalties = epochSwitchInfo.Penalties;
         Address[] standbynodes = epochSwitchInfo.StandbyNodes;
 
-        MasternodesStatus info = new MasternodesStatus
+        MasternodesStatus info = new()
         {
             Epoch = epochNum,
             Number = (ulong)header.Number,
@@ -298,8 +257,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("can not get header by number");
         }
 
-        XdcBlockHeader? xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader is null)
+        if (header is not XdcBlockHeader xdcHeader)
         {
             return ResultWrapper<PublicApiMissedRoundsMetadata>.Fail("Header is not an XDC block header");
         }
@@ -315,10 +273,8 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
     }
 
-    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, long begin, long end)
-    {
+    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, long begin, long end) =>
         throw new NotImplementedException();
-    }
 
     public ResultWrapper<Address[]> GetSigners(BlockParameter blockParam)
     {
@@ -342,14 +298,14 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<Address[]>.Fail("Unknown block");
         }
 
-        var spec = specProvider.GetXdcSpec(header.Number);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(header.Number);
 
         if (header.Number < spec.SwitchBlock)
         {
             return ResultWrapper<Address[]>.Fail("Unsupported block version : V1");
         }
 
-        var snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
 
         return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
@@ -373,7 +329,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<Address[]>.Fail("Unknown block");
         }
-        var spec = specProvider.GetXdcSpec(header.Number);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(header.Number);
 
 
         if (header.Number < spec.SwitchBlock)
@@ -381,7 +337,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<Address[]>.Fail("Unsupported block version : V1");
         }
 
-        var snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
         return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
 
@@ -407,9 +363,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unknown block");
         }
 
-        var spec = specProvider.GetXdcSpec(header.Number);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(header.Number);
 
-        var snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
         return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot((XdcBlockHeader)header));
     }
 
@@ -432,14 +388,14 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Unknown block");
         }
-        var spec = specProvider.GetXdcSpec(header.Number);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(header.Number);
 
         if (header.Number < spec.SwitchBlock)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        var snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
         return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot((XdcBlockHeader)header));
     }
 
@@ -459,12 +415,9 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             header = tree.FindHeader(blockParam.BlockHash);
         }
 
-        if (header is null)
-        {
-            return ResultWrapper<V2BlockInfo>.Fail("Unknown block");
-        }
-
-        return GetV2BlockByHeader(header, uncle: false);
+        return header is null ?
+             ResultWrapper<V2BlockInfo>.Fail("Unknown block") :
+            GetV2BlockByHeader(header, uncle: false);
     }
 
     public ResultWrapper<V2BlockInfo> GetV2BlockByHeader(BlockHeader header, bool uncle)
@@ -474,14 +427,10 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<V2BlockInfo>.Fail("Header cannot be null");
         }
 
-        XdcBlockHeader xdcHeader = header as XdcBlockHeader;
-        if (xdcHeader is null)
-        {
-            return ResultWrapper<V2BlockInfo>.Fail("Header is not an XDC block header");
-        }
+        XdcBlockHeader xdcHeader = (XdcBlockHeader)header;
 
         bool committed = false;
-        var latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
+        BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
 
         if (latestCommittedBlock is null)
         {
@@ -509,7 +458,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         // Encode header to RLP
-        XdcHeaderDecoder headerDecoder = new XdcHeaderDecoder();
+        XdcHeaderDecoder headerDecoder = new();
         byte[] encodedBytes;
         try
         {
@@ -550,18 +499,16 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         {
             header = tree.FindHeader(blockNumber.BlockNumber.Value);
         }
-        if (header is null)
-        {
-            return ResultWrapper<V2BlockInfo>.Fail("Unknown block");
-        }
-        return GetV2BlockByHeader(header, uncle: false);
+        return (header is null) ?
+            ResultWrapper<V2BlockInfo>.Fail("Unknown block") :
+            GetV2BlockByHeader(header, uncle: false);
     }
 
     public ResultWrapper<NetworkInformation> NetworkInformation()
     {
-        var spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
 
-        NetworkInformation info = new NetworkInformation
+        NetworkInformation info = new()
         {
             NetworkId = (UInt256)specProvider.NetworkId,
             XDCValidatorAddress = spec.MasternodeVotingContract,
