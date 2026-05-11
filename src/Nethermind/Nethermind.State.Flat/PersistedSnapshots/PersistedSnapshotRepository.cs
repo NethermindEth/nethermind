@@ -34,7 +34,8 @@ public sealed class PersistedSnapshotRepository(
     IBlobArenaManager blobArenaManager,
     BlobArenaCatalog blobArenaCatalog,
     IDb catalogDb,
-    IFlatDbConfig config) : IPersistedSnapshotRepository
+    IFlatDbConfig config,
+    PersistedSnapshotBloomFilterManager bloomManager) : IPersistedSnapshotRepository
 {
     private readonly IArenaManager _arena = arenaManager;
     private readonly IBlobArenaManager _blobs = blobArenaManager;
@@ -47,13 +48,13 @@ public sealed class PersistedSnapshotRepository(
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _persistableCompactedSnapshots = new();
-    private readonly PersistedSnapshotBloomFilterManager _bloomManager = new();
+    // Shared across both per-tier repos. Owned by the DI container, not this repo —
+    // see <see cref="Dispose"/> which does NOT dispose the manager.
+    private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
     private readonly Lock _catalogLock = new();
     private int _nextId;
 
     private bool BloomEnabled => _bloomBitsPerKey > 0 && _trieBloomBitsPerKey > 0;
-
-    public PersistedSnapshotBloomFilterManager BloomManager => _bloomManager;
 
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count + _persistableCompactedSnapshots.Count;
     public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
@@ -518,7 +519,7 @@ public sealed class PersistedSnapshotRepository(
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
             _persistableCompactedSnapshots.Clear();
-            _bloomManager.Dispose();
+            // _bloomManager is shared across tiers; owned and disposed by the DI container.
         }
     }
 }

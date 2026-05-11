@@ -40,12 +40,12 @@ public class PersistenceManagerPersistedTests
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaCatalog blobCatalog = new(new MemDb());
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
         _ = new PersistedSnapshotCompactor(
-            repo, smallArena, config, LimboLogs.Instance,
+            repo, smallArena, config, LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2,
             tierLabel: "small",
@@ -71,12 +71,12 @@ public class PersistenceManagerPersistedTests
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
         using BlobArenaCatalog blobCatalog = new(new MemDb());
         using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
         _ = new PersistedSnapshotCompactor(
-            repo, smallArena, config, LimboLogs.Instance,
+            repo, smallArena, config, LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2,
             tierLabel: "small",

@@ -26,6 +26,7 @@ public class PersistedSnapshotCompactor(
     IArenaManager arenaManager,
     IFlatDbConfig config,
     ILogManager logManager,
+    PersistedSnapshotBloomFilterManager bloomManager,
     int minCompactSize,
     int maxCompactSize,
     string tierLabel,
@@ -104,7 +105,6 @@ public class PersistedSnapshotCompactor(
         ArenaReservation reservation;
         long estimatedSize = 0;
         long bloomCapacity = 0;
-        PersistedSnapshotBloomFilterManager bloomManager = persistedSnapshotRepository.BloomManager;
         for (int i = 0; i < snapshots.Count; i++)
         {
             estimatedSize += snapshots[i].Size;

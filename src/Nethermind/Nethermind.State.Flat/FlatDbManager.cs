@@ -30,6 +30,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly IResourcePool _resourcePool;
     private readonly IPersistedSnapshotRepository _smallPersistedRepo;
     private readonly IPersistedSnapshotRepository _largePersistedRepo;
+    private readonly PersistedSnapshotBloomFilterManager _persistedBloomManager;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -73,7 +74,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IBlocksConfig blocksConfig,
         ILogManager logManager,
         bool enableDetailedMetrics,
-        PersistedSnapshotRepositories persistedSnapshotRepositories)
+        PersistedSnapshotRepositories persistedSnapshotRepositories,
+        PersistedSnapshotBloomFilterManager persistedBloomManager)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
@@ -82,6 +84,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _smallPersistedRepo = persistedSnapshotRepositories.Small;
         _largePersistedRepo = persistedSnapshotRepositories.Large;
+        _persistedBloomManager = persistedBloomManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
@@ -318,16 +321,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _snapshotBundleBlockNumberDepth.WithLabels("persisted").Observe(persistedDepth);
 
             // Lease blooms parallel to assembled.Persisted; fall back to AlwaysTrue on miss.
-            // Bundle entries may come from either repo, so probe small first then large.
-            PersistedSnapshotBloomFilterManager smallBlooms = _smallPersistedRepo.BloomManager;
-            PersistedSnapshotBloomFilterManager largeBlooms = _largePersistedRepo.BloomManager;
+            // One shared bloom manager covers both tiers — see FlatWorldStateModule. A
+            // per-tier split here would let a stale narrow bloom in one tier under-cover
+            // a wider compacted snapshot leased from the other tier (silent false
+            // negatives on bundle reads).
             ArrayPoolList<PersistedSnapshotBloom> persistedBlooms = new(assembled.Persisted.Count);
             for (int i = 0; i < assembled.Persisted.Count; i++)
             {
-                PersistedSnapshotBloom bloom = smallBlooms.LeaseOrSentinel(assembled.Persisted[i].To);
-                if (ReferenceEquals(bloom, PersistedSnapshotBloom.AlwaysTrue))
-                    bloom = largeBlooms.LeaseOrSentinel(assembled.Persisted[i].To);
-                persistedBlooms.Add(bloom);
+                persistedBlooms.Add(_persistedBloomManager.LeaseOrSentinel(assembled.Persisted[i].To));
             }
 
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted, persistedBlooms);
