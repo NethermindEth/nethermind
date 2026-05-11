@@ -258,6 +258,113 @@ public class HsstDenseByteIndexTests
             "writer position must reflect 3 fake values + ends section + trailer");
     }
 
+    /// <summary>
+    /// Stub <see cref="IHsstByteReader{TPin}"/> whose logical <see cref="Length"/> exceeds
+    /// <see cref="int.MaxValue"/> but only physically backs a small <c>trailer</c> at the tail.
+    /// The DenseByteIndex reader only ever touches bytes in the trailer (IndexType byte,
+    /// Count+OffsetSize, and the Ends array immediately before them), so we don't need to
+    /// allocate the multi-GiB value region the trailer claims exists. Any read outside the
+    /// trailer is treated as a test bug and fails the call.
+    /// </summary>
+    private readonly ref struct TrailerOnlyLongReader : IHsstByteReader<NoOpPin>
+    {
+        private readonly long _length;
+        private readonly long _trailerStart;
+        private readonly ReadOnlySpan<byte> _trailer;
+
+        public TrailerOnlyLongReader(long length, ReadOnlySpan<byte> trailer)
+        {
+            _length = length;
+            _trailerStart = length - trailer.Length;
+            _trailer = trailer;
+        }
+
+        public long Length => _length;
+        public Bound Bound => new(0, _length);
+
+        public bool TryRead(long offset, scoped Span<byte> output)
+        {
+            if (offset < _trailerStart || offset + output.Length > _length) return false;
+            int srcOff = (int)(offset - _trailerStart);
+            _trailer.Slice(srcOff, output.Length).CopyTo(output);
+            return true;
+        }
+
+        public NoOpPin PinBuffer(long offset, long size)
+        {
+            if (offset < _trailerStart || offset + size > _length)
+                throw new InvalidOperationException(
+                    $"TrailerOnlyLongReader: read outside trailer [{_trailerStart}, {_length}) at offset {offset} size {size}");
+            int srcOff = (int)(offset - _trailerStart);
+            return new NoOpPin(_trailer.Slice(srcOff, (int)size));
+        }
+    }
+
+    /// <summary>
+    /// Regression for the long-finality bug where the DenseByteIndex reader's
+    /// <c>valueLen &gt; int.MaxValue → false</c> guard refused to resolve a column whose
+    /// single value exceeded 2 GiB. The bug silently made the outer <c>TrySeek(0x01)</c> on
+    /// the compacted snapshot's <c>AccountColumn</c> return false once the column crossed
+    /// the 2 GiB mark, losing every account/slot/storage/self-destruct entry. <see cref="Bound"/>
+    /// is long-typed; the producer (HsstOffset.ChooseOffsetSize → 6-byte u48 ends) already
+    /// supports up to 256 TiB, so the reader must too.
+    /// </summary>
+    [Test]
+    public void TrySeek_ResolvesColumnAbove2GiB_Regression()
+    {
+        // Build a 2-entry DenseByteIndex via the no-alloc writer:
+        //   tag 0x00 → value of 2_500_000_000 bytes (> int.MaxValue, triggers the bug)
+        //   tag 0x01 → value of 1024 bytes (small follow-up; its prevEnd is also > int.MaxValue)
+        const long BigValueSize = 2_500_000_000L;
+        const int SmallValueSize = 1024;
+        byte[] scratch = new byte[64];
+        LongAdvanceOnlyWriter writer = new(scratch);
+
+        using (HsstDenseByteIndexBuilder<LongAdvanceOnlyWriter> b = new(ref writer))
+        {
+            b.BeginValueWrite();
+            // Advance is int-typed; cover BigValueSize in two hops.
+            writer.Advance(int.MaxValue);
+            writer.Advance(checked((int)(BigValueSize - int.MaxValue)));
+            b.FinishValueWrite(0x00);
+
+            b.BeginValueWrite();
+            writer.Advance(SmallValueSize);
+            b.FinishValueWrite(0x01);
+
+            b.Build();
+        }
+
+        // Total writer position = both values + trailer (ends + 3-byte tail). Cumulative ends
+        // are above uint.MaxValue, so OffsetSize must be 6.
+        ReadOnlySpan<byte> trailer = writer.ScratchTrailer;
+        Assert.That(trailer[^1], Is.EqualTo((byte)IndexType.DenseByteIndex));
+        // Cumulative ends are ~2.5 GiB which fits in 4 bytes (uint.MaxValue ≈ 4.29 GiB) —
+        // OffsetSize stays at 4 here; the regression is independent of stride width.
+        Assert.That(trailer[^2], Is.EqualTo((byte)4));
+        Assert.That(trailer[^3], Is.EqualTo((byte)1), "Count = N - 1 with N = 2");
+
+        long total = writer.Written;
+        TrailerOnlyLongReader reader = new(total, trailer);
+
+        // tag 0x00: value occupies [0, BigValueSize) — Length > int.MaxValue.
+        using (HsstReader<TrailerOnlyLongReader, NoOpPin> r = new(in reader))
+        {
+            Assert.That(r.TrySeek([0x00], out Bound b0), Is.True,
+                "TrySeek(0x00) must succeed for a column whose value exceeds int.MaxValue");
+            Assert.That(b0.Offset, Is.EqualTo(0L));
+            Assert.That(b0.Length, Is.EqualTo(BigValueSize));
+        }
+
+        // tag 0x01: value at [BigValueSize, BigValueSize + 1024) — prevEnd also > int.MaxValue.
+        using (HsstReader<TrailerOnlyLongReader, NoOpPin> r = new(in reader))
+        {
+            Assert.That(r.TrySeek([0x01], out Bound b1), Is.True);
+            Assert.That(b1.Offset, Is.EqualTo(BigValueSize));
+            Assert.That(b1.Length, Is.EqualTo((long)SmallValueSize));
+        }
+    }
+
     [Test]
     public void OffsetSize_GrowsWithValuesTotal_AndRoundTripsCorrectly()
     {

@@ -114,8 +114,11 @@ internal static class HsstDenseByteIndexReader
         long thisEnd = ReadEnd(ends, idx * L.OffsetSize, L.OffsetSize);
         if (thisEnd < prevEnd) return false;
         long valueLen = thisEnd - prevEnd;
-        if (valueLen > int.MaxValue) return false;
-        entryBound = new Bound(L.DataStart + prevEnd, (int)valueLen);
+        // Bound.Length is long; the only ceiling is the producer's MaxValuesTotal (256 TiB).
+        // Stripping the int.MaxValue guard here lets DenseByteIndex columns exceed 2 GiB —
+        // hit in practice when the per-address AccountColumn of a long-finality compacted
+        // snapshot crosses the 2 GiB mark.
+        entryBound = new Bound(L.DataStart + prevEnd, valueLen);
         return true;
     }
 
