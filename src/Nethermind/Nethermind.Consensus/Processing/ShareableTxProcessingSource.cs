@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using System;
+using Nethermind.Core.Cpu;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -23,7 +24,7 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
     // ~1 GB+ of pooled envs that don't pay back at extreme core counts.
     private const int MaxRetainedAbsoluteCap = 256;
     ObjectPool<IReadOnlyTxProcessorSource> _envPool =
-        new DefaultObjectPoolProvider { MaximumRetained = Math.Min(Environment.ProcessorCount * 16, MaxRetainedAbsoluteCap) }
+        new DefaultObjectPoolProvider { MaximumRetained = Math.Min(RuntimeInformation.ProcessorCount * 16, MaxRetainedAbsoluteCap) }
             .Create(new EnvPoolPolicy(envFactory));
 
     public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
