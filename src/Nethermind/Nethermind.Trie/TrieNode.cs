@@ -1449,9 +1449,11 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Hash256 reference)
             {
-                // Slot held an unresolved by-hash reference; load (or hit the resolver cache for)
-                // the typed node here rather than publishing a NodeType.Unknown placeholder.
-                child = tree.GetOrLoadNode(in childPath, reference.ValueHash256);
+                // Slot holds an unresolved by-hash reference. Materialize the typed (placeholder)
+                // node through the resolver here; flipping this to eager GetOrLoadNode is
+                // deferred to step 3 along with FindCachedOrUnknown removal, because callers
+                // rely on the legacy lazy contract (return now, ResolveNode later).
+                child = tree.FindCachedOrUnknown(in childPath, reference.ValueHash256);
             }
             else
             {
@@ -2095,9 +2097,12 @@ namespace Nethermind.Trie
                         {
                             path.SetLast(i);
                             Hash256 keccak = rlpStream.DecodeKeccak();
-                            // Visitor needs a typed node (ResolveKey / Keccak / Accept follow):
-                            // load it now rather than handing back a NodeType.Unknown placeholder.
-                            TrieNode child = tree.GetOrLoadNode(in path, keccak.ValueHash256);
+                            // Materialize the typed (placeholder) node through the resolver.
+                            // Flipping this to eager GetOrLoadNode would change observable
+                            // visitor semantics (some callers prune the subtree without ever
+                            // resolving) and is deferred to step 3 with FindCachedOrUnknown
+                            // removal.
+                            TrieNode child = tree.FindCachedOrUnknown(in path, keccak.ValueHash256);
                             chCount++;
                             output[i] = child;
 
@@ -2232,9 +2237,11 @@ namespace Nethermind.Trie
                 }
                 else if (childOrRef is Hash256 reference)
                 {
-                    // Slot held an unresolved by-hash reference; load (or hit the resolver cache
-                    // for) the typed node rather than publishing a NodeType.Unknown placeholder.
-                    child = tree.GetOrLoadNode(in childPath, reference.ValueHash256);
+                    // Slot holds an unresolved by-hash reference. Materialize the typed
+                    // (placeholder) node through the resolver here; eager GetOrLoadNode is
+                    // deferred to step 3 along with FindCachedOrUnknown removal, because
+                    // callers rely on the legacy lazy contract (return now, ResolveNode later).
+                    child = tree.FindCachedOrUnknown(in childPath, reference.ValueHash256);
                 }
                 else
                 {

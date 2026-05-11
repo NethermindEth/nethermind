@@ -1117,7 +1117,11 @@ namespace Nethermind.Trie.Test
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
                 // B4: -8 per node * 951 = -7608
-                .AssertThatTotalMemoryUsedIs(815488);
+                // After dropping NodeType.Unknown placeholders from child slots, unresolved
+                // children are accounted as bare Hash256 references (48 B each) instead of
+                // staying invisible behind a placeholder TrieNode in the same slot. Same
+                // node count, +960 bytes accounted (20 newly visible Hash256 slots * 48 B).
+                .AssertThatTotalMemoryUsedIs(816448);
         }
 
         [Test]

@@ -211,13 +211,17 @@ public class TrieNodeTests
         trieNode.SetChild(11, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
+        ctx.HeavyLeaf.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
-        TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
 
-        Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(11)), "value");
+        // The heavy leaf is stored by hash in slot 11 of the encoded branch. Verify that
+        // decoding repopulates the slot with the original child hash; calling GetChild on
+        // NullTrieNodeResolver would now eagerly try to load the leaf (and fail) instead of
+        // returning a NodeType.Unknown placeholder.
+        Assert.That(decoded.GetChildHash(11), Is.EqualTo(ctx.HeavyLeaf.Keccak), "encoded child hash");
     }
 
     [Test]
@@ -253,13 +257,16 @@ public class TrieNodeTests
         trieNode.SetChild(0, ctx.HeavyLeaf);
 
         TreePath emptyPath = TreePath.Empty;
+        ctx.HeavyLeaf.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
         TrieNode decoded = new(NodeType.Unknown, rlp);
         TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
-        TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0);
 
-        Assert.That(decodedTiniest.Keccak, Is.EqualTo(decoded.GetChildHash(0)), "keccak");
+        // The heavy leaf is stored by hash in the extension's child slot. Verify the slot
+        // round-trips the encoded hash; GetChild on a backing-less resolver now eagerly
+        // tries to load and would fail instead of returning a placeholder.
+        Assert.That(decoded.GetChildHash(0), Is.EqualTo(ctx.HeavyLeaf.Keccak), "encoded child hash");
     }
 
     [Test]

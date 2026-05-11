@@ -346,12 +346,13 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                // Eager-load (or hit the resolver cache for) the typed root node here rather than
-                // publishing a NodeType.Unknown placeholder. SetRootHash(_, resetObjects: true) is
-                // a cold rebind path (post-commit, root setter, ctor); the load almost always
-                // hits the resolver cache because we either just produced this root or are
-                // re-pointing at one the resolver was using a moment ago.
-                RootRef = _readResolver.GetOrLoadNode(in TreePath.Empty, _rootHash.ValueHash256);
+                // TODO: removing the NodeType.Unknown placeholder here requires either eager
+                // resolution (which breaks skip-root commits and snap-sync tracking - the root
+                // is not in the store yet) or a lazy RootRef getter (which leaks null into
+                // downstream readers that today treat null as 'empty trie'). The legacy
+                // FindCachedOrUnknown path stays until those readers are migrated alongside
+                // step 3 (removing FindCachedOrUnknown from the resolver interface).
+                RootRef = _readResolver.FindCachedOrUnknown(TreePath.Empty, _rootHash);
             }
         }
 
