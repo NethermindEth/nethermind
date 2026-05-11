@@ -53,6 +53,11 @@ namespace Nethermind.JsonRpc
         public const int ResourceNotFound = -32000;
 
         /// <summary>
+        /// Requested block access list resource not found
+        /// </summary>
+        public const int BlockAccessListResourceNotFound = -32001;
+
+        /// <summary>
         /// Transaction creation failed
         /// </summary>
         public const int TransactionRejected = -32000;

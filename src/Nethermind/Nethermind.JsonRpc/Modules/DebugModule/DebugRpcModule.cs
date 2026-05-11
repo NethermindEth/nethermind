@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -369,6 +370,21 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter) =>
         GetBlockRlpOrFail(blockParameter);
+
+    public ResultWrapper<byte[]> debug_getRawBlockAccessList(BlockParameter blockParameter)
+    {
+        Block? block = debugBridge.GetBlock(blockParameter);
+        if (block is null || block.BlockAccessListHash is null)
+        {
+            return ResultWrapper<byte[]>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
+        }
+
+        BlockAccessList? bal = blockchainBridge.GetBlockAccessList(block.Hash);
+
+        return bal is null
+            ? ResultWrapper<byte[]>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<byte[]>.Success(Rlp.Encode(bal).Bytes);
+    }
 
     public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
     {

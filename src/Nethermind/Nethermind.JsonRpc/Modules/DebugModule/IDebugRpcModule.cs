@@ -89,6 +89,9 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Get Raw Block format.")]
     ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter);
 
+    [JsonRpcMethod(Description = "Get raw block access list format.")]
+    ResultWrapper<byte[]> debug_getRawBlockAccessList(BlockParameter blockParameter);
+
     [JsonRpcMethod(Description = "Get Raw Receipt format.")]
     ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter);
 
