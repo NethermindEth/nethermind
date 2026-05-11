@@ -129,14 +129,27 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
 
-        Block block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"Cannot find block {blockHash}");
+        // Mirror geth: canonical blocks first, fall back to the bad-block store so the diagnostic
+        // use case (replaying a rejected block to find divergence) works.
+        Block block = blockTree.FindBlock(blockHash)
+                      ?? badBlockStore.GetAll().FirstOrDefault(b => b.Hash == blockHash)
+                      ?? throw new InvalidOperationException($"Cannot find block {blockHash}");
+        if (block.IsGenesis) throw new InvalidOperationException("genesis is not traceable");
+
         BlockHeader? parent = FindParent(block);
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
         IntermediateRootsBlockTracer tracer = new(scope.Component.WorldState);
-        scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
-
-        return tracer.BuildResult();
+        try
+        {
+            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
+            return tracer.BuildResult();
+        }
+        catch
+        {
+            tracer.TryDispose();
+            throw;
+        }
     }
 
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
