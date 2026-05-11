@@ -1449,7 +1449,9 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Hash256 reference)
             {
-                child = tree.FindCachedOrUnknown(childPath, reference);
+                // Slot held an unresolved by-hash reference; load (or hit the resolver cache for)
+                // the typed node here rather than publishing a NodeType.Unknown placeholder.
+                child = tree.GetOrLoadNode(in childPath, reference.ValueHash256);
             }
             else
             {
@@ -2030,14 +2032,14 @@ namespace Nethermind.Trie
                 childOrRef = Volatile.Read(ref data);
                 if (childOrRef is null)
                 {
-                    // Allows to load children in parallel
+                    // Allows to load children in parallel.
+                    // DecodeChildReference returns a Hash256 for by-hash references and a typed
+                    // TrieNode for inline children; we publish whichever directly so the slot
+                    // never holds a NodeType.Unknown placeholder. Readers that need a TrieNode
+                    // call GetOrLoadNode on the Hash256 slot themselves.
                     ValueRlpStream rlpStream = new(rlp);
                     SeekChild(ref rlpStream, i);
                     childOrRef = DecodeChildReference(in childPath, rlp, ref rlpStream);
-                    if (childOrRef is Hash256 keccak)
-                    {
-                        childOrRef = tree.FindCachedOrUnknown(childPath, keccak);
-                    }
                     childOrRef = PublishChild(ref data, childOrRef);
                 }
             }
@@ -2093,7 +2095,9 @@ namespace Nethermind.Trie
                         {
                             path.SetLast(i);
                             Hash256 keccak = rlpStream.DecodeKeccak();
-                            TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                            // Visitor needs a typed node (ResolveKey / Keccak / Accept follow):
+                            // load it now rather than handing back a NodeType.Unknown placeholder.
+                            TrieNode child = tree.GetOrLoadNode(in path, keccak.ValueHash256);
                             chCount++;
                             output[i] = child;
 
@@ -2196,11 +2200,11 @@ namespace Nethermind.Trie
                             _currentStreamIndex = i;
                         }
 
+                        // Publish the decoded reference directly: a Hash256 stays as an
+                        // unresolved-by-hash slot, an inline TrieNode is published as-is.
+                        // No NodeType.Unknown placeholder is constructed; callers that need
+                        // a TrieNode resolve the Hash256 via GetOrLoadNode.
                         childOrRef = DecodeChildReference(in childPath, rlp, ref _rlpStream);
-                        if (childOrRef is Hash256 keccak)
-                        {
-                            childOrRef = tree.FindCachedOrUnknown(childPath, keccak);
-                        }
                         childOrRef = PublishChild(ref data, childOrRef);
                         _currentStreamIndex++;
                     }
@@ -2228,7 +2232,9 @@ namespace Nethermind.Trie
                 }
                 else if (childOrRef is Hash256 reference)
                 {
-                    child = tree.FindCachedOrUnknown(childPath, reference);
+                    // Slot held an unresolved by-hash reference; load (or hit the resolver cache
+                    // for) the typed node rather than publishing a NodeType.Unknown placeholder.
+                    child = tree.GetOrLoadNode(in childPath, reference.ValueHash256);
                 }
                 else
                 {

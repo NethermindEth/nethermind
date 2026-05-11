@@ -346,7 +346,12 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = _readResolver.FindCachedOrUnknown(TreePath.Empty, _rootHash);
+                // Eager-load (or hit the resolver cache for) the typed root node here rather than
+                // publishing a NodeType.Unknown placeholder. SetRootHash(_, resetObjects: true) is
+                // a cold rebind path (post-commit, root setter, ctor); the load almost always
+                // hits the resolver cache because we either just produced this root or are
+                // re-pointing at one the resolver was using a moment ago.
+                RootRef = _readResolver.GetOrLoadNode(in TreePath.Empty, _rootHash.ValueHash256);
             }
         }
 
