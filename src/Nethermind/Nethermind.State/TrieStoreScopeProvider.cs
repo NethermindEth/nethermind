@@ -116,10 +116,11 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             {
                 ParallelOptions parallelOptions = new() { CancellationToken = token };
 
-                // Phase 1 captures (account, storageRoot) per index so phase 2 can flatten the
-                // slot reads without re-checking each account.
-                Account?[] accounts = new Account?[accountCount];
-                Hash256[] storageRoots = new Hash256[accountCount];
+                // Phase 1 captures one shared StorageTree per account (when storage is non-empty)
+                // so phase 2 reuses them — flattening slot jobs without creating a fresh tree per
+                // slot. Workers from different addresses parallelise across distinct tree
+                // instances; workers reading the same address share its tree.
+                StorageTree?[] storageTrees = new StorageTree?[accountCount];
 
                 try
                 {
@@ -149,66 +150,61 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                         Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                         if (storageRoot == Keccak.EmptyTreeHash) return;
 
-                        accounts[i] = account;
-                        storageRoots[i] = storageRoot;
+                        storageTrees[i] = _scopeProvider.CreateStorageTree(address, storageRoot);
                     });
 
                     // Phase 2: flatten slot reads into one Parallel.For so a single huge account
                     // doesn't bottleneck the worker that owned it in phase 1.
-                    RunSinkSlotReads(accountChanges, accounts, storageRoots, sink, parallelOptions);
+                    RunSinkSlotReads(accountChanges, storageTrees, sink, parallelOptions);
                 }
                 catch (OperationCanceledException) { }
             }, token);
         }
 
-        private void RunSinkSlotReads(
+        private static void RunSinkSlotReads(
             AccountChanges[] accountChanges,
-            Account?[] accounts,
-            Hash256[] storageRoots,
+            StorageTree?[] storageTrees,
             IWorldStateScopeProvider.IAsyncBalReaderSink sink,
             ParallelOptions parallelOptions)
         {
             int totalSlots = 0;
             for (int i = 0; i < accountChanges.Length; i++)
             {
-                if (accounts[i] is null) continue;
+                if (storageTrees[i] is null) continue;
                 totalSlots += (accountChanges[i].StorageChangesOrNull?.Length ?? 0)
                            + (accountChanges[i].SortedStorageReadsOrNull?.Length ?? 0);
             }
 
             if (totalSlots == 0) return;
 
-            using ArrayPoolList<(Address Address, Hash256 StorageRoot, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
+            using ArrayPoolList<(StorageTree Tree, Address Address, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
             int idx = 0;
             for (int i = 0; i < accountChanges.Length; i++)
             {
-                if (accounts[i] is null) continue;
+                StorageTree? storageTree = storageTrees[i];
+                if (storageTree is null) continue;
                 AccountChanges ac = accountChanges[i];
                 Address address = ac.Address;
-                Hash256 storageRoot = storageRoots[i];
                 SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
                 UInt256[]? storageReads = ac.SortedStorageReadsOrNull;
                 if (storageChanges is not null)
                 {
                     foreach (SlotChanges slotChanges in storageChanges)
-                        jobs[idx++] = (address, storageRoot, slotChanges.Key);
+                        jobs[idx++] = (storageTree, address, slotChanges.Key);
                 }
                 if (storageReads is not null)
                 {
                     foreach (UInt256 readKey in storageReads)
-                        jobs[idx++] = (address, storageRoot, readKey);
+                        jobs[idx++] = (storageTree, address, readKey);
                 }
             }
 
-            // Each iteration owns its own StorageTree — StorageTree.Get mutates internal node
-            // caches as it traverses and is not thread-safe.
             Parallel.For(0, idx, parallelOptions, (j) =>
             {
-                (Address address, Hash256 storageRoot, UInt256 slot) = jobs[j];
+                (StorageTree tree, Address address, UInt256 slot) = jobs[j];
                 StorageCell cell = new(address, in slot);
                 if (!sink.StillNeeded(in cell)) return;
-                StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
-                sink.OnStorageRead(in cell, storageTree.Get(in slot));
+                sink.OnStorageRead(in cell, tree.Get(in slot));
             });
         }
 
