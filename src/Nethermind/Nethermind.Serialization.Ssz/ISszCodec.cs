@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz;
@@ -22,6 +23,13 @@ public interface ISszCodec<T> where T : ISszCodec<T>
 
     /// <summary>Decodes <paramref name="data"/> into <paramref name="value"/>.</summary>
     static abstract void Decode(ReadOnlySpan<byte> data, out T value);
+
+    /// <summary>
+    /// Decodes <paramref name="data"/> (typically from a <see cref="System.IO.Pipelines.PipeReader"/>)
+    /// into <paramref name="value"/>. Single-segment input is zero-copy; multi-segment input is
+    /// consolidated into a pooled buffer once before dispatching to the span overload.
+    /// </summary>
+    static abstract void Decode(ReadOnlySequence<byte> data, out T value);
 
     /// <summary>Decodes <paramref name="data"/> into <paramref name="values"/> as an array.</summary>
     static abstract void Decode(ReadOnlySpan<byte> data, out T[] values);

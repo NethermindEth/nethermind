@@ -407,7 +407,7 @@ public partial class EngineModuleTests
             blockHashes.Add(payload.BlockHash);
         }
 
-        ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2([
+        ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2([
             blockHashes.ElementAt(1),
             blockHashes.ElementAt(2),
             Hash256.Zero
@@ -431,7 +431,7 @@ public partial class EngineModuleTests
             await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
         }
 
-        ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByRangeV2(1, 6);
+        ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByRangeV2(1, 6);
 
         using (Assert.EnterMultipleScope())
         {

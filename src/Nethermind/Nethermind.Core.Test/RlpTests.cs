@@ -403,6 +403,21 @@ namespace Nethermind.Core.Test
             Assert.Throws<RlpLimitException>(() => { Rlp.ValueDecoderContext ctx = new(data); ctx.DecodeByteArray(); });
         }
 
+        [Test]
+        public void Encode_stream_with_null_items_produces_empty_list()
+        {
+            RlpStream stream = new(Rlp.OfEmptyList.Length);
+            TxDecoder.Instance.Encode(stream, (Transaction[]?)null);
+            Assert.That(stream.Data.ToArray(), Is.EqualTo(Rlp.OfEmptyList.Bytes));
+        }
+
+        [Test]
+        public void Encode_object_with_null_items_produces_empty_list()
+        {
+            Rlp result = AccountDecoder.Instance.Encode((Account[]?)null);
+            Assert.That(result, Is.EqualTo(Rlp.OfEmptyList));
+        }
+
         private static HashSet<long> LongValues()
         {
             const long minusBit = 1L << 63;
@@ -598,6 +613,33 @@ namespace Nethermind.Core.Test
             items.CopyTo(rlp.AsSpan(2));
 
             AssertItemCount(rlp, 3);
+        }
+
+        [TestCase(2, 56)]
+        [TestCase(2, 198)]
+        [TestCase(3, 256)]
+        [TestCase(3, 65535)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_List(int prefixLength, int contentLength)
+        {
+            byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
+        }
+
+        [TestCase(2, 56)]
+        [TestCase(2, 255)]
+        [TestCase(3, 256)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_String(int prefixLength, int contentLength)
+        {
+            byte[] data = Rlp.Encode(new byte[contentLength]).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+            Assert.That(ctx.Position, Is.EqualTo(prefixLength));
         }
 
         private static void AssertItemCount(byte[] rlp, int expected)
