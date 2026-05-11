@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -17,13 +18,20 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 /// the await returns immediately, so the caller re-checks state on the next iteration. Snapshotting
 /// after the check would lose that race.</para>
 /// </summary>
-public sealed class HeadBlockSignal
+public sealed class HeadBlockSignal : IDisposable
 {
+    private readonly IBlockTree _blockTree;
     private TaskCompletionSource _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public HeadBlockSignal(IBlockTree blockTree) => blockTree.NewHeadBlock += OnNewHead;
+    public HeadBlockSignal(IBlockTree blockTree)
+    {
+        _blockTree = blockTree;
+        _blockTree.NewHeadBlock += OnNewHead;
+    }
 
     public Task NextHeadTask => Volatile.Read(ref _tcs).Task;
+
+    public void Dispose() => _blockTree.NewHeadBlock -= OnNewHead;
 
     private void OnNewHead(object? sender, BlockEventArgs _)
     {
