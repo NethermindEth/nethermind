@@ -79,17 +79,14 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             }
         }
 
-        HintGet(index, value);
-
         return value!;
     }
 
-    // Note: VERY hot code.
-    // 90% of the read goes through prewarmer, not actually go through this class, meaning this method is called
-    // a lot. Setting the set slot have a measurable net negative impact on performance.
-    // Trying to set this value async through trie warmer proved to be hard to pull of and result in random invalid
-    // block.
-    public void HintGet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
+    // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
+    // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
+    // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
+    // path instead.
+    public void HintSet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
 
     private void WarmUpSlot(UInt256 index)
     {

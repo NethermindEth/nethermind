@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -11,13 +15,15 @@ public interface IBlockAccessListStore
 {
     void InsertFromBlock(Block block)
     {
+        Hash256 blockHash = block.Hash ?? ThrowMissingBlockHash(nameof(block));
+
         if (block.EncodedBlockAccessList is not null)
         {
-            Insert(block.Hash, block.EncodedBlockAccessList);
+            Insert(blockHash, block.EncodedBlockAccessList);
         }
         else if (block.BlockAccessList is not null)
         {
-            Insert(block.Hash, block.BlockAccessList);
+            Insert(blockHash, block.BlockAccessList);
         }
 
         // Release BAL data after persistence to prevent memory accumulation in block caches.
@@ -27,8 +33,14 @@ public interface IBlockAccessListStore
     }
 
     void Insert(Hash256 blockHash, byte[] bal);
+    void Insert(Hash256 blockHash, ReadOnlySpan<byte> bal);
     void Insert(Hash256 blockHash, BlockAccessList bal);
-    byte[]? GetRlp(Hash256 blockHash);
+    MemoryManager<byte>? GetRlp(Hash256 blockHash);
     BlockAccessList? Get(Hash256 blockHash);
+    bool Exists(Hash256 blockHash);
     void Delete(Hash256 blockHash);
+
+    [DoesNotReturn, StackTraceHidden]
+    private static Hash256 ThrowMissingBlockHash(string paramName) =>
+        throw new ArgumentException("Block hash is required to persist a block access list.", paramName);
 }

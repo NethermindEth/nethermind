@@ -57,6 +57,7 @@ public partial class EthRpcModuleTests
     private const string SecondaryTestAddress = "0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24";
     private const string BalanceOfCallData = "0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160";
     private const string CreateAccessListSender = "0x7f554713be84160fdf0178cc8df86f5aabd33397";
+    private const string ExpectedHeadTxRawAtIndex1 = "0xf85f020182520894942921b14f1b1c385cd7e0cc2ef7abe5598c8358018025a0e7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bda0575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb";
 
     private static readonly Address TestAccount = new(TestAccountAddress);
 
@@ -168,6 +169,28 @@ public partial class EthRpcModuleTests
         Transaction tx = null!;
         Assert.DoesNotThrow(() => tx = TxDecoder.Instance.Decode(txBytes, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm));
         Assert.That(tx.IsInMempoolForm());
+    }
+
+    [TestCaseSource(nameof(EthGetRawTransactionByBlockAndIndexCases))]
+    public async Task EthGetRawTransactionByBlockAndIndex(string method, string? blockOverride, string index, string expectedResult)
+    {
+        using Context ctx = await Context.Create();
+        string blockArg = blockOverride ?? ctx.Test.BlockTree.FindHeadBlock()!.Hash!.ToString();
+        string serialized = await ctx.Test.TestEthRpc(method, blockArg, index);
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{expectedResult},\"id\":67}}"));
+    }
+
+    private static IEnumerable<TestCaseData> EthGetRawTransactionByBlockAndIndexCases()
+    {
+        string raw = $"\"{ExpectedHeadTxRawAtIndex1}\"";
+        yield return new TestCaseData("eth_getRawTransactionByBlockHashAndIndex", (string?)null, "1", raw)
+            .SetName("ByHashValidIndex");
+        yield return new TestCaseData("eth_getRawTransactionByBlockNumberAndIndex", "latest", "1", raw)
+            .SetName("ByNumberValidIndex");
+        yield return new TestCaseData("eth_getRawTransactionByBlockHashAndIndex", (string?)null, "99", "null")
+            .SetName("IndexOutOfRange");
+        yield return new TestCaseData("eth_getRawTransactionByBlockNumberAndIndex", "0x9999999", "0", "null")
+            .SetName("BlockUnknown");
     }
 
 
@@ -898,6 +921,82 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
+    [TestCase(true, TestName = "ByHashGenesis")]
+    [TestCase(false, TestName = "ByNumberLatest")]
+    public async Task EthGetHeaderByX_WhenBlockExists_OmitsBodyFields(bool byHash)
+    {
+        using Context ctx = await Context.Create();
+        string method = byHash ? "eth_getHeaderByHash" : "eth_getHeaderByNumber";
+        string param = byHash ? ctx.Test.BlockTree.Genesis!.Hash!.ToString() : "latest";
+        string serialized = await ctx.Test.TestEthRpc(method, param);
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+
+        // Body-level fields must NOT appear in header response (Geth's RPCMarshalHeader excludes them).
+        result.ContainsKey("size").Should().BeFalse();
+        result.ContainsKey("transactions").Should().BeFalse();
+        result.ContainsKey("uncles").Should().BeFalse();
+        result.ContainsKey("totalDifficulty").Should().BeFalse();
+
+        // Core header fields must be present.
+        foreach (string field in new[] { "number", "hash", "parentHash", "nonce", "stateRoot", "transactionsRoot", "receiptsRoot", "logsBloom" })
+        {
+            result.ContainsKey(field).Should().BeTrue($"header response must include '{field}'");
+        }
+    }
+
+    [TestCase("eth_getHeaderByHash", "0x0000000000000000000000000000000000000000000000000000000000000000", TestName = "UnknownHash")]
+    [TestCase("eth_getHeaderByNumber", "0x9999999", TestName = "UnknownNumber")]
+    [TestCase("eth_getHeaderByNumber", "finalized", TestName = "FinalizedAbsent")]
+    [TestCase("eth_getHeaderByNumber", "safe", TestName = "SafeAbsent")]
+    public async Task EthGetHeaderByX_WhenBlockUnknown_ReturnsNull(string method, string blockParam)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc(method, blockParam);
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
+    }
+
+    [TestCase("hash")]
+    [TestCase("nonce")]
+    [TestCase("miner")]
+    public async Task EthGetHeaderByNumber_WhenPending_NilsTransientFields(string field)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "pending");
+        JToken json = JToken.Parse(serialized);
+        json["result"]![field]!.Type.Should().Be(JTokenType.Null);
+    }
+
+    [Test]
+    public async Task EthGetHeaderByHash_WhenAuraBlock_EmitsAuraFields()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain aura = ctx.AuraTest;
+        string serialized = await aura.TestEthRpc("eth_getHeaderByHash", aura.BlockTree.Genesis!.Hash!.ToString());
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+
+        // AuRa-specific fields must be present (proves the AuRa branch fired).
+        result.ContainsKey("signature").Should().BeTrue();
+        result.ContainsKey("step").Should().BeTrue();
+
+        // PoW nonce is declared with [JsonIgnoreCondition.Never] so it serializes as null on AuRa headers.
+        result["nonce"]!.Type.Should().Be(JTokenType.Null);
+
+        // PoW mixHash uses default null-omit semantics — absent or null, not a non-null value.
+        JToken? mixHashToken = result["mixHash"];
+        (mixHashToken is null || mixHashToken.Type == JTokenType.Null).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task EthGetHeaderByNumber_WhenEarliest_MatchesExpectedJson()
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "earliest");
+        // Same value set as the genesis row in Eth_get_block_by_number "earliest", minus
+        // size/totalDifficulty/transactions/uncles (header endpoint excludes body-level fields).
+        const string expected = "{\"jsonrpc\":\"2.0\",\"result\":{\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2167088a0f0de66028d2b728235af6d467108c1750c3e11a8f6e6cd60fddb0e4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"stateRoot\":\"0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f\",\"timestamp\":\"0xf4240\",\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\"},\"id\":67}";
+        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+    }
+
     [Test]
     public async Task Eth_protocol_version()
     {
@@ -1123,9 +1222,9 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
 
         if (postEip4844)
-            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"blobGasUsed\":\"0x3\",\"blobGasPrice\":\"0x2\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"blobGasUsed\":\"0x3\",\"blobGasPrice\":\"0x2\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"type\":\"0x0\"},\"id\":67}"));
         else
-            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
+            Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]},{\"removed\":false,\"logIndex\":\"0x1\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"type\":\"0x0\"},\"id\":67}"));
     }
 
 
@@ -1234,7 +1333,7 @@ public partial class EthRpcModuleTests
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
         string serialized = await ctx.Test.TestEthRpc("eth_getTransactionReceipt", tx.Hash!.ToString());
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"error\":\"error\",\"type\":\"0x0\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"transactionHash\":\"0xda6b4df2595675cbee0d4889f41c3d0790204e8ed1b8ad4cadaa45a7d50dace5\",\"transactionIndex\":\"0x2\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"cumulativeGasUsed\":\"0x3e8\",\"gasUsed\":\"0x64\",\"effectiveGasPrice\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"contractAddress\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"logs\":[{\"removed\":false,\"logIndex\":\"0x0\",\"transactionIndex\":\"0x2\",\"transactionHash\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\",\"blockHash\":\"0x017e667f4b8c174291d1543c466717566e206df1bfd6f30271055ddafdb18f72\",\"blockNumber\":\"0x2\",\"blockTimestamp\":\"0xa\",\"address\":\"0x0000000000000000000000000000000000000000\",\"data\":\"0x\",\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}],\"logsBloom\":\"0x00000000000000000080000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000800000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000\",\"root\":\"0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111\",\"type\":\"0x0\"},\"id\":67}"));
     }
 
     [Test]
@@ -1311,6 +1410,70 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_sendRawTransaction", "c0");
 
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
+    }
+
+    [TestCaseSource(nameof(SendRawTransactionSyncFailureCases))]
+    public async Task EthSendRawTransactionSync_WhenSubmitFailsOrTimesOut_ReturnsExpectedError(
+        string rawTxHex, string? timeoutMs, int expectedCode, string expectedMessageFragment)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = timeoutMs is null
+            ? await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex)
+            : await ctx.Test.TestEthRpc("eth_sendRawTransactionSync", rawTxHex, timeoutMs);
+
+        serialized.Should().Contain($"\"code\":{expectedCode}");
+        serialized.Should().Contain(expectedMessageFragment);
+    }
+
+    private static IEnumerable<TestCaseData> SendRawTransactionSyncFailureCases()
+    {
+        yield return new TestCaseData("c0", null, ErrorCodes.TransactionRejected, "Invalid RLP")
+            .SetName("InvalidRlp");
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(3)
+            .WithGasLimit(21_000)
+            .WithGasPrice(20.GWei)
+            .To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        yield return new TestCaseData(raw, "100", ErrorCodes.Timeout, "not included within 100ms")
+            .SetName("Timeout");
+    }
+
+    [Test]
+    public async Task EthSendRawTransactionSync_WhenAlreadyMined_FastPathReturnsReceipt()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithNonce(3)
+            .WithGasLimit(21_000)
+            .WithGasPrice(20.GWei)
+            .To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Hash256 txHash = tx.Hash!;
+        TxReceipt receipt = Build.A.Receipt
+            .WithBlockNumber(1)
+            .WithBlockHash(TestItem.KeccakA)
+            .WithTransactionHash(txHash)
+            .WithLogs([])
+            .TestObject;
+
+        ITxSender txSender = Substitute.For<ITxSender>();
+        txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns((txHash, AcceptTxResult.Accepted));
+
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetTxReceiptInfo(txHash)
+            .Returns((receipt, 0UL, new TxGasInfo(20.GWei, null, null), 0));
+
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockchainBridge(bridge).WithTxSender(txSender).Build();
+
+        string raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        string serialized = await test.TestEthRpc("eth_sendRawTransactionSync", raw);
+
+        serialized.Should().Contain($"\"transactionHash\":\"{txHash}\"");
+        serialized.Should().NotContain("\"error\":");
     }
 
     [Test]
