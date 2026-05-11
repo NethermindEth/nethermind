@@ -131,14 +131,14 @@ public sealed class SnapshotCatalog(IDb db)
             if (version != CurrentVersion)
                 throw new InvalidOperationException(
                     $"Persisted snapshot catalog version mismatch: on-disk v{version}, runtime expects v{CurrentVersion}. " +
-                    "The persisted_snapshots/ directory has an incompatible layout — wipe and resync.");
+                    "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
         }
         else if (meta is { Length: 4 })
         {
             // Length-4 metadata existed before the version word was introduced (pre-v2).
             throw new InvalidOperationException(
                 $"Persisted snapshot catalog is pre-v{CurrentVersion} (no version word). " +
-                "The persisted_snapshots/ directory has an incompatible layout — wipe and resync.");
+                "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
         }
 
         foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))

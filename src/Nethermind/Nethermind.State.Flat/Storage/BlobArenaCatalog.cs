@@ -124,13 +124,13 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
             if (version != CurrentVersion)
                 throw new InvalidOperationException(
                     $"Blob arena catalog version mismatch: on-disk v{version}, runtime expects v{CurrentVersion}. " +
-                    "The persisted_snapshots/ directory has an incompatible layout — wipe and resync.");
+                    "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
         }
         else if (meta is { Length: 4 })
         {
             throw new InvalidOperationException(
                 $"Blob arena catalog is pre-v{CurrentVersion} (no version word). " +
-                "The persisted_snapshots/ directory has an incompatible layout — wipe and resync.");
+                "The persisted_snapshot/ directory has an incompatible layout — wipe and resync.");
         }
 
         foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))
