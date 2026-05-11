@@ -31,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Evm.State;
 using Nethermind.Taiko.Config;
+using Nethermind.Taiko.ZkGas;
 using static Nethermind.Taiko.TaikoBlockValidator;
 
 namespace Nethermind.Taiko.Rpc;
@@ -105,7 +106,35 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
     private static readonly ResultWrapper<L1Origin?> L1OriginByBatchIdNullResult =
         ResultWrapper<L1Origin?>.Success(null);
 
+    /// <summary>
+    /// Cached null-result for <c>taikoAuth_last{Certain,}BlockIDByBatchID</c> when the resolved
+    /// block id sits below this network's last-Pacaya threshold. Geth and reth both report this
+    /// case as success+null rather than the "not found" error, so the driver does not mistake
+    /// the threshold gate for a transient miss.
+    /// </summary>
+    private static readonly ResultWrapper<UInt256?> BlockIdBatchLookupNullResult =
+        ResultWrapper<UInt256?>.Success(null);
+
+    /// <summary>
+    /// Resolved once at construction from <see cref="ISpecProvider.ChainId"/>. <c>null</c> on
+    /// networks with no last-Pacaya threshold (Devnet, Masaya, unknown). On Mainnet and Hoodi,
+    /// any resolved batch-lookup block id strictly less than this value is reported as null.
+    /// </summary>
+    private readonly UInt256? _batchLookupThreshold =
+        ZkGasSchedule.ResolveBatchLookupThreshold(specProvider.ChainId) is { } t
+            ? new UInt256(t)
+            : (UInt256?)null;
+
     private readonly ILogger _taikoLogger = logManager.GetClassLogger<TaikoEngineRpcModule>();
+
+    /// <summary>
+    /// Returns <c>true</c> when this network has a batch-lookup threshold and the resolved
+    /// block id sits strictly below it. Mirrors <c>batchLookupResultBelowThreshold</c> in
+    /// taiko-geth (PR #558) and <c>batch_lookup_result_below_last_pacaya_block_id</c> in
+    /// alethia-reth (PR #177).
+    /// </summary>
+    private bool IsBlockBelowBatchLookupThreshold(UInt256 blockId) =>
+        _batchLookupThreshold is { } threshold && blockId < threshold;
 
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, TaikoPayloadAttributes? payloadAttributes = null) => base.engine_forkchoiceUpdatedV1(forkchoiceState, payloadAttributes);
 
@@ -417,6 +446,9 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             }
         }
 
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return L1OriginByBatchIdNullResult;
+
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
         // Debug: a known block can lack its L1Origin record briefly between insertion and
         // the driver's taikoAuth_updateL1Origin writeback — expected, not a fault.
@@ -439,12 +471,17 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             }
         }
 
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return BlockIdBatchLookupNullResult;
+
         return ResultWrapper<UInt256?>.Success(blockId);
     }
 
     public ResultWrapper<UInt256?> taikoAuth_lastCertainBlockIDByBatchID(UInt256 batchId)
     {
         UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        if (blockId is { } b && IsBlockBelowBatchLookupThreshold(b))
+            return BlockIdBatchLookupNullResult;
         return ResultWrapper<UInt256?>.Success(blockId);
     }
 
@@ -453,8 +490,11 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
         if (blockId is null)
         {
-            return ResultWrapper<L1Origin?>.Success(null);
+            return L1OriginByBatchIdNullResult;
         }
+
+        if (IsBlockBelowBatchLookupThreshold(blockId.Value))
+            return L1OriginByBatchIdNullResult;
 
         L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
         return ResultWrapper<L1Origin?>.Success(origin);

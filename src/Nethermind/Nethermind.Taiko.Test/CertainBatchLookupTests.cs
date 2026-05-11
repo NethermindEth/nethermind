@@ -18,6 +18,7 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
+using Nethermind.Taiko.ZkGas;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -150,7 +151,108 @@ public class CertainBatchLookupTests
         Assert.That(result.Data, Is.Null);
     }
 
-    private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore) => new(
+    /// <summary>
+    /// Mirrors taiko-geth PR #558 TestBatchLookupMethodsReturnNilBelowNetworkThreshold and
+    /// alethia-reth PR #177 filters_batch_lookup_results_below_network_threshold. On Mainnet,
+    /// a batch whose resolved block id is strictly below the last-Pacaya block must report
+    /// JSON null on all four taikoAuth_last…ByBatchID methods, even when the underlying
+    /// batch-to-block and L1Origin records are present in the store.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_MainnetBelowThresholdReturnsNull()
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = ZkGasSchedule.TaikoMainnetLastPacayaBatchLookupBlock - 1;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        ResultWrapper<L1Origin?> lastL1Origin = rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result;
+        Assert.That(lastL1Origin.Result, Is.EqualTo(Result.Success));
+        Assert.That(lastL1Origin.Data, Is.Null);
+
+        ResultWrapper<UInt256?> lastBlockId = rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result;
+        Assert.That(lastBlockId.Result, Is.EqualTo(Result.Success));
+        Assert.That(lastBlockId.Data, Is.Null);
+
+        ResultWrapper<UInt256?> lastCertainBlockId = rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId);
+        Assert.That(lastCertainBlockId.Result, Is.EqualTo(Result.Success));
+        Assert.That(lastCertainBlockId.Data, Is.Null);
+
+        ResultWrapper<L1Origin?> lastCertainL1Origin = rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId);
+        Assert.That(lastCertainL1Origin.Result, Is.EqualTo(Result.Success));
+        Assert.That(lastCertainL1Origin.Data, Is.Null);
+    }
+
+    /// <summary>
+    /// The threshold is the *first* allowed block id (per taiko-geth's <c>blockID.Cmp(threshold) &lt; 0</c>
+    /// and alethia-reth's <c>block_number &lt; threshold</c>). A batch resolving to exactly the
+    /// threshold value must pass through unchanged on every method.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_MainnetAtThresholdReturnsValue()
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = ZkGasSchedule.TaikoMainnetLastPacayaBatchLookupBlock;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Not.Null);
+        Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.EqualTo(blockId));
+        Assert.That(rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId).Data, Is.EqualTo(blockId));
+        Assert.That(rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId).Data, Is.Not.Null);
+    }
+
+    /// <summary>
+    /// Hoodi has its own last-Pacaya threshold (3_951_005). Same gate, different value.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_HoodiBelowThresholdReturnsNull()
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoHoodiChainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = ZkGasSchedule.TaikoHoodiLastPacayaBatchLookupBlock - 1;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Null);
+        Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
+        Assert.That(rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId).Data, Is.Null);
+        Assert.That(rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId).Data, Is.Null);
+    }
+
+    /// <summary>
+    /// Devnet and Masaya have no threshold (geth: <c>threshold == 0</c>; reth: <c>None</c>).
+    /// Any block id, including ones well below the Mainnet/Hoodi thresholds, must pass through.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_DevnetIsUnfiltered()
+    {
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoDevnetChainId);
+        UInt256 batchId = 1;
+        UInt256 blockId = 1;
+        L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, origin);
+
+        Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Not.Null);
+        Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.EqualTo(blockId));
+        Assert.That(rpc.taikoAuth_lastCertainBlockIDByBatchID(batchId).Data, Is.EqualTo(blockId));
+        Assert.That(rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId).Data, Is.Not.Null);
+    }
+
+    private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore, ulong chainId = 0)
+    {
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.ChainId.Returns(chainId);
+        return CreateRpcModuleInternal(l1OriginStore, specProvider);
+    }
+
+    private static TaikoEngineRpcModule CreateRpcModuleInternal(IL1OriginStore l1OriginStore, ISpecProvider specProvider) => new(
         Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
         Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
         Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
@@ -168,7 +270,7 @@ public class CertainBatchLookupTests
         Substitute.For<IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>>>(),
         Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
         Substitute.For<IEngineRequestsTracker>(),
-        Substitute.For<ISpecProvider>(),
+        specProvider,
         null!,
         Substitute.For<ILogManager>(),
         Substitute.For<ITxPool>(),
