@@ -54,18 +54,22 @@ public static class ZkGasSchedule
         chainId == TaikoMasayaChainId ? MasayaBlockZkGasLimit : BlockZkGasLimit;
 
     /// <summary>
-    /// Mainnet block number of the last Pacaya block accepted by batch lookup RPCs.
-    /// Resolved batch lookup results strictly below this value are reported to the
-    /// driver as JSON null. Sourced from taiko-geth PR #558 and alethia-reth PR #177.
+    /// Mainnet batch-lookup threshold: the first allowed block id (first Shasta block).
+    /// Resolved batch lookup results <em>strictly less than</em> this value are reported
+    /// to the driver as JSON null; the value itself passes through unchanged. Sourced
+    /// from taiko-geth PR #558 and alethia-reth PR #177. Named for the comparison
+    /// semantics rather than the upstream "last Pacaya" label, which is inverted
+    /// relative to the strict-<c>&lt;</c> operator.
     /// </summary>
-    public const ulong TaikoMainnetLastPacayaBatchLookupBlock = 4_990_434;
+    public const ulong TaikoMainnetBatchLookupThreshold = 4_990_434;
 
     /// <summary>
-    /// Hoodi block number of the last Pacaya block accepted by batch lookup RPCs.
-    /// Resolved batch lookup results strictly below this value are reported to the
-    /// driver as JSON null. Sourced from taiko-geth PR #558 and alethia-reth PR #177.
+    /// Hoodi batch-lookup threshold: the first allowed block id (first Shasta block).
+    /// Resolved batch lookup results <em>strictly less than</em> this value are reported
+    /// to the driver as JSON null; the value itself passes through unchanged. Sourced
+    /// from taiko-geth PR #558 and alethia-reth PR #177.
     /// </summary>
-    public const ulong TaikoHoodiLastPacayaBatchLookupBlock = 3_951_005;
+    public const ulong TaikoHoodiBatchLookupThreshold = 3_951_005;
 
     /// <summary>
     /// Returns the per-network minimum block id for batch lookup RPC results, or
@@ -78,8 +82,8 @@ public static class ZkGasSchedule
     /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
     public static ulong? ResolveBatchLookupThreshold(ulong chainId) => chainId switch
     {
-        TaikoMainnetChainId => TaikoMainnetLastPacayaBatchLookupBlock,
-        TaikoHoodiChainId => TaikoHoodiLastPacayaBatchLookupBlock,
+        TaikoMainnetChainId => TaikoMainnetBatchLookupThreshold,
+        TaikoHoodiChainId => TaikoHoodiBatchLookupThreshold,
         _ => null,
     };
 

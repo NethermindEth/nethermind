@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -16,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Taiko;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.ZkGas;
@@ -163,7 +165,7 @@ public class CertainBatchLookupTests
     {
         TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId);
         UInt256 batchId = 1;
-        UInt256 blockId = ZkGasSchedule.TaikoMainnetLastPacayaBatchLookupBlock - 1;
+        UInt256 blockId = ZkGasSchedule.TaikoMainnetBatchLookupThreshold - 1;
         L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
         _store.WriteBatchToLastBlockID(batchId, blockId);
         _store.WriteL1Origin(blockId, origin);
@@ -195,7 +197,7 @@ public class CertainBatchLookupTests
     {
         TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId);
         UInt256 batchId = 1;
-        UInt256 blockId = ZkGasSchedule.TaikoMainnetLastPacayaBatchLookupBlock;
+        UInt256 blockId = ZkGasSchedule.TaikoMainnetBatchLookupThreshold;
         L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
         _store.WriteBatchToLastBlockID(batchId, blockId);
         _store.WriteL1Origin(blockId, origin);
@@ -214,7 +216,7 @@ public class CertainBatchLookupTests
     {
         TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoHoodiChainId);
         UInt256 batchId = 1;
-        UInt256 blockId = ZkGasSchedule.TaikoHoodiLastPacayaBatchLookupBlock - 1;
+        UInt256 blockId = ZkGasSchedule.TaikoHoodiBatchLookupThreshold - 1;
         L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
         _store.WriteBatchToLastBlockID(batchId, blockId);
         _store.WriteL1Origin(blockId, origin);
@@ -229,10 +231,11 @@ public class CertainBatchLookupTests
     /// Devnet and Masaya have no threshold (geth: <c>threshold == 0</c>; reth: <c>None</c>).
     /// Any block id, including ones well below the Mainnet/Hoodi thresholds, must pass through.
     /// </summary>
-    [Test]
-    public void TestBatchLookup_DevnetIsUnfiltered()
+    [TestCase(ZkGasSchedule.TaikoDevnetChainId)]
+    [TestCase(ZkGasSchedule.TaikoMasayaChainId)]
+    public void TestBatchLookup_UnfilteredNetworks(ulong chainId)
     {
-        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoDevnetChainId);
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, chainId);
         UInt256 batchId = 1;
         UInt256 blockId = 1;
         L1Origin origin = new(blockId, Hash256.Zero, 3, Hash256.Zero, null);
@@ -245,14 +248,60 @@ public class CertainBatchLookupTests
         Assert.That(rpc.taikoAuth_lastCertainL1OriginByBatchID(batchId).Data, Is.Not.Null);
     }
 
-    private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore, ulong chainId = 0)
+    /// <summary>
+    /// Exercises the chain-scan fallback in <c>taikoAuth_lastL1OriginByBatchID</c> /
+    /// <c>taikoAuth_lastBlockIDByBatchID</c>: with no batch→block mapping in the DB, the
+    /// scan walks <c>blockFinder.Head</c> backwards, decodes the Shasta proposalId from
+    /// the header's ExtraData, and returns the block number on match. The threshold gate
+    /// must then fire on the scan-returned block id, not just on the DB-cached one. This
+    /// is a regression guard against future refactors that could reorder the gate vs.
+    /// the scan branch in <c>TaikoEngineRpcModule</c>.
+    /// </summary>
+    [Test]
+    public void TestBatchLookup_MainnetScanPathBelowThresholdReturnsNull()
+    {
+        UInt256 batchId = 1;
+        long blockNumber = (long)(ZkGasSchedule.TaikoMainnetBatchLookupThreshold - 1);
+
+        // Shasta extraData layout: [basefeeSharingPctg=0][proposalId=batchId, 6 bytes big-endian].
+        byte[] extraData = new byte[TaikoHeaderHelper.ShastaExtraDataLen];
+        extraData[TaikoHeaderHelper.ShastaExtraDataLen - 1] = 1;
+
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(blockNumber)
+            .WithExtraData(extraData)
+            .TestObject;
+        Transaction anchorTx = Build.A.Transaction
+            .WithData(TaikoBlockValidator.AnchorV4Selector)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithHeader(header)
+            .WithTransactions(anchorTx)
+            .TestObject;
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(block);
+
+        // Write the L1Origin so a missing gate would yield a non-null Data on lastL1OriginByBatchID,
+        // proving the gate (not a missing record) is what produces the null result.
+        UInt256 blockId = (UInt256)(ulong)blockNumber;
+        _store.WriteL1Origin(blockId, new L1Origin(blockId, Hash256.Zero, 3, Hash256.Zero, null));
+        // Deliberately do NOT WriteBatchToLastBlockID — forces the scan fallback.
+
+        TaikoEngineRpcModule rpc = CreateRpcModule(_store, ZkGasSchedule.TaikoMainnetChainId, blockFinder);
+
+        Assert.That(rpc.taikoAuth_lastL1OriginByBatchID(batchId).Result.Data, Is.Null);
+        Assert.That(rpc.taikoAuth_lastBlockIDByBatchID(batchId).Result.Data, Is.Null);
+    }
+
+    private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore, ulong chainId = 0, IBlockFinder? blockFinder = null)
     {
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(chainId);
-        return CreateRpcModuleInternal(l1OriginStore, specProvider);
+        return CreateRpcModuleInternal(l1OriginStore, specProvider, blockFinder);
     }
 
-    private static TaikoEngineRpcModule CreateRpcModuleInternal(IL1OriginStore l1OriginStore, ISpecProvider specProvider) => new(
+    private static TaikoEngineRpcModule CreateRpcModuleInternal(IL1OriginStore l1OriginStore, ISpecProvider specProvider, IBlockFinder? blockFinder) => new(
         Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
         Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
         Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
@@ -274,7 +323,7 @@ public class CertainBatchLookupTests
         null!,
         Substitute.For<ILogManager>(),
         Substitute.For<ITxPool>(),
-        Substitute.For<IBlockFinder>(),
+        blockFinder ?? Substitute.For<IBlockFinder>(),
         Substitute.For<IShareableTxProcessorSource>(),
         Substitute.For<IRlpStreamEncoder<Transaction>>(),
         l1OriginStore,
