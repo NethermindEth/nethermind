@@ -13,6 +13,12 @@ namespace Nethermind.Blockchain.Tracing;
 /// Captures the world state root after each transaction in a block.
 /// Mirrors geth's <c>debug_intermediateRoots</c> behaviour.
 /// </summary>
+/// <remarks>
+/// Roots are produced per transaction in execution order; a failed transaction still
+/// produces its post-execution root (matching geth's partial-result semantics).
+/// System-level calls (EIP-4788, EIP-2935) and withdrawals do not produce entries
+/// because <see cref="BlockTracerBase{TTrace,TTracer}"/> only dispatches on user transactions.
+/// </remarks>
 public class IntermediateRootsBlockTracer(IWorldState worldState)
     : BlockTracerBase<Hash256, IntermediateRootsBlockTracer.IntermediateRootsTxTracer>
 {
@@ -24,7 +30,7 @@ public class IntermediateRootsBlockTracer(IWorldState worldState)
     {
         public override bool IsTracingReceipt => true;
 
-        public Hash256 StateRoot { get; private set; } = Keccak.Zero;
+        public Hash256 StateRoot { get; private set; }
 
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
             Capture(stateRoot);
