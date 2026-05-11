@@ -370,7 +370,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Block blockToExecute = block;
             if (specOverride is not null)
             {
-                BlockHeader adjustedHeader = AdjustHeaderForSpec(block.Header, baseBlock, block, specOverride);
+                BlockHeader adjustedHeader = AdjustHeaderForSpec(block.Header, baseBlock, specOverride);
                 blockToExecute = block.WithReplacedHeader(adjustedHeader);
             }
 
@@ -383,7 +383,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return tracer.BuildResult();
         }
 
-        private static BlockHeader AdjustHeaderForSpec(BlockHeader header, BlockHeader parentHeader, Block block, IReleaseSpec spec)
+        private static BlockHeader AdjustHeaderForSpec(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
         {
             BlockHeader adjusted = header.Clone();
 
