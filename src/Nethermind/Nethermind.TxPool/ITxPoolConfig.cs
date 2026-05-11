@@ -20,6 +20,16 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(Description = "The blobs support mode.", DefaultValue = nameof(BlobsSupportMode.StorageWithReorgs))]
     BlobsSupportMode BlobsSupport { get; set; }
 
+    [ConfigItem(
+        DefaultValue = nameof(SparseBlobPoolMode.Auto),
+        Description = "The local sparse blob pool behaviour used for eth/72 blob transaction announcements. `Auto` makes the EIP-8070 deterministic per-transaction provider-or-sampler decision for normal nodes, and `Supernode` requests every announced cell.")]
+    SparseBlobPoolMode SparseBlobPoolMode { get; set; }
+
+    [ConfigItem(
+        DefaultValue = "1500",
+        Description = "The EIP-8070 full-provider selection probability used by `SparseBlobPoolMode.Auto`, in basis points. The default value `1500` is 15%. Values are clamped to the inclusive range `0..10000`.")]
+    int SparseBlobProviderProbabilityBasisPoints { get; set; }
+
     [ConfigItem(DefaultValue = "16384", Description = "The max number of full blob transactions stored in the database (increasing the number of transactions in the blob pool also results in higher memory usage). The default value uses max 13GB for 6 blobs where one blob is 2GB (16386 * 128KB).")]
     int PersistentBlobStorageSize { get; set; }
 

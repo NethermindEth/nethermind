@@ -33,8 +33,10 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
     private readonly ConcurrentDictionary<PublicKey, ISparseBlobPoolPeer> _peers = new();
     private readonly ConcurrentDictionary<ValueHash256, TrackedSparseBlobTx> _transactions = new();
     private readonly ConcurrentQueue<ValueHash256> _transactionOrder = new();
+    private readonly Lock _custodyLock = new();
     private readonly TimeSpan _saturationTimeout;
     private readonly TimeSpan _maxAdmissionDelay;
+    private BlobCellMask _custodyMask;
 
     public SparseBlobPoolPeerRegistry(
         ITxPool txPool,
@@ -107,6 +109,74 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         }
 
         return peer.TrySendGetCells(hash, requestMask);
+    }
+
+    public int RequestCellsForCustodyChange(BlobCellMask newCustodyMask)
+    {
+        BlobCellMask requestDelta;
+        lock (_custodyLock)
+        {
+            requestDelta = new BlobCellMask(newCustodyMask.Value & ~_custodyMask.Value);
+            _custodyMask = newCustodyMask;
+        }
+
+        if (requestDelta.IsEmpty)
+        {
+            return 0;
+        }
+
+        int requests = 0;
+        foreach (KeyValuePair<ValueHash256, TrackedSparseBlobTx> entry in _transactions)
+        {
+            Hash256 hash = entry.Key.ToHash256();
+            BlobCellMask requestMask = GetMissingCustodyMask(hash, requestDelta);
+            if (requestMask.IsEmpty)
+            {
+                continue;
+            }
+
+            if (TryRequestCells(hash, requestMask, NoPreferredPeer))
+            {
+                requests++;
+            }
+        }
+
+        return requests;
+    }
+
+    public bool HasRecordedTransaction(Hash256 hash)
+    {
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            return false;
+        }
+
+        lock (state.Lock)
+        {
+            return state.Transaction is not null;
+        }
+    }
+
+    public int GetFullProviderAnnouncementCount(Hash256 hash)
+    {
+        if (!_transactions.TryGetValue(hash.ValueHash256, out TrackedSparseBlobTx? state))
+        {
+            return 0;
+        }
+
+        int count = 0;
+        lock (state.Lock)
+        {
+            foreach (BlobCellMask mask in state.Announcements.Values)
+            {
+                if (mask.IsFull)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
     }
 
     public AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction)
@@ -483,15 +553,17 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
             }
         }
 
-        if (!TryRemoveState(hash, state))
+        if (submitted)
         {
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Keeping sparse blob transaction {hash} after saturation timeout with {providers} independent provider announcements.");
+            }
+
             return;
         }
 
-        if (submitted && _logger.IsDebug)
-        {
-            _logger.Debug($"Keeping sparse blob transaction {hash} after saturation timeout with {providers} independent provider announcements.");
-        }
+        TryRemoveState(hash, state);
     }
 
     private bool HasFullLocalBlobTransaction(Hash256 hash)
@@ -499,6 +571,16 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
             && blobTx is not null
             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             && wrapper.GetAvailableCellMask().IsFull;
+
+    private BlobCellMask GetMissingCustodyMask(Hash256 hash, BlobCellMask requestDelta)
+    {
+        if (_txPool.TryGetBlobCells(hash, requestDelta, out BlobCellMask availableMask, out _))
+        {
+            return new BlobCellMask(requestDelta.Value & ~availableMask.Value);
+        }
+
+        return requestDelta;
+    }
 
     private bool TryRemoveState(Hash256 hash, TrackedSparseBlobTx state)
         => ((ICollection<KeyValuePair<ValueHash256, TrackedSparseBlobTx>>)_transactions)

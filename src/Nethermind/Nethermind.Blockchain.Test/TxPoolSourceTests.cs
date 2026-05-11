@@ -18,9 +18,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
-using FluentAssertions;
 
 namespace Nethermind.Consensus.Producers.Test;
 
@@ -120,7 +120,7 @@ public class TxPoolSourceTests
         IComparer<Transaction> comparer = transactionComparerProvider.GetDefaultProducerComparer(
             new BlockPreparationContext(UInt256.Zero, 1));
         int compareResult = comparer.Compare(highPriorityBlobTx, lowerPriorityRegularTx);
-        compareResult.Should().Be(TxComparisonResult.XFirst, "Higher priority transaction should compare as XFirst (negative)");
+        Assert.That(compareResult, Is.EqualTo(TxComparisonResult.XFirst), "Higher priority transaction should compare as XFirst (negative)");
 
         // Setup mocks
         ITxPool txPool = Substitute.For<ITxPool>();
@@ -148,6 +148,87 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
-        result.Should().BeEquivalentTo([highPriorityBlobTx, lowerPriorityRegularTx], o => o.WithStrictOrdering());
+        Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }));
+    }
+
+    [Test]
+    public void GetTransactions_should_skip_sampled_blob_txs_with_conservative_policy()
+    {
+        Transaction sparseBlobTx = CreateSparseBlobTransaction();
+
+        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx, BlobInclusionPolicy.Conservative);
+
+        Assert.That(result, Is.Empty);
+    }
+
+    [TestCase(BlobInclusionPolicy.Optimistic)]
+    [TestCase(BlobInclusionPolicy.Proactive)]
+    public void GetTransactions_should_include_sampled_blob_txs_with_non_conservative_policy(BlobInclusionPolicy policy)
+    {
+        Transaction sparseBlobTx = CreateSparseBlobTransaction();
+
+        Transaction[] result = SelectSingleBlobTransaction(sparseBlobTx, policy);
+
+        Assert.That(result, Is.EqualTo(new[] { sparseBlobTx }));
+    }
+
+    private static Transaction[] SelectSingleBlobTransaction(Transaction blobTx, BlobInclusionPolicy policy)
+    {
+        TestSingleReleaseSpecProvider specProvider = new(Osaka.Instance);
+        TransactionComparerProvider transactionComparerProvider = new(specProvider, Build.A.BlockTree().TestObject);
+        ITxPool txPool = Substitute.For<ITxPool>();
+        txPool.GetPendingTransactionsBySender().Returns(new Dictionary<AddressAsKey, Transaction[]>());
+        txPool.GetPendingLightBlobTransactionsBySender()
+            .Returns(new Dictionary<AddressAsKey, Transaction[]> { { TestItem.AddressA, [blobTx] } });
+        txPool.TryGetPendingBlobTransaction(blobTx.Hash!, out Arg.Any<Transaction?>())
+            .Returns(x =>
+            {
+                x[1] = blobTx;
+                return true;
+            });
+
+        ITxFilterPipeline txFilterPipeline = Substitute.For<ITxFilterPipeline>();
+        txFilterPipeline.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>()).Returns(true);
+
+        TxPoolTxSource txSource = new(
+            txPool,
+            specProvider,
+            transactionComparerProvider,
+            LimboLogs.Instance,
+            txFilterPipeline,
+            new BlocksConfig { SecondsPerSlot = 12, BlobInclusionPolicy = policy });
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        return txSource.GetTransactions(parent, long.MaxValue).ToArray();
+    }
+
+    private static Transaction CreateSparseBlobTransaction()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithSenderAddress(TestItem.AddressA)
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithMaxFeePerGas(1000.GWei)
+            .WithMaxPriorityFeePerGas(500.GWei)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4, 9]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+
+        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
+        for (int i = 0; i < emptyBlobs.Length; i++)
+        {
+            emptyBlobs[i] = [];
+        }
+
+        tx.NetworkWrapper = wrapper with
+        {
+            Blobs = emptyBlobs,
+            CellMask = cellMask,
+            Cells = cells
+        };
+        tx.ClearLengthCache();
+        return tx;
     }
 }

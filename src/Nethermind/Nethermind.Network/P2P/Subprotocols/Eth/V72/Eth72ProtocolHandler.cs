@@ -52,7 +52,8 @@ public class Eth72ProtocolHandler(
     : Eth71ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), IStaticProtocolInfo
     , ISparseBlobPoolPeer
 {
-    private const int ProviderThresholdBasisPoints = 1500;
+    private const int MaxBasisPoints = 10_000;
+    private const int MinSamplerFullProviderAnnouncements = 2;
     private const int RequestToAnnouncementRatioThreshold = 5;
     private const int MinCellRequestsBeforeRatioDisconnect = 5;
     private const int MaxPendingCellRequests = 4096;
@@ -60,6 +61,8 @@ public class Eth72ProtocolHandler(
     private const int MaxPendingCells = 64;
     private static readonly TimeSpan RequestToAnnouncementWarmup = TimeSpan.FromSeconds(60);
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
+    private readonly SparseBlobPoolMode _sparseBlobPoolMode = txPoolConfig.SparseBlobPoolMode;
+    private readonly int _providerThresholdBasisPoints = Math.Clamp(txPoolConfig.SparseBlobProviderProbabilityBasisPoints, 0, MaxBasisPoints);
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
     private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
@@ -91,6 +94,7 @@ public class Eth72ProtocolHandler(
     {
         _sparseBlobPoolPeerRegistry.AddPeer(this);
         _txPool.NewPending += OnNewPending;
+        _blobCustodyTracker.CustodyChanged += OnBlobCustodyChanged;
         base.Init();
     }
 
@@ -219,6 +223,7 @@ public class Eth72ProtocolHandler(
     protected override void OnDisposed()
     {
         _txPool.NewPending -= OnNewPending;
+        _blobCustodyTracker.CustodyChanged -= OnBlobCustodyChanged;
         _sparseBlobPoolPeerRegistry.RemovePeer(Id);
         base.OnDisposed();
     }
@@ -498,12 +503,18 @@ public class Eth72ProtocolHandler(
             && _pendingCellRequests.TryGetValue(key, out CellRequestState pendingRequestState)
             && !pendingRequestState.Mask.IsEmpty)
         {
-            SendGetCells(tx.Hash, pendingRequestState.Mask);
+            TryRequestPendingCells(tx.Hash);
         }
     }
 
     private void RequestCellsWhenReady(Hash256 hash, BlobCellMask requestMask)
     {
+        if (!CanRequestCellsNow(hash, requestMask))
+        {
+            AddPendingCellRequest(hash.ValueHash256, requestMask);
+            return;
+        }
+
         if (_sparseBlobPoolPeerRegistry.TryRequestCells(hash, requestMask, Id))
         {
             return;
@@ -767,6 +778,14 @@ public class Eth72ProtocolHandler(
         }
     }
 
+    private void RemovePendingCellRequest(ValueHash256 hash)
+    {
+        lock (_cellStateLock)
+        {
+            _pendingCellRequests.TryRemove(hash, out _);
+        }
+    }
+
     private void RemovePendingCells(ValueHash256 hash)
     {
         lock (_cellStateLock)
@@ -866,6 +885,11 @@ public class Eth72ProtocolHandler(
                 Logger.Trace($"{Node:c} sent sparse blob tx {tx.Hash} and it was {accepted.Value} (chain ID = {tx.Signature?.ChainId})");
             }
         }
+
+        if (tx.Hash is not null)
+        {
+            TryRequestPendingCells(tx.Hash);
+        }
     }
 
     private BlobCellMask GetRequestMask(Hash256 hash, BlobCellMask announcementMask)
@@ -875,11 +899,23 @@ public class Eth72ProtocolHandler(
             return BlobCellMask.Empty;
         }
 
+        return _sparseBlobPoolMode is SparseBlobPoolMode.Supernode
+            ? announcementMask
+            : GetAutoRequestMask(hash, announcementMask);
+    }
+
+    private BlobCellMask GetAutoRequestMask(Hash256 hash, BlobCellMask announcementMask)
+    {
         if (ShouldFetchFull(hash) && announcementMask.IsFull)
         {
             return BlobCellMask.Full;
         }
 
+        return GetSamplerRequestMask(hash, announcementMask);
+    }
+
+    private BlobCellMask GetSamplerRequestMask(Hash256 hash, BlobCellMask announcementMask)
+    {
         BlobCellMask mask = _blobCustodyTracker.CurrentMask & announcementMask;
         if (announcementMask.IsFull)
         {
@@ -891,12 +927,63 @@ public class Eth72ProtocolHandler(
 
     private bool ShouldFetchFull(Hash256 hash)
     {
+        if (_providerThresholdBasisPoints <= 0)
+        {
+            return false;
+        }
+
+        if (_providerThresholdBasisPoints >= MaxBasisPoints)
+        {
+            return true;
+        }
+
         Span<byte> input = stackalloc byte[PublicKey.LengthInBytes + 32];
         _localNodeId.Bytes.CopyTo(input);
         hash.Bytes.CopyTo(input[PublicKey.LengthInBytes..]);
         Hash256 sampleHash = Keccak.Compute(input);
         ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..2]);
-        return sample % 10_000 < ProviderThresholdBasisPoints;
+        return sample % MaxBasisPoints < _providerThresholdBasisPoints;
+    }
+
+    private bool CanRequestCellsNow(Hash256 hash, BlobCellMask requestMask)
+    {
+        if (_sparseBlobPoolMode is SparseBlobPoolMode.Supernode || requestMask.IsFull)
+        {
+            return true;
+        }
+
+        bool hasTransaction = _sparseBlobPoolPeerRegistry.HasRecordedTransaction(hash)
+            || _txPool.TryGetPendingBlobTransaction(hash, out _);
+        return hasTransaction
+            && _sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash) >= MinSamplerFullProviderAnnouncements;
+    }
+
+    private bool TryRequestPendingCells(Hash256 hash)
+    {
+        ValueHash256 key = hash.ValueHash256;
+        if (!_pendingCellRequests.TryGetValue(key, out CellRequestState pendingRequestState)
+            || pendingRequestState.Mask.IsEmpty
+            || !CanRequestCellsNow(hash, pendingRequestState.Mask))
+        {
+            return false;
+        }
+
+        if (!_sparseBlobPoolPeerRegistry.TryRequestCells(hash, pendingRequestState.Mask, Id))
+        {
+            return false;
+        }
+
+        RemovePendingCellRequest(key);
+        return true;
+    }
+
+    private void OnBlobCustodyChanged(object? sender, BlobCellMask custodyMask)
+    {
+        int requests = _sparseBlobPoolPeerRegistry.RequestCellsForCustodyChange(custodyMask);
+        if (requests != 0 && Logger.IsDebug)
+        {
+            Logger.Debug($"{Node:c} scheduled {requests} sparse blob custody delta cell requests for mask {custodyMask}.");
+        }
     }
 
     private BlobCellMask SelectExtraCellMask(Hash256 hash, BlobCellMask announcementMask, BlobCellMask alreadyRequested)

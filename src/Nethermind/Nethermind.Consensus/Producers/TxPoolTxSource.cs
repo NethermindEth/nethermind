@@ -124,15 +124,47 @@ namespace Nethermind.Consensus.Producers
                     return false;
                 }
 
-                if (!wrapper.HasFullBlobs() || wrapper.Blobs.Length != blobTx.BlobVersionedHashes.Length)
+                int blobCount = blobTx.BlobVersionedHashes?.Length ?? 0;
+                if (blobCount == 0)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
+                    return false;
+                }
+
+                if (wrapper.HasFullBlobs())
+                {
+                    if (wrapper.Blobs.Length != blobCount)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
+                        return false;
+                    }
+
+                    return true;
+                }
+
+                if (blocksConfig.BlobInclusionPolicy is BlobInclusionPolicy.Conservative)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, blob data is only sampled locally.");
+                    return false;
+                }
+
+                if (!HasSampledBlobCells(wrapper, blobCount))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, sampled blob cells are incomplete.");
                     return false;
                 }
 
                 return true;
             }
         }
+
+        private static bool HasSampledBlobCells(ShardBlobNetworkWrapper wrapper, int blobCount)
+            => wrapper.Version is ProofVersion.V1
+                && !wrapper.CellMask.IsEmpty
+                && wrapper.Cells is not null
+                && wrapper.Cells.Length == blobCount * wrapper.CellMask.Count
+                && wrapper.Commitments.Length == blobCount
+                && wrapper.Proofs.Length >= blobCount * BlobCellMask.CellCount;
 
         private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
         {

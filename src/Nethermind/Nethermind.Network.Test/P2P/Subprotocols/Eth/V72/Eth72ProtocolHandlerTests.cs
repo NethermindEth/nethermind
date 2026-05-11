@@ -80,6 +80,8 @@ public class Eth72ProtocolHandlerTests
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _txPoolConfig = Substitute.For<ITxPoolConfig>();
         _txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
+        _txPoolConfig.SparseBlobPoolMode.Returns(SparseBlobPoolMode.Auto);
+        _txPoolConfig.SparseBlobProviderProbabilityBasisPoints.Returns(1_500);
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
         _syncManager.Genesis.Returns(_genesisBlock.Header);
@@ -218,13 +220,14 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_request_blob_cells_asynchronously_after_announcement()
     {
+        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 10_000);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
             .SignedAndResolved()
             .TestObject;
 
-        BlobCellMask announcementMask = BlobCellMask.FromIndices([2, 7]);
+        BlobCellMask announcementMask = BlobCellMask.Full;
         _blobCustodyTracker.Update(announcementMask);
 
         Hash256 hash = tx.Hash!;
@@ -261,6 +264,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_use_canonical_cell_request_code_for_geth_peer()
     {
+        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 10_000);
         _session.Node!.ClientId = "Geth/v1.16.0-unstable/windows-amd64/go1.24.2";
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -268,7 +272,7 @@ public class Eth72ProtocolHandlerTests
             .SignedAndResolved()
             .TestObject;
 
-        BlobCellMask announcementMask = BlobCellMask.FromIndices([2, 7]);
+        BlobCellMask announcementMask = BlobCellMask.Full;
         _blobCustodyTracker.Update(announcementMask);
         Hash256 hash = tx.Hash!;
         _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
@@ -287,6 +291,98 @@ public class Eth72ProtocolHandlerTests
             m.Hashes.Length == 1 &&
             m.PacketType == Eth72MessageCode.GetCells &&
             m.Hashes[0] == hash &&
+            m.CellMask.SequenceEqual(announcementMask.ToBytes())));
+    }
+
+    [Test]
+    public void auto_mode_should_wait_for_transaction_and_two_provider_announcements_before_sampled_request()
+    {
+        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 0);
+        Transaction tx = BuildSparseBlobTransaction(out _, out _);
+
+        Hash256 hash = tx.Hash!;
+        BlobCellMask requestMask = BlobCellMask.FromIndices([2, 7]);
+        _blobCustodyTracker.Update(requestMask);
+        _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 firstAnnouncement = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [hash],
+            BlobCellMask.Full.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(firstAnnouncement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+
+        Assert.That(_sparseBlobPoolPeerRegistry.RecordTransaction((ISparseBlobPoolPeer)_handler, tx), Is.Null);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+
+        TestSparseBlobPeer secondProvider = new(TestItem.PublicKeyC);
+        _sparseBlobPoolPeerRegistry.AddPeer(secondProvider);
+        _sparseBlobPoolPeerRegistry.RecordAnnouncement(secondProvider, hash, BlobCellMask.Full);
+        HandleZeroMessage(firstAnnouncement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        Assert.That(secondProvider.CellRequests, Has.Count.EqualTo(1));
+        Assert.That(secondProvider.CellRequests[0], Is.EqualTo((hash, requestMask | ExtraCellMask(hash, requestMask))));
+    }
+
+    [Test]
+    public void auto_mode_should_request_full_cells_from_full_provider_when_selected_as_provider()
+    {
+        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 10_000);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+
+        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
+        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 message = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            BlobCellMask.Full.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            m.CellMask.SequenceEqual(BlobCellMask.Full.ToBytes())));
+    }
+
+    [Test]
+    public void supernode_mode_should_request_all_announced_sparse_cells()
+    {
+        RecreateHandler(SparseBlobPoolMode.Supernode);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        BlobCellMask announcementMask = BlobCellMask.FromIndices([2, 7]);
+        _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        using NewPooledTransactionHashesMessage72 message = new(
+            [(byte)TxType.Blob],
+            [1024],
+            [tx.Hash!],
+            announcementMask.ToBytes());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _session.Received(1).DeliverMessage(Arg.Is<GetCellsMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
             m.CellMask.SequenceEqual(announcementMask.ToBytes())));
     }
 
@@ -507,6 +603,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_buffer_cells_requested_before_tx_becomes_pending()
     {
+        RecreateHandler(SparseBlobPoolMode.Supernode);
         Transaction tx = BuildBlobTransaction(fullProvider: false);
 
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
@@ -576,6 +673,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_reject_cells_with_unrequested_mask()
     {
+        RecreateHandler(SparseBlobPoolMode.Supernode);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
@@ -629,6 +727,26 @@ public class Eth72ProtocolHandlerTests
         Assert.That(preferredPeer.CellRequests, Is.Empty);
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((hash, cellMask)));
+    }
+
+    [Test]
+    public void registry_should_request_only_expanded_custody_delta()
+    {
+        SparseBlobPoolPeerRegistry registry = new(_transactionPool, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
+        TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
+        Hash256 hash = HashFromInt(1);
+        BlobCellMask firstMask = BlobCellMask.FromIndices([4]);
+        BlobCellMask expandedMask = BlobCellMask.FromIndices([4, 9]);
+
+        registry.AddPeer(peer);
+        registry.RecordAnnouncement(peer, hash, BlobCellMask.Full);
+
+        Assert.That(registry.RequestCellsForCustodyChange(firstMask), Is.EqualTo(1));
+        Assert.That(registry.RequestCellsForCustodyChange(expandedMask), Is.EqualTo(1));
+
+        Assert.That(peer.CellRequests, Has.Count.EqualTo(2));
+        Assert.That(peer.CellRequests[0], Is.EqualTo((hash, firstMask)));
+        Assert.That(peer.CellRequests[1], Is.EqualTo((hash, BlobCellMask.FromIndices([9]))));
     }
 
     [Test]
@@ -961,6 +1079,30 @@ public class Eth72ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
     }
 
+    private void RecreateHandler(SparseBlobPoolMode mode, int providerProbabilityBasisPoints = 1_500)
+    {
+        _handler.Dispose();
+        _txPoolConfig.SparseBlobPoolMode.Returns(mode);
+        _txPoolConfig.SparseBlobProviderProbabilityBasisPoints.Returns(providerProbabilityBasisPoints);
+        _handler = new Eth72ProtocolHandler(
+            _session,
+            _svc,
+            new NodeStatsManager(_timerFactory, LimboLogs.Instance),
+            _syncManager,
+            RunImmediatelyScheduler.Instance,
+            _transactionPool,
+            _gossipPolicy,
+            new ForkInfo(_specProvider, _syncManager),
+            LimboLogs.Instance,
+            _txPoolConfig,
+            _specProvider,
+            _blobCustodyTracker,
+            TestItem.PublicKeyB,
+            _sparseBlobPoolPeerRegistry,
+            _txGossipPolicy);
+        _handler.Init();
+    }
+
     private static Transaction BuildBlobTransaction(bool fullProvider)
     {
         for (int nonce = 0; nonce < 4096; nonce++)
@@ -988,6 +1130,28 @@ public class Eth72ProtocolHandlerTests
         Hash256 sampleHash = Keccak.Compute(input);
         ushort sample = BinaryPrimitives.ReadUInt16BigEndian(sampleHash.Bytes[..2]);
         return sample % 10_000 < 1_500;
+    }
+
+    private static BlobCellMask ExtraCellMask(Hash256 hash, BlobCellMask alreadyRequested)
+    {
+        UInt128 candidates = BlobCellMask.Full.Value & ~alreadyRequested.Value;
+        Span<int> candidateIndices = stackalloc int[BlobCellMask.CellCount];
+        int candidateCount = 0;
+        for (int i = 0; i < BlobCellMask.CellCount; i++)
+        {
+            if ((candidates & (UInt128.One << i)) != 0)
+            {
+                candidateIndices[candidateCount++] = i;
+            }
+        }
+
+        Span<byte> input = stackalloc byte[PublicKey.LengthInBytes + 33];
+        TestItem.PublicKeyB.Bytes.CopyTo(input);
+        hash.Bytes.CopyTo(input[PublicKey.LengthInBytes..^1]);
+        input[^1] = 1;
+        Hash256 sampleHash = Keccak.Compute(input);
+        int selected = sampleHash.Bytes[0] % candidateCount;
+        return new BlobCellMask(UInt128.One << candidateIndices[selected]);
     }
 
     private static Hash256 HashFromInt(int value)
