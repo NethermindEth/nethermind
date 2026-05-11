@@ -44,7 +44,12 @@ public class PersistenceManagerPersistedTests
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, smallArena, config, LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Small);
+        _ = new PersistedSnapshotCompactor(
+            repo, smallArena, config, LimboLogs.Instance,
+            minCompactSize: config.MinCompactSize,
+            maxCompactSize: config.CompactSize / 2,
+            tierLabel: "small",
+            reservationTag: ArenaReservationTags.BlobBackedSmall);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -70,7 +75,12 @@ public class PersistenceManagerPersistedTests
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, smallArena, config, LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Small);
+        _ = new PersistedSnapshotCompactor(
+            repo, smallArena, config, LimboLogs.Instance,
+            minCompactSize: config.MinCompactSize,
+            maxCompactSize: config.CompactSize / 2,
+            tierLabel: "small",
+            reservationTag: ArenaReservationTags.BlobBackedSmall);
 
         // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);

@@ -91,7 +91,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 BlobArenaManager smallBlobs = new(Path.Combine(basePath, "blobs", "small"), cfg.ArenaFileSizeBytes, smallBlobCatalog, ArenaReservationTags.BlobSmall);
                 IDb smallCatalogDb = columns.GetColumnDb(FlatDbColumns.SmallPersistedSnapshotCatalog);
                 PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallBlobCatalog, smallCatalogDb, cfg);
-                PersistedSnapshotCompactor smallCompactor = new(smallRepo, smallArena, cfg, logManager, PersistedSnapshotCompactor.Mode.Small);
+                PersistedSnapshotCompactor smallCompactor = new(
+                    smallRepo, smallArena, cfg, logManager,
+                    minCompactSize: cfg.MinCompactSize,
+                    maxCompactSize: cfg.CompactSize / 2,
+                    tierLabel: "small",
+                    reservationTag: ArenaReservationTags.BlobBackedSmall);
 
                 // Large tier — "arenas/compacted/" predates the Compacted→Large rename.
                 ArenaManager largeArena = new(Path.Combine(basePath, "arenas", "compacted"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
@@ -99,7 +104,12 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 BlobArenaManager largeBlobs = new(Path.Combine(basePath, "blobs", "large"), cfg.ArenaFileSizeBytes, largeBlobCatalog, ArenaReservationTags.BlobLarge);
                 IDb largeCatalogDb = columns.GetColumnDb(FlatDbColumns.LargePersistedSnapshotCatalog);
                 PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeBlobCatalog, largeCatalogDb, cfg);
-                PersistedSnapshotCompactor largeCompactor = new(largeRepo, largeArena, cfg, logManager, PersistedSnapshotCompactor.Mode.Large);
+                PersistedSnapshotCompactor largeCompactor = new(
+                    largeRepo, largeArena, cfg, logManager,
+                    minCompactSize: cfg.CompactSize * 2,
+                    maxCompactSize: cfg.PersistedSnapshotMaxCompactSize,
+                    tierLabel: "large",
+                    reservationTag: ArenaReservationTags.BlobBackedLarge);
 
                 smallRepo.LoadFromCatalog();
                 largeRepo.LoadFromCatalog();

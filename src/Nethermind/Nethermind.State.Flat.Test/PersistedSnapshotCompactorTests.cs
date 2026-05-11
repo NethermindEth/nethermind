@@ -60,7 +60,12 @@ public class PersistedSnapshotCompactorTests
             // CompactSize=4, MinCompactSize=2. Use 8 blocks so compactSize = 8 & -8 = 8 > CompactSize=4, triggering compaction.
             // (compactSize == _compactSize is now skipped since persistable snapshots are produced by PersistenceManager)
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance,
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+                tierLabel: "large",
+                reservationTag: ArenaReservationTags.BlobBackedLarge);
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("1"));
@@ -151,7 +156,12 @@ public class PersistedSnapshotCompactorTests
             // tracker via reads. Then any non-zero tracker count after DoCompactSnapshot must
             // come from WarmAddressIndex.
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, ValidatePersistedSnapshot = false };
-            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance,
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+                tierLabel: "large",
+                reservationTag: ArenaReservationTags.BlobBackedLarge);
 
             StateId prev = new(0, Keccak.EmptyTreeHash);
             for (int i = 1; i <= 8; i++)
@@ -406,7 +416,12 @@ public class PersistedSnapshotCompactorTests
 
             // compactSize=1 keeps the loop running for sizes 2, 4, 8 (all > 1).
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2, PersistedSnapshotMaxCompactSize = 8 };
-            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance,
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+                tierLabel: "large",
+                reservationTag: ArenaReservationTags.BlobBackedLarge);
 
             StateId[] states = new StateId[9];
             states[0] = new StateId(0, Keccak.EmptyTreeHash);

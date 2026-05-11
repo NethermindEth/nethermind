@@ -12,96 +12,59 @@ using Prometheus;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Logarithmic compaction for one tier's persisted snapshots. Two instances are
-/// wired: a <see cref="Mode.Small"/> compactor merges short-range snapshots
-/// within the small tier (every merge stays strictly &lt; <c>CompactSize</c>),
-/// and a <see cref="Mode.Large"/> compactor merges <c>CompactSize</c>-aligned
-/// snapshots upward (2×, 4×, ... <c>CompactSize</c>, up to
-/// <c>PersistedSnapshotMaxCompactSize</c>). The boundary at <c>CompactSize</c>
-/// is exclusive on the small side (its compactor never produces a
-/// <c>CompactSize</c> result — that comes from the in-memory compactor and is
-/// fed into the large repo by <c>PersistenceManager</c>).
+/// Logarithmic compaction for one tier's persisted snapshots. Each instance is
+/// parameterised with a <c>[minCompactSize, maxCompactSize]</c> band; it walks
+/// powers of 2 downward from the block's natural alignment (capped at
+/// <c>maxCompactSize</c>) and attempts to merge into the largest size that
+/// fits. The small-tier instance is wired with <c>max = CompactSize/2</c> so
+/// it never produces a <c>CompactSize</c> result (that size is produced
+/// directly by <c>PersistenceManager</c> into the large tier). The large-tier
+/// instance is wired with <c>min = 2 * CompactSize</c>.
 /// </summary>
 public class PersistedSnapshotCompactor(
     IPersistedSnapshotRepository persistedSnapshotRepository,
     IArenaManager arenaManager,
     IFlatDbConfig config,
     ILogManager logManager,
-    PersistedSnapshotCompactor.Mode mode) : IPersistedSnapshotCompactor
+    int minCompactSize,
+    int maxCompactSize,
+    string tierLabel,
+    string reservationTag) : IPersistedSnapshotCompactor
 {
-    public enum Mode
-    {
-        Small,
-        Large,
-    }
-
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
+    private readonly int _minCompactSize = Math.Max(minCompactSize, 2);
+    private readonly int _maxCompactSize = maxCompactSize;
     private readonly int _compactSize = config.CompactSize;
-    private readonly int _persistedSnapshotMaxCompactSize = config.PersistedSnapshotMaxCompactSize;
-    private readonly int _minCompactSize = Math.Max(config.MinCompactSize, 2);
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
-    private readonly Mode _mode = mode;
-    private readonly string _tierLabel = mode == Mode.Small ? "small" : "large";
+    private readonly string _tierLabel = tierLabel;
+    private readonly string _reservationTag = reservationTag;
 
     /// <summary>
-    /// Try to compact persisted snapshots using logarithmic compaction. The
-    /// power-of-2 walk direction and the size-band boundary depend on
-    /// <see cref="_mode"/>:
-    /// <list type="bullet">
-    ///   <item><see cref="Mode.Large"/>: walk <c>compactSize</c> downward from the
-    ///   block's natural alignment, attempting each power of 2 strictly greater
-    ///   than <c>CompactSize</c>. Produces 2×, 4×, ... <c>CompactSize</c> merges.</item>
-    ///   <item><see cref="Mode.Small"/>: walk upward from <c>MinCompactSize</c>,
-    ///   attempting each power of 2 strictly less than <c>CompactSize</c>.
-    ///   Produces 2×, 4×, ... merges that stay below the <c>CompactSize</c>
-    ///   boundary — the small tier never produces a <c>CompactSize</c> result.</item>
-    /// </list>
+    /// Try to compact persisted snapshots using logarithmic compaction. Walks
+    /// powers of 2 downward from the block's natural alignment (capped at
+    /// <c>maxCompactSize</c>), attempting each one until a merge succeeds or
+    /// the size drops below <c>minCompactSize</c>.
     /// </summary>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
-        if (_compactSize <= 0) return;
+        if (_maxCompactSize < _minCompactSize) return;
 
         long blockNumber = snapshotTo.BlockNumber;
         if (blockNumber == 0) return;
 
-        int alignment = (int)Math.Min(blockNumber & -blockNumber, _persistedSnapshotMaxCompactSize);
-        if (alignment < _minCompactSize) return;
-
-        if (_mode == Mode.Large)
+        int alignment = (int)Math.Min(blockNumber & -blockNumber, _maxCompactSize);
+        int compactSize = alignment;
+        while (compactSize >= _minCompactSize)
         {
-            int compactSize = alignment;
-            // Walk down powers of 2 until compaction succeeds or we reach _compactSize.
-            // _compactSize is produced directly by PersistenceManager (batched persistable
-            // compactions) into the large repo as a base — never re-produced here.
-            while (compactSize > _compactSize)
-            {
-                if (persistedSnapshotRepository.SnapshotCount < 2) return;
+            if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
-                long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
-                if (CompactRange(snapshotTo, startingBlockNumber, compactSize))
-                    return;
+            long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
+            if (CompactRange(snapshotTo, startingBlockNumber, compactSize))
+                return;
 
-                compactSize /= 2;
-            }
-        }
-        else // Mode.Small
-        {
-            // Largest power of 2 strictly less than _compactSize that the block is
-            // aligned to. If alignment >= _compactSize we'd produce a CompactSize
-            // (or larger) result — out of band for the small tier.
-            int compactSize = Math.Min(alignment, _compactSize / 2);
-            while (compactSize >= _minCompactSize)
-            {
-                if (persistedSnapshotRepository.SnapshotCount < 2) return;
-
-                long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
-                if (CompactRange(snapshotTo, startingBlockNumber, compactSize))
-                    return;
-
-                compactSize /= 2;
-            }
+            compactSize /= 2;
         }
     }
 
@@ -159,8 +122,7 @@ public class PersistedSnapshotCompactor(
         BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
             ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
             : null;
-        string reservationTag = _mode == Mode.Small ? ArenaReservationTags.BlobBackedSmall : ArenaReservationTags.BlobBackedLarge;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, reservationTag))
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, _reservationTag))
         {
             long sw = Stopwatch.GetTimestamp();
             PersistedSnapshotBuilder.NWayMergeSnapshots<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(

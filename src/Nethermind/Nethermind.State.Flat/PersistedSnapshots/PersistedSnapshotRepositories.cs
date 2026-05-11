@@ -20,8 +20,9 @@ public sealed record PersistedSnapshotRepositories(
 
 /// <summary>
 /// Bundles the two per-tier <see cref="IPersistedSnapshotCompactor"/> instances.
-/// Each compactor operates within its repo's size band — see
-/// <see cref="PersistedSnapshotCompactor.Mode"/>.
+/// Each compactor operates within its repo's size band — the small instance is
+/// wired with <c>max = CompactSize/2</c> and the large with
+/// <c>min = 2 * CompactSize</c>.
 /// </summary>
 public sealed record PersistedSnapshotCompactors(
     IPersistedSnapshotCompactor Small,
