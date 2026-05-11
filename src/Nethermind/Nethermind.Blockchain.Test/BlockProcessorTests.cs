@@ -1028,15 +1028,6 @@ public class BlockProcessorTests
         }
     }
 
-    /// <summary>
-    /// Runs the parallel validation executor over a single block with the given baseFee and transaction set,
-    /// then returns the aggregated <see cref="Nethermind.Evm.Metrics.GetBlockGasPrices"/> tuple (or <see langword="null"/>
-    /// if the block produced no aggregate).
-    /// </summary>
-    /// <remarks>
-    /// Skips via <see cref="Assume"/> on single-CPU hosts (parallel executor degrades there) and resets the
-    /// static block-stats metrics before running so callers see only this block's contribution.
-    /// </remarks>
     private static (float Min, float EstMedian, float Ave, float Max)? RunParallelValidationAndGetGasPrices(
         UInt256 baseFeePerGas,
         Transaction[] transactions)
