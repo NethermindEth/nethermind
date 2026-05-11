@@ -267,10 +267,14 @@ public class BatchedTrieVisitor<TNodeContext>
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
             (TrieNode trieNode, TNodeContext nodeContext, SmallTrieVisitContext ctx) = batchResult[i];
-            if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp.IsNotNull)
+            // Hot path: pull the inline 32-byte value directly instead of materializing a Hash256.
+            if (!trieNode.TryGetKeccak(out ValueHash256 keccak))
             {
-                // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
-                // to queue, so we'll just process it inline.
+                // Inline node. Seems rare, so its fine to create new list for this. Does not have a
+                // keccak to queue, so we walk it inline. Phase B decodes inline children eagerly into
+                // typed nodes, so ResolveNode is a no-op here unless an Unknown placeholder slipped
+                // in via the legacy FindCachedOrUnknown contract (still required by storage-root
+                // stitch in TrieNodeLeaf.TryResolveStorageRoot).
                 ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
                 try
                 {
@@ -287,8 +291,6 @@ public class BatchedTrieVisitor<TNodeContext>
                 continue;
             }
 
-            // Hot path: pull the inline 32-byte value directly instead of materializing a Hash256.
-            trieNode.TryGetKeccak(out ValueHash256 keccak);
             int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
