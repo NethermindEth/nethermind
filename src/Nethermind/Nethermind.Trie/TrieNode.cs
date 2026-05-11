@@ -662,8 +662,7 @@ namespace Nethermind.Trie
                     ThrowMissingKeccak();
                 }
 
-                // LoadRlp still takes Hash256; the materialization moves to A3 (in ValueHash256 resolver signatures).
-                byte[]? fullRlp = tree.LoadRlp(path, new Hash256(in keccak), readFlags);
+                byte[]? fullRlp = tree.LoadRlp(path, in keccak, readFlags);
 
                 if (fullRlp == null)
                 {
@@ -709,8 +708,7 @@ namespace Nethermind.Trie
                             return false;
                         }
 
-                        // LoadRlp still takes Hash256; the materialization moves to A3 (in ValueHash256 resolver signatures).
-                        byte[] fullRlp = tree.TryLoadRlp(path, new Hash256(in keccak), readFlags);
+                        byte[] fullRlp = tree.TryLoadRlp(path, in keccak, readFlags);
 
                         if (fullRlp is null)
                         {
@@ -732,6 +730,85 @@ namespace Nethermind.Trie
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Decode RLP into a fully resolved <see cref="TrieNode"/> with the correct
+        /// <see cref="NodeType"/> set. Used by resolvers that fuse load+decode so they
+        /// never publish an <see cref="NodeType.Unknown"/> placeholder.
+        /// </summary>
+        /// <remarks>
+        /// The returned node carries the supplied <paramref name="hash"/> as its keccak
+        /// and is marked persisted. Throws <see cref="TrieNodeException"/> wrapping the
+        /// underlying <see cref="RlpException"/> on malformed input.
+        /// </remarks>
+        public static TrieNode DecodeNode(in TreePath path, in ValueHash256 hash, byte[] rlp,
+            ICappedArrayPool? bufferPool = null)
+        {
+            if (rlp is null) ThrowNullRlp(in hash);
+
+            TrieNode node = new(NodeType.Unknown, in hash);
+            node.InitRlp(new CappedArray<byte>(rlp));
+            node.IsPersisted = true;
+            try
+            {
+                if (!node.DecodeRlp(new ValueRlpStream(node.ReadRlp()), bufferPool, out int numberOfItems))
+                {
+                    ThrowUnexpectedNumberOfItems(numberOfItems, path, in hash, rlp);
+                }
+            }
+            catch (RlpException rlpException)
+            {
+                ThrowDecodingError(rlpException, path, in hash);
+            }
+            return node;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNullRlp(in ValueHash256 hash) => throw new TrieException($"Cannot decode node {hash} from null RLP");
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowDecodingError(RlpException rlpException, in TreePath path, in ValueHash256 hash) =>
+                throw new TrieNodeException($"Error when decoding node {hash}", path, new Hash256(in hash), rlpException);
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path, in ValueHash256 hash, byte[] rlp) =>
+                throw new TrieNodeException(
+                    $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({rlp.AsSpan().ToHexString()})",
+                    path, new Hash256(in hash));
+        }
+
+        /// <summary>
+        /// Like <see cref="DecodeNode"/> but returns <c>false</c> when <paramref name="rlp"/>
+        /// is null or decoding fails. Used by <c>TryGetOrLoadNode</c> paths where the
+        /// resolver still wants to deliver a typed node without placeholder semantics.
+        /// </summary>
+        public static bool TryDecodeNode(in TreePath path, in ValueHash256 hash, byte[]? rlp,
+            [NotNullWhen(true)] out TrieNode? node, ICappedArrayPool? bufferPool = null)
+        {
+            if (rlp is null)
+            {
+                node = null;
+                return false;
+            }
+
+            TrieNode created = new(NodeType.Unknown, in hash);
+            created.InitRlp(new CappedArray<byte>(rlp));
+            created.IsPersisted = true;
+            try
+            {
+                if (!created.DecodeRlp(new ValueRlpStream(created.ReadRlp()), bufferPool, out _))
+                {
+                    node = null;
+                    return false;
+                }
+            }
+            catch (RlpException)
+            {
+                node = null;
+                return false;
+            }
+            node = created;
+            return true;
         }
 
         private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)

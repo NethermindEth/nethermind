@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -11,6 +12,18 @@ public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? a
 {
     public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
         fullTrieStore.FindCachedOrUnknown(address, path, in hash);
+
+    public bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    {
+        // Forward to the underlying TrieStore's resolved-only cache lookup if available.
+        // For non-TrieStore wrappers, fall back to the default (returns false).
+        if (fullTrieStore is TrieStore trieStore)
+        {
+            return trieStore.TryGetCachedNode(address, in path, in hash, out node);
+        }
+        node = null;
+        return false;
+    }
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.LoadRlp(address, path, in hash, flags);

@@ -526,6 +526,23 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public bool IsNodeCached(Hash256? address, in TreePath path, in ValueHash256 hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, in hash));
 
+    /// <summary>
+    /// Cache-only lookup used by the typed-resolver contract (<see cref="ITrieNodeResolver.TryGetCachedNode"/>).
+    /// Returns the cached node only if it is already structurally resolved (not an
+    /// <see cref="NodeType.Unknown"/> placeholder). Never allocates, never loads RLP.
+    /// </summary>
+    internal bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, out TrieNode? node)
+    {
+        TrieStoreDirtyNodesCache.Key key = new(address, path, in hash);
+        if (DirtyNodesTryGetValue(key, out TrieNode? cached) && cached!.NodeType != NodeType.Unknown)
+        {
+            node = cached;
+            return true;
+        }
+        node = null;
+        return false;
+    }
+
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) =>
         FindCachedOrUnknown(address, path, in hash, false);
 

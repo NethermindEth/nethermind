@@ -366,7 +366,9 @@ namespace Nethermind.Trie
 
                 if (rootHash is not null)
                 {
-                    root = _readResolver.FindCachedOrUnknown(emptyPath, rootHash);
+                    // Fuse the legacy FindCachedOrUnknown + ResolveNode pair: GetOrLoadNode
+                    // returns a fully resolved typed node and never publishes an Unknown placeholder.
+                    root = _readResolver.GetOrLoadNode(emptyPath, rootHash);
                 }
 
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: false);
@@ -424,7 +426,7 @@ namespace Nethermind.Trie
                 TrieNode root = RootRef;
                 if (rootHash is not null)
                 {
-                    root = _readResolver.FindCachedOrUnknown(emptyPath, rootHash);
+                    root = _readResolver.GetOrLoadNode(emptyPath, rootHash);
                 }
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
                 return result.ToArray();
@@ -454,7 +456,7 @@ namespace Nethermind.Trie
                 TrieNode root = RootRef;
                 if (rootHash is not null)
                 {
-                    root = _readResolver.FindCachedOrUnknown(emptyPath, rootHash);
+                    root = _readResolver.GetOrLoadNode(emptyPath, rootHash);
                 }
                 CappedArray<byte> result = GetNew(nibbles, ref emptyPath, root, isNodeRead: true);
 
@@ -988,13 +990,17 @@ namespace Nethermind.Trie
                         return;
                     }
 
-                    // Call FindCachedOrUnknown on some path.
-                    if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1)
+                    // Sealed boundary rebind: hop through the resolver cache so the warm-up
+                    // path shares the canonical node instance. GetOrLoadNode fuses lookup+resolve
+                    // so we drop the subsequent ResolveNode no-op call.
+                    if (node.IsSealed && node.TryGetKeccak(out ValueHash256 sealedKeccak) && path.Length % 2 == 1)
                     {
-                        node = _readResolver.FindCachedOrUnknown(path, node.Keccak);
+                        node = _readResolver.GetOrLoadNode(path, in sealedKeccak);
                     }
-
-                    node.ResolveNode(_readResolver, path);
+                    else
+                    {
+                        node.ResolveNode(_readResolver, path);
+                    }
 
                     if (node.IsLeaf || node.IsExtension)
                     {
@@ -1103,8 +1109,16 @@ namespace Nethermind.Trie
                 if (rootHash != Keccak.EmptyTreeHash)
                 {
                     TreePath emptyPath = TreePath.Empty;
-                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
-                    if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
+                    if (RootHash == rootHash)
+                    {
+                        rootRef = RootRef;
+                        if (rootRef is null || !rootRef.TryResolveNode(resolver, ref emptyPath))
+                        {
+                            visitor.VisitMissingNode(default, rootHash);
+                            return false;
+                        }
+                    }
+                    else if (!resolver.TryGetOrLoadNode(emptyPath, rootHash.ValueHash256, out rootRef))
                     {
                         visitor.VisitMissingNode(default, rootHash);
                         return false;
