@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -122,7 +123,8 @@ public class AccountChangesPrestateTests
         ReadOnlySlotChanges slot = new(123u);
         slot.LoadPreStateChange(new StorageChange(Eip7928Constants.PrestateIndex, 0xABu));
 
-        byte[] result = slot.Get(0);
-        Assert.That(result, Is.EqualTo(new byte[] { 0xAB }));
+        Span<byte> buffer = stackalloc byte[32];
+        ReadOnlySpan<byte> result = slot.Get(0, buffer);
+        Assert.That(result.ToArray(), Is.EqualTo(new byte[] { 0xAB }));
     }
 }

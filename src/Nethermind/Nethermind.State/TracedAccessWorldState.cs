@@ -47,6 +47,10 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private int _systemAccountReadSuppressionDepth;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
+    // Scratch buffer for intra-tx SLOAD on the parallel path — see GetInternal. One instance per
+    // worker (TracedAccessWorldState is rented per-tx from the pool), so the single buffer is safe:
+    // the returned span is consumed by the EVM stack push before another GetInternal runs.
+    private readonly byte[] _scratchStorage = new byte[32];
     public BlockAccessListAtIndex? GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public void SetGeneratingBlockAccessList(BlockAccessListAtIndex? bal) => _generatingBlockAccessList = bal;
 
@@ -364,11 +368,13 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             AccountChangesAtIndex? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
             if (accountChanges is not null && accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
             {
-                // StorageChange.Value is now EvmWord (Vector256<byte>) in big-endian wire form;
-                // copy to a fresh byte[32] so the span outlives this stack frame.
+                // StorageChange.Value is EvmWord (Vector256<byte>) in big-endian wire form; copy
+                // into the per-instance scratch buffer so the returned span outlives this stack
+                // frame without allocating a new byte[32] per SLOAD.
                 EvmWord value = change.Value.Value;
-                return MemoryMarshal.CreateReadOnlySpan(
-                    ref Unsafe.As<EvmWord, byte>(ref value), 32).ToArray();
+                MemoryMarshal.CreateReadOnlySpan(
+                    ref Unsafe.As<EvmWord, byte>(ref value), 32).CopyTo(_scratchStorage);
+                return _scratchStorage;
             }
         }
 

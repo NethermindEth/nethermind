@@ -27,6 +27,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
+    // Scratch buffer for ReadOnlySlotChanges.Get on the SLOAD hot path. Per-instance and
+    // per-parallel-worker (each worker holds its own BlockAccessListBasedWorldState), so the
+    // single buffer is safe — only one Get() runs on this instance at a time, and the returned
+    // span is consumed before another Get() can overwrite the buffer.
+    private readonly byte[] _scratchStorage = new byte[32];
 
     public void SetBlockAccessIndex(uint index) => _blockAccessIndex = index;
 
@@ -82,7 +87,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
             if (slotChanges is not null)
             {
-                return slotChanges.Get(_blockAccessIndex);
+                return slotChanges.Get(_blockAccessIndex, _scratchStorage);
             }
         }
 

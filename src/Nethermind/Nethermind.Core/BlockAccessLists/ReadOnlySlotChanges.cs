@@ -34,25 +34,32 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
 
     public ReadOnlySlotChanges(UInt256 key) : this(key, []) { }
 
-    /// <summary>Storage value as visible at the start of <paramref name="blockAccessIndex"/> (i.e. last change strictly before the index).</summary>
-    public byte[] Get(uint blockAccessIndex)
+    /// <summary>Storage value as visible at the start of <paramref name="blockAccessIndex"/>
+    /// (i.e. last change strictly before the index). Writes up to 32 big-endian bytes into
+    /// <paramref name="buffer"/> (which must be at least 32 long) and returns a leading-zero-stripped
+    /// slice. Returns an empty span when no entry is recorded before the index.</summary>
+    /// <remarks>
+    /// Takes a caller-owned buffer instead of allocating: in the parallel BAL path this is on
+    /// the SLOAD hot path and was previously allocating one trimmed byte[] per call. The buffer
+    /// must outlive the returned span — typical caller is a per-instance field on
+    /// <see cref="Nethermind.State.BlockAccessListBasedWorldState"/>.
+    /// </remarks>
+    public ReadOnlySpan<byte> Get(uint blockAccessIndex, Span<byte> buffer)
     {
-        Span<byte> tmp = stackalloc byte[32];
         ReadOnlySpan<StorageChange> span = Changes;
         int idx = span.BinarySearch(new IndexKey<StorageChange>(blockAccessIndex));
         // Whether found exactly or not, idx (or ~idx) is the position of the first entry with
         // Index >= blockAccessIndex. The last strictly-before entry is one step earlier.
         int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
-        if (lastBefore >= 0)
-        {
-            // StorageChange.Value is already in big-endian wire form (see ctor); reinterpret the
-            // 32-byte EvmWord vector as a byte span and copy.
-            EvmWord value = span[lastBefore].Value;
-            ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
-                ref Unsafe.As<EvmWord, byte>(ref value), 32);
-            valueBytes.CopyTo(tmp);
-        }
-        return [.. tmp.WithoutLeadingZeros()];
+        if (lastBefore < 0) return ReadOnlySpan<byte>.Empty;
+
+        // StorageChange.Value is already in big-endian wire form (see ctor); reinterpret the
+        // 32-byte EvmWord vector as a byte span and copy into the caller's buffer.
+        EvmWord value = span[lastBefore].Value;
+        ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
+            ref Unsafe.As<EvmWord, byte>(ref value), 32);
+        valueBytes.CopyTo(buffer);
+        return buffer[..32].WithoutLeadingZeros();
     }
 
     /// <summary>Adds a prestate change at <see cref="Eip7928Constants.PrestateIndex"/> — only used
