@@ -37,7 +37,6 @@ public class PersistenceManager(
     private readonly int _maxInMemoryReorgDepth = configuration.MaxInMemoryReorgDepth;
     private readonly int _longFinalityReorgDepth = configuration.LongFinalityReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly int _minCompactSize = Math.Max(configuration.MinCompactSize, 2);
     private readonly int _persistedSnapshotMaxCompactSize = configuration.PersistedSnapshotMaxCompactSize;
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
@@ -106,23 +105,23 @@ public class PersistenceManager(
     {
         if (batch.Count == 0) return;
 
-        // Offload the last state (boundary block — highest compactSize, heaviest merge) to the
-        // parallel boundary channel so the next batch can start before this compaction finishes.
-        StateId lastState = batch[^1];
-        long lastBlock = lastState.BlockNumber;
-        int lastCompactSize = lastBlock == 0 ? 0 : (int)Math.Min(lastBlock & -lastBlock, _persistedSnapshotMaxCompactSize);
-        bool offloadLast = lastCompactSize >= _minCompactSize && lastCompactSize != _compactSize;
-        int processCount = offloadLast ? batch.Count - 1 : batch.Count;
-
-        // Group remaining states by compact size, ascending
+        // Offload boundary states (block divisible by _compactSize — heaviest merges) to the
+        // parallel boundary channel so the next batch can start before these compactions finish.
+        using ArrayPoolList<StateId> boundaries = new(batch.Count);
         SortedDictionary<int, List<StateId>> buckets = new();
-        for (int i = 0; i < processCount; i++)
+        for (int i = 0; i < batch.Count; i++)
         {
             StateId s = batch[i];
             long b = s.BlockNumber;
             if (b == 0) continue;
+
+            if (b % _compactSize == 0)
+            {
+                boundaries.Add(s);
+                continue;
+            }
+
             int compactSize = (int)Math.Min(b & -b, _persistedSnapshotMaxCompactSize);
-            if (compactSize < _minCompactSize || compactSize == _compactSize) continue;
             if (!buckets.TryGetValue(compactSize, out List<StateId>? bucket))
                 buckets[compactSize] = bucket = [];
             bucket.Add(s);
@@ -134,8 +133,8 @@ public class PersistenceManager(
             Parallel.ForEach(kv.Value, state => compactor.DoCompactSnapshot(state));
         }
 
-        if (offloadLast)
-            _boundaryCompactJobs.Writer.WriteAsync(lastState).AsTask().Wait();
+        foreach (StateId boundary in boundaries)
+            _boundaryCompactJobs.Writer.WriteAsync(boundary).AsTask().Wait();
     }
 
     private async Task RunBoundaryCompactor(CancellationToken cancellationToken)
