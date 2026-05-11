@@ -1,6 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -9,7 +13,7 @@ using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
-public class GnosisSpecProvider : ISpecProvider
+public class GnosisSpecProvider : IForkAwareSpecProvider
 {
     public const long ConstantinopleBlockNumber = 1_604_400;
     public const long ConstantinopleFixBlockNumber = 2_508_800;
@@ -77,6 +81,25 @@ public class GnosisSpecProvider : ISpecProvider
         (LondonBlockNumber, BalancerTimestamp),
         (LondonBlockNumber, OsakaTimestamp),
     ];
+
+    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
+    {
+        [nameof(Byzantium)] = Byzantium.Instance,
+        [nameof(Constantinople)] = Constantinople.Instance,
+        [nameof(ConstantinopleFix)] = ConstantinopleFix.Instance,
+        [nameof(Istanbul)] = Istanbul.Instance,
+        [nameof(Berlin)] = Berlin.Instance,
+        [nameof(LondonGnosis)] = LondonGnosis.Instance,
+        [nameof(ShanghaiGnosis)] = ShanghaiGnosis.Instance,
+        [nameof(CancunGnosis)] = CancunGnosis.Instance,
+        [nameof(PragueGnosis)] = PragueGnosis.Instance,
+        [nameof(OsakaGnosis)] = OsakaGnosis.Instance,
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] _availableForks = [.. Forks.Keys.Order()];
+
+    public IEnumerable<string> AvailableForks => _availableForks;
+    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
 
     public static GnosisSpecProvider Instance { get; } = new();
 }

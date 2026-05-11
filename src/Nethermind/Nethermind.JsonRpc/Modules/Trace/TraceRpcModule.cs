@@ -257,7 +257,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, ForkActivationParameter? fork = null)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
         {
             SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
             if (blockSearch.IsError)
@@ -282,18 +282,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
 
-            IReleaseSpec? forkSpec = null;
-            if (fork is not null)
-            {
-                if (specProvider is not IForkAwareSpecProvider forkAwareProvider)
-                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Spec provider does not support fork overrides", ErrorCodes.InvalidParams);
-
-                if (string.IsNullOrEmpty(fork.ForkName))
-                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail("Fork name must not be null or empty", ErrorCodes.InvalidParams);
-
-                if (!forkAwareProvider.TryGetForkSpec(fork.ForkName, out forkSpec))
-                    return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail($"Unknown fork: '{fork.ForkName}'. Available: {string.Join(", ", forkAwareProvider.AvailableForks)}", ErrorCodes.InvalidParams);
-            }
+            if (!TryResolveForkSpec(fork, out IReleaseSpec? forkSpec, out ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? forkError))
+                return forkError!;
 
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkSpec);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
@@ -416,6 +406,35 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             return adjusted;
+        }
+
+        private bool TryResolveForkSpec<TResult>(string? fork, out IReleaseSpec? forkSpec, out ResultWrapper<TResult>? error)
+        {
+            forkSpec = null;
+            error = null;
+
+            if (fork is null)
+                return true;
+
+            if (specProvider is not IForkAwareSpecProvider forkAwareProvider)
+            {
+                error = ResultWrapper<TResult>.Fail("Spec provider does not support fork overrides", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(fork))
+            {
+                error = ResultWrapper<TResult>.Fail("Fork name must not be null or empty", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            if (!forkAwareProvider.TryGetForkSpec(fork, out forkSpec))
+            {
+                error = ResultWrapper<TResult>.Fail($"Unknown fork: '{fork}'. Available: {string.Join(", ", forkAwareProvider.AvailableForks)}", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            return true;
         }
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>

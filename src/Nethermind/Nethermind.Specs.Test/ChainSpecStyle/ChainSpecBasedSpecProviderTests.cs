@@ -710,17 +710,15 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
-    [Test]
-    public void Named_fork_specs_are_available_for_chain_spec_based_provider()
+    [TestCase("Berlin")]
+    [TestCase("Cancun")]
+    [TestCase("Prague")]
+    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName)
     {
         ChainSpec chainSpec = new()
         {
-            Parameters = new ChainParameters
-            {
-                Eip2565Transition = 5
-            },
-            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev,
-            BerlinBlockNumber = 5
+            Parameters = new ChainParameters(),
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -728,32 +726,8 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider, Is.InstanceOf<IForkAwareSpecProvider>());
-            Assert.That(provider.AvailableForks, Does.Contain("Berlin"));
-            Assert.That(provider.TryGetForkSpec("berlin", out IReleaseSpec? berlinSpec), Is.True);
-            Assert.That(berlinSpec!.IsEip2565Enabled, Is.True);
-        }
-    }
-
-    [Test]
-    public void Named_timestamp_fork_specs_are_available_for_chain_spec_based_provider()
-    {
-        ChainSpec chainSpec = new()
-        {
-            Parameters = new ChainParameters
-            {
-                Eip4844TransitionTimestamp = 10
-            },
-            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev,
-            CancunTimestamp = 10
-        };
-
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(provider.AvailableForks, Does.Contain("Cancun"));
-            Assert.That(provider.TryGetForkSpec("cancun", out IReleaseSpec? cancunSpec), Is.True);
-            Assert.That(cancunSpec!.IsEip4844Enabled, Is.True);
+            Assert.That(provider.AvailableForks, Does.Contain(forkName));
+            Assert.That(provider.TryGetForkSpec(forkName.ToLowerInvariant(), out _), Is.True);
         }
     }
 

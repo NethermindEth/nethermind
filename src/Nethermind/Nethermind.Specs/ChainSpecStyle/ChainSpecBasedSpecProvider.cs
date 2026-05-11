@@ -19,6 +19,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     {
         private readonly ChainSpec _chainSpec;
         private FrozenDictionary<string, IReleaseSpec> _forks;
+        private string[] _availableForks;
 
         public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
             : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
@@ -126,7 +127,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             LoadTransitions(allTransitions);
 
             TransitionActivations = CreateTransitionActivations(transitionBlockNumbers, transitionTimestamps);
-            _forks = CreateNamedForks(_chainSpec).ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+            _forks = ForksForChain(_chainSpec.ChainId);
+            _availableForks = [.. _forks.Keys.Order()];
 
             if (_chainSpec.Parameters.TerminalPoWBlockNumber is not null)
             {
@@ -136,58 +138,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private Dictionary<string, IReleaseSpec> CreateNamedForks(ChainSpec chainSpec)
-        {
-            Dictionary<string, IReleaseSpec> forks = new(StringComparer.OrdinalIgnoreCase)
+        private static FrozenDictionary<string, IReleaseSpec> ForksForChain(ulong chainId) =>
+            chainId switch
             {
-                // Always present: maps to the block-0 spec (may be Frontier, Homestead, etc.).
-                [nameof(GenesisSpec).Replace("Spec", string.Empty)] = GenesisSpec
+                BlockchainIds.Gnosis or BlockchainIds.Chiado => GnosisSpecProvider.Forks,
+                _ => MainnetSpecProvider.Forks,
             };
-
-            AddBlockFork(nameof(chainSpec.HomesteadBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.HomesteadBlockNumber);
-            AddBlockFork(nameof(chainSpec.DaoForkBlockNumber).Replace("ForkBlockNumber", string.Empty), chainSpec.DaoForkBlockNumber);
-            AddBlockFork(nameof(chainSpec.TangerineWhistleBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.TangerineWhistleBlockNumber);
-            AddBlockFork(nameof(chainSpec.SpuriousDragonBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.SpuriousDragonBlockNumber);
-            AddBlockFork(nameof(chainSpec.ByzantiumBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.ByzantiumBlockNumber);
-            AddBlockFork(nameof(chainSpec.ConstantinopleBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.ConstantinopleBlockNumber);
-            AddBlockFork(nameof(chainSpec.ConstantinopleFixBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.ConstantinopleFixBlockNumber);
-            AddBlockFork(nameof(chainSpec.IstanbulBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.IstanbulBlockNumber);
-            AddBlockFork(nameof(chainSpec.MuirGlacierNumber).Replace("Number", string.Empty), chainSpec.MuirGlacierNumber);
-            AddBlockFork(nameof(chainSpec.BerlinBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.BerlinBlockNumber);
-            AddBlockFork(nameof(chainSpec.LondonBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.LondonBlockNumber);
-            AddBlockFork(nameof(chainSpec.ArrowGlacierBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.ArrowGlacierBlockNumber);
-            AddBlockFork(nameof(chainSpec.GrayGlacierBlockNumber).Replace("BlockNumber", string.Empty), chainSpec.GrayGlacierBlockNumber);
-
-            long timestampActivationBlock = TransitionActivations
-                .Where(static activation => activation.Timestamp is null)
-                .Select(static activation => activation.BlockNumber)
-                .DefaultIfEmpty(0)
-                .Max();
-
-            AddTimestampFork(nameof(chainSpec.ShanghaiTimestamp).Replace("Timestamp", string.Empty), chainSpec.ShanghaiTimestamp ?? chainSpec.Parameters.Eip4895TransitionTimestamp);
-            AddTimestampFork(nameof(chainSpec.CancunTimestamp).Replace("Timestamp", string.Empty), chainSpec.CancunTimestamp ?? chainSpec.Parameters.Eip4844TransitionTimestamp);
-            AddTimestampFork(nameof(chainSpec.PragueTimestamp).Replace("Timestamp", string.Empty), chainSpec.PragueTimestamp ?? chainSpec.Parameters.Eip7702TransitionTimestamp);
-            AddTimestampFork(nameof(chainSpec.OsakaTimestamp).Replace("Timestamp", string.Empty), chainSpec.OsakaTimestamp ?? chainSpec.Parameters.Eip7594TransitionTimestamp);
-            AddTimestampFork(nameof(chainSpec.AmsterdamTimestamp).Replace("Timestamp", string.Empty), chainSpec.AmsterdamTimestamp ?? chainSpec.Parameters.Eip7843TransitionTimestamp);
-
-            return forks;
-
-            void AddBlockFork(string name, long? blockNumber)
-            {
-                if (blockNumber is not null)
-                {
-                    forks[name] = GetSpec((ForkActivation)blockNumber.Value);
-                }
-            }
-
-            void AddTimestampFork(string name, ulong? timestamp)
-            {
-                if (timestamp is not null)
-                {
-                    forks[name] = GetSpec((timestampActivationBlock, timestamp.Value));
-                }
-            }
-        }
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
@@ -438,7 +394,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
         public string SealEngine => _chainSpec.SealEngineType;
-        public IEnumerable<string> AvailableForks => _forks.Keys.OrderBy(static fork => fork);
+        public IEnumerable<string> AvailableForks => _availableForks;
         public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forks.TryGetValue(forkName, out spec);
     }
 }

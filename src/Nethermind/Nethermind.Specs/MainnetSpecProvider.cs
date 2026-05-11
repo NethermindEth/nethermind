@@ -96,7 +96,7 @@ public class MainnetSpecProvider : IForkAwareSpecProvider
     public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
     public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
     public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
-    private static readonly FrozenDictionary<string, IReleaseSpec> _forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
+    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
     {
         [nameof(Frontier)] = Frontier.Instance,
         [nameof(Homestead)] = Homestead.Instance,
@@ -125,8 +125,10 @@ public class MainnetSpecProvider : IForkAwareSpecProvider
         [nameof(Amsterdam)] = Amsterdam.Instance,
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
-    public IEnumerable<string> AvailableForks => _forks.Keys.OrderBy(static fork => fork);
-    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forks.TryGetValue(forkName, out spec);
+    private static readonly string[] _availableForks = [.. Forks.Keys.Order()];
+
+    public IEnumerable<string> AvailableForks => _availableForks;
+    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
 
     public ForkActivation[] TransitionActivations { get; } =
     {

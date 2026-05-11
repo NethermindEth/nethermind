@@ -138,7 +138,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
         }
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, ForkActivationParameter? fork = null)
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
     {
         // Fork overrides require live re-execution; bypass the store and delegate directly.
         if (fork is not null)
