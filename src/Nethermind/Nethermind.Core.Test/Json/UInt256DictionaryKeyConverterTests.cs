@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -74,7 +73,7 @@ public class UInt256DictionaryKeyConverterTests
             {"blockStateCalls", expectedBlockStateCalls}
         };
 
-        result.Should().BeEquivalentTo(expected);
+        Assert.That(result, Is.EqualTo(expected));
     }
 
     [Test]
@@ -82,7 +81,7 @@ public class UInt256DictionaryKeyConverterTests
     {
         Dictionary<UInt256, Hash256>? result = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>("null", Options);
 
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -91,7 +90,7 @@ public class UInt256DictionaryKeyConverterTests
         Dictionary<UInt256, Hash256>? result = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>("{}", Options);
         Dictionary<UInt256, Hash256> empty = new();
 
-        result.Should().BeEquivalentTo(empty);
+        Assert.That(result, Is.EqualTo(empty));
     }
 
     [Test]
@@ -104,7 +103,7 @@ public class UInt256DictionaryKeyConverterTests
         string serialised = JsonSerializer.Serialize(dictionary, Options);
         Dictionary<UInt256, Hash256>? deserialised = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>(serialised, Options);
 
-        deserialised.Should().BeEquivalentTo(dictionary);
+        Assert.That(deserialised, Is.EqualTo(dictionary));
     }
 
     [Test]
@@ -122,6 +121,6 @@ public class UInt256DictionaryKeyConverterTests
         }
         """;
 
-        serialised.Should().BeEquivalentTo(expected);
+        Assert.That(serialised, Is.EqualTo(expected));
     }
 }

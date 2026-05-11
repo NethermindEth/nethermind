@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -36,7 +35,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
+            Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
         }
 
         [Test]
@@ -51,7 +50,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
+            Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
         }
 
         [Test]
@@ -67,7 +66,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
+            Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
         }
 
 
@@ -85,7 +84,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
+            Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
         }
 
         private static IEnumerable<(byte[], string)> ErrorFunctionTestCases()
@@ -159,7 +158,7 @@ namespace Nethermind.Evm.Test
                 true,
                 true);
 
-            transactionSubstate.Error.Should().Be(tc.expected);
+            Assert.That(transactionSubstate.Error, Is.EqualTo(tc.expected));
         }
 
         [Test]
@@ -183,7 +182,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
+            Assert.That(transactionSubstate.Error, Is.EqualTo(TransactionSubstate.Revert));
         }
     }
 }

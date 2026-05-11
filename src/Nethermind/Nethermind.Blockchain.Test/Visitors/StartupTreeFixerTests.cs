@@ -3,7 +3,6 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
@@ -78,10 +77,10 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        tree.Head!.Header.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
-        tree.BestKnownNumber.Should().Be(2);
+        Assert.That(tree.Head!.Header, Is.EqualTo(block2.Header));
+        Assert.That(tree.BestSuggestedHeader, Is.EqualTo(block2.Header));
+        Assert.That(tree.BestSuggestedBody?.Body, Is.EqualTo(block2.Body));
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
     [Retry(30)]

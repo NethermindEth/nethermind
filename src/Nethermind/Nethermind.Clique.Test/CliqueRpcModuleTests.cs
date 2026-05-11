@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
@@ -72,8 +71,8 @@ namespace Nethermind.Clique.Test
             blockFinder.FindHeader(Arg.Any<Hash256>()).Returns(header);
             snapshotManager.GetBlockSealer(header).Returns(TestItem.AddressA);
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
-            rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Success);
-            rpcModule.clique_getBlockSigner(Keccak.Zero).Data.Should().Be(TestItem.AddressA);
+            Assert.That(rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(rpcModule.clique_getBlockSigner(Keccak.Zero).Data, Is.EqualTo(TestItem.AddressA));
         }
 
         [Test]
@@ -83,7 +82,7 @@ namespace Nethermind.Clique.Test
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindHeader(Arg.Any<Hash256>()).Returns((BlockHeader)null);
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
-            rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType.Should().Be(ResultType.Failure);
+            Assert.That(rpcModule.clique_getBlockSigner(Keccak.Zero).Result.ResultType, Is.EqualTo(ResultType.Failure));
         }
 
         [Test]
@@ -92,7 +91,7 @@ namespace Nethermind.Clique.Test
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             CliqueRpcModule rpcModule = new(Substitute.For<ICliqueBlockProducerRunner>(), snapshotManager, blockFinder);
-            rpcModule.clique_getBlockSigner(null).Result.ResultType.Should().Be(ResultType.Failure);
+            Assert.That(rpcModule.clique_getBlockSigner(null).Result.ResultType, Is.EqualTo(ResultType.Failure));
         }
     }
 }

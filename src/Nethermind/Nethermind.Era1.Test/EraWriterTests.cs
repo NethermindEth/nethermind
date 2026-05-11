@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
+using NUnit.Framework;
 
 namespace Nethermind.Era1.Test;
 
@@ -115,7 +115,7 @@ internal class EraWriterTests
         }
 
         using E2StoreReader fileReader = new(tmpFile.Path);
-        fileReader.BlockOffset(0).Should().Be(8);
+        Assert.That(fileReader.BlockOffset(0), Is.EqualTo(8));
     }
 
     [Test]

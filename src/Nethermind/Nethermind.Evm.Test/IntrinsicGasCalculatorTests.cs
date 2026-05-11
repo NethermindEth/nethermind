@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
@@ -56,7 +55,7 @@ namespace Nethermind.Evm.Test
         public void Intrinsic_cost_is_calculated_properly((Transaction Tx, long Cost, string Description) testCase)
         {
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(testCase.Tx, Berlin.Instance);
-            gas.Should().Be(new EthereumIntrinsicGas(Standard: testCase.Cost, FloorGas: 0));
+            Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(Standard: testCase.Cost, FloorGas: 0)));
         }
 
         [TestCaseSource(nameof(AccessTestCaseSource))]
@@ -87,7 +86,7 @@ namespace Nethermind.Evm.Test
                 else
                 {
                     EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, spec);
-                    gas.Should().Be(new EthereumIntrinsicGas(Standard: 21000 + testCase.Cost, FloorGas: 0), spec.Name);
+                    Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(Standard: 21000 + testCase.Cost, FloorGas: 0)), spec.Name);
                 }
             }
 
@@ -116,15 +115,12 @@ namespace Nethermind.Evm.Test
                 bool isAfterRepricing = options.HasFlag(GasOptions.AfterRepricing);
                 bool floorCostEnabled = options.HasFlag(GasOptions.FloorCostEnabled);
 
-                gas.Standard.Should()
-                    .Be(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost), spec.Name,
-                        testCase.Data.ToHexString());
-                gas.FloorGas.Should().Be(floorCostEnabled ? testCase.FloorCost : 0);
+                Assert.That(gas.Standard, Is.EqualTo(21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost)), $"{spec.Name}: {testCase.Data.ToHexString()}");
+                Assert.That(gas.FloorGas, Is.EqualTo(floorCostEnabled ? testCase.FloorCost : 0));
 
-                gas.Should().Be(new EthereumIntrinsicGas(
+                Assert.That(gas, Is.EqualTo(new EthereumIntrinsicGas(
                         Standard: 21000 + (isAfterRepricing ? testCase.NewCost : testCase.OldCost),
-                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0),
-                    spec.Name, testCase.Data.ToHexString());
+                        FloorGas: floorCostEnabled ? testCase.FloorCost : 0)), $"{spec.Name}: {testCase.Data.ToHexString()}");
             }
 
             Test(Homestead.Instance, GasOptions.None);
@@ -207,7 +203,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             EthereumIntrinsicGas gas = IntrinsicGasCalculator.Calculate(tx, Prague.Instance);
-            gas.Standard.Should().Be(GasCostOf.Transaction + (testCase.ExpectedCost));
+            Assert.That(gas.Standard, Is.EqualTo(GasCostOf.Transaction + (testCase.ExpectedCost)));
         }
 
         [Test]

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -35,8 +34,8 @@ namespace Nethermind.Evm.Test
         public void Test_Eip3855_should_pass(int repeat, bool isShanghai)
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
-            receipt.StatusCode.Should().Be(StatusCode.Success);
-            receipt.GasSpent.Should().Be(repeat * GasCostOf.Base + GasCostOf.Transaction);
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(receipt.GasSpent, Is.EqualTo(repeat * GasCostOf.Base + GasCostOf.Transaction));
         }
 
 
@@ -49,16 +48,16 @@ namespace Nethermind.Evm.Test
         {
             TestAllTracerWithOutput receipt = testBase(repeat, isShanghai);
 
-            receipt.StatusCode.Should().Be(StatusCode.Failure);
+            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Failure));
 
             if (isShanghai && repeat > 1024) // should fail because of stackoverflow (exceeds stack limit of 1024)
             {
-                receipt.Error.Should().Be(nameof(EvmExceptionType.StackOverflow));
+                Assert.That(receipt.Error, Is.EqualTo(nameof(EvmExceptionType.StackOverflow)));
             }
 
             if (!isShanghai) // should fail because of bad instruction (push zero is an EIP-3540 new instruction)
             {
-                receipt.Error.Should().Be(nameof(EvmExceptionType.BadInstruction));
+                Assert.That(receipt.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
             }
         }
     }

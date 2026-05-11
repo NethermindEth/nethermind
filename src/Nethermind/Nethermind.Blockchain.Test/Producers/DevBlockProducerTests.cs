@@ -3,7 +3,6 @@
 
 using System.Threading;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -41,11 +40,11 @@ public class DevBlockProducerTests
 
         blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
-        autoResetEvent.WaitOne(1000).Should().BeTrue("genesis");
+        Assert.That(autoResetEvent.WaitOne(1000), Is.True, "genesis");
 
         trigger.BuildBlock();
-        autoResetEvent.WaitOne(1000).Should().BeTrue("1");
-        blockTree.Head!.Number.Should().Be(1);
+        Assert.That(autoResetEvent.WaitOne(1000), Is.True, "1");
+        Assert.That(blockTree.Head!.Number, Is.EqualTo(1));
     }
 
     private class EmptyTxSourceFactory : IBlockProducerTxSourceFactory

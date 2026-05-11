@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc.Types;
@@ -58,7 +57,7 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out string? error);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -84,7 +83,7 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out string? error);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -112,7 +111,7 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out string? error);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -140,7 +139,7 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out string? error);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -169,7 +168,7 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out _);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -200,7 +199,7 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out _);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -231,7 +230,7 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out _);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -262,6 +261,6 @@ public class SyncInfoManagerTests
 
         bool result = manager.VerifySyncInfo(syncInfo, out _);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 }

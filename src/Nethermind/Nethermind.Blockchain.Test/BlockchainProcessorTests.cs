@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using ConcurrentCollections;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -534,7 +533,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext AssertProcessedBlocks(params IEnumerable<Block> blocks)
         {
-            _branchProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
+            Assert.That(_branchProcessor.Processed, Is.EqualTo(blocks.Select(b => b.Hash)));
             return this;
         }
 
@@ -614,7 +613,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block0).BecomesGenesis();
 
         long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
-        metricsAfter.Should().NotBe(metricsBefore);
+        Assert.That(metricsAfter, Is.Not.EqualTo(metricsBefore));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

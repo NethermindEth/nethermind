@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Blockchain;
@@ -97,8 +96,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             long storedPivotBlockNumber = ctx.DecodeLong();
             Hash256 storedFinalizedHash = ctx.DecodeKeccak()!;
 
-            storedFinalizedHash.Should().Be(expectedFinalizedHash);
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
+            Assert.That(storedFinalizedHash, Is.EqualTo(expectedFinalizedHash));
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
         }
 
         [Test]
@@ -127,8 +126,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             long storedPivotBlockNumber = ctx.DecodeLong();
             Hash256 storedPivotBlockHash = ctx.DecodeKeccak()!;
 
-            storedPivotBlockNumber.Should().Be(expectedPivotBlockNumber);
-            storedPivotBlockHash.Should().Be(expectedPivotBlockHash);
+            Assert.That(storedPivotBlockNumber, Is.EqualTo(expectedPivotBlockNumber));
+            Assert.That(storedPivotBlockHash, Is.EqualTo(expectedPivotBlockHash));
         }
     }
 }

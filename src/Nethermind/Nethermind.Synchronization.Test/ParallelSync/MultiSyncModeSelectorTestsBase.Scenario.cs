@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {
@@ -780,7 +780,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance);
                         selector.StopAsync().Wait();
                         selector.Update();
-                        selector.Current.Should().Be(syncMode);
+                        Assert.That(selector.Current, Is.EqualTo(syncMode));
                     }
 
                     SetDefaults();

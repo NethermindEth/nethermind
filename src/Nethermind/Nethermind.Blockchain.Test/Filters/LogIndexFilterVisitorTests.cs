@@ -147,8 +147,8 @@ public class LogIndexFilterVisitorTests
     [TestCaseSource(nameof(FilterTestData))]
     public void FilterEnumerator(string name, LogFilter filter, List<int> expected)
     {
-        Assert.That(expected,
-            Has.Count.InRange(from: 1, to: ToBlock - FromBlock - 1),
+        Assert.That(expected.Count,
+            Is.InRange(from: 1, to: ToBlock - FromBlock - 1),
             "Unreliable test: none or all blocks are selected."
         );
         ILogIndexStorage storage = Substitute.For<ILogIndexStorage>();
@@ -170,7 +170,7 @@ public class LogIndexFilterVisitorTests
             }
         }
 
-        Assert.That(storage.EnumerateBlockNumbersFor(filter, FromBlock, ToBlock), Is.EquivalentTo(expected));
+        Assert.That(storage.EnumerateBlockNumbersFor(filter, FromBlock, ToBlock), Is.EqualTo(expected));
     }
 
     [TestCaseSource(nameof(FilterTestData))]

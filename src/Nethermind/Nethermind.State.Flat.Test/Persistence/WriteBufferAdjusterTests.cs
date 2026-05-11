@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
@@ -43,14 +42,14 @@ public class WriteBufferAdjusterTests
     }
 
     [Test]
-    public void ColumnCount_MatchesEnumValueCount() => WriteBufferAdjuster.ColumnCount.Should().Be(Enum.GetValues<FlatDbColumns>().Length);
+    public void ColumnCount_MatchesEnumValueCount() => Assert.That(Enum.GetValues<FlatDbColumns>().Length, Is.EqualTo(WriteBufferAdjuster.ColumnCount));
 
     [Test]
     public void Wrap_WithDisableWAL_ReturnsRawBatch()
     {
         IWriteOnlyKeyValueStore result = _sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.DisableWAL);
 
-        result.Should().BeSameAs(_batch.Inner);
+        Assert.That(result, Is.SameAs(_batch.Inner));
     }
 
     [Test]

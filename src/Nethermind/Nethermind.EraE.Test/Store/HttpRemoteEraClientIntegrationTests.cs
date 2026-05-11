@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.IO;
 using Nethermind.EraE.Store;
@@ -49,19 +48,18 @@ public class HttpRemoteEraClientIntegrationTests
     {
         IReadOnlyDictionary<int, RemoteEraEntry> manifest = await _client.FetchManifestAsync();
 
-        manifest.Should().NotBeEmpty();
-        manifest.Keys.Min().Should().Be(0, "epoch 0 must be the first entry");
-        manifest.Keys.Should().OnlyContain(epoch => epoch >= 0);
+        Assert.That(manifest, Is.Not.Empty);
+        Assert.That(manifest.Keys.Min(), Is.EqualTo(0), "epoch 0 must be the first entry");
+        Assert.That(manifest.Keys.All(epoch => epoch >= 0), Is.True);
 
-        manifest.Should().ContainKey(Epoch0)
-            .WhoseValue.Filename.Should().Be(Epoch0Filename,
-                "epoch 0 filename is immutable — if this fails the server format has changed");
+        Assert.That(manifest.ContainsKey(Epoch0), Is.True);
+        Assert.That(manifest[Epoch0].Filename, Is.EqualTo(Epoch0Filename), "epoch 0 filename is immutable — if this fails the server format has changed");
 
-        manifest.Values.Should().OnlyContain(entry =>
-            entry.Sha256Hash.Length == 32, "every entry must carry a full 32-byte SHA-256 hash");
+        Assert.That(manifest.Values.All(entry =>
+            entry.Sha256Hash.Length == 32), Is.True, "every entry must carry a full 32-byte SHA-256 hash");
 
-        manifest.Values.Should().OnlyContain(entry =>
-            entry.Filename.EndsWith(".erae"), "every entry filename must use the .erae extension");
+        Assert.That(manifest.Values.All(entry =>
+            entry.Filename.EndsWith(".erae")), Is.True, "every entry filename must use the .erae extension");
     }
 
     [Test]
@@ -73,13 +71,12 @@ public class HttpRemoteEraClientIntegrationTests
         string destinationPath = Path.Join(_downloadDir.Path, epoch0Entry.Filename);
         await _client.DownloadFileAsync(epoch0Entry.Filename, destinationPath);
 
-        File.Exists(destinationPath).Should().BeTrue();
-        new FileInfo(destinationPath).Length.Should().BeGreaterThan(0);
+        Assert.That(File.Exists(destinationPath), Is.True);
+        Assert.That(new FileInfo(destinationPath).Length, Is.GreaterThan(0));
 
         using FileStream fs = new(destinationPath, FileMode.Open, FileAccess.Read, FileShare.Read);
         byte[] actualHash = SHA256.HashData(fs);
-        actualHash.Should().Equal(epoch0Entry.Sha256Hash,
-            "SHA-256 of the downloaded file must match the server manifest — file integrity is intact");
+        Assert.That(actualHash, Is.EqualTo(epoch0Entry.Sha256Hash), "SHA-256 of the downloaded file must match the server manifest — file integrity is intact");
     }
 
     [Test]
@@ -101,10 +98,10 @@ public class HttpRemoteEraClientIntegrationTests
         // Block 1 is the first non-genesis block — epoch 0 must contain it
         (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(1, ensureValidated: false);
 
-        block.Should().NotBeNull();
-        receipts.Should().NotBeNull();
-        block!.Number.Should().Be(1);
-        block.Hash.Should().NotBeNull("a real downloaded block must have a computed hash");
-        block.ParentHash.Should().NotBeNull();
+        Assert.That(block, Is.Not.Null);
+        Assert.That(receipts, Is.Not.Null);
+        Assert.That(block!.Number, Is.EqualTo(1));
+        Assert.That(block.Hash, Is.Not.Null, "a real downloaded block must have a computed hash");
+        Assert.That(block.ParentHash, Is.Not.Null);
     }
 }

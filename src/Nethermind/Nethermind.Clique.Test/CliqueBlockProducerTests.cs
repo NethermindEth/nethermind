@@ -27,7 +27,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Modules;
 
@@ -280,7 +279,7 @@ public class CliqueBlockProducerTests
         {
             using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             if (_logger.IsInfo) _logger.Info($"SUGGESTING GENESIS ON {nodeKey.Address}");
-            _blockTrees[nodeKey].SuggestBlock(_genesis).Should().Be(AddBlockResult.Added);
+            Assert.That(_blockTrees[nodeKey].SuggestBlock(_genesis), Is.EqualTo(AddBlockResult.Added));
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
         }

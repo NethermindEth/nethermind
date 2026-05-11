@@ -3,11 +3,11 @@
 
 using System.Linq;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -96,38 +96,36 @@ public static class SetCodeTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        json.GetProperty("type").GetString().Should().MatchRegex("^0x4$");
-        json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
-        json.GetProperty("maxPriorityFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("maxFeePerGas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("type").GetString(), "^0x4$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("nonce").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("to").GetString(), "^0x[0-9a-fA-F]{40}$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("gas").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("value").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("input").GetString(), "^0x[0-9a-f]*$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("maxPriorityFeePerGas").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("maxFeePerGas").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
         JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
-        if (accessList.Any())
+        foreach (JsonElement item in accessList)
         {
-            accessList.Should().AllSatisfy(static item =>
+            RpcTransactionAssertions.AssertMatchesWhenPresent(item.GetProperty("address").GetString(), "^0x[0-9a-fA-F]{40}$");
+            foreach (JsonElement key in item.GetProperty("storageKeys").EnumerateArray())
             {
-                item.GetProperty("address").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-                item.GetProperty("storageKeys").EnumerateArray().Should().AllSatisfy(static key =>
-                    key.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
-                );
-            });
+                RpcTransactionAssertions.AssertMatchesWhenPresent(key.GetString(), "^0x[0-9a-f]{64}$");
+            }
         }
-        json.GetProperty("chainId").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("yParity").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("chainId").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("yParity").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("r").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("s").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
         // NOTE: Empty authorization lists are considered invalid
-        json.GetProperty("authorizationList").EnumerateArray().Should().AllSatisfy(static tuple =>
+        foreach (JsonElement tuple in json.GetProperty("authorizationList").EnumerateArray())
         {
-            tuple.GetProperty("chainId").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-            tuple.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-            tuple.GetProperty("address").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-            tuple.GetProperty("yParity").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-            tuple.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-            tuple.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        });
+            RpcTransactionAssertions.AssertMatchesWhenPresent(tuple.GetProperty("chainId").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+            RpcTransactionAssertions.AssertMatchesWhenPresent(tuple.GetProperty("nonce").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+            RpcTransactionAssertions.AssertMatchesWhenPresent(tuple.GetProperty("address").GetString(), "^0x[0-9a-fA-F]{40}$");
+            RpcTransactionAssertions.AssertMatchesWhenPresent(tuple.GetProperty("yParity").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+            RpcTransactionAssertions.AssertMatchesWhenPresent(tuple.GetProperty("r").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+            RpcTransactionAssertions.AssertMatchesWhenPresent(tuple.GetProperty("s").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        }
     }
 }

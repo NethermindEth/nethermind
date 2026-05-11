@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -99,10 +98,10 @@ namespace Nethermind.TxPool.Test.Collections
                 .WithHash(TestItem.KeccakA).TestObject;
 
             _sortedPool.TryInsert(tx.Hash, tx);
-            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue();
+            Assert.That(_sortedPool.TryGetBucket(tx.SenderAddress, out _), Is.True);
 
             _sortedPool.TryRemove(tx.Hash);
-            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
+            Assert.That(_sortedPool.TryGetBucket(tx.SenderAddress, out _), Is.False);
         }
     }
 }

@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -127,7 +126,7 @@ public class BlockHeaderTests
 
     [TestCaseSource(nameof(HasBodyTestSource))]
     public void Should_have_empty_body_as_expected((BlockHeader Header, bool HasBody) fixture) =>
-        fixture.Header.HasBody.Should().Be(fixture.HasBody);
+        Assert.That(fixture.Header.HasBody, Is.EqualTo(fixture.HasBody));
 
     public class BaseFeeTestCases
     {

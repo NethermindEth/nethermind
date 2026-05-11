@@ -3,8 +3,6 @@
 
 using System;
 using System.Text.Json;
-using FluentAssertions;
-using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -53,8 +51,8 @@ public class TransactionForRpcTests
         JObject expectedS = JObject.Parse("""{ "s": "0x20000000000000000000000000000000000000000000000000000000000"}""");
         JObject expectedR = JObject.Parse("""{ "r": "0x1000000000000000000000000000000000000000000000000000000000000"}""");
 
-        json.Should().ContainSubtree(expectedS);
-        json.Should().ContainSubtree(expectedR);
+        Assert.That(ContainsSubtree(json, expectedS), Is.True);
+        Assert.That(ContainsSubtree(json, expectedR), Is.True);
     }
 
     [TestCaseSource(nameof(Transactions))]
@@ -95,10 +93,10 @@ public class TransactionForRpcTests
         using JsonDocument jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
 
-        json.GetProperty("hash").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
-        json.GetProperty("transactionIndex").GetString()?.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("blockHash").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{64}$");
-        json.GetProperty("blockNumber").GetString()?.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("hash").GetString(), "^0x[0-9a-fA-F]{64}$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("transactionIndex").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("blockHash").GetString(), "^0x[0-9a-fA-F]{64}$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("blockNumber").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
     }
 
     [Test]
@@ -123,12 +121,59 @@ public class TransactionForRpcTests
 
         TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
 
-        rpcTx.Should().BeOfType<LegacyTransactionForRpc>();
+        Assert.That(rpcTx, Is.TypeOf<LegacyTransactionForRpc>());
         LegacyTransactionForRpc legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
 
         ulong? expectedChainId = tx.Signature.ChainId;
-        expectedChainId.Should().Be(0xc72dd9d5e883eul);
-        legacyRpcTx.ChainId.Should().Be(expectedChainId);
+        Assert.That(expectedChainId, Is.EqualTo(0xc72dd9d5e883eul));
+        Assert.That(legacyRpcTx.ChainId, Is.EqualTo(expectedChainId));
+    }
+
+    private static bool ContainsSubtree(JToken actual, JToken expected)
+    {
+        if (JToken.DeepEquals(actual, expected))
+        {
+            return true;
+        }
+
+        if (actual is JObject actualObject && expected is JObject expectedObject)
+        {
+            foreach (JProperty expectedProperty in expectedObject.Properties())
+            {
+                if (!actualObject.TryGetValue(expectedProperty.Name, out JToken? actualValue) ||
+                    !ContainsSubtree(actualValue, expectedProperty.Value))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (actual is JArray actualArray && expected is JArray expectedArray)
+        {
+            foreach (JToken expectedItem in expectedArray)
+            {
+                bool found = false;
+                foreach (JToken actualItem in actualArray)
+                {
+                    if (ContainsSubtree(actualItem, expectedItem))
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     [Test]
@@ -154,9 +199,9 @@ public class TransactionForRpcTests
 
         TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx);
 
-        rpcTx.Should().BeOfType<LegacyTransactionForRpc>();
+        Assert.That(rpcTx, Is.TypeOf<LegacyTransactionForRpc>());
         LegacyTransactionForRpc legacyRpcTx = (LegacyTransactionForRpc)rpcTx;
 
-        legacyRpcTx.ChainId.Should().Be(explicitChainId);
+        Assert.That(legacyRpcTx.ChainId, Is.EqualTo(explicitChainId));
     }
 }

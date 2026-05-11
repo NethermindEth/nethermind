@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -231,7 +230,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             local.CompareTrees(remote, _logger, "END");
 
-            ctx.TreeFeed.IsRootComplete.Should().BeTrue();
+            Assert.That(ctx.TreeFeed.IsRootComplete, Is.True);
         }
 
         [Test]
@@ -407,10 +406,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.TreeFeed.ResetStateRootToBestSuggested();
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
-            request.Should().NotBeNull();
+            Assert.That(request, Is.Not.Null);
 
-            ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>()))
-                .Should().Be(SyncResponseHandlingResult.LesserQuality);
+            Assert.That(ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>())), Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
         }
 
         [Test]
@@ -426,10 +424,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.TreeFeed.ResetStateRootToBestSuggested();
 
             using StateSyncBatch? request = await ctx.Feed.PrepareRequest(ctx.CancellationToken);
-            request.Should().NotBeNull();
+            Assert.That(request, Is.Not.Null);
 
-            ctx.Feed.HandleResponse(request, peer: null)
-                .Should().Be(SyncResponseHandlingResult.NotAssigned);
+            Assert.That(ctx.Feed.HandleResponse(request, peer: null), Is.EqualTo(SyncResponseHandlingResult.NotAssigned));
         }
 
         [Test]
@@ -511,7 +508,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx);
 
             local.CompareTrees(remote, _logger, "END");
-            clearedAddresses.Should().Contain(TestItem.KeccakA, "EnsureStorageEmpty should be called for account with empty storage root in UpdatedStorages");
+            Assert.That(clearedAddresses, Does.Contain(TestItem.KeccakA), "EnsureStorageEmpty should be called for account with empty storage root in UpdatedStorages");
         }
 
         [Test]
@@ -547,7 +544,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx);
 
             local.CompareTrees(remote, _logger, "END");
-            clearedAddresses.Should().Contain(TestItem.KeccakA, "EnsureStorageEmpty should be called when the account no longer exists in final state");
+            Assert.That(clearedAddresses, Does.Contain(TestItem.KeccakA), "EnsureStorageEmpty should be called when the account no longer exists in final state");
         }
 
         private class TrackingTreeSyncStore(ITreeSyncStore inner, List<Hash256> clearedAddresses) : ITreeSyncStore
@@ -637,7 +634,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 remainingRequest += requestCount;
             }
 
-            remainingRequest.Should().Be(100); // Without the cache this would be 111
+            Assert.That(remainingRequest, Is.EqualTo(100)); // Without the cache this would be 111
         }
     }
 }

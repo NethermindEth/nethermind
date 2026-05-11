@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
@@ -42,7 +41,7 @@ namespace Nethermind.AuRa.Test
                 testNethermindContainer);
             AuRaNethermindApi api = new(apiDependencies);
             Action init = () => auRaPlugin.Init(api);
-            init.Should().NotThrow();
+            Assert.That(init, Throws.Nothing);
         }
 
         [Test]
@@ -53,7 +52,7 @@ namespace Nethermind.AuRa.Test
 
             parameters.ApplyToReleaseSpec(spec, 0, null);
 
-            spec.Eip158IgnoredAccount.Should().Be(Address.SystemUser);
+            Assert.That(spec.Eip158IgnoredAccount, Is.EqualTo(Address.SystemUser));
         }
 
     }

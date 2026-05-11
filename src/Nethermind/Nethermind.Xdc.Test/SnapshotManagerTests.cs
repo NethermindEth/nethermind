@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,7 +42,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
 
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -60,7 +59,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // assert that it was retrieved from cache
-        result.Should().BeEquivalentTo(snapshot);
+        AssertSnapshot(result, snapshot);
     }
 
     [Test]
@@ -69,7 +68,7 @@ internal class SnapshotManagerTests
         // Act
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(0, _xdcReleaseSpec);
         // Assert
-        result.Should().BeNull();
+        Assert.That(result, Is.Null);
     }
 
     [Test]
@@ -86,7 +85,7 @@ internal class SnapshotManagerTests
         Snapshot? saved = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        saved.Should().BeEquivalentTo(snapshot);
+        AssertSnapshot(saved, snapshot);
     }
 
     [Test]
@@ -103,7 +102,7 @@ internal class SnapshotManagerTests
         Snapshot? fromDb = _snapshotManager.GetSnapshotByGapNumber(gapBlock);
 
         // Assert
-        fromDb.Should().BeEquivalentTo(snapshot);
+        AssertSnapshot(fromDb, snapshot);
     }
 
     [Test]
@@ -118,7 +117,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
 
         // assert that it was retrieved from db
-        result.Should().BeEquivalentTo(snapshot1);
+        AssertSnapshot(result, snapshot1);
 
         // store another snapshot with the same hash but different data
 
@@ -131,7 +130,7 @@ internal class SnapshotManagerTests
         result = _snapshotManager.GetSnapshotByBlockNumber(900, _xdcReleaseSpec);
 
         // assert that the original snapshot is still returned
-        result.Should().BeEquivalentTo(snapshot2);
+        AssertSnapshot(result, snapshot2);
     }
 
     [TestCase(1, 0)]
@@ -151,7 +150,7 @@ internal class SnapshotManagerTests
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
 
         // assert that it was retrieved from db
-        result.Should().BeEquivalentTo(snapshot);
+        AssertSnapshot(result, snapshot);
     }
 
     [TestCase(450)]
@@ -173,6 +172,19 @@ internal class SnapshotManagerTests
         blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
-        snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
+        Snapshot? result = snapshotManager.GetSnapshotByGapNumber(header.Number);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.HeaderHash, Is.EqualTo(header.Hash!));
+    }
+
+    private static void AssertSnapshot(Snapshot? actual, Snapshot expected)
+    {
+        Assert.That(actual, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(actual!.BlockNumber, Is.EqualTo(expected.BlockNumber));
+            Assert.That(actual.HeaderHash, Is.EqualTo(expected.HeaderHash));
+            Assert.That(actual.NextEpochCandidates, Is.EqualTo(expected.NextEpochCandidates));
+        });
     }
 }

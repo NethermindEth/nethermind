@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -62,7 +61,7 @@ public class DbPersistingBlockTracerTests
             }
         );
 
-        traces.Should().BeEquivalentTo(new ParityLikeTxTrace[]
+        TraceStoreAssertions.AssertJsonEquivalent(traces, new ParityLikeTxTrace[]
         {
             new()
             {
@@ -138,7 +137,7 @@ public class DbPersistingBlockTracerTests
                     action = action.Subtraces.FirstOrDefault();
                 }
 
-                checkedDepth.Should().Be(depth);
+                Assert.That(checkedDepth, Is.EqualTo(depth));
             }
             catch (Exception ex)
             {

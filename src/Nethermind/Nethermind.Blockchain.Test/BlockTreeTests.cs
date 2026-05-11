@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Find;
@@ -114,9 +113,9 @@ public class BlockTreeTests
             .WithTotalDifficulty(1L)
             .TestObject;
 
-        blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        Assert.That(blockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
         using MemoryManager<byte>? missingBal = blockAccessListStore.GetRlp(block.Hash!);
-        missingBal.Should().BeNull();
+        Assert.That(missingBal, Is.Null);
 
         byte[] encodedBal = Rlp.Encode(new BlockAccessList()).Bytes;
         block.GeneratedBlockAccessList = new BlockAccessList();
@@ -126,8 +125,8 @@ public class BlockTreeTests
         blockTree.UpdateMainChain([block], true);
 
         using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block.Hash!);
-        persistedBal.Should().NotBeNull();
-        persistedBal!.Memory.ToArray().Should().Equal(encodedBal);
+        Assert.That(persistedBal, Is.Not.Null);
+        Assert.That(persistedBal!.Memory.ToArray(), Is.EqualTo(encodedBal));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -173,8 +172,8 @@ public class BlockTreeTests
         BlockTree blockTree = BuildBlockTree();
         Block blockA = Build.A.Block.WithNumber(0).TestObject;
         Block blockB = Build.A.Block.WithNumber(0).TestObject;
-        blockTree.SuggestBlock(blockA).Should().Be(AddBlockResult.Added);
-        blockTree.SuggestBlock(blockB).Should().Be(AddBlockResult.AlreadyKnown);
+        Assert.That(blockTree.SuggestBlock(blockA), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(blockTree.SuggestBlock(blockB), Is.EqualTo(AddBlockResult.AlreadyKnown));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -219,8 +218,8 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block3);
         blockTree.UpdateMainChain(new[] { block1, block2, block3 }, true);
 
-        newHeadBlockNotifications.Should().Be(1, "new head block");
-        blockAddedToMainNotifications.Should().Be(3, "block added to main");
+        Assert.That(newHeadBlockNotifications, Is.EqualTo(1), "new head block");
+        Assert.That(blockAddedToMainNotifications, Is.EqualTo(3), "block added to main");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -366,9 +365,9 @@ public class BlockTreeTests
         Assert.That(tree2.Head?.Number, Is.EqualTo(0), "head");
         Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Hash), "suggested");
 
-        blockStore.Get(block1.Number, block1.Hash!).Should().BeNull("block 1");
-        blockStore.Get(block2.Number, block2.Hash!).Should().BeNull("block 2");
-        blockStore.Get(block3.Number, block3.Hash!).Should().BeNull("block 3");
+        Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
+        Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");
+        Assert.That(blockStore.Get(block3.Number, block3.Hash!), Is.Null, "block 3");
 
         Assert.That(blockInfosDb.Get(1), Is.Not.Null, "level 1");
         Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
@@ -770,7 +769,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
         Block block1 = Build.A.Block.WithNumber(1).WithParentHash(block0.Hash!).WithDifficulty(2).TestObject;
         blockTree.SuggestBlock(block1);
-        block1.TotalDifficulty.Should().NotBeNull();
+        Assert.That(block1.TotalDifficulty, Is.Not.Null);
         Assert.That((int)block1.TotalDifficulty!, Is.EqualTo(3));
     }
 
@@ -960,12 +959,12 @@ public class BlockTreeTests
         blockTree.SuggestBlock(block0);
         blockTree.SuggestBlock(block1);
         blockTree.UpdateMainChain(block0);
-        blockTree.BestSuggestedHeader.Should().Be(block1.Header);
-        blockTree.PendingHash.Should().Be(block0.Hash!);
+        Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(block1.Header));
+        Assert.That(blockTree.PendingHash, Is.EqualTo(block0.Hash!));
         Block? pending = ((IBlockFinder)blockTree).FindPendingBlock();
-        pending!.Header.Should().BeSameAs(block0.Header);
-        pending.Body.Should().Be(block0.Body);
-        ((IBlockFinder)blockTree).FindPendingHeader().Should().BeSameAs(block0.Header);
+        Assert.That(pending!.Header, Is.SameAs(block0.Header));
+        Assert.That(pending.Body, Is.EqualTo(block0.Body));
+        Assert.That(((IBlockFinder)blockTree).FindPendingHeader(), Is.SameAs(block0.Header));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -974,7 +973,7 @@ public class BlockTreeTests
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         BlockTree blockTree = BuildBlockTree();
         blockTree.SuggestBlock(block0, BlockTreeSuggestOptions.None);
-        blockTree.IsMainChain(block0.Hash!).Should().BeTrue();
+        Assert.That(blockTree.IsMainChain(block0.Hash!), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1118,9 +1117,9 @@ public class BlockTreeTests
         Assert.That(blockInfosDb.Get(2), Is.Not.Null, "level 2");
         Assert.That(blockInfosDb.Get(3), Is.Not.Null, "level 3");
 
-        repository.LoadLevel(1)!.BlockInfos.Length.Should().Be(1);
-        repository.LoadLevel(2)!.BlockInfos.Length.Should().Be(1);
-        repository.LoadLevel(3)!.BlockInfos.Length.Should().Be(1);
+        Assert.That(repository.LoadLevel(1)!.BlockInfos.Length, Is.EqualTo(1));
+        Assert.That(repository.LoadLevel(2)!.BlockInfos.Length, Is.EqualTo(1));
+        Assert.That(repository.LoadLevel(3)!.BlockInfos.Length, Is.EqualTo(1));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1521,12 +1520,12 @@ public class BlockTreeTests
             .TestObject;
 
         Block genesis = Build.A.Block.WithDifficulty(0).TestObject;
-        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
-        tree.FindBlock(genesis.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+        Assert.That(tree.SuggestBlock(genesis), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(tree.FindBlock(genesis.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.EqualTo(UInt256.Zero));
 
         Block A = Build.A.Block.WithParent(genesis).WithDifficulty(0).TestObject;
-        tree.SuggestBlock(A).Should().Be(AddBlockResult.Added);
-        tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(UInt256.Zero);
+        Assert.That(tree.SuggestBlock(A), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(tree.FindBlock(A.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.EqualTo(UInt256.Zero));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1733,45 +1732,45 @@ public class BlockTreeTests
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         blockTree.BlockAcceptingNewBlocks();
-        blockTree.SuggestBlock(Build.A.Block.WithNumber(3).TestObject).Should().Be(AddBlockResult.CannotAccept);
+        Assert.That(blockTree.SuggestBlock(Build.A.Block.WithNumber(3).TestObject), Is.EqualTo(AddBlockResult.CannotAccept));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_block_cannot_insert_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        blockTree.CanAcceptNewBlocks.Should().BeTrue();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.True);
         blockTree.BlockAcceptingNewBlocks();
-        blockTree.CanAcceptNewBlocks.Should().BeFalse();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
         Block newBlock = Build.A.Block.WithNumber(3).TestObject;
         AddBlockResult result = blockTree.Insert(newBlock);
-        result.Should().Be(AddBlockResult.CannotAccept);
+        Assert.That(result, Is.EqualTo(AddBlockResult.CannotAccept));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_skip_blocked_tree()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        blockTree.CanAcceptNewBlocks.Should().BeTrue();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.True);
         blockTree.BlockAcceptingNewBlocks();
-        blockTree.CanAcceptNewBlocks.Should().BeFalse();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
         Block newBlock = Build.A.Block.WithNumber(3).TestObject;
         AddBlockResult result = blockTree.Insert(newBlock, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks);
-        result.Should().Be(AddBlockResult.Added);
+        Assert.That(result, Is.EqualTo(AddBlockResult.Added));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_block_and_unblock_adding_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        blockTree.CanAcceptNewBlocks.Should().BeTrue();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.True);
         blockTree.BlockAcceptingNewBlocks();
-        blockTree.CanAcceptNewBlocks.Should().BeFalse();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
         blockTree.BlockAcceptingNewBlocks();
         blockTree.ReleaseAcceptingNewBlocks();
-        blockTree.CanAcceptNewBlocks.Should().BeFalse();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
         blockTree.ReleaseAcceptingNewBlocks();
-        blockTree.CanAcceptNewBlocks.Should().BeTrue();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.True);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -1802,15 +1801,14 @@ public class BlockTreeTests
             }
         }
 
-        blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should()
-            .Be(new UInt256(expectedTotalDifficulty));
+        Assert.That(blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty, Is.EqualTo(new UInt256(expectedTotalDifficulty)));
 
         for (int i = chainLength - 1; i >= 0; i--)
         {
             ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
 
-            level.Should().NotBeNull();
-            level!.BlockInfos.Should().HaveCount(1);
+            Assert.That(level, Is.Not.Null);
+            Assert.That(level!.BlockInfos.Length, Is.EqualTo(1));
         }
     }
 
@@ -1820,7 +1818,7 @@ public class BlockTreeTests
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         ManualResetEvent manualResetEvent = new(false);
         Task acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
-        blockTree.CanAcceptNewBlocks.Should().BeFalse();
+        Assert.That(blockTree.CanAcceptNewBlocks, Is.False);
         manualResetEvent.Set();
         await acceptTask;
     }
@@ -1831,10 +1829,10 @@ public class BlockTreeTests
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         blockTree.BlockAcceptingNewBlocks();
         ValueTask<AddBlockResult> suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
-        suggest.IsCompleted.Should().Be(false);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(false));
         blockTree.ReleaseAcceptingNewBlocks();
         await suggest;
-        suggest.IsCompleted.Should().Be(true);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(true));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1847,18 +1845,18 @@ public class BlockTreeTests
         blockTree.BlockAcceptingNewBlocks();        // 2nd blockade
         blockTree.BlockAcceptingNewBlocks();        // 3rd blockade
         ValueTask<AddBlockResult> suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
-        suggest.IsCompleted.Should().Be(false);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(false));
         blockTree.ReleaseAcceptingNewBlocks();      // 1st release - 2 blockades left
-        suggest.IsCompleted.Should().Be(false);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(false));
         blockTree.ReleaseAcceptingNewBlocks();      // 2nd release - 1 blockade left
-        suggest.IsCompleted.Should().Be(false);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(false));
         blockTree.BlockAcceptingNewBlocks();        // 1 more blockade - 2 blockades left
-        suggest.IsCompleted.Should().Be(false);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(false));
         blockTree.ReleaseAcceptingNewBlocks();      // release - 1 blockade left
-        suggest.IsCompleted.Should().Be(false);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(false));
         blockTree.ReleaseAcceptingNewBlocks();      // 3rd release - access unlocked
         await suggest;
-        suggest.IsCompleted.Should().Be(true);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(true));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1867,7 +1865,7 @@ public class BlockTreeTests
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         ValueTask<AddBlockResult> suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
         await suggest;
-        suggest.IsCompleted.Should().Be(true);
+        Assert.That(suggest.IsCompleted, Is.EqualTo(true));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1879,8 +1877,8 @@ public class BlockTreeTests
         BlockTree blockTree = Build.A.BlockTree(genesisWithZeroDifficulty, specProvider).OfChainLength(1).TestObject;
 
         Block block = Build.A.Block.WithDifficulty(0).WithParent(genesisWithZeroDifficulty).TestObject;
-        blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
-        blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject).Should().Be(AddBlockResult.Added);
+        Assert.That(blockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
+        Assert.That(blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject), Is.EqualTo(AddBlockResult.Added));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1929,7 +1927,7 @@ public class BlockTreeTests
         Block invalidBlock = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
         blockTree.SuggestBlock(invalidBlock);
         blockTree.DeleteInvalidBlock(invalidBlock);
-        findFunction(blockTree, invalidBlock.Hash, lookupOptions).Should().Be(foundInvalid ? invalidBlock.Header : null);
+        Assert.That(findFunction(blockTree, invalidBlock.Hash, lookupOptions), Is.EqualTo(foundInvalid ? invalidBlock.Header : null));
     }
 
     [TestCase(true)]
@@ -2001,7 +1999,7 @@ public class BlockTreeTests
             });
 
             tree.SuggestBlock(genesis);
-            tree.Genesis.Should().NotBeNull();
+            Assert.That(tree.Genesis, Is.Not.Null);
 
             tree.UpdateMainChain(ImmutableList.Create(genesis), wereProcessed);
 
@@ -2019,7 +2017,7 @@ public class BlockTreeTests
                 .WithoutSettingHead
                 .TestObject;
 
-            tree.Genesis.Should().NotBeNull();
+            Assert.That(tree.Genesis, Is.Not.Null);
         }
     }
 
@@ -2046,7 +2044,7 @@ public class BlockTreeTests
 
         for (int i = 1; i < 101; i++)
         {
-            blockTree.FindHeader(i, BlockTreeLookupOptions.None).Should().NotBeNull();
+            Assert.That(blockTree.FindHeader(i, BlockTreeLookupOptions.None), Is.Not.Null);
         }
     }
 
@@ -2092,7 +2090,7 @@ public class BlockTreeTests
             PivotHash = Hash256.Zero.ToString(),
         };
         BlockTree blockTree = Build.A.BlockTree().WithSyncConfig(syncConfig).TestObject;
-        blockTree.SyncPivot.Should().Be((999, Hash256.Zero));
+        Assert.That(blockTree.SyncPivot, Is.EqualTo((999, Hash256.Zero)));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2109,7 +2107,7 @@ public class BlockTreeTests
         blockTree.SyncPivot = (1000, TestItem.KeccakA);
 
         blockTree = Build.A.BlockTree().WithMetadataDb(metadataDb).WithSyncConfig(syncConfig).TestObject;
-        blockTree.SyncPivot.Should().Be((1000, TestItem.KeccakA));
+        Assert.That(blockTree.SyncPivot, Is.EqualTo((1000, TestItem.KeccakA)));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2128,18 +2126,18 @@ public class BlockTreeTests
             .WithSyncConfig(syncConfig)
             .TestObject;
 
-        tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+        Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
         Block block = Build.A.Block.Genesis.TestObject;
-        tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
 
         for (long i = 1; i <= 5; i++)
         {
             block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
-            tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
             tree.UpdateMainChain(block);
             tree.ForkChoiceUpdated(block.Hash, block.Hash);
-            tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+            Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
         tree.BestPersistedState = 5;
@@ -2151,7 +2149,7 @@ public class BlockTreeTests
             tree.SuggestBlock(block);
             tree.UpdateMainChain(block);
             tree.ForkChoiceUpdated(block.Hash, block.Hash);
-            tree.SyncPivot.Should().Be((persistedStateHeader.Number, persistedStateHeader.Hash!));
+            Assert.That(tree.SyncPivot, Is.EqualTo((persistedStateHeader.Number, persistedStateHeader.Hash!)));
         }
     }
 
@@ -2171,17 +2169,17 @@ public class BlockTreeTests
             .WithSyncConfig(syncConfig)
             .TestObject;
 
-        tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+        Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
         Block block = Build.A.Block.Genesis.TestObject;
-        tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
 
         for (long i = 1; i <= 10; i++)
         {
             block = Build.A.Block.WithTotalDifficulty(1L).WithParent(block).TestObject;
-            tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
             tree.UpdateMainChain(block);
-            tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+            Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
         tree.BestPersistedState = 7;
@@ -2193,11 +2191,11 @@ public class BlockTreeTests
             tree.ForkChoiceUpdated(header.Hash, header.Hash);
             if (header.Number < persistedStateHeader.Number)
             {
-                tree.SyncPivot.Should().Be((header.Number, header.Hash!));
+                Assert.That(tree.SyncPivot, Is.EqualTo((header.Number, header.Hash!)));
             }
             else
             {
-                tree.SyncPivot.Should().Be((persistedStateHeader.Number, persistedStateHeader.Hash!));
+                Assert.That(tree.SyncPivot, Is.EqualTo((persistedStateHeader.Number, persistedStateHeader.Hash!)));
             }
         }
     }
@@ -2219,10 +2217,10 @@ public class BlockTreeTests
             .WithSyncConfig(syncConfig)
             .TestObject;
 
-        tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+        Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
 
         Block block = Build.A.Block.Genesis.TestObject;
-        tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
 
         for (long i = 1; i <= 5; i++)
         {
@@ -2231,9 +2229,9 @@ public class BlockTreeTests
                 .WithDifficulty(1L)
                 .WithTotalDifficulty(block.TotalDifficulty + 1)
                 .TestObject;
-            tree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+            Assert.That(tree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
             tree.UpdateMainChain(block);
-            tree.SyncPivot.Should().Be((pivotNumber, TestItem.KeccakA));
+            Assert.That(tree.SyncPivot, Is.EqualTo((pivotNumber, TestItem.KeccakA)));
         }
 
         for (long i = 6; i < 100; i++)
@@ -2250,7 +2248,7 @@ public class BlockTreeTests
             if (block.Number > pivotNumber + Reorganization.MaxDepth)
             {
                 BlockHeader reorgDepthHeader = tree.FindHeader(block.Number - Reorganization.MaxDepth, BlockTreeLookupOptions.RequireCanonical)!;
-                tree.SyncPivot.Should().Be((reorgDepthHeader.Number, reorgDepthHeader.Hash!));
+                Assert.That(tree.SyncPivot, Is.EqualTo((reorgDepthHeader.Number, reorgDepthHeader.Hash!)));
             }
         }
     }
@@ -2276,19 +2274,17 @@ public class BlockTreeTests
 
         // C (the third sibling, originally at index 2) must now be canonical
         Block? byNumber = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
-        byNumber.Should().NotBeNull("RequireCanonical lookup must find C");
-        byNumber!.Hash.Should().Be(blockC.Hash!, "C is the last canonical, SwapToMain must have moved it to index 0");
+        Assert.That(byNumber, Is.Not.Null, "RequireCanonical lookup must find C");
+        Assert.That(byNumber!.Hash, Is.EqualTo(blockC.Hash!), "C is the last canonical, SwapToMain must have moved it to index 0");
 
         // A and B must not be canonical
-        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
-            "A must not be canonical after C was set");
-        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
-            "B must not be canonical after C was set");
+        Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "A must not be canonical after C was set");
+        Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "B must not be canonical after C was set");
 
         // All three are still findable by hash (non-canonical lookup)
-        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("A findable by hash");
-        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("B findable by hash");
-        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("C findable by hash");
+        Assert.That(blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "A findable by hash");
+        Assert.That(blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "B findable by hash");
+        Assert.That(blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.None), Is.Not.Null, "C findable by hash");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2309,11 +2305,10 @@ public class BlockTreeTests
         blockTree.UpdateMainChain(new[] { blockB }, wereProcessed: false);
 
         // Canonical marker must be updated even without wereProcessed
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockB.Hash!,
-            "B must be canonical at height 1 even when UpdateMainChain was called with wereProcessed=false");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockB.Hash!), "B must be canonical at height 1 even when UpdateMainChain was called with wereProcessed=false");
 
-        blockTree.IsMainChain(blockB.Header).Should().BeTrue("B is canonical");
-        blockTree.IsMainChain(blockA.Header).Should().BeFalse("A is no longer canonical");
+        Assert.That(blockTree.IsMainChain(blockB.Header), Is.True, "B is canonical");
+        Assert.That(blockTree.IsMainChain(blockA.Header), Is.False, "A is no longer canonical");
     }
 
     [TestCase(1, false, TestName = "SingleDescendant")]
@@ -2335,7 +2330,7 @@ public class BlockTreeTests
 
         // FCU sets Head to headBlock at H=1
         blockTree.UpdateMainChain(new[] { headBlock }, wereProcessed: true, forceUpdateHeadBlock: true);
-        blockTree.Head!.Hash.Should().Be(headBlock.Hash!);
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(headBlock.Hash!));
 
         // Beacon sync: mark descendants canonical without advancing Head
         foreach (Block d in descendants)
@@ -2343,10 +2338,10 @@ public class BlockTreeTests
             blockTree.UpdateMainChain(new[] { d }, wereProcessed: false);
         }
 
-        blockTree.Head!.Number.Should().Be(1, "Head must stay at H=1 — wereProcessed=false");
+        Assert.That(blockTree.Head!.Number, Is.EqualTo(1), "Head must stay at H=1 — wereProcessed=false");
         foreach (Block d in descendants)
         {
-            blockTree.IsMainChain(d.Header).Should().BeTrue($"precondition: block at H={d.Number} canonical via beacon sync");
+            Assert.That(blockTree.IsMainChain(d.Header), Is.True, $"precondition: block at H={d.Number} canonical via beacon sync");
         }
 
         if (simulateGap && descendantCount >= 3)
@@ -2354,7 +2349,7 @@ public class BlockTreeTests
             // Simulate race: concurrent MoveToMain clears middle marker, creating a gap
             ChainLevelInfo? gapLevel = blockTree.FindLevel(descendants[1].Number);
             gapLevel!.HasBlockOnMainChain = false;
-            blockTree.IsMainChain(descendants[1].Header).Should().BeFalse("precondition: gap exists");
+            Assert.That(blockTree.IsMainChain(descendants[1].Header), Is.False, "precondition: gap exists");
         }
 
         // FCU reorg to sibling at H=1
@@ -2362,23 +2357,23 @@ public class BlockTreeTests
         blockTree.SuggestBlock(sibling);
         blockTree.UpdateMainChain(new[] { sibling }, wereProcessed: true, forceUpdateHeadBlock: true);
 
-        blockTree.Head!.Hash.Should().Be(sibling.Hash!);
-        blockTree.IsMainChain(sibling.Header).Should().BeTrue("sibling must be canonical");
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(sibling.Hash!));
+        Assert.That(blockTree.IsMainChain(sibling.Header), Is.True, "sibling must be canonical");
         foreach (Block d in descendants)
         {
-            blockTree.IsMainChain(d.Header).Should().BeFalse($"block at H={d.Number} must be de-canonicalized after reorg");
+            Assert.That(blockTree.IsMainChain(d.Header), Is.False, $"block at H={d.Number} must be de-canonicalized after reorg");
         }
 
         // FindCanonicalBlockInfo must return null for all orphaned heights
         for (int h = 2; h <= descendantCount + 1; h++)
         {
-            blockTree.FindCanonicalBlockInfo(h).Should().BeNull($"H={h} must return null — orphaned after reorg");
+            Assert.That(blockTree.FindCanonicalBlockInfo(h), Is.Null, $"H={h} must return null — orphaned after reorg");
         }
 
         // Canonical lookup at H=1 must return sibling
         BlockInfo? infoAt1 = blockTree.FindCanonicalBlockInfo(1);
-        infoAt1.Should().NotBeNull();
-        infoAt1!.BlockHash.Should().Be(sibling.Hash!, "H=1 must return sibling's hash");
+        Assert.That(infoAt1, Is.Not.Null);
+        Assert.That(infoAt1!.BlockHash, Is.EqualTo(sibling.Hash!), "H=1 must return sibling's hash");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2413,17 +2408,17 @@ public class BlockTreeTests
         }
 
         // Preconditions: head stale at b1, b2-b4 canonical via beacon sync.
-        blockTree.Head!.Hash.Should().Be(chain[0].Hash!, "precondition: head stale at b1");
-        blockTree.FindBlock(chain[1].Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("precondition: b2 beacon-synced canonical");
-        blockTree.FindBlock(chain[3].Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("precondition: b4 beacon-synced canonical");
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[0].Hash!), "precondition: head stale at b1");
+        Assert.That(blockTree.FindBlock(chain[1].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "precondition: b2 beacon-synced canonical");
+        Assert.That(blockTree.FindBlock(chain[3].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "precondition: b4 beacon-synced canonical");
 
         // ePBS FCU to ancestor: reorg back to genesis at H=0.
         blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true, forceUpdateHeadBlock: true);
 
-        blockTree.FindBlock(genesis.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("genesis must be canonical");
+        Assert.That(blockTree.FindBlock(genesis.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "genesis must be canonical");
         foreach (Block b in chain)
         {
-            blockTree.FindBlock(b.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull($"b{b.Number} must be de-canonicalized");
+            Assert.That(blockTree.FindBlock(b.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, $"b{b.Number} must be de-canonicalized");
         }
     }
 
@@ -2454,10 +2449,10 @@ public class BlockTreeTests
 
         foreach (Block d in descendants)
         {
-            blockTree.FindBlock(d.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull($"H={d.Number} stale marker must be cleared");
+            Assert.That(blockTree.FindBlock(d.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, $"H={d.Number} stale marker must be cleared");
         }
 
-        blockTree.FindBlock(head.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("head must remain canonical");
+        Assert.That(blockTree.FindBlock(head.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "head must remain canonical");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2478,14 +2473,12 @@ public class BlockTreeTests
         blockTree.UpdateMainChain(new[] { blockA }, wereProcessed: true, forceUpdateHeadBlock: true);
         blockTree.UpdateMainChain(new[] { blockB }, wereProcessed: false); // B wrongly becomes canonical
 
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
-            .Should().Be(blockB.Hash!, "precondition: B is wrongly canonical");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockB.Hash!), "precondition: B is wrongly canonical");
 
         blockTree.HealCanonicalChain(blockA.Hash!, maxBlockDepth: 10);
 
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
-            .Should().Be(blockA.Hash!, "A must be canonical after heal");
-        blockTree.IsMainChain(blockB.Header).Should().BeFalse("B must not be canonical");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockA.Hash!), "A must be canonical after heal");
+        Assert.That(blockTree.IsMainChain(blockB.Header), Is.False, "B must not be canonical");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2498,8 +2491,8 @@ public class BlockTreeTests
 
         blockTree.HealCanonicalChain(chain[1].Hash!, maxBlockDepth: 10);
 
-        blockTree.FindBlock(chain[1].Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("b2 must remain canonical");
-        blockTree.FindBlock(chain[0].Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("b1 must remain canonical");
+        Assert.That(blockTree.FindBlock(chain[1].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "b2 must remain canonical");
+        Assert.That(blockTree.FindBlock(chain[0].Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "b1 must remain canonical");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2508,7 +2501,7 @@ public class BlockTreeTests
         (BlockTree blockTree, _) = BuildBlockTreeWithGenesis();
 
         // Should not throw — unknown hash is treated as a no-op.
-        blockTree.Invoking(bt => bt.HealCanonicalChain(TestItem.KeccakA, maxBlockDepth: 10)).Should().NotThrow();
+        Assert.That(() => blockTree.HealCanonicalChain(TestItem.KeccakA, maxBlockDepth: 10), Throws.Nothing);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2538,19 +2531,15 @@ public class BlockTreeTests
         blockTree.UpdateMainChain(new[] { blockC }, wereProcessed: false); // sync: C canonical at H=2, head stays A
 
         // Preconditions: A canonical at H=1, C stale-canonical at H=2, B suggested but not canonical
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
-            .Should().Be(blockA.Hash!, "precondition: A is canonical at H=1");
-        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
-            .Should().NotBeNull("precondition: C is stale-canonical at H=2");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockA.Hash!), "precondition: A is canonical at H=1");
+        Assert.That(blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "precondition: C is stale-canonical at H=2");
 
         // Heal from B — the CL says B is the correct head.
         // Must both: clear C at H=2 (upward scan) and swap B to index 0 at H=1 (downward walk).
         blockTree.HealCanonicalChain(blockB.Hash!, maxBlockDepth: 10);
 
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
-            .Should().Be(blockB.Hash!, "B must be canonical at H=1 after heal");
-        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
-            .Should().BeNull("C must not be canonical — it was orphaned when B replaced A");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(blockB.Hash!), "B must be canonical at H=1 after heal");
+        Assert.That(blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Null, "C must not be canonical — it was orphaned when B replaced A");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2573,14 +2562,12 @@ public class BlockTreeTests
         blockTree.UpdateMainChain(new[] { b2 }, wereProcessed: true, forceUpdateHeadBlock: true);
         blockTree.UpdateMainChain(new[] { b1Alt }, wereProcessed: false); // breaks H=1
 
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
-            .Should().Be(b1Alt.Hash!, "precondition: H=1 is broken");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(b1Alt.Hash!), "precondition: H=1 is broken");
 
         // Heal from b2 with depth=0: only checks b2, does not reach H=1
         blockTree.HealCanonicalChain(b2.Hash!, maxBlockDepth: 0);
 
-        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
-            .Should().Be(b1Alt.Hash!, "H=1 must remain broken — it is beyond maxBlockDepth");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash, Is.EqualTo(b1Alt.Hash!), "H=1 must remain broken — it is beyond maxBlockDepth");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2611,10 +2598,10 @@ public class BlockTreeTests
             blockTree.UpdateMainChain(new[] { d }, wereProcessed: false);
         }
 
-        blockTree.Head!.Hash.Should().Be(head.Hash!, "precondition: head stale at H=1 after round-1 beacon sync");
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(head.Hash!), "precondition: head stale at H=1 after round-1 beacon sync");
         foreach (Block d in desc1)
         {
-            blockTree.IsMainChain(d.Header).Should().BeTrue($"precondition: round-1 desc at H={d.Number} canonical via beacon sync");
+            Assert.That(blockTree.IsMainChain(d.Header), Is.True, $"precondition: round-1 desc at H={d.Number} canonical via beacon sync");
         }
 
         // Round 1 FCU — reorg to sibling1 at H=1
@@ -2622,10 +2609,10 @@ public class BlockTreeTests
         blockTree.SuggestBlock(sibling1);
         blockTree.UpdateMainChain(new[] { sibling1 }, wereProcessed: true, forceUpdateHeadBlock: true);
 
-        blockTree.Head!.Hash.Should().Be(sibling1.Hash!, "after round-1 FCU head must be sibling1");
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(sibling1.Hash!), "after round-1 FCU head must be sibling1");
         foreach (Block d in desc1)
         {
-            blockTree.IsMainChain(d.Header).Should().BeFalse($"round-1 stale marker at H={d.Number} must be cleared after FCU to sibling1");
+            Assert.That(blockTree.IsMainChain(d.Header), Is.False, $"round-1 stale marker at H={d.Number} must be cleared after FCU to sibling1");
         }
 
         // Round 2 — beacon sync marks two descendants of sibling1 canonical
@@ -2635,10 +2622,10 @@ public class BlockTreeTests
             blockTree.UpdateMainChain(new[] { d }, wereProcessed: false);
         }
 
-        blockTree.Head!.Hash.Should().Be(sibling1.Hash!, "precondition: head stale at sibling1 after round-2 beacon sync");
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(sibling1.Hash!), "precondition: head stale at sibling1 after round-2 beacon sync");
         foreach (Block d in desc2)
         {
-            blockTree.IsMainChain(d.Header).Should().BeTrue($"precondition: round-2 desc at H={d.Number} canonical via beacon sync");
+            Assert.That(blockTree.IsMainChain(d.Header), Is.True, $"precondition: round-2 desc at H={d.Number} canonical via beacon sync");
         }
 
         // Round 2 FCU — reorg to sibling2 at H=1
@@ -2646,16 +2633,16 @@ public class BlockTreeTests
         blockTree.SuggestBlock(sibling2);
         blockTree.UpdateMainChain(new[] { sibling2 }, wereProcessed: true, forceUpdateHeadBlock: true);
 
-        blockTree.Head!.Hash.Should().Be(sibling2.Hash!, "after round-2 FCU head must be sibling2");
+        Assert.That(blockTree.Head!.Hash, Is.EqualTo(sibling2.Hash!), "after round-2 FCU head must be sibling2");
         foreach (Block d in desc2)
         {
-            blockTree.IsMainChain(d.Header).Should().BeFalse($"round-2 stale marker at H={d.Number} must be cleared after FCU to sibling2");
+            Assert.That(blockTree.IsMainChain(d.Header), Is.False, $"round-2 stale marker at H={d.Number} must be cleared after FCU to sibling2");
         }
 
         // Sibling2 is canonical at H=1; head, sibling1 are orphaned
-        blockTree.IsMainChain(sibling2.Header).Should().BeTrue("sibling2 must be canonical at H=1");
-        blockTree.IsMainChain(head.Header).Should().BeFalse("original head must be orphaned");
-        blockTree.IsMainChain(sibling1.Header).Should().BeFalse("sibling1 must be orphaned");
+        Assert.That(blockTree.IsMainChain(sibling2.Header), Is.True, "sibling2 must be canonical at H=1");
+        Assert.That(blockTree.IsMainChain(head.Header), Is.False, "original head must be orphaned");
+        Assert.That(blockTree.IsMainChain(sibling1.Header), Is.False, "sibling1 must be orphaned");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2671,8 +2658,8 @@ public class BlockTreeTests
         // Forward processing H=2 (forceUpdateHeadBlock: false) must not clear H=3, H=4
         blockTree.UpdateMainChain(new[] { chain[1] }, wereProcessed: true, forceUpdateHeadBlock: false);
 
-        blockTree.IsMainChain(chain[2].Header).Should().BeTrue("H=3 marker must survive");
-        blockTree.IsMainChain(chain[3].Header).Should().BeTrue("H=4 marker must survive");
+        Assert.That(blockTree.IsMainChain(chain[2].Header), Is.True, "H=3 marker must survive");
+        Assert.That(blockTree.IsMainChain(chain[3].Header), Is.True, "H=4 marker must survive");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2694,7 +2681,7 @@ public class BlockTreeTests
         blockTree.SuggestBlock(b3);
         blockTree.UpdateMainChain(new[] { b1, b2, b3 }, wereProcessed: true, forceUpdateHeadBlock: true);
 
-        blockTree.IsMainChain(chainA[3].Header).Should().BeFalse("A4 stale marker must be cleared");
+        Assert.That(blockTree.IsMainChain(chainA[3].Header), Is.False, "A4 stale marker must be cleared");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2737,12 +2724,10 @@ public class BlockTreeTests
         blockTree.UpdateMainChain(new[] { b1 }, true);
 
         // Height 2 was orphaned: must return null, not the stale A2
-        blockTree.FindBlock(2, BlockTreeLookupOptions.None).Should().BeNull(
-            "orphaned height 2 must return null after reorg in PoS — not the stale A2 block");
+        Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null, "orphaned height 2 must return null after reorg in PoS — not the stale A2 block");
 
         // Height 1 must return the new canonical B1
-        blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash.Should().Be(b1.Hash!,
-            "height 1 must return B1 after reorg");
+        Assert.That(blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(b1.Hash!), "height 1 must return B1 after reorg");
     }
 
 }

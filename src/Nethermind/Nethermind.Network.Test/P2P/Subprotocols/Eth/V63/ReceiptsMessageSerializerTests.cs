@@ -4,11 +4,11 @@
 using System;
 using System.Linq;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -97,7 +97,7 @@ public class ReceiptsMessageSerializerTests
             Logs = receipt.Logs
         };
 
-        decoded.Should().BeEquivalentTo(expectedDecoded);
+        decoded.AssertEquivalentTo(expectedDecoded);
     }
 
     [Test]
@@ -129,7 +129,7 @@ public class ReceiptsMessageSerializerTests
     {
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
         using ReceiptsMessage receiptsMessage = serializer.Deserialize([]);
-        receiptsMessage.TxReceipts.Should().HaveCount(0);
+        Assert.That((receiptsMessage.TxReceipts).Count, Is.EqualTo(0));
     }
 
     [Test]
@@ -146,7 +146,7 @@ public class ReceiptsMessageSerializerTests
         serializer.Serialize(buffer, message);
         using ReceiptsMessage deserialized = serializer.Deserialize(buffer);
 
-        deserialized.TxReceipts.Count.Should().Be(data.Length);
+        Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(data.Length));
     }
 
     [Test]

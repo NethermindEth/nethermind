@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -80,7 +79,7 @@ public class SyncInfoDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        decoded.Should().BeEquivalentTo(syncInfo);
+        XdcTestAssertions.AssertSyncInfo(decoded, syncInfo);
     }
 
     [Test]
@@ -113,9 +112,9 @@ public class SyncInfoDecoderTests
         SyncInfo decodedContext = decoder.Decode(ref decoderContext);
 
         // Both should be equivalent to original
-        decodedStream.Should().BeEquivalentTo(syncInfo);
-        decodedContext.Should().BeEquivalentTo(syncInfo);
-        decodedStream.Should().BeEquivalentTo(decodedContext);
+        XdcTestAssertions.AssertSyncInfo(decodedStream, syncInfo);
+        XdcTestAssertions.AssertSyncInfo(decodedContext, syncInfo);
+        XdcTestAssertions.AssertSyncInfo(decodedStream, decodedContext);
     }
 
     [Test]

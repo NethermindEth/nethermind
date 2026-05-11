@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -31,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             };
 
             AccountRangeMessageSerializer serializer = new();
-            serializer.Serialize(msg).ToHexString().Should().Be("c301c0c0");
+            Assert.That(serializer.Serialize(msg).ToHexString(), Is.EqualTo("c301c0c0"));
         }
 
         [Test]

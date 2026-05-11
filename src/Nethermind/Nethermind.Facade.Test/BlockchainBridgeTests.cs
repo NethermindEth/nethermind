@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -76,16 +75,16 @@ public class BlockchainBridgeTests
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
     {
-        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
-        result.Should().BeNull();
+        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+        Assert.That(result, Is.Null);
     }
 
     [Test]
     public void get_transaction_returns_null_when_block_not_found()
     {
         _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
-        _blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result).Should().BeFalse();
-        result.Should().BeNull();
+        Assert.That(_blockchainBridge.TryGetTransaction(TestItem.KeccakA, out TransactionLookupResult? result), Is.False);
+        Assert.That(result, Is.Null);
     }
 
     // regression test - was throwing NRE before
@@ -135,16 +134,20 @@ public class BlockchainBridgeTests
             _receiptStorage.FindBlockHash(receipt.TxHash!).Returns(TestItem.KeccakB);
         }
         _receiptStorage.Get(block).Returns(receipts);
-        _blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result).Should().BeTrue();
-        result!.Value.Transaction.Should().BeEquivalentTo(Build.A.Transaction.WithNonce((UInt256)index).WithHash(TestItem.Keccaks[index]).TestObject);
-        result.Value.ExtraData.Should().BeEquivalentTo(new TransactionForRpcContext(
+        Assert.That(_blockchainBridge.TryGetTransaction(transactions[index].Hash!, out TransactionLookupResult? result), Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result!.Value.Transaction.Nonce, Is.EqualTo((UInt256)index));
+            Assert.That(result.Value.Transaction.Hash, Is.EqualTo(TestItem.Keccaks[index]));
+        });
+        Assert.That(result.Value.ExtraData, Is.EqualTo(new TransactionForRpcContext(
             chainId: _specProvider.ChainId,
             blockHash: block.Hash,
             blockNumber: block.Number,
             txIndex: receipts[index].Index,
             blockTimestamp: block.Timestamp,
             baseFee: UInt256.Zero,
-            receipt: receipts[index]));
+            receipt: receipts[index])));
     }
 
     [Test]
@@ -223,7 +226,7 @@ public class BlockchainBridgeTests
         _blockTree.Head.Returns(head);
         _blockTree.BestSuggestedBody.Returns(bestSuggested);
 
-        _blockchainBridge.HeadBlock.Should().Be(head);
+        Assert.That(_blockchainBridge.HeadBlock, Is.EqualTo(head));
     }
 
     [TestCase(true, true)]
@@ -281,7 +284,7 @@ public class BlockchainBridgeTests
             result = (null, 0, null, 0);
         }
 
-        _blockchainBridge.GetTxReceiptInfo(txHash).Should().BeEquivalentTo(result);
+        Assert.That(_blockchainBridge.GetTxReceiptInfo(txHash), Is.EqualTo(result));
     }
 
     [Test]
@@ -752,7 +755,7 @@ public class BlockchainBridgeTests
 
         _stateReader.HasStateForBlock(header).Returns(true);
 
-        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+        Assert.That(_blockchainBridge.HasStateForBlock(header), Is.True);
     }
 
     [Test]
@@ -762,7 +765,7 @@ public class BlockchainBridgeTests
 
         _stateReader.HasStateForBlock(header).Returns(false);
 
-        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+        Assert.That(_blockchainBridge.HasStateForBlock(header), Is.False);
     }
 
     [Test]
@@ -792,7 +795,7 @@ public class BlockchainBridgeTests
 
         adapter.Execute(transaction, Substitute.For<ITxTracer>());
 
-        simulateRequestState.TotalGasLeft.Should().Be(50_000);
-        simulateRequestState.BlockGasLeft.Should().Be(30_000);
+        Assert.That(simulateRequestState.TotalGasLeft, Is.EqualTo(50_000));
+        Assert.That(simulateRequestState.BlockGasLeft, Is.EqualTo(30_000));
     }
 }

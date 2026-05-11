@@ -3,7 +3,6 @@
 
 using System;
 using System.IO.Abstractions;
-using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core.Timers;
 using NSubstitute;
@@ -47,7 +46,7 @@ public class PathSizePruningTriggerTests
     public void throws_on_nonexisting_path()
     {
         Action action = static () => new PathSizePruningTrigger("path", 5, null!, Substitute.For<IFileSystem>());
-        action.Should().Throw<ArgumentException>();
+        Assert.That(action, Throws.TypeOf<ArgumentException>());
     }
 
     private static IFileInfo GetFile(long length)

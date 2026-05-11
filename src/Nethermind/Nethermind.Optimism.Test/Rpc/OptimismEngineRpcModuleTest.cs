@@ -3,8 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Json;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin;
@@ -98,7 +96,7 @@ public class OptimismEngineRpcModuleTest
 
         ResultWrapper<OptimismSignalSuperchainV1Result> result = rpcModule.engine_signalSuperchainV1(signal);
 
-        result.Data.Should().Be(new OptimismSignalSuperchainV1Result(current));
+        Assert.That(result.Data, Is.EqualTo(new OptimismSignalSuperchainV1Result(current)));
     }
 
     private static IEnumerable<(string, string, OptimismProtocolVersion)> SignalSuperchainV1JsonCases()
@@ -123,6 +121,6 @@ public class OptimismEngineRpcModuleTest
         OptimismSuperchainSignal signal = new EthereumJsonSerializer().Deserialize<OptimismSuperchainSignal>(testCase.Signal);
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_signalSuperchainV1", signal);
 
-        JToken.Parse(response).Should().BeEquivalentTo($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""");
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse($$"""{"jsonrpc":"2.0","result":{{testCase.Expected}},"id":67}""")));
     }
 }

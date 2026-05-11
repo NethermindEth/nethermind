@@ -99,8 +99,8 @@ internal class SubnetEpochSwitchManagerTests
 
         Assert.That(result, Is.Not.Null);
         // Penalties must come from SubnetSnapshot, NOT from header
-        Assert.That(result!.Penalties, Is.EquivalentTo(snapshotPenalties));
-        Assert.That(result.Penalties, Is.Not.EquivalentTo(headerPenalties));
+        Assert.That(result!.Penalties, Is.EqualTo(snapshotPenalties));
+        Assert.That(result.Penalties, Is.Not.EqualTo(headerPenalties));
     }
 
     [Test]

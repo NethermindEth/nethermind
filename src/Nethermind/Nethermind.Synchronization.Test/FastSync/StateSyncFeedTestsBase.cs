@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -215,7 +214,7 @@ public abstract class StateSyncFeedTestsBase(
                 .WithStateRoot(newRootHash)
                 .TestObject;
 
-            (await blockTree.SuggestBlockAsync(newBlock)).Should().Be(AddBlockResult.Added);
+            Assert.That((await blockTree.SuggestBlockAsync(newBlock)), Is.EqualTo(AddBlockResult.Added));
             blockTree.UpdateMainChain([newBlock], false, true);
         }
 

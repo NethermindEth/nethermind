@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
+using System.Reflection;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -146,8 +146,7 @@ public class ChainSpecTest
         {
             changes(expected);
             IReleaseSpec underTest = provider.GetSpec(activation);
-            underTest.Should().BeEquivalentTo(expected,
-                options => options.Excluding(s => s.Name));
+            AssertReleaseSpecEquivalent(underTest, expected);
         }
 
         TestTransitions((ForkActivation)0L, r =>
@@ -216,4 +215,15 @@ public class ChainSpecTest
         TestTransitions((40001L, 1000000032), r => { r.IsEip7702Enabled = true; });
     }
 
+    private static void AssertReleaseSpecEquivalent(IReleaseSpec actual, IReleaseSpec expected) =>
+        Assert.Multiple(() =>
+        {
+            foreach (PropertyInfo property in typeof(IReleaseSpec).GetProperties())
+            {
+                if (property.Name is nameof(IReleaseSpec.Name) or nameof(IReleaseSpec.Precompiles))
+                    continue;
+
+                Assert.That(property.GetValue(actual), Is.EqualTo(property.GetValue(expected)), property.Name);
+            }
+        });
 }

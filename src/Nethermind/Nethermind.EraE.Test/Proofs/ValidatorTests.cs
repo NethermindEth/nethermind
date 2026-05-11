@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
@@ -21,7 +20,7 @@ public class ValidatorTests
 
         bool result = sut.VerifyAccumulator(0, root);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -33,7 +32,7 @@ public class ValidatorTests
         bool result = sut.VerifyAccumulator(0,
             new ValueHash256("0x1122334400000000000000000000000000000000000000000000000000000000"));
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -46,7 +45,7 @@ public class ValidatorTests
         bool result = sut.VerifyAccumulator(0,
             new ValueHash256("0xaabbccdd00000000000000000000000000000000000000000000000000000000"));
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -56,8 +55,7 @@ public class ValidatorTests
         Validator sut = BuildValidator(root);
 
         // Epoch 1 requires index 1 in the trusted set, but we only have 1 entry (index 0)
-        sut.Invoking(v => v.VerifyAccumulator(8192, root))
-            .Should().Throw<EraVerificationException>();
+        Assert.That(() => { sut.VerifyAccumulator(8192, root); }, Throws.TypeOf<EraVerificationException>());
     }
 
     private static Validator BuildValidator(ValueHash256 trustedRoot)

@@ -18,7 +18,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -51,12 +50,13 @@ public class RangeQueryVisitorTests
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         _inputTree.Accept(visitor, _inputTree.RootHash, CreateVisitingOptions());
 
-        leafCollector.Leafs.Count.Should().Be(4);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(4));
 
         int k = 0;
-        leafCollector.Leafs.Should().AllSatisfy(pair =>
-            Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account).Bytes.Should().BeEquivalentTo(pair.Item2)
-        );
+        foreach ((ValueHash256 _, byte[]? value) in leafCollector.Leafs)
+        {
+            Assert.That(Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account).Bytes, Is.EqualTo(value));
+        }
     }
 
     [Test]
@@ -79,11 +79,11 @@ public class RangeQueryVisitorTests
         tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
 
         Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary(static (it) => it.Item1, static (it) => it.Item2);
-        nodes.Count.Should().Be(3);
+        Assert.That(nodes.Count, Is.EqualTo(3));
 
-        nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
-        nodes.ContainsKey(new Hash256("0300000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
-        nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
+        Assert.That(nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")), Is.True);
+        Assert.That(nodes.ContainsKey(new Hash256("0300000000000000000000000000000000000000000000000000000000000000")), Is.True);
+        Assert.That(nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")), Is.True);
     }
 
     [Test]
@@ -102,9 +102,9 @@ public class RangeQueryVisitorTests
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
 
-        leafCollector.Leafs.Count.Should().Be(0);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(0));
         Action act = () => visitor.GetProofs();
-        act.Should().NotThrow();
+        Assert.That(act, Throws.Nothing);
     }
 
     private static VisitingOptions CreateVisitingOptions() => new() { };
@@ -130,7 +130,7 @@ public class RangeQueryVisitorTests
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
-        leafCollector.Leafs.Count.Should().Be(3);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(3));
     }
 
 
@@ -167,10 +167,10 @@ public class RangeQueryVisitorTests
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
 
-        leafCollector.Leafs.Count.Should().Be(4);
+        Assert.That(leafCollector.Leafs.Count, Is.EqualTo(4));
 
         using ArrayPoolList<byte[]> proofs = visitor.GetProofs();
-        proofs.Count.Should().Be(6); // Need to make sure `0x11` is included
+        Assert.That(proofs.Count, Is.EqualTo(6)); // Need to make sure `0x11` is included
 
         HashSet<Hash256> proofHashes = proofs.Select(static (rlp) => Keccak.Compute(rlp)).ToHashSet();
         foreach (Hash256 proofHash in proofHashes)
@@ -190,7 +190,7 @@ public class RangeQueryVisitorTests
 
         foreach (string proofHashStr in proofHashStrs)
         {
-            proofHashes.Contains(new Hash256(Bytes.FromHexString(proofHashStr))).Should().BeTrue();
+            Assert.That(proofHashes.Contains(new Hash256(Bytes.FromHexString(proofHashStr))), Is.True);
         }
     }
 
@@ -205,10 +205,13 @@ public class RangeQueryVisitorTests
         using RangeQueryVisitor visitor = new(Keccak.Zero, Keccak.MaxValue, leafCollector);
         inputStateTree.Accept(visitor, inputStateTree.RootHash, CreateVisitingOptions(), storageAddr: account);
         Dictionary<ValueHash256, byte[]?> nodes = leafCollector.Leafs.ToDictionary((it) => it.Item1, (it) => it.Item2);
-        nodes.Count.Should().Be(6);
+        Assert.That(nodes.Count, Is.EqualTo(6));
 
         int k = 0;
-        nodes.Should().AllSatisfy(pair => pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k++ + 0].SlotRlpValue));
+        foreach (KeyValuePair<ValueHash256, byte[]?> pair in nodes)
+        {
+            Assert.That(pair.Value, Is.EqualTo(TestItem.Tree.SlotsWithPaths[k++ + 0].SlotRlpValue));
+        }
     }
 
     public class RlpCollector : RangeQueryVisitor.ILeafValueCollector

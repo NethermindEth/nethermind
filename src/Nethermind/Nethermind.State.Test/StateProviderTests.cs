@@ -5,7 +5,6 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -92,7 +91,7 @@ public class StateProviderTests(bool useFlat)
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
 
-        provider.AccountExists(systemUser).Should().BeTrue();
+        Assert.That(provider.AccountExists(systemUser), Is.True);
     }
 
     [Test]
@@ -123,7 +122,7 @@ public class StateProviderTests(bool useFlat)
         provider.CreateAccount(_address1, 0);
         provider.Commit(Frontier.Instance);
         bool isEmpty = !provider.TryGetAccount(_address1, out AccountStruct account) || account.IsEmpty;
-        isEmpty.Should().BeTrue();
+        Assert.That(isEmpty, Is.True);
     }
 
     [Test]
@@ -133,7 +132,7 @@ public class StateProviderTests(bool useFlat)
         IWorldState provider = ctx.WorldState;
         using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
         byte[] code = provider.GetCode(TestItem.AddressA)!;
-        code.Should().BeEmpty();
+        Assert.That(code, Is.Empty);
     }
 
     [Test]
@@ -250,9 +249,9 @@ public class StateProviderTests(bool useFlat)
             provider.CreateAccount(TestItem.AddressA, 5);
             provider.CommitTree(0);
 
-            action.Should().NotThrow<InvalidOperationException>();
+            Assert.That(action, Throws.Nothing);
         }
 
-        action.Should().Throw<InvalidOperationException>();
+        Assert.That(action, Throws.TypeOf<InvalidOperationException>());
     }
 }

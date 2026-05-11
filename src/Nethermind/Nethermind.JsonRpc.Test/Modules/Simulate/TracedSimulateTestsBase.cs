@@ -43,7 +43,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, CreateTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
-        Assert.That(data, Has.Count.EqualTo(7));
+        Assert.That((data).Count, Is.EqualTo(7));
 
         SimulateBlockResult<TTrace> blockResult = data.Last();
         AssertSerializationBlockResult(blockResult);
@@ -78,12 +78,12 @@ public abstract class TracedSimulateTestsBase<TTrace>
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
 
-        Assert.That(data, Has.Count.EqualTo(9));
+        Assert.That((data).Count, Is.EqualTo(9));
 
         SimulateBlockResult<TTrace> blockResult = data[0];
-        Assert.That(blockResult.Traces, Has.Count.EqualTo(2));
+        Assert.That((blockResult.Traces).Count, Is.EqualTo(2));
         blockResult = data.Last();
-        Assert.That(blockResult.Traces, Has.Count.EqualTo(2));
+        Assert.That((blockResult.Traces).Count, Is.EqualTo(2));
     }
 
     [Test(Description = "Verifies that a temporary forked blockchain can make transactions, blocks and report on them")]

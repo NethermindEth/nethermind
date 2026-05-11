@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
@@ -43,6 +42,6 @@ public class TimeoutCertificateDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        decoded.Should().BeEquivalentTo(tc);
+        XdcTestAssertions.AssertTimeoutCertificate(decoded, tc);
     }
 }

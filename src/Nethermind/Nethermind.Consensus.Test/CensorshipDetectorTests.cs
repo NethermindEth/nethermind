@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
@@ -286,7 +285,7 @@ public class CensorshipDetectorTests
                         TestObject;
         _stateProvider.CreateAccount(tx.SenderAddress, 1_000_000.Wei);
         AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
-        result.Should().Be(AcceptTxResult.Accepted);
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
         return tx;
     }
 }

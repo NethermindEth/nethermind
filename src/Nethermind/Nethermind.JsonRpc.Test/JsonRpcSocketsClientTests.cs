@@ -13,7 +13,6 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules;
@@ -116,7 +115,7 @@ public class JsonRpcSocketsClientTests
                     await Task.Delay(1);
                 }
 
-                disposeCount.Should().Be(messageCount);
+                Assert.That(disposeCount, Is.EqualTo(messageCount));
 
                 return messageCount;
             });
@@ -188,13 +187,13 @@ public class JsonRpcSocketsClientTests
             await sendStream.WriteAsync(firstChunk, pair.Cts.Token);
             await Task.Delay(100, pair.Cts.Token);
 
-            processedRequests.Should().Be(0);
+            Assert.That(processedRequests, Is.EqualTo(0));
 
             await sendStream.WriteAsync(requestBytes.AsMemory(1), pair.Cts.Token);
             await sendStream.WriteEndOfMessageAsync();
 
             Assert.That(() => processedRequests, Is.EqualTo(1).After(5000, 10));
-            processedRequestSize.Should().Be(requestBytes.Length);
+            Assert.That(processedRequestSize, Is.EqualTo(requestBytes.Length));
 
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
@@ -232,7 +231,7 @@ public class JsonRpcSocketsClientTests
             await sendStream.WriteAsync(combinedRequests, pair.Cts.Token);
 
             Assert.That(() => processedRequests, Is.EqualTo(messageCount).After(5000, 10));
-            processedPayloads.Should().Equal(expectedPayloads);
+            Assert.That(processedPayloads, Is.EqualTo(expectedPayloads));
 
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
@@ -287,7 +286,7 @@ public class JsonRpcSocketsClientTests
             }
 
             Assert.That(() => processedRequests, Is.EqualTo(messageCount).After(10000, 10));
-            processedPayloads.Should().Equal(expectedPayloads);
+            Assert.That(processedPayloads, Is.EqualTo(expectedPayloads));
 
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
@@ -450,7 +449,7 @@ public class JsonRpcSocketsClientTests
             await sendStream.WriteAsync(Encoding.UTF8.GetBytes(wireData), pair.Cts.Token);
 
             Assert.That(() => processedRequests, Is.EqualTo(expectedPayloads.Count).After(timeout, 10));
-            processedPayloads.Should().Equal(expectedPayloads);
+            Assert.That(processedPayloads, Is.EqualTo(expectedPayloads));
 
             await ShutdownAndWait(pair.SendSocket, receiver);
         }
@@ -616,7 +615,7 @@ public class JsonRpcSocketsClientTests
             await tc.Client.SendJsonRpcResult(result);
             stream.Seek(0, SeekOrigin.Begin);
             JsonRpcSuccessResponse[]? response = new EthereumJsonSerializer().Deserialize<JsonRpcSuccessResponse[]>(stream);
-            response.Should().NotContainNulls();
+            Assert.That(response, Has.None.Null);
         }
 
         private static Task<int> CountMessages(WebSocket webSocket, CancellationToken token) =>

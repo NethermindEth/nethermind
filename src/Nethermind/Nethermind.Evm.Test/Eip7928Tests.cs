@@ -138,7 +138,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted);
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges, Has.Count.EqualTo(expected.Count() + 2));
+            Assert.That((bal.AccountChanges).Count, Is.EqualTo(expected.Count() + 2));
         }
 
         foreach (AccountChanges expectedAccountChanges in expected)
@@ -179,7 +179,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(res.EvmExceptionType, Is.EqualTo(expectedException));
             Assert.That(bal.GetAccountChanges(TestItem.AddressA), Is.EqualTo(accountChangesA));
             Assert.That(bal.GetAccountChanges(Address.Zero), Is.EqualTo(accountChangesZero));
-            Assert.That(bal.AccountChanges, Has.Count.EqualTo(expected.Count() + 2));
+            Assert.That((bal.AccountChanges).Count, Is.EqualTo(expected.Count() + 2));
         }
 
         foreach (AccountChanges expectedAccountChanges in expected)
@@ -418,7 +418,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(accountChanges!.StorageChanges, Is.Empty);
-                Assert.That(accountChanges.StorageReads, Is.EquivalentTo(new[] { UInt256.Zero }));
+                Assert.That(accountChanges.StorageReads, Is.EqualTo(new[] { UInt256.Zero }));
             }
         }
     }

@@ -246,7 +246,7 @@ public class Eth70ProtocolHandlerTests
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
         using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That((result).Count, Is.EqualTo(1));
         AssertReceiptsEqual(result[0], receipts);
     }
 
@@ -324,7 +324,7 @@ public class Eth70ProtocolHandlerTests
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-        Assert.That(result, Has.Count.EqualTo(2));
+        Assert.That((result).Count, Is.EqualTo(2));
         AssertReceiptsEqual(result[0], block1);
         AssertReceiptsEqual(result[1], block2);
         Assert.That(seenOffsets.AsSpan().ToArray(), Is.EqualTo(new[] { 0L, 2L }));
@@ -350,7 +350,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(2));
+        Assert.That((result).Count, Is.EqualTo(2));
         Assert.That(result[0], Is.Empty);
         Assert.That(result[1], Has.Length.EqualTo(block2Receipts.Length));
         Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
@@ -388,7 +388,7 @@ public class Eth70ProtocolHandlerTests
         if (expectedExceptionMessage is null)
         {
             using IOwnedReadOnlyList<TxReceipt[]> result = await act();
-            Assert.That(result, Has.Count.EqualTo(expectedResultCount));
+            Assert.That((result).Count, Is.EqualTo(expectedResultCount));
         }
         else
         {
@@ -501,7 +501,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That((result).Count, Is.EqualTo(1));
         AssertReceiptsEqual(result[0], receipts);
     }
 
@@ -522,7 +522,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That((result).Count, Is.EqualTo(1));
         AssertReceiptsEqual(result[0], receipts);
     }
 
@@ -555,7 +555,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That((result).Count, Is.EqualTo(1));
         AssertReceiptsEqual(result[0], receipts);
     }
 
@@ -681,7 +681,7 @@ public class Eth70ProtocolHandlerTests
         async Task Act()
         {
             using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
-            Assert.That(result, Has.Count.EqualTo(1));
+            Assert.That((result).Count, Is.EqualTo(1));
         }
 
         if (expectedException is null)
@@ -733,7 +733,7 @@ public class Eth70ProtocolHandlerTests
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
         Assert.That(requestCount, Is.EqualTo(1), "handler should not loop requesting more when peer returned fewer with incomplete=false");
-        Assert.That(result, Has.Count.EqualTo(7), "should return what peer gave us without looping");
+        Assert.That((result).Count, Is.EqualTo(7), "should return what peer gave us without looping");
     }
 
     [Test]
@@ -808,7 +808,7 @@ public class Eth70ProtocolHandlerTests
 
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That((response.TxReceipts).Count, Is.EqualTo(1));
         Assert.That(response.TxReceipts[0], Has.Length.EqualTo(block1Receipts.Length));
         Assert.That(response.TxReceipts[0][0].GasUsedTotal, Is.EqualTo(block1Receipts[0].GasUsedTotal));
         Assert.That(response.LastBlockIncomplete, Is.False);
@@ -980,7 +980,7 @@ public class Eth70ProtocolHandlerTests
         ReceiptsMessage70 response = RequestReceipts(Keccak.Zero);
 
         Assert.That(fullResponseLength, Is.GreaterThan((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
-        Assert.That(response.TxReceipts, Has.Count.EqualTo(1));
+        Assert.That((response.TxReceipts).Count, Is.EqualTo(1));
         Assert.That(response.TxReceipts[0], Has.Length.EqualTo(1));
         Assert.That(response.LastBlockIncomplete, Is.True);
         Assert.That(GetReceiptsMessageLength(response), Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));

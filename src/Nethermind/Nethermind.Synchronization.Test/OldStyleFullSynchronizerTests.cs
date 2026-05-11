@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -111,7 +110,7 @@ namespace Nethermind.Synchronization.Test
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSizeMax * 2).TestObject;
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
-            _remoteBlockTree.Head?.Number.Should().NotBe(0);
+            Assert.That(_remoteBlockTree.Head?.Number, Is.Not.EqualTo(0));
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
             ManualResetEvent resetEvent = new(false);
@@ -189,7 +188,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
-            miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
+            Assert.That(miner1Tree.BestSuggestedHeader, Is.EqualTo(_blockTree.BestSuggestedHeader), "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)
@@ -202,7 +201,7 @@ namespace Nethermind.Synchronization.Test
             miner1Tree.SuggestBlock(splitBlockChild);
             miner1Tree.UpdateMainChain(splitBlockChild);
 
-            splitBlockChild.Header.Should().BeEquivalentTo(miner1Tree.BestSuggestedHeader, "split as expected");
+            Assert.That(splitBlockChild.Header, Is.EqualTo(miner1Tree.BestSuggestedHeader), "split as expected");
 
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 
@@ -326,9 +325,9 @@ namespace Nethermind.Synchronization.Test
             Block? block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block? block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            SyncServer.GetReceipts(block0!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(block1!.Hash!).Should().HaveCount(0);
-            SyncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
+            Assert.That(SyncServer.GetReceipts(block0!.Hash!).Length, Is.EqualTo(0));
+            Assert.That(SyncServer.GetReceipts(block1!.Hash!).Length, Is.EqualTo(0));
+            Assert.That(SyncServer.GetReceipts(TestItem.KeccakA).Length, Is.EqualTo(0));
         }
     }
 }

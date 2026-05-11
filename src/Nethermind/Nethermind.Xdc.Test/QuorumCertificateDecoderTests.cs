@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -32,7 +31,7 @@ internal class QuorumCertificateDecoderTests
         Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
         QuorumCertificate decoded = decoder.Decode(ref ctx);
 
-        decoded.Should().BeEquivalentTo(quorumCert);
+        Assert.That(decoded, Is.EqualTo(quorumCert));
     }
 
     [TestCase(true)]
@@ -55,7 +54,7 @@ internal class QuorumCertificateDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        decoded.Should().BeEquivalentTo(quorumCert);
+        Assert.That(decoded, Is.EqualTo(quorumCert));
     }
 
 }

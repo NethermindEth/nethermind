@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -58,11 +57,11 @@ public class TraceStorePrunerTests
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
         TraceStorePruner tracePruner = new(blockTree, memDb, 3, LimboLogs.Instance);
         List<Hash256> keys = GenerateTraces(memDb, blockTree).ToList();
-        keys.Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null);
+        Assert.That(keys.Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null));
         AddNewBlocks(blockTree);
         await Task.Delay(100);
-        keys.Skip(3).Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null); // too old were not removed
-        keys.Take(3).Select(k => memDb.Get(k)).Should().OnlyContain(b => b == null); // those were removed
+        Assert.That(keys.Skip(3).Select(k => memDb.Get(k)), Does.Not.Contain((byte[]?)null)); // too old were not removed
+        Assert.That(keys.Take(3).Select(k => memDb.Get(k)).All(b => b == null), Is.True); // those were removed
 
     }
 }

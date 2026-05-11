@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using NUnit.Framework;
 
@@ -20,16 +19,16 @@ namespace Nethermind.Core.Test.Collections
         public void new_is_empty()
         {
             LinkedHashSet<int> linkedHashSet = new();
-            linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
-            linkedHashSet.Count.Should().Be(0);
+            Assert.That(linkedHashSet, Is.EqualTo(Enumerable.Empty<int>()));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(0));
         }
 
         [Test]
         public void initializes_from_enumerable()
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
         }
 
         [Test]
@@ -40,8 +39,8 @@ namespace Nethermind.Core.Test.Collections
             {
                 linkedHashSet.Add(_defaultSet[i]);
             }
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
         }
 
         [Test]
@@ -52,8 +51,8 @@ namespace Nethermind.Core.Test.Collections
             {
                 linkedHashSet.Add(_defaultSet[i]);
             }
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
         }
 
         [Test]
@@ -61,8 +60,8 @@ namespace Nethermind.Core.Test.Collections
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             linkedHashSet.Clear();
-            linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
-            linkedHashSet.Count.Should().Be(0);
+            Assert.That(linkedHashSet, Is.EqualTo(Enumerable.Empty<int>()));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -71,21 +70,21 @@ namespace Nethermind.Core.Test.Collections
             int[] array = new int[4];
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             linkedHashSet.CopyTo(array, 1);
-            array.Skip(1).Should().BeEquivalentTo(_defaultSet);
+            Assert.That(array.Skip(1), Is.EqualTo(_defaultSet));
         }
 
         [Test]
         public void contains_added_elements()
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            _defaultSet.Select(i => linkedHashSet.Contains(i)).Should().AllBeEquivalentTo(true);
+            Assert.That(_defaultSet.Select(i => linkedHashSet.Contains(i)), Is.All.EqualTo(true));
         }
 
         [Test]
         public void not_contains_not_added_elements()
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            linkedHashSet.Contains(_unknownElement).Should().BeFalse();
+            Assert.That(linkedHashSet.Contains(_unknownElement), Is.False);
         }
 
         [Test]
@@ -96,20 +95,20 @@ namespace Nethermind.Core.Test.Collections
             int expectedCount = linkedHashSet.Count;
             foreach (int i in toDelete)
             {
-                linkedHashSet.Remove(i).Should().BeTrue();
-                linkedHashSet.Count.Should().Be(--expectedCount);
+                Assert.That(linkedHashSet.Remove(i), Is.True);
+                Assert.That(linkedHashSet.Count, Is.EqualTo(--expectedCount));
             }
 
-            linkedHashSet.Should().BeEquivalentTo(Enumerable.Empty<int>());
+            Assert.That(linkedHashSet, Is.EqualTo(Enumerable.Empty<int>()));
         }
 
         [Test]
         public void not_removes_unknown_elements()
         {
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
-            linkedHashSet.Remove(_unknownElement).Should().BeFalse();
-            linkedHashSet.Should().BeEquivalentTo(_defaultSet);
-            linkedHashSet.Count.Should().Be(_defaultSet.Length);
+            Assert.That(linkedHashSet.Remove(_unknownElement), Is.False);
+            Assert.That(linkedHashSet, Is.EqualTo(_defaultSet));
+            Assert.That(linkedHashSet.Count, Is.EqualTo(_defaultSet.Length));
         }
 
 
@@ -130,8 +129,8 @@ namespace Nethermind.Core.Test.Collections
             expected = expected as int[] ?? expected.ToArray();
             LinkedHashSet<int> linkedHashSet = new(_defaultSet);
             action(linkedHashSet);
-            linkedHashSet.Count.Should().Be(expected.Count());
-            linkedHashSet.Should().BeEquivalentTo(expected);
+            Assert.That(linkedHashSet.Count, Is.EqualTo(expected.Count()));
+            Assert.That(linkedHashSet, Is.EqualTo(expected));
         }
 
         [TestCase(new[] { 1, 2, 3 }, ExpectedResult = true)]

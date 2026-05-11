@@ -3,7 +3,6 @@
 
 using System.Security.Cryptography;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -50,9 +49,9 @@ public class RemoteEraStoreDecoratorTests
 
         (Block? block, TxReceipt[]? receipts) = await sut.FindBlockAndReceipts(epoch * 16, ensureValidated: false);
 
-        block.Should().NotBeNull();
-        receipts.Should().NotBeNull();
-        block!.Number.Should().Be(epoch * 16);
+        Assert.That(block, Is.Not.Null);
+        Assert.That(receipts, Is.Not.Null);
+        Assert.That(block!.Number, Is.EqualTo(epoch * 16));
         await _client.Received(1).DownloadFileAsync(filename, Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -70,7 +69,7 @@ public class RemoteEraStoreDecoratorTests
 
         (Block? block, TxReceipt[]? _) = await sut.FindBlockAndReceipts(42, ensureValidated: false);
 
-        block.Should().BeSameAs(expectedBlock);
+        Assert.That(block, Is.SameAs(expectedBlock));
         await _client.DidNotReceive().FetchManifestAsync(Arg.Any<CancellationToken>());
     }
 
@@ -86,9 +85,8 @@ public class RemoteEraStoreDecoratorTests
 
         using RemoteEraStoreDecorator sut = new(localStore, _client, _downloadDir.Path, maxEraSize: 16);
 
-        await sut.Invoking(s => s.FindBlockAndReceipts(5, ensureValidated: false))
-            .Should().ThrowAsync<EraException>()
-            .WithMessage("*Epoch 0*not available*");
+        Assert.That(async () => await sut.FindBlockAndReceipts(5, ensureValidated: false),
+            Throws.TypeOf<EraException>().With.Message.Contains("Epoch 0").And.Message.Contains("not available"));
     }
 
     [Test]
@@ -109,11 +107,9 @@ public class RemoteEraStoreDecoratorTests
         string expectedFilePath = Path.Join(_downloadDir.Path, filename);
         using RemoteEraStoreDecorator sut = new(localStore: null, _client, _downloadDir.Path, maxEraSize: 16);
 
-        await sut.Invoking(s => s.FindBlockAndReceipts(0, ensureValidated: false))
-            .Should().ThrowAsync<EraVerificationException>()
-            .WithMessage("*SHA-256*");
+        Assert.That(async () => await sut.FindBlockAndReceipts(0, ensureValidated: false), Throws.TypeOf<EraVerificationException>().With.Message.Contains(@"SHA-256"));
 
-        File.Exists(expectedFilePath).Should().BeFalse();
+        Assert.That(File.Exists(expectedFilePath), Is.False);
     }
 
     private static int ParseEpoch(string filename)

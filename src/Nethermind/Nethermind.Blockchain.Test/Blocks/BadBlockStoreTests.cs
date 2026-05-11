@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -32,7 +31,9 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        badBlockStore.GetAll().Should().BeEquivalentTo(toAdd, options => options.Excluding(b => b.EncodedSize));
+        Assert.That(
+            badBlockStore.GetAll().Select(static block => block.Hash),
+            Is.EquivalentTo(toAdd.Select(static block => block.Hash)));
     }
 
     [Test]
@@ -52,6 +53,6 @@ public class BadBlockStoreTests
             badBlockStore.Insert(block);
         }
 
-        badBlockStore.GetAll().Count().Should().Be(2);
+        Assert.That(badBlockStore.GetAll().Count(), Is.EqualTo(2));
     }
 }

@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Text.Json;
 
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -107,7 +106,10 @@ public class FilterTests
         Filter filter = new();
         using JsonDocument doc = JsonDocument.Parse(json);
         filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
-        filter.Should().BeEquivalentTo(expectation);
+        Assert.That(filter.Address, Is.EqualTo(expectation.Address));
+        Assert.That(filter.FromBlock, Is.EqualTo(expectation.FromBlock));
+        Assert.That(filter.ToBlock, Is.EqualTo(expectation.ToBlock));
+        Assert.That(filter.Topics, Is.EqualTo(expectation.Topics));
     }
 
     [Test]
@@ -117,6 +119,6 @@ public class FilterTests
         string oversized = $"\"{new string('a', 1_000_001)}\"";
         using JsonDocument doc = JsonDocument.Parse(oversized);
         Action act = () => filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
-        act.Should().Throw<ArgumentException>().WithMessage("*exceeds maximum*");
+        Assert.That(act, Throws.TypeOf<ArgumentException>().With.Message.Contains(@"exceeds maximum"));
     }
 }

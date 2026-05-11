@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
@@ -332,7 +331,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             .Done;
 
         ParityLikeTxTrace trace = ExecuteAndTraceParityCall(code).trace;
-        trace.Action!.Error.Should().BeNullOrEmpty();
+        Assert.That(trace.Action!.Error, Is.Null.Or.Empty);
 
     }
 

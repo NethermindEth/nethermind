@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -52,7 +51,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         // For flat, sync finalization writes to persistence. Verify root node exists.
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None).Should().NotBeNull("root node should exist after flush");
+        Assert.That(reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None), Is.Not.Null, "root node should exist after flush");
     }
 
     public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)

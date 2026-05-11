@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Data;
@@ -49,8 +48,8 @@ public class TaikoExecutionPayloadTests
 
         Action act = () => payload.TryGetBlock();
 
-        act.Should().Throw<InvalidOperationException>()
-            .WithMessage("*AttachSpecProvider*TryGetBlock*");
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>()
+            .With.Message.EqualTo("TaikoExecutionPayload.AttachSpecProvider must be called before TryGetBlock."));
     }
 
     [Test]
@@ -61,9 +60,9 @@ public class TaikoExecutionPayloadTests
 
         BlockDecodingResult result = payload.TryGetBlock();
 
-        result.Block.Should().NotBeNull();
-        result.Block!.Header.ParentBeaconBlockRoot.Should().Be(Keccak.Zero);
-        result.Block.Header.RequestsHash.Should().Be(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash);
+        Assert.That(result.Block, Is.Not.Null);
+        Assert.That(result.Block!.Header.ParentBeaconBlockRoot, Is.EqualTo(Keccak.Zero));
+        Assert.That(result.Block.Header.RequestsHash, Is.EqualTo(Nethermind.Core.ExecutionRequest.ExecutionRequestExtensions.EmptyRequestsHash));
     }
 
     [Test]
@@ -74,8 +73,8 @@ public class TaikoExecutionPayloadTests
 
         BlockDecodingResult result = payload.TryGetBlock();
 
-        result.Block.Should().NotBeNull();
-        result.Block!.Header.ParentBeaconBlockRoot.Should().BeNull();
-        result.Block.Header.RequestsHash.Should().BeNull();
+        Assert.That(result.Block, Is.Not.Null);
+        Assert.That(result.Block!.Header.ParentBeaconBlockRoot, Is.Null);
+        Assert.That(result.Block.Header.RequestsHash, Is.Null);
     }
 }

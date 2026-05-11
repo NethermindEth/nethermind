@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
@@ -75,12 +75,12 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ResultWrapper<PayloadStatusV1>[] results = await Task.WhenAll(tasks);
 
         // All tasks should complete successfully without throwing exceptions
-        results.Should().HaveCount(concurrentCalls);
-        results.Should().OnlyContain(r => r != null);
+        Assert.That(results.Length, Is.EqualTo(concurrentCalls));
+        Assert.That(results.All(r => r != null), Is.True);
 
         // The results should be consistent (all should have the same status)
         ResultWrapper<PayloadStatusV1> firstResult = results[0];
-        results.Should().OnlyContain(r => r.Data.Status == firstResult.Data.Status);
+        Assert.That(results.All(r => r.Data.Status == firstResult.Data.Status), Is.True);
     }
 
     [Test]
@@ -115,8 +115,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             catch (Exception ex)
             {
                 // We expect some processing failures, but not event handler related exceptions
-                ex.Should().NotBeOfType<InvalidOperationException>("Event handler race conditions should be fixed");
-                ex.Should().NotBeOfType<ObjectDisposedException>("Event handler cleanup should be proper");
+                Assert.That(ex, Is.Not.TypeOf<InvalidOperationException>(), "Event handler race conditions should be fixed");
+                Assert.That(ex, Is.Not.TypeOf<ObjectDisposedException>(), "Event handler cleanup should be proper");
             }
         }
 

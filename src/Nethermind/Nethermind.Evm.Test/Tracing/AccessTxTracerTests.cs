@@ -4,7 +4,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -36,7 +35,7 @@ namespace Nethermind.Evm.Test.Tracing
                 SenderRecipientAndMiner.Default.Sender, SenderRecipientAndMiner.Default.Recipient, TestItem.AddressC
             };
 
-            addressesAccessed.Should().BeEquivalentTo(expected);
+            Assert.That(addressesAccessed, Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -50,12 +49,11 @@ namespace Nethermind.Evm.Test.Tracing
 
             (AccessTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
 
-            tracer.AccessList!.Should().BeEquivalentTo(
-                new[]
+            Assert.That(tracer.AccessList!, Is.EquivalentTo(new[]
                 {
                     (SenderRecipientAndMiner.Default.Sender, System.Array.Empty<UInt256>()),
                     (SenderRecipientAndMiner.Default.Recipient, new UInt256[] { 105 })
-                });
+                }));
         }
 
         public static IEnumerable OptimizedAddressCases

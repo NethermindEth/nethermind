@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
@@ -25,7 +24,7 @@ public class WithdrawalDecoderTests
         };
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
 
-        rlp.ToHexString().Should().BeEquivalentTo("d8010294fffffffffffffffffffffffffffffffffffffffe03");
+        Assert.That(rlp.ToHexString(), Is.EqualTo("d8010294fffffffffffffffffffffffffffffffffffffffe03"));
     }
 
     [Test]
@@ -41,7 +40,7 @@ public class WithdrawalDecoderTests
         byte[] rlp = Rlp.Encode(withdrawal).Bytes;
         Withdrawal decoded = Rlp.Decode<Withdrawal>(rlp);
 
-        decoded.Should().BeEquivalentTo(withdrawal);
+        AssertWithdrawal(decoded, withdrawal);
     }
 
     [Test]
@@ -62,7 +61,7 @@ public class WithdrawalDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Withdrawal? decoded = codec.Decode(ref decoderContext);
 
-        decoded.Should().BeEquivalentTo(withdrawal);
+        AssertWithdrawal(decoded, withdrawal);
     }
 
     [Test]
@@ -78,7 +77,7 @@ public class WithdrawalDecoderTests
         byte[] rlp1 = new WithdrawalDecoder().Encode(withdrawal).Bytes;
         byte[] rlp2 = Rlp.Encode(withdrawal).Bytes;
 
-        rlp1.Should().BeEquivalentTo(rlp2);
+        Assert.That(rlp1, Is.EqualTo(rlp2));
     }
 
     /// <summary>
@@ -128,5 +127,17 @@ public class WithdrawalDecoderTests
         }
 
         return result;
+    }
+
+    private static void AssertWithdrawal(Withdrawal? actual, Withdrawal expected)
+    {
+        Assert.That(actual, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(actual!.Index, Is.EqualTo(expected.Index));
+            Assert.That(actual.ValidatorIndex, Is.EqualTo(expected.ValidatorIndex));
+            Assert.That(actual.Address, Is.EqualTo(expected.Address));
+            Assert.That(actual.AmountInGwei, Is.EqualTo(expected.AmountInGwei));
+        });
     }
 }

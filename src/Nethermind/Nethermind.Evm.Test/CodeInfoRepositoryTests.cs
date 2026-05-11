@@ -7,7 +7,6 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Evm.State;
 using Nethermind.Core.Specs;
@@ -60,7 +59,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _).Should().Be(false);
+        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.EqualTo(false));
     }
 
 
@@ -83,7 +82,7 @@ public class CodeInfoRepositoryTests
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _).Should().Be(true);
+        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.EqualTo(true));
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
@@ -97,7 +96,7 @@ public class CodeInfoRepositoryTests
 
         sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address result);
 
-        result.Should().Be(new Address(code.Slice(3, Address.Size)));
+        Assert.That(result, Is.EqualTo(new Address(code.Slice(3, Address.Size))));
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]
@@ -114,7 +113,7 @@ public class CodeInfoRepositoryTests
         EthereumCodeInfoRepository sut = new(stateProvider);
 
         CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
-        result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
+        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(delegationCode));
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -127,6 +126,6 @@ public class CodeInfoRepositoryTests
 
         EthereumCodeInfoRepository sut = new(stateProvider);
 
-        sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec).Should().BeEquivalentTo(new CodeInfo(code));
+        Assert.That(sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec), Is.EqualTo(new CodeInfo(code)));
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Xdc.Contracts;
@@ -76,6 +75,6 @@ internal class XdcSortTests
     {
         XdcSort.Slice(candidatesAndStake, (x, y) => x.Stake.CompareTo(y.Stake) >= 0);
 
-        candidatesAndStake.Select(x => x.Address).Should().Equal(expectedOrder);
+        Assert.That(candidatesAndStake.Select(x => x.Address), Is.EqualTo(expectedOrder));
     }
 }

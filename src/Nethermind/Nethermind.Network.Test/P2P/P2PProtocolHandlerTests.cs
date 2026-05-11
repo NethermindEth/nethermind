@@ -3,7 +3,6 @@
 
 using System.Linq;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -122,7 +121,7 @@ namespace Nethermind.Network.Test.P2P
 
             p2PProtocolHandler.HandleMessage(packet);
 
-            _nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation.Should().NotBeNull();
+            Assert.That(_nodeStatsManager.GetOrAdd(node).FailedCompatibilityValidation, Is.Not.Null);
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
         }
 
@@ -249,8 +248,8 @@ namespace Nethermind.Network.Test.P2P
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(new AddCapabilityMessage(capability)));
 
-            requestedCount.Should().Be(1);
-            p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)).Should().Be(1);
+            Assert.That(requestedCount, Is.EqualTo(1));
+            Assert.That(p2PProtocolHandler.AgreedCapabilities.Count(c => c.Equals(capability)), Is.EqualTo(1));
         }
 
         [Test]
@@ -280,9 +279,9 @@ namespace Nethermind.Network.Test.P2P
 
             p2PProtocolHandler.HandleMessage(CreateP2PPacket(message));
 
-            requestedProtocols.Should().ContainSingle();
-            requestedProtocols[0].ProtocolCode.Should().Be(Protocol.Eth);
-            requestedProtocols[0].Version.Should().Be(71);
+            Assert.That(requestedProtocols, Has.Exactly(1).Items);
+            Assert.That(requestedProtocols[0].ProtocolCode, Is.EqualTo(Protocol.Eth));
+            Assert.That(requestedProtocols[0].Version, Is.EqualTo(71));
         }
 
         [Test]

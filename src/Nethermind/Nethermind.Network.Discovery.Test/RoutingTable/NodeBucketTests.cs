@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using System.Net;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
@@ -26,7 +25,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             nodeBucket.AddNode(_node);
             nodeBucket.AddNode(_node2);
             nodeBucket.AddNode(_node3);
-            nodeBucket.BondedItemsCount.Should().Be(3);
+            Assert.That(nodeBucket.BondedItemsCount, Is.EqualTo(3));
         }
 
         [Test]
@@ -36,14 +35,14 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             nodeBucket.AddNode(_node);
             nodeBucket.AddNode(_node2);
             nodeBucket.AddNode(_node3);
-            nodeBucket.BondedItems.Should().HaveCount(3);
+            Assert.That(System.Linq.Enumerable.Count(nodeBucket.BondedItems), Is.EqualTo(3));
         }
 
         [Test]
         public void Distance_is_set_properly()
         {
             NodeBucket nodeBucket = new(1, 16);
-            nodeBucket.Distance.Should().Be(1);
+            Assert.That(nodeBucket.Distance, Is.EqualTo(1));
         }
 
         [Test]
@@ -52,8 +51,8 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             NodeBucket nodeBucket = new(1, 16);
             AddNodes(nodeBucket, 32);
 
-            nodeBucket.BondedItemsCount.Should().Be(16);
-            nodeBucket.BondedItems.Should().HaveCount(16);
+            Assert.That(nodeBucket.BondedItemsCount, Is.EqualTo(16));
+            Assert.That(System.Linq.Enumerable.Count(nodeBucket.BondedItems), Is.EqualTo(16));
         }
 
         [Test]
@@ -69,10 +68,10 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
 
             Node existing = nodeBucket.BondedItems.First().Node!;
             nodeBucket.ReplaceNode(existing, node);
-            nodeBucket.BondedItemsCount.Should().Be(16);
-            nodeBucket.BondedItems.Should().HaveCount(16);
-            nodeBucket.BondedItems.Should().Contain(bi => bi.Node == node);
-            nodeBucket.BondedItems.Should().NotContain(bi => bi.Node == existing);
+            Assert.That(nodeBucket.BondedItemsCount, Is.EqualTo(16));
+            Assert.That(System.Linq.Enumerable.Count(nodeBucket.BondedItems), Is.EqualTo(16));
+            Assert.That(nodeBucket.BondedItems, Has.Some.Matches<NodeBucketItem>(bi => bi.Node == node));
+            Assert.That(nodeBucket.BondedItems, Has.None.Matches<NodeBucketItem>(bi => bi.Node == existing));
         }
 
         [TestCase(2)]
@@ -86,7 +85,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             Node existing1 = nodeBucket.BondedItems.First().Node!;
             nodeBucket.RefreshNode(existing1);
 
-            nodeBucket.BondedItems.Should().HaveCount(Math.Min(nodeBucket.BucketSize, nodesInTheBucket));
+            Assert.That(System.Linq.Enumerable.Count(nodeBucket.BondedItems), Is.EqualTo(Math.Min(nodeBucket.BucketSize, nodesInTheBucket)));
         }
 
         [TestCase(0)]
@@ -138,7 +137,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
                 }
             }
 
-            dropCount.Should().BeInRange(25, 75);
+            Assert.That(dropCount, Is.InRange(25, 75));
         }
 
         private static void AddNodes(NodeBucket nodeBucket, int count)

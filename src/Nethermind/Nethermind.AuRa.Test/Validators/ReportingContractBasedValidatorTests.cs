@@ -3,7 +3,6 @@
 
 using System;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -121,10 +120,10 @@ namespace Nethermind.AuRa.Test.Validators
 
             Transaction[] transactions = context.Validator.GetTransactions(parent, 3000000).ToArray();
             int addedMaliciousTransactions = (int)Math.Min(validatorsToReport, Math.Max(0, parentBlockNumber - (long)startReportBlockNumber));
-            transactions.Should().HaveCount(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) + (initChangeTransactionAdded ? 1 : 0));
+            Assert.That(transactions.Length, Is.EqualTo(Math.Min(ReportingContractBasedValidator.MaxReportsPerBlock, isPosDao ? addedMaliciousTransactions : 0) + (initChangeTransactionAdded ? 1 : 0)));
             if (initChangeTransactionAdded)
             {
-                transactions.First().Should().Be(initChangeTransaction);
+                Assert.That(transactions.First(), Is.EqualTo(initChangeTransaction));
             }
         }
 

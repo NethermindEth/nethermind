@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -35,6 +34,6 @@ public class DoubleArrayConverterTests : ConverterTestBase<double[]>
     {
         JsonSerializerOptions options = new() { Converters = { _converter } };
         string json = JsonSerializer.Serialize(new[] { value }, options);
-        json.Should().Be(expectedJson, "double array serialization must preserve full IEEE 754 round-trip precision");
+        Assert.That(json, Is.EqualTo(expectedJson), "double array serialization must preserve full IEEE 754 round-trip precision");
     }
 }

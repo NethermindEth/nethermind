@@ -5,9 +5,6 @@ using System;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using FluentAssertions.Execution;
-using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Test;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -59,8 +57,9 @@ public partial class DebugRpcModuleTests
             new { from = $"{address}", to = $"{TestItem.AddressC}", value = send.ToString("X") }
         );
 
-        response.Should().BeOfType<JsonRpcErrorResponse>()
-            .Which.Error?.Message?.Should().Contain("insufficient funds");
+        Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+        JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
+        Assert.That(errorResponse.Error?.Message, Does.Contain("insufficient funds"));
     }
 
     [Test]
@@ -81,7 +80,7 @@ public partial class DebugRpcModuleTests
             $"{lastBlockHash}"
         );
 
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
     }
 
     [TestCase(
@@ -117,12 +116,13 @@ public partial class DebugRpcModuleTests
             transaction, null, new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        Assert.That(successResponse.Result, Is.TypeOf<GethLikeTxTrace>());
+        GethLikeTxTrace trace = (GethLikeTxTrace)successResponse.Result!;
 
         if (expectedValue != null)
-            Convert.ToHexString(trace.ReturnValue).Should().BeEquivalentTo(expectedValue);
+            Assert.That(Convert.ToHexString(trace.ReturnValue), Is.EqualTo(expectedValue).IgnoreCase);
     }
 
     [Test]
@@ -145,13 +145,14 @@ public partial class DebugRpcModuleTests
             new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        Assert.That(successResponse.Result, Is.TypeOf<GethLikeTxTrace>());
+        GethLikeTxTrace trace = (GethLikeTxTrace)successResponse.Result!;
 
         long gasAvailable = (long)trace.ReturnValue.ToUInt256();
-        gasAvailable.Should().BeLessThan(gasCap);
-        gasAvailable.Should().BeGreaterThan(0);
+        Assert.That(gasAvailable, Is.LessThan(gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(0));
     }
 
     [Test]
@@ -176,13 +177,13 @@ public partial class DebugRpcModuleTests
             new { stateOverrides = stateOverride }
         );
 
-        GethLikeTxTrace trace = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<GethLikeTxTrace>()
-            .Subject;
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        Assert.That(successResponse.Result, Is.TypeOf<GethLikeTxTrace>());
+        GethLikeTxTrace trace = (GethLikeTxTrace)successResponse.Result!;
 
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
-        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
-            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 
     [TestCase(
@@ -237,10 +238,10 @@ public partial class DebugRpcModuleTests
             tracerConfig = new { withLog = false }
         });
 
-        using (new AssertionScope())
+        using (Assert.EnterMultipleScope())
         {
-            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
-            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+            JsonTestAssertions.AssertEquivalent(resultOverrideBefore, resultOverrideAfter);
+            JsonTestAssertions.AssertNotEquivalent(resultNoOverride, resultOverrideAfter);
         }
     }
 }

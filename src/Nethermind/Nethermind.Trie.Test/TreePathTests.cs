@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -18,7 +17,7 @@ public class TreePathTests
         TreePath path = CreateFullTreePath();
 
         string asHex = path.Span.ToHexString();
-        asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
     [Test]
@@ -31,7 +30,7 @@ public class TreePathTests
         }
 
         string asHex = path.Span.ToHexString();
-        asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
     [Test]
@@ -40,7 +39,7 @@ public class TreePathTests
         TreePath path = new(new ValueHash256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"), 64);
         for (int i = 0; i < 64; i++)
         {
-            path[i].Should().Be((byte)(i % 16));
+            Assert.That(path[i], Is.EqualTo((byte)(i % 16)));
         }
     }
 
@@ -55,10 +54,10 @@ public class TreePathTests
         TreePath path = new();
         TreePath newPath = path.Append(nibbles);
 
-        path.Length.Should().Be(0);
-        newPath.Length.Should().Be(64);
+        Assert.That(path.Length, Is.EqualTo(0));
+        Assert.That(newPath.Length, Is.EqualTo(64));
         string asHex = newPath.Span.ToHexString();
-        asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
     [TestCase(1)]
@@ -75,12 +74,12 @@ public class TreePathTests
         }
         TreePath path = new();
         path = path.Append(nibbles.AsSpan(0, partition));
-        path.Length.Should().Be(partition);
+        Assert.That(path.Length, Is.EqualTo(partition));
         path = path.Append(nibbles.AsSpan(partition));
-        path.Length.Should().Be(64);
+        Assert.That(path.Length, Is.EqualTo(64));
 
         string asHex = path.Span.ToHexString();
-        asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        Assert.That(asHex, Is.EqualTo("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
     }
 
     [TestCase(1, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
@@ -98,11 +97,11 @@ public class TreePathTests
 
         TreePath path = new(originalHash, 64);
         path = path.Truncate(truncate1);
-        path.Length.Should().Be(truncate1);
+        Assert.That(path.Length, Is.EqualTo(truncate1));
         path = path.Truncate(truncate2);
-        path.Length.Should().Be(truncate2);
+        Assert.That(path.Length, Is.EqualTo(truncate2));
 
-        path.Path.ToString().Should().Be(expectedHash);
+        Assert.That(path.Path.ToString(), Is.EqualTo(expectedHash));
     }
 
     [TestCase("", 0, "0000000000000000000000000000000000000000000000000000000000000000")]
@@ -114,8 +113,8 @@ public class TreePathTests
         byte[] nibbles = Bytes.FromHexString(nibbleHex);
 
         TreePath path = TreePath.FromNibble(nibbles);
-        path.Length.Should().Be(expectedLength);
-        path.Span.ToHexString().Should().Be(expectedHashHex);
+        Assert.That(path.Length, Is.EqualTo(expectedLength));
+        Assert.That(path.Span.ToHexString(), Is.EqualTo(expectedHashHex));
     }
 
     [TestCase("", "", 0)]
@@ -132,9 +131,9 @@ public class TreePathTests
         TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
         TreePath path2 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex2));
 
-        if (expectedResult == -1) path1.CompareTo(path2).Should().BeLessThan(0);
-        if (expectedResult == 0) path1.CompareTo(path2).Should().Be(0);
-        if (expectedResult == 1) path1.CompareTo(path2).Should().BeGreaterThan(0);
+        if (expectedResult == -1) Assert.That(path1.CompareTo(path2), Is.LessThan(0));
+        if (expectedResult == 0) Assert.That(path1.CompareTo(path2), Is.EqualTo(0));
+        if (expectedResult == 1) Assert.That(path1.CompareTo(path2), Is.GreaterThan(0));
     }
 
     [TestCase("0000", 0, "0000", -1)]
@@ -148,9 +147,9 @@ public class TreePathTests
         TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
         TreePath path2 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex2));
 
-        if (expectedResult == -1) path1.CompareToTruncated(path2, truncateLength).Should().BeLessThan(0);
-        if (expectedResult == 0) path1.CompareToTruncated(path2, truncateLength).Should().Be(0);
-        if (expectedResult == 1) path1.CompareToTruncated(path2, truncateLength).Should().BeGreaterThan(0);
+        if (expectedResult == -1) Assert.That(path1.CompareToTruncated(path2, truncateLength), Is.LessThan(0));
+        if (expectedResult == 0) Assert.That(path1.CompareToTruncated(path2, truncateLength), Is.EqualTo(0));
+        if (expectedResult == 1) Assert.That(path1.CompareToTruncated(path2, truncateLength), Is.GreaterThan(0));
     }
 
     [TestCase("0000", "0000", true)]
@@ -164,7 +163,7 @@ public class TreePathTests
         byte[] nib1 = Bytes.FromHexString(nibbleHex1);
         TreePath path1 = TreePath.FromNibble(nib1);
         TreePath path2 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex2));
-        path1.StartsWith(path2).Should().Be(startsWith);
+        Assert.That(path1.StartsWith(path2), Is.EqualTo(startsWith));
     }
 
     [TestCase("0000", 1, 0, "0000")]
@@ -175,7 +174,7 @@ public class TreePathTests
         TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
         TreePath path2 = TreePath.FromNibble(Bytes.FromHexString(expectedHex));
 
-        path1.Append(nib, count).Should().Be(path2);
+        Assert.That(path1.Append(nib, count), Is.EqualTo(path2));
     }
 
     [TestCase]
@@ -185,19 +184,19 @@ public class TreePathTests
 
         using (path.ScopedAppend(new byte[] { 1, 2, 3, 4 }))
         {
-            path.Length.Should().Be(4);
-            path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
+            Assert.That(path.Length, Is.EqualTo(4));
+            Assert.That(path.Path.ToString(), Is.EqualTo("0x1234000000000000000000000000000000000000000000000000000000000000"));
 
             using (path.ScopedAppend(new byte[] { 5, 6, 7 }))
             {
-                path.Length.Should().Be(7);
-                path.Path.ToString().Should().Be("0x1234567000000000000000000000000000000000000000000000000000000000");
+                Assert.That(path.Length, Is.EqualTo(7));
+                Assert.That(path.Path.ToString(), Is.EqualTo("0x1234567000000000000000000000000000000000000000000000000000000000"));
             }
 
-            path.Length.Should().Be(4);
-            path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
+            Assert.That(path.Length, Is.EqualTo(4));
+            Assert.That(path.Path.ToString(), Is.EqualTo("0x1234000000000000000000000000000000000000000000000000000000000000"));
         }
-        path.Length.Should().Be(0);
+        Assert.That(path.Length, Is.EqualTo(0));
     }
 
     [TestCase("", "0000000000000000")]
@@ -213,7 +212,7 @@ public class TreePathTests
         Span<byte> buffer = stackalloc byte[8];
         path.EncodeWith8Byte(buffer);
 
-        buffer.ToArray().ToHexString().Should().Be(expectedEncodedHex);
+        Assert.That(buffer.ToArray().ToHexString(), Is.EqualTo(expectedEncodedHex));
     }
 
     private static TreePath CreateFullTreePath()

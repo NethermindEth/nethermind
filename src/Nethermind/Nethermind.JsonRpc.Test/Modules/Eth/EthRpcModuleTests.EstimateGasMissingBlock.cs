@@ -4,7 +4,6 @@
 using System.Threading.Tasks;
 using Nethermind.Facade.Eth.RpcTransaction;
 using NUnit.Framework;
-using FluentAssertions;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -26,8 +25,8 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, blockId);
 
         JObject response = JObject.Parse(serialized);
-        response.Should().ContainKey("error");
-        response["error"]!["code"]!.Value<int>().Should().Be(-32000);
-        response["error"]!["message"]!.Value<string>().Should().Be(expectedMessage);
+        Assert.That(response.ContainsKey("error"), Is.True);
+        Assert.That(response["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+        Assert.That(response["error"]!["message"]!.Value<string>(), Is.EqualTo(expectedMessage));
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -17,12 +18,22 @@ public sealed class BeaconApiRootsProvider(
 {
     private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
     private readonly BeaconApiRetry<(ValueHash256, ValueHash256)?> _beaconApiRetry = new(maxAttempts);
+    private readonly ConcurrentDictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _rootsBySlot = new();
 
     public void Dispose() => _client.Dispose();
 
-    public Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
-        long slot, CancellationToken cancellationToken = default) =>
-        FetchWithRetryAsync(slot, cancellationToken);
+    public async Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
+        long slot, CancellationToken cancellationToken = default)
+    {
+        if (_rootsBySlot.TryGetValue(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) cached))
+            return cached;
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? roots = await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
+        if (roots is not null)
+            _rootsBySlot.TryAdd(slot, roots.Value);
+
+        return roots;
+    }
 
     private Task<(ValueHash256, ValueHash256)?> FetchWithRetryAsync(
         long slot, CancellationToken cancellationToken) =>

@@ -6,7 +6,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
@@ -117,7 +116,7 @@ public class FilterStoreTests
         BlockParameter to = new(BlockParameterType.Latest);
         FilterStore store = new(new TimerFactory());
         LogFilter filter = store.CreateLogFilter(from, to, address);
-        filter.AddressFilter.Should().BeEquivalentTo(expected);
+        Assert.That(filter.AddressFilter.Addresses, Is.EquivalentTo(expected.Addresses));
     }
 
     public static IEnumerable CorrectlyCreatesTopicsFilterTestCases
@@ -150,7 +149,7 @@ public class FilterStoreTests
         BlockParameter to = new(BlockParameterType.Latest);
         FilterStore store = new(new TimerFactory());
         LogFilter filter = store.CreateLogFilter(from, to, null, topics);
-        filter.TopicsFilter.Should().BeEquivalentTo(expected, static c => c.ComparingByValue<TopicsFilter>());
+        Assert.That(filter.TopicsFilter, Is.EqualTo(expected));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -173,6 +172,6 @@ public class FilterStoreTests
         Assert.That(() => store.FilterExists(2), Is.False.After(300, 10), "filter 2 doesn't exist");
         Assert.That(() => store.FilterExists(3), Is.False.After(300, 10), "filter 3 doesn't exist");
         store.RefreshFilter(0);
-        Assert.That(() => removedFilterIds, Is.EquivalentTo([1, 2, 3]).After(300, 10));
+        Assert.That(() => removedFilterIds, Is.EqualTo([1, 2, 3]).After(300, 10));
     }
 }

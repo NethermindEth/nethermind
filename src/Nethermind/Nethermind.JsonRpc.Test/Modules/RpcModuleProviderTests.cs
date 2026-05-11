@@ -5,7 +5,6 @@ using System;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Era1.JsonRpc;
@@ -57,10 +56,10 @@ public class RpcModuleProviderTests
         SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
         _moduleProvider.Register(pool);
 
-        _moduleProvider.Check("net_VeRsIoN", _context).Should().Be(ModuleResolution.Unknown);
-        _moduleProvider.Check("net_Version", _context).Should().Be(ModuleResolution.Unknown);
-        _moduleProvider.Check("Net_Version", _context).Should().Be(ModuleResolution.Unknown);
-        _moduleProvider.Check("net_version", _context).Should().Be(ModuleResolution.Enabled);
+        Assert.That(_moduleProvider.Check("net_VeRsIoN", _context), Is.EqualTo(ModuleResolution.Unknown));
+        Assert.That(_moduleProvider.Check("net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
+        Assert.That(_moduleProvider.Check("Net_Version", _context), Is.EqualTo(ModuleResolution.Unknown));
+        Assert.That(_moduleProvider.Check("net_version", _context), Is.EqualTo(ModuleResolution.Enabled));
     }
 
     [TestCase("eth_.*", ModuleResolution.Unknown)]
@@ -76,7 +75,7 @@ public class RpcModuleProviderTests
         _moduleProvider.Register(pool);
 
         ModuleResolution resolution = _moduleProvider.Check("net_version", _context);
-        resolution.Should().Be(expectedResult);
+        Assert.That(resolution, Is.EqualTo(expectedResult));
     }
 
     [Test]
@@ -112,7 +111,7 @@ public class RpcModuleProviderTests
     {
         SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>());
         _moduleProvider.Register(pool);
-        _moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)).Should().Be(pool);
+        Assert.That(_moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)), Is.EqualTo(pool));
     }
 
     [Test]
@@ -124,7 +123,7 @@ public class RpcModuleProviderTests
         SingletonModulePool<INetRpcModule> pool2 = new(Substitute.For<INetRpcModule>());
         _moduleProvider.Register(pool2);
 
-        _moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)).Should().Be(pool2);
+        Assert.That(_moduleProvider.GetPoolForMethod(nameof(INetRpcModule.net_listening)), Is.EqualTo(pool2));
     }
 
     [Test]
@@ -150,13 +149,13 @@ public class RpcModuleProviderTests
 
         moduleProvider.RegisterBounded<IAdminRpcModule>(new SingletonFactory<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()), 1, Int32.MaxValue);
 
-        moduleProvider.Check("admin_exportHistory", _context).Should().Be(ModuleResolution.Enabled);
-        moduleProvider.Check("admin_addPeer", _context).Should().Be(ModuleResolution.Enabled);
+        Assert.That(moduleProvider.Check("admin_exportHistory", _context), Is.EqualTo(ModuleResolution.Enabled));
+        Assert.That(moduleProvider.Check("admin_addPeer", _context), Is.EqualTo(ModuleResolution.Enabled));
 
         IRpcModule adminClass = await moduleProvider.Rent("admin_addPeer", true);
-        (adminClass is IAdminRpcModule).Should().BeTrue();
+        Assert.That((adminClass is IAdminRpcModule), Is.True);
         IRpcModule historyClass = await moduleProvider.Rent("admin_exportHistory", true);
-        (historyClass is IEraAdminRpcModule).Should().BeTrue();
+        Assert.That((historyClass is IEraAdminRpcModule), Is.True);
     }
 
     [TestCase(true)]
@@ -174,7 +173,7 @@ public class RpcModuleProviderTests
 
         _ = container.Resolve<IRpcModuleProvider>();
 
-        container.Resolve<TestRpcModuleDependencies>().WasRequested.Should().Be(preload);
+        Assert.That(container.Resolve<TestRpcModuleDependencies>().WasRequested, Is.EqualTo(preload));
     }
 
     [RpcModule(ModuleType.Eth)]

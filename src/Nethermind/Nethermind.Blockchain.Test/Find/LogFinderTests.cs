@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
@@ -70,8 +69,7 @@ public class LogFinderTests
         Block blockWithNoTransaction = Build.A.Block
             .WithParent(_headTestBlock)
             .TestObject;
-        _rawBlockTree.SuggestBlock(blockWithNoTransaction)
-            .Should().Be(AddBlockResult.Added);
+        Assert.That(_rawBlockTree.SuggestBlock(blockWithNoTransaction), Is.EqualTo(AddBlockResult.Added));
         _rawBlockTree.UpdateMainChain(blockWithNoTransaction);
     }
 
@@ -118,14 +116,9 @@ public class LogFinderTests
         StoreTreeBlooms(withBloomDb);
         LogFilter logFilter = AllBlockFilter().Build();
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
-        logs.Length.Should().Be(5);
+        Assert.That(logs.Length, Is.EqualTo(5));
         int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
-        // indexes[0].Should().Be(0);
-        // indexes[1].Should().Be(1);
-        // indexes[2].Should().Be(0);
-        // indexes[3].Should().Be(1);
-        // indexes[4].Should().Be(2);
-        indexes.Should().BeEquivalentTo(new[] { 0, 1, 0, 1, 2 });
+        Assert.That(indexes, Is.EqualTo(new[] { 0, 1, 0, 1, 2 }));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -147,9 +140,7 @@ public class LogFinderTests
 
         LogFilter logFilter = AllBlockFilter().Build();
 
-        _logFinder.Invoking(it => it.FindLogs(logFilter))
-            .Should()
-            .Throw<ResourceNotFoundException>();
+        Assert.That(() => _logFinder.FindLogs(logFilter), Throws.TypeOf<ResourceNotFoundException>());
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -162,9 +153,7 @@ public class LogFinderTests
 
         LogFilter logFilter = AllBlockFilter().Build();
 
-        _logFinder.Invoking(it => it.FindLogs(logFilter))
-            .Should()
-            .NotThrow<ResourceNotFoundException>();
+        Assert.That(() => _logFinder.FindLogs(logFilter), Throws.Nothing);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -175,7 +164,7 @@ public class LogFinderTests
         _logFinder = CreateLogFinder(blockFinder);
         LogFilter logFilter = AllBlockFilter().Build();
         Func<IEnumerable<FilterLog>> action = new(() => _logFinder.FindLogs(logFilter));
-        action.Should().Throw<ResourceNotFoundException>();
+        Assert.That(action, Throws.TypeOf<ResourceNotFoundException>());
         blockFinder.Received().FindHeader(logFilter.ToBlock, false);
         blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
     }
@@ -208,7 +197,7 @@ public class LogFinderTests
 
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        logs.Length.Should().Be(expectedCount);
+        Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
     public static IEnumerable FilterByTopicsTestsData
@@ -268,7 +257,7 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
-        logs.Length.Should().Be(expectedCount);
+        Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -279,7 +268,7 @@ public class LogFinderTests
         LogFilter filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
         FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
 
-        logs.Length.Should().Be(3);
+        Assert.That(logs.Length, Is.EqualTo(3));
     }
 
     public static IEnumerable ComplexFilterTestsData
@@ -309,7 +298,7 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
-        logs.Length.Should().Be(expectedCount);
+        Assert.That(logs.Length, Is.EqualTo(expectedCount));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -449,10 +438,7 @@ public class LogFinderTests
         ]);
         receiptStorage.ClearCache();
 
-        CreateLogFinder(_rawBlockTree, receiptStorage)
-            .Invoking(lf => lf.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray())
-            .Should().Throw<InvalidOperationException>()
-            .WithMessage("*missing block data*");
+        Assert.That(() => CreateLogFinder(_rawBlockTree, receiptStorage).FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray(), Throws.TypeOf<InvalidOperationException>().With.Message.Contains(@"missing block data"));
     }
 
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();

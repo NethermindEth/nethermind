@@ -20,7 +20,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
-using FluentAssertions;
 
 namespace Nethermind.Consensus.Producers.Test;
 
@@ -120,7 +119,7 @@ public class TxPoolSourceTests
         IComparer<Transaction> comparer = transactionComparerProvider.GetDefaultProducerComparer(
             new BlockPreparationContext(UInt256.Zero, 1));
         int compareResult = comparer.Compare(highPriorityBlobTx, lowerPriorityRegularTx);
-        compareResult.Should().Be(TxComparisonResult.XFirst, "Higher priority transaction should compare as XFirst (negative)");
+        Assert.That(compareResult, Is.EqualTo(TxComparisonResult.XFirst), "Higher priority transaction should compare as XFirst (negative)");
 
         // Setup mocks
         ITxPool txPool = Substitute.For<ITxPool>();
@@ -148,6 +147,6 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
-        result.Should().BeEquivalentTo([highPriorityBlobTx, lowerPriorityRegularTx], o => o.WithStrictOrdering());
+        Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }));
     }
 }

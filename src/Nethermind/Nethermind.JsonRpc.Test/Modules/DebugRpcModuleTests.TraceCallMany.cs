@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -62,7 +61,7 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.First().First().Should().NotBeNull();
+        Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
     [Test]
@@ -72,7 +71,7 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([CreateBundle(CreateTransaction()), CreateBundle(CreateTransaction(to: TestItem.AddressD))], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
     }
 
     [Test]
@@ -83,7 +82,7 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([2]);
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([2]));
     }
 
     [Test]
@@ -93,10 +92,10 @@ public partial class DebugRpcModuleTests
         TransactionBundle bundle = CreateBundle(CreateTransaction(value: 200.Ether));
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
 
         GethLikeTxTrace trace = result.Data.First().First();
-        trace.Gas.Should().BeGreaterThan(0);
+        Assert.That(trace.Gas, Is.GreaterThan(0));
     }
 
     [Test]
@@ -107,7 +106,7 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Should().HaveCount(1);
+        Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(1));
     }
 
     [Test]
@@ -120,7 +119,7 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest, options);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
     }
 
     [Test]
@@ -134,8 +133,8 @@ public partial class DebugRpcModuleTests
         };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
-        result.Data.First().First().Should().NotBeNull();
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+        Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
     [Test]
@@ -152,8 +151,8 @@ public partial class DebugRpcModuleTests
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1]);
-        result.Data.First().First().Should().NotBeNull();
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1]));
+        Assert.That(result.Data.First().First(), Is.Not.Null);
     }
 
     [Test]
@@ -164,7 +163,7 @@ public partial class DebugRpcModuleTests
         bundle.BlockOverride = new BlockOverride { GasLimit = 50_000_000 };
 
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([bundle], BlockParameter.Latest);
-        result.Data.First().First().Failed.Should().BeFalse();
+        Assert.That(result.Data.First().First().Failed, Is.False);
     }
 
     [Test]
@@ -176,7 +175,7 @@ public partial class DebugRpcModuleTests
         withOverride.BlockOverride = new BlockOverride { GasLimit = 30_000_000 };
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result = ctx.DebugRpcModule.debug_traceCallMany([simple, withOverride], BlockParameter.Latest);
 
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
     }
 
     [TestCase(3, TestName = "Debug_traceCallMany_with_minimum_block_number_gap_returns_one_entry_per_bundle")]
@@ -195,8 +194,8 @@ public partial class DebugRpcModuleTests
         ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
             ctx.DebugRpcModule.debug_traceCallMany([first, second], BlockParameter.Latest);
 
-        result.Data.Should().HaveCount(2);
-        result.Data.Select(r => r.Count()).Should().BeEquivalentTo([1, 1]);
+        Assert.That(System.Linq.Enumerable.Count(result.Data), Is.EqualTo(2));
+        Assert.That(result.Data.Select(r => r.Count()), Is.EqualTo([1, 1]));
     }
 
     [Test]
@@ -229,8 +228,8 @@ public partial class DebugRpcModuleTests
 
         GethLikeTxTrace trace = result.Data.First().First();
         long gasAvailable = (long)trace.ReturnValue.ToUInt256();
-        gasAvailable.Should().BeLessThan(gasCap);
-        gasAvailable.Should().BeGreaterThan(0);
+        Assert.That(gasAvailable, Is.LessThan(gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(0));
     }
 
     [Test]
@@ -263,7 +262,6 @@ public partial class DebugRpcModuleTests
 
         GethLikeTxTrace trace = result.Data.First().First();
         UInt256 gasAvailable = trace.ReturnValue.ToUInt256();
-        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
-            "gas available should reflect gasCap ({0}), not block gas limit ({1})", gasCap, blockGasLimit);
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 }

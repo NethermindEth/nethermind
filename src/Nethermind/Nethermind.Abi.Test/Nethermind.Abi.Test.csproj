@@ -3,8 +3,6 @@
   <Import Project="../tests.props" />
 
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" />
-    <PackageReference Include="FluentAssertions.Json" />
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
 

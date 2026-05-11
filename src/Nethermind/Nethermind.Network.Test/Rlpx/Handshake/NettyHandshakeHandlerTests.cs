@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -144,7 +143,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                 .Do(c => received = true);
             handler.ChannelActive(_channelHandlerContext);
 
-            received.Should().BeTrue();
+            Assert.That(received, Is.True);
             _handshakeService.Received(1).Auth(_session.RemoteNodeId, Arg.Any<EncryptionHandshake>());
 
         }
@@ -217,7 +216,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                 .Do(_ => received = true);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            received.Should().BeTrue();
+            Assert.That(received, Is.True);
             _handshakeService.Received(1).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());
         }
 

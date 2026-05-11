@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -29,7 +28,7 @@ public class BloomStorageTests
     public void Empty_storage_does_not_contain_blocks(long from, long to)
     {
         BloomStorage storage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-        storage.ContainsRange(from, to).Should().BeFalse();
+        Assert.That(storage.ContainsRange(from, to), Is.False);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -101,8 +100,8 @@ public class BloomStorageTests
             }
         }
 
-        ranges.Should().BeEquivalentTo(expectedBlocks);
-        bloomsChecked.Should().Be(expectedBloomsChecked);
+        Assert.That(ranges, Is.EqualTo(expectedBlocks));
+        Assert.That(bloomsChecked, Is.EqualTo(expectedBloomsChecked));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -142,7 +141,7 @@ public class BloomStorageTests
 
         long[] expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
         TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
-        foundBlocks.Should().BeEquivalentTo(expectedFoundBlocks);
+        Assert.That(foundBlocks, Is.EqualTo(expectedFoundBlocks));
     }
 
     private const int Buckets = 3;
@@ -223,7 +222,7 @@ public class BloomStorageTests
                     expectedBloom.Set(i);
                 }
 
-                bloom.Should().Be(expectedBloom, $"blocks <{FromBlock}, {ToBlock}>");
+                Assert.That(bloom, Is.EqualTo(expectedBloom), $"blocks <{FromBlock}, {ToBlock}>");
                 blooms.TryGetBlockNumber(out _);
             }
 

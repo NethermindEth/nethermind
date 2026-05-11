@@ -3,11 +3,11 @@
 
 using System.Linq;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 
@@ -74,35 +74,30 @@ public static class AccessListTransactionForRpcTests
 
     public static void ValidateSchema(JsonElement json)
     {
-        json.GetProperty("type").GetString().Should().MatchRegex("^0x1$");
-        json.GetProperty("nonce").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("to").GetString()?.Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-        json.GetProperty("gas").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("value").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("input").GetString().Should().MatchRegex("^0x[0-9a-f]*$");
-        json.GetProperty("gasPrice").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        // Surprising inconsistency in `FluentAssertions` where `AllSatisfy` fails on empty collections.
-        // This requires wrapping the assertion in a condition.
-        // See: https://github.com/fluentassertions/fluentassertions/discussions/2143#discussioncomment-9677309
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("type").GetString(), "^0x1$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("nonce").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("to").GetString(), "^0x[0-9a-fA-F]{40}$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("gas").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("value").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("input").GetString(), "^0x[0-9a-f]*$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("gasPrice").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
         JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
-        if (accessList.Any())
+        foreach (JsonElement item in accessList)
         {
-            accessList.Should().AllSatisfy(static item =>
+            RpcTransactionAssertions.AssertMatchesWhenPresent(item.GetProperty("address").GetString(), "^0x[0-9a-fA-F]{40}$");
+            foreach (JsonElement key in item.GetProperty("storageKeys").EnumerateArray())
             {
-                item.GetProperty("address").GetString().Should().MatchRegex("^0x[0-9a-fA-F]{40}$");
-                item.GetProperty("storageKeys").EnumerateArray().Should().AllSatisfy(static key =>
-                    key.GetString().Should().MatchRegex("^0x[0-9a-f]{64}$")
-                );
-            });
+                RpcTransactionAssertions.AssertMatchesWhenPresent(key.GetString(), "^0x[0-9a-f]{64}$");
+            }
         }
-        json.GetProperty("chainId").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("chainId").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
         string? yParity = json.GetProperty("yParity").GetString();
-        yParity.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        Assert.That(yParity, Does.Match("^0x([1-9a-f]+[0-9a-f]*|0)$"));
         if (json.TryGetProperty("v", out JsonElement v))
         {
-            v.GetString().Should().Be(yParity);
+            Assert.That(v.GetString(), Is.EqualTo(yParity));
         }
-        json.GetProperty("r").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        json.GetProperty("s").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("r").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
+        RpcTransactionAssertions.AssertMatchesWhenPresent(json.GetProperty("s").GetString(), "^0x([1-9a-f]+[0-9a-f]*|0)$");
     }
 }

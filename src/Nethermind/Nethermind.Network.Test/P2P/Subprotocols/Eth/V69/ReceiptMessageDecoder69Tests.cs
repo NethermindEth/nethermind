@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
@@ -32,9 +31,9 @@ public class ReceiptMessageDecoder69Tests
 
         TxReceipt? decoded = decoder.Decode(encoded, RlpBehaviors.Eip658Receipts);
 
-        decoded.Should().NotBeNull();
-        decoded!.TxType.Should().Be(receipt.TxType);
-        decoded.StatusCode.Should().Be(receipt.StatusCode);
-        decoded.GasUsedTotal.Should().Be(receipt.GasUsedTotal);
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.TxType, Is.EqualTo(receipt.TxType));
+        Assert.That(decoded.StatusCode, Is.EqualTo(receipt.StatusCode));
+        Assert.That(decoded.GasUsedTotal, Is.EqualTo(receipt.GasUsedTotal));
     }
 }

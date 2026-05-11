@@ -3,7 +3,6 @@
 
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -38,7 +37,27 @@ public class Eip7708Tests(bool eip7708Enabled)
     private void AssertLogs(TxReceipt[] receipts, LogEntry[] expectedLogs, bool logCondition = true)
     {
         LogEntry[][] expected = [eip7708Enabled && logCondition ? expectedLogs : []];
-        receipts.Select(r => r.Logs).Should().BeEquivalentTo(expected);
+        Assert.That(receipts, Has.Length.EqualTo(expected.Length));
+
+        for (int i = 0; i < expected.Length; i++)
+        {
+            AssertLogEntries(receipts[i].Logs ?? [], expected[i]);
+        }
+    }
+
+    private static void AssertLogEntries(LogEntry[] actual, LogEntry[] expected)
+    {
+        Assert.That(actual, Has.Length.EqualTo(expected.Length));
+
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(actual[i].Address, Is.EqualTo(expected[i].Address));
+                Assert.That(actual[i].Data, Is.EqualTo(expected[i].Data));
+                Assert.That(actual[i].Topics, Is.EqualTo(expected[i].Topics));
+            });
+        }
     }
 
     [TestCase(1_000_000ul, 1, TestName = "transfer value > 0")]

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
-using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -135,8 +134,8 @@ public class NodeLifecycleManagerTests
         nodeManager.ProcessFindNodeMsg(new FindNodeMsg(TestItem.PublicKeyA, 1, new byte[] { 0 }));
 
         Assert.That(sentMsg, Is.Not.Null);
-        _nodeTable.Buckets[0].BondedItemsCount.Should().Be(32);
-        sentMsg!.Nodes.Count.Should().Be(12);
+        Assert.That(_nodeTable.Buckets[0].BondedItemsCount, Is.EqualTo(32));
+        Assert.That(sentMsg!.Nodes.Count, Is.EqualTo(12));
     }
 
     [Test]

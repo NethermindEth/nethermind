@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,8 +18,8 @@ namespace Nethermind.Blockchain.Test.Consensus
         public void Test()
         {
             NullSigner signer = NullSigner.Instance;
-            signer.Address.Should().Be(Address.Zero);
-            signer.CanSign.Should().BeFalse();
+            Assert.That(signer.Address, Is.EqualTo(Address.Zero));
+            Assert.That(signer.CanSign, Is.False);
         }
 
         [Test, MaxTime(Timeout.MaxTestTime)]
@@ -28,7 +27,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             NullSigner signer = NullSigner.Instance;
             await signer.Sign((Transaction)null!);
-            signer.Sign((Hash256)null!).Bytes.Length.Should().Be(64);
+            Assert.That(signer.Sign((Hash256)null!).Bytes.Length, Is.EqualTo(64));
         }
     }
 }

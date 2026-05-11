@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using NSubstitute;
@@ -31,11 +30,11 @@ public class OwnedBlockBodiesTests
         BlockBody[] blockBodies = { Build.A.Block.WithTransactions(1, MainnetSpecProvider.Instance).TestObject.Body };
         blockBodies[0].Transactions[0].Data = actualMemoryOwner.Memory;
         actualMemoryOwner.Memory.Span.Fill(1);
-        blockBodies[0].Transactions[0].Data.Should().BeEquivalentTo((ReadOnlyMemory<byte>)actualMemoryOwner.Memory);
+        Assert.That(blockBodies[0].Transactions[0].Data.ToArray(), Is.EqualTo(actualMemoryOwner.Memory.ToArray()));
 
         OwnedBlockBodies ownedBlockBodies = new(blockBodies, memoryOwner);
         ownedBlockBodies.Disown();
         actualMemoryOwner.Memory.Span.Clear();
-        blockBodies[0].Transactions[0].Data.Should().NotBeEquivalentTo((ReadOnlyMemory<byte>)actualMemoryOwner.Memory);
+        Assert.That(blockBodies[0].Transactions[0].Data.ToArray(), Is.Not.EqualTo(actualMemoryOwner.Memory.ToArray()));
     }
 }

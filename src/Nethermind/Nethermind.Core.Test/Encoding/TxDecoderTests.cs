@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Numeric;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -80,9 +78,9 @@ namespace Nethermind.Core.Test.Encoding
 
             decodedTx.SetPreHash(rlp.Bytes);
 
-            using ArrayPoolList<Task<AndConstraint<ComparableTypeAssertions<Hash256>>>> tasks = Enumerable
+            using ArrayPoolList<Task> tasks = Enumerable
                 .Range(0, 32)
-                .Select(_ => Task.Factory.StartNew(() => decodedTx.Hash.Should().Be(expectedHash), TaskCreationOptions.RunContinuationsAsynchronously))
+                .Select(_ => Task.Factory.StartNew(() => Assert.That(decodedTx.Hash, Is.EqualTo(expectedHash)), TaskCreationOptions.RunContinuationsAsynchronously))
                 .ToPooledList(32);
 
             await Task.WhenAll(tasks.AsSpan());
@@ -148,7 +146,7 @@ namespace Nethermind.Core.Test.Encoding
             data1.AsSpan().Fill(1);
             rlpStream.Data.AsSpan().Fill(1);
 
-            decoded.Data.ToArray().Should().BeEquivalentTo(data1);
+            Assert.That(decoded.Data.ToArray(), Is.EqualTo(data1));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -159,13 +157,13 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext ctx = new(incomingTxRlpBytes);
 
             Transaction decoded = _txDecoder.Decode(ref ctx)!;
-            decoded.CalculateHash().Should().Be(testCase.Hash);
+            Assert.That(decoded.CalculateHash(), Is.EqualTo(testCase.Hash));
 
             RlpStream ourRlpOutput = new(incomingTxRlpBytes.Length * 2);
             _txDecoder.Encode(ourRlpOutput, decoded);
 
             string ourRlpHex = ourRlpOutput.Data.AsSpan(0, incomingTxRlpBytes.Length).ToHexString();
-            ourRlpHex.Should().BeEquivalentTo(testCase.IncomingRlpHex);
+            Assert.That(ourRlpHex, Is.EqualTo(testCase.IncomingRlpHex));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -178,8 +176,8 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
 
-            decoded.CalculateHash().Should().Be(decoded.Hash!);
-            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
+            Assert.That(decoded.CalculateHash(), Is.EqualTo(decoded.Hash!));
+            Assert.That(decoded.Hash, Is.EqualTo(Keccak.Compute(encodedForTreeRoot.Bytes)));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -190,7 +188,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext ctx = new(incomingTxRlpBytes);
             Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
-            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
+            Assert.That(decoded.Hash, Is.EqualTo(Keccak.Compute(encodedForTreeRoot.Bytes)));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -201,7 +199,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext ctx = new(incomingTxRlpBytes);
             Transaction decoded = _txDecoder.Decode(ref ctx)!;
             Rlp encodedForTreeRoot = _txDecoder.Encode(decoded, RlpBehaviors.SkipTypedWrapping);
-            decoded.Hash.Should().Be(Keccak.Compute(encodedForTreeRoot.Bytes));
+            Assert.That(decoded.Hash, Is.EqualTo(Keccak.Compute(encodedForTreeRoot.Bytes)));
         }
 
         [TestCaseSource(nameof(YoloV3TestCases))]
@@ -223,8 +221,8 @@ namespace Nethermind.Core.Test.Encoding
             Transaction decoded = _txDecoder.Decode(ref ctx2, wrapping ? RlpBehaviors.SkipTypedWrapping : RlpBehaviors.None)!;
             Rlp encoded = _txDecoder.Encode(decoded);
             Rlp encodedWithDecodedByValueDecoderContext = _txDecoder.Encode(decodedByValueDecoderContext);
-            decoded.Hash.Should().Be(testCase.Hash);
-            decoded.Hash.Should().Be(decodedByValueDecoderContext.Hash!);
+            Assert.That(decoded.Hash, Is.EqualTo(testCase.Hash));
+            Assert.That(decoded.Hash, Is.EqualTo(decodedByValueDecoderContext.Hash!));
             Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(encoded.Bytes));
         }
 
@@ -263,7 +261,7 @@ namespace Nethermind.Core.Test.Encoding
                 .SignedAndResolved()
                 .TestObject;
 
-            duplicates.CalculateHash().Should().NotBe(noDuplicates.CalculateHash());
+            Assert.That(duplicates.CalculateHash(), Is.Not.EqualTo(noDuplicates.CalculateHash()));
         }
 
 

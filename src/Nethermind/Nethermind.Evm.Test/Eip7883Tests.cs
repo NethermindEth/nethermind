@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
@@ -22,7 +21,7 @@ public class Eip7883Tests
 
         IReleaseSpec? spec = test.FusakaEnabled ? Osaka.Instance : Prague.Instance;
         long gas = ModExpPrecompile.Instance.DataGasCost(inputData, spec);
-        gas.Should().Be(test.Result);
+        Assert.That(gas, Is.EqualTo(test.Result));
     }
 
     public class Eip7883TestCase

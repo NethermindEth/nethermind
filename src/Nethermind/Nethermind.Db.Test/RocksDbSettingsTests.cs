@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -17,10 +16,15 @@ namespace Nethermind.Db.Test
             };
 
             DbSettings settings2 = settings.Clone("Name2", "Path2");
-            settings2.Should().BeEquivalentTo(settings,
-                static o => o.Excluding(static s => s.DbName).Excluding(static s => s.DbPath));
-            settings2.DbName.Should().Be("Name2");
-            settings2.DbPath.Should().Be("Path2");
+            Assert.Multiple(() =>
+            {
+                Assert.That(settings2.DeleteOnStart, Is.EqualTo(settings.DeleteOnStart));
+                Assert.That(settings2.CanDeleteFolder, Is.EqualTo(settings.CanDeleteFolder));
+                Assert.That(settings2.MergeOperator, Is.EqualTo(settings.MergeOperator));
+                Assert.That(settings2.ColumnsMergeOperators, Is.EqualTo(settings.ColumnsMergeOperators));
+            });
+            Assert.That(settings2.DbName, Is.EqualTo("Name2"));
+            Assert.That(settings2.DbPath, Is.EqualTo("Path2"));
         }
     }
 }

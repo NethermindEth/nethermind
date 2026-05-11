@@ -212,7 +212,7 @@ public class Eth69ProtocolHandlerTests
 
         IOwnedReadOnlyList<TxReceipt[]?> response = RequestReceipts(Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB);
 
-        Assert.That(response, Has.Count.EqualTo(1));
+        Assert.That((response).Count, Is.EqualTo(1));
         Assert.That(response[0], Is.SameAs(blockReceipts));
     }
 

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -35,7 +34,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput res = Execute(code);
-            res.Error.Should().Be(EvmExceptionType.StackUnderflow.ToString());
+            Assert.That(res.Error, Is.EqualTo(EvmExceptionType.StackUnderflow.ToString()));
         }
     }
 }

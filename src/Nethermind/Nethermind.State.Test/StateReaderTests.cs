@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -141,7 +140,7 @@ namespace Nethermind.Store.Test
             CommitEverything();
             Hash256 stateRoot0 = provider.StateRoot;
 
-            reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
+            Assert.That(reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1).ToArray(), Is.EqualTo(new byte[] { 0 }));
         }
 
         private Task StartTask(IStateReader reader, BlockHeader baseBlock, UInt256 value) => Task.Run(
@@ -160,7 +159,7 @@ namespace Nethermind.Store.Test
                     for (int i = 0; i < 1000; i++)
                     {
                         byte[] result = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
-                        result.Should().BeEquivalentTo(value);
+                        Assert.That(result, Is.EqualTo(value));
                     }
                 });
 
@@ -190,7 +189,7 @@ namespace Nethermind.Store.Test
             }
 
             byte[] retrieved = reader.GetStorage(baseBlock, _address1, storageCell.Index).ToArray();
-            retrieved.Should().BeEquivalentTo(initialValue);
+            Assert.That(retrieved, Is.EqualTo(initialValue));
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
 
@@ -216,7 +215,7 @@ namespace Nethermind.Store.Test
                We will try to retrieve the value by taking the state root from the processor.*/
 
             retrieved = reader.GetStorage(baseBlock, storageCell.Address, storageCell.Index).ToArray();
-            retrieved.Should().BeEquivalentTo(newValue);
+            Assert.That(retrieved, Is.EqualTo(newValue));
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */
         }
@@ -238,7 +237,7 @@ namespace Nethermind.Store.Test
             }
 
             TrieStats stats = stateReader.CollectStats(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject, new MemDb(), Logger);
-            stats.AccountCount.Should().Be(1);
+            Assert.That(stats.AccountCount, Is.EqualTo(1));
         }
 
         private static (IWorldState sut, IReleaseSpec releaseSpec, IDisposable scope) SetupContractSenderTest(
@@ -353,7 +352,7 @@ namespace Nethermind.Store.Test
             }
 
             string state = reader.DumpState(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject);
-            state.Should().NotBeEmpty();
+            Assert.That(state, Is.Not.Empty);
         }
     }
 }

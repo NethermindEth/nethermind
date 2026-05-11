@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -18,17 +17,16 @@ public class NodeRecordTests
         nodeRecord.SetEntry(new UdpEntry(12345));
         nodeRecord.SetEntry(new SecP256k1Entry(
             new CompressedPublicKey(new byte[33])));
-        nodeRecord.GetValue<int>(EnrContentKey.Udp).Should().Be(12345);
-        nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1).Should().Be(
-            new CompressedPublicKey(new byte[33]));
+        Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.EqualTo(12345));
+        Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.EqualTo(new CompressedPublicKey(new byte[33])));
     }
 
     [Test]
     public void Get_value_or_obj_can_handle_missing_values()
     {
         NodeRecord nodeRecord = new();
-        nodeRecord.GetValue<int>(EnrContentKey.Udp).Should().BeNull();
-        nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1).Should().BeNull();
+        Assert.That(nodeRecord.GetValue<int>(EnrContentKey.Udp), Is.Null);
+        Assert.That(nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1), Is.Null);
     }
 
     [Test]

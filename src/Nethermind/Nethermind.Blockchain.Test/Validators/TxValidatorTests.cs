@@ -7,7 +7,6 @@ using System.Linq;
 using System.Numerics;
 using CkzgLib;
 using FastEnumUtility;
-using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,8 +39,8 @@ public class TxValidatorTests
         SecP256k1Curve.N.Convert(out BigInteger n);
         SecP256k1Curve.HalfN.Convert(out BigInteger halfN);
 
-        (N == n).Should().BeTrue();
-        (HalfN == halfN).Should().BeTrue();
+        Assert.That((N == n), Is.True);
+        Assert.That((HalfN == halfN), Is.True);
     }
 
     private static IEnumerable<TestCaseData> ZeroSignatureComponentCases()
@@ -63,7 +62,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.False);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -93,7 +92,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeFalse();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.False);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -107,7 +106,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -121,7 +120,7 @@ public class TxValidatorTests
         Transaction tx = Build.A.Transaction.WithSignature(signature).TestObject;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool().Should().BeTrue();
+        Assert.That(txValidator.IsWellFormed(tx, MuirGlacier.Instance).AsBool(), Is.True);
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -141,7 +140,7 @@ public class TxValidatorTests
         releaseSpec.ValidateChainId.Returns(validateChainId);
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(!validateChainId);
+        Assert.That(txValidator.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(!validateChainId));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -281,7 +280,7 @@ public class TxValidatorTests
             .WithData(initCode).TestObject;
 
         TxValidator txValidator = new(1);
-        txValidator.IsWellFormed(tx, releaseSpec).AsBool().Should().Be(expectedResult);
+        Assert.That(txValidator.IsWellFormed(tx, releaseSpec).AsBool(), Is.EqualTo(expectedResult));
     }
 
     //leading zeros in AccessList - expected to pass (real mainnet tx)

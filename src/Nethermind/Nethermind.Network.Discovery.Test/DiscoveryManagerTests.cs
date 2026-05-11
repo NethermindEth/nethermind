@@ -8,7 +8,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -276,7 +275,7 @@ namespace Nethermind.Network.Discovery.Test
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
             await _discoveryManager.SendMessageAsync(msg);
-            Stopwatch.GetElapsedTime(startTime).Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(0.9));
+            Assert.That(Stopwatch.GetElapsedTime(startTime), Is.GreaterThanOrEqualTo(TimeSpan.FromSeconds(0.9)));
         }
 
         [Test]
@@ -304,7 +303,7 @@ namespace Nethermind.Network.Discovery.Test
             start.Set();
             await Task.WhenAll(sendTasks);
 
-            ((DiscoveryManager)_discoveryManager).SendQueueConsumersCreated.Should().Be(1);
+            Assert.That(((DiscoveryManager)_discoveryManager).SendQueueConsumersCreated, Is.EqualTo(1));
         }
     }
 

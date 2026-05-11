@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EraE.Config;
@@ -25,7 +24,7 @@ public class EraStoreTests
 
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
 
-        eraStore.BlockRange.Should().Be((from, to));
+        Assert.That(eraStore.BlockRange, Is.EqualTo((from, to)));
     }
 
     [Test]
@@ -36,8 +35,8 @@ public class EraStoreTests
         (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(
             env.EraStore.BlockRange.First, ensureValidated: false);
 
-        block.Should().NotBeNull();
-        receipts.Should().NotBeNull();
+        Assert.That(block, Is.Not.Null);
+        Assert.That(receipts, Is.Not.Null);
     }
 
     [Test]
@@ -47,8 +46,8 @@ public class EraStoreTests
 
         (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(99999, ensureValidated: false);
 
-        block.Should().BeNull();
-        receipts.Should().BeNull();
+        Assert.That(block, Is.Null);
+        Assert.That(receipts, Is.Null);
     }
 
     [Test]
@@ -59,7 +58,7 @@ public class EraStoreTests
         long targetBlock = env.EraStore.BlockRange.First + 5;
         (Block? block, _) = await env.EraStore.FindBlockAndReceipts(targetBlock, ensureValidated: false);
 
-        block!.Number.Should().Be(targetBlock);
+        Assert.That(block!.Number, Is.EqualTo(targetBlock));
     }
 
     [Test]
@@ -90,7 +89,7 @@ public class EraStoreTests
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
         long nextStart = eraStore.NextEraStart(eraStore.BlockRange.First);
 
-        nextStart.Should().Be(eraSize, "first era covers blocks 0..eraSize-1");
+        Assert.That(nextStart, Is.EqualTo(eraSize), "first era covers blocks 0..eraSize-1");
     }
 
     [Test]

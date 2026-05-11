@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
@@ -67,7 +66,7 @@ public class VoteDecoderTests
             decoded = decoder.Decode(ref decoderContext);
         }
 
-        decoded.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
+        Assert.That(decoded, Is.EqualTo(vote));
     }
 
     [Test]
@@ -90,9 +89,9 @@ public class VoteDecoderTests
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
         Vote decodedContext = decoder.Decode(ref decoderContext);
 
-        decodedStream.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
-        decodedContext.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
-        decodedStream.Should().BeEquivalentTo(decodedContext);
+        Assert.That(decodedStream, Is.EqualTo(vote));
+        Assert.That(decodedContext, Is.EqualTo(vote));
+        Assert.That(decodedStream, Is.EqualTo(decodedContext));
     }
 
     [Test]

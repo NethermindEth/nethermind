@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Tracing;
@@ -44,8 +43,8 @@ public partial class DebugRpcModuleTests
         await CreateContractCallTx(blockchain, contractAddress);
 
         Block? block = blockchain.BlockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        block.Should().NotBeNull();
-        block!.Hash.Should().NotBeNull();
+        Assert.That(block, Is.Not.Null);
+        Assert.That(block!.Hash, Is.Not.Null);
 
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitness", blockNumber);
 
@@ -53,16 +52,19 @@ public partial class DebugRpcModuleTests
         // responsible for the state setup.
         if (blockNumber == 0)
         {
-            response.Should().BeOfType<JsonRpcErrorResponse>().Which.Error!.Message.Should().Be("Cannot generate witness for genesis block");
+            Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+            JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
+            Assert.That(errorResponse.Error!.Message, Is.EqualTo("Cannot generate witness for genesis block"));
             return;
         }
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
-            .Subject;
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        Assert.That(successResponse.Result, Is.TypeOf<Witness>());
+        using Witness witness = (Witness)successResponse.Result!;
 
-        witness.Headers.Should().NotBeEmpty();
-        witness.State.Should().NotBeEmpty();
+        Assert.That(witness.Headers, Is.Not.Empty);
+        Assert.That(witness.State, Is.Not.Empty);
 
         CheckStatelessProcessing(blockchain, witness, block);
     }
@@ -119,8 +121,7 @@ public partial class DebugRpcModuleTests
             witnessState.Set(in storageCell, [99]); // some random value (does not matter)
 
             // Verify no new trie nodes were captured by the trie store during Set()
-            capturingTrieStore.TouchedNodesRlp.Count().Should().Be(capturedNodesBefore,
-                "Set() should not traverse the trie");
+            Assert.That(capturingTrieStore.TouchedNodesRlp.Count(), Is.EqualTo(capturedNodesBefore), "Set() should not traverse the trie");
 
             // Simulate tx revert by reverting the write — cached write is discarded but _storageSlots retains the slot
             witnessState.Restore(snapshot);
@@ -138,8 +139,7 @@ public partial class DebugRpcModuleTests
                 .SelectMany(sp => sp.Proof!)
                 .ToArray();
 
-            storageProofNodes.Should().NotBeEmpty(
-                "the contract should have a non-empty storage proof for slot 0 in the parent state");
+            Assert.That(storageProofNodes, Is.Not.Empty, "the contract should have a non-empty storage proof for slot 0 in the parent state");
 
             HashSet<Hash256> witnessNodeHashes = witness.State
                 .Select(Keccak.Compute)
@@ -147,8 +147,7 @@ public partial class DebugRpcModuleTests
 
             foreach (byte[] proofNode in storageProofNodes)
             {
-                witnessNodeHashes.Should().Contain(Keccak.Compute(proofNode),
-                    "witness should contain storage trie proof node even though the slot was " +
+                Assert.That(witnessNodeHashes, Does.Contain(Keccak.Compute(proofNode)), "witness should contain storage trie proof node even though the slot was " +
                     "only written to (not read) and then reverted");
             }
         }
@@ -199,8 +198,9 @@ public partial class DebugRpcModuleTests
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
             new { to = TestItem.AddressA.ToString() }, "0x0");
 
-        response.Should().BeOfType<JsonRpcErrorResponse>()
-            .Which.Error!.Message.Should().Be("Cannot generate witness for genesis block");
+        Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+        JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
+        Assert.That(errorResponse.Error!.Message, Is.EqualTo("Cannot generate witness for genesis block"));
     }
 
     [Test]
@@ -216,11 +216,12 @@ public partial class DebugRpcModuleTests
         JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
             new { to = TestItem.AddressB.ToString() }, "0x1");
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
-            .Subject;
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        Assert.That(successResponse.Result, Is.TypeOf<Witness>());
+        using Witness witness = (Witness)successResponse.Result!;
 
-        witness.State.Should().NotBeEmpty("a call touching state should produce trie nodes");
+        Assert.That(witness.State, Is.Not.Empty, "a call touching state should produce trie nodes");
     }
 
     [Test]
@@ -238,12 +239,13 @@ public partial class DebugRpcModuleTests
             new { to = contractAddress.ToString(), gas = "0x30D40" },
             $"0x{blockNumber:x}");
 
-        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>()
-            .Subject;
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        Assert.That(successResponse.Result, Is.TypeOf<Witness>());
+        using Witness witness = (Witness)successResponse.Result!;
 
-        witness.State.Should().NotBeEmpty();
-        witness.Codes.Should().NotBeEmpty("calling a contract should capture its bytecode");
+        Assert.That(witness.State, Is.Not.Empty);
+        Assert.That(witness.Codes, Is.Not.Empty, "calling a contract should capture its bytecode");
     }
 
     [Test]
@@ -274,22 +276,22 @@ public partial class DebugRpcModuleTests
             new { to = contractAddress.ToString() },
             $"0x{blockNumber:x}");
 
-        using Witness witnessWithGas = withGas.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>().Subject;
-        using Witness witnessWithoutGas = withoutGas.Should().BeOfType<JsonRpcSuccessResponse>()
-            .Which.Result.Should().BeOfType<Witness>().Subject;
+        Assert.That(withGas, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse withGasResponse = (JsonRpcSuccessResponse)withGas;
+        Assert.That(withGasResponse.Result, Is.TypeOf<Witness>());
+        using Witness witnessWithGas = (Witness)withGasResponse.Result!;
+
+        Assert.That(withoutGas, Is.TypeOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse withoutGasResponse = (JsonRpcSuccessResponse)withoutGas;
+        Assert.That(withoutGasResponse.Result, Is.TypeOf<Witness>());
+        using Witness witnessWithoutGas = (Witness)withoutGasResponse.Result!;
 
         // The two paths must produce witnesses of the same shape.
-        witnessWithoutGas.State.Should().NotBeEmpty(
-            "omitting gas must not empty the state node set");
-        witnessWithoutGas.Codes.Should().NotBeEmpty(
-            "omitting gas must still capture called-contract bytecode");
-        witnessWithoutGas.State.Count.Should().Be(witnessWithGas.State.Count,
-            "state-node count should match between with-gas and without-gas calls");
-        witnessWithoutGas.Codes.Count.Should().Be(witnessWithGas.Codes.Count,
-            "code count should match between with-gas and without-gas calls");
-        witnessWithoutGas.Keys.Count.Should().Be(witnessWithGas.Keys.Count,
-            "key count should match between with-gas and without-gas calls");
+        Assert.That(witnessWithoutGas.State, Is.Not.Empty, "omitting gas must not empty the state node set");
+        Assert.That(witnessWithoutGas.Codes, Is.Not.Empty, "omitting gas must still capture called-contract bytecode");
+        Assert.That(witnessWithoutGas.State.Count, Is.EqualTo(witnessWithGas.State.Count), "state-node count should match between with-gas and without-gas calls");
+        Assert.That(witnessWithoutGas.Codes.Count, Is.EqualTo(witnessWithGas.Codes.Count), "code count should match between with-gas and without-gas calls");
+        Assert.That(witnessWithoutGas.Keys.Count, Is.EqualTo(witnessWithGas.Keys.Count), "key count should match between with-gas and without-gas calls");
     }
 
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
@@ -362,7 +364,7 @@ public partial class DebugRpcModuleTests
     private static void CheckStatelessProcessing(TestRpcBlockchain blockchain, Witness witness, Block expectedBlock)
     {
         BlockHeader? parent = blockchain.BlockTree.FindHeader(expectedBlock.Header.ParentHash!, BlockTreeLookupOptions.RequireCanonical);
-        parent.Should().NotBeNull();
+        Assert.That(parent, Is.Not.Null);
 
         StatelessBlockProcessingEnv statelessEnv = new(
             witness,
@@ -377,6 +379,6 @@ public partial class DebugRpcModuleTests
             NullBlockTracer.Instance,
             blockchain.SpecProvider.GetSpec(expectedBlock.Header));
 
-        processed.Hash.Should().Be(expectedBlock.Hash!);
+        Assert.That(processed.Hash, Is.EqualTo(expectedBlock.Hash!));
     }
 }

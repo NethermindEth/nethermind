@@ -449,7 +449,7 @@ public class BlockAccessListBasedWorldStateTests
         using (scope)
         using (ArrayPoolList<AddressAsKey> changes = bws.GetAccountChanges())
         {
-            Assert.That(changes, Has.Count.EqualTo(1));
+            Assert.That((changes).Count, Is.EqualTo(1));
             Assert.That(changes[0].Value, Is.EqualTo(TestItem.AddressB));
         }
     }

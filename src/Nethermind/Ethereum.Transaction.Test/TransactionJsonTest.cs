@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -30,13 +29,12 @@ public class TransactionJsonTest : GeneralStateTestBase
         txJson.Value = new UInt256[1];
         txJson.GasLimit = new long[1];
         txJson.Data = new byte[1][];
-        txJson.AccessLists.Should().NotBeNull();
-        txJson.AccessLists[0][0].Address.Should()
-            .BeEquivalentTo(new Address("0x0001020304050607080900010203040506070809"));
-        txJson.AccessLists[0][0].StorageKeys[1][0].Should().Be((byte)1);
+        Assert.That(txJson.AccessLists, Is.Not.Null);
+        Assert.That(txJson.AccessLists[0][0].Address, Is.EqualTo(new Address("0x0001020304050607080900010203040506070809")));
+        Assert.That(txJson.AccessLists[0][0].StorageKeys[1][0], Is.EqualTo((byte)1));
 
         Nethermind.Core.Transaction tx = JsonToEthereumTest.Convert(new PostStateJson { Indexes = new IndexesJson() }, txJson);
-        tx.AccessList.Should().NotBeNull();
+        Assert.That(tx.AccessList, Is.Not.Null);
     }
 
     [Test]
@@ -50,8 +48,7 @@ public class TransactionJsonTest : GeneralStateTestBase
 
         Nethermind.Core.Transaction tx = JsonToEthereumTest.Convert(new PostStateJson { Indexes = new IndexesJson() }, txJson);
 
-        tx.Type.Should().Be(TxType.AccessList,
-            "presence of accessLists field (even empty) should set Type 1");
+        Assert.That(tx.Type, Is.EqualTo(TxType.AccessList), "presence of accessLists field (even empty) should set Type 1");
     }
 
     /// <summary>
@@ -116,9 +113,8 @@ public class TransactionJsonTest : GeneralStateTestBase
 
         EthereumTestResult result = RunTest(test);
 
-        result.StateRoot.Should().Be(test.PostHash,
-            "invalid AccessList tx on pre-Berlin fork should not mutate state");
-        result.Pass.Should().BeTrue();
+        Assert.That(result.StateRoot, Is.EqualTo(test.PostHash), "invalid AccessList tx on pre-Berlin fork should not mutate state");
+        Assert.That(result.Pass, Is.True);
     }
 
 }

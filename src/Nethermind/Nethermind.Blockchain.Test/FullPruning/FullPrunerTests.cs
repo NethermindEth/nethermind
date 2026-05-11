@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -58,10 +57,10 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             currentKeyScheme: currentKeyScheme,
             preferredKeyScheme: newKeyScheme);
 
-        test.NodeStorage.Scheme.Should().Be(currentKeyScheme);
+        Assert.That(test.NodeStorage.Scheme, Is.EqualTo(currentKeyScheme));
         await test.RunFullPruning();
         test.ShouldCopyAllValuesWhenVisitingTrie();
-        test.NodeStorage.Scheme.Should().Be(expectedNewScheme);
+        Assert.That(test.NodeStorage.Scheme, Is.EqualTo(expectedNewScheme));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -69,7 +68,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         TestContext test = CreateTest(clearPrunedDb: true);
         await test.RunFullPruning();
-        test.TrieDb.Count.Should().Be(0);
+        Assert.That(test.TrieDb.Count, Is.EqualTo(0));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -78,7 +77,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestContext test = CreateTest(false);
         int count = test.TrieDb.Count;
         await test.RunFullPruning();
-        test.TrieDb.Count.Should().Be(count);
+        Assert.That(test.TrieDb.Count, Is.EqualTo(count));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -86,7 +85,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         TestContext test = CreateTest(false);
         await test.RunFullPruning();
-        test.CopyDb.Count.Should().Be(0);
+        Assert.That(test.CopyDb.Count, Is.EqualTo(0));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -95,7 +94,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestContext test = CreateTest();
         int count = test.TrieDb.Count;
         await test.RunFullPruning();
-        test.CopyDb.Count.Should().Be(count);
+        Assert.That(test.CopyDb.Count, Is.EqualTo(count));
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -125,14 +124,14 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     public async Task can_not_start_pruning_when_other_is_in_progress()
     {
         TestContext test = CreateTest();
-        test.FullPruningDb.CanStartPruning.Should().BeTrue();
+        Assert.That(test.FullPruningDb.CanStartPruning, Is.True);
 
         test.TriggerPruningViaEvent();
         TestFullPruningDb.TestPruningContext pruningContext = await test.WaitForPruningStart();
-        test.FullPruningDb.CanStartPruning.Should().BeFalse();
+        Assert.That(test.FullPruningDb.CanStartPruning, Is.False);
         await test.WaitForPruningEnd(pruningContext);
 
-        test.FullPruningDb.CanStartPruning.Should().BeTrue();
+        Assert.That(test.FullPruningDb.CanStartPruning, Is.True);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -143,7 +142,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
         test.TriggerPruningViaEvent();
         await test.WaitForPruningEnd(ctx);
-        test.FullPruningDb.PruningStarted.Should().Be(1);
+        Assert.That(test.FullPruningDb.PruningStarted, Is.EqualTo(1));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -156,7 +155,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         test.FullPruningDb.Context.WaitForFinish.Set();
 
         await test.WaitForPruningEnd(ctx);
-        test.FullPruningDb[key].Should().BeEquivalentTo(key);
+        Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -173,7 +172,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
 
         await test.WaitForPruningEnd(context);
 
-        test.FullPruningDb[key].Should().BeEquivalentTo(key);
+        Assert.That(test.FullPruningDb[key], Is.EqualTo(key));
     }
 
     private TestContext CreateTest(
@@ -322,7 +321,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
             foreach (KeyValuePair<byte[], byte[]?> keyValuePair in TrieDb.GetAll())
             {
-                CopyDb[keyValuePair.Key].Should().BeEquivalentTo(keyValuePair.Value);
+                Assert.That(CopyDb[keyValuePair.Key], Is.EqualTo(keyValuePair.Value));
                 CopyDb.KeyWasWrittenWithFlags(keyValuePair.Key, WriteFlags.LowPriority | WriteFlags.DisableWAL);
             }
         }
@@ -404,7 +403,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         private readonly INodeStorage _nodeStorageToCompareTo = nodeStorage;
 
         private void CheckNode(Hash256? storage, in TreePath path, TrieNode node) =>
-            _nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak).Should().BeTrue();
+            Assert.That(_nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak), Is.True);
 
         public bool IsFullDbScan => true;
         public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode) => true;

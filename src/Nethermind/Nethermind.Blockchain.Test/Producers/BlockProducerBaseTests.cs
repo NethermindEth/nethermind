@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -71,7 +70,7 @@ public partial class BlockProducerBaseTests
             );
 
         Block block = producerUnderTest.Prepare();
-        new UInt256(block.Timestamp).Should().BeEquivalentTo(block.Difficulty);
+        Assert.That(new UInt256(block.Timestamp), Is.EqualTo(block.Difficulty));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -93,6 +92,6 @@ public partial class BlockProducerBaseTests
 
         ulong futureTime = UnixTime.FromSeconds(TimeSpan.FromDays(1).TotalSeconds).Seconds;
         Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);
-        new UInt256(block.Timestamp).Should().BeEquivalentTo(block.Difficulty);
+        Assert.That(new UInt256(block.Timestamp), Is.EqualTo(block.Difficulty));
     }
 }
