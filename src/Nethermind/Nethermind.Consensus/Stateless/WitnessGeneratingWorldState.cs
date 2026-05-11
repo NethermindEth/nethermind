@@ -57,8 +57,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
             // This usually works because trie nodes, and especially the root node, tend to be cached.
             ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
             TreePath path = TreePath.Empty;
-            TrieNode node = stateResolver.FindCachedOrUnknown(path, parentHeader.StateRoot!);
-            TrieNode.ResolveNode(ref node, stateResolver, in path);
+            _ = stateResolver.GetOrLoadNode(path, parentHeader.StateRoot!);
         }
 
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);

@@ -527,12 +527,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public bool IsNodeCached(Hash256? address, in TreePath path, in ValueHash256 hash) => DirtyNodesIsNodeCached(new TrieStoreDirtyNodesCache.Key(address, path, in hash));
 
     /// <summary>
-    /// Cache-only lookup used by the typed-resolver contract (<see cref="ITrieNodeResolver.TryGetCachedNode"/>).
+    /// Cache-only lookup used by the typed-resolver contract (<see cref="IScopableTrieStore.TryGetCachedNode"/>).
     /// Returns the cached node only if it is already structurally resolved (not an
     /// <see cref="NodeType.Unknown"/> placeholder). Never allocates, never loads RLP.
     /// </summary>
-    internal bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, out TrieNode? node)
+    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node)
     {
+        // Cache-only lookup: returns the typed resolved node if one is in the dirty cache.
+        // Does NOT consult _commitBuffer; the typed-resolver default impl falls back to
+        // FindCachedOrUnknown + ResolveNode on miss, which already honors commit-buffer mode.
         TrieStoreDirtyNodesCache.Key key = new(address, path, in hash);
         if (DirtyNodesTryGetValue(key, out TrieNode? cached) && cached!.NodeType != NodeType.Unknown)
         {
@@ -1571,7 +1574,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 // This ensure that the root that we use here is the same.
                 // This is only needed for state tree as the root need to be put in the block commit set.
                 if (address == null && root is not null && root.TryGetKeccak(out ValueHash256 rootKeccak))
-                    blockCommitter.StateRoot = ((IScopableTrieStore)trieStore).FindCachedOrUnknown(address, TreePath.Empty, in rootKeccak);
+                    blockCommitter.StateRoot = ((IScopableTrieStore)trieStore).GetOrLoadNode(address, TreePath.Empty, in rootKeccak);
             }
         }
 

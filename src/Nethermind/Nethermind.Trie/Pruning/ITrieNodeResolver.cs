@@ -30,12 +30,18 @@ namespace Nethermind.Trie.Pruning
         /// with RLP, otherwise loads RLP from storage and decodes it before returning.
         /// </summary>
         /// <remarks>
-        /// Replaces the <c>FindCachedOrUnknown</c> + <c>ResolveNode</c> two-step at call sites
-        /// that always immediately use the returned node structurally. The default implementation
-        /// falls back to the legacy pair so resolvers that have not yet been migrated keep working.
+        /// Default implementation prefers <see cref="TryGetCachedNode"/> when a resolver
+        /// exposes its cache. Otherwise falls back to the legacy
+        /// <see cref="FindCachedOrUnknown"/> + <see cref="TrieNode.ResolveNode"/> pair so
+        /// resolvers that have not yet been migrated keep working.
         /// </remarks>
         TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
+            if (TryGetCachedNode(in path, in hash, out TrieNode? cached))
+            {
+                return cached;
+            }
+
             TrieNode node = FindCachedOrUnknown(in path, in hash);
             TrieNode.ResolveNode(ref node, this, in path, flags);
             return node;
@@ -43,11 +49,15 @@ namespace Nethermind.Trie.Pruning
 
         /// <summary>
         /// Like <see cref="GetOrLoadNode"/> but returns <c>false</c> if RLP cannot be loaded or
-        /// decoded, instead of throwing. Used by best-effort traversal paths that previously
-        /// constructed an unknown placeholder and immediately called <c>TryResolveNode</c>.
+        /// decoded, instead of throwing. Used by best-effort traversal paths.
         /// </summary>
         bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
         {
+            if (TryGetCachedNode(in path, in hash, out node))
+            {
+                return true;
+            }
+
             TrieNode candidate = FindCachedOrUnknown(in path, in hash);
             TreePath pathCopy = path;
             if (!TrieNode.TryResolveNode(ref candidate, this, ref pathCopy, flags))

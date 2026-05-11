@@ -74,8 +74,7 @@ internal sealed partial class TrieDiffWalker
                         {
                             int prevLen = path.Length;
                             path.AppendMut(i);
-                            TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                            TrieNode.ResolveNode(ref child, resolver, in path);
+                            TrieNode child = resolver.GetOrLoadNode(in path, childHash);
                             WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                             path.TruncateMut(prevLen);
                         }
@@ -105,8 +104,7 @@ internal sealed partial class TrieDiffWalker
 
                     if (childHash is not null)
                     {
-                        TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                        TrieNode.ResolveNode(ref child, resolver, in path);
+                        TrieNode child = resolver.GetOrLoadNode(in path, childHash);
                         WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                     }
                     else
@@ -207,8 +205,7 @@ internal sealed partial class TrieDiffWalker
             TreePath storagePath = TreePath.Empty;
             Hash256 storageRoot = new(account.StorageRoot);
 
-            TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, storageRoot);
-            TrieNode.ResolveNode(ref storageRootNode, storageResolver, in storagePath);
+            TrieNode storageRootNode = storageResolver.GetOrLoadNode(in storagePath, storageRoot);
 
             BeginContractStorage(addressHash.ValueHash256);
             try

@@ -95,8 +95,7 @@ internal sealed partial class TrieDiffWalker
     {
         if (childHash is not null)
         {
-            TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-            TrieNode.ResolveNode(ref child, resolver, in path);
+            TrieNode child = resolver.GetOrLoadNode(in path, childHash);
             CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
             return;
         }

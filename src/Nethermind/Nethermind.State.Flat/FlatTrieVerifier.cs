@@ -654,14 +654,25 @@ public class FlatTrieVerifier
         if (_logger.IsInfo) _logger.Info($"=== Diagnosing trie path for flat key {flatKey} ===");
 
         TreePath currentPath = TreePath.Empty;
-        TrieNode? currentNode = trieStore.FindCachedOrUnknown(currentPath, stateRoot);
+        TrieNode? currentNode;
+        try
+        {
+            currentNode = trieStore.GetOrLoadNode(currentPath, stateRoot);
+        }
+        catch (TrieException ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"  Path: {currentPath} | Failed to resolve: {ex.Message}");
+            ScanRemainingPathWithZeroHash(trieStore, currentPath, flatKey);
+            return;
+        }
         Hash256? expectedHash = stateRoot;
 
         while (currentNode is not null)
         {
             bool isInline = expectedHash is null;
 
-            // Resolve the node (loads RLP for non-inline, no-op for already resolved inline nodes)
+            // GetChildWithChildPath may still return an Unknown placeholder for non-inline children;
+            // resolve here so the rest of the loop sees a typed node.
             try
             {
                 TrieNode.ResolveNode(ref currentNode, trieStore, in currentPath);
