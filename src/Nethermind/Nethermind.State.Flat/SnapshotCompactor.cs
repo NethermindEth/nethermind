@@ -66,6 +66,12 @@ public class SnapshotCompactor : ISnapshotCompactor
                     return false;
                 }
             }
+
+            // GetSnapshotsToCompact returns empty when there aren't enough persisted snapshots
+            // covering the target window — typically right after startup or after a long pause
+            // when the chain hasn't filled the compact window yet. Useful signal when investigating
+            // why a block isn't compacting; not an error in itself.
+            if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at {stateId}: not enough persisted snapshots in the compact window.");
         }
 
         return false;
