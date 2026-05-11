@@ -37,17 +37,29 @@ namespace Nethermind.Trie
         private static readonly object _nullNode = new();
         private static readonly AccountDecoder _accountDecoder = new();
 
-        private const byte _dirtyMask = 0b001;
-        private const byte _persistedMask = 0b010;
-        private const byte _boundaryProof = 0b100;
+        private const byte _dirtyMask = 0b0001;
+        private const byte _persistedMask = 0b0010;
+        private const byte _boundaryProof = 0b0100;
+        private const byte _hasKeccakMask = 0b1000;
 
         private byte _blockAndFlags = 0;
+        // Seqlock counter for torn-read safety on _keccakValue (32 bytes, not atomically
+        // readable on x64). Writers set bit 0 to indicate in-progress, advance by 2 on
+        // completion. Readers retry on observed odd value or before/after mismatch.
+        // Fits in alignment padding after _blockAndFlags so adds no object size.
+        private uint _keccakSeq;
         // Seqlock for torn-read safety: CappedArray<byte> is 12 bytes (ref + int),
         // not atomically readable on x64. Split into two 8-byte fields that are
         // individually atomic, with a sequence counter to detect concurrent writes.
         private byte[]? _rlpArray;
         private ulong _rlpSeqAndLength; // normal: bits 0-31 length, 32-63 sequence. slice: bit 63, bits 0-31 length, bits 32-62 offset.
         private INodeData? _nodeData;
+        // Inline node hash. Access only via TryGetKeccak / KeccakValue / HasKeccak; raw
+        // reads are not torn-safe under concurrent writes. Placed after _nodeData so the
+        // hot ref-bearing fields stay on cache line 1; this 32-byte value crosses into
+        // line 2 but eliminates the separate Hash256 object that today lives on a third
+        // unrelated heap address.
+        private ValueHash256 _keccakValue;
 
         // In normal mode, the sequence counter shares bit 63 with the slice flag. After about
         // 2^30 completed writes to one node, doneSeq reaches 0x80000000 and IsRlpSlice returns
@@ -227,7 +239,177 @@ namespace Nethermind.Trie
             void ThrowAlreadySealed() => throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
         }
 
-        public Hash256? Keccak { get; internal set; }
+        /// <summary>
+        /// Cheap presence check for the inline keccak; see <see cref="TryGetKeccak(out ValueHash256)"/>
+        /// for safe value access.
+        /// </summary>
+        public bool HasKeccak => (Volatile.Read(ref _blockAndFlags) & _hasKeccakMask) != 0;
+
+        /// <summary>
+        /// Reads the inline node keccak under the <c>_keccakSeq</c> seqlock. Returns <c>false</c>
+        /// when the node has no keccak set or when a concurrent clear is observed mid-read.
+        /// </summary>
+        /// <remarks>
+        /// Hot trie paths must use this (or <see cref="KeccakValue"/>) instead of the public
+        /// <see cref="Keccak"/> getter, which materializes a <see cref="Hash256"/>.
+        /// </remarks>
+        public bool TryGetKeccak(out ValueHash256 keccak)
+        {
+            SpinWait spin = default;
+            while (true)
+            {
+                byte flags = Volatile.Read(ref _blockAndFlags);
+                if ((flags & _hasKeccakMask) == 0)
+                {
+                    keccak = default;
+                    return false;
+                }
+
+                uint seqBefore = Volatile.Read(ref _keccakSeq);
+                if ((seqBefore & 1) != 0)
+                {
+                    spin.SpinOnce();
+                    continue;
+                }
+
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+                ValueHash256 value = _keccakValue;
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+                uint seqAfter = Volatile.Read(ref _keccakSeq);
+                if (seqBefore != seqAfter)
+                {
+                    spin.SpinOnce();
+                    continue;
+                }
+
+                // A concurrent ClearKeccak bumps the seq; the loop above catches it. A
+                // re-check of the bit covers the rare case of clear+set producing matching
+                // seq values across iterations.
+                if ((Volatile.Read(ref _blockAndFlags) & _hasKeccakMask) == 0)
+                {
+                    keccak = default;
+                    return false;
+                }
+
+                keccak = value;
+                return true;
+            }
+        }
+
+        /// <summary>By-value accessor; throws if no keccak is set. Use <see cref="HasKeccak"/> first.</summary>
+        public ValueHash256 KeccakValue
+        {
+            get
+            {
+                if (TryGetKeccak(out ValueHash256 keccak)) return keccak;
+                return ThrowMissingKeccakValue();
+
+                [DoesNotReturn, StackTraceHidden]
+                static ValueHash256 ThrowMissingKeccakValue() =>
+                    throw new InvalidOperationException($"{nameof(TrieNode)} has no {nameof(Keccak)}.");
+            }
+        }
+
+        /// <summary>
+        /// Cold-path compatibility shim that materializes a <see cref="Hash256"/>. Hot trie
+        /// code must use <see cref="TryGetKeccak(out ValueHash256)"/> or <see cref="KeccakValue"/>
+        /// to avoid the per-read allocation.
+        /// </summary>
+        public Hash256? Keccak
+        {
+            get => TryGetKeccak(out ValueHash256 keccak) ? new Hash256(in keccak) : null;
+            internal set
+            {
+                if (value is null)
+                {
+                    ClearKeccak();
+                }
+                else
+                {
+                    SetKeccak(in value.ValueHash256);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Publishes <paramref name="keccak"/> under the seqlock and sets <see cref="HasKeccak"/>.
+        /// CAS dominates latency; <see cref="MethodImplOptions.NoInlining"/> avoids code bloat
+        /// at the multiple call sites that resolve hashes.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void SetKeccak(in ValueHash256 keccak)
+        {
+            SpinWait spin = default;
+            while (true)
+            {
+                uint current = Volatile.Read(ref _keccakSeq);
+                if ((current & 1) != 0)
+                {
+                    spin.SpinOnce();
+                    continue;
+                }
+
+                if (Interlocked.CompareExchange(ref _keccakSeq, current | 1, current) == current)
+                {
+                    _keccakValue = keccak;
+
+                    // Set the has-keccak bit while seq is locked so any concurrent reader
+                    // either sees the in-progress odd seq or the completed even seq with
+                    // both bit and value coherent.
+                    byte flags = Volatile.Read(ref _blockAndFlags);
+                    while (true)
+                    {
+                        byte newFlags = (byte)(flags | _hasKeccakMask);
+                        byte prev = Interlocked.CompareExchange(ref _blockAndFlags, newFlags, flags);
+                        if (prev == flags) break;
+                        flags = prev;
+                    }
+
+                    Volatile.Write(ref _keccakSeq, (current + 2) & 0xFFFFFFFE);
+                    return;
+                }
+
+                spin.SpinOnce();
+            }
+        }
+
+        /// <summary>
+        /// Clears <see cref="HasKeccak"/> under the seqlock. The 32-byte value is left intact
+        /// because the bit is authoritative; readers test the bit before returning the value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal void ClearKeccak()
+        {
+            SpinWait spin = default;
+            while (true)
+            {
+                uint current = Volatile.Read(ref _keccakSeq);
+                if ((current & 1) != 0)
+                {
+                    spin.SpinOnce();
+                    continue;
+                }
+
+                if (Interlocked.CompareExchange(ref _keccakSeq, current | 1, current) == current)
+                {
+                    byte flags = Volatile.Read(ref _blockAndFlags);
+                    while (true)
+                    {
+                        if ((flags & _hasKeccakMask) == 0) break;
+                        byte newFlags = (byte)(flags & ~_hasKeccakMask);
+                        byte prev = Interlocked.CompareExchange(ref _blockAndFlags, newFlags, flags);
+                        if (prev == flags) break;
+                        flags = prev;
+                    }
+
+                    Volatile.Write(ref _keccakSeq, (current + 2) & 0xFFFFFFFE);
+                    return;
+                }
+
+                spin.SpinOnce();
+            }
+        }
 
         public bool HasRlp => Volatile.Read(ref _rlpArray) is not null;
 
@@ -949,7 +1131,8 @@ namespace Nethermind.Trie
 
         public long GetMemorySize(bool recursive)
         {
-            int keccakSize = Keccak is null ? MemorySizes.RefSize : MemorySizes.RefSize + Hash256.MemorySize;
+            // Inline ValueHash256 (32 B) + uint seqlock counter (4 B, in alignment padding); no separate Hash256 object.
+            int keccakSize = ValueHash256.MemorySize + sizeof(uint);
             CappedArray<byte> rlp = ReadRlp();
             bool isRlpSlice = IsRlpSlice(Volatile.Read(ref _rlpSeqAndLength));
             long rlpSize = MemorySizes.RefSize + (rlp.IsNotNull && !isRlpSlice ? MemorySizes.ArrayOverhead + rlp.UnderlyingLength : 0);
