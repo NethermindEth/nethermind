@@ -396,6 +396,31 @@ internal sealed class StateCompositionStateHolder
             _incrementalBlock = snapshot.BlockNumber;
             _diffsSinceBaseline = snapshot.DiffsSinceBaseline;
             _lastProcessedStateRoot = snapshot.StateRoot;
+            // Reconstruct LastScanMetadata from the persisted scanBlockNumber so the
+            // IsComplete flag survives a restart. Consumers gate on IsComplete to decide
+            // whether the report's stats are valid baseline+diffs vs an empty cold start.
+            // CompletedAt/Duration/StateRoot are not persisted; sentinel values are fine
+            // since the flag itself is what consumers test.
+            //
+            // Snapshots written by older builds (before this fix) carry scanBlockNumber == 0
+            // even though a scan had completed; the stats themselves are still valid.
+            // Recover by falling back to the snapshot's BlockNumber when the incremental
+            // stats carry baseline data (accountsTotal > 0). This one-time recovery makes
+            // the fix self-healing across the rolling upgrade from a buggy image.
+            long scanBlock = snapshot.ScanBlockNumber;
+            if (scanBlock == 0 && snapshot.Stats.AccountsTotal > 0)
+                scanBlock = snapshot.BlockNumber;
+            if (scanBlock > 0)
+            {
+                _lastScanMetadata = new ScanMetadata
+                {
+                    BlockNumber = scanBlock,
+                    StateRoot = Hash256.Zero,
+                    CompletedAt = default,
+                    Duration = TimeSpan.Zero,
+                    IsComplete = true,
+                };
+            }
             // _hasScanBaseline stays false — baseline scan data (TopN, distribution)
             // is not persisted. statecomp_get() returns incremental stats;
             // depth distribution requires a fresh scan.

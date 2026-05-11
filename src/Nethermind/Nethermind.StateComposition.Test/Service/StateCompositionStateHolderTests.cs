@@ -283,4 +283,81 @@ public class StateCompositionStateHolderTests
         Assert.That(capturedBaseline[2], Is.EqualTo(5),
             "baseline histogram must not alias the post-diff buffer");
     }
+
+    [Test]
+    public void RestoreFromSnapshot_RebuildsLastScanMetadata_WhenScanBlockNumberPresent()
+    {
+        // Holder with a completed scan at block 1000.
+        StateCompositionStateHolder source = new();
+        source.MarkScanCompleted(1000L, AnyRoot, TimeSpan.FromSeconds(42), isComplete: true);
+
+        // Persist (BuildSnapshot includes ScanBlockNumber = _lastScanMetadata.BlockNumber).
+        StateCompositionSnapshot snap = source.BuildSnapshot(
+            stats: new CumulativeTrieStats { SlotCountHistogram = ImmutableArray<long>.Empty },
+            blockNumber: 1010L,
+            stateRoot: AnyRoot);
+
+        // Restore into a fresh holder.
+        StateCompositionStateHolder restored = new();
+        restored.RestoreFromSnapshot(snap);
+
+        ScanMetadata md = restored.LastScanMetadata;
+        Assert.That(md.IsComplete, Is.True,
+            "IsComplete must survive a snapshot round-trip; consumers gate on this flag.");
+        Assert.That(md.BlockNumber, Is.EqualTo(1000L),
+            "ScanBlockNumber must be carried through BuildSnapshot → RestoreFromSnapshot.");
+        Assert.That(restored.BuildReport().LastScanMetadata.IsComplete, Is.True,
+            "BuildReport must observe the restored IsComplete flag.");
+    }
+
+    [Test]
+    public void RestoreFromSnapshot_LeavesLastScanMetadataDefault_WhenScanBlockNumberZero()
+    {
+        // Pre-scan snapshot (none persisted yet) → ScanBlockNumber == 0.
+        StateCompositionStateHolder source = new();
+        StateCompositionSnapshot snap = source.BuildSnapshot(
+            stats: new CumulativeTrieStats { SlotCountHistogram = ImmutableArray<long>.Empty },
+            blockNumber: 5L,
+            stateRoot: AnyRoot);
+
+        StateCompositionStateHolder restored = new();
+        restored.RestoreFromSnapshot(snap);
+
+        Assert.That(restored.LastScanMetadata.IsComplete, Is.False,
+            "Cold-start round-trip must not synthesize a completed scan.");
+        Assert.That(restored.LastScanMetadata.BlockNumber, Is.EqualTo(0L));
+    }
+
+    [Test]
+    public void RestoreFromSnapshot_RecoversFromPoisonedScanBlockNumber_WhenStatsHaveBaseline()
+    {
+        // Snapshot poisoned by a prior buggy build: scanBlockNumber == 0 (the lost
+        // metadata) but the incremental stats and block were saved correctly because
+        // a scan really did complete before that build's broken restore reset the flag.
+        // The fix must recognize "stats have baseline" as evidence the scan completed
+        // and synthesize IsComplete=true using the snapshot's block number as the
+        // best-available marker. Required for the one-time rolling upgrade away from
+        // the buggy build.
+        CumulativeTrieStats statsWithBaseline =
+            new() { AccountsTotal = 76_000_000L, SlotCountHistogram = ImmutableArray<long>.Empty };
+
+        StateCompositionSnapshot poisoned = new(
+            Stats: statsWithBaseline,
+            BlockNumber: 24_400_000L,
+            StateRoot: AnyRoot,
+            DiffsSinceBaseline: 0,
+            ScanBlockNumber: 0L,
+            DepthStats: new CumulativeDepthStats(),
+            SlotCountByAddress: new Dictionary<ValueHash256, long>(),
+            CodeHashRefcounts: new Dictionary<ValueHash256, int>(),
+            CodeHashSizes: new Dictionary<ValueHash256, int>());
+
+        StateCompositionStateHolder restored = new();
+        restored.RestoreFromSnapshot(poisoned);
+
+        Assert.That(restored.LastScanMetadata.IsComplete, Is.True,
+            "Stats with a baseline imply a scan completed; flag must recover.");
+        Assert.That(restored.LastScanMetadata.BlockNumber, Is.EqualTo(24_400_000L),
+            "Fallback uses snapshot.BlockNumber as the marker.");
+    }
 }
