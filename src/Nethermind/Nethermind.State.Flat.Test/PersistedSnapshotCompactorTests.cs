@@ -190,60 +190,78 @@ public class PersistedSnapshotCompactorTests
         }
     }
 
+    /// <summary>
+    /// Metadata invariants for the blob-arena layout: base snapshots carry no
+    /// <c>noderefs</c> flag and a single <c>ref_ids</c> entry (their own blob arena id);
+    /// the compacted snapshot carries the <c>noderefs</c> flag and a <c>ref_ids</c> set
+    /// equal to the union of source base-snapshot blob arena ids.
+    /// </summary>
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
-    public void CompactedSnapshot_HasNodeRefsAndRefIds_InMetadata()
+    public void CompactedSnapshot_Metadata_NodeRefsFlagAndRefIdsUnion()
     {
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-        StateId s2 = new(2, Keccak.Compute("2"));
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+            using BlobArenaCatalog blobCatalog = new(new MemDb());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+            repo.LoadFromCatalog();
 
-        TreePath path = new(Keccak.Compute("path"), 4);
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
 
-        SnapshotContent content1 = new();
-        content1.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC0]);
-        Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            StateId[] states = new StateId[9];
+            states[0] = prev;
+            HashSet<int> baseRefIds = [];
+            for (int i = 1; i <= 8; i++)
+            {
+                states[i] = new StateId(i, Keccak.Compute($"{i}"));
+                SnapshotContent c = new();
+                c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+                c.StateNodes[new TreePath(Keccak.Compute($"path{i}"), 4)] = new TrieNode(NodeType.Leaf, [(byte)(0xC1), (byte)i]);
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, states[i], c, _pool, ResourcePool.Usage.MainBlockProcessing));
+                prev = states[i];
+            }
 
-        SnapshotContent content2 = new();
-        content2.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-        Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
+            for (int i = 1; i <= 8; i++)
+            {
+                Assert.That(repo.TryLeaseSnapshotTo(states[i], out PersistedSnapshot? baseSnap), Is.True);
+                using (baseSnap)
+                {
+                    using WholeReadSession session = baseSnap!.BeginWholeReadSession();
+                    WholeReadSessionReader reader = session.GetReader();
+                    Assert.That(PersistedSnapshotReader.CheckHasNodeRefsFlag<WholeReadSessionReader, NoOpPin>(in reader), Is.False,
+                        $"Base snapshot {i} must not carry the noderefs metadata flag");
+                    int[]? ids = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+                    Assert.That(ids, Is.Not.Null.And.Length.EqualTo(1),
+                        $"Base snapshot {i} must carry exactly one blob-arena ref_id");
+                    baseRefIds.Add(ids![0]);
+                }
+            }
 
-        PersistedSnapshot baseSnap0 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
-        PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(baseSnap0);
-        toMerge.Add(baseSnap1);
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
+            compactor.DoCompactSnapshot(states[8]);
 
-        // Read merged bytes directly to verify metadata. One reader over `merged`; meta-column
-        // sub-lookups reuse it via the metaBound from the outer TrySeek.
-        SpanByteReader mergedReader = new(merged);
-        HsstReader<SpanByteReader, NoOpPin> outerReader = new(in mergedReader);
-        Assert.That(outerReader.TrySeek(PersistedSnapshot.MetadataTag, out _), Is.True);
-        Bound metaBound = outerReader.GetBound();
-
-        // "noderefs" key with value [0x01]
-        HsstReader<SpanByteReader, NoOpPin> nodeRefsR = new(in mergedReader, metaBound);
-        Assert.That(nodeRefsR.TrySeek("noderefs"u8, out _), Is.True);
-        Bound nodeRefsBound = nodeRefsR.GetBound();
-        ReadOnlySpan<byte> nodeRefsValue = merged.AsSpan((int)nodeRefsBound.Offset, (int)nodeRefsBound.Length);
-        Assert.That(nodeRefsValue.ToArray(), Is.EqualTo(new byte[] { 0x01 }));
-
-        // "ref_ids" key with both base snapshot IDs as LE int32s
-        HsstReader<SpanByteReader, NoOpPin> refIdsR = new(in mergedReader, metaBound);
-        Assert.That(refIdsR.TrySeek("ref_ids"u8, out _), Is.True);
-        Bound refIdsBound = refIdsR.GetBound();
-        ReadOnlySpan<byte> refIdsValue = merged.AsSpan((int)refIdsBound.Offset, (int)refIdsBound.Length);
-        Assert.That(refIdsValue.Length, Is.EqualTo(8)); // 2 IDs × 4 bytes
-
-        // ReadRefIdsFromMetadata should return both IDs
-        SpanByteReader mergedRefIdsReader = new(merged);
-        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata<SpanByteReader, NoOpPin>(in mergedRefIdsReader);
-        Assert.That(refIds, Is.Not.Null);
-        Assert.That(refIds, Does.Contain(0));
-        Assert.That(refIds, Does.Contain(1));
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(states[8], out PersistedSnapshot? compacted), Is.True);
+            using (compacted)
+            {
+                using WholeReadSession session = compacted!.BeginWholeReadSession();
+                WholeReadSessionReader reader = session.GetReader();
+                Assert.That(PersistedSnapshotReader.CheckHasNodeRefsFlag<WholeReadSessionReader, NoOpPin>(in reader), Is.True,
+                    "Compacted snapshot must carry the noderefs metadata flag");
+                int[]? mergedIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+                Assert.That(mergedIds, Is.Not.Null);
+                Assert.That(new HashSet<int>(mergedIds!), Is.EquivalentTo(baseRefIds),
+                    "Compacted ref_ids must equal the union of source base blob-arena ids");
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
     }
 
     private static IEnumerable<TestCaseData> MergeValidationTestCases()
@@ -459,66 +477,93 @@ public class PersistedSnapshotCompactorTests
         }
     }
 
+    /// <summary>
+    /// After compaction, <see cref="PersistedSnapshot.TryLoadStateNodeRlp"/> /
+    /// <see cref="PersistedSnapshot.TryLoadStorageNodeRlp"/> must dereference the merged
+    /// snapshot's per-key <c>NodeRef</c>s through the union of referenced blob arenas
+    /// and yield the newest-writer RLP for overlapping paths, the only-writer RLP for
+    /// non-overlapping paths.
+    /// </summary>
     [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
-    public void ReadRefIdsFromMetadata_ReturnsNull_ForBaseSnapshot()
+    public void CompactedSnapshot_TrieNodeResolution_NewerOverridesOlder()
     {
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+            using BlobArenaCatalog blobCatalog = new(new MemDb());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+            repo.LoadFromCatalog();
 
-        SnapshotContent content = new();
-        content.StateNodes[new TreePath(Keccak.Compute("path"), 4)] = new TrieNode(NodeType.Leaf, [0xC0]);
-        Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
 
-        SpanByteReader dataReader = new(data);
-        int[]? refIds = PersistedSnapshot.ReadRefIdsFromMetadata<SpanByteReader, NoOpPin>(in dataReader);
-        Assert.That(refIds, Is.Null);
-    }
+            TreePath sharedStatePath = new(Keccak.Compute("shared_state"), 4);
+            TreePath onlyOldStatePath = new(Keccak.Compute("only_old_state"), 4);
+            TreePath onlyNewStatePath = new(Keccak.Compute("only_new_state"), 4);
+            Hash256 storageTrieAddr = Keccak.Compute("storage_trie_addr");
+            TreePath sharedStoragePath = new(Keccak.Compute("shared_storage"), 6);
 
-    [Test]
-    [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
-    public void CompactedSnapshot_NodeRefResolution_WorksWithMetadataFlag()
-    {
-        StateId s0 = new(0, Keccak.EmptyTreeHash);
-        StateId s1 = new(1, Keccak.Compute("1"));
-        StateId s2 = new(2, Keccak.Compute("2"));
+            byte[] oldStateRlp = [0xC1, 0x80];
+            byte[] newStateRlp = [0xC2, 0x81, 0x42];
+            byte[] onlyOldRlp = [0xC1, 0x33];
+            byte[] onlyNewRlp = [0xC1, 0x55];
+            byte[] oldStorageRlp = [0xC1, 0x80];
+            byte[] newStorageRlp = [0xC2, 0x82, 0x99];
 
-        TreePath path1 = new(Keccak.Compute("path1"), 4);
-        TreePath path2 = new(Keccak.Compute("path2"), 4);
-        byte[] rlp1 = [0xC0];
-        byte[] rlp2 = [0xC1, 0x80];
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            for (int i = 1; i <= 8; i++)
+            {
+                StateId next = new(i, Keccak.Compute($"{i}"));
+                SnapshotContent c = new();
+                if (i == 1)
+                {
+                    c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, oldStateRlp);
+                    c.StateNodes[onlyOldStatePath] = new TrieNode(NodeType.Leaf, onlyOldRlp);
+                    c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, oldStorageRlp);
+                }
+                else if (i == 8)
+                {
+                    c.StateNodes[sharedStatePath] = new TrieNode(NodeType.Leaf, newStateRlp);
+                    c.StateNodes[onlyNewStatePath] = new TrieNode(NodeType.Leaf, onlyNewRlp);
+                    c.StorageNodes[(storageTrieAddr, sharedStoragePath)] = new TrieNode(NodeType.Leaf, newStorageRlp);
+                }
+                else
+                {
+                    c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 10)).TestObject;
+                }
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing));
+                prev = next;
+            }
 
-        SnapshotContent content1 = new();
-        content1.StateNodes[path1] = new TrieNode(NodeType.Leaf, rlp1);
-        Snapshot snap1 = new(s0, s1, content1, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
+            compactor.DoCompactSnapshot(prev);
 
-        SnapshotContent content2 = new();
-        content2.StateNodes[path2] = new TrieNode(NodeType.Leaf, rlp2);
-        Snapshot snap2 = new(s1, s2, content2, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            using (compacted)
+            {
+                Assert.That(compacted!.TryLoadStateNodeRlp(sharedStatePath, out byte[]? sharedResult), Is.True);
+                Assert.That(sharedResult, Is.EqualTo(newStateRlp),
+                    "Overlapping state-node path must resolve to newest writer's RLP");
 
-        PersistedSnapshot baseSnap0 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
-        PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
-        PersistedSnapshotList toMerge = new(2);
-        toMerge.Add(baseSnap0);
-        toMerge.Add(baseSnap1);
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
+                Assert.That(compacted.TryLoadStateNodeRlp(onlyOldStatePath, out byte[]? oldOnly), Is.True);
+                Assert.That(oldOnly, Is.EqualTo(onlyOldRlp),
+                    "State node only in the oldest source must survive the merge with its original RLP");
 
-        // With referenced snapshots: NodeRefs resolve to actual RLP
-        PersistedSnapshot compactedWithRefs = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged,
-            [baseSnap0, baseSnap1]);
-        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(path1, out byte[]? resolved1), Is.True);
-        Assert.That(resolved1, Is.EqualTo(rlp1));
-        Assert.That(compactedWithRefs.TryLoadStateNodeRlp(path2, out byte[]? resolved2), Is.True);
-        Assert.That(resolved2, Is.EqualTo(rlp2));
+                Assert.That(compacted.TryLoadStateNodeRlp(onlyNewStatePath, out byte[]? newOnly), Is.True);
+                Assert.That(newOnly, Is.EqualTo(onlyNewRlp),
+                    "State node only in the newest source must survive the merge with its original RLP");
 
-        // Without referenced snapshots: returns raw NodeRef bytes (8 bytes)
-        PersistedSnapshot compactedWithoutRefs = CreatePersistedSnapshot(3, s0, s2, PersistedSnapshotType.Linked, merged);
-        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(path1, out byte[]? raw1), Is.True);
-        Assert.That(raw1!.Length, Is.EqualTo(NodeRef.Size));
-        Assert.That(compactedWithoutRefs.TryLoadStateNodeRlp(path2, out byte[]? raw2), Is.True);
-        Assert.That(raw2!.Length, Is.EqualTo(NodeRef.Size));
+                Assert.That(compacted.TryLoadStorageNodeRlp(storageTrieAddr.ValueHash256, sharedStoragePath, out byte[]? storageResult), Is.True);
+                Assert.That(storageResult, Is.EqualTo(newStorageRlp),
+                    "Overlapping storage-node path must resolve to newest writer's RLP");
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
     }
 }
