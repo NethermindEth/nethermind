@@ -56,8 +56,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
             // To ensure the witness still includes the root node in this case, we explicitly resolve it here.
             // This usually works because trie nodes, and especially the root node, tend to be cached.
             ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
-            TreePath path = TreePath.Empty;
-            _ = stateResolver.GetOrLoadNode(path, parentHeader.StateRoot!);
+            _ = stateResolver.GetOrLoadNode(in TreePath.Empty, parentHeader.StateRoot!);
         }
 
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);

@@ -70,8 +70,7 @@ namespace Nethermind.Trie
             {
                 if (RootRef is { } root)
                 {
-                    TreePath emptyPath = TreePath.Empty;
-                    TrieNode.ResolveNode(ref root, TrieStore, in emptyPath);
+                    TrieNode.ResolveNode(ref root, TrieStore, in TreePath.Empty);
                     RootRef = root;
                 }
                 return RootRef;

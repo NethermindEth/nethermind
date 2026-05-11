@@ -54,9 +54,8 @@ public ref struct TrieLeafIterator
 
         if (rootHash is not null && rootHash != Keccak.EmptyTreeHash)
         {
-            TreePath emptyPath = TreePath.Empty;
-            TrieNode root = resolver.GetOrLoadNode(emptyPath, rootHash);
-            Push(root, emptyPath);
+            TrieNode root = resolver.GetOrLoadNode(in TreePath.Empty, rootHash);
+            Push(root, in TreePath.Empty);
         }
     }
 
