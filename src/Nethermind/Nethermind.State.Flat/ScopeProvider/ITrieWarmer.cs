@@ -18,7 +18,7 @@ public interface ITrieWarmer
     /// Routes through the MPMC job buffer so background <c>HintBal</c> enqueuers do not violate the
     /// single-producer invariant of the main-thread slot buffer.
     /// </summary>
-    public void PushSlotJobMpmc(
+    public bool PushSlotJobMpmc(
         IStorageWarmer storageTree,
         in UInt256 index,
         int sequenceId);

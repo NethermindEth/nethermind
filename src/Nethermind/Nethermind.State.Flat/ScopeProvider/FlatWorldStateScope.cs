@@ -240,7 +240,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 foreach (SlotChanges slotChanges in ac.StorageChanges)
                 {
                     UInt256 key = slotChanges.Key;
-                    _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot);
+                    // Pair every successful push with an increment — the warmer's
+                    // WarmUpStorageTrie always decrements in its finally block.
+                    if (_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                        Interlocked.Increment(ref _outstandingWarmups);
                     if (sink is not null) ReadSlotToSink(sink, address, in key, selfDestructIdx);
                 }
 
