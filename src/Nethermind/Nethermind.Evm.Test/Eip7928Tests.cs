@@ -58,18 +58,49 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
     /// and a matching <see cref="TransactionProcessor{EthereumGasPolicy}"/> wired to it.
     /// </summary>
-    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(bool? parallelOverride = null)
+    /// <remarks>
+    /// Pass <paramref name="wrapPrecompileCache"/> to wire the processor through
+    /// <see cref="PrecompileCachedCodeInfoRepository"/> (the decorator's fast-path is what EIP-7702/EIP-7928
+    /// regressions in this file exercise).
+    /// </remarks>
+    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(
+        bool? parallelOverride = null,
+        bool wrapPrecompileCache = false)
     {
         bool useParallel = parallelOverride ?? parallel;
         TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
         tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
         ILogManager logManager = LimboLogs.Instance;
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
+        EthereumCodeInfoRepository baseRepo = new(tracedState);
+        ICodeInfoRepository codeInfoRepo = wrapPrecompileCache
+            ? new PrecompileCachedCodeInfoRepository(tracedState, new EthereumPrecompileProvider(), baseRepo, precompileCache: null)
+            : baseRepo;
         EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
         TransactionProcessor<EthereumGasPolicy> processor = new(
             BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
         return (tracedState, processor);
+    }
+
+    /// <summary>
+    /// Builds the standard signed contract-creation transaction used throughout these tests:
+    /// computes intrinsic gas for the given code, adds <paramref name="executionGas"/>, signs with
+    /// <see cref="TestItem.PrivateKeyA"/>.
+    /// </summary>
+    private static Transaction BuildContractTx(byte[] code, long executionGas, UInt256 value, BlockHeader header)
+    {
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .WithValue(value)
+            .TestObject;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, header.GasLimit).MinimalGas;
+
+        return Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(intrinsicGas + executionGas)
+            .WithValue(value)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
     }
 
     private static void AssertPureAccountRead(AccountChanges? accountChanges)
@@ -93,19 +124,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         UInt256 value = _testAccountBalance;
         Block block = Build.A.Block.TestObject;
-
-        Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(0)
-            .WithValue(value)
-            .TestObject;
-        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas + _gasLimit;
-
-        Transaction createTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(gasLimit)
-            .WithValue(value)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        Transaction createTx = BuildContractTx(code, _gasLimit, value, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -151,20 +170,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
         Block block = Build.A.Block.TestObject;
-
-        Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(0)
-            .WithValue(_testAccountBalance)
-            .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
-        long gasLimit = intrinsicGas + executionGas;
-
-        Transaction createTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(gasLimit)
-            .WithValue(_testAccountBalance)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        Transaction createTx = BuildContractTx(code, executionGas, _testAccountBalance, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -204,37 +210,18 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void Delegated_precompile_target_is_recorded_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;
-
-        InitWorldStateWithPrecompileDelegation(TestState, precompileAddress);
-
+        InitWorldState(TestState, delegationTarget: precompileAddress);
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessorWithPrecompileCache();
+            CreateTracedProcessor(wrapPrecompileCache: true);
 
         Block block = Build.A.Block.TestObject;
-        byte[] code = Prepare.EvmCode
-            .Call(_callTargetAddress, 50_000)
-            .Done;
-
-        Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(0)
-            .WithValue(_testAccountBalance)
-            .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator
-            .Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
-        long gasLimit = intrinsicGas + _gasLimit;
-
-        Transaction tx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(gasLimit)
-            .WithValue(_testAccountBalance)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        byte[] code = Prepare.EvmCode.Call(_callTargetAddress, 50_000).Done;
+        Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
-        AccountChanges? precompileChanges = bal.GetAccountChanges(precompileAddress);
+        AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -254,42 +241,23 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void Calling_account_delegated_to_precompile_uses_FastCall_per_EIP_7702()
     {
         Address precompileAddress = Sha256Precompile.Address;
-
-        InitWorldStateWithPrecompileDelegation(TestState, precompileAddress);
-
+        InitWorldState(TestState, delegationTarget: precompileAddress);
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessorWithPrecompileCache();
+            CreateTracedProcessor(wrapPrecompileCache: true);
 
         Block block = Build.A.Block.TestObject;
-
         byte[] code = Prepare.EvmCode
             .Call(_callTargetAddress, 0)
             .PushData(0)
             .Op(Instruction.SSTORE)
             .Done;
-
-        Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(0)
-            .WithValue(_testAccountBalance)
-            .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator
-            .Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
-        long gasLimit = intrinsicGas + _gasLimit;
-
-        Transaction tx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(gasLimit)
-            .WithValue(_testAccountBalance)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
-        AccountChanges? testAddressChanges = bal.GetAccountChanges(_testAddress);
-        SlotChanges? slot0 = testAddressChanges?.StorageChanges
-            .FirstOrDefault(s => s.Key == UInt256.Zero);
+        AccountChanges? testAddressChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(_testAddress);
+        SlotChanges? slot0 = testAddressChanges?.StorageChanges.FirstOrDefault(s => s.Key == UInt256.Zero);
         StorageChange? change = slot0?.Changes.Values is { Count: > 0 } values ? values[0] : null;
 
         using (Assert.EnterMultipleScope())
@@ -313,38 +281,18 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void DelegateCall_to_precompile_records_codeSource_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;
-
         InitWorldState(TestState);
-
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessorWithPrecompileCache();
+            CreateTracedProcessor(wrapPrecompileCache: true);
 
         Block block = Build.A.Block.TestObject;
-
-        byte[] code = Prepare.EvmCode
-            .DelegateCall(precompileAddress, 50_000)
-            .Done;
-
-        Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(0)
-            .WithValue(_testAccountBalance)
-            .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator
-            .Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
-        long gasLimit = intrinsicGas + _gasLimit;
-
-        Transaction tx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(gasLimit)
-            .WithValue(_testAccountBalance)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+        byte[] code = Prepare.EvmCode.DelegateCall(precompileAddress, 50_000).Done;
+        Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
-        AccountChanges? precompileChanges = bal.GetAccountChanges(precompileAddress);
+        AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -365,14 +313,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void Direct_transaction_to_precompile_records_recipient_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;
-
         InitWorldState(TestState);
-
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessorWithPrecompileCache();
+            CreateTracedProcessor(wrapPrecompileCache: true);
 
         Block block = Build.A.Block.TestObject;
-
         Transaction tx = Build.A.Transaction
             .To(precompileAddress)
             .WithData([1, 2, 3])
@@ -383,8 +328,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
-        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
-        AccountChanges? precompileChanges = bal.GetAccountChanges(precompileAddress);
+        AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
 
         using (Assert.EnterMultipleScope())
         {
@@ -394,23 +338,17 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessorWithPrecompileCache(bool? parallelOverride = null)
-    {
-        bool useParallel = parallelOverride ?? parallel;
-        TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
-        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
-        ILogManager logManager = LimboLogs.Instance;
-        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        EthereumPrecompileProvider precompileProvider = new();
-        EthereumCodeInfoRepository baseRepo = new(tracedState);
-        PrecompileCachedCodeInfoRepository codeInfoRepo = new(tracedState, precompileProvider, baseRepo, precompileCache: null);
-        EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
-        TransactionProcessor<EthereumGasPolicy> processor = new(
-            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
-        return (tracedState, processor);
-    }
-
-    private void InitWorldStateWithPrecompileDelegation(IWorldState worldState, Address precompileAddress)
+    /// <summary>
+    /// Seeds the world state with the system-contract predeploys and the call target.
+    /// </summary>
+    /// <param name="worldState">The world state to seed.</param>
+    /// <param name="extraCode">If supplied, deployed at <see cref="_callTargetAddress"/>; otherwise the call target is set to delegate.</param>
+    /// <param name="delegationTarget">
+    /// When <paramref name="extraCode"/> is null, the call target delegates here. Defaults to
+    /// <see cref="_delegationTargetAddress"/>, which is itself populated with <see cref="_delegatedCode"/>.
+    /// Pass another address (e.g. a precompile) to skip the intermediate hop and delegate directly.
+    /// </param>
+    private void InitWorldState(IWorldState worldState, byte[]? extraCode = null, Address? delegationTarget = null)
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
 
@@ -426,33 +364,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
         worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
 
-        worldState.CreateAccount(_callTargetAddress, 0);
-        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. precompileAddress.Bytes];
-        worldState.InsertCode(_callTargetAddress, ValueKeccak.Compute(delegationCode), delegationCode, SpecProvider.GenesisSpec);
-
-        worldState.Commit(SpecProvider.GenesisSpec);
-        worldState.CommitTree(0);
-        worldState.RecalculateStateRoot();
-    }
-
-    private void InitWorldState(IWorldState worldState, byte[]? extraCode = null)
-    {
-        worldState.CreateAccount(TestItem.AddressA, _accountBalance);
-
-        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, Eip2935TestConstants.Nonce);
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, SpecProvider.GenesisSpec);
-
-        worldState.CreateAccount(Eip4788Constants.BeaconRootsAddress, 0, Eip4788TestConstants.Nonce);
-        worldState.InsertCode(Eip4788Constants.BeaconRootsAddress, Eip4788TestConstants.CodeHash, Eip4788TestConstants.Code, SpecProvider.GenesisSpec);
-
-        worldState.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-        worldState.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, SpecProvider.GenesisSpec);
-
-        worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-        worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
-
-        worldState.CreateAccount(_delegationTargetAddress, 0);
-        worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec);
+        if (delegationTarget is null)
+        {
+            worldState.CreateAccount(_delegationTargetAddress, 0);
+            worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec);
+        }
 
         worldState.CreateAccount(_callTargetAddress, 0);
         if (extraCode is not null)
@@ -462,7 +378,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
         else
         {
-            byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. _delegationTargetAddress.Bytes];
+            Address target = delegationTarget ?? _delegationTargetAddress;
+            byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
             worldState.InsertCode(_callTargetAddress, ValueKeccak.Compute(delegationCode), delegationCode, SpecProvider.GenesisSpec);
         }
 
