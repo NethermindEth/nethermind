@@ -39,6 +39,14 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>, IRese
     [JsonIgnore]
     public ReadOnlySpan<AccountChanges> AccountChangesByAddress => GetSortedAccountChanges();
 
+    /// <summary>
+    /// Returns the cached sorted account changes array if already built, otherwise <c>null</c>.
+    /// Lets callers (e.g. background warmup) avoid triggering the sort if the BAL wasn't
+    /// constructed in pre-sorted form (RLP-decoded BALs always have this populated).
+    /// </summary>
+    [JsonIgnore]
+    public AccountChanges[]? AccountChangesByAddressOrNull => _sortedAccountChanges;
+
     [JsonIgnore]
     public Dictionary<Address, AccountChanges>.ValueCollection UnorderedAccountChanges => _accountChanges.Values;
 

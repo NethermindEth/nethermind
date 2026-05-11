@@ -175,8 +175,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         //     StorageChanges and StorageReads. SSTORE consults the original value for
         //     EIP-2200 / EIP-3529 gas refund accounting, so changed slots are genuinely read
         //     at runtime; StorageReads ⊥ StorageChanges by BAL construction, so no duplication.
-        int accountCount = bal.AccountChanges.Count;
-        if (accountCount == 0) return Task.CompletedTask;
+        // Use the pre-sorted array directly when it's already built (always the case for
+        // RLP-decoded BALs). If it isn't built, bail out rather than trigger an on-demand sort
+        // on a background thread.
+        AccountChanges[]? accountChanges = bal.AccountChangesByAddressOrNull;
+        if (accountChanges is null || accountChanges.Length == 0) return Task.CompletedTask;
+        int accountCount = accountChanges.Length;
 
         // Cancel and drain any previous in-flight HintBal task before starting a new one —
         // never overlap two warmups on the same scope.
@@ -188,11 +192,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         return _hintBalTask = Task.Run(() =>
         {
-            // Span isn't capturable into a Parallel.For body; project to a pooled list.
-            ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
-            using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
-            for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChanges[i];
-
             ParallelOptions parallelOptions = new() { CancellationToken = token };
             try
             {
@@ -200,22 +199,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                AccountChanges ac = accountChangesList[i];
+                AccountChanges ac = accountChanges[i];
                 Address address = ac.Address;
 
                 // Trie warmup: address path.
                 if (_warmer.PushAddressJob(this, address, snapshot))
                     Interlocked.Increment(ref _outstandingWarmups);
 
+                // Use the pre-sorted storage changes directly. If they aren't built yet, skip
+                // the per-account storage warmup rather than trigger an on-demand sort here.
+                SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
+                int storageChangeCount = storageChanges?.Length ?? 0;
+
                 // One GetAccount per account — feeds both the sink and the storage-tree seed.
-                Account? account = sink is null && ac.StorageChanges.Length == 0
+                Account? account = sink is null && storageChangeCount == 0
                     ? null // no consumer needs the account in this case
                     : _snapshotBundle.GetAccount(address);
 
                 if (sink is not null && sink.StillNeeded(address, out _))
                     sink.OnAccountRead(address, account);
 
-                int slotCount = ac.StorageChanges.Length + ac.StorageReads.Count;
+                int slotCount = storageChangeCount + ac.StorageReads.Count;
                 if (account is null || slotCount == 0) return;
 
                 Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
@@ -223,7 +227,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 // Per-account non-cached tree just for trie warmup pushes — the main thread's
                 // CreateStorageTreeImpl builds its own cached instance on first use.
-                FlatStorageTree storageWarmer = ac.StorageChanges.Length > 0
+                FlatStorageTree storageWarmer = storageChangeCount > 0
                     ? new FlatStorageTree(
                         this,
                         _warmer,
@@ -237,14 +241,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 int selfDestructIdx = sink is null ? 0 : _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
 
-                foreach (SlotChanges slotChanges in ac.StorageChanges)
+                if (storageChanges is not null)
                 {
-                    UInt256 key = slotChanges.Key;
-                    // Pair every successful push with an increment — the warmer's
-                    // WarmUpStorageTrie always decrements in its finally block.
-                    if (_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
-                        Interlocked.Increment(ref _outstandingWarmups);
-                    if (sink is not null) ReadSlotToSink(sink, address, in key, selfDestructIdx);
+                    foreach (SlotChanges slotChanges in storageChanges)
+                    {
+                        UInt256 key = slotChanges.Key;
+                        // Pair every successful push with an increment — the warmer's
+                        // WarmUpStorageTrie always decrements in its finally block.
+                        if (_warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                            Interlocked.Increment(ref _outstandingWarmups);
+                        if (sink is not null) ReadSlotToSink(sink, address, in key, selfDestructIdx);
+                    }
                 }
 
                 if (sink is not null)

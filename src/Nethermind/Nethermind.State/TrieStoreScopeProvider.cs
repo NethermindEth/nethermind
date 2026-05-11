@@ -94,8 +94,11 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             // sink is provided (the prewarmer wants its caches filled).
             if (sink is null) return Task.CompletedTask;
 
-            int accountCount = bal.AccountChanges.Count;
-            if (accountCount == 0) return Task.CompletedTask;
+            // Use the pre-sorted array directly when it's already built (always for RLP-decoded
+            // BALs). If it isn't built, bail out rather than trigger the on-demand sort here.
+            AccountChanges[]? accountChanges = bal.AccountChangesByAddressOrNull;
+            if (accountChanges is null || accountChanges.Length == 0) return Task.CompletedTask;
+            int accountCount = accountChanges.Length;
 
             // StateTree.Get / StorageTree.Get mutate internal node caches as they traverse,
             // so they're not thread-safe. Each Parallel.For iteration owns its own tree
@@ -109,10 +112,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
 
-            ReadOnlySpan<AccountChanges> accountChangesSpan = bal.AccountChangesByAddress;
-            ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
-            for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChangesSpan[i];
-
             return _hintBalTask = Task.Run(() =>
             {
                 try
@@ -121,7 +120,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     Parallel.For(0, accountCount, parallelOptions, (i) =>
                     {
                         if (token.IsCancellationRequested) return;
-                        AccountChanges ac = accountChangesList[i];
+                        AccountChanges ac = accountChanges[i];
                         Address address = ac.Address;
 
                         StateTree privateStateTree = _scopeProvider.CreateStateTree();
@@ -138,17 +137,22 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                             account = cached;
                         }
 
-                        if (account is null || (ac.StorageChanges.Length == 0 && ac.StorageReads.Count == 0)) return;
+                        SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
+                        int storageChangeCount = storageChanges?.Length ?? 0;
+                        if (account is null || (storageChangeCount == 0 && ac.StorageReads.Count == 0)) return;
                         Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
                         if (storageRoot == Keccak.EmptyTreeHash) return;
 
                         StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
-                        foreach (SlotChanges slotChanges in ac.StorageChanges)
+                        if (storageChanges is not null)
                         {
-                            UInt256 key = slotChanges.Key;
-                            StorageCell cell = new(address, in key);
-                            if (!sink.StillNeeded(in cell)) continue;
-                            sink.OnStorageRead(in cell, storageTree.Get(in key));
+                            foreach (SlotChanges slotChanges in storageChanges)
+                            {
+                                UInt256 key = slotChanges.Key;
+                                StorageCell cell = new(address, in key);
+                                if (!sink.StillNeeded(in cell)) continue;
+                                sink.OnStorageRead(in cell, storageTree.Get(in key));
+                            }
                         }
                         foreach (UInt256 storageReadKey in ac.StorageReads)
                         {
@@ -159,10 +163,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
                     });
                 }
                 catch (OperationCanceledException) { }
-                finally
-                {
-                    accountChangesList.Dispose();
-                }
             }, token);
         }
 

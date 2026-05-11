@@ -394,6 +394,15 @@ public class BlockCachePreWarmerTests
     // throw SynchronizationLockException at scope close.
     private Task RunPreWarmCaches(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
     {
+        // HintBal reads the BAL's pre-sorted arrays directly and bails out when they aren't built.
+        // Tests construct BALs via the mutation API (no pre-sort), so force the sort once here —
+        // mirrors the RLP-decode path that production HintBal consumers always see.
+        if (block.BlockAccessList is not null)
+        {
+            foreach (AccountChanges ac in block.BlockAccessList.AccountChangesByAddress)
+                _ = ac.StorageChanges;
+        }
+
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(parent))
         {

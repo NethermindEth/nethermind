@@ -193,6 +193,9 @@ public class ScopeProviderTests(bool useFlat)
         bal.AddStorageRead(TestItem.AddressA, 2);
         bal.AddStorageRead(TestItem.AddressB, 5);
 
+        // HintBal consumes the BAL's pre-sorted array; force the sort once (mirrors RLP-decode).
+        _ = bal.AccountChangesByAddress;
+
         // Collect results via HintBal(bal, sink) — the merged trie warmup + BAL read pass
         CollectingBalSink sink = new();
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
