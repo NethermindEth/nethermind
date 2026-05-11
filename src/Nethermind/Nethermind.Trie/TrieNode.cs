@@ -609,8 +609,41 @@ namespace Nethermind.Trie
             InitRlpSlice(parentRlp.UnderlyingArray!, parentRlp.Offset + offset, length);
         }
 
-        private static TrieNode CreateInlineChild(CappedArray<byte> parentRlp, int offset, int length) =>
-            new(parentRlp, offset, length);
+        /// <summary>
+        /// Build a fully decoded inline child node from a parent RLP slice. Inline nodes
+        /// have no separate Keccak (RLP &lt; 32 bytes) and share the parent buffer.
+        /// </summary>
+        /// <remarks>
+        /// Phase B requires that no <see cref="NodeType.Unknown"/> node ever leaves
+        /// <see cref="DecodeChildReference"/>: the parent RLP is already in hand, so
+        /// header decoding (no IO) gives the correct typed shape immediately.
+        /// </remarks>
+        private static TrieNode CreateInlineChild(in TreePath parentPath, CappedArray<byte> parentRlp, int offset, int length)
+        {
+            TrieNode child = new(parentRlp, offset, length);
+            try
+            {
+                if (!child.DecodeRlp(new ValueRlpStream(child.ReadRlp()), bufferPool: null, out int numberOfItems))
+                {
+                    ThrowUnexpectedNumberOfItems(numberOfItems, parentPath);
+                }
+            }
+            catch (RlpException rlpException)
+            {
+                ThrowInlineDecodingError(rlpException, parentPath);
+            }
+            return child;
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowInlineDecodingError(RlpException rlpException, in TreePath parentPath) =>
+                throw new TrieNodeException("Error when decoding inline child", parentPath, Nethermind.Core.Crypto.Keccak.Zero, rlpException);
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath parentPath) =>
+                throw new TrieNodeException(
+                    $"Unexpected number of items = {numberOfItems} when decoding inline child from RLP",
+                    parentPath, Nethermind.Core.Crypto.Keccak.Zero);
+        }
 
         private INodeData CreateNodeData(NodeType nodeType) => nodeType switch
         {
@@ -879,7 +912,7 @@ namespace Nethermind.Trie
                         continue;
                     }
 
-                    PublishChild(ref data, DecodeChildReference(rlp, ref rlpStream));
+                    PublishChild(ref data, DecodeChildReference(in path, rlp, ref rlpStream));
                 }
             }
             finally
@@ -1701,7 +1734,7 @@ namespace Nethermind.Trie
             return winner ?? decoded;
         }
 
-        private static object DecodeChildReference(CappedArray<byte> rlp, ref ValueRlpStream rlpStream)
+        private static object DecodeChildReference(in TreePath childPath, CappedArray<byte> rlp, ref ValueRlpStream rlpStream)
         {
             int prefix = rlpStream.ReadByte();
             switch (prefix)
@@ -1716,7 +1749,9 @@ namespace Nethermind.Trie
                     rlpStream.Position--;
                     int offset = rlpStream.Position;
                     int length = rlpStream.PeekNextRlpLength();
-                    TrieNode child = CreateInlineChild(rlp, offset, length);
+                    // Inline child decode is eager: with the parent RLP already in hand
+                    // there is no IO and we never publish a NodeType.Unknown placeholder.
+                    TrieNode child = CreateInlineChild(in childPath, rlp, offset, length);
                     rlpStream.SkipBytes(length);
                     return child;
             }
@@ -1739,7 +1774,7 @@ namespace Nethermind.Trie
                     // Allows to load children in parallel
                     ValueRlpStream rlpStream = new(rlp);
                     SeekChild(ref rlpStream, i);
-                    childOrRef = DecodeChildReference(rlp, ref rlpStream);
+                    childOrRef = DecodeChildReference(in childPath, rlp, ref rlpStream);
                     if (childOrRef is Hash256 keccak)
                     {
                         childOrRef = tree.FindCachedOrUnknown(childPath, keccak);
@@ -1807,9 +1842,10 @@ namespace Nethermind.Trie
                         }
                     default:
                         {
+                            path.SetLast(i);
                             int offset = rlpStream.Position;
                             int length = rlpStream.PeekNextRlpLength();
-                            TrieNode child = CreateInlineChild(rlp, offset, length);
+                            TrieNode child = CreateInlineChild(in path, rlp, offset, length);
                             rlpStream.SkipBytes(length);
                             chCount++;
                             output[i] = child;
@@ -1901,7 +1937,7 @@ namespace Nethermind.Trie
                             _currentStreamIndex = i;
                         }
 
-                        childOrRef = DecodeChildReference(rlp, ref _rlpStream);
+                        childOrRef = DecodeChildReference(in childPath, rlp, ref _rlpStream);
                         if (childOrRef is Hash256 keccak)
                         {
                             childOrRef = tree.FindCachedOrUnknown(childPath, keccak);
