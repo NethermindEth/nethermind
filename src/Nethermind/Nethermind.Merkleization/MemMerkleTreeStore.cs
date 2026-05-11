@@ -6,13 +6,13 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merkleization;
 
-public class MemMerkleTreeStore : IKeyValueStore<ulong, byte[]>
+public class MemMerkleTreeStore : IKeyValueStore<ulong>
 {
     private readonly Dictionary<ulong, byte[]?> _dictionary = new();
 
     public byte[]? this[ulong key]
     {
-        get => _dictionary.TryGetValue(key, out byte[]? value) ? value : null;
+        get => _dictionary.GetValueOrDefault(key);
         set => _dictionary[key] = value;
     }
 }
