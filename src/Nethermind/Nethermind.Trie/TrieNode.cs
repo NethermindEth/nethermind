@@ -1931,10 +1931,21 @@ namespace Nethermind.Trie
                             storagePath = currentPath.Path.ToCommitment();
                         }
 
-                        hasStorage = true;
-                        TreePath emptyPath = TreePath.Empty;
-                        leafNode._storageRoot = storageRoot = resolver.GetStorageTrieNodeResolver(storagePath)
-                            .FindCachedOrUnknown(in emptyPath, storageRootKey);
+                        // Eagerly load + decode the storage root so the returned node is a typed
+                        // TrieNodeBranch/Leaf/Extension instead of a NodeType.Unknown placeholder.
+                        // Every caller of TryResolveStorageRoot (visitor, persist walks) immediately
+                        // walks into the storage trie, so the historical laziness never bought
+                        // anything in practice; GetOrLoadNode's default already hits the cache
+                        // first via TryGetCachedNode. Use the Try-shape so an unresolvable storage
+                        // root (e.g. partial sync, test fixtures) surfaces as hasStorage=false and
+                        // the visitor sees VisitMissingNode instead of a thrown TrieException
+                        // escaping past the per-node try/catch boundary in TrieNodeTraverser.Accept.
+                        if (resolver.GetStorageTrieNodeResolver(storagePath)
+                                .TryGetOrLoadNode(in TreePath.Empty, storageRootKey, out TrieNode? loaded))
+                        {
+                            hasStorage = true;
+                            leafNode._storageRoot = storageRoot = loaded;
+                        }
                     }
                 }
             }

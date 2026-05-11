@@ -263,7 +263,6 @@ public class BatchedTrieVisitor<TNodeContext>
     void QueueNextNodes(ref ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
-        TreePath emptyPath = TreePath.Empty;
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
             (TrieNode trieNode, TNodeContext nodeContext, SmallTrieVisitContext ctx) = batchResult[i];
@@ -272,13 +271,12 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a
                 // keccak to queue, so we walk it inline. Phase B decodes inline children eagerly into
-                // typed nodes, so ResolveNode is a no-op here unless an Unknown placeholder slipped
-                // in via the legacy FindCachedOrUnknown contract (still required by storage-root
-                // stitch in TrieNodeLeaf.TryResolveStorageRoot).
+                // typed nodes, so ResolveNode is a no-op here in production callers; it remains as a
+                // safety net for any legacy resolver that still hands back an unresolved placeholder.
                 ArrayPoolListRef<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
                 try
                 {
-                    TrieNode.ResolveNode(ref trieNode, _resolver, in emptyPath);
+                    TrieNode.ResolveNode(ref trieNode, _resolver, in TreePath.Empty);
                     Interlocked.Increment(ref _activeJobs);
                     AcceptResolvedNode(trieNode, nodeContext, _resolver, ctx, ref recursiveResult);
                     QueueNextNodes(ref recursiveResult);
