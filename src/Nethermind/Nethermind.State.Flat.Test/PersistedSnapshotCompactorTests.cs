@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -210,7 +211,12 @@ public class PersistedSnapshotCompactorTests
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance,
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+                tierLabel: "large",
+                reservationTag: ArenaReservationTags.BlobBackedLarge);
 
             StateId prev = new(0, Keccak.EmptyTreeHash);
             StateId[] states = new StateId[9];
@@ -266,13 +272,23 @@ public class PersistedSnapshotCompactorTests
 
     private static IEnumerable<TestCaseData> MergeValidationTestCases()
     {
-        // Basic: two snapshots with overlapping accounts
+        // Each case yields the input SnapshotContents plus an Action<PersistedSnapshot>
+        // that asserts the expected post-compaction read-back state.
+
+        // Basic: two snapshots with overlapping accounts — newer balance wins.
         {
             SnapshotContent c0 = new();
             c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             SnapshotContent c1 = new();
             c1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(200).TestObject;
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_AccountOverride");
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryGetAccount(ValueKeccak.Compute(TestItem.AddressA.Bytes), out Account? a), Is.True);
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)200));
+                }))
+                .SetName("Merge_AccountOverride");
         }
 
         // Regression: advance-corrupts-minKey bug in NWayStreamingMerge (StateTopNodes).
@@ -285,12 +301,19 @@ public class PersistedSnapshotCompactorTests
             c0.StateNodes[pathB] = new TrieNode(NodeType.Leaf, [0xC0]);
             SnapshotContent c1 = new();
             c1.StateNodes[pathB] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_AdvanceOrder_StateTopNodes");
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryLoadStateNodeRlp(pathA, out byte[]? rlpA), Is.True);
+                    Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC0 }), "State node only in older source must survive");
+                    Assert.That(s.TryLoadStateNodeRlp(pathB, out byte[]? rlpB), Is.True);
+                    Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Overlapping state node — newer RLP must win");
+                }))
+                .SetName("Merge_AdvanceOrder_StateTopNodes");
         }
 
         // Regression: same bug in NWayInnerMerge (StorageNodes inner merge).
-        // snapshot[0] has storage trie nodes for an address at {pathA, pathB},
-        // snapshot[1] has only {pathB} with different RLP.
         {
             Hash256 storageAddr = Keccak.Compute("storageAddr");
             TreePath pathA = new(Hash256.Zero, 8);
@@ -300,28 +323,64 @@ public class PersistedSnapshotCompactorTests
             c0.StorageNodes[(storageAddr, pathB)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
             SnapshotContent c1 = new();
             c1.StorageNodes[(storageAddr, pathB)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_AdvanceOrder_StorageNodes");
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathA, out byte[]? rlpA), Is.True);
+                    Assert.That(rlpA, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Storage node only in older source must survive");
+                    Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, pathB, out byte[]? rlpB), Is.True);
+                    Assert.That(rlpB, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Overlapping storage node — newer RLP must win");
+                }))
+                .SetName("Merge_AdvanceOrder_StorageNodes");
         }
 
-        // Mixed: all data types across two snapshots
+        // Mixed: all data types across two snapshots.
         {
             Hash256 storageAddr = Keccak.Compute("storageAddr");
             TreePath statePath = new(Keccak.Compute("statePath"), 4);
+            TreePath storagePath = new(Hash256.Zero, 4);
             SnapshotContent c0 = new();
             c0.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(100).TestObject;
             c0.Storages[(TestItem.AddressA, 1)] = new SlotValue(new byte[] { 0x42 });
             c0.SelfDestructedStorageAddresses[TestItem.AddressB] = true;
             c0.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC0, 0x80]);
-            c0.StorageNodes[(storageAddr, new TreePath(Hash256.Zero, 4))] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            c0.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
             SnapshotContent c1 = new();
             c1.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)200).TestObject;
             c1.Storages[(TestItem.AddressA, 2)] = new SlotValue(new byte[] { 0x99 });
             c1.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-            c1.StorageNodes[(storageAddr, new TreePath(Hash256.Zero, 4))] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_MixedDataTypes");
+            c1.StorageNodes[(storageAddr, storagePath)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x81]);
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+
+                    Assert.That(s.TryGetAccount(hashA, out Account? a), Is.True);
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "Account override");
+
+                    SlotValue slot1 = default;
+                    Assert.That(s.TryGetSlot(hashA, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
+                    Assert.That(slot1.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x42 }).AsReadOnlySpan.ToArray()));
+
+                    SlotValue slot2 = default;
+                    Assert.That(s.TryGetSlot(hashA, 2, ref slot2), Is.True);
+                    Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
+
+                    Assert.That(s.IsSelfDestructed(ValueKeccak.Compute(TestItem.AddressB.Bytes)), Is.True,
+                        "Self-destruct flag for B (set in c0) must be present after compaction");
+
+                    Assert.That(s.TryLoadStateNodeRlp(statePath, out byte[]? stateRlp), Is.True);
+                    Assert.That(stateRlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "State node — newer wins");
+
+                    Assert.That(s.TryLoadStorageNodeRlp(storageAddr.ValueHash256, storagePath, out byte[]? storageRlp), Is.True);
+                    Assert.That(storageRlp, Is.EqualTo(new byte[] { 0xC2, 0x80, 0x81 }), "Storage node — newer wins");
+                }))
+                .SetName("Merge_MixedDataTypes");
         }
 
-        // Overlapping state node (newer wins) + non-overlapping accounts (both preserved)
+        // Overlapping state node (newer wins) + non-overlapping accounts (both preserved).
         {
             TreePath path = new(Keccak.Compute("path"), 4);
             SnapshotContent c0 = new();
@@ -330,38 +389,82 @@ public class PersistedSnapshotCompactorTests
             SnapshotContent c1 = new();
             c1.StateNodes[path] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
             c1.Accounts[TestItem.AddressB] = Build.An.Account.WithBalance(200).TestObject;
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_NewerOverridesOlder");
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryLoadStateNodeRlp(path, out byte[]? rlp), Is.True);
+                    Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Newer state-node RLP wins");
+                    Assert.That(s.TryGetAccount(ValueKeccak.Compute(TestItem.AddressA.Bytes), out Account? a), Is.True);
+                    Assert.That(a!.Balance, Is.EqualTo((UInt256)100));
+                    Assert.That(s.TryGetAccount(ValueKeccak.Compute(TestItem.AddressB.Bytes), out Account? b), Is.True);
+                    Assert.That(b!.Balance, Is.EqualTo((UInt256)200));
+                }))
+                .SetName("Merge_NewerOverridesOlder");
         }
 
-        // Two distinct state node paths, both survive merge
+        // Two distinct state node paths, both survive merge.
         {
+            TreePath p1 = new(Keccak.Compute("path1"), 4);
+            TreePath p2 = new(Keccak.Compute("path2"), 4);
             SnapshotContent c0 = new();
-            c0.StateNodes[new TreePath(Keccak.Compute("path1"), 4)] = new TrieNode(NodeType.Leaf, [0xC0]);
+            c0.StateNodes[p1] = new TrieNode(NodeType.Leaf, [0xC0]);
             SnapshotContent c1 = new();
-            c1.StateNodes[new TreePath(Keccak.Compute("path2"), 4)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_PreservesNonOverlapping");
+            c1.StateNodes[p2] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryLoadStateNodeRlp(p1, out byte[]? r1), Is.True);
+                    Assert.That(r1, Is.EqualTo(new byte[] { 0xC0 }));
+                    Assert.That(s.TryLoadStateNodeRlp(p2, out byte[]? r2), Is.True);
+                    Assert.That(r2, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                }))
+                .SetName("Merge_PreservesNonOverlapping");
         }
 
-        // Older slot cleared by self-destruct, newer slot + flag preserved
+        // Older slot cleared by self-destruct, newer slot + flag preserved.
         {
             SnapshotContent c0 = new();
             c0.Storages[(TestItem.AddressA, 1)] = new SlotValue(new byte[] { 0x42 });
             SnapshotContent c1 = new();
             c1.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
             c1.Storages[(TestItem.AddressA, 2)] = new SlotValue(new byte[] { 0x99 });
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_SelfDestruct_ClearsOlderStorage");
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+                    SlotValue slot1 = default;
+                    Assert.That(s.TryGetSlot(hashA, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
+                    SlotValue slot2 = default;
+                    Assert.That(s.TryGetSlot(hashA, 2, ref slot2), Is.True);
+                    Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
+                    Assert.That(s.IsSelfDestructed(hashA), Is.True, "Destruct flag must be present");
+                    Assert.That(s.TryGetSelfDestructFlag(hashA), Is.False, "Destruct flag value must be `false` (destructed)");
+                }))
+                .SetName("Merge_SelfDestruct_ClearsOlderStorage");
         }
 
-        // Newer true flag doesn't overwrite older false (destructed) — TryAdd semantics
+        // Newer true flag doesn't overwrite older false (destructed) — TryAdd semantics.
         {
             SnapshotContent c0 = new();
             c0.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
             SnapshotContent c1 = new();
             c1.SelfDestructedStorageAddresses[TestItem.AddressA] = true;
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_SelfDestruct_TryAddSemantics");
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+                    Assert.That(s.IsSelfDestructed(hashA), Is.True);
+                    Assert.That(s.TryGetSelfDestructFlag(hashA), Is.False,
+                        "Older `false` (destructed) flag must win over newer `true` (new-account) flag");
+                }))
+                .SetName("Merge_SelfDestruct_TryAddSemantics");
         }
 
-        // Storage trie nodes survive self-destruct
+        // Storage trie nodes survive self-destruct (only storage *slot* data is cleared).
         {
             Hash256 addrHash = Keccak.Compute(TestItem.AddressA.Bytes);
             TreePath storagePath = new(Keccak.Compute("storage_path"), 4);
@@ -369,29 +472,64 @@ public class PersistedSnapshotCompactorTests
             c0.StorageNodes[(addrHash, storagePath)] = new TrieNode(NodeType.Leaf, [0xC1, 0x80]);
             SnapshotContent c1 = new();
             c1.SelfDestructedStorageAddresses[TestItem.AddressA] = false;
-            yield return new TestCaseData((object)new[] { c0, c1 }).SetName("Merge_SelfDestruct_StorageNodesKept");
+            yield return new TestCaseData(
+                (object)new[] { c0, c1 },
+                (Action<PersistedSnapshot>)(s =>
+                {
+                    Assert.That(s.TryLoadStorageNodeRlp(addrHash.ValueHash256, storagePath, out byte[]? rlp), Is.True,
+                        "Storage trie node must survive self-destruct of the account");
+                    Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }));
+                }))
+                .SetName("Merge_SelfDestruct_StorageNodesKept");
         }
     }
 
     [TestCaseSource(nameof(MergeValidationTestCases))]
-    public void MergeSnapshots_ValidatesCorrectly(SnapshotContent[] contents)
+    public void MergeSnapshots_ValidatesCorrectly(SnapshotContent[] contents, Action<PersistedSnapshot> assertCompacted)
     {
-        PersistedSnapshotList toMerge = new(contents.Length);
-        StateId prevState = new(0, Keccak.EmptyTreeHash);
-
-        for (int i = 0; i < contents.Length; i++)
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
         {
-            StateId nextState = new(i + 1, Keccak.Compute($"{i + 1}"));
-            Snapshot snap = new(prevState, nextState, contents[i], _pool, ResourcePool.Usage.MainBlockProcessing);
-            byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
-            toMerge.Add(CreatePersistedSnapshot(i, prevState, nextState, PersistedSnapshotType.Full, data));
-            prevState = nextState;
-        }
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
+            using BlobArenaCatalog blobCatalog = new(new MemDb());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+            repo.LoadFromCatalog();
 
-        byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
-        PersistedSnapshot compacted = CreatePersistedSnapshot(100, toMerge[0].From, toMerge[toMerge.Count - 1].To,
-            PersistedSnapshotType.Linked, merged);
-        // Removed in pass 2:         PersistedSnapshotUtils.ValidateCompactedPersistedSnapshot(compacted, toMerge, true);
+            // minCompactSize == maxCompactSize == 2 — only a size-2 compaction is attempted, so
+            // exactly two consecutive base snapshots are merged into one compacted snapshot.
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance,
+                minCompactSize: 2,
+                maxCompactSize: 2,
+                tierLabel: "test",
+                reservationTag: ArenaReservationTags.BlobBackedLarge);
+
+            StateId[] states = new StateId[contents.Length + 1];
+            states[0] = new StateId(0, Keccak.EmptyTreeHash);
+            for (int i = 0; i < contents.Length; i++)
+            {
+                states[i + 1] = new StateId(i + 1, Keccak.Compute($"{i + 1}"));
+                repo.ConvertSnapshotToPersistedSnapshot(
+                    new Snapshot(states[i], states[i + 1], contents[i], _pool, ResourcePool.Usage.MainBlockProcessing));
+            }
+
+            compactor.DoCompactSnapshot(states[contents.Length]);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(states[contents.Length], out PersistedSnapshot? compacted), Is.True,
+                "Expected a compacted snapshot to exist after DoCompactSnapshot");
+            using (compacted)
+            {
+                assertCompacted(compacted!);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
     }
 
     // Config: compactSize=1 (PersistenceManager boundary), minCompactSize=2, maxCompactSize=8.
@@ -498,7 +636,12 @@ public class PersistedSnapshotCompactorTests
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance,
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+                tierLabel: "large",
+                reservationTag: ArenaReservationTags.BlobBackedLarge);
 
             TreePath sharedStatePath = new(Keccak.Compute("shared_state"), 4);
             TreePath onlyOldStatePath = new(Keccak.Compute("only_old_state"), 4);
