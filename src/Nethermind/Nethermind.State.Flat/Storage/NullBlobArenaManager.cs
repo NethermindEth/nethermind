@@ -22,7 +22,11 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
         throw new InvalidOperationException("NullBlobArenaManager cannot create writers.");
 
     public int RandomRead(int blobArenaId, long offset, Span<byte> destination) => 0;
-    public bool TryAcquireBlobArena(int blobArenaId) => false;
+    public bool TryLeaseFile(int blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
+    {
+        file = null;
+        return false;
+    }
     public void ReleaseBlobArena(int blobArenaId) { }
     public int BlobArenaFileCount => 0;
     public long BlobArenaMappedBytes => 0;

@@ -76,7 +76,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// <summary>
     /// Rehydrate the in-memory reservation map from the catalog's entries.
     /// Must be called before any <c>PersistedSnapshot</c> is constructed so
-    /// <see cref="TryAcquireBlobArena"/> can resolve ids stored in their
+    /// <see cref="TryLeaseFile"/> can resolve ids stored in their
     /// <c>ref_ids</c> metadata.
     /// </summary>
     public void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> entries)
@@ -133,16 +133,20 @@ public sealed class BlobArenaManager : IBlobArenaManager
         return _files.RandomRead(reservation, offset, destination);
     }
 
-    public bool TryAcquireBlobArena(int blobArenaId)
+    public bool TryLeaseFile(int blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
     {
         ArenaReservation? reservation;
         lock (_lock)
         {
             if (!_reservations.TryGetValue(blobArenaId, out reservation))
+            {
+                file = null;
                 return false;
+            }
             _refCounts[blobArenaId] = _refCounts[blobArenaId] + 1;
         }
         reservation.AcquireLease();
+        file = new BlobArenaFile(this, blobArenaId, reservation);
         return true;
     }
 
@@ -183,7 +187,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// finalised reservation. The reservation arrives with its intrinsic
     /// 1-lease (the writer's "creation" lease); this is matched by our
     /// <see cref="_refCounts"/> starting at 1. Snapshots transfer ownership
-    /// by calling <see cref="TryAcquireBlobArena"/>; the caller then drops
+    /// by calling <see cref="TryLeaseFile"/>; the caller then drops
     /// the writer-creation lease via <see cref="ReleaseBlobArena"/>.
     /// </summary>
     internal void RegisterCompleted(int blobArenaId, ArenaReservation reservation)

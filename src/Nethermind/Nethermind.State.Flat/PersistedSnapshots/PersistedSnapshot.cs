@@ -55,11 +55,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private const int AddressBoundCacheSets = 8;
 
     private readonly ArenaReservation _reservation;
-    // Single blob manager — every snapshot lives in one repo (small or large) and its
-    // NodeRefs resolve exclusively through that repo's blob manager. Cross-tier
-    // references are impossible by construction.
-    private readonly IBlobArenaManager _blobs;
-    private readonly int[] _referencedBlobArenaIds;
+    // Per-snapshot blob arena handles, one per referenced id. Built and leased by the
+    // repository at construction time. Reads dispatch directly into BlobArenaFile.RandomRead
+    // (no manager lock, no central lookup). Disposal of each entry calls back into the
+    // owning BlobArenaManager for refcount + catalog removal.
+    private readonly Dictionary<int, BlobArenaFile> _blobFiles;
     private readonly SeqlockValueCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheSets);
 
     public int Id { get; }
@@ -67,10 +67,11 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public StateId To { get; }
 
     /// <summary>
-    /// Blob arena ids whose contents this snapshot references via <see cref="NodeRef"/>s
-    /// stored in its metadata HSST. Each id is leased on construction and released on cleanup.
+    /// Blob arena ids this snapshot references via <see cref="NodeRef"/>s in its
+    /// metadata HSST. Materialised from <see cref="_blobFiles"/>; allocates a fresh
+    /// array each call — cache locally for hot loops.
     /// </summary>
-    public int[] ReferencedBlobArenaIds => _referencedBlobArenaIds;
+    public int[] ReferencedBlobArenaIds => [.. _blobFiles.Keys];
 
     public long Size => _reservation.Size;
 
@@ -86,36 +87,23 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// </summary>
     internal ArenaByteReader CreateReader() => _reservation.CreateReader();
 
+    /// <summary>
+    /// Construct a snapshot over a pre-leased metadata reservation and a pre-leased
+    /// dictionary of <see cref="BlobArenaFile"/>s, one per referenced blob arena id.
+    /// The caller (typically <see cref="PersistedSnapshotRepository"/>) is responsible
+    /// for building <paramref name="blobFiles"/> with leases already acquired and for
+    /// rolling those leases back on construction failure. This ctor just bumps the
+    /// metadata reservation lease.
+    /// </summary>
     public PersistedSnapshot(int id, StateId from, StateId to, ArenaReservation reservation,
-        IBlobArenaManager blobs, int[]? referencedBlobArenaIds = null)
+        Dictionary<int, BlobArenaFile> blobFiles)
     {
         Id = id;
         From = from;
         To = to;
         _reservation = reservation;
-        _blobs = blobs;
-        _referencedBlobArenaIds = referencedBlobArenaIds ?? [];
-
+        _blobFiles = blobFiles;
         _reservation.AcquireLease();
-        // Acquire blob arena leases up-front. If any id is unknown to the manager,
-        // release what we've already taken before bubbling out.
-        int acquired = 0;
-        try
-        {
-            foreach (int blobId in _referencedBlobArenaIds)
-            {
-                if (!_blobs.TryAcquireBlobArena(blobId))
-                    throw new InvalidOperationException($"Blob arena {blobId} referenced by snapshot {id} not registered in this tier");
-                acquired++;
-            }
-        }
-        catch
-        {
-            for (int i = 0; i < acquired; i++)
-                _blobs.ReleaseBlobArena(_referencedBlobArenaIds[i]);
-            _reservation.Dispose();
-            throw;
-        }
     }
 
     /// <summary>
@@ -239,11 +227,13 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     private byte[] ReadBlobArenaRlp(int blobArenaId, int offset)
     {
+        if (!_blobFiles.TryGetValue(blobArenaId, out BlobArenaFile? file))
+            throw new InvalidOperationException($"Blob arena {blobArenaId} not in snapshot {Id}'s referenced set");
         byte[] rented = ArrayPool<byte>.Shared.Rent(MaxTrieNodeRlpBytes);
         try
         {
             Span<byte> buf = rented.AsSpan(0, MaxTrieNodeRlpBytes);
-            int bytesRead = _blobs.RandomRead(blobArenaId, offset, buf);
+            int bytesRead = file.RandomRead(offset, buf);
             Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
             int totalLength = ctx.PeekNextRlpLength();
             byte[] result = new byte[totalLength];
@@ -263,7 +253,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     protected override void CleanUp()
     {
         _reservation.Dispose();
-        foreach (int blobId in _referencedBlobArenaIds)
-            _blobs.ReleaseBlobArena(blobId);
+        foreach (BlobArenaFile file in _blobFiles.Values)
+            file.Dispose();
     }
 }

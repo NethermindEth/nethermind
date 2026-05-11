@@ -104,7 +104,17 @@ public sealed class PersistedSnapshotRepository(
             refIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
         }
 
-        PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, reservation, _blobs, refIds);
+        Dictionary<int, BlobArenaFile> blobFiles = LeaseBlobFiles(refIds);
+        PersistedSnapshot snapshot;
+        try
+        {
+            snapshot = new(entry.Id, entry.From, entry.To, reservation, blobFiles);
+        }
+        catch
+        {
+            foreach (BlobArenaFile f in blobFiles.Values) f.Dispose();
+            throw;
+        }
         RegisterBlooms(snapshot);
 
         if (range < _compactSize)
@@ -113,6 +123,32 @@ public sealed class PersistedSnapshotRepository(
             _persistableCompactedSnapshots[entry.To] = snapshot;
         else
             _compactedSnapshots[entry.To] = snapshot;
+    }
+
+    /// <summary>
+    /// Lease one <see cref="BlobArenaFile"/> per id in <paramref name="ids"/>. If any
+    /// lease fails the helper releases what was acquired and throws — callers can
+    /// trust the returned dict is fully leased or no leases are dangling.
+    /// </summary>
+    private Dictionary<int, BlobArenaFile> LeaseBlobFiles(IEnumerable<int>? ids)
+    {
+        Dictionary<int, BlobArenaFile> result = [];
+        if (ids is null) return result;
+        try
+        {
+            foreach (int id in ids)
+            {
+                if (!_blobs.TryLeaseFile(id, out BlobArenaFile? file))
+                    throw new InvalidOperationException($"Blob arena {id} not registered in this tier");
+                result[id] = file;
+            }
+            return result;
+        }
+        catch
+        {
+            foreach (BlobArenaFile f in result.Values) f.Dispose();
+            throw;
+        }
     }
 
     private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "type");
@@ -161,14 +197,23 @@ public sealed class PersistedSnapshotRepository(
         blobWriter.Complete();
         blobArenaId = blobWriter.BlobArenaId;
 
+        Dictionary<int, BlobArenaFile> blobFiles = LeaseBlobFiles([blobArenaId]);
         lock (_catalogLock)
         {
             int id = _nextId++;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(id, snapshot.From, snapshot.To, location));
             _catalog.Save();
 
-            int[] referencedBlobArenaIds = [blobArenaId];
-            PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, reservation, _blobs, referencedBlobArenaIds);
+            PersistedSnapshot persisted;
+            try
+            {
+                persisted = new(id, snapshot.From, snapshot.To, reservation, blobFiles);
+            }
+            catch
+            {
+                foreach (BlobArenaFile f in blobFiles.Values) f.Dispose();
+                throw;
+            }
             RegisterBlooms(persisted, bloom, trieBloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
@@ -183,7 +228,7 @@ public sealed class PersistedSnapshotRepository(
         reservation.AdviseDontNeed();
 
         // Release the writers' "creation" leases. PersistedSnapshot took its own
-        // (metadata reservation + each blob arena id) via AcquireLease in the ctor.
+        // (metadata reservation + the blob arena lease via BlobArenaFile) in the ctor.
         reservation.Dispose();
         _blobs.ReleaseBlobArena(blobArenaId);
     }
@@ -195,14 +240,23 @@ public sealed class PersistedSnapshotRepository(
     /// </summary>
     public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedBlobArenaIds, bool isPersistable, BloomFilter? bloom = null)
     {
+        Dictionary<int, BlobArenaFile> blobFiles = LeaseBlobFiles(referencedBlobArenaIds);
         lock (_catalogLock)
         {
             int id = _nextId++;
             _catalog.Add(new SnapshotCatalog.CatalogEntry(id, from, to, location));
             _catalog.Save();
 
-            int[] refIds = [.. referencedBlobArenaIds];
-            PersistedSnapshot snapshot = new(id, from, to, reservation, _blobs, refIds);
+            PersistedSnapshot snapshot;
+            try
+            {
+                snapshot = new(id, from, to, reservation, blobFiles);
+            }
+            catch
+            {
+                foreach (BlobArenaFile f in blobFiles.Values) f.Dispose();
+                throw;
+            }
             RegisterBlooms(snapshot, bloom, trieBloom: null);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;

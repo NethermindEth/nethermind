@@ -57,15 +57,17 @@ public interface IBlobArenaManager : IDisposable
 
     /// <summary>
     /// Increment the refcount on the reservation backing <paramref name="blobArenaId"/>
-    /// if this manager owns it. Returns false if this manager doesn't know the id —
-    /// the caller can then try the other tier's manager.
+    /// and hand back a <see cref="BlobArenaFile"/> wrapping it. Returns false if
+    /// this manager doesn't know the id. Disposing the returned
+    /// <see cref="BlobArenaFile"/> calls back into <see cref="ReleaseBlobArena"/>.
     /// </summary>
-    bool TryAcquireBlobArena(int blobArenaId);
+    bool TryLeaseFile(int blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file);
 
     /// <summary>
     /// Decrement the refcount. When the last referencing snapshot is released the
     /// reservation's <c>CleanUp</c> runs <see cref="ArenaManager.MarkDead"/>, which
-    /// deletes the underlying file once every reservation in it is dead.
+    /// deletes the underlying file once every reservation in it is dead. Typically
+    /// invoked indirectly via <see cref="BlobArenaFile.Dispose"/>.
     /// </summary>
     void ReleaseBlobArena(int blobArenaId);
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -70,7 +71,7 @@ public class LongFinalityIntegrationTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, NullBlobArenaManager.Instance);
+        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<int, BlobArenaFile>());
     }
 
     [Test]
