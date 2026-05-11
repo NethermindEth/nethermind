@@ -283,4 +283,48 @@ public class StateCompositionStateHolderTests
         Assert.That(capturedBaseline[2], Is.EqualTo(5),
             "baseline histogram must not alias the post-diff buffer");
     }
+
+    [Test]
+    public void RestoreFromSnapshot_RebuildsLastScanMetadata_WhenScanBlockNumberPresent()
+    {
+        // Holder with a completed scan at block 1000.
+        StateCompositionStateHolder source = new();
+        source.MarkScanCompleted(1000L, AnyRoot, TimeSpan.FromSeconds(42), isComplete: true);
+
+        // Persist (BuildSnapshot includes ScanBlockNumber = _lastScanMetadata.BlockNumber).
+        StateCompositionSnapshot snap = source.BuildSnapshot(
+            stats: new CumulativeTrieStats { SlotCountHistogram = ImmutableArray<long>.Empty },
+            blockNumber: 1010L,
+            stateRoot: AnyRoot);
+
+        // Restore into a fresh holder.
+        StateCompositionStateHolder restored = new();
+        restored.RestoreFromSnapshot(snap);
+
+        ScanMetadata md = restored.LastScanMetadata;
+        Assert.That(md.IsComplete, Is.True,
+            "IsComplete must survive a snapshot round-trip; consumers gate on this flag.");
+        Assert.That(md.BlockNumber, Is.EqualTo(1000L),
+            "ScanBlockNumber must be carried through BuildSnapshot → RestoreFromSnapshot.");
+        Assert.That(restored.BuildReport().LastScanMetadata.IsComplete, Is.True,
+            "BuildReport must observe the restored IsComplete flag.");
+    }
+
+    [Test]
+    public void RestoreFromSnapshot_LeavesLastScanMetadataDefault_WhenScanBlockNumberZero()
+    {
+        // Pre-scan snapshot (none persisted yet) → ScanBlockNumber == 0.
+        StateCompositionStateHolder source = new();
+        StateCompositionSnapshot snap = source.BuildSnapshot(
+            stats: new CumulativeTrieStats { SlotCountHistogram = ImmutableArray<long>.Empty },
+            blockNumber: 5L,
+            stateRoot: AnyRoot);
+
+        StateCompositionStateHolder restored = new();
+        restored.RestoreFromSnapshot(snap);
+
+        Assert.That(restored.LastScanMetadata.IsComplete, Is.False,
+            "Cold-start round-trip must not synthesize a completed scan.");
+        Assert.That(restored.LastScanMetadata.BlockNumber, Is.EqualTo(0L));
+    }
 }
