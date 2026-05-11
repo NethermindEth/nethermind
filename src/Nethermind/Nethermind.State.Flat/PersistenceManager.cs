@@ -217,7 +217,7 @@ public class PersistenceManager(
         {
             StateId targetStateId = new(blockNumber, finalizedStateRoot);
             bool found = compactedSnapshot
-                ? _largeRepo.TryLeasePersistableCompactedSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
+                ? _largeRepo.TryLeaseSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
                 : _smallRepo.TryLeaseSnapshotTo(targetStateId, out persisted);
             if (found)
             {
@@ -398,7 +398,7 @@ public class PersistenceManager(
                         if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
                         {
                             long sw = Stopwatch.GetTimestamp();
-                            _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
+                            _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted);
                             _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw);
                         }
                         compacted.Dispose();

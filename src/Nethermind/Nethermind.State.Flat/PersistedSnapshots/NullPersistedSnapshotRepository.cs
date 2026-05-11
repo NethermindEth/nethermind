@@ -19,13 +19,12 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public int ArenaFileCount => 0;
     public long ArenaMappedBytes => 0;
     public void LoadFromCatalog() { }
-    public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false) { }
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, bool isPersistable, BloomFilter? bloom = null) { }
+    public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot) { }
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedSnapshotIds, BloomFilter? bloom = null) { }
     public PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber) => PersistedSnapshotList.Empty();
     public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState) => null;
     public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
-    public bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }
     public int PruneBefore(StateId stateId) => 0;
     public bool HasBaseSnapshot(in StateId stateId) => false;
     public void Dispose() { }

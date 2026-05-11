@@ -17,8 +17,8 @@ public interface IPersistedSnapshotRepository : IDisposable
     void LoadFromCatalog();
 
     // Two-layer storage
-    void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false);
-    void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedBlobArenaIds, bool isPersistable, BloomFilter? bloom = null);
+    void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
+    void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedBlobArenaIds, BloomFilter? bloom = null);
 
     // Compaction assembly (mirrors SnapshotRepository.AssembleSnapshotsUntil)
     PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber);
@@ -27,7 +27,6 @@ public interface IPersistedSnapshotRepository : IDisposable
     PersistedSnapshot? TryGetSnapshotFrom(StateId fromState);
     bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
     bool TryLeaseCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
-    bool TryLeasePersistableCompactedSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot);
 
     // Lifecycle
     int PruneBefore(StateId stateId);

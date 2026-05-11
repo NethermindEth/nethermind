@@ -143,7 +143,7 @@ public class PersistedSnapshotCompactor(
             (location, reservation) = arenaWriter.Complete();
         }
 
-        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, isPersistable: false, mergedBloom);
+        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, mergedBloom);
 
         // The freshly-written compacted bytes are warm in the kernel page cache from the write
         // path; drop them so they don't crowd out the random-access read working set. Subsequent

@@ -96,7 +96,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 BlobArenaCatalog smallBlobCatalog = new(columns.GetColumnDb(FlatDbColumns.SmallBlobArenaCatalog));
                 BlobArenaManager smallBlobs = new(Path.Combine(basePath, "blobs", "small"), cfg.ArenaFileSizeBytes, smallBlobCatalog, ArenaReservationTags.BlobSmall);
                 IDb smallCatalogDb = columns.GetColumnDb(FlatDbColumns.SmallPersistedSnapshotCatalog);
-                PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallBlobCatalog, smallCatalogDb, cfg, bloomManager);
+                PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallBlobCatalog, smallCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedSmall, ArenaReservationTags.BlobSmall);
                 PersistedSnapshotCompactor smallCompactor = new(
                     smallRepo, smallArena, cfg, logManager, bloomManager,
                     minCompactSize: cfg.MinCompactSize,
@@ -109,7 +109,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 BlobArenaCatalog largeBlobCatalog = new(columns.GetColumnDb(FlatDbColumns.LargeBlobArenaCatalog));
                 BlobArenaManager largeBlobs = new(Path.Combine(basePath, "blobs", "large"), cfg.ArenaFileSizeBytes, largeBlobCatalog, ArenaReservationTags.BlobLarge);
                 IDb largeCatalogDb = columns.GetColumnDb(FlatDbColumns.LargePersistedSnapshotCatalog);
-                PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeBlobCatalog, largeCatalogDb, cfg, bloomManager);
+                PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeBlobCatalog, largeCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedLarge, ArenaReservationTags.BlobLarge);
                 PersistedSnapshotCompactor largeCompactor = new(
                     largeRepo, largeArena, cfg, logManager, bloomManager,
                     minCompactSize: cfg.CompactSize * 2,
