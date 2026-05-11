@@ -445,6 +445,11 @@ namespace Nethermind.Serialization.Rlp
         public static int Encode(Span<byte> buffer, int position, Hash256 hash)
         {
             Debug.Assert(hash is not null);
+            return Encode(buffer, position, in hash.ValueHash256);
+        }
+
+        public static int Encode(Span<byte> buffer, int position, in ValueHash256 hash)
+        {
             int newPosition = position + LengthOfKeccakRlp;
             if ((uint)newPosition > (uint)buffer.Length)
             {
@@ -452,7 +457,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position) = 160;
-            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1)) = hash.ValueHash256;
+            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1)) = hash;
             return newPosition;
 
             [DoesNotReturn, StackTraceHidden]

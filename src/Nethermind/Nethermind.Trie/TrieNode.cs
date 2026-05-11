@@ -455,7 +455,7 @@ namespace Nethermind.Trie
                 }
 
                 node.Key = value;
-                Keccak = null;
+                ClearKeccak();
 
                 [DoesNotReturn, StackTraceHidden]
                 void ThrowDoesNotSupportKey() => throw new InvalidOperationException(
@@ -646,13 +646,13 @@ namespace Nethermind.Trie
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNull)
             {
-                Hash256 keccak = Keccak;
-                if (keccak is null)
+                if (!TryGetKeccak(out ValueHash256 keccak))
                 {
                     ThrowMissingKeccak();
                 }
 
-                byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
+                // LoadRlp still takes Hash256; the materialization moves to A3 (in ValueHash256 resolver signatures).
+                byte[]? fullRlp = tree.LoadRlp(path, new Hash256(in keccak), readFlags);
 
                 if (fullRlp == null)
                 {
@@ -693,13 +693,13 @@ namespace Nethermind.Trie
                 {
                     if (rlp.IsNull)
                     {
-                        Hash256 keccak = Keccak;
-                        if (keccak is null)
+                        if (!TryGetKeccak(out ValueHash256 keccak))
                         {
                             return false;
                         }
 
-                        byte[] fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
+                        // LoadRlp still takes Hash256; the materialization moves to A3 (in ValueHash256 resolver signatures).
+                        byte[] fullRlp = tree.TryLoadRlp(path, new Hash256(in keccak), readFlags);
 
                         if (fullRlp is null)
                         {
@@ -804,17 +804,25 @@ namespace Nethermind.Trie
         public void ResolveKey(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
-            if (Keccak is not null)
+            if (HasKeccak)
             {
                 // please note it is totally fine to leave the RLP null here
                 // this node will simply act as a ref only node (a ref to some node with unresolved data in the DB)
                 return;
             }
 
-            Keccak = GenerateKey(tree, ref path, bufferPool, canBeParallel);
+            if (TryGenerateKey(tree, ref path, out ValueHash256 keccak, bufferPool, canBeParallel))
+            {
+                SetKeccak(in keccak);
+            }
         }
 
-        public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path,
+        /// <summary>
+        /// Non-allocating sibling of <see cref="GenerateKey"/>. Returns <c>true</c> when the encoded RLP is
+        /// long enough (>= 32 bytes) or this is the root, in which case <paramref name="keccak"/> holds the
+        /// computed hash. Returns <c>false</c> for short inline child nodes that have no separate hash.
+        /// </summary>
+        public bool TryGenerateKey(ITrieNodeResolver tree, ref TreePath path, out ValueHash256 keccak,
             ICappedArrayPool? bufferPool = null, bool canBeParallel = true)
         {
             bool isRoot = path.Length == 0;
@@ -841,11 +849,19 @@ namespace Nethermind.Trie
             if (rlp.Length >= 32 || isRoot)
             {
                 Metrics.TreeNodeHashCalculations++;
-                return Nethermind.Core.Crypto.Keccak.Compute(rlp.AsSpan());
+                keccak = ValueKeccak.Compute(rlp.AsSpan());
+                return true;
             }
 
-            return null;
+            keccak = default;
+            return false;
         }
+
+        public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path,
+            ICappedArrayPool? bufferPool = null, bool canBeParallel = true) =>
+            TryGenerateKey(tree, ref path, out ValueHash256 keccak, bufferPool, canBeParallel)
+                ? new Hash256(in keccak)
+                : null;
 
         internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null, bool canBeParallel = false)
         {
@@ -1111,7 +1127,7 @@ namespace Nethermind.Trie
             }
 
             SetItem(i, node);
-            Keccak = null;
+            ClearKeccak();
 
             [DoesNotReturn, StackTraceHidden]
             void ThrowAlreadySealed() => throw new InvalidOperationException(
@@ -1708,9 +1724,10 @@ namespace Nethermind.Trie
                     {
                         ThrowNotPersisted();
                     }
-                    else if (childNode.Keccak is not null) // if not by value node
+                    else if (childNode.TryGetKeccak(out ValueHash256 childKeccak)) // if not by value node
                     {
-                        Interlocked.CompareExchange(ref data, childNode.Keccak, childNode);
+                        // Slot representation stays as Hash256 in Phase A; one materialization per swap.
+                        Interlocked.CompareExchange(ref data, new Hash256(in childKeccak), childNode);
                     }
                 }
             }

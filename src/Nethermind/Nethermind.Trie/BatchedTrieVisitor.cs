@@ -287,7 +287,8 @@ public class BatchedTrieVisitor<TNodeContext>
                 continue;
             }
 
-            ValueHash256 keccak = trieNode.Keccak;
+            // Hot path: pull the inline 32-byte value directly instead of materializing a Hash256.
+            trieNode.TryGetKeccak(out ValueHash256 keccak);
             int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
@@ -322,18 +323,19 @@ public class BatchedTrieVisitor<TNodeContext>
                         cur.ResolveKey(_resolver, ref emptyPath);
 
                         if (cur.FullRlp.IsNotNull) continue;
-                        if (cur.Keccak is null)
+                        if (!cur.HasKeccak)
                             ThrowUnableToResolve(ctx);
 
                         resolveOrdering.Add(i);
                     }
 
                     // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
-                    // take about 0.1% of the time, so not very cpu intensive in this case.
+                    // take about 0.1% of the time, so not very cpu intensive in this case. Compare the inline 32-byte
+                    // values rather than materialized Hash256 references; cuts two Hash256 allocations per comparison.
                     resolveOrdering
                         .AsSpan()
                         .Sort((item1, item2) =>
-                            currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
+                            currentBatch[item1].Item1.KeccakValue.CompareTo(currentBatch[item2].Item1.KeccakValue));
 
                     ReadFlags flags = ReadFlags.None;
                     if (resolveOrdering.Count > _readAheadThreshold)
@@ -349,9 +351,11 @@ public class BatchedTrieVisitor<TNodeContext>
                         (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
                         try
                         {
-                            Hash256 theKeccak = nodeToResolve.Keccak;
+                            // Save/restore the inline value directly; ResolveNode may clear it via key publishing.
+                            // Skip the restore when there was no keccak to begin with so we don't publish a zero hash.
+                            bool hadKeccak = nodeToResolve.TryGetKeccak(out ValueHash256 theKeccak);
                             nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
-                            nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                            if (hadKeccak) nodeToResolve.SetKeccak(in theKeccak);
                         }
                         catch (TrieException)
                         {
