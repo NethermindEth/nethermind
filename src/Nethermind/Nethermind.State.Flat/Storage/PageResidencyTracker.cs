@@ -83,8 +83,17 @@ public sealed unsafe class PageResidencyTracker : IDisposable
     private int _disposed;
     private readonly int _setCount;
     private readonly int _setMask;
+    private readonly long _metadataBytes;
+    private readonly long _pageBytes;
+    private long _residentPages;
 
     public int MaxCapacity => _setCount * Ways;
+
+    /// <summary>Bytes of unmanaged tracker metadata reported to the GC.</summary>
+    public long MetadataBytes => _metadataBytes;
+
+    /// <summary>Estimated kernel-resident bytes currently bounded by this tracker (Inserted pages × OS page size).</summary>
+    public long ResidentBytes => Volatile.Read(ref _residentPages) * _pageBytes;
 
     public int Count
     {
@@ -121,6 +130,8 @@ public sealed unsafe class PageResidencyTracker : IDisposable
             _meta = null;
             _setCount = 0;
             _setMask = 0;
+            _metadataBytes = 0;
+            _pageBytes = 0;
             return;
         }
 
@@ -135,6 +146,10 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         nuint metaBytes = (nuint)_setCount * sizeof(int);
         _meta = (int*)NativeMemory.AlignedAlloc(metaBytes, CacheLineBytes);
         NativeMemory.Clear(_meta, metaBytes);
+
+        _metadataBytes = (long)(slotBytes + metaBytes);
+        _pageBytes = Environment.SystemPageSize;
+        GC.AddMemoryPressure(_metadataBytes);
     }
 
     /// <summary>
@@ -200,6 +215,9 @@ public sealed unsafe class PageResidencyTracker : IDisposable
                 if (setBase[w] == 0L)
                 {
                     Volatile.Write(ref setBase[w], key | RefBit);
+                    long resident = Interlocked.Increment(ref _residentPages);
+                    Debug.Assert(resident <= MaxCapacity, "_residentPages exceeds MaxCapacity");
+                    GC.AddMemoryPressure(_pageBytes);
                     return TouchOutcome.Inserted;
                 }
             }
@@ -300,17 +318,6 @@ public sealed unsafe class PageResidencyTracker : IDisposable
         return false;
     }
 
-    public void Clear()
-    {
-        if (_setCount == 0) return;
-        long* end = _slots + ((nint)_setCount << WayShift);
-        for (long* p = _slots; p < end; p++)
-            Volatile.Write(ref *p, 0L);
-        int* metaEnd = _meta + _setCount;
-        for (int* p = _meta; p < metaEnd; p++)
-            Volatile.Write(ref *p, 0);
-    }
-
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -324,6 +331,11 @@ public sealed unsafe class PageResidencyTracker : IDisposable
             NativeMemory.AlignedFree(_meta);
             _meta = null;
         }
+        long residual = Interlocked.Exchange(ref _residentPages, 0);
+        if (residual > 0)
+            GC.RemoveMemoryPressure(residual * _pageBytes);
+        if (_metadataBytes > 0)
+            GC.RemoveMemoryPressure(_metadataBytes);
         GC.SuppressFinalize(this);
     }
 

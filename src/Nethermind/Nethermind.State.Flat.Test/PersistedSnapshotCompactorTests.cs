@@ -161,9 +161,6 @@ public class PersistedSnapshotCompactorTests
                 prev = next;
             }
 
-            // Tracker may carry residency from setup writes' lookups (none on writes, but be
-            // defensive). Clear it so the count after compaction is attributable to the warm-up.
-            compactedTracker.Clear();
             Assert.That(compactedTracker.Count, Is.Zero);
 
             compactor.DoCompactSnapshot(prev);

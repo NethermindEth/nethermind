@@ -228,21 +228,55 @@ public class PageResidencyTrackerTests
     }
 
     [Test]
-    public void Clear_RemovesAllEntries()
+    public void GcMemoryPressure_AccountsForMetadataAndResidentPages()
     {
-        RecordingHandler handler = new();
-        PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
-        Touch(tracker, 0, 0, handler);
-        Touch(tracker, 0, 1, handler);
-        Touch(tracker, 0, 2, handler);
+        long pageSize = Environment.SystemPageSize;
 
-        tracker.Clear();
-        tracker.Count.Should().Be(0);
-        tracker.ContainsPage(0, 0).Should().BeFalse();
-        tracker.ContainsPage(0, 1).Should().BeFalse();
-        tracker.ContainsPage(0, 2).Should().BeFalse();
-        // Clear must not invoke the eviction handler — pages dropped wholesale, not displaced.
-        handler.Evictions.Should().BeEmpty();
+        // Disabled tracker reports no metadata and no residency.
+        using (PageResidencyTracker disabled = new(maxCapacity: 0))
+        {
+            disabled.MetadataBytes.Should().Be(0);
+            disabled.ResidentBytes.Should().Be(0);
+            disabled.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Hit);
+            disabled.ResidentBytes.Should().Be(0);
+        }
+
+        PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
+        tracker.MetadataBytes.Should().BeGreaterThan(0);
+        tracker.ResidentBytes.Should().Be(0);
+
+        // Inserted: +1 page.
+        tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Inserted);
+        tracker.ResidentBytes.Should().Be(pageSize);
+
+        // Hit: unchanged.
+        tracker.TryTouch(0, 0, out _, out _).Should().Be(TouchOutcome.Hit);
+        tracker.ResidentBytes.Should().Be(pageSize);
+
+        // Fill the rest of the set.
+        for (int i = 1; i < Ways; i++)
+            tracker.TryTouch(0, i, out _, out _).Should().Be(TouchOutcome.Inserted);
+        tracker.ResidentBytes.Should().Be((long)Ways * pageSize);
+
+        // Eviction: net zero (one in, one out).
+        tracker.TryTouch(0, Ways, out _, out _).Should().Be(TouchOutcome.Evicted);
+        tracker.ResidentBytes.Should().Be((long)Ways * pageSize);
+
+        // Bounds invariant: continued streaming inserts never exceed the capacity ceiling.
+        for (int i = Ways + 1; i < 4 * Ways; i++)
+            tracker.TryTouch(0, i, out _, out _);
+        tracker.ResidentBytes.Should().BeLessOrEqualTo((long)tracker.MaxCapacity * pageSize);
+
+        // Forget intentionally does NOT decrement the counter — residency reflects only
+        // bulk-cleared state, not slot-level removals.
+        long beforeForget = tracker.ResidentBytes;
+        tracker.Forget(0, 4 * Ways - 1);
+        tracker.ResidentBytes.Should().Be(beforeForget);
+
+        // Dispose settles the residual back to zero (cannot observe GC pressure directly,
+        // but the dispose path must not throw and must be idempotent).
+        tracker.Dispose();
+        tracker.Dispose();
     }
 
     private static ArenaReservation MakeReservation(IArenaManager manager, int arenaId, long offset, long size, string tag = "test") =>
@@ -343,7 +377,7 @@ public class PageResidencyTrackerTests
             tracker.Count.Should().Be(1);
             tracker.ContainsPage(0, 0).Should().BeTrue();
 
-            tracker.Clear();
+            tracker.Forget(0, 0);
             for (int i = 1; i < 100; i++)
                 reader.TryRead(i, b).Should().BeTrue();
             tracker.Count.Should().Be(0, "memo must skip Touch for repeated reads on the same page");
@@ -353,7 +387,7 @@ public class PageResidencyTrackerTests
             tracker.Count.Should().Be(1);
             tracker.ContainsPage(0, 1).Should().BeTrue();
 
-            tracker.Clear();
+            tracker.Forget(0, 1);
             reader.TryRead(pageSize + 4, b).Should().BeTrue();
             tracker.Count.Should().Be(0, "memo holds across reads still on page 1");
         }
