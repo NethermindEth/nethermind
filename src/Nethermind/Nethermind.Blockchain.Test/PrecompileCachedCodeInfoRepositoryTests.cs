@@ -51,7 +51,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
@@ -81,7 +81,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert
@@ -107,7 +107,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         // Assert
@@ -136,7 +136,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
@@ -171,7 +171,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
@@ -205,7 +205,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
         // Act - pass null cache
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, null);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, null);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Assert - precompile should not be wrapped
@@ -231,7 +231,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
 
         // Assert - Sha256Precompile should be wrapped (unlike IdentityPrecompile)
@@ -264,7 +264,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         }.ToFrozenSet());
 
         // Act
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo sha256CodeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
         CodeInfo identityCodeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
@@ -296,7 +296,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input1 = [1, 2, 3];
@@ -335,7 +335,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input = [1, 2, 3];
@@ -369,7 +369,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(Sha256Precompile.Address);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(Sha256Precompile.Address, false, spec, out _);
 
         byte[] input = [1, 2, 3, 4, 5];
@@ -402,7 +402,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(IdentityPrecompile.Address);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(IdentityPrecompile.Address, false, spec, out _);
 
         byte[] input = [1, 2, 3, 4, 5];
@@ -439,7 +439,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         // Same first 4 bytes, different suffixes — both calls should map to the same cache key.
@@ -477,7 +477,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
 
         IReleaseSpec spec = CreateSpecWithPrecompile(precompileAddress);
 
-        PrecompileCachedCodeInfoRepository repository = new(precompileProvider, baseRepository, cache);
+        PrecompileCachedCodeInfoRepository repository = new(Substitute.For<IWorldState>(), precompileProvider, baseRepository, cache);
         CodeInfo codeInfo = repository.GetCachedCodeInfo(precompileAddress, false, spec, out _);
 
         byte[] input1 = [1, 2, 3];          // length 3, not 4
