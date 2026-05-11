@@ -18,6 +18,7 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -593,6 +594,7 @@ internal static class TestRpcBlockchainExt
             blockchain.ProtocolsManager,
             blockchain.ForkInfo,
             new BlocksConfig().SecondsPerSlot,
-            sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper
+            sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper,
+            new HeadBlockSignal(blockchain.BlockTree)
         ));
 }
