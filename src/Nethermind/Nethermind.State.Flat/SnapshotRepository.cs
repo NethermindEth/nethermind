@@ -51,10 +51,13 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
             {
                 (StateId current, bool currentPersisted, int parentIdx) = queue.Dequeue();
 
-                // Expand up to 4 edges from `current` (compacted/base × in-memory/persisted).
-                // When already on a persisted path, skip in-memory edges (offset by 2).
+                // Expand up to 6 edges from `current` (in-memory compacted/base, then
+                // persisted large compacted/base, then persisted small compacted/base).
+                // Large is probed before small because its ranges are longer, which
+                // shortens the assembled path. When already on a persisted path, skip
+                // in-memory edges (offset by 2).
                 int edgeStart = currentPersisted ? 2 : 0;
-                for (int e = edgeStart; e < 4; e++)
+                for (int e = edgeStart; e < 6; e++)
                 {
                     IDisposable? snapshot;
                     StateId from;
@@ -69,14 +72,21 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
                             if (!TryLeaseState(current, out Snapshot? sb)) continue;
                             snapshot = sb; from = sb.From;
                             break;
-                        case 2: // persisted compacted — probe large first (longer ranges), then small.
-                            if (!_largePersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)
-                                && !_smallPersisted.TryLeaseCompactedSnapshotTo(current, out pc)) continue;
-                            snapshot = pc; from = pc.From;
+                        case 2: // persisted compacted (large tier)
+                            if (!_largePersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcL)) continue;
+                            snapshot = pcL; from = pcL.From;
                             break;
-                        case 3: // persisted base — only the small repo holds these.
-                            if (!_smallPersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
-                            snapshot = pb; from = pb.From;
+                        case 3: // persisted base (large tier — boundary CompactSize snapshots)
+                            if (!_largePersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pbL)) continue;
+                            snapshot = pbL; from = pbL.From;
+                            break;
+                        case 4: // persisted compacted (small tier)
+                            if (!_smallPersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pcS)) continue;
+                            snapshot = pcS; from = pcS.From;
+                            break;
+                        case 5: // persisted base (small tier — sub-CompactSize)
+                            if (!_smallPersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pbS)) continue;
+                            snapshot = pbS; from = pbS.From;
                             break;
                         default: continue;
                     }
@@ -334,7 +344,9 @@ public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotR
     public bool HasState(in StateId stateId)
     {
         if (_snapshots.ContainsKey(stateId)) return true;
-        // Base snapshots only live in the small repo, but be defensive.
+        // Base snapshots can live in either tier: small holds sub-CompactSize bases,
+        // large holds boundary CompactSize bases written directly by PersistenceManager.
+        if (_largePersisted.HasBaseSnapshot(stateId)) return true;
         if (_smallPersisted.HasBaseSnapshot(stateId)) return true;
         return false;
     }
