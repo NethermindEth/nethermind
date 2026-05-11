@@ -88,8 +88,8 @@ public sealed class ZkGasTxTracer : TxTracer
             // Resolution happens in one of three places:
             //  1. ReportAction (success path, CALL or CREATE) → _deferredSpawned = true
             //  2. ReportOperationError (instruction error path)  → _deferredErrored = true
-            //  3. Otherwise (CREATE/CREATE2 post-trace bail: EIP-7610 collision,
-            //     dead-account-clear) → treated as spawned at flush time.
+            //  3. Otherwise (CREATE/CREATE2 post-trace bail on EIP-7610 collision)
+            //     → treated as spawned at flush time.
             _hasDeferredStep = true;
             _deferredOpcode = _currentOpcode;
             _deferredGasDelta = rawGas;
@@ -231,7 +231,7 @@ public sealed class ZkGasTxTracer : TxTracer
     /// Charge selection:
     ///  - <c>_deferredSpawned</c> set by ReportAction (child frame dispatched) → spawn estimate.
     ///  - Else if CREATE/CREATE2 reached ReportOperationRemainingGas without erroring,
-    ///    it must have been a post-trace bail (EIP-7610 collision, dead-account-clear);
+    ///    it must have been a post-trace bail (EIP-7610 collision);
     ///    REVM treats this as spawned too → spawn estimate.
     ///  - Otherwise (CALL-family with no dispatch, or any spawn op that errored mid-flight)
     ///    → measured raw gas delta.
