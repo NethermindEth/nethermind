@@ -68,39 +68,47 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric,
-                ctx.Resolve<IPersistedSnapshotRepository>()))
+                ctx.Resolve<PersistedSnapshotRepositories>()))
             .AddSingleton<IResourcePool, ResourcePool>()
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
-            // Each arena owns its own page residency tracker (sized by a per-arena byte budget),
-            // its own eviction ring, and its own background drain task. The shared-tracker
-            // arrangement that preceded this commit is gone.
-            .AddSingleton<IArenaManager>((ctx) =>
+            // Each (ArenaManager, BlobArenaManager, BlobArenaCatalog, PersistedSnapshotRepository,
+            // PersistedSnapshotCompactor) set is built per tier in a single factory so both the
+            // repo and the compactor share the same ArenaManager instance. Tiers are
+            // independent — small and large each own their own catalogs and file pools;
+            // snapshots only resolve NodeRefs through their own repo's blob manager.
+            .AddSingleton<PerTierState>((ctx) =>
             {
                 IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
+                ILogManager logManager = ctx.Resolve<ILogManager>();
                 string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                // The on-disk subdirectory name "arenas/compacted" predates the
-                // Compacted→Large rename and stays put so existing data dirs keep working.
-                return new ArenaManager(Path.Combine(basePath, "arenas", "compacted"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
-            })
-            .AddSingleton<IPersistedSnapshotRepository>((ctx) =>
-            {
-                IFlatDbConfig cfg = ctx.Resolve<IFlatDbConfig>();
-                string basePath = Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, "persisted_snapshots");
-                // Small pool lives at "arenas/" (legacy name from when it was the base arena).
-                ArenaManager smallArena = new(Path.Combine(basePath, "arenas"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
-                IArenaManager largeArena = ctx.Resolve<IArenaManager>();
                 IColumnsDb<FlatDbColumns> columns = ctx.Resolve<IColumnsDb<FlatDbColumns>>();
-                BlobArenaCatalog blobArenaCatalog = new(columns.GetColumnDb(FlatDbColumns.BlobArenaCatalog));
-                BlobArenaManager smallBlobs = new(Path.Combine(basePath, "blobs", "small"), cfg.ArenaFileSizeBytes, blobArenaCatalog, BlobArenaPool.Small);
-                BlobArenaManager largeBlobs = new(Path.Combine(basePath, "blobs", "large"), cfg.ArenaFileSizeBytes, blobArenaCatalog, BlobArenaPool.Large);
-                IDb catalogDb = columns.GetColumnDb(FlatDbColumns.PersistedSnapshotCatalog);
-                PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobArenaCatalog, catalogDb, cfg);
-                repo.LoadFromCatalog();
-                return repo;
+
+                // Small tier — "arenas/" on disk is the legacy name from when it held the base arena.
+                ArenaManager smallArena = new(Path.Combine(basePath, "arenas"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
+                BlobArenaCatalog smallBlobCatalog = new(columns.GetColumnDb(FlatDbColumns.SmallBlobArenaCatalog));
+                BlobArenaManager smallBlobs = new(Path.Combine(basePath, "blobs", "small"), cfg.ArenaFileSizeBytes, smallBlobCatalog, ArenaReservationTags.BlobSmall);
+                IDb smallCatalogDb = columns.GetColumnDb(FlatDbColumns.SmallPersistedSnapshotCatalog);
+                PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallBlobCatalog, smallCatalogDb, cfg);
+                PersistedSnapshotCompactor smallCompactor = new(smallRepo, smallArena, cfg, logManager, PersistedSnapshotCompactor.Mode.Small);
+
+                // Large tier — "arenas/compacted/" predates the Compacted→Large rename.
+                ArenaManager largeArena = new(Path.Combine(basePath, "arenas", "compacted"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
+                BlobArenaCatalog largeBlobCatalog = new(columns.GetColumnDb(FlatDbColumns.LargeBlobArenaCatalog));
+                BlobArenaManager largeBlobs = new(Path.Combine(basePath, "blobs", "large"), cfg.ArenaFileSizeBytes, largeBlobCatalog, ArenaReservationTags.BlobLarge);
+                IDb largeCatalogDb = columns.GetColumnDb(FlatDbColumns.LargePersistedSnapshotCatalog);
+                PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeBlobCatalog, largeCatalogDb, cfg);
+                PersistedSnapshotCompactor largeCompactor = new(largeRepo, largeArena, cfg, logManager, PersistedSnapshotCompactor.Mode.Large);
+
+                smallRepo.LoadFromCatalog();
+                largeRepo.LoadFromCatalog();
+                return new PerTierState(
+                    new PersistedSnapshotRepositories(smallRepo, largeRepo),
+                    new PersistedSnapshotCompactors(smallCompactor, largeCompactor));
             })
-            .AddSingleton<IPersistedSnapshotCompactor, PersistedSnapshotCompactor>()
+            .AddSingleton<PersistedSnapshotRepositories>((ctx) => ctx.Resolve<PerTierState>().Repositories)
+            .AddSingleton<PersistedSnapshotCompactors>((ctx) => ctx.Resolve<PerTierState>().Compactors)
             .AddSingleton<ISnapshotRepository, SnapshotRepository>()
             .AddSingleton<ITrieWarmer>(flatDbConfig.TrieWarmerWorkerCount == 0
                 ? _ => new NoopTrieWarmer()

@@ -48,7 +48,7 @@ public class PersistenceManagerTests
 
         _resourcePool = new ResourcePool(_config);
         _finalizedStateProvider = new TestFinalizedStateProvider();
-        _snapshotRepository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
+        _snapshotRepository = new SnapshotRepository(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
@@ -65,8 +65,8 @@ public class PersistenceManagerTests
             _persistence,
             _snapshotRepository,
             LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _persistedSnapshotRepository);
+            new PersistedSnapshotCompactors(_persistedSnapshotCompactor, _persistedSnapshotCompactor),
+            new PersistedSnapshotRepositories(_persistedSnapshotRepository, _persistedSnapshotRepository));
     }
 
     [TearDown]
@@ -223,7 +223,7 @@ public class PersistenceManagerTests
         StateId target = CreateStateId(16);
         using ArenaWriter emptyWriter = _memArena.CreateWriter(0, ArenaReservationTags.Test);
         (_, ArenaReservation emptyRes) = emptyWriter.Complete();
-        PersistedSnapshot persisted = new(1, Block0, target, emptyRes, NullBlobArenaManager.Instance, NullBlobArenaManager.Instance);
+        PersistedSnapshot persisted = new(1, Block0, target, emptyRes, NullBlobArenaManager.Instance);
         _persistedSnapshotRepository.TryLeasePersistableCompactedSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
             .Returns(x => { x[1] = persisted; return true; });
 

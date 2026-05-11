@@ -55,11 +55,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private const int AddressBoundCacheSets = 8;
 
     private readonly ArenaReservation _reservation;
-    // Two blob managers — a snapshot's referenced blob arena ids can come from either
-    // tier (e.g. a compacted snapshot inherits ids from small-tier base inputs). We
-    // probe small first, fall through to large.
-    private readonly IBlobArenaManager _smallBlobs;
-    private readonly IBlobArenaManager _largeBlobs;
+    // Single blob manager — every snapshot lives in one repo (small or large) and its
+    // NodeRefs resolve exclusively through that repo's blob manager. Cross-tier
+    // references are impossible by construction.
+    private readonly IBlobArenaManager _blobs;
     private readonly int[] _referencedBlobArenaIds;
     private readonly SeqlockValueCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheSets);
 
@@ -88,44 +87,35 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal ArenaByteReader CreateReader() => _reservation.CreateReader();
 
     public PersistedSnapshot(int id, StateId from, StateId to, ArenaReservation reservation,
-        IBlobArenaManager smallBlobs, IBlobArenaManager largeBlobs, int[]? referencedBlobArenaIds = null)
+        IBlobArenaManager blobs, int[]? referencedBlobArenaIds = null)
     {
         Id = id;
         From = from;
         To = to;
         _reservation = reservation;
-        _smallBlobs = smallBlobs;
-        _largeBlobs = largeBlobs;
+        _blobs = blobs;
         _referencedBlobArenaIds = referencedBlobArenaIds ?? [];
 
         _reservation.AcquireLease();
-        // Acquire blob arena leases up-front. If any id is unknown to both managers,
+        // Acquire blob arena leases up-front. If any id is unknown to the manager,
         // release what we've already taken before bubbling out.
         int acquired = 0;
         try
         {
             foreach (int blobId in _referencedBlobArenaIds)
             {
-                if (!_smallBlobs.TryAcquireBlobArena(blobId) && !_largeBlobs.TryAcquireBlobArena(blobId))
-                    throw new InvalidOperationException($"Blob arena {blobId} referenced by snapshot {id} not registered in either tier");
+                if (!_blobs.TryAcquireBlobArena(blobId))
+                    throw new InvalidOperationException($"Blob arena {blobId} referenced by snapshot {id} not registered in this tier");
                 acquired++;
             }
         }
         catch
         {
             for (int i = 0; i < acquired; i++)
-                ReleaseBlobArena(_referencedBlobArenaIds[i]);
+                _blobs.ReleaseBlobArena(_referencedBlobArenaIds[i]);
             _reservation.Dispose();
             throw;
         }
-    }
-
-    private void ReleaseBlobArena(int blobArenaId)
-    {
-        // ReleaseBlobArena is idempotent on unknown ids in both managers, so call on
-        // both — only the owning one does work.
-        _smallBlobs.ReleaseBlobArena(blobArenaId);
-        _largeBlobs.ReleaseBlobArena(blobArenaId);
     }
 
     /// <summary>
@@ -253,9 +243,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         try
         {
             Span<byte> buf = rented.AsSpan(0, MaxTrieNodeRlpBytes);
-            int bytesRead = _smallBlobs.RandomRead(blobArenaId, offset, buf);
-            if (bytesRead == 0)
-                bytesRead = _largeBlobs.RandomRead(blobArenaId, offset, buf);
+            int bytesRead = _blobs.RandomRead(blobArenaId, offset, buf);
             Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
             int totalLength = ctx.PeekNextRlpLength();
             byte[] result = new byte[totalLength];
@@ -276,6 +264,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     {
         _reservation.Dispose();
         foreach (int blobId in _referencedBlobArenaIds)
-            ReleaseBlobArena(blobId);
+            _blobs.ReleaseBlobArena(blobId);
     }
 }

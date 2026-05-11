@@ -38,15 +38,13 @@ public class PersistenceManagerPersistedTests
     public void ConvertToPersistedSnapshot_PersistsViaManager()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using BlobArenaCatalog blobCatalog = new(new MemDb());
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-        using BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, largeArena, config, LimboLogs.Instance);
+        _ = new PersistedSnapshotCompactor(repo, smallArena, config, LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Small);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
@@ -66,15 +64,13 @@ public class PersistenceManagerPersistedTests
     public void PrunePersistedSnapshots_RemovesOldSnapshots()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using BlobArenaCatalog blobCatalog = new(new MemDb());
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-        using BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         IFlatDbConfig config = new FlatDbConfig();
-        _ = new PersistedSnapshotCompactor(repo, largeArena, config, LimboLogs.Instance);
+        _ = new PersistedSnapshotCompactor(repo, smallArena, config, LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Small);
 
         // Persist snapshots at various block heights
         StateId s0 = new(0, Keccak.EmptyTreeHash);

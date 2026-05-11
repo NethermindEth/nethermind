@@ -28,7 +28,7 @@ public class SnapshotCompactorTests
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _snapshotRepository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
+        _snapshotRepository = new SnapshotRepository(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
         _compactor = new SnapshotCompactor(_config, _resourcePool, _snapshotRepository, LimboLogs.Instance);
     }
 
@@ -421,7 +421,7 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_BelowMinCompactSize_ReturnsEmpty(long blockNumber)
     {
         FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 4 };
-        SnapshotRepository repo = new(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
+        SnapshotRepository repo = new(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
         SnapshotCompactor compactor = new(config, _resourcePool, repo, LimboLogs.Instance);
 
         for (long i = 0; i < blockNumber; i++)
@@ -518,7 +518,7 @@ public class SnapshotCompactorTests
     public void GetSnapshotsToCompact_MinCompactSize2_AllowsSize2Compaction()
     {
         FlatDbConfig config = new() { CompactSize = 16, MinCompactSize = 2 };
-        SnapshotRepository repo = new(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
+        SnapshotRepository repo = new(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
         SnapshotCompactor compactor = new(config, _resourcePool, repo, LimboLogs.Instance);
 
         for (long i = 0; i < 2; i++)

@@ -29,8 +29,8 @@ public class PersistenceManager(
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     ILogManager logManager,
-    IPersistedSnapshotCompactor persistedSnapshotCompactor,
-    IPersistedSnapshotRepository persistedSnapshotRepository) : IPersistenceManager
+    PersistedSnapshotCompactors persistedSnapshotCompactors,
+    PersistedSnapshotRepositories persistedSnapshotRepositories) : IPersistenceManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
@@ -42,8 +42,10 @@ public class PersistenceManager(
     private readonly IPersistence _persistence = persistence;
     private readonly ISnapshotRepository _snapshotRepository = snapshotRepository;
     private readonly IFinalizedStateProvider _finalizedStateProvider = finalizedStateProvider;
-    private readonly IPersistedSnapshotCompactor _persistedSnapshotCompactor = persistedSnapshotCompactor;
-    private readonly IPersistedSnapshotRepository _persistedSnapshotRepository = persistedSnapshotRepository;
+    private readonly IPersistedSnapshotCompactor _smallCompactor = persistedSnapshotCompactors.Small;
+    private readonly IPersistedSnapshotCompactor _largeCompactor = persistedSnapshotCompactors.Large;
+    private readonly IPersistedSnapshotRepository _smallRepo = persistedSnapshotRepositories.Small;
+    private readonly IPersistedSnapshotRepository _largeRepo = persistedSnapshotRepositories.Large;
     private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = []; // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
@@ -126,8 +128,11 @@ public class PersistenceManager(
             bucket.Add(s);
         }
 
-        foreach (List<StateId> bucket in buckets.Values)
-            Parallel.ForEach(bucket, state => _persistedSnapshotCompactor.DoCompactSnapshot(state));
+        foreach (KeyValuePair<int, List<StateId>> kv in buckets)
+        {
+            IPersistedSnapshotCompactor compactor = kv.Key > _compactSize ? _largeCompactor : _smallCompactor;
+            Parallel.ForEach(kv.Value, state => compactor.DoCompactSnapshot(state));
+        }
 
         if (offloadLast)
             _boundaryCompactJobs.Writer.WriteAsync(lastState).AsTask().Wait();
@@ -141,7 +146,12 @@ public class PersistenceManager(
             {
                 try
                 {
-                    _persistedSnapshotCompactor.DoCompactSnapshot(state);
+                    // Route by the block's natural compactSize alignment. State at
+                    // alignment <= _compactSize means short-range — small compactor.
+                    long b = state.BlockNumber;
+                    int alignment = b == 0 ? 0 : (int)Math.Min(b & -b, _persistedSnapshotMaxCompactSize);
+                    IPersistedSnapshotCompactor compactor = alignment > _compactSize ? _largeCompactor : _smallCompactor;
+                    compactor.DoCompactSnapshot(state);
                 }
                 catch (Exception ex)
                 {
@@ -212,8 +222,8 @@ public class PersistenceManager(
         {
             StateId targetStateId = new(blockNumber, finalizedStateRoot);
             bool found = compactedSnapshot
-                ? _persistedSnapshotRepository.TryLeasePersistableCompactedSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
-                : _persistedSnapshotRepository.TryLeaseSnapshotTo(targetStateId, out persisted);
+                ? _largeRepo.TryLeasePersistableCompactedSnapshotTo(targetStateId, out PersistedSnapshot? persisted)
+                : _smallRepo.TryLeaseSnapshotTo(targetStateId, out persisted);
             if (found)
             {
                 if (persisted!.From == currentPersistedState)
@@ -378,7 +388,7 @@ public class PersistenceManager(
                     if (_snapshotRepository.TryLeaseState(state, out Snapshot? snapshot))
                     {
                         long sw = Stopwatch.GetTimestamp();
-                        _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(snapshot);
+                        _smallRepo.ConvertSnapshotToPersistedSnapshot(snapshot);
                         _persistedSnapshotConvertTime.WithLabels("base").Observe(Stopwatch.GetTimestamp() - sw);
                         snapshot.Dispose();
                     }
@@ -393,7 +403,7 @@ public class PersistenceManager(
                         if (compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize)
                         {
                             long sw = Stopwatch.GetTimestamp();
-                            _persistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
+                            _largeRepo.ConvertSnapshotToPersistedSnapshot(compacted, isPersistable: true);
                             _persistedSnapshotConvertTime.WithLabels("full32").Observe(Stopwatch.GetTimestamp() - sw);
                         }
                         compacted.Dispose();
@@ -410,15 +420,15 @@ public class PersistenceManager(
                 using PersistedSnapshot _ = persistedToPersist;
                 PersistPersistedSnapshot(persistedToPersist);
                 _currentPersistedStateId = persistedToPersist.To;
-                int pruned = _persistedSnapshotRepository.PruneBefore(persistedToPersist.To);
+                int pruned = _smallRepo.PruneBefore(persistedToPersist.To) + _largeRepo.PruneBefore(persistedToPersist.To);
                 if (pruned > 0)
                 {
                     Metrics.PersistedSnapshotPrunes += pruned;
-                    Metrics.PersistedSnapshotCount = _persistedSnapshotRepository.SnapshotCount;
-                    Metrics.PersistedSnapshotMemory = _persistedSnapshotRepository.BaseSnapshotMemory;
-                    Metrics.CompactedPersistedSnapshotMemory = _persistedSnapshotRepository.CompactedSnapshotMemory;
-                    Metrics.ArenaFileCount = _persistedSnapshotRepository.ArenaFileCount;
-                    Metrics.ArenaMappedBytes = _persistedSnapshotRepository.ArenaMappedBytes;
+                    Metrics.PersistedSnapshotCount = _smallRepo.SnapshotCount + _largeRepo.SnapshotCount;
+                    Metrics.PersistedSnapshotMemory = _smallRepo.BaseSnapshotMemory + _largeRepo.BaseSnapshotMemory;
+                    Metrics.CompactedPersistedSnapshotMemory = _smallRepo.CompactedSnapshotMemory + _largeRepo.CompactedSnapshotMemory;
+                    Metrics.ArenaFileCount = _smallRepo.ArenaFileCount + _largeRepo.ArenaFileCount;
+                    Metrics.ArenaMappedBytes = _smallRepo.ArenaMappedBytes + _largeRepo.ArenaMappedBytes;
                     if (_logger.IsDebug) _logger.Debug($"Pruned {pruned} persisted snapshots before block {persistedToPersist.To.BlockNumber}");
                 }
             }
@@ -597,7 +607,9 @@ public class PersistenceManager(
     private PersistedSnapshot? TryGetForcePersistedSnapshot(StateId currentPersistedState, long totalDepth)
     {
         if (totalDepth <= _longFinalityReorgDepth) return null;
-        PersistedSnapshot? oldest = _persistedSnapshotRepository.TryGetSnapshotFrom(currentPersistedState);
+        // Large tier first (longer ranges = faster catch-up); fall back to small.
+        PersistedSnapshot? oldest = _largeRepo.TryGetSnapshotFrom(currentPersistedState)
+                                    ?? _smallRepo.TryGetSnapshotFrom(currentPersistedState);
         if (oldest is not null && _logger.IsWarn)
             _logger.Warn($"Total reorg depth {totalDepth} exceeds LongFinalityReorgDepth {_longFinalityReorgDepth}. Force persisting persisted snapshot {oldest.From} -> {oldest.To}.");
         return oldest;

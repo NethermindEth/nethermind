@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using Collections.Pooled;
 using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.State.Flat.Hsst;
@@ -14,22 +13,31 @@ using Prometheus;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Manages persisted snapshots on disk with a two-layer design (base + compacted),
-/// mirroring <see cref="SnapshotRepository"/>'s pattern.
+/// Per-tier persisted-snapshot store. The codebase wires two instances:
+/// <list type="bullet">
+///   <item>Small repo: accepts snapshots whose block range
+///   <c>To - From &lt; CompactSize</c> (base in-memory snapshots persisted
+///   directly). Its compactor merges short-range snapshots within
+///   <c>&lt; CompactSize</c>; it never produces a CompactSize-sized result.</item>
+///   <item>Large repo: accepts snapshots of size exactly <c>CompactSize</c>
+///   (the in-memory compactor's output handed off via
+///   <c>ConvertSnapshotToPersistedSnapshot(snap, isPersistable: true)</c>).
+///   Its compactor merges these into 2×, 4×, ... CompactSize spans.</item>
+/// </list>
+/// Each instance owns its <c>(ArenaManager, BlobArenaManager, BlobArenaCatalog,
+/// SnapshotCatalog)</c> set. Blob arena ids are unique within a repo, not
+/// across repos; <c>PersistedSnapshot</c>s only ever resolve <c>NodeRef</c>s
+/// through their own repo's blob manager.
 /// </summary>
 public sealed class PersistedSnapshotRepository(
-    IArenaManager smallArenaManager,
-    IBlobArenaManager smallBlobArenaManager,
-    IArenaManager largeArenaManager,
-    IBlobArenaManager largeBlobArenaManager,
+    IArenaManager arenaManager,
+    IBlobArenaManager blobArenaManager,
     BlobArenaCatalog blobArenaCatalog,
     IDb catalogDb,
     IFlatDbConfig config) : IPersistedSnapshotRepository
 {
-    private readonly IArenaManager _smallArenaManager = smallArenaManager;
-    private readonly IBlobArenaManager _smallBlobArenaManager = smallBlobArenaManager;
-    private readonly IArenaManager _largeArenaManager = largeArenaManager;
-    private readonly IBlobArenaManager _largeBlobArenaManager = largeBlobArenaManager;
+    private readonly IArenaManager _arena = arenaManager;
+    private readonly IBlobArenaManager _blobs = blobArenaManager;
     private readonly BlobArenaCatalog _blobArenaCatalog = blobArenaCatalog;
     private readonly SnapshotCatalog _catalog = new(catalogDb);
     private readonly int _compactSize = config.CompactSize;
@@ -50,37 +58,30 @@ public sealed class PersistedSnapshotRepository(
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count + _persistableCompactedSnapshots.Count;
     public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
     public long CompactedSnapshotMemory => SumMemory(_compactedSnapshots) + SumMemory(_persistableCompactedSnapshots);
-    public int ArenaFileCount => _smallArenaManager.ArenaFileCount + _largeArenaManager.ArenaFileCount;
-    public long ArenaMappedBytes => _smallArenaManager.ArenaMappedBytes + _largeArenaManager.ArenaMappedBytes;
+    public int ArenaFileCount => _arena.ArenaFileCount;
+    public long ArenaMappedBytes => _arena.ArenaMappedBytes;
 
     /// <summary>
-    /// Load all persisted snapshots from catalog and arena files. Tier (small / large)
-    /// is determined by block range against <c>CompactSize</c>; the legacy
-    /// <c>PersistedSnapshotType</c> distinction is gone.
+    /// Load this tier's persisted snapshots from its catalog. Routes each
+    /// loaded snapshot into the right in-memory dictionary based on its block
+    /// range (the same band the repo is supposed to hold — entries outside
+    /// the band are anomalous and would surface during routine reads).
     /// </summary>
     public void LoadFromCatalog()
     {
         lock (_catalogLock)
         {
-            // Blob arena catalog first — rehydrates each BlobArenaManager so the
+            // Blob arena catalog first — rehydrates the BlobArenaManager so the
             // PersistedSnapshot ctor's TryAcquireBlobArena calls (driven by each
             // snapshot's ref_ids metadata) can resolve the ids.
             _blobArenaCatalog.Load();
-            _smallBlobArenaManager.Initialize(_blobArenaCatalog.Entries);
-            _largeBlobArenaManager.Initialize(_blobArenaCatalog.Entries);
+            _blobs.Initialize(_blobArenaCatalog.Entries);
 
             _catalog.Load();
-            List<SnapshotCatalog.CatalogEntry> smallEntries = [];
-            List<SnapshotCatalog.CatalogEntry> largeEntries = [];
-            foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
-            {
-                if (IsSmallRange(entry)) smallEntries.Add(entry);
-                else largeEntries.Add(entry);
-            }
-            _smallArenaManager.Initialize(smallEntries);
-            _largeArenaManager.Initialize(largeEntries);
+            List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Entries];
+            _arena.Initialize(entries);
 
-            foreach (SnapshotCatalog.CatalogEntry entry in _catalog.Entries)
+            foreach (SnapshotCatalog.CatalogEntry entry in entries)
                 LoadSnapshot(entry);
 
             _nextId = _catalog.NextId();
@@ -89,13 +90,11 @@ public sealed class PersistedSnapshotRepository(
 
     private void LoadSnapshot(SnapshotCatalog.CatalogEntry entry)
     {
-        bool isSmall = IsSmallRange(entry);
-        string tag = isSmall
+        long range = entry.To.BlockNumber - entry.From.BlockNumber;
+        string tag = range < _compactSize
             ? ArenaReservationTags.BlobBackedSmall
             : ArenaReservationTags.BlobBackedLarge;
-        IArenaManager arenaMgr = isSmall ? _smallArenaManager : _largeArenaManager;
-        IBlobArenaManager blobMgr = isSmall ? _smallBlobArenaManager : _largeBlobArenaManager;
-        ArenaReservation reservation = arenaMgr.Open(entry.Location, tag);
+        ArenaReservation reservation = _arena.Open(entry.Location, tag);
 
         // Recover the snapshot's referenced blob arena ids from its on-disk metadata.
         int[]? refIds;
@@ -105,10 +104,9 @@ public sealed class PersistedSnapshotRepository(
             refIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
         }
 
-        PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, reservation, _smallBlobArenaManager, _largeBlobArenaManager, refIds);
+        PersistedSnapshot snapshot = new(entry.Id, entry.From, entry.To, reservation, _blobs, refIds);
         RegisterBlooms(snapshot);
 
-        long range = entry.To.BlockNumber - entry.From.BlockNumber;
         if (range < _compactSize)
             _baseSnapshots[entry.To] = snapshot;
         else if (range == _compactSize)
@@ -120,18 +118,15 @@ public sealed class PersistedSnapshotRepository(
     private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "type");
 
     /// <summary>
-    /// Persist an in-memory snapshot to disk. Metadata HSST goes to the tier's
-    /// <see cref="IArenaManager"/> (small if <c>To-From &lt; CompactSize</c>, large
-    /// otherwise); trie-node RLPs are appended to a fresh <see cref="BlobArenaWriter"/>
-    /// against the tier's <see cref="IBlobArenaManager"/>. The blob arena id is
-    /// recorded in the snapshot's metadata column under <c>ref_ids</c>.
+    /// Persist an in-memory snapshot to this tier. Caller is responsible for
+    /// dispatching to the correct repo (small vs large) — this repo writes
+    /// unconditionally to its own <see cref="_arena"/> + <see cref="_blobs"/>.
+    /// <paramref name="isPersistable"/> selects the in-memory dict:
+    /// <c>true</c> → <see cref="_persistableCompactedSnapshots"/>, <c>false</c>
+    /// → <see cref="_baseSnapshots"/>.
     /// </summary>
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot, bool isPersistable = false)
     {
-        bool isSmall = (snapshot.To.BlockNumber - snapshot.From.BlockNumber) < _compactSize;
-        IArenaManager arena = isSmall ? _smallArenaManager : _largeArenaManager;
-        IBlobArenaManager blobMgr = isSmall ? _smallBlobArenaManager : _largeBlobArenaManager;
-
         BloomFilter? bloom = null;
         if (_bloomBitsPerKey > 0)
         {
@@ -149,14 +144,14 @@ public sealed class PersistedSnapshotRepository(
         }
 
         long estimatedSize = PersistedSnapshotBuilder.EstimateSize(snapshot);
-        string metaTag = isSmall ? ArenaReservationTags.BlobBackedSmall : ArenaReservationTags.BlobBackedLarge;
-        string blobTag = isSmall ? ArenaReservationTags.BlobSmall : ArenaReservationTags.BlobLarge;
+        string metaTag = isPersistable ? ArenaReservationTags.BlobBackedLarge : ArenaReservationTags.BlobBackedSmall;
+        string blobTag = isPersistable ? ArenaReservationTags.BlobLarge : ArenaReservationTags.BlobSmall;
 
         SnapshotLocation location;
         ArenaReservation reservation;
         int blobArenaId;
-        using BlobArenaWriter blobWriter = blobMgr.CreateWriter(estimatedSize, blobTag);
-        using (ArenaWriter arenaWriter = arena.CreateWriter(estimatedSize, metaTag))
+        using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize, blobTag);
+        using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize, metaTag))
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
                 snapshot, ref arenaWriter.GetWriter(), blobWriter, bloom, trieBloom);
@@ -173,7 +168,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Save();
 
             int[] referencedBlobArenaIds = [blobArenaId];
-            PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, reservation, _smallBlobArenaManager, _largeBlobArenaManager, referencedBlobArenaIds);
+            PersistedSnapshot persisted = new(id, snapshot.From, snapshot.To, reservation, _blobs, referencedBlobArenaIds);
             RegisterBlooms(persisted, bloom, trieBloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
@@ -183,14 +178,14 @@ public sealed class PersistedSnapshotRepository(
                 _baseSnapshots[snapshot.To] = persisted;
         }
 
-        // Drop freshly-written pages from the kernel page cache for both reservations —
-        // neither is on the read working set yet.
+        // Drop freshly-written pages from the kernel page cache — not on the
+        // read working set yet.
         reservation.AdviseDontNeed();
 
         // Release the writers' "creation" leases. PersistedSnapshot took its own
         // (metadata reservation + each blob arena id) via AcquireLease in the ctor.
         reservation.Dispose();
-        blobMgr.ReleaseBlobArena(blobArenaId);
+        _blobs.ReleaseBlobArena(blobArenaId);
     }
 
     /// <summary>
@@ -207,7 +202,7 @@ public sealed class PersistedSnapshotRepository(
             _catalog.Save();
 
             int[] refIds = [.. referencedBlobArenaIds];
-            PersistedSnapshot snapshot = new(id, from, to, reservation, _smallBlobArenaManager, _largeBlobArenaManager, refIds);
+            PersistedSnapshot snapshot = new(id, from, to, reservation, _blobs, refIds);
             RegisterBlooms(snapshot, bloom, trieBloom: null);
             if (isPersistable)
                 _persistableCompactedSnapshots[to] = snapshot;
@@ -435,12 +430,6 @@ public sealed class PersistedSnapshotRepository(
         _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, keyBloom, trieBloom));
     }
 
-    private bool IsPersistableSize(SnapshotCatalog.CatalogEntry entry) =>
-        entry.To.BlockNumber - entry.From.BlockNumber == _compactSize;
-
-    private bool IsSmallRange(SnapshotCatalog.CatalogEntry entry) =>
-        entry.To.BlockNumber - entry.From.BlockNumber < _compactSize;
-
     private void RemoveFromCatalog(int snapshotId)
     {
         SnapshotCatalog.CatalogEntry? entry = _catalog.Find(snapshotId);
@@ -464,10 +453,8 @@ public sealed class PersistedSnapshotRepository(
             // snapshot dispose runs MarkDead — otherwise a clean shutdown would treat
             // every still-leased snapshot as fully dead and delete the on-disk arena
             // files, wiping the catalog's data before the next session can reload it.
-            _smallArenaManager.Dispose();
-            _largeArenaManager.Dispose();
-            _smallBlobArenaManager.Dispose();
-            _largeBlobArenaManager.Dispose();
+            _arena.Dispose();
+            _blobs.Dispose();
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
                 kv.Value.Dispose();
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)

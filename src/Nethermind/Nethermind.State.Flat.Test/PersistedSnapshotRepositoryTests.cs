@@ -49,11 +49,9 @@ public class PersistedSnapshotRepositoryTests
     public void PersistSnapshot_And_Query()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using BlobArenaCatalog blobCatalog = new(new MemDb());
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-        using BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -76,11 +74,9 @@ public class PersistedSnapshotRepositoryTests
     public void NewerSnapshot_OverridesOlderValue()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using BlobArenaCatalog blobCatalog = new(new MemDb());
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-        using BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -120,11 +116,9 @@ public class PersistedSnapshotRepositoryTests
 
         // Session 1: persist a snapshot
         using (ArenaManager smallArena1 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (ArenaManager largeArena1 = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096))
         using (BlobArenaCatalog blobCatalog1 = new(blobCatalogDb))
-        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog1, BlobArenaPool.Small))
-        using (BlobArenaManager largeBlobs1 = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024, blobCatalog1, BlobArenaPool.Large))
-        using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, largeArena1, largeBlobs1, blobCatalog1, catalogDb, new FlatDbConfig()))
+        using (BlobArenaManager smallBlobs1 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog1, ArenaReservationTags.BlobSmall))
+        using (PersistedSnapshotRepository repo = new(smallArena1, smallBlobs1, blobCatalog1, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             Snapshot snap = CreateTestSnapshot(s0, s1, TestItem.AddressA);
@@ -133,11 +127,9 @@ public class PersistedSnapshotRepositoryTests
 
         // Session 2: reload from disk
         using (ArenaManager smallArena2 = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096))
-        using (ArenaManager largeArena2 = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096))
         using (BlobArenaCatalog blobCatalog2 = new(blobCatalogDb))
-        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog2, BlobArenaPool.Small))
-        using (BlobArenaManager largeBlobs2 = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024, blobCatalog2, BlobArenaPool.Large))
-        using (PersistedSnapshotRepository repo = new(smallArena2, smallBlobs2, largeArena2, largeBlobs2, blobCatalog2, catalogDb, new FlatDbConfig()))
+        using (BlobArenaManager smallBlobs2 = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog2, ArenaReservationTags.BlobSmall))
+        using (PersistedSnapshotRepository repo = new(smallArena2, smallBlobs2, blobCatalog2, catalogDb, new FlatDbConfig()))
         {
             repo.LoadFromCatalog();
             Assert.That(repo.SnapshotCount, Is.EqualTo(1));
@@ -150,11 +142,9 @@ public class PersistedSnapshotRepositoryTests
     public void PruneBefore_RemovesOldSnapshots()
     {
         using ArenaManager smallArena = new(Path.Combine(_testDir, "arenas", "base"), 0, maxArenaSize: 4096);
-        using ArenaManager largeArena = new(Path.Combine(_testDir, "arenas", "compacted"), 0, maxArenaSize: 4096);
         using BlobArenaCatalog blobCatalog = new(new MemDb());
-        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-        using BlobArenaManager largeBlobs = new(Path.Combine(_testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+        using BlobArenaManager smallBlobs = new(Path.Combine(_testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+        using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
         repo.LoadFromCatalog();
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);

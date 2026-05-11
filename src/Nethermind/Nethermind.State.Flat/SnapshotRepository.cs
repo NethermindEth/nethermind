@@ -12,9 +12,11 @@ using Nethermind.State.Flat.PersistedSnapshots;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRepository, ILogManager logManager) : ISnapshotRepository
+public class SnapshotRepository(PersistedSnapshotRepositories persistedSnapshotRepositories, ILogManager logManager) : ISnapshotRepository
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotRepository>();
+    private readonly IPersistedSnapshotRepository _smallPersisted = persistedSnapshotRepositories.Small;
+    private readonly IPersistedSnapshotRepository _largePersisted = persistedSnapshotRepositories.Large;
 
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
@@ -67,12 +69,13 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
                             if (!TryLeaseState(current, out Snapshot? sb)) continue;
                             snapshot = sb; from = sb.From;
                             break;
-                        case 2: // persisted compacted
-                            if (!persistedSnapshotRepository.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)) continue;
+                        case 2: // persisted compacted — probe large first (longer ranges), then small.
+                            if (!_largePersisted.TryLeaseCompactedSnapshotTo(current, out PersistedSnapshot? pc)
+                                && !_smallPersisted.TryLeaseCompactedSnapshotTo(current, out pc)) continue;
                             snapshot = pc; from = pc.From;
                             break;
-                        case 3: // persisted base
-                            if (!persistedSnapshotRepository.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
+                        case 3: // persisted base — only the small repo holds these.
+                            if (!_smallPersisted.TryLeaseSnapshotTo(current, out PersistedSnapshot? pb)) continue;
                             snapshot = pb; from = pb.From;
                             break;
                         default: continue;
@@ -331,7 +334,8 @@ public class SnapshotRepository(IPersistedSnapshotRepository persistedSnapshotRe
     public bool HasState(in StateId stateId)
     {
         if (_snapshots.ContainsKey(stateId)) return true;
-        if (persistedSnapshotRepository.HasBaseSnapshot(stateId)) return true;
+        // Base snapshots only live in the small repo, but be defensive.
+        if (_smallPersisted.HasBaseSnapshot(stateId)) return true;
         return false;
     }
 

@@ -41,7 +41,7 @@ public class PersistedSnapshotCompactorTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, NullBlobArenaManager.Instance, NullBlobArenaManager.Instance);
+        return new PersistedSnapshot(id, from, to, reservation, NullBlobArenaManager.Instance);
     }
 
     [Test]
@@ -52,17 +52,15 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using ArenaManager largeArena = new(Path.Combine(testDir, "arenas", "compacted"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-            using BlobArenaManager largeBlobs = new(Path.Combine(testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 
             // CompactSize=4, MinCompactSize=2. Use 8 blocks so compactSize = 8 & -8 = 8 > CompactSize=4, triggering compaction.
             // (compactSize == _compactSize is now skipped since persistable snapshots are produced by PersistenceManager)
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
-            PersistedSnapshotCompactor compactor = new(repo, largeArena, config, Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
 
             StateId s0 = new(0, Keccak.EmptyTreeHash);
             StateId s1 = new(1, Keccak.Compute("1"));
@@ -142,20 +140,18 @@ public class PersistedSnapshotCompactorTests
             // WarmAddressIndex registers after AdviseDontNeed. Budget = 1024 OS pages so the
             // tracker materialises at the expected capacity regardless of system page size.
             long largeBudget = 1024L * Environment.SystemPageSize;
-            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), pageCacheBytes: 0, maxArenaSize: 64 * 1024);
-            using ArenaManager largeArena = new(Path.Combine(testDir, "arenas", "compacted"), pageCacheBytes: largeBudget, maxArenaSize: 64 * 1024);
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), pageCacheBytes: largeBudget, maxArenaSize: 64 * 1024);
             using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-            using BlobArenaManager largeBlobs = new(Path.Combine(testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-            PageResidencyTracker largeTracker = largeArena.PageTracker;
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            PageResidencyTracker largeTracker = smallArena.PageTracker;
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 
             // Validation off so the post-compaction validate path doesn't itself populate the
             // tracker via reads. Then any non-zero tracker count after DoCompactSnapshot must
             // come from WarmAddressIndex.
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2, ValidatePersistedSnapshot = false };
-            PersistedSnapshotCompactor compactor = new(repo, largeArena, config, Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
 
             StateId prev = new(0, Keccak.EmptyTreeHash);
             for (int i = 1; i <= 8; i++)
@@ -403,16 +399,14 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using ArenaManager largeArena = new(Path.Combine(testDir, "arenas", "compacted"), 0, maxArenaSize: 64 * 1024);
             using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, BlobArenaPool.Small);
-            using BlobArenaManager largeBlobs = new(Path.Combine(testDir, "blobs", "large"), 1024 * 1024, blobCatalog, BlobArenaPool.Large);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, largeArena, largeBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig());
             repo.LoadFromCatalog();
 
             // compactSize=1 keeps the loop running for sizes 2, 4, 8 (all > 1).
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 1, MinCompactSize = 2, PersistedSnapshotMaxCompactSize = 8 };
-            PersistedSnapshotCompactor compactor = new(repo, largeArena, config, Nethermind.Logging.LimboLogs.Instance);
+            PersistedSnapshotCompactor compactor = new(repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, PersistedSnapshotCompactor.Mode.Large);
 
             StateId[] states = new StateId[9];
             states[0] = new StateId(0, Keccak.EmptyTreeHash);

@@ -38,7 +38,7 @@ public class PersistedSnapshotTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, NullBlobArenaManager.Instance, NullBlobArenaManager.Instance);
+        return new PersistedSnapshot(id, from, to, reservation, NullBlobArenaManager.Instance);
     }
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()

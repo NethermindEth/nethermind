@@ -11,13 +11,10 @@ namespace Nethermind.State.Flat.Storage;
 /// BlobArenaManager blobs)</c> together backs one tier (Small or Large).
 ///
 /// <para>
-/// A <c>BlobArenaId</c> is assigned per writer-completion. Ids are globally
-/// unique across both tiers because the underlying
-/// <see cref="BlobArenaCatalog"/> is shared. The catalog also persists each
-/// reservation's location so the in-memory <see cref="_reservations"/> map
-/// can be rehydrated via <see cref="Initialize"/> on startup, independent
-/// of any individual snapshot's catalog entry — snapshots link to blob
-/// arenas, they don't own them.
+/// One <see cref="BlobArenaCatalog"/> per manager (one per tier). Ids are
+/// unique within a catalog, not across tiers. A <see cref="NodeRef"/> in a
+/// snapshot's metadata is resolved through its owning repo's
+/// <c>BlobArenaManager</c>; nothing tries to cross tiers.
 /// </para>
 ///
 /// <para>
@@ -36,7 +33,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
 {
     private readonly IArenaManager _files;
     private readonly BlobArenaCatalog _catalog;
-    private readonly BlobArenaPool _pool;
+    private readonly string _reservationTag;
     private readonly bool _ownsFiles;
     private readonly Lock _lock = new();
     private readonly Dictionary<int, ArenaReservation> _reservations = [];
@@ -46,12 +43,16 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// <summary>
     /// Production constructor: BlobArenaManager owns its own file pool. The
     /// internal arena manager is disposed when this manager is disposed.
+    /// <paramref name="reservationTag"/> is the <see cref="ArenaReservation.Tag"/>
+    /// applied to every reservation this manager opens (e.g.
+    /// <see cref="ArenaReservationTags.BlobSmall"/> or
+    /// <see cref="ArenaReservationTags.BlobLarge"/>).
     /// </summary>
-    public BlobArenaManager(string basePath, long maxFileSize, BlobArenaCatalog catalog, BlobArenaPool pool)
+    public BlobArenaManager(string basePath, long maxFileSize, BlobArenaCatalog catalog, string reservationTag)
     {
         _files = new ArenaManager(basePath, pageCacheBytes: 0, maxArenaSize: maxFileSize);
         _catalog = catalog;
-        _pool = pool;
+        _reservationTag = reservationTag;
         _ownsFiles = true;
     }
 
@@ -61,47 +62,42 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// so blob arenas don't touch disk. The caller owns disposal of the
     /// supplied manager.
     /// </summary>
-    public BlobArenaManager(IArenaManager files, BlobArenaCatalog catalog, BlobArenaPool pool)
+    public BlobArenaManager(IArenaManager files, BlobArenaCatalog catalog, string reservationTag)
     {
         _files = files;
         _catalog = catalog;
-        _pool = pool;
+        _reservationTag = reservationTag;
         _ownsFiles = false;
     }
 
-    public BlobArenaPool Pool => _pool;
     public int BlobArenaFileCount => _files.ArenaFileCount;
     public long BlobArenaMappedBytes => _files.ArenaMappedBytes;
 
     /// <summary>
-    /// Rehydrate the in-memory reservation map from <paramref name="allEntries"/>,
-    /// keeping only the entries for this manager's pool. Must be called before
-    /// any <c>PersistedSnapshot</c> is constructed so <see cref="TryAcquireBlobArena"/>
-    /// can resolve the ids stored in their <c>ref_ids</c> metadata.
+    /// Rehydrate the in-memory reservation map from the catalog's entries.
+    /// Must be called before any <c>PersistedSnapshot</c> is constructed so
+    /// <see cref="TryAcquireBlobArena"/> can resolve ids stored in their
+    /// <c>ref_ids</c> metadata.
     /// </summary>
-    public void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> allEntries)
+    public void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> entries)
     {
-        string tag = _pool == BlobArenaPool.Small ? ArenaReservationTags.BlobSmall : ArenaReservationTags.BlobLarge;
-
         // Build the location list for the underlying ArenaManager.Initialize
         // (it only uses Location off SnapshotCatalog.CatalogEntry, so synthetic
         // From/To is fine).
-        List<SnapshotCatalog.CatalogEntry> myLocations = [];
-        for (int i = 0; i < allEntries.Count; i++)
+        List<SnapshotCatalog.CatalogEntry> locations = new(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
         {
-            if (allEntries[i].Pool != _pool) continue;
-            myLocations.Add(new SnapshotCatalog.CatalogEntry(
-                allEntries[i].BlobArenaId, default, default, allEntries[i].Location));
+            locations.Add(new SnapshotCatalog.CatalogEntry(
+                entries[i].BlobArenaId, default, default, entries[i].Location));
         }
-        _files.Initialize(myLocations);
+        _files.Initialize(locations);
 
         lock (_lock)
         {
-            for (int i = 0; i < allEntries.Count; i++)
+            for (int i = 0; i < entries.Count; i++)
             {
-                BlobArenaCatalog.Entry e = allEntries[i];
-                if (e.Pool != _pool) continue;
-                ArenaReservation reservation = _files.Open(e.Location, tag);
+                BlobArenaCatalog.Entry e = entries[i];
+                ArenaReservation reservation = _files.Open(e.Location, _reservationTag);
                 _reservations[e.BlobArenaId] = reservation;
                 // Reservations start with lease=1 (from Open). Track that as our
                 // initial refcount — snapshots' Acquire calls bump it; we never
@@ -199,7 +195,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
         }
         _catalog.Add(new BlobArenaCatalog.Entry(
             blobArenaId,
-            _pool,
             new SnapshotLocation(reservation.ArenaId, reservation.Offset, reservation.Size)));
     }
 

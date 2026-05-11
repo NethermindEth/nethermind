@@ -15,9 +15,18 @@ namespace Nethermind.State.Flat.Storage;
 /// individual snapshot's catalog entry.
 ///
 /// <para>
+/// One catalog instance per pool tier: the small tier has its own DB column
+/// (<c>FlatDbColumns.SmallBlobArenaCatalog</c>), the large tier likewise.
+/// Each instance only ever stores entries for its own pool, so the pool byte
+/// is not part of the on-disk layout.
+/// </para>
+///
+/// <para>
 /// Keying: 4-byte big-endian <c>blobArenaId</c>. Reserved id 0 holds metadata
-/// (<c>nextBlobArenaId:int32 LE + version:int32 LE</c>) so the global id
-/// counter is durable.
+/// (<c>nextBlobArenaId:int32 LE + version:int32 LE</c>) so the id counter is
+/// durable. Ids are unique within a catalog (i.e. within a tier), not across
+/// tiers; the owning <see cref="BlobArenaManager"/> resolves an id through
+/// its own catalog only.
 /// </para>
 ///
 /// <para>
@@ -45,14 +54,14 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
     /// </summary>
     public sealed record Entry(
         int BlobArenaId,
-        BlobArenaPool Pool,
         SnapshotLocation Location);
 
-    // Binary layout per entry: blobArenaId(4) + pool(1) + arenaId(4) + offset(8) + size(8) = 25
-    internal const int EntrySize = 25;
+    // Binary layout per entry: blobArenaId(4) + arenaId(4) + offset(8) + size(8) = 24
+    internal const int EntrySize = 24;
 
     // Catalog version: bump when the on-disk binary layout changes incompatibly.
-    internal const int CurrentVersion = 1;
+    // v2: dropped the Pool byte (each catalog now serves a single tier).
+    internal const int CurrentVersion = 2;
 
     // Reserved id 0 holds (nextBlobArenaId:int32 LE, version:int32 LE).
     private static readonly byte[] MetadataKey = new byte[4];
@@ -148,19 +157,17 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
     private static void WriteEntry(Span<byte> span, Entry entry)
     {
         BinaryPrimitives.WriteInt32LittleEndian(span, entry.BlobArenaId);
-        span[4] = (byte)entry.Pool;
-        BinaryPrimitives.WriteInt32LittleEndian(span[5..], entry.Location.ArenaId);
-        BinaryPrimitives.WriteInt64LittleEndian(span[9..], entry.Location.Offset);
-        BinaryPrimitives.WriteInt64LittleEndian(span[17..], entry.Location.Size);
+        BinaryPrimitives.WriteInt32LittleEndian(span[4..], entry.Location.ArenaId);
+        BinaryPrimitives.WriteInt64LittleEndian(span[8..], entry.Location.Offset);
+        BinaryPrimitives.WriteInt64LittleEndian(span[16..], entry.Location.Size);
     }
 
     private static Entry ReadEntry(ReadOnlySpan<byte> span)
     {
         int id = BinaryPrimitives.ReadInt32LittleEndian(span);
-        BlobArenaPool pool = (BlobArenaPool)span[4];
-        int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[5..]);
-        long offset = BinaryPrimitives.ReadInt64LittleEndian(span[9..]);
-        long size = BinaryPrimitives.ReadInt64LittleEndian(span[17..]);
-        return new Entry(id, pool, new SnapshotLocation(arenaId, offset, size));
+        int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[4..]);
+        long offset = BinaryPrimitives.ReadInt64LittleEndian(span[8..]);
+        long size = BinaryPrimitives.ReadInt64LittleEndian(span[16..]);
+        return new Entry(id, new SnapshotLocation(arenaId, offset, size));
     }
 }

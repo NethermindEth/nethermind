@@ -28,7 +28,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly ISnapshotRepository _snapshotRepository;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly IResourcePool _resourcePool;
-    private readonly IPersistedSnapshotRepository _persistedSnapshotRepository;
+    private readonly IPersistedSnapshotRepository _smallPersistedRepo;
+    private readonly IPersistedSnapshotRepository _largePersistedRepo;
 
     // Cache for assembling `ReadOnlySnapshotBundle`. Its not actually slow, but its called 1.8k per sec so caching
     // it save a decent amount of CPU.
@@ -72,14 +73,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IBlocksConfig blocksConfig,
         ILogManager logManager,
         bool enableDetailedMetrics,
-        IPersistedSnapshotRepository persistedSnapshotRepository)
+        PersistedSnapshotRepositories persistedSnapshotRepositories)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
         _snapshotRepository = snapshotRepository;
         _resourcePool = resourcePool;
         _persistenceManager = persistenceManager;
-        _persistedSnapshotRepository = persistedSnapshotRepository;
+        _smallPersistedRepo = persistedSnapshotRepositories.Small;
+        _largePersistedRepo = persistedSnapshotRepositories.Large;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
 
@@ -316,10 +318,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _snapshotBundleBlockNumberDepth.WithLabels("persisted").Observe(persistedDepth);
 
             // Lease blooms parallel to assembled.Persisted; fall back to AlwaysTrue on miss.
-            PersistedSnapshotBloomFilterManager bloomManager = _persistedSnapshotRepository.BloomManager;
+            // Bundle entries may come from either repo, so probe small first then large.
+            PersistedSnapshotBloomFilterManager smallBlooms = _smallPersistedRepo.BloomManager;
+            PersistedSnapshotBloomFilterManager largeBlooms = _largePersistedRepo.BloomManager;
             ArrayPoolList<PersistedSnapshotBloom> persistedBlooms = new(assembled.Persisted.Count);
             for (int i = 0; i < assembled.Persisted.Count; i++)
-                persistedBlooms.Add(bloomManager.LeaseOrSentinel(assembled.Persisted[i].To));
+            {
+                PersistedSnapshotBloom bloom = smallBlooms.LeaseOrSentinel(assembled.Persisted[i].To);
+                if (ReferenceEquals(bloom, PersistedSnapshotBloom.AlwaysTrue))
+                    bloom = largeBlooms.LeaseOrSentinel(assembled.Persisted[i].To);
+                persistedBlooms.Add(bloom);
+            }
 
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics, assembled.Persisted, persistedBlooms);
 
@@ -462,7 +471,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await _persistenceTask;
         await _clearBundleCacheTask;
 
-        _persistedSnapshotRepository.Dispose();
+        _smallPersistedRepo.Dispose();
+        _largePersistedRepo.Dispose();
         _cancelTokenSource.Dispose();
     }
 }

@@ -12,16 +12,29 @@ using Prometheus;
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Manages conversion of in-memory snapshots to persisted snapshots (HSST files)
-/// and compaction of persisted snapshots. Mirrors <see cref="SnapshotCompactor"/>'s
-/// logarithmic compaction strategy for the persisted layer.
+/// Logarithmic compaction for one tier's persisted snapshots. Two instances are
+/// wired: a <see cref="Mode.Small"/> compactor merges short-range snapshots
+/// within the small tier (every merge stays strictly &lt; <c>CompactSize</c>),
+/// and a <see cref="Mode.Large"/> compactor merges <c>CompactSize</c>-aligned
+/// snapshots upward (2×, 4×, ... <c>CompactSize</c>, up to
+/// <c>PersistedSnapshotMaxCompactSize</c>). The boundary at <c>CompactSize</c>
+/// is exclusive on the small side (its compactor never produces a
+/// <c>CompactSize</c> result — that comes from the in-memory compactor and is
+/// fed into the large repo by <c>PersistenceManager</c>).
 /// </summary>
 public class PersistedSnapshotCompactor(
     IPersistedSnapshotRepository persistedSnapshotRepository,
     IArenaManager arenaManager,
     IFlatDbConfig config,
-    ILogManager logManager) : IPersistedSnapshotCompactor
+    ILogManager logManager,
+    PersistedSnapshotCompactor.Mode mode) : IPersistedSnapshotCompactor
 {
+    public enum Mode
+    {
+        Small,
+        Large,
+    }
+
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
     private readonly int _compactSize = config.CompactSize;
     private readonly int _persistedSnapshotMaxCompactSize = config.PersistedSnapshotMaxCompactSize;
@@ -29,12 +42,22 @@ public class PersistedSnapshotCompactor(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
+    private readonly Mode _mode = mode;
+    private readonly string _tierLabel = mode == Mode.Small ? "small" : "large";
 
     /// <summary>
-    /// Try to compact persisted snapshots using logarithmic compaction.
-    /// Mirrors <see cref="SnapshotCompactor.GetSnapshotsToCompact"/> logic.
-    /// Skips compactSize == _compactSize since persistable snapshots are now produced
-    /// directly by PersistenceManager from in-memory compacted snapshots.
+    /// Try to compact persisted snapshots using logarithmic compaction. The
+    /// power-of-2 walk direction and the size-band boundary depend on
+    /// <see cref="_mode"/>:
+    /// <list type="bullet">
+    ///   <item><see cref="Mode.Large"/>: walk <c>compactSize</c> downward from the
+    ///   block's natural alignment, attempting each power of 2 strictly greater
+    ///   than <c>CompactSize</c>. Produces 2×, 4×, ... <c>CompactSize</c> merges.</item>
+    ///   <item><see cref="Mode.Small"/>: walk upward from <c>MinCompactSize</c>,
+    ///   attempting each power of 2 strictly less than <c>CompactSize</c>.
+    ///   Produces 2×, 4×, ... merges that stay below the <c>CompactSize</c>
+    ///   boundary — the small tier never produces a <c>CompactSize</c> result.</item>
+    /// </list>
     /// </summary>
     public void DoCompactSnapshot(StateId snapshotTo)
     {
@@ -43,30 +66,53 @@ public class PersistedSnapshotCompactor(
         long blockNumber = snapshotTo.BlockNumber;
         if (blockNumber == 0) return;
 
-        int compactSize = (int)Math.Min(blockNumber & -blockNumber, _persistedSnapshotMaxCompactSize);
-        if (compactSize < _minCompactSize) return;
+        int alignment = (int)Math.Min(blockNumber & -blockNumber, _persistedSnapshotMaxCompactSize);
+        if (alignment < _minCompactSize) return;
 
-        // Walk down powers of 2 until compaction succeeds or we reach _compactSize.
-        // _compactSize is produced directly by PersistenceManager (batched persistable compactions).
-        while (compactSize > _compactSize)
+        if (_mode == Mode.Large)
         {
-            if (persistedSnapshotRepository.SnapshotCount < 2) return;
+            int compactSize = alignment;
+            // Walk down powers of 2 until compaction succeeds or we reach _compactSize.
+            // _compactSize is produced directly by PersistenceManager (batched persistable
+            // compactions) into the large repo as a base — never re-produced here.
+            while (compactSize > _compactSize)
+            {
+                if (persistedSnapshotRepository.SnapshotCount < 2) return;
 
-            long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
-            if (CompactRange(snapshotTo, startingBlockNumber, compactSize, isPersistable: false))
-                return;
+                long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
+                if (CompactRange(snapshotTo, startingBlockNumber, compactSize))
+                    return;
 
-            compactSize /= 2;
+                compactSize /= 2;
+            }
+        }
+        else // Mode.Small
+        {
+            // Largest power of 2 strictly less than _compactSize that the block is
+            // aligned to. If alignment >= _compactSize we'd produce a CompactSize
+            // (or larger) result — out of band for the small tier.
+            int compactSize = Math.Min(alignment, _compactSize / 2);
+            while (compactSize >= _minCompactSize)
+            {
+                if (persistedSnapshotRepository.SnapshotCount < 2) return;
+
+                long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
+                if (CompactRange(snapshotTo, startingBlockNumber, compactSize))
+                    return;
+
+                compactSize /= 2;
+            }
         }
     }
 
-
+    // Histograms gain a `tier` label so the two instances' samples are distinguishable
+    // in dashboards.
     private readonly Histogram _persistedSnapshotSize =
-        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compacted_size", "persisted_snapshot_compacted_size", "size");
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compacted_size", "persisted_snapshot_compacted_size", "tier", "size");
     private readonly Histogram _persistedSnapshotCompactTime =
-        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "size");
+        Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "tier", "size");
 
-    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize, bool isPersistable)
+    private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize)
     {
         using PersistedSnapshotList snapshots = persistedSnapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
         if (snapshots.Count < 2) return false;
@@ -77,7 +123,7 @@ public class PersistedSnapshotCompactor(
             return false;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, persistable {isPersistable}");
+        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, tier {_tierLabel}");
 
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
@@ -113,7 +159,8 @@ public class PersistedSnapshotCompactor(
         BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
             ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
             : null;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, ArenaReservationTags.BlobBackedLarge))
+        string reservationTag = _mode == Mode.Small ? ArenaReservationTags.BlobBackedSmall : ArenaReservationTags.BlobBackedLarge;
+        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, reservationTag))
         {
             long sw = Stopwatch.GetTimestamp();
             PersistedSnapshotBuilder.NWayMergeSnapshots<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
@@ -128,13 +175,13 @@ public class PersistedSnapshotCompactor(
             }
 
             long len = arenaWriter.GetWriter().Written;
-            _persistedSnapshotSize.WithLabels($"size{compactSize}").Observe(len);
-            _persistedSnapshotCompactTime.WithLabels($"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
+            _persistedSnapshotSize.WithLabels(_tierLabel, $"size{compactSize}").Observe(len);
+            _persistedSnapshotCompactTime.WithLabels(_tierLabel, $"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 
             (location, reservation) = arenaWriter.Complete();
         }
 
-        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, isPersistable, mergedBloom);
+        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, isPersistable: false, mergedBloom);
 
         // The freshly-written compacted bytes are warm in the kernel page cache from the write
         // path; drop them so they don't crowd out the random-access read working set. Subsequent

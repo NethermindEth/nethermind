@@ -29,7 +29,7 @@ public class SnapshotRepositoryTests
     {
         _config = new FlatDbConfig { CompactSize = 16 };
         _resourcePool = new ResourcePool(_config);
-        _repository = new SnapshotRepository(NullPersistedSnapshotRepository.Instance, LimboLogs.Instance);
+        _repository = new SnapshotRepository(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
         _memArena = new MemoryArenaManager();
     }
 
@@ -323,7 +323,7 @@ public class SnapshotRepositoryTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, NullBlobArenaManager.Instance, NullBlobArenaManager.Instance);
+        return new PersistedSnapshot(id, from, to, reservation, NullBlobArenaManager.Instance);
     }
 
     private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
@@ -422,7 +422,7 @@ public class SnapshotRepositoryTests
         else
             SetupSnapshotTo(mockRepo, s5, persisted);
 
-        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
+        SnapshotRepository repo = new(new PersistedSnapshotRepositories(mockRepo, mockRepo), LimboLogs.Instance);
         using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
 
         Assert.That(result.Persisted.Count, Is.EqualTo(1));
@@ -453,7 +453,7 @@ public class SnapshotRepositoryTests
         using PersistedSnapshot persisted = CreatePersistedSnapshot(1, s2, s5);
         SetupSnapshotTo(mockRepo, s5, persisted);
 
-        SnapshotRepository repo = new(mockRepo, LimboLogs.Instance);
+        SnapshotRepository repo = new(new PersistedSnapshotRepositories(mockRepo, mockRepo), LimboLogs.Instance);
         using AssembledSnapshotResult result = repo.AssembleSnapshots(s5, s2, 4);
 
         Assert.That(result.Persisted.Count, Is.EqualTo(1));
