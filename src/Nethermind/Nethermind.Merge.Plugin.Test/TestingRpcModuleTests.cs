@@ -261,12 +261,18 @@ public class TestingRpcModuleTests
     }
 
     [Test]
-    public async Task Testing_commitBlockV1_passes_StoreReceipts_to_producer()
+    public async Task Testing_commitBlockV1_passes_correct_flags_to_producer()
     {
-        // Regression: with main-processor pass F gone, receipts must be persisted in
-        // the producer pass D. That requires ProcessingOptions.StoreReceipts in the
-        // call to ChainProcessor.Process; without it BlockProcessor.StoreTxReceipts
-        // is gated off and eth_getTransactionReceipt would return null forever.
+        // With pass F (main processor) skipped, the producer pass must:
+        //   * StoreReceipts — persist receipts (gated in BlockProcessor.cs:82).
+        //   * NoValidation — skip header validation (synthesised by us).
+        //   * ForceProcessing — bypass the queue-based dispatcher.
+        //   * DoNotUpdateHead — head advance is owned by UpdateMainChain.
+        //   * NOT ReadOnlyChain — ReadOnlyChain gates FlatWorldStateScope's
+        //     AddSnapshot (FlatWorldStateScope.cs:203). Without FlatDb snapshots
+        //     being appended, the next testing_commitBlockV1 cannot open a
+        //     BeginScope(parent) and the orchestrator stalls with "Unable to
+        //     gather snapshots".
         ProcessingOptions? observedOptions = null;
         (TestingRpcModule module, _, BlockHeader chainHeadHeader) =
             CreateCommitTestingModule(suggestResult: AddBlockResult.Added,
@@ -275,9 +281,13 @@ public class TestingRpcModuleTests
         await module.testing_commitBlockV1(CreateDefaultPayloadAttributes(chainHeadHeader), [], []);
 
         observedOptions.Should().NotBeNull();
-        observedOptions!.Value.ContainsFlag(ProcessingOptions.StoreReceipts).Should().BeTrue(
-            "receipts must persist in the producer pass since the main processor pass is skipped");
-        observedOptions!.Value.ContainsFlag(ProcessingOptions.ProducingBlock).Should().BeTrue();
+        ProcessingOptions opts = observedOptions!.Value;
+        opts.ContainsFlag(ProcessingOptions.StoreReceipts).Should().BeTrue();
+        opts.ContainsFlag(ProcessingOptions.NoValidation).Should().BeTrue();
+        opts.ContainsFlag(ProcessingOptions.ForceProcessing).Should().BeTrue();
+        opts.ContainsFlag(ProcessingOptions.DoNotUpdateHead).Should().BeTrue();
+        opts.ContainsFlag(ProcessingOptions.ReadOnlyChain).Should().BeFalse(
+            "ReadOnlyChain blocks FlatDb snapshot append; the producer must write FlatDb here");
     }
 
     [Test]

@@ -95,11 +95,27 @@ public class TestingRpcModule(
             // (which we no longer run) into the producer pass. The receipts tracer
             // collects them; the inner BlockProcessor inserts them into the
             // receipt store when the StoreReceipts flag is set.
+            //
+            // ProducingBlock's ReadOnlyChain bit is intentionally dropped here:
+            // ReadOnlyChain makes FlatWorldStateScope open in _isReadOnly mode
+            // and AddSnapshot is gated on !_isReadOnly (FlatWorldStateScope.cs:203).
+            // Without FlatDb snapshots being appended, the next commit's
+            // BeginScope(parent) fails with "Unable to gather snapshots". Pass F
+            // used to compensate by re-executing with the read-write flag set;
+            // since we skip pass F now, the producer must be the one that
+            // commits to FlatDb. NoValidation + ForceProcessing + DoNotUpdateHead
+            // preserve the rest of ProducingBlock's semantics.
+            const ProcessingOptions ProducerOptions =
+                ProcessingOptions.NoValidation
+                | ProcessingOptions.ForceProcessing
+                | ProcessingOptions.DoNotUpdateHead
+                | ProcessingOptions.StoreReceipts;
+
             _receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             ResultWrapper<ProducedBlock> produced = await ProduceBlockAsync(
                 chainHead, payloadAttributes, txRlps, extraData,
                 nameof(testing_commitBlockV1), exitToken,
-                _receiptsTracer, ProcessingOptions.ProducingBlock | ProcessingOptions.StoreReceipts);
+                _receiptsTracer, ProducerOptions);
             if (produced.Result.ResultType == ResultType.Failure)
                 return ResultWrapper<Hash256>.Fail(produced.Result.Error!, produced.ErrorCode);
 
