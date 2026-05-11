@@ -224,10 +224,6 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null)
         {
-            // EmptyBeforeBlock is set by the prestate loader (see ReadOnlyAccountChanges'
-            // gate) — wait so a parallel tx worker doesn't observe the default `false`
-            // before the loader has updated it.
-            accountChanges.WaitForPrestate();
             return accountChanges.EmptyBeforeBlock;
         }
 
@@ -260,9 +256,6 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         ArrayPoolList<AddressAsKey> result = new(_suggestedBlockAccessList.AccountChanges.Count);
         foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
-            // AccountChanged is set by the prestate loader (RecordWasChanged) — wait so we
-            // don't observe a stale value while the load is still in flight on slot 0.
-            accountChanges.WaitForPrestate();
             if (accountChanges.AccountChanged)
             {
                 result.Add(new AddressAsKey(accountChanges.Address));

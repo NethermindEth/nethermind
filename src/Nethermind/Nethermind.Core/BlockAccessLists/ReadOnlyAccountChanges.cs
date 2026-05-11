@@ -5,11 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -37,7 +35,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     {
         get
         {
-            WaitForPrestate();
             EnsureSorted();
             return _orderedStorageChanges;
         }
@@ -49,7 +46,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     {
         get
         {
-            WaitForPrestate();
             EnsureSorted();
             return _changedSlots;
         }
@@ -91,20 +87,6 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     private bool _sortedDirty;
     private readonly object _sortLock = new();
 
-    /// <summary>
-    /// Per-account gate that lets parallel transaction workers wait for prestate loading to
-    /// complete before reading prestate-dependent state (balance/nonce/code/storage arrays plus
-    /// the <see cref="ExistedBeforeBlock"/>/<see cref="EmptyBeforeBlock"/>/<see cref="AccountChanged"/>
-    /// flags). Enabled by <see cref="EnablePrestateGate"/> in
-    /// <c>BlockAccessListManager.PrepareForProcessing</c> when parallel execution is on, and
-    /// signaled by <see cref="SignalPrestateLoaded"/> after the loader has finished mutating
-    /// this account in <c>LoadPreStateToSuggestedBlockAccessList</c>. Null when no parallel
-    /// loading is expected — read methods then short-circuit without waiting.
-    /// <see cref="TaskCreationOptions.RunContinuationsAsynchronously"/> ensures the loader's
-    /// thread isn't hijacked to run any future <c>await</c> continuations attached by callers.
-    /// </summary>
-    private TaskCompletionSource? _prestateGate;
-
     public ReadOnlyAccountChanges(
         Address address,
         ReadOnlySlotChanges[] storageChanges,
@@ -132,28 +114,11 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public ReadOnlyAccountChanges(Address address) : this(address, [], [], [], [], []) { }
 
     public bool TryGetSlotChanges(UInt256 key, [NotNullWhen(true)] out ReadOnlySlotChanges? slotChanges)
-    {
-        WaitForPrestate();
-        return _storageChanges.TryGetValue(key, out slotChanges);
-    }
+        => _storageChanges.TryGetValue(key, out slotChanges);
 
-    public BalanceChange? BalanceChangeAtIndex(uint index)
-    {
-        WaitForPrestate();
-        return GetExact(_balanceChanges, index);
-    }
-
-    public NonceChange? NonceChangeAtIndex(uint index)
-    {
-        WaitForPrestate();
-        return GetExact(_nonceChanges, index);
-    }
-
-    public CodeChange? CodeChangeAtIndex(uint index)
-    {
-        WaitForPrestate();
-        return GetExact(_codeChanges, index);
-    }
+    public BalanceChange? BalanceChangeAtIndex(uint index) => GetExact(_balanceChanges, index);
+    public NonceChange? NonceChangeAtIndex(uint index) => GetExact(_nonceChanges, index);
+    public CodeChange? CodeChangeAtIndex(uint index) => GetExact(_codeChanges, index);
 
     public bool HasSlotChangesAtIndex(uint index)
     {
@@ -186,32 +151,19 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     /// <summary>Most recent balance strictly before <paramref name="blockAccessIndex"/>; null if none.</summary>
     public UInt256? GetBalance(uint blockAccessIndex)
-    {
-        WaitForPrestate();
-        return TryGetLastBefore(_balanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
-    }
+        => TryGetLastBefore(_balanceChanges, blockAccessIndex, out BalanceChange last) ? last.Value : null;
 
     public UInt256? GetNonce(uint blockAccessIndex)
-    {
-        WaitForPrestate();
-        return TryGetLastBefore(_nonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
-    }
+        => TryGetLastBefore(_nonceChanges, blockAccessIndex, out NonceChange last) ? last.Value : null;
 
     public byte[] GetCode(uint blockAccessIndex)
-    {
-        WaitForPrestate();
-        return TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.Code : [];
-    }
+        => TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.Code : [];
 
     public ValueHash256 GetCodeHash(uint blockAccessIndex)
-    {
-        WaitForPrestate();
-        return TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
-    }
+        => TryGetLastBefore(_codeChanges, blockAccessIndex, out CodeChange last) ? last.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
 
     public bool AccountExists(uint blockAccessIndex)
     {
-        WaitForPrestate();
         if (ExistedBeforeBlock)
         {
             return true;
@@ -324,45 +276,9 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     public void RecordWasChanged()
         => AccountChanged = _balanceChanges.Length > 0 || _nonceChanges.Length > 0 || _codeChanges.Length > 0 || _storageChanges.Count > 0;
 
-    // === Prestate gate ===
-    // Decoupling parallel tx execution from prestate loading: instead of blocking the whole
-    // block on a serial pre-pass, PrepareForProcessing flips the gate on each account, slot 0
-    // of the parallel loop loads prestate per-account and signals as soon as the account is
-    // done, and worker reads above wait per-account. Idempotent: an already-set gate stays set
-    // so a re-prepared block (already loaded) doesn't block workers.
-
-    public void EnablePrestateGate()
-        => _prestateGate ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    public void SignalPrestateLoaded() => _prestateGate?.TrySetResult();
-
-    /// <summary>
-    /// Synchronously waits for this account's prestate-load to complete. Safe to call from
-    /// parallel tx workers because the loader (slot 0 of the parallel loop) signals each
-    /// account individually as soon as its prestate is loaded — workers unblock as their
-    /// accounts come online, never as a thundering herd at the end.
-    ///
-    /// Required invariants for the parallel scheduler in
-    /// <c>BlockProcessor.ParallelBlockValidationTransactionsExecutor</c>:
-    ///   1. The loader iteration (slot 0) must NEVER call <see cref="WaitForPrestate"/>
-    ///      itself — it would deadlock on the gate it is supposed to fulfill.
-    ///   2. ParallelUnbalancedWork must guarantee slot 0 gets a thread independent of the
-    ///      tx-worker queue, so a fully-busy worker pool cannot starve the loader.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void WaitForPrestate()
-    {
-        TaskCompletionSource? gate = _prestateGate;
-        if (gate is not null && !gate.Task.IsCompleted)
-        {
-            // GetResult (vs .Wait) so any future SetException surfaces unwrapped.
-            gate.Task.GetAwaiter().GetResult();
-        }
-    }
-
     /// <summary>Rebuilds the parallel sorted arrays from <see cref="_storageChanges"/> in a single
     /// O(n log n) pass. Double-checked under <see cref="_sortLock"/> so that concurrent readers
-    /// (post-prestate-gate) see exactly one rebuild. The trailing <see cref="Volatile.Write"/> on
+    /// see exactly one rebuild. The trailing <see cref="Volatile.Write"/> on
     /// <see cref="_sortedDirty"/> publishes the new array references with release semantics, so
     /// any reader observing dirty=false also sees the updated arrays.</summary>
     private void EnsureSorted()

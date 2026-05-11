@@ -43,11 +43,11 @@ public interface IBlockAccessListManager
 
     /// <summary>
     /// Loads prestate (pre-block account/storage values from <c>stateProvider</c>) into the
-    /// suggested BAL and signals each account's prestate gate so parallel transaction workers
-    /// blocked on <c>ReadOnlyAccountChanges.WaitForPrestate</c> can proceed. Intended to run
-    /// in the same parallel-loop slot as <see cref="BlockAccessListManager.ApplyStateChanges"/>
-    /// (i.e. slot 0), immediately before it: workers in slots 1..N can start executing while
-    /// the loader fans out account-by-account.
+    /// suggested BAL so reads through <see cref="Nethermind.State.BlockAccessListBasedWorldState"/>
+    /// return correct start-of-block values for read-only slots and for slots accessed before
+    /// their first real change. Intended to run synchronously before the parallel transaction
+    /// loop starts; <see cref="BlockCachePreWarmer"/>'s BAL-driven warmup populates the read
+    /// cache so this loader hits memory rather than disk.
     /// </summary>
     void LoadPreStateToSuggestedBlockAccessList(Block suggestedBlock);
 

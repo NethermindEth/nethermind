@@ -113,12 +113,10 @@ public partial class BlockProcessor
             }
 
             // Pre-execution (the system-contract calls StoreBeaconRoot + ApplyBlockhashStateChanges)
-            // runs as iteration 1 of the parallel For — alongside slot 0's loader+ApplyStateChanges
-            // and the tx iterations. Its writes go through BlockAccessListBasedWorldState which is
-            // a no-op for writes (the post-block state lands in stateProvider via ApplyStateChanges
-            // in slot 0), and its reads block per-account on the prestate gate that slot 0's loader
-            // signals — so pre-execution and tx workers all proceed as soon as their accounts are
-            // loaded, without waiting for the full load.
+            // runs as iteration 1 of the parallel For — alongside slot 0's ApplyStateChanges and
+            // the tx iterations. Its writes go through BlockAccessListBasedWorldState which is a
+            // no-op for writes (the post-block state lands in stateProvider via ApplyStateChanges
+            // in slot 0), and its reads come from the prestate-loaded BAL.
             //
             // The validator (IncrementalValidation) needs to merge balIndex=0's BAL after this
             // iteration completes. preExecutionDoneTcs is the synchronization point: iteration 1
@@ -127,11 +125,17 @@ public partial class BlockProcessor
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             TaskCompletionSource preExecutionDoneTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
+            // Load prestate synchronously before any parallel iteration starts: every worker reads
+            // from BlockAccessListBasedWorldState which needs the BAL prestate-grafted to return
+            // correct values. BlockCachePreWarmer.WarmupFromBal has already populated preBlockCaches
+            // from disk, so the loader's reads hit the cache (no disk I/O).
+            balManager.LoadPreStateToSuggestedBlockAccessList(block);
+
             Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, preExecutionDoneTcs.Task, token), token);
 
             try
             {
-                // Iterations: 0 = loader+ApplyStateChanges, 1 = pre-execution, 2..len+1 = tx (txIndex = i-2).
+                // Iterations: 0 = ApplyStateChanges, 1 = pre-execution, 2..len+1 = tx (txIndex = i-2).
                 ParallelUnbalancedWork.For(
                     0,
                     len + 2,
@@ -148,22 +152,10 @@ public partial class BlockProcessor
                         {
                             if (i == 0)
                             {
-                                // Prestate loading was deferred from PrepareForProcessing to here so
-                                // tx workers and the pre-execution iteration can start running while
-                                // we fan out the load account-by-account. Each account's prestate
-                                // gate is signaled as soon as its load completes, freeing any consumer
-                                // blocked on it (see ReadOnlyAccountChanges.WaitForPrestate).
-                                //
-                                // Invariant: this loader iteration must NEVER call WaitForPrestate
-                                // — it would deadlock on the gate it is fulfilling. ParallelUnbalancedWork
-                                // schedules slot 0 ahead of the tx-worker queue so a fully-busy pool
-                                // cannot starve the loader.
-                                state.balManager.LoadPreStateToSuggestedBlockAccessList(state.block);
-
                                 // ApplyStateChanges mutates the shared stateProvider so runs inside
-                                // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                                // workers and the pre-execution iteration read from BAL-backed world
-                                // states, not stateProvider, so neither races with this write.
+                                // the parallel loop rather than via Task.Run. Parallel tx workers
+                                // and the pre-execution iteration read from BAL-backed world states,
+                                // not stateProvider, so neither races with this write.
                                 BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.spec, !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                 return state;
                             }

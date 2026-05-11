@@ -91,19 +91,6 @@ public class BlockAccessListManager(
         {
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
-
-            // See _lastLoadedBal field comment — skip when the same block is re-prepared.
-            // Prestate loading itself is now deferred to slot 0 of the parallel For loop so
-            // worker threads can start executing transactions while the loader proceeds. Here
-            // we only flip the per-account gates so any worker that races ahead of the loader
-            // blocks until prestate for its account has been loaded.
-            if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
-            {
-                foreach (ReadOnlyAccountChanges accountChanges in suggestedBlock.BlockAccessList.AccountChanges)
-                {
-                    accountChanges.EnablePrestateGate();
-                }
-            }
         }
     }
 
@@ -492,9 +479,7 @@ public class BlockAccessListManager(
     {
         if (!ParallelExecutionEnabled || suggestedBlock.BlockAccessList is null) return;
 
-        // Skip if this exact BAL was already loaded — see _lastLoadedBal field comment. The
-        // workers' gates were also skipped in PrepareForProcessing in that case, so nothing
-        // to signal here either.
+        // Skip if this exact BAL was already loaded — see _lastLoadedBal field comment.
         if (suggestedBlock.Hash == _lastLoadedBal) return;
         _lastLoadedBal = suggestedBlock.Hash;
 
@@ -502,49 +487,28 @@ public class BlockAccessListManager(
         // PrestateIndex entries that are sorted before real tx indices and must not be
         // subjected to block-level wire index-bounds validation.
         ReadOnlyBlockAccessList bal = suggestedBlock.BlockAccessList;
-        try
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
         {
-            foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+            // record whether the account was modified before any prestate is added
+            accountChanges.RecordWasChanged();
+
+            bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
+            accountChanges.SetExistedBeforeBlock(exists);
+            accountChanges.SetEmptyBeforeBlock(!account.HasStorage);
+
+            accountChanges.LoadPreStateBalance(account.Balance);
+            accountChanges.LoadPreStateNonce((ulong)account.Nonce);
+            accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
+
+            // snapshot keys to avoid modifying the slot collection during iteration
+            // (LoadPreStateStorage can insert a new ReadOnlySlotChanges for a previously read-only slot)
+            UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
+            foreach (UInt256 slot in slotsToLoad)
             {
-                // record whether the account was modified before any prestate is added
-                accountChanges.RecordWasChanged();
-
-                bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
-                accountChanges.SetExistedBeforeBlock(exists);
-                accountChanges.SetEmptyBeforeBlock(!account.HasStorage);
-
-                accountChanges.LoadPreStateBalance(account.Balance);
-                accountChanges.LoadPreStateNonce((ulong)account.Nonce);
-                accountChanges.LoadPreStateCode(stateProvider.GetCode(accountChanges.Address) ?? []);
-
-                // snapshot keys to avoid modifying the slot collection during iteration
-                // (LoadPreStateStorage can insert a new ReadOnlySlotChanges for a previously read-only slot)
-                UInt256[] slotsToLoad = [.. accountChanges.GetSlotsForPreStateLoad()];
-                foreach (UInt256 slot in slotsToLoad)
-                {
-                    StorageCell storageCell = new(accountChanges.Address, slot);
-                    UInt256 value = new(stateProvider.Get(storageCell), true);
-                    accountChanges.LoadPreStateStorage(slot, value);
-                }
-
-                // Signal as soon as this account is fully loaded — workers blocked on it via
-                // ReadOnlyAccountChanges.WaitForPrestate can proceed without waiting for the
-                // remaining accounts to finish.
-                accountChanges.SignalPrestateLoaded();
+                StorageCell storageCell = new(accountChanges.Address, slot);
+                UInt256 value = new(stateProvider.Get(storageCell), true);
+                accountChanges.LoadPreStateStorage(slot, value);
             }
-        }
-        catch
-        {
-            // If the loader throws partway, release every remaining gate so workers and the
-            // incremental validator don't hang. Already-signaled gates are no-ops; not-yet-
-            // loaded accounts will return their pre-load (empty / default) state, which will
-            // surface as an InvalidBlockLevelAccessListException on the worker — preferable
-            // to a deadlock. The original exception still propagates from slot 0.
-            foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
-            {
-                accountChanges.SignalPrestateLoaded();
-            }
-            throw;
         }
     }
 
