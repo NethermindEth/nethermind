@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -234,30 +235,22 @@ namespace Nethermind.State
 
             return new Reactive.AnonymousDisposable(() =>
             {
-                try
-                {
-                    Reset();
-                    _stateProvider.SetScope(null);
-                    _currentScope.Dispose();
-                }
-                finally
-                {
-                    // Cleared in finally so a dispose-time exception cannot leave the next
-                    // BranchProcessor.Process call stuck with IsInScope == true.
-                    _currentScope = null;
-                    _isInScope = false;
-                    if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
-                }
+                Reset();
+                _stateProvider.SetScope(null);
+                _currentScope.Dispose();
+                _currentScope = null;
+                _isInScope = false;
+                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
         }
 
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public void HintBal(BlockAccessList bal)
+        public Task HintBal(BlockAccessList bal)
         {
             GuardInScope();
-            _currentScope!.HintBal(bal);
+            return _currentScope!.HintBal(bal);
         }
 
         public UInt256 GetBalance(Address address)

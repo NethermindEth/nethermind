@@ -819,7 +819,7 @@ public class StorageProviderTests(bool useFlat)
 
             public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
 
-            public void HintBal(BlockAccessList bal) => baseScope.HintBal(bal);
+            public Task HintBal(BlockAccessList bal) => baseScope.HintBal(bal);
 
             public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
                 => baseScope.ReadBalAsync(bal, sink, cancellationToken);

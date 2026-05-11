@@ -68,99 +68,62 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
-        public void HintBal(BlockAccessList bal) { }
+        public Task HintBal(BlockAccessList bal) => Task.CompletedTask;
 
         public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
         {
-            int accountCount = 0;
-            foreach (AccountChanges _ in bal.AccountChanges)
-                accountCount++;
-
-            if (accountCount == 0)
-                return Task.CompletedTask;
-
-            using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
-            int copyIdx = 0;
-            foreach (AccountChanges ac in bal.AccountChanges)
-                accountChangesList[copyIdx++] = ac;
-
-            // Phase 1 uses a private StateTree so the main-path tree instance is not touched
-            // from the BAL reader thread pool.
-            StateTree privateStateTree = _scopeProvider.CreateStateTree();
-            privateStateTree.RootHash = _backingStateTree.RootHash;
-
-            ParallelOptions options = new() { CancellationToken = cancellationToken };
-            using ArrayPoolList<Account?> accounts = new(accountCount, accountCount);
-
             try
             {
+                int accountCount = bal.AccountChanges.Count;
+                if (accountCount == 0) return Task.CompletedTask;
+
+                // Legacy trie-store path: StateTree.Get and StorageTree.Get mutate internal node
+                // caches as they traverse, so they're not thread-safe. Each address is handled
+                // sequentially through its own tree on one Parallel.For iteration; addresses run
+                // in parallel relative to each other.
+                //
+                // Only StorageReads are pre-fetched. StorageChanges (writes) are intentionally
+                // skipped: block execution will overwrite those slots so caching pre-state is
+                // useless, and trie warmup of write paths is handled separately by HintBal.
+                ReadOnlySpan<AccountChanges> accountChanges = bal.AccountChangesByAddress;
+                using ArrayPoolList<AccountChanges> accountChangesList = new(accountCount, accountCount);
+                for (int i = 0; i < accountCount; i++) accountChangesList[i] = accountChanges[i];
+
+                ParallelOptions options = new() { CancellationToken = cancellationToken };
                 Parallel.For(0, accountCount, options, (i) =>
                 {
-                    Address address = accountChangesList[i].Address;
-                    if (!sink.StillNeeded(address, out Account? cached))
+                    AccountChanges ac = accountChangesList[i];
+                    Address address = ac.Address;
+
+                    // Per-iteration StateTree — never shared across workers.
+                    StateTree privateStateTree = _scopeProvider.CreateStateTree();
+                    privateStateTree.RootHash = _backingStateTree.RootHash;
+
+                    Account? account;
+                    if (sink.StillNeeded(address, out Account? cached))
                     {
-                        accounts[i] = cached;
-                        return;
+                        account = privateStateTree.Get(address);
+                        sink.OnAccountRead(address, account);
+                    }
+                    else
+                    {
+                        account = cached;
                     }
 
-                    Account? account = privateStateTree.Get(address);
-                    accounts[i] = account;
-                    sink.OnAccountRead(address, account);
+                    if (account is null || ac.StorageReads.Count == 0) return;
+                    Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                    if (storageRoot == Keccak.EmptyTreeHash) return;
+
+                    StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+                    foreach (UInt256 storageReadKey in ac.StorageReads)
+                    {
+                        StorageCell cell = new(address, in storageReadKey);
+                        if (!sink.StillNeeded(in cell)) continue;
+                        sink.OnStorageRead(in cell, storageTree.Get(in storageReadKey));
+                    }
                 });
             }
-            catch (OperationCanceledException) { return Task.CompletedTask; }
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Phase 2: flat (address, private-tree, slot) jobs in one parallel pass
-            int totalSlots = 0;
-            for (int i = 0; i < accountCount; i++)
-            {
-                Account? account = accounts[i];
-                if (account is null) continue;
-                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                if (storageRoot == Keccak.EmptyTreeHash) continue;
-                totalSlots += accountChangesList[i].StorageChanges.Length + accountChangesList[i].StorageReads.Count;
-            }
-
-            if (totalSlots > 0)
-            {
-                using ArrayPoolList<(Address Address, StorageTree Tree, UInt256 Slot)> jobs = new(totalSlots, totalSlots);
-                int jobIdx = 0;
-                for (int i = 0; i < accountCount; i++)
-                {
-                    Account? account = accounts[i];
-                    if (account is null) continue;
-                    Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                    if (storageRoot == Keccak.EmptyTreeHash) continue;
-
-                    AccountChanges accountChanges = accountChangesList[i];
-                    Address address = accountChanges.Address;
-                    // Private per-account storage tree; main thread's LookupStorageTree creates its own.
-                    StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
-
-                    foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                        jobs[jobIdx++] = (address, storageTree, slotChanges.Key);
-
-                    foreach (UInt256 storageReadKey in accountChanges.StorageReads)
-                        jobs[jobIdx++] = (address, storageTree, storageReadKey);
-                }
-
-                try
-                {
-                    Parallel.For(0, totalSlots, options, (s) =>
-                    {
-                        (Address address, StorageTree tree, UInt256 slot) = jobs[s];
-                        StorageCell cell = new(address, in slot);
-                        if (!sink.StillNeeded(in cell))
-                            return;
-
-                        byte[] value = tree.Get(in slot);
-                        sink.OnStorageRead(in cell, value);
-                    });
-                }
-                catch (OperationCanceledException) { }
-            }
+            catch (OperationCanceledException) { }
 
             return Task.CompletedTask;
         }

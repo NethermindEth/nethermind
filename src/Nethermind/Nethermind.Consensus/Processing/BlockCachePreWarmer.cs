@@ -421,17 +421,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        // The address warmer runs on a single ThreadPool work item, so this satisfies the
-        // single-producer invariant assumed by FlatWorldStateScope.HintBal's background Task.
-        // The flat scope spawns its own internal Task to fan slot warmups onto the trie warmer's
-        // MPMC queue; we just need to drive HintBal once per block from a stable scope.
+        // The address warmer runs on a single ThreadPool work item. HintBal spawns its own
+        // background Task on the flat scope; we must keep the scope alive until that Task
+        // completes, otherwise disposal would cancel the warmup mid-flight.
         private void HintBalFromAddressWarmer(ObjectPool<IReadOnlyTxProcessorSource> envPool)
         {
             IReadOnlyTxProcessorSource env = envPool.Get();
             try
             {
                 using IReadOnlyTxProcessingScope scope = env.Build(parent);
-                scope.WorldState.HintBal(Bal!);
+                scope.WorldState.HintBal(Bal!).GetAwaiter().GetResult();
             }
             catch (MissingTrieNodeException)
             {

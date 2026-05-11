@@ -57,25 +57,9 @@ public class PrewarmerScopeProvider(
         private readonly PrewarmerGetTimeLabels _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
         private readonly ILogger _logger = logManager.GetClassLogger<ScopeWrapper>();
         private long _writeBatchTime = 0;
-        private CancellationTokenSource? _balCts;
-        private Task? _balTask;
-
-        private void CancelBal()
-        {
-            _balCts?.Cancel();
-            try
-            {
-                _balTask?.GetAwaiter().GetResult();
-            }
-            catch { }
-            _balTask = null;
-            _balCts?.Dispose();
-            _balCts = null;
-        }
 
         public void Dispose()
         {
-            CancelBal();
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
@@ -93,9 +77,6 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            // Cancel BAL background read — write batches are processor-intensive and already parallelized
-            CancelBal();
-
             if (!_measureMetric)
             {
                 return baseScope.StartWriteBatch(estimatedAccountNum);
@@ -112,8 +93,6 @@ public class PrewarmerScopeProvider(
 
         public void Commit(long blockNumber)
         {
-            CancelBal();
-
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
@@ -178,27 +157,27 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        public void HintBal(BlockAccessList bal)
+        public Task HintBal(BlockAccessList bal)
         {
-            // Invoked by BlockCachePreWarmer on its prewarmer-env scope (populatePreBlockCache=true).
-            // Drives trie warmup via baseScope.HintBal (which itself spawns a background Task on the
-            // flat scope), then synchronously populates preBlockCaches via the CacheSink.
-            // Synchronous so the caller's scope stays alive for the duration of the read — the
-            // caller already runs on a dedicated AddressWarmer ThreadPool work item.
-            baseScope.HintBal(bal);
+            // Drive trie warmup on the flat scope (own background Task there) and asynchronously
+            // populate preBlockCaches via ReadBalAsync + CacheSink. Return a task that completes
+            // when both finish, so short-lived callers can await before disposing the scope.
+            Task trieTask = baseScope.HintBal(bal);
 
-            CancelBal();
-            _balCts = new CancellationTokenSource();
             CacheSink cacheSink = new(preBlockCache, storageCache);
-            try
+            Task cacheTask = Task.Run(async () =>
             {
-                baseScope.ReadBalAsync(bal, cacheSink, _balCts.Token).GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error("HintBal cache population faulted", ex);
-            }
+                try
+                {
+                    await baseScope.ReadBalAsync(bal, cacheSink, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error("HintBal cache population faulted", ex);
+                }
+            });
+
+            return Task.WhenAll(trieTask, cacheTask);
         }
 
         public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -24,7 +25,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
-    void HintBal(BlockAccessList bal);
+    Task HintBal(BlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new UInt256 GetBalance(Address address);

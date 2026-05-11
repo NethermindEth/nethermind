@@ -178,9 +178,10 @@ public class BlockCachePreWarmerTests
 
         await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
 
-        // Changed slot should be warmed
-        preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _).Should().BeTrue(
-            "slot 1 (changed) should be pre-warmed via BAL");
+        // Changed slot is deliberately NOT warmed via ReadBalAsync — block execution will overwrite
+        // it, so its pre-state has no cache value. Trie warmup of the write path is driven by HintBal.
+        preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _).Should().BeFalse(
+            "slot 1 (changed) is intentionally skipped by ReadBalAsync");
         // Read-only slot should be warmed
         preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _).Should().BeTrue(
             "slot 2 (read-only) should be pre-warmed via BAL");

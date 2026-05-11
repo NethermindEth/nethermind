@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Autofac;
@@ -205,7 +206,7 @@ public class ScopeProviderTests(bool useFlat)
             sink.Accounts.Should().ContainKey(TestItem.AddressB);
             sink.Accounts[TestItem.AddressB]!.Balance.Should().Be(200);
 
-            sink.NullAccounts.Should().Contain(TestItem.AddressC);
+            sink.NullAccounts.Should().ContainKey(TestItem.AddressC);
 
             // Verify storage matches individual reads
             IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
@@ -299,14 +300,14 @@ public class ScopeProviderTests(bool useFlat)
 #nullable enable
     private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
-        public Dictionary<Address, Account> Accounts { get; } = new();
-        public HashSet<Address> NullAccounts { get; } = new();
-        public Dictionary<StorageCell, byte[]> Storage { get; } = new();
+        public ConcurrentDictionary<Address, Account> Accounts { get; } = new();
+        public ConcurrentDictionary<Address, byte> NullAccounts { get; } = new();
+        public ConcurrentDictionary<StorageCell, byte[]> Storage { get; } = new();
 
         public void OnAccountRead(Address address, Account? account)
         {
             if (account is null)
-                NullAccounts.Add(address);
+                NullAccounts[address] = 0;
             else
                 Accounts[address] = account;
         }
