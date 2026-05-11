@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.GnosisForks;
 using NSubstitute;
 using NUnit.Framework;
@@ -711,13 +712,14 @@ public class ChainSpecBasedSpecProviderTests
         Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
-    [TestCase("Berlin", BlockchainIds.Mainnet, null)]
-    [TestCase("Cancun", BlockchainIds.Mainnet, null)]
-    [TestCase("Prague", BlockchainIds.Mainnet, null)]
-    [TestCase("London", BlockchainIds.Gnosis, typeof(LondonGnosis))]
-    [TestCase("Cancun", BlockchainIds.Gnosis, typeof(CancunGnosis))]
-    [TestCase("Osaka", BlockchainIds.Gnosis, typeof(OsakaGnosis))]
-    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId, Type? expectedSpecType)
+    [TestCase(nameof(Berlin), BlockchainIds.Mainnet, typeof(Berlin))]
+    [TestCase(nameof(Prague), BlockchainIds.Mainnet, typeof(Prague))]
+    [TestCase(nameof(Osaka), BlockchainIds.Gnosis, typeof(OsakaGnosis))]
+    [TestCase(nameof(Osaka), BlockchainIds.Chiado, typeof(OsakaGnosis))]
+    [TestCase(nameof(Cancun), BlockchainIds.Sepolia, typeof(Cancun))]
+    [TestCase(nameof(Prague), BlockchainIds.Sepolia, typeof(Prague))]
+    [TestCase(nameof(Osaka), BlockchainIds.Hoodi, typeof(Osaka))]
+    public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId, Type expectedSpecType)
     {
         ChainSpec chainSpec = new()
         {
@@ -733,8 +735,7 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider, Is.InstanceOf<IForkAwareSpecProvider>());
             Assert.That(provider.AvailableForks, Does.Contain(forkName));
             Assert.That(provider.TryGetForkSpec(forkName.ToLowerInvariant(), out IReleaseSpec? spec), Is.True);
-            if (expectedSpecType is not null)
-                Assert.That(spec, Is.InstanceOf(expectedSpecType));
+            Assert.That(spec, Is.InstanceOf(expectedSpecType));
         }
     }
 
