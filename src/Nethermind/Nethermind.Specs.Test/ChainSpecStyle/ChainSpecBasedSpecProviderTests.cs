@@ -713,9 +713,9 @@ public class ChainSpecBasedSpecProviderTests
     [TestCase("Berlin", BlockchainIds.Mainnet)]
     [TestCase("Cancun", BlockchainIds.Mainnet)]
     [TestCase("Prague", BlockchainIds.Mainnet)]
-    [TestCase("LondonGnosis", BlockchainIds.Gnosis)]
-    [TestCase("CancunGnosis", BlockchainIds.Gnosis)]
-    [TestCase("OsakaGnosis", BlockchainIds.Gnosis)]
+    [TestCase("London", BlockchainIds.Gnosis)]
+    [TestCase("Cancun", BlockchainIds.Gnosis)]
+    [TestCase("Osaka", BlockchainIds.Gnosis)]
     public void Named_forks_are_available_for_chain_spec_based_provider(string forkName, ulong chainId)
     {
         ChainSpec chainSpec = new()

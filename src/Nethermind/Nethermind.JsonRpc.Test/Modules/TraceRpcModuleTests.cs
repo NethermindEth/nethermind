@@ -1195,13 +1195,7 @@ public class TraceRpcModuleTests
             Substitute.For<IBlocksConfig>());
     }
 
-    /// <summary>
-    /// A <see cref="TestSpecProvider"/> subclass that also implements <see cref="IForkAwareSpecProvider"/>,
-    /// delegating fork name lookups to an inner <see cref="IForkAwareSpecProvider"/>.
-    /// Setting <see cref="TestSpecProvider.AllowTestChainOverride"/> to false prevents
-    /// <see cref="Nethermind.Core.Test.Blockchain.TestBlockchain"/> from wrapping this instance,
-    /// which ensures the <see cref="IForkAwareSpecProvider"/> interface is preserved for tracing tests.
-    /// </summary>
+    // AllowTestChainOverride=false prevents TestBlockchain from wrapping this instance and stripping IForkAwareSpecProvider.
     private sealed class ForkAwareTestSpecProvider : TestSpecProvider, IForkAwareSpecProvider
     {
         private readonly IForkAwareSpecProvider _forkAware;
@@ -1216,9 +1210,9 @@ public class TraceRpcModuleTests
         public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forkAware.TryGetForkSpec(forkName, out spec);
     }
 
-    [TestCase("Berlin")]
-    [TestCase("Istanbul")]
-    [TestCase("Cancun")]
+    [TestCase(nameof(Berlin))]
+    [TestCase(nameof(Istanbul))]
+    [TestCase(nameof(Cancun))]
     public async Task trace_block_with_valid_fork_name_returns_success(string forkName)
     {
         Context context = new();
@@ -1233,16 +1227,12 @@ public class TraceRpcModuleTests
     [Test]
     public async Task trace_block_fork_parameter_json_applies_berlin_gas_rules()
     {
-        // Sends "berlin" (lowercase) over the full JSON-RPC wire path and checks
-        // that the ModExp gasUsed in the response equals 0x550 (= 1360), the EIP-2565 Berlin value.
-        // This verifies both JSON deserialization and case-insensitive lookup.
         (Context context, BlockParameter block) = await BuildModExpBlockAsync();
 
         string blockHex = "0x" + context.Blockchain.BlockTree.Head!.Number.ToString("x");
         string serialized = await RpcTest.TestSerializedRequest(
             context.TraceRpcModule, "trace_block", blockHex, "berlin");
 
-        // Berlin EIP-2565: ceil(32/8)^2 * 255 / 3 = 1360 = 0x550
         serialized.Should().Contain("\"gasUsed\":\"0x550\"",
             "Berlin fork (EIP-2565) ModExp gas for 32-byte inputs must be 1360 (0x550)");
     }
@@ -1258,7 +1248,7 @@ public class TraceRpcModuleTests
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
-        result.Result.Error.Should().Contain("Berlin",
+        result.Result.Error.Should().Contain(nameof(Berlin),
             "the error message must list known fork names so callers can correct the request");
     }
 
@@ -1269,26 +1259,12 @@ public class TraceRpcModuleTests
         await context.Build(new TestSpecProvider(Berlin.Instance));
 
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
-            context.TraceRpcModule.trace_block(BlockParameter.Latest, "Berlin");
+            context.TraceRpcModule.trace_block(BlockParameter.Latest, nameof(Berlin));
 
         result.Result.ResultType.Should().Be(ResultType.Failure);
         result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
         result.Result.Error.Should().Contain("does not support fork overrides");
     }
-
-    // ── ModExp gas under fork override ────────────────────────────────────────
-    //
-    // Input: base=2, exp=2^255, mod=3, all fields 32 bytes.
-    //
-    // Istanbul (pre-EIP-2565, EIP-198 formula):
-    //   complexity  = max(base_len, mod_len)^2            = 32^2   = 1024
-    //   adjusted    = index-of-highest-bit(exp)           = 255
-    //   gas         = complexity * adjusted / 20          = 13056
-    //
-    // Berlin (EIP-2565):
-    //   complexity  = ceil(max(base_len, mod_len) / 8)^2  = 4^2    = 16
-    //   iterations  = bit_length(exp) - 1                 = 255
-    //   gas         = complexity * iterations / 3         = 1360
 
     private static byte[] BuildModExpInput()
     {
@@ -1328,8 +1304,8 @@ public class TraceRpcModuleTests
             .trace_block(block, forkName)
             .Data.First(t => t.Type == "call").Result!.GasUsed;
 
-    [TestCase("Istanbul", 13056L, "pre-EIP-2565 formula: 32^2 * 255 / 20 = 13056")]
-    [TestCase("Berlin", 1360L, "EIP-2565 formula: ceil(32/8)^2 * 255 / 3 = 16 * 255 / 3 = 1360")]
+    [TestCase(nameof(Istanbul), 13056L, "pre-EIP-2565 formula: 32^2 * 255 / 20 = 13056")]
+    [TestCase(nameof(Berlin), 1360L, "EIP-2565 formula: ceil(32/8)^2 * 255 / 3 = 16 * 255 / 3 = 1360")]
     public async Task trace_block_modexp_gas_cost_respects_fork_override(string forkName, long expectedGas, string reason)
     {
         (Context context, BlockParameter block) = await BuildModExpBlockAsync();
@@ -1344,9 +1320,9 @@ public class TraceRpcModuleTests
     {
         (Context context, BlockParameter block) = await BuildModExpBlockAsync();
 
-        long firstIstanbulGas = ModExpGasUsed(context, block, "Istanbul");
-        ModExpGasUsed(context, block, "Berlin");
-        long secondIstanbulGas = ModExpGasUsed(context, block, "Istanbul");
+        long firstIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
+        ModExpGasUsed(context, block, nameof(Berlin));
+        long secondIstanbulGas = ModExpGasUsed(context, block, nameof(Istanbul));
 
         secondIstanbulGas.Should().Be(firstIstanbulGas,
             "the Berlin override from the intervening call must not leak into subsequent calls");
@@ -1355,7 +1331,6 @@ public class TraceRpcModuleTests
     [Test]
     public async Task trace_block_pre_1559_fork_override_on_london_block_zeroes_base_fee()
     {
-        // EIP-1559 activates at block 1, so block 1 gets BaseFeePerGas = ForkBaseFee (1 Gwei).
         OverridableReleaseSpec londonSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
         ForkAwareTestSpecProvider specProvider = new(londonSpec, MainnetSpecProvider.Instance);
 
@@ -1370,7 +1345,7 @@ public class TraceRpcModuleTests
         // Re-executing this London block with a Berlin (pre-EIP-1559) fork override must succeed:
         // AdjustHeaderForSpec must zero BaseFeePerGas for pre-1559 specs.
         ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result =
-            context.TraceRpcModule.trace_block(new BlockParameter(1L), "Berlin");
+            context.TraceRpcModule.trace_block(new BlockParameter(1L), nameof(Berlin));
 
         result.Result.ResultType.Should().Be(ResultType.Success,
             "tracing a London block with a pre-EIP-1559 fork override must succeed (AdjustHeaderForSpec zeroes BaseFeePerGas)");

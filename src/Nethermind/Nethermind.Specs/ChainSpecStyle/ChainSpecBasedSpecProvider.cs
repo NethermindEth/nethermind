@@ -142,6 +142,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainId switch
             {
                 BlockchainIds.Gnosis or BlockchainIds.Chiado => GnosisSpecProvider.Forks,
+                BlockchainIds.Sepolia => SepoliaSpecProvider.Forks,
+                BlockchainIds.Hoodi => HoodiSpecProvider.Forks,
                 _ => MainnetSpecProvider.Forks,
             };
 

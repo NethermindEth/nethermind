@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -25,6 +28,16 @@ public class HoodiSpecProvider : ISpecProvider
         static () => new Prague { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress });
 
     private HoodiSpecProvider() { }
+
+    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
+    {
+        [nameof(London)] = London.Instance,
+        [nameof(Cancun)] = Cancun.Instance,
+        [nameof(Prague)] = Prague,
+        [nameof(Osaka)] = Osaka.Instance,
+        [nameof(BPO1)] = BPO1.Instance,
+        [nameof(BPO2)] = BPO2.Instance,
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.Timestamp switch
     {

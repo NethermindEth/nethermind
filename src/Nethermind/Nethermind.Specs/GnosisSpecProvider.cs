@@ -89,11 +89,11 @@ public class GnosisSpecProvider : IForkAwareSpecProvider
         [nameof(ConstantinopleFix)] = ConstantinopleFix.Instance,
         [nameof(Istanbul)] = Istanbul.Instance,
         [nameof(Berlin)] = Berlin.Instance,
-        [nameof(LondonGnosis)] = LondonGnosis.Instance,
-        [nameof(ShanghaiGnosis)] = ShanghaiGnosis.Instance,
-        [nameof(CancunGnosis)] = CancunGnosis.Instance,
-        [nameof(PragueGnosis)] = PragueGnosis.Instance,
-        [nameof(OsakaGnosis)] = OsakaGnosis.Instance,
+        ["London"] = LondonGnosis.Instance,
+        ["Shanghai"] = ShanghaiGnosis.Instance,
+        ["Cancun"] = CancunGnosis.Instance,
+        ["Prague"] = PragueGnosis.Instance,
+        ["Osaka"] = OsakaGnosis.Instance,
     }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     private static readonly string[] _availableForks = [.. Forks.Keys.Order()];
