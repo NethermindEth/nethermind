@@ -10,7 +10,7 @@ using System.Diagnostics;
 
 namespace Nethermind.Trie;
 
-public interface INodeData
+internal interface INodeData
 {
     public NodeType NodeType { get; }
     public INodeData Clone();
@@ -19,12 +19,12 @@ public interface INodeData
     public int MemorySize { get; }
 }
 
-interface INodeWithKey : INodeData
+internal interface INodeWithKey : INodeData
 {
     public byte[] Key { get; set; }
 }
 
-public class BranchData : INodeData
+internal class BranchData : INodeData
 {
     public NodeType NodeType => NodeType.Branch;
     public int Length => TrieNode.BranchesCount;
@@ -51,7 +51,7 @@ public class BranchData : INodeData
     }
 }
 
-public class ExtensionData : INodeWithKey
+internal class ExtensionData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Extension;
 
@@ -112,7 +112,7 @@ public class ExtensionData : INodeWithKey
     INodeData INodeData.Clone() => new ExtensionData(Key, Value);
 }
 
-public class LeafData : INodeWithKey
+internal class LeafData : INodeWithKey
 {
     public NodeType NodeType => NodeType.Leaf;
     public int Length => 0;

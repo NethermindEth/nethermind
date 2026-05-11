@@ -280,7 +280,8 @@ namespace Nethermind.Synchronization.SnapSync
                                     // Leaf are range proof, proof that the range covers the requested path.
                                     // But we dont persist them as it should be persisted by the range itself through
                                     // other range.
-                                    node.NodeData[ci] = child.Keccak;
+                                    ValueHash256 boundaryChildKeccak = child.KeccakValue;
+                                    node.SetUnresolvedChildHashAt(ci, in boundaryChildKeccak);
                                 }
                             }
                         }
@@ -323,26 +324,23 @@ namespace Nethermind.Synchronization.SnapSync
                 (TrieNode node, TreePath path) = sortedBoundaryList[i];
                 if (!node.IsPersisted)
                 {
-                    INodeData nodeData = node.NodeData;
-                    if (nodeData is ExtensionData extensionData)
+                    if (node.IsExtension)
                     {
-                        if (IsChildPersisted(node, ref path, extensionData._value, ExtensionRlpChildIndex, tree, startPath))
+                        if (IsChildPersisted(node, ref path, node.GetRawChildRef(0), ExtensionRlpChildIndex, tree, startPath))
                         {
                             node.IsBoundaryProofNode = false;
                         }
                     }
-                    else if (nodeData is BranchData branchData)
+                    else if (node.IsBranch)
                     {
                         bool isBoundaryProofNode = false;
-                        int ci = 0;
-                        foreach (object? o in branchData.Branches)
+                        for (int ci = 0; ci < 16; ci++)
                         {
-                            if (!IsChildPersisted(node, ref path, o, ci, tree, startPath))
+                            if (!IsChildPersisted(node, ref path, node.GetRawChildRef(ci), ci, tree, startPath))
                             {
                                 isBoundaryProofNode = true;
                                 break;
                             }
-                            ci++;
                         }
 
                         node.IsBoundaryProofNode = isBoundaryProofNode;

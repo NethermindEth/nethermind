@@ -425,7 +425,7 @@ namespace Nethermind.Trie
         }
 
         public NodeType NodeType => _nodeData?.NodeType ?? NodeType.Unknown;
-        public INodeData? NodeData => _nodeData;
+        internal INodeData? NodeData => _nodeData;
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
 
@@ -543,7 +543,7 @@ namespace Nethermind.Trie
             _nodeData = CreateNodeData(nodeType);
         }
 
-        public TrieNode(INodeData nodeData)
+        internal TrieNode(INodeData nodeData)
         {
             _blockAndFlags = _dirtyMask;
             _nodeData = nodeData;
@@ -1032,6 +1032,37 @@ namespace Nethermind.Trie
 
             dirtyChild = (TrieNode)data;
             return dirtyChild.IsDirty;
+        }
+
+        /// <summary>
+        /// Returns the raw stored reference for child slot <paramref name="childIndex"/>: a
+        /// <see cref="TrieNode"/> for resolved children, a <see cref="Hash256"/> for unresolved
+        /// by-hash references, the null sentinel for known-empty slots, or <see langword="null"/>
+        /// for slots that have not been decoded from RLP yet.
+        /// </summary>
+        /// <remarks>
+        /// Boundary-stitching code (snap-sync proof healing) needs to distinguish
+        /// resolved / hashed / empty slot states without forcing a hash decode from the parent
+        /// RLP. This helper is the only sanctioned way to inspect the slot from outside; child
+        /// slot representation is otherwise an implementation detail of <see cref="TrieNode"/>.
+        /// Extensions store the value at slot 0; branches expose 16 child slots.
+        /// </remarks>
+        public object? GetRawChildRef(int childIndex) => _nodeData?[childIndex];
+
+        /// <summary>
+        /// Replaces the child slot at <paramref name="childIndex"/> with an unresolved-by-hash
+        /// reference built from <paramref name="hash"/>. Used by snap-sync boundary stitching to
+        /// drop a child node back to a hash-only reference once it falls outside the proven range.
+        /// Asserts the node is a branch.
+        /// </summary>
+        public void SetUnresolvedChildHashAt(int childIndex, in ValueHash256 hash)
+        {
+            if (!IsBranch) ThrowNotABranch();
+            _nodeData[childIndex] = new Hash256(in hash);
+
+            [DoesNotReturn, StackTraceHidden]
+            static void ThrowNotABranch() => throw new TrieException(
+                $"{nameof(SetUnresolvedChildHashAt)} called on a non-branch node.");
         }
 
         public TrieNode? this[int i]
