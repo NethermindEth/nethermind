@@ -70,18 +70,24 @@ namespace Nethermind.Core
         public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
-        // EIP-8037: bal-devnet-6 keeps the static cost_per_state_byte = 1174 from bal-devnet-3.
-        public const long CostPerStateByte = 1174;
+        public const long CostPerStateByte = 1530; // eip-8037
+        public const long StateBytesPerStorageSet = 64; // eip-8037
+        public const long StateBytesPerNewAccount = 120; // eip-8037
+        public const long StateBytesPerAuthBase = 23; // eip-8037
+        public const long SystemCallBaseGasLimit = 30_000_000L; // eip-8037
+        public const long SystemMaxSstoresPerCall = 16; // eip-8037
+        public const long SystemCallStateReservoir = StateBytesPerStorageSet * CostPerStateByte * SystemMaxSstoresPerCall;
+        public const long SystemCallGasLimit = SystemCallBaseGasLimit + SystemCallStateReservoir;
         public const long SSetRegular = 2_900;
-        public const long SSetState = 32 * CostPerStateByte;
+        public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
         public const long CreateRegular = 9_000;
-        public const long CreateState = 112 * CostPerStateByte;
-        public const long NewAccountState = 112 * CostPerStateByte;
+        public const long CreateState = StateBytesPerNewAccount * CostPerStateByte;
+        public const long NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const long CodeDepositRegularPerWord = 6;
         public const long CodeDepositState = CostPerStateByte;
         public const long PerAuthBaseRegular = 7_500;
-        public const long PerAuthBaseState = 23 * CostPerStateByte;
-        public const long PerEmptyAccountState = 112 * CostPerStateByte;
+        public const long PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
+        public const long PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const long BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
@@ -90,16 +96,18 @@ namespace Nethermind.Core
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
-        // EIP-8037 in bal-devnet-6 fixes cost_per_state_byte at the static value, ignoring blockGasLimit.
-        // The parameter is retained on call sites that may revisit per-block scaling in a future devnet.
         public static long CalculateCostPerStateByte(long blockGasLimit) => CostPerStateByte;
 
-        public static long CalculateSSetState(long costPerStateByte) => checked(32 * costPerStateByte);
-        public static long CalculateCreateState(long costPerStateByte) => checked(112 * costPerStateByte);
-        public static long CalculateNewAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateSSetState(long costPerStateByte) => checked(StateBytesPerStorageSet * costPerStateByte);
+        public static long CalculateCreateState(long costPerStateByte) => checked(StateBytesPerNewAccount * costPerStateByte);
+        public static long CalculateNewAccountState(long costPerStateByte) => checked(StateBytesPerNewAccount * costPerStateByte);
         public static long CalculateCodeDepositState(long costPerStateByte, int byteCodeLength) => checked(costPerStateByte * byteCodeLength);
-        public static long CalculatePerAuthBaseState(long costPerStateByte) => checked(23 * costPerStateByte);
-        public static long CalculatePerEmptyAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculatePerAuthBaseState(long costPerStateByte) => checked(StateBytesPerAuthBase * costPerStateByte);
+        public static long CalculatePerEmptyAccountState(long costPerStateByte) => checked(StateBytesPerNewAccount * costPerStateByte);
+        public static long CalculateSystemCallStateReservoir(long costPerStateByte) =>
+            checked(StateBytesPerStorageSet * costPerStateByte * SystemMaxSstoresPerCall);
+        public static long CalculateSystemCallGasLimit(long costPerStateByte) =>
+            checked(SystemCallBaseGasLimit + CalculateSystemCallStateReservoir(costPerStateByte));
         public static long CalculateSSetReversalRefund(long costPerStateByte) => checked(CalculateSSetState(costPerStateByte) + SSetRegular - WarmStateRead);
     }
 }

@@ -44,7 +44,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateSystemTransactionIntrinsicGas(long blockGasLimit) =>
-        FromLong(0, GasCostOf.CalculateCostPerStateByte(blockGasLimit));
+        new()
+        {
+            Value = 0,
+            StateReservoir = GasCostOf.CalculateSystemCallStateReservoir(GasCostOf.CalculateCostPerStateByte(blockGasLimit)),
+            CostPerStateByte = GasCostOf.CalculateCostPerStateByte(blockGasLimit),
+        };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
@@ -483,6 +488,18 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateAvailableFromIntrinsic(long gasLimit, in EthereumGasPolicy intrinsicGas, IReleaseSpec spec)
     {
+        if (spec.IsEip8037Enabled && IsSystemTransactionIntrinsicGas(in intrinsicGas))
+        {
+            return new EthereumGasPolicy
+            {
+                Value = gasLimit - intrinsicGas.StateReservoir,
+                StateReservoir = intrinsicGas.StateReservoir,
+                StateGasUsed = intrinsicGas.StateGasUsed,
+                StateGasSpill = 0,
+                CostPerStateByte = GetCostPerStateByte(in intrinsicGas),
+            };
+        }
+
         long executionGas = gasLimit - intrinsicGas.Value - intrinsicGas.StateReservoir;
         long reservoir = 0;
 
@@ -502,6 +519,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             StateGasSpill = 0,
             CostPerStateByte = GetCostPerStateByte(in intrinsicGas),
         };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsSystemTransactionIntrinsicGas(in EthereumGasPolicy intrinsicGas)
+    {
+        long costPerStateByte = GetCostPerStateByte(in intrinsicGas);
+        return intrinsicGas.Value == 0 &&
+               intrinsicGas.StateGasUsed == 0 &&
+               intrinsicGas.StateReservoir == GasCostOf.CalculateSystemCallStateReservoir(costPerStateByte);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

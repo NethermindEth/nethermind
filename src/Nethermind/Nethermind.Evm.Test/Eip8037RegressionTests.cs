@@ -26,14 +26,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     /// When a nested CREATE's child frame has too little regular gas to cover both
     /// the regular code deposit cost AND the state-gas spill, the CREATE must fail.
     ///
-    /// Gas budget (1-byte deployed contract, child state reservoir = 0):
-    ///   regularDepositCost  = 6  (CodeDepositRegularPerWord x 1 word)
-    ///   stateDepositCost    = 1174 (CostPerStateByte x 1 byte)
-    ///   stateSpill          = 1174 (entire stateDepositCost spills into regular gas)
-    ///   total regular needed = 6 + 1174 = 1180
-    ///
-    /// Child ends with 1175 regular gas after init code.
-    /// Without the fix, the pre-check passes (1175 >= 6 and 1175 >= 1174) and the
+    /// The child ends below the combined regular code-deposit cost and state-gas spill.
+    /// Without the fix, the pre-check passes against each component separately and the
     /// charge runs on the merged parent+child pool, silently borrowing parent gas.
     /// </summary>
     [Test]
@@ -63,14 +57,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         //   Factory pre-CREATE opcodes: 21 gas
         //   CREATE opcode costs:
         //     CreateRegular(9000) + InitCodeWord(2) = 9002 regular
-        //     CreateState(131488) -> spills entirely to regular (factory has 0 state reservoir)
-        //     Total: 140490 regular
-        //   Remaining after CREATE costs: 1202
-        //   63/64 rule: callGas = 1202 - floor(1202/64) = 1184, factory retains 18
-        //   Child: 1184 gas -> 9 for init code -> 1175 remaining for code deposit
+        //     CreateState(183600) -> spills entirely to regular (factory has 0 state reservoir)
+        //     Total: 192602 regular
+        //   Remaining after CREATE costs: 1564
+        //   63/64 rule: callGas = 1564 - floor(1564/64) = 1540, factory retains 24
+        //   Child: 1540 gas -> 9 for init code -> 1531 remaining for code deposit
         //   Factory post-CREATE: 12 gas (PUSH, MSTORE, PUSH, PUSH, RETURN)
-        //   Total: 21000 + 21 + 140490 + 1202 = 162713
-        long gasLimit = 162713;
+        //   Total: 21000 + 21 + 192602 + 1564 = 215187
+        long gasLimit = 215187;
 
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
@@ -81,7 +75,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         // CREATE result: 0 = failure (returned in the 32-byte output)
         byte[] returnData = tracer.ReturnValue;
         Assert.That(returnData.IsZero(), Is.True,
-            "Nested CREATE should fail: child has 1175 gas but needs 1180 for code deposit (6 regular + 1174 state spill)");
+            "Nested CREATE should fail: child has 1531 gas but needs 1536 for code deposit (6 regular + 1530 state spill)");
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.GreaterThan(0));
     }
@@ -416,7 +410,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = Execute(Activation, 500_000, outerCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(259_698));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(320_050));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(226_930));
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
         Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }));
@@ -464,7 +458,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             codeBuilder.Op(Instruction.PUSH0);
         }
 
-        const long gasLimit = 100_000;
+        const long gasLimit = 130_000;
         byte[] code = codeBuilder.Done;
 
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
@@ -498,7 +492,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.REVERT)
             .Done;
 
-        const long gasLimit = 100_000;
+        const long gasLimit = 130_000;
         TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
@@ -629,7 +623,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Done;
 
         const long blockGasLimit = DynamicStatePricingBlockGasLimit;
-        (Block block, Transaction firstTx) = PrepareTx(Activation, 100_000, stateHeavyCode, value: 0, blockGasLimit: blockGasLimit);
+        (Block block, Transaction firstTx) = PrepareTx(Activation, 130_000, stateHeavyCode, value: 0, blockGasLimit: blockGasLimit);
 
         TestAllTracerWithOutput tracer = CreateTracer();
         TransactionResult firstResult = _processor.Execute(

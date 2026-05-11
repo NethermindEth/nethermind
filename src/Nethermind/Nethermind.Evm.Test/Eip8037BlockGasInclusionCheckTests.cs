@@ -13,12 +13,12 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class Eip8037BlockGasInclusionCheckTests
 {
-    private const long CostPerStateByte = 1174;
-    private const long GasNewAccount = 112; // EIP-8037 GAS_NEW_ACCOUNT
+    private const long CostPerStateByte = 1530;
+    private const long GasNewAccount = 120; // EIP-8037 GAS_NEW_ACCOUNT
     private const long IntrinsicNewAccountState = GasNewAccount * CostPerStateByte;
     private const long BaseIntrinsicRegular = 21_000;
     private const long CreateIntrinsicRegular = 53_000;
-    private const long SStoreStateGas = 32 * CostPerStateByte; // GasCostOf.SSetState
+    private const long SStoreStateGas = 64 * CostPerStateByte; // GasCostOf.SSetState
 
     // PR 2703 test_block_state_gas_limit_boundary[exact_fit]: state contribution == state_available -> accepted (strict >).
     [Test]
@@ -75,7 +75,7 @@ public class Eip8037BlockGasInclusionCheckTests
     [Test]
     public void Creation_tx_regular_check_subtracts_intrinsic_state_accepts()
     {
-        long intrinsicState = IntrinsicNewAccountState; // GAS_NEW_ACCOUNT * cpsb = 131_488
+        long intrinsicState = IntrinsicNewAccountState;
         long intrinsicRegular = CreateIntrinsicRegular;
         long intrinsicTotal = intrinsicRegular + intrinsicState;
 

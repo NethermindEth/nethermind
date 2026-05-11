@@ -22,7 +22,7 @@ using System.Threading;
 namespace Nethermind.Blockchain.Test;
 
 /// <summary>
-/// Integration tests exercising EIP-8037 (bal-devnet-6) per-tx 2D block-gas accounting
+/// Integration tests exercising EIP-8037 per-tx 2D block-gas accounting
 /// against Nethermind's <c>BlockAccessListManager.IncrementalValidation</c>. Each test
 /// mirrors a scenario from execution-specs PR 2703. The sequential executor regression
 /// pins the same inclusion rule on the BAL-off/parallel-disabled path.
@@ -35,8 +35,8 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class Eip8037BlockGasIntegrationTests
 {
-    private const long Cpsb = 1174;
-    private const long IntrinsicNewAccountState = 112 * Cpsb; // 131_488
+    private const long Cpsb = 1530;
+    private const long IntrinsicNewAccountState = 120 * Cpsb;
 
     private static BlockAccessListManager CreateAmsterdamBalManager()
     {
