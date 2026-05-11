@@ -28,9 +28,9 @@ public class GethConventionRegressionTests
 
         // Valid empty-branch RLP (17 × 0x80) so IsChildNull can decode without throwing.
         byte[] emptyBranchRlp = new byte[18]; emptyBranchRlp[0] = 0xD1; for (int i = 1; i <= 17; i++) emptyBranchRlp[i] = 0x80;
-        TrieNode branchNode = new(NodeType.Branch, emptyBranchRlp);
-        TrieNode extNode = new(NodeType.Extension, [0xc0, 0x01]);
-        TrieNode leafNode = new(NodeType.Leaf, [0xc0, 0x01]);
+        TrieNode branchNode = TrieNode.CreateBranchTyped(emptyBranchRlp);
+        TrieNode extNode = TrieNode.CreateExtensionTyped([0xc0, 0x01]);
+        TrieNode leafNode = TrieNode.CreateLeafTyped([0xc0, 0x01]);
 
         StateCompositionContext ctx0 = new(default, level: 0, isStorage: false, branchChildIndex: null);
         StateCompositionContext ctx1 = new(default, level: 1, isStorage: false, branchChildIndex: null);
@@ -59,7 +59,7 @@ public class GethConventionRegressionTests
     {
         using StateCompositionVisitor visitor = new(LimboLogs.Instance);
 
-        TrieNode leafNode = new(NodeType.Leaf, [0xc0, 0x01]);
+        TrieNode leafNode = TrieNode.CreateLeafTyped([0xc0, 0x01]);
 
         // Place 2 leaves at depth 3
         StateCompositionContext ctx3 = new(default, level: 3, isStorage: false, branchChildIndex: null);

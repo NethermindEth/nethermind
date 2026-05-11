@@ -21,7 +21,7 @@ namespace Nethermind.StateComposition.Test.Visitors;
 [TestFixture]
 public class CodeBytesTests
 {
-    private static readonly TrieNode AccountLeaf = new(NodeType.Leaf, [0xc0]);
+    private static readonly TrieNode AccountLeaf = TrieNode.CreateLeafTyped([0xc0]);
     private static readonly StateCompositionContext AccountCtx =
         new(default, level: 0, isStorage: false, branchChildIndex: null);
 

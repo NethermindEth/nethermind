@@ -25,7 +25,7 @@ public class SingleContractVisitorTests
         using SingleContractVisitor visitor = new(
             LimboLogs.Instance, targetStorageRoot: default, ct: CancellationToken.None);
 
-        TrieNode node = new(NodeType.Leaf, [0xc0]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0]);
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
         visitor.VisitAccount(in ctx, node, in eoa);
@@ -43,15 +43,15 @@ public class SingleContractVisitorTests
         using SingleContractVisitor visitor = new(
             LimboLogs.Instance, targetStorageRoot: targetRoot, ct: CancellationToken.None);
 
-        TrieNode node = new(NodeType.Leaf, [0xc0]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0]);
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
         AccountStruct targetAccount = new(0, 0, targetRoot, Keccak.Zero.ValueHash256);
         visitor.VisitAccount(in accountCtx, node, in targetAccount);
 
         byte[] storageRlp = [0xc0, 0x01, 0x02, 0x03];
-        TrieNode branchNode = new(NodeType.Branch, storageRlp);
-        TrieNode leafNode = new(NodeType.Leaf, [0xc0, 0x01]);
+        TrieNode branchNode = TrieNode.CreateBranchTyped(storageRlp);
+        TrieNode leafNode = TrieNode.CreateLeafTyped([0xc0, 0x01]);
 
         StateCompositionContext storCtx0 = new(default, level: 0, isStorage: true, branchChildIndex: null);
         StateCompositionContext storCtx1 = new(default, level: 1, isStorage: true, branchChildIndex: null);
@@ -88,7 +88,7 @@ public class SingleContractVisitorTests
         using SingleContractVisitor visitor = new(
             LimboLogs.Instance, targetStorageRoot: targetRoot, ct: CancellationToken.None);
 
-        TrieNode node = new(NodeType.Leaf, [0xc0]);
+        TrieNode node = TrieNode.CreateLeafTyped([0xc0]);
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         ValueHash256 hash = default;
 

@@ -73,7 +73,7 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_extension_with_child_96B()
         {
-            TrieNode trieNode = new(NodeType.Extension);
+            TrieNode trieNode = TrieNode.CreateExtensionTyped();
             trieNode.SetChild(0, null);
             return trieNode;
         }
@@ -81,7 +81,7 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_branch_with_child_208B()
         {
-            TrieNode trieNode = new(NodeType.Branch);
+            TrieNode trieNode = TrieNode.CreateBranchTyped();
             trieNode.SetChild(0, null);
             return trieNode;
         }
@@ -89,7 +89,7 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_leaf_with_value_128B()
         {
-            TrieNode trieNode = new(NodeType.Leaf);
+            TrieNode trieNode = TrieNode.CreateLeafTyped();
             trieNode.Value = new byte[7];
             return trieNode;
         }

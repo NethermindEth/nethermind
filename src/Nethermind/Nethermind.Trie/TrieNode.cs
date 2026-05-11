@@ -572,6 +572,38 @@ namespace Nethermind.Trie
             _nodeData = nodeData;
         }
 
+        // Used by typed-subclass constructors that already carry the shape data and a Keccak.
+        // Mirrors the legacy `TrieNode(NodeType, Hash256)` shape but skips the
+        // `IsPersisted = true` branch (only Unknown nodes are pre-persisted).
+        internal TrieNode(INodeData nodeData, in ValueHash256 keccak)
+        {
+            SetKeccak(in keccak);
+            _nodeData = nodeData;
+        }
+
+        // Used by typed-subclass constructors that carry RLP rather than a Keccak.
+        // Mirrors the legacy `TrieNode(NodeType, CappedArray<byte>, bool)` shape.
+        internal TrieNode(INodeData nodeData, CappedArray<byte> rlp, bool isDirty)
+        {
+            if (isDirty)
+            {
+                _blockAndFlags |= _dirtyMask;
+            }
+
+            _nodeData = nodeData;
+            InitRlp(rlp);
+        }
+
+        // Used by typed-subclass constructors that carry both a Keccak and RLP.
+        // Mirrors the legacy `TrieNode(NodeType, Hash256, CappedArray<byte>)` shape but
+        // skips the Unknown-specific `IsPersisted = true` branch (typed nodes are never Unknown).
+        internal TrieNode(INodeData nodeData, CappedArray<byte> rlp, in ValueHash256 keccak)
+        {
+            SetKeccak(in keccak);
+            _nodeData = nodeData;
+            InitRlp(rlp);
+        }
+
         public TrieNode(NodeType nodeType, Hash256 keccak)
         {
             ArgumentNullException.ThrowIfNull(keccak);
