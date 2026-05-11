@@ -67,11 +67,6 @@ public class SnapshotCompactor : ISnapshotCompactor
                 }
             }
 
-            // GetSnapshotsToCompact returns empty when there aren't enough persisted snapshots
-            // covering the target window — typically right after startup or after a long pause
-            // when the chain hasn't filled the compact window yet. Useful signal when investigating
-            // why a block isn't compacting; not an error in itself.
-            if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at {stateId}: not enough persisted snapshots in the compact window.");
         }
 
         return false;
@@ -104,18 +99,26 @@ public class SnapshotCompactor : ISnapshotCompactor
         bool snapshotsOk = false;
         try
         {
-            if (snapshots.Count == 0) return SnapshotPooledList.Empty();
+            if (snapshots.Count == 0)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at block {blockNumber}: assembled 0 of expected {compactSize} snapshots from start {startingBlockNumber}.");
+                return SnapshotPooledList.Empty();
+            }
 
             if (snapshots[0].From.BlockNumber != startingBlockNumber)
             {
                 // Could happen especially at start where the block may not be aligned, but not a big problem.
-                if (_logger.IsDebug) _logger.Debug($"Unable to compile snapshots to compact. {snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}. Starting block number should be {startingBlockNumber}");
+                if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at block {blockNumber}: got {snapshots.Count} snapshots ({snapshots[0].From.BlockNumber} -> {snapshots[^1].To.BlockNumber}), expected start at {startingBlockNumber}.");
 
                 return SnapshotPooledList.Empty();
             }
 
             // Nothing to combine if it's just one
-            if (snapshots.Count == 1) return SnapshotPooledList.Empty();
+            if (snapshots.Count == 1)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping snapshot compaction at block {blockNumber}: got only 1 of expected {compactSize} snapshots from start {startingBlockNumber}.");
+                return SnapshotPooledList.Empty();
+            }
 
             snapshotsOk = true;
             return snapshots;
