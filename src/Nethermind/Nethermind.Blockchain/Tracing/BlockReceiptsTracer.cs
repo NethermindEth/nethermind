@@ -286,6 +286,12 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public ITxTracer InnerTracer => _currentTxTracer;
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Returns the current receipt count and, when the wrapped other-tracer also implements
+    /// <see cref="IJournal{Int32}"/>, takes its snapshot in lockstep so a later <see cref="Restore"/>
+    /// can rewind both consistently.
+    /// </remarks>
     public int TakeSnapshot()
     {
         int snapshot = _txReceipts.Count;
@@ -297,10 +303,21 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         return snapshot;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Cascades to any <see cref="IJournal{Int32}"/> other-tracer by popping every entry whose
+    /// receipt depth is &gt;= <paramref name="snapshot"/> and restoring it to the deepest popped state.
+    /// <paramref name="snapshot"/> must be a value previously returned by <see cref="TakeSnapshot"/>;
+    /// passing a raw <see cref="TxReceipts"/>.Length probe risks rewinding the other-tracer to an
+    /// unrelated earlier state.
+    /// </remarks>
     public void Restore(int snapshot)
     {
         if (_otherTracer is IJournal<int> journal)
         {
+            Debug.Assert(_otherTracerSnapshots.Count > 0,
+                "Restore called without a preceding TakeSnapshot for the other tracer");
+
             int otherToRestore = 0;
             bool hasOther = false;
             while (_otherTracerSnapshots.TryPeek(out (int Receipts, int Other) top) && top.Receipts >= snapshot)

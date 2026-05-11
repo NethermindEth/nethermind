@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -122,7 +123,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (result)
                     {
-                        // Mock processors in tests can return success without producing a receipt; guard before LastReceipt.
+                        // Stub adapters in tests can return Ok without emitting a receipt; production adapters always do.
                         TxReceipt? txReceipt = receiptsTracer.TxReceipts.Length > receiptsCountBeforeTx ? receiptsTracer.LastReceipt : null;
                         if (depositRequestsLimiter.Enabled
                             && txReceipt?.Logs is { Length: > 0 } logs
@@ -177,9 +178,17 @@ namespace Nethermind.Consensus.Processing
                 throw new InvalidOperationException(
                     $"Transaction {tx.ToShortString()} exceeded the EIP-8254 deposit request cap without a rollback snapshot. Deposit requests in tx: {depositRequestsInTx}.");
 
+            /// <summary>Per-block tally of EIP-6110 deposit requests included while building, gated by the EIP-8254 cap.</summary>
             private struct DepositRequestsLimiter(IReleaseSpec spec)
             {
-                private const long MinDepositLogGas = GasCostOf.Log + GasCostOf.LogTopic;
+                // 5x32 offsets + 5x32 lengths + ceil-32-pad(48+32+8+96+8) = 576 bytes (see ExecutionRequestsProcessor.DepositEventAbi).
+                private const int DepositEventAbiEncodedDataSize = 576;
+
+                // LOG-only floor (375 + 375 + 8*576 = 5358). Deposit contract burns more before each emit, so this
+                // over-estimates max deposits/tx as a divisor in CanExceedCap. ThrowDepositRequestCapInvariantViolation
+                // backstops any miscount.
+                private const long MinDepositLogGas =
+                    GasCostOf.Log + GasCostOf.LogTopic + GasCostOf.LogData * DepositEventAbiEncodedDataSize;
                 private readonly Address? _depositContractAddress = spec.DepositContractAddress;
                 private int _depositRequests;
 
@@ -210,11 +219,7 @@ namespace Nethermind.Consensus.Processing
 
                 private readonly int CountDepositRequests(LogEntry[] logs)
                 {
-                    if (_depositContractAddress is null)
-                    {
-                        return 0;
-                    }
-
+                    Debug.Assert(_depositContractAddress is not null, "Reachable only via TryAdd, which is gated by Enabled.");
                     Address depositContract = _depositContractAddress;
                     int depositRequests = 0;
                     for (int i = 0; i < logs.Length; i++)
