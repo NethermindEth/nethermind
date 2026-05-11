@@ -17,10 +17,11 @@ public sealed class ArenaManager : IArenaManager
     private const string ArenaFilePrefix = "arena_";
     private const string DedicatedArenaFilePrefix = "dedicated_";
     private const string ArenaFileExtension = ".bin";
-    private const int DedicatedArenaThreshold = 512 * 1024 * 1024;
+    private const long DefaultDedicatedArenaThreshold = 512L * 1024 * 1024;
 
     private readonly string _basePath;
     private readonly long _maxArenaSize;
+    private readonly long _dedicatedArenaThreshold;
     private readonly bool _fadviseOnEviction;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
@@ -73,10 +74,11 @@ public sealed class ArenaManager : IArenaManager
         }
     }
 
-    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false)
+    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold)
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
+        _dedicatedArenaThreshold = dedicatedArenaThreshold;
         _fadviseOnEviction = fadviseOnEviction;
         Directory.CreateDirectory(basePath);
         _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
@@ -159,7 +161,7 @@ public sealed class ArenaManager : IArenaManager
     {
         lock (_lock)
         {
-            ArenaFile file = estimatedSize >= DedicatedArenaThreshold
+            ArenaFile file = estimatedSize >= _dedicatedArenaThreshold
                 ? CreateArenaFile(estimatedSize, dedicated: true)
                 : GetOrCreateArena(estimatedSize);
             long offset = _frontiers[file.Id];
@@ -171,13 +173,31 @@ public sealed class ArenaManager : IArenaManager
 
     /// <summary>
     /// Complete a buffered write. Updates frontier and returns location + reservation.
+    /// Dedicated arenas are pre-sized to the writer's estimate; trim the file down
+    /// to the actual frontier so the on-disk length and mmap footprint match what
+    /// was written (the estimate is an upper bound and is often an overcount).
     /// </summary>
     public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag)
     {
         lock (_lock)
         {
-            _frontiers[arenaId] = startOffset + actualSize;
+            long newFrontier = startOffset + actualSize;
+            _frontiers[arenaId] = newFrontier;
             _reservedArenas.Remove(arenaId);
+
+            if (newFrontier > 0
+                && _standaloneFiles.Contains(arenaId)
+                && _arenas.TryGetValue(arenaId, out ArenaFile? oldFile)
+                && newFrontier < oldFile.MappedSize)
+            {
+                string path = oldFile.Path;
+                oldFile.Dispose();
+                using (Microsoft.Win32.SafeHandles.SafeFileHandle h =
+                    File.OpenHandle(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+                    RandomAccess.SetLength(h, newFrontier);
+                _arenas[arenaId] = new ArenaFile(arenaId, path, newFrontier);
+            }
+
             SnapshotLocation location = new(arenaId, startOffset, actualSize);
             _arenas.TryGetValue(arenaId, out ArenaFile? arenaFile);
             ArenaReservation reservation = new(this, arenaFile, arenaId, startOffset, actualSize, tag);

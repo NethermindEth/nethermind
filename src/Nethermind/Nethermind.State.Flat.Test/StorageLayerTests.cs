@@ -230,6 +230,33 @@ public class StorageLayerTests
     }
 
     [Test]
+    public void ArenaManager_DedicatedArena_ShrinksToActualSizeOnComplete()
+    {
+        string arenaDir = Path.Combine(_testDir, "arenas");
+        // Lower the dedicated threshold so the test doesn't need to allocate 512 MiB.
+        using ArenaManager manager = new(arenaDir, 0, maxArenaSize: 4096, dedicatedArenaThreshold: 64 * 1024);
+        manager.Initialize([]);
+
+        const long estimate = 256 * 1024;
+        byte[] data = [1, 2, 3, 4, 5, 6, 7, 8];
+
+        SnapshotLocation location;
+        string dedicatedFile;
+        using (ArenaWriter writer = manager.CreateWriter(estimate, ArenaReservationTags.Test))
+        {
+            data.CopyTo(writer.GetWriter().GetSpan(data.Length));
+            writer.GetWriter().Advance(data.Length);
+            (location, _) = writer.Complete();
+            dedicatedFile = Directory.GetFiles(arenaDir, "dedicated_*.bin")[0];
+        }
+
+        Assert.That(new FileInfo(dedicatedFile).Length, Is.EqualTo(data.Length));
+        Assert.That(manager.ArenaMappedBytes, Is.EqualTo(data.Length));
+        using WholeReadSession session = manager.Open(location, ArenaReservationTags.Test).BeginWholeReadSession();
+        Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
+    }
+
+    [Test]
     public void ArenaManager_ConcurrentWriters_UseDifferentArenas()
     {
         string arenaDir = Path.Combine(_testDir, "arenas");
