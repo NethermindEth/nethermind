@@ -31,10 +31,15 @@ namespace Nethermind.JsonRpc.Modules
         private static int _queuedCalls;
         private static int _sharedCalls;
 
-        public static void IncrementQueuedCalls()
+        public static void AcquireQueuedSlot()
         {
-            if (QueuedLimitEnabled)
-                Interlocked.Increment(ref _queuedCalls);
+            if (!QueuedLimitEnabled) return;
+            int after = Interlocked.Increment(ref _queuedCalls);
+            if (after > QueuedLimit)
+            {
+                Interlocked.Decrement(ref _queuedCalls);
+                throw new LimitExceededException($"Unable to start new queued requests. Too many queued requests. Queued calls {after - 1}.");
+            }
         }
 
         public static void DecrementQueuedCalls()
@@ -43,32 +48,21 @@ namespace Nethermind.JsonRpc.Modules
                 Interlocked.Decrement(ref _queuedCalls);
         }
 
-        public static void EnsureQueuedLimit()
+        public static void AcquireSharedSlot()
         {
-            if (QueuedLimitEnabled && _queuedCalls > QueuedLimit)
+            if (!SharedLimitEnabled) return;
+            int after = Interlocked.Increment(ref _sharedCalls);
+            if (after > SharedLimit)
             {
-                throw new LimitExceededException($"Unable to start new queued requests. Too many queued requests. Queued calls {_queuedCalls}.");
+                Interlocked.Decrement(ref _sharedCalls);
+                throw new LimitExceededException($"Unable to start new shared requests. Too many in-flight shared calls. In-flight: {after - 1}.");
             }
-        }
-
-        public static void IncrementSharedCalls()
-        {
-            if (SharedLimitEnabled)
-                Interlocked.Increment(ref _sharedCalls);
         }
 
         public static void DecrementSharedCalls()
         {
             if (SharedLimitEnabled)
                 Interlocked.Decrement(ref _sharedCalls);
-        }
-
-        public static void EnsureSharedLimit()
-        {
-            if (SharedLimitEnabled && _sharedCalls > SharedLimit)
-            {
-                throw new LimitExceededException($"Unable to start new shared requests. Too many in-flight shared calls. In-flight: {_sharedCalls}.");
-            }
         }
     }
 
@@ -99,15 +93,13 @@ namespace Nethermind.JsonRpc.Modules
 
         private Task<T> SharedPath()
         {
-            RpcLimits.EnsureSharedLimit();
-            RpcLimits.IncrementSharedCalls();
+            RpcLimits.AcquireSharedSlot();
             return _sharedAsTask;
         }
 
         private async Task<T> SlowPath()
         {
-            RpcLimits.EnsureQueuedLimit();
-            RpcLimits.IncrementQueuedCalls();
+            RpcLimits.AcquireQueuedSlot();
 
             if (!await _semaphore.WaitAsync(_timeout))
             {
