@@ -229,10 +229,6 @@ public class SyncDispatcherTests
         }
     }
 
-    // [NonParallelizable]: the dispatcher loop relies on Task.Run / Task.Yield continuations completing
-    // promptly. Under the class-level [Parallelizable(ParallelScope.All)] it competes with the rest of
-    // the suite for thread-pool capacity, and on slow CI the batched dispatch can stretch >20s — well
-    // past the 10s MaxTime budget. Bump to 30s to match the sibling pattern below.
     [Test, NonParallelizable, MaxTime(30_000)]
     public async Task Simple_test_sync()
     {
