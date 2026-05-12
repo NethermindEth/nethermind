@@ -13,7 +13,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules;
