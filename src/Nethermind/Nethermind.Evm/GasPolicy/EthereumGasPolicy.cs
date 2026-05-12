@@ -41,7 +41,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         new()
         {
             Value = 0,
-            StateReservoir = GasCostOf.SystemCallStateReservoir,
+            StateReservoir = Eip8037Constants.SystemCallStateReservoir,
         };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

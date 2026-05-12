@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -370,19 +371,19 @@ public class DebugRpcModule(
     public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter) =>
         GetBlockRlpOrFail(blockParameter);
 
-    public ResultWrapper<byte[]> debug_getRawBlockAccessList(BlockParameter blockParameter)
+    public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
     {
         Block? block = debugBridge.GetBlock(blockParameter);
         if (block is null || block.BlockAccessListHash is null)
         {
-            return ResultWrapper<byte[]>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
+            return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
         }
 
-        byte[]? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Hash);
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Hash);
 
         return balRlp is null
-            ? ResultWrapper<byte[]>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
-            : ResultWrapper<byte[]>.Success(balRlp);
+            ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<OwnedByteMemory>.Success(new OwnedByteMemory(balRlp));
     }
 
     public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)

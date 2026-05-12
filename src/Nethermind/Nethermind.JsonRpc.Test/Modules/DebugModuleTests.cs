@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -213,12 +214,12 @@ public class DebugModuleTests
         Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
         byte[] rawBal = [0xc0];
         _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
-        _blockchainBridge.GetBlockAccessListRlp(block.Hash!).Returns(rawBal);
+        _blockchainBridge.GetBlockAccessListRlp(block.Hash!).Returns(ArrayMemoryManager.From(rawBal));
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcSuccessResponse;
+        string serialized = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest");
 
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rawBal));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xc0\",\"id\":67}"));
     }
 
     private static IEnumerable<TestCaseData> GetRawBlockAccessListErrorCases()
@@ -226,13 +227,13 @@ public class DebugModuleTests
         yield return new TestCaseData(
             (Action<IDebugBridge, IBlockchainBridge>)((debug, _) => debug.GetBlock(BlockParameter.Latest).ReturnsNull()),
             ErrorCodes.BlockAccessListResourceNotFound)
-            { TestName = "Get_raw_block_access_list_when_missing_block" };
+        { TestName = "Get_raw_block_access_list_when_missing_block" };
 
         yield return new TestCaseData(
             (Action<IDebugBridge, IBlockchainBridge>)((debug, _) =>
                 debug.GetBlock(BlockParameter.Latest).Returns(Build.A.Block.WithNumber(1).TestObject)),
             ErrorCodes.BlockAccessListResourceNotFound)
-            { TestName = "Get_raw_block_access_list_when_unavailable_before_fork" };
+        { TestName = "Get_raw_block_access_list_when_unavailable_before_fork" };
 
         yield return new TestCaseData(
             (Action<IDebugBridge, IBlockchainBridge>)((debug, chain) =>
@@ -242,7 +243,7 @@ public class DebugModuleTests
                 chain.GetBlockAccessListRlp(block.Hash!).ReturnsNull();
             }),
             ErrorCodes.PrunedHistoryUnavailable)
-            { TestName = "Get_raw_block_access_list_when_pruned" };
+        { TestName = "Get_raw_block_access_list_when_pruned" };
     }
 
     [TestCaseSource(nameof(GetRawBlockAccessListErrorCases))]

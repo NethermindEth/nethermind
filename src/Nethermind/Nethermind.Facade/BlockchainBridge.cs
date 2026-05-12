@@ -485,11 +485,8 @@ namespace Nethermind.Facade
         public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
             => balStore.Get(blockHash);
 
-        public byte[]? GetBlockAccessListRlp(Hash256 blockHash)
-        {
-            using MemoryManager<byte>? rlp = balStore.GetRlp(blockHash);
-            return rlp?.Memory.ToArray();
-        }
+        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)
+            => balStore.GetRlp(blockHash);
 
         // for testing
         public void DeleteBlockAccessList(Hash256 blockHash)

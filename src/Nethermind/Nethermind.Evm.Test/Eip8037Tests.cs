@@ -29,8 +29,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
         yield return new TestCaseData(GasCostOf.CreateState).Returns(183600L).SetName("CreateState");
         yield return new TestCaseData(GasCostOf.NewAccountState).Returns(183600L).SetName("NewAccountState");
         yield return new TestCaseData(GasCostOf.PerAuthBaseState).Returns(35190L).SetName("PerAuthBaseState");
-        yield return new TestCaseData(GasCostOf.SystemCallStateReservoir).Returns(1566720L).SetName("SystemCallStateReservoir");
-        yield return new TestCaseData(GasCostOf.SystemCallGasLimit).Returns(31566720L).SetName("SystemCallGasLimit");
+        yield return new TestCaseData(Eip8037Constants.SystemCallStateReservoir).Returns(1566720L).SetName("SystemCallStateReservoir");
+        yield return new TestCaseData(Eip8037Constants.SystemCallGasLimit).Returns(31566720L).SetName("SystemCallGasLimit");
     }
 
     [TestCaseSource(nameof(ConstantsTestCases))]
@@ -57,8 +57,8 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [Test]
     public void System_transaction_gas_keeps_regular_budget_and_state_reservoir()
     {
-        EthereumGasPolicy intrinsicGas = EthereumGasPolicy.CreateSystemTransactionIntrinsicGas(GasCostOf.SystemCallGasLimit);
-        EthereumGasPolicy availableGas = EthereumGasPolicy.CreateSystemTransactionAvailableGas(GasCostOf.SystemCallGasLimit, in intrinsicGas, Amsterdam.Instance);
+        EthereumGasPolicy intrinsicGas = EthereumGasPolicy.CreateSystemTransactionIntrinsicGas(Eip8037Constants.SystemCallGasLimit);
+        EthereumGasPolicy availableGas = EthereumGasPolicy.CreateSystemTransactionAvailableGas(Eip8037Constants.SystemCallGasLimit, in intrinsicGas, Amsterdam.Instance);
 
         Assert.That(
             (
@@ -72,14 +72,14 @@ public class Eip8037Tests : VirtualMachineTestsBase
             Is.EqualTo(
                 (
                     0L,
-                    GasCostOf.SystemCallStateReservoir,
+                    Eip8037Constants.SystemCallStateReservoir,
                     0L,
-                    GasCostOf.SystemCallBaseGasLimit,
-                    GasCostOf.SystemCallStateReservoir,
+                    Eip8037Constants.SystemCallBaseGasLimit,
+                    Eip8037Constants.SystemCallStateReservoir,
                     0L
                 )));
 
-        for (int i = 0; i < GasCostOf.SystemMaxSstoresPerCall; i++)
+        for (int i = 0; i < Eip8037Constants.SystemMaxSstoresPerCall; i++)
         {
             Assert.That(EthereumGasPolicy.ConsumeStateGas(ref availableGas, GasCostOf.SSetState), Is.True);
         }
@@ -92,9 +92,9 @@ public class Eip8037Tests : VirtualMachineTestsBase
             ),
             Is.EqualTo(
                 (
-                    GasCostOf.SystemCallBaseGasLimit,
+                    Eip8037Constants.SystemCallBaseGasLimit,
                     0L,
-                    GasCostOf.SystemCallStateReservoir
+                    Eip8037Constants.SystemCallStateReservoir
                 )));
     }
 
@@ -103,11 +103,11 @@ public class Eip8037Tests : VirtualMachineTestsBase
     {
         EthereumGasPolicy intrinsicGas = new()
         {
-            StateReservoir = GasCostOf.SystemCallStateReservoir,
+            StateReservoir = Eip8037Constants.SystemCallStateReservoir,
         };
 
-        EthereumGasPolicy availableGas = EthereumGasPolicy.CreateAvailableFromIntrinsic(GasCostOf.SystemCallGasLimit, in intrinsicGas, Amsterdam.Instance);
-        long expectedReservoir = GasCostOf.SystemCallGasLimit - GasCostOf.SystemCallStateReservoir - Eip7825Constants.DefaultTxGasLimitCap;
+        EthereumGasPolicy availableGas = EthereumGasPolicy.CreateAvailableFromIntrinsic(Eip8037Constants.SystemCallGasLimit, in intrinsicGas, Amsterdam.Instance);
+        long expectedReservoir = Eip8037Constants.SystemCallGasLimit - Eip8037Constants.SystemCallStateReservoir - Eip7825Constants.DefaultTxGasLimitCap;
 
         Assert.That(
             (
@@ -119,7 +119,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
                 (
                     Eip7825Constants.DefaultTxGasLimitCap,
                     expectedReservoir,
-                    GasCostOf.SystemCallStateReservoir
+                    Eip8037Constants.SystemCallStateReservoir
                 )));
     }
 

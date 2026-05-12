@@ -23,7 +23,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    private const long GasLimit = GasCostOf.SystemCallGasLimit;
+    private const long GasLimit = Eip8037Constants.SystemCallGasLimit;
 
     private readonly ITransactionProcessor _transactionProcessor;
 

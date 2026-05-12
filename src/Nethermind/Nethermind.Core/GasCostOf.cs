@@ -74,10 +74,6 @@ namespace Nethermind.Core
         public const long StateBytesPerStorageSet = 64; // eip-8037
         public const long StateBytesPerNewAccount = 120; // eip-8037
         public const long StateBytesPerAuthBase = 23; // eip-8037
-        public const long SystemCallBaseGasLimit = 30_000_000L; // eip-8037
-        public const long SystemMaxSstoresPerCall = 16; // eip-8037
-        public const long SystemCallStateReservoir = StateBytesPerStorageSet * CostPerStateByte * SystemMaxSstoresPerCall;
-        public const long SystemCallGasLimit = SystemCallBaseGasLimit + SystemCallStateReservoir;
         public const long SSetRegular = 2_900;
         public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
         public const long CreateRegular = 9_000;

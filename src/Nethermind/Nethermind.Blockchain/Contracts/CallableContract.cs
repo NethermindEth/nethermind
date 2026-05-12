@@ -24,6 +24,11 @@ namespace Nethermind.Blockchain.Contracts
         private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         public const long UnlimitedGas = long.MaxValue;
 
+        /// <summary>
+        /// Gas limit used for generated system transactions.
+        /// </summary>
+        public const long SystemTransactionGasLimit = 30_000_000L;
+
         private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
 
         /// <summary>
