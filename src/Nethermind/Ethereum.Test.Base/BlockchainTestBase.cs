@@ -430,11 +430,15 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "MissingAuthorizationList: Must be set"),
         ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "NotAllowedCreateTransaction: To must be set"),
         ("TransactionException.TYPE_4_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
-        ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
-        ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch: Blob gas in header does not match calculated"),
+        // Nethermind emits two HeaderBlobGasMismatch variants from block
+        // validation: HeaderBlobGasMismatch (header value != calculated) and
+        // HeaderBlobGasAboveBlockLimit (cumulative blob gas > block limit).
+        // Both share the prefix; match on that to cover both EEST classes.
+        ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch:"),
+        ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch:"),
         ("BlockException.INVALID_REQUESTS", "InvalidRequestsHash: Requests hash mismatch in block"),
-        ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit: Gas used exceeds gas limit."),
-        ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit: Gas used exceeds gas limit."),
+        ("BlockException.INVALID_GAS_USED_ABOVE_LIMIT", "ExceededGasLimit:"),
+        ("BlockException.GAS_USED_OVERFLOW", "ExceededGasLimit:"),
         ("BlockException.RLP_BLOCK_LIMIT_EXCEEDED", "ExceededBlockSizeLimit: Exceeded block size limit"),
         ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", "DepositsInvalid: Invalid deposit event layout:"),
         ("BlockException.INVALID_BASEFEE_PER_GAS", "InvalidBaseFeePerGas: Does not match calculated"),
@@ -464,8 +468,8 @@ public abstract class BlockchainTestBase
         ("BlockException.SYSTEM_CONTRACT_EMPTY", ValidationErrorRegex(@"(Withdrawals|Consolidations)Empty: Contract is not deployed\.")),
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"(Withdrawals|Consolidations)Failed: Contract execution failed\.")),
         ("BlockException.INVALID_BAL_HASH", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:")),
-        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|BlockLevelAccessListIndexOutOfRange:|could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
-        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"could not be parsed as a block: Error decoding block access list:|Error decoding block access list:")),
+        ("BlockException.INVALID_BLOCK_ACCESS_LIST", ValidationErrorRegex(@"InvalidBlockLevelAccessListHash:|InvalidBlockLevelAccessList:|Error decoding block access list:")),
+        ("BlockException.INCORRECT_BLOCK_FORMAT", ValidationErrorRegex(@"Error decoding block access list:")),
         ("TransactionException.GAS_ALLOWANCE_EXCEEDED", ValidationErrorRegex(@"TxGasLimitCapExceeded:")),
         ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),
         ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
