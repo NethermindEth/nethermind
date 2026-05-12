@@ -34,6 +34,7 @@ using NSubstitute;
 using NUnit.Framework;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Serialization.Rlp;
 
@@ -599,6 +600,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             HandleIncomingStatusMessage();
             Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders));
+        }
+
+        [Test]
+        public async Task Queued_headers_request_is_cancelled_on_dispose()
+        {
+            HandleIncomingStatusMessage();
+
+            ISyncPeer peer = _handler;
+            Task<IOwnedReadOnlyList<BlockHeader>> request1 = peer.GetBlockHeaders(1, 1, 0, CancellationToken.None);
+            Task<IOwnedReadOnlyList<BlockHeader>> request2 = peer.GetBlockHeaders(2, 1, 0, CancellationToken.None);
+            // request1 is in-flight; request2 gets queued and is never sent to the peer
+
+            _handler.Dispose();
+
+            await Assert.ThatAsync(() => request1, Throws.InstanceOf<TaskCanceledException>());
+            await Assert.ThatAsync(() => request2, Throws.InstanceOf<TaskCanceledException>());
         }
 
         [Test]
