@@ -9,8 +9,8 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.0" />
     <PackageVersion Include="Autofac" Version="9.1.0" />
     <PackageVersion Include="Autofac.Extensions.DependencyInjection" Version="11.0.0" />
-    <PackageVersion Include="BenchmarkDotNet" Version="0.16.0-nightly.20260324.477" />
-    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.16.0-nightly.20260324.477" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
     <PackageVersion Include="BouncyCastle.Cryptography" Version="2.6.2" />
     <PackageVersion Include="Ckzg.Bindings" Version="2.1.7.1596" />
     <PackageVersion Include="Collections.Pooled" Version="1.0.82" />
@@ -29,6 +29,7 @@
     <PackageVersion Include="MathNet.Numerics.FSharp" Version="5.0.0" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.7" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="10.0.7" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Build.Tasks.Git" Version="10.0.203" />
     <PackageVersion Include="Microsoft.ClearScript.V8" Version="7.5.0" />
     <PackageVersion Include="Microsoft.ClearScript.V8.Native.linux-arm64" Version="7.5.0" />
@@ -64,7 +65,8 @@
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.5.0" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
-    <PackageVersion Include="Nethermind.ZiskBindings" Version="1.0.0-preview.27" />
+    <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="1.0.0-preview.1" />
+    <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="1.0.0-preview.2" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NJsonSchema" Version="11.3.2" />
     <PackageVersion Include="NLog" Version="5.5.1" />
@@ -75,7 +77,7 @@
     <PackageVersion Include="NUnit.Analyzers" Version="4.12.0" />
     <PackageVersion Include="NUnit3TestAdapter" Version="6.1.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
-    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.7" />
+    <PackageVersion Include="PierTwo.Lantern.Discv5.WireProtocol" Version="1.0.0-preview.8" />
     <PackageVersion Include="Polly" Version="8.6.6" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Prometheus.Client.MetricPusher" Version="3.3.0" />
@@ -84,7 +86,7 @@
     <PackageVersion Include="RocksDB" Version="[10.4.2.64152]" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
-    <PackageVersion Include="Snappier" Version="1.3.0" />
+    <PackageVersion Include="Snappier" Version="1.3.1" />
     <PackageVersion Include="Spectre.Console" Version="0.55.2" />
     <PackageVersion Include="System.CommandLine" Version="2.0.7" />
     <PackageVersion Include="System.Configuration.ConfigurationManager" Version="10.0.7" />

@@ -80,7 +80,7 @@ jobs:
 
       - name: Build Nethermind.Test.Runner
         working-directory: src/Nethermind
-        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:NuGetAudit=false
+        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release
 
       - name: Cache EEST fixtures
         uses: actions/cache@v5
@@ -218,7 +218,7 @@ jobs:
               echo ""
               echo "# 2. Build and run"
               echo "cd src/Nethermind"
-              echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:NuGetAudit=false"
+              echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release"
               echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers $WORKERS --neverTrace${FILTER_CMD}"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"

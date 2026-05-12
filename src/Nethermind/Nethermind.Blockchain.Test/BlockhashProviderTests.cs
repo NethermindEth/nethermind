@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -16,7 +19,10 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -32,6 +38,18 @@ public class BlockhashProviderTests
         worldState.Commit(Frontier.Instance);
         worldState.CommitTree(0);
         return (worldState, worldState.StateRoot);
+    }
+
+    private static IWorldState CreateWorldStateWithHistoryContract(IReleaseSpec spec)
+    {
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
+        worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+        byte[] code = [1, 2, 3];
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, spec);
+        worldState.Commit(spec);
+        worldState.CommitTree(0);
+        return worldState;
     }
 
     private static BlockhashProvider CreateBlockHashProvider(IHeaderFinder headerFinder, IReleaseSpec spec)
@@ -282,6 +300,40 @@ public class BlockhashProviderTests
         // 3. Try to retrieve the parent hash from the state
         Hash256? result = store.GetBlockHashFromState(current.Header, current.Header.Number - 1, specProvider.GetSpec(current.Header));
         Assert.That(result, Is.EqualTo(current.Header.ParentHash));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockAccessListManager_blockhash_state_changes_match_BlockhashStore()
+    {
+        IReleaseSpec spec = Amsterdam.Instance;
+        IWorldState legacyWorldState = CreateWorldStateWithHistoryContract(spec);
+        IWorldState balWorldState = CreateWorldStateWithHistoryContract(spec);
+        Block parent = Build.A.Block.WithNumber(41).TestObject;
+        Block current = Build.A.Block.WithParent(parent).TestObject;
+        UInt256 parentBlockIndex = new((ulong)((current.Number - 1) % spec.Eip2935RingBufferSize));
+        StorageCell storageCell = new(Eip2935Constants.BlockHashHistoryAddress, parentBlockIndex);
+
+        using IDisposable legacyScope = legacyWorldState.BeginScope(current.Header);
+        new BlockhashStore(legacyWorldState).ApplyBlockhashStateChanges(current.Header, spec);
+        byte[] expectedStoredHash = legacyWorldState.Get(storageCell).ToArray();
+
+        using IDisposable balScope = balWorldState.BeginScope(current.Header);
+        TestSingleReleaseSpecProvider specProvider = new(spec);
+        BlockAccessListManager balManager = new(
+            balWorldState,
+            specProvider,
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+        balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
+        balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));
+        balManager.Setup(current);
+
+        balManager.ApplyBlockhashStateChanges(current.Header, spec);
+        balManager.NextTransaction();
+
+        Assert.That(balWorldState.Get(storageCell).ToArray(), Is.EqualTo(expectedStoredHash));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

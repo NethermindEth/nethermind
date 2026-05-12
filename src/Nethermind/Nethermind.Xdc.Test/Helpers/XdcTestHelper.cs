@@ -1,9 +1,10 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
@@ -72,11 +73,32 @@ internal static class XdcTestHelper
         return vote;
     }
 
+    /// <summary>
+    /// Produces a byte-distinct but cryptographically valid alternative signature for the same
+    /// message and private key by exploiting secp256k1 malleability: (r, s) → (r, N−s, flipped v).
+    /// Both signatures recover to the same signer address, so they represent a single vote from
+    /// one validator regardless of how many byte-distinct copies exist.
+    /// </summary>
+    public static Signature CreateMalleableSignature(Signature original)
+    {
+        ReadOnlySpan<byte> bytes = original.Bytes; // 64 bytes: r (0..31), s (32..63)
+
+        UInt256 s = new(bytes[32..], true);
+        UInt256 sNew = SecP256k1Curve.N - s;
+
+        byte[] result = new byte[65];
+        bytes[..32].CopyTo(result); // r unchanged
+        sNew.ToBigEndian(result.AsSpan(32, 32));
+        result[64] = original.V == 27 ? (byte)28 : (byte)27; // flip recovery id
+
+        return new Signature(result);
+    }
+
     public static byte[] BuildV1ExtraData(Address[] addresses)
     {
         byte[] extraData = new byte[XdcConstants.ExtraVanity + addresses.Length * Address.Size + XdcConstants.ExtraSeal];
         for (int i = 0; i < addresses.Length; i++)
-            Array.Copy(addresses[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
+            addresses[i].Bytes.CopyTo(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
         return extraData;
     }
 }

@@ -152,6 +152,7 @@ public ref struct ValueRlpStream(CappedArray<byte> data)
 
     public ReadOnlySpan<byte> DecodeByteArraySpan()
     {
+        int position = Position;
         int prefix = ReadByte();
         ReadOnlySpan<byte> span = RlpStream.SingleBytes;
         if ((uint)prefix < (uint)span.Length)
@@ -170,7 +171,7 @@ public ref struct ValueRlpStream(CappedArray<byte> data)
             ReadOnlySpan<byte> buffer = Read(length);
             if (buffer.Length == 1 && buffer[0] < 128)
             {
-                RlpHelpers.ThrowUnexpectedByteValue(buffer[0]);
+                RlpHelpers.ThrowUnexpectedByteValue(position, buffer[0]);
             }
 
             return buffer;

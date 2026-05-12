@@ -1,7 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,8 +15,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -246,17 +245,21 @@ namespace Ethereum.Test.Base
             }
 
             List<GeneralStateTest> blockchainTests = [];
+            ulong chainId = LoadChainId(testJson.Config);
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int iterationNumber = 0;
+                IReleaseSpec fork = LoadSpec(postStateBySpec.Key, testJson.Config?.BlobSchedule);
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     GeneralStateTest test = new()
                     {
-                        Name = name,
+                        Name = Path.GetFileName(name) +
+                                    $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_",
                         Category = category,
                         ForkName = postStateBySpec.Key,
-                        Fork = SpecNameParser.Parse(postStateBySpec.Key),
+                        Fork = fork,
+                        ChainId = chainId,
                         PreviousHash = testJson.Env.PreviousHash,
                         CurrentCoinbase = testJson.Env.CurrentCoinbase,
                         CurrentDifficulty = testJson.Env.CurrentDifficulty,
@@ -275,6 +278,10 @@ namespace Ethereum.Test.Base
                         Transaction = Convert(stateJson, testJson.Transaction)
                     };
 
+                    if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
+                    {
+                        test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
+                    }
                     blockchainTests.Add(test);
                     ++iterationNumber;
                 }
@@ -294,7 +301,6 @@ namespace Ethereum.Test.Base
             {
                 Name = name,
                 Category = category,
-                ForkName = testJson.Network,
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,
@@ -321,25 +327,15 @@ namespace Ethereum.Test.Base
         }
 
         private static readonly EthereumJsonSerializer _serializer = new();
+        private static readonly ConcurrentDictionary<SpecOverrideCacheKey, IReleaseSpec> _overriddenSpecs = new();
 
-        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
-        {
-            Dictionary<string, GeneralStateTestJson> testsInFile =
-                _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(string json) =>
+            ConvertStateTests(_serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json));
 
-            return ConvertStateTestFromDict(testsInFile);
-        }
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(ReadOnlySpan<byte> json) =>
+            ConvertStateTests(_serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json));
 
-        public static IEnumerable<GeneralStateTest> ConvertStateTest(byte[] utf8Json)
-        {
-            Dictionary<string, GeneralStateTestJson> testsInFile =
-                JsonSerializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(
-                    utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
-
-            return ConvertStateTestFromDict(testsInFile);
-        }
-
-        private static IEnumerable<GeneralStateTest> ConvertStateTestFromDict(Dictionary<string, GeneralStateTestJson> testsInFile)
+        private static List<GeneralStateTest> ConvertStateTests(Dictionary<string, GeneralStateTestJson> testsInFile)
         {
             List<GeneralStateTest> tests = [];
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
@@ -351,52 +347,61 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
+        public static IEnumerable<TransactionTest> ConvertTransactionTests(string json) =>
+            ConvertTransactionTests(_serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json));
+
+        public static IEnumerable<TransactionTest> ConvertTransactionTests(ReadOnlySpan<byte> json) =>
+            ConvertTransactionTests(_serializer.Deserialize<Dictionary<string, TransactionTestJson>>(json));
+
+        private static List<TransactionTest> ConvertTransactionTests(Dictionary<string, TransactionTestJson> testsInFile)
+        {
+            List<TransactionTest> tests = [];
+            foreach ((string testName, TransactionTestJson testSpec) in testsInFile)
+            {
+                if (testSpec.Result is null)
+                {
+                    continue;
+                }
+
+                (string name, string category) = GetNameAndCategory(testName);
+                foreach ((string fork, TransactionTestResultJson result) in testSpec.Result)
+                {
+                    tests.Add(new TransactionTest
+                    {
+                        Name = $"{name}::{fork}",
+                        Category = category,
+                        Fork = fork,
+                        TxBytes = testSpec.TxBytes,
+                        ExpectedException = result.Exception,
+                        ExpectedIntrinsicGas = result.IntrinsicGas,
+                    });
+                }
+            }
+
+            return tests;
+        }
+
         public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
-            Dictionary<string, BlockchainTestJson> testsInFile;
-            try
-            {
-                testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
-            }
-            catch (Exception)
-            {
-                Dictionary<string, HalfBlockchainTestJson> half =
-                    _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
-                testsInFile = [];
-                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
-                {
-                    testsInFile[pair.Key] = pair.Value;
-                }
-            }
-
-            return ConvertBlockchainTestsFromDict(testsInFile);
+            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
+            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
         }
 
-        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(byte[] utf8Json)
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(ReadOnlySpan<byte> json)
         {
-            Dictionary<string, BlockchainTestJson> testsInFile;
-            try
-            {
-                testsInFile = JsonSerializer.Deserialize<Dictionary<string, BlockchainTestJson>>(
-                    utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
-            }
-            catch (Exception)
-            {
-                // Fall back to HalfBlockchainTestJson for legacy formats
-                Dictionary<string, HalfBlockchainTestJson> half =
-                    JsonSerializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(
-                        utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
-                testsInFile = [];
-                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
-                {
-                    testsInFile[pair.Key] = pair.Value;
-                }
-            }
-
-            return ConvertBlockchainTestsFromDict(testsInFile);
+            try { return ConvertToBlockchainTests(_serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json)); }
+            catch (Exception) { return ConvertToBlockchainTests(CoerceFromHalf(_serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json))); }
         }
 
-        private static IEnumerable<BlockchainTest> ConvertBlockchainTestsFromDict(Dictionary<string, BlockchainTestJson> testsInFile)
+        // Some BAL fixtures use the trimmed HalfBlockchainTestJson shape; coerce on demand.
+        private static Dictionary<string, BlockchainTestJson> CoerceFromHalf(Dictionary<string, HalfBlockchainTestJson> half)
+        {
+            Dictionary<string, BlockchainTestJson> result = [];
+            foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half) result[pair.Key] = pair.Value;
+            return result;
+        }
+
+        private static List<BlockchainTest> ConvertToBlockchainTests(Dictionary<string, BlockchainTestJson> testsInFile)
         {
             List<BlockchainTest> testsByName = [];
             foreach ((string testName, BlockchainTestJson testSpec) in testsInFile)
@@ -418,6 +423,9 @@ namespace Ethereum.Test.Base
             return testsByName;
         }
 
+        private static ulong LoadChainId(ConfigJson? config) =>
+            config?.Chainid is null ? MainnetSpecProvider.Instance.ChainId : System.Convert.ToUInt64(config.Chainid, 16);
+
         private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
         {
             IReleaseSpec spec = SpecNameParser.Parse(name);
@@ -426,13 +434,24 @@ namespace Ethereum.Test.Base
                 return spec;
             }
 
-            return new OverridableReleaseSpec(spec)
+            SpecOverrideCacheKey key = new(name, blobCount.Max, blobCount.Target, blobCount.BaseFeeUpdateFraction);
+            return _overriddenSpecs.GetOrAdd(key, static key =>
             {
-                MaxBlobCount = System.Convert.ToUInt64(blobCount.Max, 16),
-                TargetBlobCount = System.Convert.ToUInt64(blobCount.Target, 16),
-                BlobBaseFeeUpdateFraction = System.Convert.ToUInt64(blobCount.BaseFeeUpdateFraction, 16)
-            };
+                IReleaseSpec spec = SpecNameParser.Parse(key.Name);
+                return new OverridableReleaseSpec(spec)
+                {
+                    MaxBlobCount = System.Convert.ToUInt64(key.MaxBlobCount, 16),
+                    TargetBlobCount = System.Convert.ToUInt64(key.TargetBlobCount, 16),
+                    BlobBaseFeeUpdateFraction = System.Convert.ToUInt64(key.BlobBaseFeeUpdateFraction, 16)
+                };
+            });
         }
+
+        private readonly record struct SpecOverrideCacheKey(
+            string Name,
+            string? MaxBlobCount,
+            string? TargetBlobCount,
+            string? BlobBaseFeeUpdateFraction);
 
         private static (string name, string category) GetNameAndCategory(string key)
         {
@@ -442,7 +461,7 @@ namespace Ethereum.Test.Base
             {
                 return (key, "");
             }
-            string name = key;
+            string name = key.Substring(index + 5);
             string category = key.Substring(0, index);
             int startIndex = 0;
             for (int i = 0; i < 3; i++)

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -17,6 +16,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -58,17 +58,39 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
     /// and a matching <see cref="TransactionProcessor{EthereumGasPolicy}"/> wired to it.
     /// </summary>
-    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(bool? parallelOverride = null)
+    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) CreateTracedProcessor(
+        bool? parallelOverride = null,
+        bool wrapPrecompileCache = false)
     {
         bool useParallel = parallelOverride ?? parallel;
         TracedAccessWorldState tracedState = new(TestState, parallel: useParallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
         ILogManager logManager = LimboLogs.Instance;
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
+        EthereumCodeInfoRepository baseRepo = new(tracedState);
+        ICodeInfoRepository codeInfoRepo = wrapPrecompileCache
+            ? new PrecompileCachedCodeInfoRepository(tracedState, new EthereumPrecompileProvider(), baseRepo, precompileCache: null)
+            : baseRepo;
         EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
         TransactionProcessor<EthereumGasPolicy> processor = new(
             BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: useParallel);
         return (tracedState, processor);
+    }
+
+    private static Transaction BuildContractTx(byte[] code, long executionGas, UInt256 value, BlockHeader header)
+    {
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .WithValue(value)
+            .TestObject;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, header.GasLimit).MinimalGas;
+
+        return Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(intrinsicGas + executionGas)
+            .WithValue(value)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
     }
 
     private static void AssertPureAccountRead(AccountChanges? accountChanges)
@@ -91,20 +113,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
 
         UInt256 value = _testAccountBalance;
-
-        Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(0)
-            .WithValue(value)
-            .TestObject;
-        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas + _gasLimit;
-
-        Transaction createTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(gasLimit)
-            .WithValue(value)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
+        Transaction createTx = BuildContractTx(code, _gasLimit, value, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -149,21 +159,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         InitWorldState(TestState, extraCode);
 
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
-
-        Transaction templateTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(0)
-            .WithValue(_testAccountBalance)
-            .TestObject;
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas;
-        long gasLimit = intrinsicGas + executionGas;
-
-        Transaction createTx = Build.A.Transaction
-            .WithCode(code)
-            .WithGasLimit(gasLimit)
-            .WithValue(_testAccountBalance)
-            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
+        Transaction createTx = BuildContractTx(code, executionGas, _testAccountBalance, block.Header);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
@@ -192,7 +189,146 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    private void InitWorldState(IWorldState worldState, byte[]? extraCode = null)
+    /// <summary>
+    /// EIP-7928 regression: delegated precompile target is recorded in BAL when <see cref="PrecompileCachedCodeInfoRepository"/> is active.
+    /// </summary>
+    /// <remarks>
+    /// The decorator's precompile fast-path bypasses the world state, so <see cref="EvmInstructions.InstructionCall"/>
+    /// must call <c>AddAccountRead</c> explicitly on the delegation target.
+    /// </remarks>
+    [Test]
+    public void Delegated_precompile_target_is_recorded_in_BAL_under_PrecompileCachedCodeInfoRepository()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+        InitWorldState(TestState, delegationTarget: precompileAddress);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessor(wrapPrecompileCache: true);
+
+        Block block = Build.A.Block.TestObject;
+        byte[] code = Prepare.EvmCode.Call(_callTargetAddress, 50_000).Done;
+        Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(precompileChanges, Is.Not.Null,
+                "delegated precompile target must be recorded in the BAL even when the PrecompileCachedCodeInfoRepository fast-path is active");
+        }
+    }
+
+    /// <summary>
+    /// EIP-7702 regression: delegation to a precompile must NOT execute the precompile (FastCall returns 1).
+    /// </summary>
+    /// <remarks>
+    /// Inner gas is 0 to discriminate: precompile execution OOGs and pushes 0, FastCall pushes 1 regardless of forwarded gas.
+    /// </remarks>
+    [Test]
+    public void Calling_account_delegated_to_precompile_uses_FastCall_per_EIP_7702()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+        InitWorldState(TestState, delegationTarget: precompileAddress);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessor(wrapPrecompileCache: true);
+
+        Block block = Build.A.Block.TestObject;
+        byte[] code = Prepare.EvmCode
+            .Call(_callTargetAddress, 0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done;
+        Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        AccountChanges? testAddressChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(_testAddress);
+        SlotChanges? slot0 = testAddressChanges?.StorageChanges.FirstOrDefault(s => s.Key == UInt256.Zero);
+        StorageChange? change = slot0?.Changes.Values is { Count: > 0 } values ? values[0] : null;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(change, Is.Not.Null,
+                "EIP-7702 FastCall must succeed and propagate via SSTORE; missing slot 0 entry indicates the call failed.");
+            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One.ToBigEndianWord()),
+                "EIP-7702: delegation to a precompile must NOT execute the precompile - FastCall returns 1 regardless of forwarded gas.");
+        }
+    }
+
+    /// <summary>
+    /// EIP-7928 regression: DELEGATECALL to a precompile records the precompile (codeSource) in BAL.
+    /// </summary>
+    /// <remarks>
+    /// For DELEGATECALL/CALLCODE, target == ExecutingAccount, so the indirect <c>AccountExists(target)</c> records
+    /// the caller, not the precompile. The decorator's <c>IsPrecompile</c> fast-path otherwise skips AddAccountRead.
+    /// </remarks>
+    [Test]
+    public void DelegateCall_to_precompile_records_codeSource_in_BAL_under_PrecompileCachedCodeInfoRepository()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+        InitWorldState(TestState);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessor(wrapPrecompileCache: true);
+
+        Block block = Build.A.Block.TestObject;
+        byte[] code = Prepare.EvmCode.DelegateCall(precompileAddress, 50_000).Done;
+        Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(precompileChanges, Is.Not.Null,
+                "DELEGATECALL codeSource (precompile) must be recorded in BAL even when the decorator's fast-path is active");
+        }
+    }
+
+    /// <summary>
+    /// EIP-7928 regression: top-level transaction with <c>tx.to == precompile_address</c> records the recipient in BAL.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TransactionProcessor"/>'s <c>BuildExecutionEnvironment</c> only calls <c>accessTracker.WarmUp</c> (EIP-2929)
+    /// on the recipient. With <c>tx.value == 0</c> there is no incidental <c>AddBalanceChange</c> to create the entry.
+    /// </remarks>
+    [Test]
+    public void Direct_transaction_to_precompile_records_recipient_in_BAL_under_PrecompileCachedCodeInfoRepository()
+    {
+        Address precompileAddress = Sha256Precompile.Address;
+        InitWorldState(TestState);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessor(wrapPrecompileCache: true);
+
+        Block block = Build.A.Block.TestObject;
+        Transaction tx = Build.A.Transaction
+            .To(precompileAddress)
+            .WithData([1, 2, 3])
+            .WithGasLimit(50_000)
+            .WithValue(UInt256.Zero)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True);
+            Assert.That(precompileChanges, Is.Not.Null,
+                "Top-level transaction recipient that is a precompile must be recorded in BAL");
+        }
+    }
+
+    private void InitWorldState(IWorldState worldState, byte[]? extraCode = null, Address? delegationTarget = null)
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
 
@@ -208,8 +344,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         worldState.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
         worldState.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, SpecProvider.GenesisSpec);
 
-        worldState.CreateAccount(_delegationTargetAddress, 0);
-        worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec);
+        if (delegationTarget is null)
+        {
+            worldState.CreateAccount(_delegationTargetAddress, 0);
+            worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec);
+        }
 
         worldState.CreateAccount(_callTargetAddress, 0);
         if (extraCode is not null)
@@ -219,13 +358,69 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
         else
         {
-            byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. _delegationTargetAddress.Bytes];
+            Address target = delegationTarget ?? _delegationTargetAddress;
+            byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
             worldState.InsertCode(_callTargetAddress, ValueKeccak.Compute(delegationCode), delegationCode, SpecProvider.GenesisSpec);
         }
 
         worldState.Commit(SpecProvider.GenesisSpec);
         worldState.CommitTree(0);
         worldState.RecalculateStateRoot();
+    }
+
+    [TestCase(120_000_000L, 30_000_000L, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
+    [TestCase(120_000_000L, 30_000L, false, TestName = "EIP2935_system_call_records_only_read_when_state_gas_not_affordable")]
+    public void Eip2935_system_call_bal_respects_eip8037_state_gas(long blockGasLimit, long systemCallGasLimit, bool shouldStoreParentHash)
+    {
+        InitWorldState(TestState);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        Hash256 parentHash = Keccak.Compute("parent");
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithGasLimit(blockGasLimit)
+            .WithBaseFee(1.GWei)
+            .WithParentHash(parentHash)
+            .TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        SystemCall systemCall = new()
+        {
+            Data = parentHash.BytesToArray(),
+            GasLimit = systemCallGasLimit,
+            GasPrice = header.BaseFeePerGas,
+            SenderAddress = Address.SystemUser,
+            To = Eip2935Constants.BlockHashHistoryAddress,
+            Value = UInt256.Zero,
+        };
+        systemCall.Hash = systemCall.CalculateHash();
+
+        processor.Execute(systemCall, NullTxTracer.Instance);
+
+        AccountChanges? accountChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(Eip2935Constants.BlockHashHistoryAddress);
+        Assert.That(accountChanges, Is.Not.Null);
+        if (shouldStoreParentHash)
+        {
+            SlotChanges slotChanges = accountChanges!.StorageChanges[0];
+            StorageChange storageChange = slotChanges.Changes.Values[0];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountChanges.StorageChanges, Has.Length.EqualTo(1));
+                Assert.That(slotChanges.Key, Is.EqualTo(UInt256.Zero));
+                Assert.That(storageChange.Index, Is.EqualTo(0));
+                Assert.That(storageChange.Value, Is.EqualTo(new UInt256(parentHash.Bytes, isBigEndian: true).ToBigEndianWord()));
+                Assert.That(accountChanges.StorageReads, Is.Empty);
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(accountChanges!.StorageChanges, Is.Empty);
+                Assert.That(accountChanges.StorageReads, Is.EquivalentTo(new[] { UInt256.Zero }));
+            }
+        }
     }
 
     private static IEnumerable<TestCaseData> CodeTestSource
@@ -336,10 +531,13 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 .Op(Instruction.REVERT)
                 .Done;
             // revert should convert storage load to read, nonce and balance changes revert
-            changes = [Build.An.AccountChanges
-                .WithAddress(_testAddress)
-                .WithStorageReads(slot)
-                .TestObject];
+            changes =
+            [
+                Build.An.AccountChanges
+                    .WithAddress(_testAddress)
+                    .WithStorageReads(slot)
+                    .TestObject
+            ];
             yield return new TestCaseData(changes, code, null, true) { TestName = "revert" };
 
             UInt256 changedValue = 2;
@@ -788,7 +986,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
+                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create_oog_pre_state_access" };
 
@@ -809,7 +1007,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.Create + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
+                GasCostOf.CreateRegular + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "create2_oog_pre_state_access" };
 
@@ -870,7 +1068,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 changes,
                 code,
                 null,
-                GasCostOf.ColdSLoad + GasCostOf.SSet - 1,
+                GasCostOf.ColdSLoad + GasCostOf.SSetRegular - 1,
                 EvmExceptionType.OutOfGas)
             { TestName = "sstore_oog_post_state_access" };
 
@@ -979,6 +1177,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
     {
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
 
@@ -1037,6 +1236,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
@@ -1048,6 +1248,61 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             // Both the delegated account and the delegation target are traced as account reads in the BAL
             Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegatedAccount), Is.Not.Null);
             Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegationTarget), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void CacheCodeInfoRepository_reads_prior_code_change_from_bal_world_state()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] priorCode = [(byte)Instruction.STOP];
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+        AccountChanges accountChanges = suggestedBal.GetAccountChanges(TestItem.AddressA)!;
+        accountChanges.AddCodeChange(new(Eip7928Constants.PrestateIndex, []));
+        accountChanges.AddCodeChange(new(0, priorCode));
+
+        BlockAccessListBasedWorldState balWorldState = new(TestState, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(1);
+        balWorldState.SetParentReader(TestState);
+        balWorldState.Setup(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject);
+
+        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressA, false, Amsterdam.Instance, out Address? delegationAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.Null);
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(priorCode));
+        }
+    }
+
+    [Test]
+    public void CacheCodeInfoRepository_falls_back_to_parent_code_by_address_after_bal_hash_miss()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] parentCode = [(byte)Instruction.STOP];
+        TestState.CreateAccount(TestItem.AddressA, 0);
+        TestState.InsertCode(TestItem.AddressA, parentCode, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+
+        BlockAccessListBasedWorldState balWorldState = new(TestState, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(0);
+        balWorldState.SetParentReader(TestState);
+        balWorldState.Setup(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject);
+
+        CacheCodeInfoRepository repo = new(balWorldState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressA, false, Amsterdam.Instance, out Address? delegationAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.Null);
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(parentCode));
         }
     }
 
@@ -1065,6 +1320,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TestState.CommitTree(0);
 
         TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
+        tracedState.SetGeneratingBlockAccessList(new BlockAccessList());
 
         CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);

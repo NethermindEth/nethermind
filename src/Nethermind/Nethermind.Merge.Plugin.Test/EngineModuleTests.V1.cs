@@ -10,7 +10,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -1721,12 +1720,16 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
-            .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal))
+            .Where(static m => !m.Equals(nameof(IEngineRpcModule.engine_exchangeCapabilities), StringComparison.Ordinal)
+                            && !m.Equals(nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1), StringComparison.Ordinal))
             .Order();
 
-        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(expected);
+        ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(expected);
 
-        result.Data.Should().BeEquivalentTo(expected);
+        // The advertised list mixes JSON-RPC method names and SSZ-REST paths per spec.
+        // Filter to JSON-RPC names by intersecting with reflection over IEngineRpcModule.
+        HashSet<string> jsonRpcMethodNames = [.. typeof(IEngineRpcModule).GetMethods().Select(static m => m.Name)];
+        result.Data.Where(jsonRpcMethodNames.Contains).Should().BeEquivalentTo(expected);
     }
 
     [Test]
@@ -1737,16 +1740,16 @@ public partial class EngineModuleTests
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
-        ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
-        string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();
-        string[] expectedMethods = new string[]
-        {
+        string[] result = [.. engineRpcCapabilitiesProvider.GetJsonRpcCapabilities()
+            .Where(kv => kv.Value.IsEnabled())
+            .Select(kv => kv.Key)];
+        string[] expectedMethods =
+        [
             nameof(IEngineRpcModule.engine_getClientVersionV1),
 
             nameof(IEngineRpcModule.engine_getPayloadV1),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
             nameof(IEngineRpcModule.engine_newPayloadV1),
-            nameof(IEngineRpcModule.engine_exchangeTransitionConfigurationV1),
 
             nameof(IEngineRpcModule.engine_getPayloadV2),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
@@ -1765,7 +1768,7 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV5),
             nameof(IEngineRpcModule.engine_getBlobsV2),
             nameof(IEngineRpcModule.engine_getBlobsV3)
-        };
+        ];
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }
 
@@ -1792,11 +1795,85 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_getPayloadV3)
         };
 
-        ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
+        ResultWrapper<IReadOnlyList<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
         chain.LogManager.GetClassLogger<ExchangeCapabilitiesHandler>().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(static a =>
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
+    }
+
+    private static readonly string[] SszRestPathsParis =
+    [
+        "POST /engine/v1/payloads",
+        "GET /engine/v1/payloads/{payload_id}",
+        "POST /engine/v1/forkchoice",
+        "POST /engine/v1/capabilities",
+        "POST /engine/v1/client/version",
+    ];
+
+    private static readonly string[] SszRestPathsShanghai =
+    [
+        "POST /engine/v2/payloads",
+        "GET /engine/v2/payloads/{payload_id}",
+        "POST /engine/v2/forkchoice",
+        "POST /engine/v1/payloads/bodies/by-hash",
+        "POST /engine/v1/payloads/bodies/by-range",
+    ];
+
+    private static readonly string[] SszRestPathsCancun =
+    [
+        "POST /engine/v3/payloads",
+        "GET /engine/v3/payloads/{payload_id}",
+        "POST /engine/v3/forkchoice",
+        "POST /engine/v1/blobs",
+    ];
+
+    private static readonly string[] SszRestPathsPrague =
+    [
+        "POST /engine/v4/payloads",
+        "GET /engine/v4/payloads/{payload_id}",
+    ];
+
+    private static readonly string[] SszRestPathsOsaka =
+    [
+        "GET /engine/v5/payloads/{payload_id}",
+        "POST /engine/v2/blobs",
+        "POST /engine/v3/blobs",
+    ];
+
+    private static readonly string[] SszRestPathsAmsterdam =
+    [
+        "POST /engine/v5/payloads",
+        "GET /engine/v6/payloads/{payload_id}",
+        "POST /engine/v4/forkchoice",
+        "POST /engine/v2/payloads/bodies/by-hash",
+        "POST /engine/v2/payloads/bodies/by-range",
+    ];
+
+    public static IEnumerable<TestCaseData> SszRestPathsAdvertisedCases()
+    {
+        yield return new TestCaseData(
+            Osaka.Instance,
+            (string[])[.. SszRestPathsParis, .. SszRestPathsShanghai, .. SszRestPathsCancun, .. SszRestPathsPrague, .. SszRestPathsOsaka])
+            .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Osaka");
+
+        yield return new TestCaseData(
+            Amsterdam.Instance,
+            (string[])[.. SszRestPathsParis, .. SszRestPathsShanghai, .. SszRestPathsCancun, .. SszRestPathsPrague, .. SszRestPathsOsaka, .. SszRestPathsAmsterdam])
+            .SetName(nameof(SszRestPathsAreAdvertised) + "_for_Amsterdam");
+    }
+
+    [TestCaseSource(nameof(SszRestPathsAdvertisedCases))]
+    public void SszRestPathsAreAdvertised(IReleaseSpec releaseSpec, string[] expectedPaths)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
+        EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
+
+        string[] result = [.. engineRpcCapabilitiesProvider.GetSszRestPaths()
+            .Where(kv => kv.Value.IsEnabled())
+            .Select(kv => kv.Key)];
+
+        result.Should().BeEquivalentTo(expectedPaths);
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(

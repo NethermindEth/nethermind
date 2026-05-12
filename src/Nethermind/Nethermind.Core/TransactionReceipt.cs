@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
@@ -25,6 +26,10 @@ namespace Nethermind.Core
             Index = other.Index;
             GasUsed = other.GasUsed;
             GasUsedTotal = other.GasUsedTotal;
+            ExecutionGasUsed = other.ExecutionGasUsed;
+            BlockGasUsed = other.BlockGasUsed;
+            StorageGasUsed = other.StorageGasUsed;
+            EffectiveGasPrice = other.EffectiveGasPrice;
             Sender = other.Sender;
             ContractAddress = other.ContractAddress;
             Recipient = other.Recipient;
@@ -50,6 +55,22 @@ namespace Nethermind.Core
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
+
+        // Diagnostic-only fields. NOT part of the consensus receipt RLP - the receipt
+        // encoders in Nethermind.Serialization.Rlp write only StatusCode, GasUsed,
+        // GasUsedTotal, Bloom, Logs explicitly, so these new properties do not affect
+        // receipts root or block hashes. They are surfaced solely in the diagnostic
+        // JSON dump (BlockTraceDumper) to aid investigation of EIP-7778/EIP-8037
+        // gas-accounting issues.
+        /// <summary>EIP-7778 pre-refund gas used by block-level gas accounting (regular dim).</summary>
+        public long BlockGasUsed { get; set; }
+        /// <summary>EIP-8037 state-dim gas (storage / state-mutating ops) used by block accounting.</summary>
+        public long StorageGasUsed { get; set; }
+        /// <summary>Post-refund execution gas without EIP-7976 floor adjustment (OperationGas).</summary>
+        public long ExecutionGasUsed { get; set; }
+        /// <summary>Effective gas price after EIP-1559 baseFee adjustment - computed at receipt-build time.</summary>
+        public UInt256 EffectiveGasPrice { get; set; }
+
         public Address? Sender { get; set; }
         public Address? ContractAddress { get; set; }
         public Address? Recipient { get; set; }

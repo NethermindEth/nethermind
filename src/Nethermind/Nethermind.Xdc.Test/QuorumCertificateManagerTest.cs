@@ -1,6 +1,7 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,7 +30,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(null!, Build.A.XdcBlockHeader().TestObject, out _), Throws.ArgumentNullException);
     }
@@ -42,7 +44,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             Substitute.For<ISpecProvider>(),
             Substitute.For<IEpochSwitchManager>(),
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
     }
@@ -51,13 +54,15 @@ public class QuorumCertificateManagerTest
     {
         XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData();
         PrivateKeyGenerator keyBuilder = new();
-        //Base valid control case
         PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
         IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
+        int quorumCount = (int)Math.Ceiling(keys.Length * 0.667);
+
+        //Base valid control case
         yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Select(k => k.Address), true);
 
         //Not enough signatures
-        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys.Take(13).ToArray()), headerBuilder, keys.Select(k => k.Address), false);
+        yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, [.. keys.Take(quorumCount - 1)]), headerBuilder, keys.Select(k => k.Address), false);
 
         //1 Vote is not master node
         yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 1, 1), 0, keys), headerBuilder, keys.Skip(1).Select(k => k.Address), false);
@@ -73,6 +78,12 @@ public class QuorumCertificateManagerTest
 
         //Wrong round number in QC
         yield return new TestCaseData(XdcTestHelper.CreateQc(new BlockRoundInfo(headerBuilder.TestObject.Hash!, 0, 1), 0, keys), headerBuilder, masterNodes, false);
+
+        //N byte-distinct signatures but only N-1 unique signer addresses (keys[0] signs twice via ECDSA malleability)
+        BlockRoundInfo roundInfo = new(headerBuilder.TestObject.Hash!, 1, 1);
+        Signature[] sigs = XdcTestHelper.CreateVoteSignatures(roundInfo, 0, [.. keys.Take(quorumCount - 1)]);
+        Signature malleable = XdcTestHelper.CreateMalleableSignature(sigs[0]);
+        yield return new TestCaseData(new QuorumCertificate(roundInfo, [.. sigs, malleable], 0), headerBuilder, masterNodes, false);
     }
 
     [TestCaseSource(nameof(QcCases))]
@@ -96,9 +107,36 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, xdcBlockHeaderBuilder.TestObject, out _), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Initialize_GenesisBlockWithNoConsensusData_SetsHighestQCAndRound()
+    {
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.SwitchBlock.Returns(900L);
+        xdcReleaseSpec.Gap.Returns(450);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        XdcConsensusContext context = new();
+        QuorumCertificateManager quorumCertificateManager = new(
+            context,
+            Substitute.For<IBlockTree>(),
+            specProvider,
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
+
+        XdcBlockHeader genesisBlock = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+
+        Assert.That(() => quorumCertificateManager.Initialize(genesisBlock), Throws.Nothing);
+        Assert.That(context.HighestQC, Is.Not.Null);
+        Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
+        Assert.That(context.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+        Assert.That(context.CurrentRound, Is.EqualTo(1UL));
     }
 
     [Test]
@@ -114,7 +152,8 @@ public class QuorumCertificateManagerTest
             Substitute.For<IBlockTree>(),
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 1, 0)).TestObject;
 
         Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<IncomingMessageBlockNotFoundException>());
@@ -136,7 +175,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 1)).TestObject;
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
@@ -160,7 +200,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
 
         Assert.That(() => quorumCertificateManager.CommitCertificate(qc), Throws.TypeOf<BlockchainException>());
@@ -183,7 +224,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
 
         if (lockQcIsNull)
             context.LockQC = null;
@@ -211,7 +253,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         context.HighestQC = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 0, 1)).TestObject;
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 1, 0)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
@@ -255,7 +298,8 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 3, 6)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
 
@@ -298,10 +342,12 @@ public class QuorumCertificateManagerTest
             blockTree,
             specProvider,
             epochSwitchManager,
-            Substitute.For<ILogManager>());
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
         QuorumCertificate qc = Build.A.QuorumCertificate().WithBlockInfo(new BlockRoundInfo(targetHeader.Hash!, 4, 6)).TestObject;
         quorumCertificateManager.CommitCertificate(qc);
 
         Assert.That(context.HighestCommitBlock, Is.EqualTo(startFinalizedBlock));
     }
+
 }

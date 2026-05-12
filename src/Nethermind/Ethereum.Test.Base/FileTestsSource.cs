@@ -25,15 +25,13 @@ namespace Ethereum.Test.Base
                     return [];
                 }
 
-                // Read as UTF-8 bytes directly — avoids the intermediate string allocation
-                // from File.ReadAllText. System.Text.Json can deserialize from byte spans
-                // without encoding conversion overhead.
-                byte[] jsonBytes = File.ReadAllBytes(_fileName);
+                byte[] json = File.ReadAllBytes(_fileName);
 
                 return testType switch
                 {
-                    TestType.State => JsonToEthereumTest.ConvertStateTest(jsonBytes),
-                    _ => JsonToEthereumTest.ConvertToBlockchainTests(jsonBytes)
+                    TestType.State => JsonToEthereumTest.ConvertStateTest(json),
+                    TestType.Transaction => JsonToEthereumTest.ConvertTransactionTests(json),
+                    _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
                 };
             }
             catch (Exception e)

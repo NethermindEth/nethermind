@@ -27,6 +27,14 @@ public abstract class NamedReleaseSpec : ReleaseSpec
     /// <summary>The preceding fork in the chain, or <c>null</c> for the root (Olympic).</summary>
     public NamedReleaseSpec? Parent { get; }
 
+    /// <summary>
+    /// Whether this fork is at or after the PoW → PoS merge. Set inside <see cref="Apply"/> on the
+    /// merge-boundary forks (<see cref="Paris"/> on mainnet, <see cref="GnosisForks.ShanghaiGnosis"/>
+    /// on Gnosis since it skipped a Paris-equivalent); descendants inherit because each ancestor's
+    /// <see cref="Apply"/> is replayed onto them in <see cref="ReplayAncestors"/>.
+    /// </summary>
+    public bool IsPostMerge { get; set; }
+
     protected NamedReleaseSpec(NamedReleaseSpec? parent)
     {
         Parent = parent;
@@ -50,7 +58,7 @@ public abstract class NamedReleaseSpec : ReleaseSpec
     /// Each concrete fork overrides this to configure the EIPs and parameters it introduces.
     /// Gnosis forks should call <c>base.Apply(spec)</c> first to include the mainnet delta.
     /// </summary>
-    public abstract void Apply(ReleaseSpec spec);
+    public abstract void Apply(NamedReleaseSpec spec);
 }
 
 /// <summary>
