@@ -2014,34 +2014,13 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}"));
     }
 
-    [Test]
-    public async Task Eth_sign_recover_correct_address()
+    [TestCase(new byte[] { 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x77, 0x6f, 0x72, 0x6c, 0x64 }, TestName = "AsciiMessage")]
+    [TestCase(new byte[] { 0xde, 0xad, 0xbe, 0xaf }, TestName = "NonUtf8Message")]
+    public async Task EthSign_WithMessage_RecoversSignerAddress(byte[] message)
     {
         using Context ctx = await Context.Create();
 
-        const string message = "Hello world";
-
-        string hexMessage = Encoding.UTF8.GetBytes(message).ToHexString(true);
         //Address is auto-generated in WalletExtensions.SetupTestAccounts
-        const string keyAddress = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
-        string serialized = await ctx.Test.TestEthRpc("eth_sign", keyAddress, hexMessage);
-
-        JsonRpcResponse<string> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<string>>(serialized)!;
-
-        Hash256 signatureHash = Keccak.Compute($"\u0019Ethereum Signed Message:\n{message.Length}{message}");
-
-        Address recovered = new EthereumEcdsa(1).RecoverAddress(new Signature(response.Result), signatureHash)!;
-
-        Assert.That(recovered, Is.EqualTo(new Address(keyAddress)));
-    }
-
-    [Test]
-    public async Task EthSign_WhenMessageIsNotUtf8_RecoversSignerAddress()
-    {
-        using Context ctx = await Context.Create();
-
-        // Non-UTF-8 input: the EIP-191 prefix must be built over the raw bytes, not their UTF-8 string view.
-        byte[] message = [0xde, 0xad, 0xbe, 0xaf];
         const string keyAddress = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
         string serialized = await ctx.Test.TestEthRpc("eth_sign", keyAddress, message.ToHexString(true));
 
