@@ -128,9 +128,6 @@ public class ProtocolsManagerTests
                 _peerStorage,
                 BuildProtocolHandlerFactories(),
                 LimboLogs.Instance);
-            _manager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth69));
-            _manager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth70));
-            _manager.AddSupportedCapability(new Capability(Protocol.Eth, EthVersions.Eth71));
         }
 
         private IProtocolHandlerFactory[] BuildProtocolHandlerFactories() => [
@@ -488,5 +485,5 @@ public class ProtocolsManagerTests
             .ActivateChannel()
             .Handshake()
             .Init()
-            .VerifyProtocolVersion(Protocol.Eth, 71);
+            .VerifyProtocolVersion(Protocol.Eth, 68);
 }
