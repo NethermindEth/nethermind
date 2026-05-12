@@ -688,7 +688,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         {
             int currKeyLen = ReadKey(i, currKey);
             int sepLen = HsstSeparator.ComputeSeparatorLength(
-                prevKey[..prevKeyLen], currKey[..currKeyLen], default);
+                prevKey[..prevKeyLen], currKey[..currKeyLen]);
             _sepLengthsArr![i] = (byte)sepLen;
             currKey[..currKeyLen].CopyTo(prevKey);
             prevKeyLen = currKeyLen;

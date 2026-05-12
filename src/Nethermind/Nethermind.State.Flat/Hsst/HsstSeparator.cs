@@ -9,27 +9,17 @@ namespace Nethermind.State.Flat.Hsst;
 internal static class HsstSeparator
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ComputeSeparatorLength(ReadOnlySpan<byte> prevKey, ReadOnlySpan<byte> currKey, ReadOnlySpan<byte> nextKey, int minSeparatorLength = 0)
+    public static int ComputeSeparatorLength(ReadOnlySpan<byte> prevKey, ReadOnlySpan<byte> currKey)
     {
-        int minVsPrev = 0;
+        int len = 0;
         if (!prevKey.IsEmpty)
         {
             int common = CommonPrefixLength(prevKey, currKey);
-            minVsPrev = common + 1;
+            len = common + 1;
         }
-
-        int minVsNext = 0;
-        if (!nextKey.IsEmpty)
-        {
-            int common = CommonPrefixLength(currKey, nextKey);
-            minVsNext = common + 1;
-        }
-
-        int len = Math.Max(minVsPrev, minVsNext);
         len = Math.Min(len, currKey.Length);
         if (len == 0) len = Math.Min(1, currKey.Length);
-
-        return Math.Min(Math.Max(len, minSeparatorLength), currKey.Length);
+        return len;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
