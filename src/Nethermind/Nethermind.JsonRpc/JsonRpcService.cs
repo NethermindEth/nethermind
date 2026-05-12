@@ -271,14 +271,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
 
-            InvalidTransactionException { Reason.ErrorDescription: var description } => GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
-            { InnerException: InvalidTransactionException { Reason.ErrorDescription: var description } } => GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
+            InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
 
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
 
-            MissingTrieNodeException { Message: var message } => GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, message, ex.ToString(), request.Id, returnAction),
-            TargetInvocationException { InnerException: MissingTrieNodeException { Message: var message } } => GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, message, ex.ToString(), request.Id, returnAction),
+            MissingTrieNodeException or TargetInvocationException { InnerException: MissingTrieNodeException } when (ex as MissingTrieNodeException ?? (ex as TargetInvocationException)?.InnerException as MissingTrieNodeException) is { Message: var message } =>
+                GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, message, ex.ToString(), request.Id, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
