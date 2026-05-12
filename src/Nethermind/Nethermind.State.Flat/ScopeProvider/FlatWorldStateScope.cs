@@ -317,6 +317,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         Parallel.For(0, idx, parallelOptions, (j) =>
         {
+            // Defensive re-check — a Commit racing the slot read pass will flip _pausePrewarmer
+            // and we should drop the remaining work rather than hit the snapshot bundle uselessly.
+            if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
         });
