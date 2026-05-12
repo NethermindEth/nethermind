@@ -799,8 +799,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit));
     }
 
-    [Test]
-    public void Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas()
+    [TestCase(false, TestName = "Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas_CREATE")]
+    [TestCase(true, TestName = "Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas_CREATE2")]
+    public void Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas(bool create2)
     {
         byte[] childInitCode = Prepare.EvmCode
             .SSTORE(0, new byte[] { 1 })
@@ -808,8 +809,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.SELFDESTRUCT)
             .Done;
 
-        byte[] factoryCode = Prepare.EvmCode
-            .Create(childInitCode, UInt256.Zero)
+        byte[] salt = [0x01];
+        Prepare factoryCodeBuilder = create2
+            ? Prepare.EvmCode.Create2(childInitCode, salt, UInt256.Zero)
+            : Prepare.EvmCode.Create(childInitCode, UInt256.Zero);
+        byte[] factoryCode = factoryCodeBuilder
             .Op(Instruction.POP)
             .Op(Instruction.STOP)
             .Done;
@@ -821,8 +825,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             "CREATE account state and created-slot state gas should both be refunded by same-tx SELFDESTRUCT.");
     }
 
-    [Test]
-    public void Eip8037_same_tx_selfdestruct_must_refund_code_deposit_state_gas()
+    [TestCase(false, TestName = "Eip8037_same_tx_selfdestruct_must_refund_code_deposit_state_gas_CREATE")]
+    [TestCase(true, TestName = "Eip8037_same_tx_selfdestruct_must_refund_code_deposit_state_gas_CREATE2")]
+    public void Eip8037_same_tx_selfdestruct_must_refund_code_deposit_state_gas(bool create2)
     {
         byte[] selfDestructRuntime = Prepare.EvmCode
             .Op(Instruction.ADDRESS)
@@ -831,10 +836,15 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         byte[] childInitCode = Prepare.EvmCode
             .ForInitOf(selfDestructRuntime)
             .Done;
-        Address createdAddress = ContractAddress.From(Recipient, 0);
+        byte[] salt = [0x01];
+        Address createdAddress = create2
+            ? ContractAddress.From(Recipient, salt.PadLeft(32), childInitCode)
+            : ContractAddress.From(Recipient, 0);
 
-        byte[] factoryCode = Prepare.EvmCode
-            .Create(childInitCode, UInt256.Zero)
+        Prepare factoryCodeBuilder = create2
+            ? Prepare.EvmCode.Create2(childInitCode, salt, UInt256.Zero)
+            : Prepare.EvmCode.Create(childInitCode, UInt256.Zero);
+        byte[] factoryCode = factoryCodeBuilder
             .Op(Instruction.POP)
             .Call(createdAddress, 100_000)
             .Op(Instruction.POP)
@@ -847,6 +857,29 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
             "CREATE account state and code-deposit state gas should both be refunded after same-tx SELFDESTRUCT.");
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
+    }
+
+    [Test]
+    public void Eip8037_same_tx_selfdestruct_must_refund_multiple_created_accounts()
+    {
+        byte[] childInitCode = Prepare.EvmCode
+            .Op(Instruction.ADDRESS)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create(childInitCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Create(childInitCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 800_000, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
+            "Each created-and-destroyed account should have its CREATE account state gas refunded.");
     }
 
     [Test]
