@@ -123,7 +123,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         UInt256 newBalance = _accountBalance - gasUsed;
-        if (!revert)
+        bool valuePersists = !revert && expected.Any(static accountChanges =>
+            accountChanges.Address == _testAddress && accountChanges.BalanceChanges.Count > 0);
+        if (valuePersists)
         {
             newBalance -= value;
         }
@@ -369,7 +371,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     }
 
     [TestCase(120_000_000L, 30_000_000L, true, TestName = "EIP2935_system_call_records_storage_change_when_state_gas_affordable")]
-    [TestCase(120_000_000L, 30_000L, false, TestName = "EIP2935_system_call_records_only_read_when_state_gas_not_affordable")]
+    [TestCase(120_000_000L, 30_000L, false, TestName = "EIP2935_system_call_records_no_storage_access_when_state_gas_not_affordable")]
     public void Eip2935_system_call_bal_respects_eip8037_state_gas(long blockGasLimit, long systemCallGasLimit, bool shouldStoreParentHash)
     {
         InitWorldState(TestState);
@@ -418,7 +420,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(accountChanges!.StorageChanges, Is.Empty);
-                Assert.That(accountChanges.StorageReads, Is.EquivalentTo(new[] { UInt256.Zero }));
+                Assert.That(accountChanges.StorageReads, Is.Empty);
             }
         }
     }
@@ -508,7 +510,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 .PushData(TestItem.AddressB)
                 .Op(Instruction.SELFDESTRUCT)
                 .Done;
-            changes = [new(_testAddress), Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithBalanceChanges([new(0, _testAccountBalance)]).TestObject];
+            changes = [new(_testAddress), new AccountChanges(TestItem.AddressB)];
             yield return new TestCaseData(changes, code, null, false) { TestName = "selfdestruct" };
 
             code = Prepare.EvmCode
@@ -665,43 +667,21 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
                 .Op(Instruction.SLOAD)
                 .ForInitOf(createdRuntimeCode)
                 .Done;
-            Address createdAddress = ContractAddress.From(_testAddress, 1);
             code = Prepare.EvmCode
                 .Create(createInitCode, 0)
                 .Done;
             changes = [
-                Build.An.AccountChanges
-                    .WithAddress(_testAddress)
-                    .WithNonceChanges([new(0, 2)])
-                    .WithBalanceChanges([new(0, _testAccountBalance)])
-                    .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(createdAddress)
-                    .WithNonceChanges([new(0, 1)])
-                    .WithStorageReads(slot)
-                    .WithCodeChanges([new(0, createdRuntimeCode)])
-                    .TestObject
+                new AccountChanges(_testAddress)
             ];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create" };
 
             byte[] create2Salt = new byte[32];
             create2Salt[^1] = 1;
-            Address createdAddress2 = ContractAddress.From(_testAddress, create2Salt, createInitCode);
             code = Prepare.EvmCode
                 .Create2(createInitCode, create2Salt, 0)
                 .Done;
             changes = [
-                Build.An.AccountChanges
-                    .WithAddress(_testAddress)
-                    .WithNonceChanges([new(0, 2)])
-                    .WithBalanceChanges([new(0, _testAccountBalance)])
-                    .TestObject,
-                Build.An.AccountChanges
-                    .WithAddress(createdAddress2)
-                    .WithNonceChanges([new(0, 1)])
-                    .WithStorageReads(slot)
-                    .WithCodeChanges([new(0, createdRuntimeCode)])
-                    .TestObject
+                new AccountChanges(_testAddress)
             ];
             yield return new TestCaseData(changes, code, null, false) { TestName = "create2" };
 
