@@ -202,4 +202,10 @@ public interface IJsonRpcConfig : IConfig
         Description = "Enable strict parsing rules for Block Params and Hashes in RPC requests. this will decrease compatibility but increase compliance with the spec.",
         DefaultValue = "true")]
     bool StrictHexFormat { get; set; }
+
+    [ConfigItem(Description = "Default server-side wait, in milliseconds, for eth_sendRawTransactionSync when the caller omits the timeout argument.", DefaultValue = "20000")]
+    int RpcTxSyncDefaultTimeoutMs { get; set; }
+
+    [ConfigItem(Description = "Maximum server-side wait, in milliseconds, that eth_sendRawTransactionSync will accept; client-supplied timeouts above this are clamped down.", DefaultValue = "60000")]
+    int RpcTxSyncMaxTimeoutMs { get; set; }
 }
