@@ -165,8 +165,7 @@ namespace Nethermind.Facade
         private CallOutput CallExclusive(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, CancellationToken cancellationToken)
         {
             using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-            // Dual-write: BlobBaseFeeOverrideCalculatorDecorator reads from RequestState during VM execution;
-            // RunCall also receives the value directly to apply it during pre-VM header preparation.
+            // Dual-write: RequestState feeds the VM-time decorator; RunCall applies it during pre-VM header prep.
             scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
             return RunCall(scope.Component.StateReader, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
         }
@@ -187,8 +186,9 @@ namespace Nethermind.Facade
             };
         }
 
+        // Empty dict coalesces to no override: the exclusive env path is a free DoS vector for a no-op overlay.
         private static bool HasOverrides(Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride) =>
-            stateOverride is not null || blobBaseFeeOverride is not null;
+            stateOverride is { Count: > 0 } || blobBaseFeeOverride is not null;
 
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
         {
@@ -594,10 +594,7 @@ namespace Nethermind.Facade
             return blockchainBridgeLifetime.Resolve<BlockchainBridge>();
         }
 
-        // Each invocation produces an independent IOverridableEnv<BlockProcessingComponents> with its
-        // own _worldScopeCloser, SingleCallRequestState and decorator chain so concurrent renters
-        // share no mutable state. The returned wrapper carries the underlying lifetime scope so the
-        // pool can dispose it mid-run when capacity overflows or when an env is poisoned.
+        // One env per invocation — independent _worldScopeCloser and decorator chain so concurrent renters share no mutable state.
         private IOverridableEnv<BlockchainBridge.BlockProcessingComponents> BuildSingleEnv()
         {
             IOverridableEnv env = envFactory.Create();
@@ -608,11 +605,8 @@ namespace Nethermind.Facade
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
                 .Add<BlockchainBridge.BlockProcessingComponents>());
 
-            // Safety net: if the bridge is torn down while envs are still rented out, the rented
-            // envs would otherwise leak their lifetime scopes. Autofac's Dispose is idempotent, so
-            // a later DisposeEnv call from the pool is a no-op.
-            rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
-
+            // Pool owns the scope. Registering with rootLifetimeScope.Disposer would retain every created env until shutdown
+            // and turn burst override traffic into long-lived memory.
             IOverridableEnv<BlockchainBridge.BlockProcessingComponents> inner =
                 overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
             return new DisposableOverridableEnv(inner, overridableScopeLifetime);

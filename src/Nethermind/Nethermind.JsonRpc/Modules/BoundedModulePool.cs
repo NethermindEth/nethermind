@@ -8,14 +8,10 @@ using Nethermind.JsonRpc.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    // Two independent counters with different semantics:
-    //   _queuedCalls: SlowPath calls waiting for a bounded pool slot (decremented once slot acquired).
-    //                 Bounded by RequestQueueLimit — prevents unbounded queue buildup on the exclusive path.
-    //   _sharedCalls: SharedPath calls currently in flight on the singleton handler (decremented on return).
-    //                 Bounded by MaxConcurrentSharedRequests — prevents OOM from unbounded concurrency
-    //                 on heavy sharable methods (eth_call/eth_estimateGas/eth_createAccessList).
-    // Light sharable methods (eth_blockNumber etc.) complete in <1 ms and effectively never approach
-    // the shared limit at realistic load.
+    // Two independent counters:
+    //   _queuedCalls: SlowPath waiters, bounded by RequestQueueLimit.
+    //   _sharedCalls: SharedPath in-flight, bounded by MaxConcurrentSharedRequests — caps memory
+    //                 for heavy sharable methods (eth_call / eth_estimateGas / eth_createAccessList).
     public static class RpcLimits
     {
         public static void Init(int queuedLimit, int sharedLimit)

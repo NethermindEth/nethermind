@@ -9,17 +9,10 @@ using Nethermind.Evm;
 namespace Nethermind.State.OverridableEnv;
 
 /// <summary>
-/// Thread-safe source of <see cref="IOverridableEnv{T}"/> scopes. Callers obtain a
-/// <see cref="Scope{T}"/> for the duration of a request; the underlying env is recycled when the
-/// scope is disposed. Multiple callers can hold scopes concurrently — each backed by an independent
-/// env so there is no shared mutable state.
+/// Thread-safe source of <see cref="IOverridableEnv{T}"/> scopes. Callers hold a
+/// <see cref="Scope{T}"/> for the request lifetime; the env is recycled on dispose. Concurrent
+/// callers each get an independent env, so there is no shared mutable state.
 /// </summary>
-/// <remarks>
-/// Mirrors the role of <c>IShareableTxProcessorSource</c> on the read-only side: a separate
-/// abstraction that <i>manages</i> envs rather than pretending to <i>be</i> one. The underlying
-/// <see cref="IOverridableEnv{T}"/> is intentionally single-call (its <c>_worldScopeCloser</c>
-/// throws on reentry), so wrapping a pool behind the same interface would be misleading.
-/// </remarks>
 public interface IShareableOverridableEnvSource<T> : IDisposable
 {
     Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null);

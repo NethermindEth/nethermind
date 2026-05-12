@@ -79,9 +79,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Eth and its dependencies
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
-                // The override-path env pool size mirrors EthModuleConcurrentInstances so that operators
-                // who had tuned the original bounded-pool capacity keep the same effective override
-                // concurrency under the new sharable bridge.
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
                         new BlockchainBridgeFactory(simEnvFactory, overridableEnvFactory, lifetimeScope,
