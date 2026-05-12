@@ -157,7 +157,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
     int MaxBatchSize { get; set; }
 
-    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "128")]
+    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "4096")]
     int JsonSerializationMaxDepth { get; set; }
 
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
