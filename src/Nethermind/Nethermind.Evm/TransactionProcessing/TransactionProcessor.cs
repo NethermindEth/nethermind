@@ -1258,9 +1258,11 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            long topLevelCreateStateRefund = Math.Min(
-                selfDestructStateRefund,
-                CalculateTopLevelCreateSelfDestructStateRefund(tx, in substate, in gasAfterExecution));
+            long topLevelCreateStateRefund = selfDestructStateRefund > 0
+                ? Math.Min(
+                    selfDestructStateRefund,
+                    CalculateTopLevelCreateSelfDestructStateRefund(tx, in substate, in gasAfterExecution))
+                : 0;
             long stateGasRefundToReservoir = selfDestructStateRefund - topLevelCreateStateRefund;
             if (stateGasRefundToReservoir > 0)
             {
@@ -1295,6 +1297,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, blockStateGas, Math.Max(spentGas, floorGasLong));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long CalculateTopLevelCreateSelfDestructStateRefund(
             Transaction tx,
             in TransactionSubstate substate,
@@ -1311,6 +1314,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 : 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long CalculateTopLevelCreateIntrinsicStateRefund(
             Transaction tx,
             in TGasPolicy intrinsicGasStandard)
@@ -1325,6 +1329,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 TGasPolicy.GetStateReservoir(in intrinsicGasStandard));
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static long CalculateInitialStateReservoir(
             long txGasLimit,
             in TGasPolicy intrinsicGasStandard)
