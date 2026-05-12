@@ -24,12 +24,10 @@ namespace Nethermind.Blockchain.Test;
 /// <summary>
 /// Integration tests exercising EIP-8037 per-tx 2D block-gas accounting
 /// against Nethermind's <c>BlockAccessListManager.IncrementalValidation</c>. Each test
-/// mirrors a scenario from execution-specs PR 2703. The sequential executor regression
-/// pins the same inclusion rule on the BAL-off/parallel-disabled path.
+/// covers the same inclusion rule on the BAL-on and BAL-off execution paths.
 ///
 /// Tests pinned to <c>Assert.DoesNotThrow</c> verify spec acceptance; tests pinned to
-/// <c>Assert.Throws&lt;InvalidBlockException&gt;</c> verify spec rejection. Failures
-/// indicate Nethermind diverges from spec PR 2703 in that scenario.
+/// <c>Assert.Throws&lt;InvalidBlockException&gt;</c> verify spec rejection.
 ///
 /// </summary>
 [Parallelizable(ParallelScope.All)]
@@ -80,11 +78,11 @@ public class Eip8037BlockGasIntegrationTests
         return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
     }
 
-    // PR 2703 boundary: post-tx cumulative state hits the limit exactly (must accept,
+    // Boundary: post-tx cumulative state hits the limit exactly (must accept,
     // IncrementalValidation uses strict >) vs exceeds by 1 (must reject).
-    [TestCase(200_000L, true, TestName = "Spec_pr2703_boundary_state_exact_fit_accepts")]
-    [TestCase(200_001L, false, TestName = "Spec_pr2703_boundary_state_exceeded_by_one_rejects")]
-    public void Spec_pr2703_boundary_state(long blockStateGasUsed, bool accepts)
+    [TestCase(200_000L, true, TestName = "Eip8037_boundary_state_exact_fit_accepts")]
+    [TestCase(200_001L, false, TestName = "Eip8037_boundary_state_exceeded_by_one_rejects")]
+    public void Eip8037_boundary_state(long blockStateGasUsed, bool accepts)
     {
         long blockGasLimit = 200_000;
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
@@ -108,14 +106,13 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// PR 2703 <c>test_creation_tx_regular_check_subtracts_intrinsic_state</c>:
-    /// in the spec scenario the creation tx is accepted at inclusion because the new
-    /// formula subtracts <c>intrinsic.state</c>. With actual post-execution gas modest
+    /// Creation tx is accepted at inclusion because the EIP-8037 formula subtracts
+    /// <c>intrinsic.state</c>. With actual post-execution gas modest
     /// (the create succeeds well under cap), <c>IncrementalValidation</c> also accepts.
     /// This test verifies acceptance.
     /// </summary>
     [Test]
-    public void Spec_pr2703_creation_tx_regular_check_actual_usage_modest_accepts()
+    public void Eip8037_creation_tx_regular_check_actual_usage_modest_accepts()
     {
         long blockGasLimit = 16_777_216 + 53_000 + 1; // cap + intrinsic_regular + 1
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
@@ -135,9 +132,8 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// PR 2703 <c>test_single_tx_state_check_exceeds_block_limit</c>: a single tx
-    /// whose worst-case state contribution exceeds <c>block_gas_limit</c> must be
-    /// rejected. Spec rejects at inclusion (pre-execution).
+    /// A single tx whose worst-case state contribution exceeds
+    /// <c>block_gas_limit</c> must be rejected at inclusion.
     ///
     /// Here we simulate Nethermind running the tx anyway and report modest actual
     /// post-execution gas (well under limit). Spec says reject; if Nethermind
@@ -145,7 +141,7 @@ public class Eip8037BlockGasIntegrationTests
     /// this test FAILS - exposing the missing pre-tx inclusion check.
     /// </summary>
     [Test]
-    public void Spec_pr2703_single_tx_state_check_exceeds_block_limit_rejects()
+    public void Eip8037_single_tx_state_check_exceeds_block_limit_rejects()
     {
         long blockGasLimit = 16_777_216 + 100; // cap + tiny headroom
         // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
@@ -160,16 +156,16 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
-            "spec PR 2703 requires rejection at inclusion when tx.gas - intrinsic.regular > block_gas_limit");
+            "EIP-8037 requires rejection at inclusion when tx.gas - intrinsic.regular > block_gas_limit");
     }
 
     /// <summary>
-    /// PR 2703 <c>test_creation_tx_state_check_exceeded</c>: creation tx whose state
+    /// Creation tx whose state
     /// contribution exceeds remaining state budget. Spec rejects on state dimension.
     /// Same harness-limitation as above: post-execution gas is modest, but inclusion must reject.
     /// </summary>
     [Test]
-    public void Spec_pr2703_creation_tx_state_check_exceeded_rejects()
+    public void Eip8037_creation_tx_state_check_exceeded_rejects()
     {
         long blockGasLimit = 16_777_216 + 200_000; // cap + headroom for filler state
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
@@ -186,7 +182,7 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None),
-            "spec PR 2703 requires rejection on state dimension at inclusion");
+            "EIP-8037 requires rejection on state dimension at inclusion");
     }
 
     /// <summary>
@@ -196,7 +192,7 @@ public class Eip8037BlockGasIntegrationTests
     /// post-execution actual gas is modest.
     /// </summary>
     [Test]
-    public void Spec_pr2703_eip7825_cap_with_modest_actual_gas_accepts()
+    public void Eip8037_eip7825_cap_with_modest_actual_gas_accepts()
     {
         long blockGasLimit = 16_777_216 + 100;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;

@@ -8,8 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
-// Tests target Eip8037BlockGasInclusionCheck.Validate directly. Scenarios mirror
-// execution-specs PR 2703 (tests/amsterdam/eip8037_state_creation_gas_cost_increase/test_state_gas_reservoir.py).
+// Tests target Eip8037BlockGasInclusionCheck.Validate directly.
 [TestFixture]
 public class Eip8037BlockGasInclusionCheckTests
 {
@@ -20,7 +19,7 @@ public class Eip8037BlockGasInclusionCheckTests
     private const long CreateIntrinsicRegular = 53_000;
     private const long SStoreStateGas = 64 * CostPerStateByte; // GasCostOf.SSetState
 
-    // PR 2703 test_block_state_gas_limit_boundary[exact_fit]: state contribution == state_available -> accepted (strict >).
+    // Boundary case: state contribution == state_available -> accepted (strict >).
     [Test]
     public void Boundary_state_exact_fit_accepts()
     {
@@ -47,7 +46,7 @@ public class Eip8037BlockGasInclusionCheckTests
             "tx2 worst-case state contribution exactly fills state_available; spec uses strict > so this must be accepted");
     }
 
-    // PR 2703 test_block_state_gas_limit_boundary[exceeded]: state contribution > state_available by 1 -> reject on state.
+    // Boundary case: state contribution > state_available by 1 -> reject on state.
     [Test]
     public void Boundary_state_exceeded_by_one_rejects_on_state_dimension()
     {
@@ -70,8 +69,7 @@ public class Eip8037BlockGasInclusionCheckTests
             "spec must reject on state dimension, not regular");
     }
 
-    // PR 2703 test_creation_tx_regular_check_subtracts_intrinsic_state: tx.gas > regular_available
-    // but (tx.gas - intrinsic.state) fits -> accept under new formula. Old min(TX_MAX, tx.gas) > regular_available would reject.
+    // Creation tx: tx.gas > regular_available but (tx.gas - intrinsic.state) fits.
     [Test]
     public void Creation_tx_regular_check_subtracts_intrinsic_state_accepts()
     {
@@ -100,7 +98,7 @@ public class Eip8037BlockGasInclusionCheckTests
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
     }
 
-    // PR 2703 test_single_tx_state_check_exceeds_block_limit: single tx state contribution > block_gas_limit -> reject.
+    // Single tx state contribution > block_gas_limit -> reject.
     [Test]
     public void Single_tx_state_check_exceeds_block_limit_rejects()
     {
@@ -117,7 +115,7 @@ public class Eip8037BlockGasInclusionCheckTests
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded));
     }
 
-    // PR 2703 test_creation_tx_state_check_exceeded: creation tx state > remaining state, regular fits -> reject on state.
+    // Creation tx state > remaining state while regular fits -> reject on state.
     [Test]
     public void Creation_tx_state_check_exceeded_rejects_on_state_dimension()
     {

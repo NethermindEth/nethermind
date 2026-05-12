@@ -356,7 +356,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Exceptional_halt_does_not_restore_spilled_state_refund_above_initial_reservoir()
+    public void Exceptional_halt_restores_refunded_child_state_gas_to_parent_reservoir()
     {
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 1_000);
@@ -365,13 +365,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.RestoreChildStateGasOnHalt(ref parent, in child, initialStateReservoir: 0);
 
-        // Spill must NOT propagate to parent.StateGasSpill or parent.StateGasSpillBurned on
-        // exceptional halt: halt burns the child's regular gas (incl. the spilled portion), which
-        // is already in the parent's initial regular budget that the top-level halt formula
-        // attributes to the regular dimension. Adding it via either StateGasSpill (subtraction in
-        // non-halt formula) or StateGasSpillBurned (reattribution in halt formula) would
-        // double-count.
-        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 0L)));
+        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((200L, 0L, 200L)));
         Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
             "child halt does NOT propagate live spill into the cumulative burn counter");
         Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(0L),
@@ -430,7 +424,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Refund_state_gas_from_exceptional_halt_does_not_mark_spilled_refund()
+    public void Refund_state_gas_from_child_halt_preserves_spill_accounting()
     {
         EthereumGasPolicy gas = new() { Value = GasCostOf.CreateState, StateReservoir = 0, StateGasUsed = 0 };
         Assert.That(EthereumGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState), Is.True);
@@ -439,6 +433,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         Assert.That((gas.StateGasUsed, gas.StateReservoir, gas.StateGasSpill, gas.StateGasSpillRefunded),
             Is.EqualTo((0L, GasCostOf.CreateState, GasCostOf.CreateState, 0L)));
+        Assert.That(gas.StateGasSpillReclassified, Is.Zero);
     }
 
     [Test]
@@ -473,7 +468,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Code_deposit_halt_does_not_restore_spilled_state_refund_above_initial_reservoir()
+    public void Code_deposit_halt_restores_refunded_child_state_gas_to_parent_reservoir()
     {
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 0, StateGasUsed = 0 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 1_000);
@@ -487,7 +482,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         // Calculate8037BlockRegularGas (non-halt path) reattributes it from regular to state.
         // Rerouting into StateGasSpillBurned would double-attribute when the parent eventually
         // succeeds at the top level.
-        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((0L, 0L, 200L)));
+        Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill), Is.EqualTo((200L, 0L, 200L)));
         Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
             "code-deposit halt does NOT reroute live spill into the cumulative burn counter");
     }
@@ -692,7 +687,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Revert_discards_child_inline_state_refund_inflation()
+    public void Revert_restores_child_inline_state_refund_to_parent_reservoir()
     {
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 400, StateGasUsed = 20 };
         EthereumGasPolicy child = EthereumGasPolicy.CreateChildFrameGas(ref parent, 600);
@@ -701,7 +696,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
 
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400, childStateRefund: 40);
 
-        Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((360L, 20L)));
+        Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((400L, 20L)));
     }
 
     [Test]
@@ -720,7 +715,7 @@ public class Eip8037Tests : VirtualMachineTestsBase
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in outer, initialStateReservoir: 0, childStateRefund: GasCostOf.CreateState);
 
         Assert.That((parent.StateReservoir, parent.StateGasUsed, parent.StateGasSpill),
-            Is.EqualTo((0L, 0L, GasCostOf.CreateState + GasCostOf.SSetState)));
+            Is.EqualTo((GasCostOf.CreateState + GasCostOf.SSetState, 0L, GasCostOf.CreateState + GasCostOf.SSetState)));
         Assert.That(parent.StateGasSpillReclassified, Is.EqualTo(0L),
             "ancestor refunds consumed both spills, so neither is reclassified to block regular gas");
         Assert.That(parent.StateGasSpillBurned, Is.EqualTo(0L),
