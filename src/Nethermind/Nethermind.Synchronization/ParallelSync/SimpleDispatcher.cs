@@ -104,6 +104,10 @@ public class SimpleDispatcher<T>(
         {
             if (_logger.IsTrace) _logger.Trace($"{request} - cancelled");
         }
+        catch (PeerProtocolException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"{request} - peer protocol response rejected. Peer: {peer}. {e.Message}");
+        }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");

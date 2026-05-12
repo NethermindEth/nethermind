@@ -26,6 +26,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -559,14 +560,12 @@ public class Eth70ProtocolHandlerTests
         AssertReceiptsEqual(result[0], receipts);
     }
 
-    [Test]
-    public void Should_reject_receipts_when_transaction_count_mismatches()
+    [TestCase(0)]
+    [TestCase(1)]
+    public void Should_reject_receipts_when_transaction_count_mismatches(int receiptCount)
     {
         Hash256 blockHash = TestItem.KeccakA;
-        TxReceipt[] receipts =
-        [
-            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
-        ];
+        TxReceipt[] receipts = BuildSequentialReceipts(receiptCount);
         SetupBlockMetadata(blockHash, 1_000_000, GasCostOf.Transaction, 100_000, 100_000);
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -580,7 +579,54 @@ public class Eth70ProtocolHandlerTests
         Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
         SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
-        Assert.That(exception?.Message, Is.EqualTo("Receipt count mismatch with block transactions count"));
+        Assert.That(exception?.Message, Does.StartWith("Receipt count mismatch with block transactions count"));
+        Assert.That(exception?.Message, Does.Contain("Block: 1 ("));
+        Assert.That(exception?.Message, Does.Contain("transactions: 2"));
+        Assert.That(exception?.Message, Does.Contain($"receipts: {receiptCount}"));
+        Assert.That(exception?.Message, Does.Contain($"deliveredReceipts: {receiptCount}"));
+    }
+
+    [Test]
+    public void Should_reject_gnosis_withdrawal_block_receipts_when_transaction_count_mismatches()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        TxReceipt[] receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithGasLimit(100_000).TestObject,
+            Build.A.Transaction.WithGasLimit(100_000).TestObject
+        ];
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(GnosisSpecProvider.LondonBlockNumber)
+            .WithTimestamp(GnosisSpecProvider.ShanghaiTimestamp)
+            .WithGasLimit(1_000_000)
+            .WithGasUsed(GasCostOf.Transaction)
+            .TestObject;
+        Block block = new(header, transactions, [], [TestItem.WithdrawalA_1Eth]);
+
+        _syncManager.FindHeader(blockHash).Returns(header);
+        _syncManager.Find(blockHash).Returns(block);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(callInfo =>
+            GnosisSpecProvider.Instance.GetSpec((ForkActivation)callInfo[0]));
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Does.StartWith("Receipt count mismatch with block transactions count"));
+        Assert.That(exception?.Message, Does.Contain($"Block: {GnosisSpecProvider.LondonBlockNumber} ("));
+        Assert.That(exception?.Message, Does.Contain("transactions: 2"));
+        Assert.That(exception?.Message, Does.Contain("receipts: 1"));
     }
 
     [Test]

@@ -207,6 +207,10 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
             }
+            catch (PeerProtocolException e)
+            {
+                if (Logger.IsWarn) Logger.Warn($"{request} - peer protocol response rejected. Peer: {allocatedPeer}. {e.Message}");
+            }
             catch (Exception e)
             {
                 if (Logger.IsWarn) Logger.Warn($"Failure when executing request {e}");
