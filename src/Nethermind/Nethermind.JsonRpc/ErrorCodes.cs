@@ -53,6 +53,15 @@ namespace Nethermind.JsonRpc
         public const int ResourceNotFound = -32000;
 
         /// <summary>
+        /// Requested block access list resource not found.
+        /// </summary>
+        /// <remarks>
+        /// The execution-apis block access list methods use a dedicated code while keeping
+        /// <c>Resource not found</c> as the error message.
+        /// </remarks>
+        public const int BlockAccessListResourceNotFound = -32001;
+
+        /// <summary>
         /// Transaction creation failed
         /// </summary>
         public const int TransactionRejected = -32000;
