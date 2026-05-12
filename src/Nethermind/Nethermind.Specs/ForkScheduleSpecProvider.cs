@@ -38,22 +38,25 @@ public abstract class ForkScheduleSpecProvider : ISpecProvider
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
-        if (forkActivation.Timestamp is ulong ts)
+        IReleaseSpec result = ForkSchedule[0].Spec;
+
+        for (int i = 0; i < ForkSchedule.Length; i++)
         {
-            for (int i = ForkSchedule.Length - 1; i >= 0; i--)
+            ForkSpec fork = ForkSchedule[i];
+            if (fork.Block is long block)
             {
-                if (ForkSchedule[i].Timestamp is ulong forkTs && ts >= forkTs)
-                    return ForkSchedule[i].Spec;
+                if (forkActivation.BlockNumber >= block)
+                    result = fork.Spec;
+                else
+                    break;
+            }
+            else if (fork.Timestamp is ulong forkTs && forkActivation.Timestamp is ulong ts && ts >= forkTs)
+            {
+                result = fork.Spec;
             }
         }
 
-        for (int i = ForkSchedule.Length - 1; i >= 0; i--)
-        {
-            if (ForkSchedule[i].Block is long forkBlock && forkActivation.BlockNumber >= forkBlock)
-                return ForkSchedule[i].Spec;
-        }
-
-        return ForkSchedule[0].Spec;
+        return result;
     }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
