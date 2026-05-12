@@ -63,6 +63,21 @@ public class BlockAccessListManager(
     // matches the most recently loaded one.
     private Hash256 _lastLoadedBal = Hash256.Zero;
 
+    // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
+    // suggested index is built once at PrepareForProcessing; the generated index mirrors its
+    // layout and is appended-to per-tx from MergeAndReturnBal. Equality at a given tx index
+    // collapses to row-aligned span compares — no per-account dictionary lookups, no per-tx
+    // walks over the whole BAL. Null when BlockAccessList is unset (e.g. pre-Amsterdam).
+    private BlockAccessListValidationIndex? _suggestedValidationIndex;
+    private BlockAccessListValidationIndex? _generatedValidationIndex;
+    // Total chargeable storage reads on each side. Suggested is computed once at Build time;
+    // generated is incremented as each per-tx slice merges in. ValidateBlockAccessList's
+    // fast path checks (suggestedReads - generatedReads) * Eip7928Constants.ItemCost against
+    // _gasRemaining instead of re-walking the whole BAL.
+    private int _suggestedChargeableStorageReads;
+    private int _generatedChargeableStorageReads;
+    private bool _hasGeneratedValidationIndexUpdates;
+
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
             innerException.InvalidBlock,
@@ -103,6 +118,23 @@ public class BlockAccessListManager(
                 {
                     accountChanges.EnablePrestateGate();
                 }
+            }
+
+            // Build the column-oriented validation index used by ValidateBlockAccessList's
+            // fast path. Runs once per block; subsequent per-tx ChangesEqual calls become
+            // row-aligned span compares. Tally suggested-side chargeable storage reads here
+            // so the per-tx surplus-reads gas check can avoid re-walking the BAL.
+            if (suggestedBlock.BlockAccessList is not null)
+            {
+                BlockAccessListValidationIndex.AddressIndex addressIndex = new();
+                _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggestedBlock.BlockAccessList, suggestedBlock.Transactions.Length, addressIndex);
+                _generatedValidationIndex = new(suggestedBlock.Transactions.Length, addressIndex, _suggestedValidationIndex);
+                int suggestedReads = 0;
+                foreach (ReadOnlyAccountChanges ac in suggestedBlock.BlockAccessList.AccountChanges)
+                {
+                    suggestedReads += IsSystemContract(ac.Address) ? 0 : ac.StorageReads.Length;
+                }
+                _suggestedChargeableStorageReads = suggestedReads;
             }
         }
     }
@@ -172,7 +204,7 @@ public class BlockAccessListManager(
         // Pre is held by main-thread system contract handlers — never went through Return,
         // so MergeAndReturnBal will detach it before merging.
         preExecutionTask.GetAwaiter().GetResult();
-        _txProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList);
+        _txProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList, RegisterGeneratedSlice);
         ValidateBlockAccessList(block, 0u);
 
         long totalRegularGas = 0;
@@ -217,7 +249,7 @@ public class BlockAccessListManager(
                 // the target now, in order, so incremental validation sees only data from
                 // txs 0..(j+1).
                 bool validateStorageReads = j == chunkEnd - 1;
-                _txProcessorWithWorldStateManager.MergeAndReturnBal((uint)(j + 1), GeneratedBlockAccessList);
+                _txProcessorWithWorldStateManager.MergeAndReturnBal((uint)(j + 1), GeneratedBlockAccessList, RegisterGeneratedSlice);
                 ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
             }
         }
@@ -385,6 +417,24 @@ public class BlockAccessListManager(
 
         CheckInitialized();
 
+        // Fast path: when the column-oriented validation index is populated for this index,
+        // a single ChangesEqual call compares both sides row-by-row in bulk. On match, only
+        // the surplus-storage-reads gas check remains — no per-account dict lookups, no
+        // sorted merge walk. On mismatch (or when the index isn't ready), fall through to
+        // the streaming walk below which produces precise diagnostics.
+        if (_hasGeneratedValidationIndexUpdates &&
+            _suggestedValidationIndex is not null &&
+            _generatedValidationIndex is not null &&
+            _generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
+        {
+            int fastSurplus = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
+            if (validateStorageReads && fastSurplus > 0 && _gasRemaining < fastSurplus * Eip7928Constants.ItemCost)
+            {
+                throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
+            }
+            return;
+        }
+
         GeneratedBlockAccessList generated = GeneratedBlockAccessList;
         ReadOnlyBlockAccessList suggested = block.BlockAccessList;
 
@@ -446,6 +496,31 @@ public class BlockAccessListManager(
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
+    }
+
+    /// <summary>
+    /// Hook called by <see cref="ITxProcessorWithWorldStateManager.MergeAndReturnBal"/> after
+    /// each per-tx slice merges into the cumulative <see cref="GeneratedBlockAccessList"/>.
+    /// Pushes the slice's rows into <see cref="_generatedValidationIndex"/> so the next
+    /// <see cref="ValidateBlockAccessList"/> call at this index can take the fast path, and
+    /// rolls the chargeable-storage-reads counter forward.
+    /// </summary>
+    private void RegisterGeneratedSlice(BlockAccessListAtIndex slice)
+    {
+        if (_generatedValidationIndex is null)
+        {
+            return;
+        }
+
+        _generatedValidationIndex.Add(slice);
+        foreach (AccountChangesAtIndex ac in slice.AccountChanges)
+        {
+            if (!IsSystemContract(ac.Address))
+            {
+                _generatedChargeableStorageReads += ac.StorageReads.Count;
+            }
+        }
+        _hasGeneratedValidationIndexUpdates = true;
     }
 
     private static bool IsSystemContract(Address address)
@@ -562,6 +637,11 @@ public class BlockAccessListManager(
         _blockExecutionContext = null;
         _gasRemaining = null;
         GeneratedBlockAccessList.Reset();
+        _suggestedValidationIndex = null;
+        _generatedValidationIndex = null;
+        _suggestedChargeableStorageReads = 0;
+        _generatedChargeableStorageReads = 0;
+        _hasGeneratedValidationIndexUpdates = false;
     }
 
     [DoesNotReturn]
@@ -576,7 +656,7 @@ public class BlockAccessListManager(
         TxProcessorWithWorldState GetPostExecution() => Get(uint.MaxValue);
         void NextTransaction();
         void Rollback();
-        void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target);
+        void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null);
     }
 
     private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
@@ -686,8 +766,11 @@ public class BlockAccessListManager(
 
         /// <summary>Merges the per-tx BAL into <paramref name="target"/> in caller-controlled
         /// order, then returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also
-        /// detaches the BAL for pre/post callers that never went through Return.</summary>
-        public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target)
+        /// detaches the BAL for pre/post callers that never went through Return. The optional
+        /// <paramref name="onSlice"/> hook (used by <see cref="BlockAccessListValidationIndex"/>)
+        /// runs after the merge but before the slice goes back to the pool, so the manager can
+        /// snapshot per-tx rows for the validator's fast path.</summary>
+        public void MergeAndReturnBal(uint balIndex, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
         {
             int idx = ClampBalIndex(balIndex);
 
@@ -697,6 +780,7 @@ public class BlockAccessListManager(
             if (source is null) return;
 
             target.Merge(source);
+            onSlice?.Invoke(source);
             _perTxBal[idx] = null;
             StaticPool<BlockAccessListAtIndex>.Return(source);
         }
@@ -781,8 +865,18 @@ public class BlockAccessListManager(
 
         public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
 
-        public void MergeAndReturnBal(uint _, GeneratedBlockAccessList target)
-            => _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+        public void MergeAndReturnBal(uint _, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
+        {
+            _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
+            // Sequential path keeps the per-tx slice alive on the worldstate; expose it to
+            // the validator-fast-path hook so the validation index sees the same per-tx rows
+            // as the parallel path would.
+            if (onSlice is not null)
+            {
+                BlockAccessListAtIndex? slice = _txProcessorWithWorldState.WorldState.GetGeneratingBlockAccessList();
+                if (slice is not null) onSlice(slice);
+            }
+        }
     }
 
     private class TxProcessorWithWorldState
