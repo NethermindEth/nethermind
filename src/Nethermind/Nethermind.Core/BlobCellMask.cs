@@ -49,8 +49,8 @@ public readonly record struct BlobCellMask(UInt128 Value)
             throw new ArgumentOutOfRangeException(nameof(destination), destination.Length, $"Blob cell mask destination must be at least {FixedByteLength} bytes.");
         }
 
-        BinaryPrimitives.WriteUInt64BigEndian(destination, (ulong)(Value >> 64));
-        BinaryPrimitives.WriteUInt64BigEndian(destination[8..], (ulong)Value);
+        BinaryPrimitives.WriteUInt64LittleEndian(destination, (ulong)Value);
+        BinaryPrimitives.WriteUInt64LittleEndian(destination[8..], (ulong)(Value >> 64));
     }
 
     public static BlobCellMask FromBytes(ReadOnlySpan<byte> bytes)
@@ -66,8 +66,8 @@ public readonly record struct BlobCellMask(UInt128 Value)
         }
 
         return new(
-            ((UInt128)BinaryPrimitives.ReadUInt64BigEndian(bytes[..8]) << 64)
-            | BinaryPrimitives.ReadUInt64BigEndian(bytes[8..]));
+            ((UInt128)BinaryPrimitives.ReadUInt64LittleEndian(bytes[8..]) << 64)
+            | BinaryPrimitives.ReadUInt64LittleEndian(bytes[..8]));
     }
 
     public static BlobCellMask FromIndices(IEnumerable<int> indices)

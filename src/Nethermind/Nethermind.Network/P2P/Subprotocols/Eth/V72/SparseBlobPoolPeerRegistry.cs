@@ -111,16 +111,18 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         return peer.TrySendGetCells(hash, requestMask);
     }
 
-    public int RequestCellsForCustodyChange(BlobCellMask newCustodyMask)
+    public int RequestCellsForCustodyChange(BlobCellMask newCustodyMask, bool requestAllAnnouncedCells)
     {
-        BlobCellMask requestDelta;
+        BlobCellMask requestMaskTemplate;
         lock (_custodyLock)
         {
-            requestDelta = new BlobCellMask(newCustodyMask.Value & ~_custodyMask.Value);
+            requestMaskTemplate = requestAllAnnouncedCells
+                ? BlobCellMask.Full
+                : new BlobCellMask(newCustodyMask.Value & ~_custodyMask.Value);
             _custodyMask = newCustodyMask;
         }
 
-        if (requestDelta.IsEmpty)
+        if (requestMaskTemplate.IsEmpty)
         {
             return 0;
         }
@@ -129,7 +131,9 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
         foreach (KeyValuePair<ValueHash256, TrackedSparseBlobTx> entry in _transactions)
         {
             Hash256 hash = entry.Key.ToHash256();
-            BlobCellMask requestMask = GetMissingCustodyMask(hash, requestDelta);
+            BlobCellMask requestMask = requestAllAnnouncedCells
+                ? GetMissingAnnouncedMask(hash, entry.Value)
+                : GetMissingLocalMask(hash, requestMaskTemplate);
             if (requestMask.IsEmpty)
             {
                 continue;
@@ -572,14 +576,28 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry
             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             && wrapper.GetAvailableCellMask().IsFull;
 
-    private BlobCellMask GetMissingCustodyMask(Hash256 hash, BlobCellMask requestDelta)
+    private BlobCellMask GetMissingAnnouncedMask(Hash256 hash, TrackedSparseBlobTx state)
     {
-        if (_txPool.TryGetBlobCells(hash, requestDelta, out BlobCellMask availableMask, out _))
+        BlobCellMask announcedMask = BlobCellMask.Empty;
+        lock (state.Lock)
         {
-            return new BlobCellMask(requestDelta.Value & ~availableMask.Value);
+            foreach (BlobCellMask mask in state.Announcements.Values)
+            {
+                announcedMask |= mask;
+            }
         }
 
-        return requestDelta;
+        return GetMissingLocalMask(hash, announcedMask);
+    }
+
+    private BlobCellMask GetMissingLocalMask(Hash256 hash, BlobCellMask requestedMask)
+    {
+        if (_txPool.TryGetBlobCells(hash, requestedMask, out BlobCellMask availableMask, out _))
+        {
+            return new BlobCellMask(requestedMask.Value & ~availableMask.Value);
+        }
+
+        return requestedMask;
     }
 
     private bool TryRemoveState(Hash256 hash, TrackedSparseBlobTx state)

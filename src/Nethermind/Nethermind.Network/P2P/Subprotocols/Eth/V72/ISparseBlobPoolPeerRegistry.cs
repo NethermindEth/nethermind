@@ -13,7 +13,7 @@ public interface ISparseBlobPoolPeerRegistry
     void RemovePeer(PublicKey peerId);
     void RecordAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash, BlobCellMask announcementMask);
     bool TryRequestCells(Hash256 hash, BlobCellMask requestMask, PublicKey preferredPeerId);
-    int RequestCellsForCustodyChange(BlobCellMask newCustodyMask);
+    int RequestCellsForCustodyChange(BlobCellMask newCustodyMask, bool requestAllAnnouncedCells);
     bool HasRecordedTransaction(Hash256 hash);
     int GetFullProviderAnnouncementCount(Hash256 hash);
     AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction);

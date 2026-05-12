@@ -14,6 +14,34 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V72;
 public class Eth72MessageSerializerTests
 {
     [Test]
+    public void BlobCellMask_should_use_little_endian_wire_bit_order()
+    {
+        BlobCellMask mask = BlobCellMask.FromIndices([0, 1, 7, 8, 127]);
+        byte[] expected =
+        [
+            0b1000_0011,
+            0b0000_0001,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0b1000_0000,
+        ];
+
+        Assert.That(mask.ToBytes(), Is.EqualTo(expected));
+        Assert.That(BlobCellMask.FromBytes(expected), Is.EqualTo(mask));
+    }
+
+    [Test]
     public void GetCellsMessageSerializer_should_roundtrip_request_id()
     {
         GetCellsMessageSerializer72 serializer = new();

@@ -80,7 +80,6 @@ public class Eth72ProtocolHandlerTests
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _txPoolConfig = Substitute.For<ITxPoolConfig>();
         _txPoolConfig.BlobsSupport.Returns(BlobsSupportMode.InMemory);
-        _txPoolConfig.SparseBlobPoolMode.Returns(SparseBlobPoolMode.Auto);
         _txPoolConfig.SparseBlobProviderProbabilityBasisPoints.Returns(1_500);
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -147,15 +146,9 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask cellMask = BlobCellMask.FromIndices([1, 3]);
         Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
 
-        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
-        for (int i = 0; i < emptyBlobs.Length; i++)
-        {
-            emptyBlobs[i] = [];
-        }
-
         tx.NetworkWrapper = wrapper with
         {
-            Blobs = emptyBlobs,
+            Blobs = [],
             CellMask = cellMask,
             Cells = cells,
         };
@@ -183,15 +176,9 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask expandedMask = BlobCellMask.FromIndices([1, 3]);
         Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, expandedMask, out byte[][] expandedCells), Is.True);
 
-        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
-        for (int i = 0; i < emptyBlobs.Length; i++)
-        {
-            emptyBlobs[i] = [];
-        }
-
         tx.NetworkWrapper = wrapper with
         {
-            Blobs = emptyBlobs,
+            Blobs = [],
             CellMask = firstMask,
             Cells = firstCells,
         };
@@ -200,7 +187,7 @@ public class Eth72ProtocolHandlerTests
 
         tx.NetworkWrapper = wrapper with
         {
-            Blobs = emptyBlobs,
+            Blobs = [],
             CellMask = expandedMask,
             Cells = expandedCells,
         };
@@ -220,7 +207,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_request_blob_cells_asynchronously_after_announcement()
     {
-        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 10_000);
+        RecreateHandler(providerProbabilityBasisPoints: 10_000);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
@@ -228,7 +215,7 @@ public class Eth72ProtocolHandlerTests
             .TestObject;
 
         BlobCellMask announcementMask = BlobCellMask.Full;
-        _blobCustodyTracker.Update(announcementMask);
+        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
 
         Hash256 hash = tx.Hash!;
         _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
@@ -264,7 +251,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_use_canonical_cell_request_code_for_geth_peer()
     {
-        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 10_000);
+        RecreateHandler(providerProbabilityBasisPoints: 10_000);
         _session.Node!.ClientId = "Geth/v1.16.0-unstable/windows-amd64/go1.24.2";
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -273,7 +260,7 @@ public class Eth72ProtocolHandlerTests
             .TestObject;
 
         BlobCellMask announcementMask = BlobCellMask.Full;
-        _blobCustodyTracker.Update(announcementMask);
+        _blobCustodyTracker.Update(BlobCellMask.FromIndices([2, 7]));
         Hash256 hash = tx.Hash!;
         _transactionPool.NotifyAboutTx(hash, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
@@ -295,9 +282,9 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void auto_mode_should_wait_for_transaction_and_two_provider_announcements_before_sampled_request()
+    public void normal_mode_should_wait_for_transaction_and_two_provider_announcements_before_sampled_request()
     {
-        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 0);
+        RecreateHandler(providerProbabilityBasisPoints: 0);
         Transaction tx = BuildSparseBlobTransaction(out _, out _);
 
         Hash256 hash = tx.Hash!;
@@ -330,9 +317,9 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void auto_mode_should_request_full_cells_from_full_provider_when_selected_as_provider()
+    public void normal_mode_should_request_full_cells_from_full_provider_when_selected_as_provider()
     {
-        RecreateHandler(SparseBlobPoolMode.Auto, providerProbabilityBasisPoints: 10_000);
+        RecreateHandler(providerProbabilityBasisPoints: 10_000);
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
@@ -359,9 +346,10 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void supernode_mode_should_request_all_announced_sparse_cells()
+    public void custody_with_64_columns_should_request_all_announced_sparse_cells()
     {
-        RecreateHandler(SparseBlobPoolMode.Supernode);
+        RecreateHandler();
+        _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
@@ -411,8 +399,7 @@ public class Eth72ProtocolHandlerTests
         _session.Received(1).DeliverMessage(Arg.Is<PooledTransactionsMessage>(m =>
             m.EthMessage.Transactions.Count == 1 &&
             m.EthMessage.Transactions[0].NetworkWrapper != null &&
-            ((ShardBlobNetworkWrapper)m.EthMessage.Transactions[0].NetworkWrapper!).Blobs.Length == ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Blobs.Length &&
-            ((ShardBlobNetworkWrapper)m.EthMessage.Transactions[0].NetworkWrapper!).Blobs.All(static blob => blob.Length == 0) &&
+            ((ShardBlobNetworkWrapper)m.EthMessage.Transactions[0].NetworkWrapper!).Blobs.Length == 0 &&
             m.EthMessage.Transactions[0].GetLength() < fullTxLength));
     }
 
@@ -603,13 +590,13 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_buffer_cells_requested_before_tx_becomes_pending()
     {
-        RecreateHandler(SparseBlobPoolMode.Supernode);
+        RecreateHandler();
+        _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = BuildBlobTransaction(fullProvider: false);
 
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
         Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, cellMask, out byte[][] cells), Is.True);
 
-        _blobCustodyTracker.Update(cellMask);
         _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
 
@@ -673,7 +660,8 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_reject_cells_with_unrequested_mask()
     {
-        RecreateHandler(SparseBlobPoolMode.Supernode);
+        RecreateHandler();
+        _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(UInt256.Zero)
@@ -684,7 +672,6 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask responseMask = BlobCellMask.FromIndices([4, 7]);
         Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, responseMask, out byte[][] cells), Is.True);
 
-        _blobCustodyTracker.Update(requestedMask);
         _transactionPool.NotifyAboutTx(tx.Hash!, Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
         bool txAvailable = false;
@@ -741,8 +728,8 @@ public class Eth72ProtocolHandlerTests
         registry.AddPeer(peer);
         registry.RecordAnnouncement(peer, hash, BlobCellMask.Full);
 
-        Assert.That(registry.RequestCellsForCustodyChange(firstMask), Is.EqualTo(1));
-        Assert.That(registry.RequestCellsForCustodyChange(expandedMask), Is.EqualTo(1));
+        Assert.That(registry.RequestCellsForCustodyChange(firstMask, requestAllAnnouncedCells: false), Is.EqualTo(1));
+        Assert.That(registry.RequestCellsForCustodyChange(expandedMask, requestAllAnnouncedCells: false), Is.EqualTo(1));
 
         Assert.That(peer.CellRequests, Has.Count.EqualTo(2));
         Assert.That(peer.CellRequests[0], Is.EqualTo((hash, firstMask)));
@@ -1079,10 +1066,9 @@ public class Eth72ProtocolHandlerTests
         _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
     }
 
-    private void RecreateHandler(SparseBlobPoolMode mode, int providerProbabilityBasisPoints = 1_500)
+    private void RecreateHandler(int providerProbabilityBasisPoints = 1_500)
     {
         _handler.Dispose();
-        _txPoolConfig.SparseBlobPoolMode.Returns(mode);
         _txPoolConfig.SparseBlobProviderProbabilityBasisPoints.Returns(providerProbabilityBasisPoints);
         _handler = new Eth72ProtocolHandler(
             _session,
@@ -1154,6 +1140,17 @@ public class Eth72ProtocolHandlerTests
         return new BlobCellMask(UInt128.One << candidateIndices[selected]);
     }
 
+    private static BlobCellMask SupernodeCustodyMask()
+    {
+        UInt128 mask = UInt128.Zero;
+        for (int i = 0; i < 64; i++)
+        {
+            mask |= UInt128.One << i;
+        }
+
+        return new BlobCellMask(mask);
+    }
+
     private static Hash256 HashFromInt(int value)
     {
         byte[] bytes = new byte[Hash256.Size];
@@ -1184,13 +1181,7 @@ public class Eth72ProtocolHandlerTests
         cellMask = BlobCellMask.FromIndices([4]);
         Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out cells), Is.True);
 
-        byte[][] emptyBlobs = new byte[wrapper.Blobs.Length][];
-        for (int i = 0; i < emptyBlobs.Length; i++)
-        {
-            emptyBlobs[i] = [];
-        }
-
-        tx.NetworkWrapper = wrapper with { Blobs = emptyBlobs };
+        tx.NetworkWrapper = wrapper with { Blobs = [] };
         return tx;
     }
 

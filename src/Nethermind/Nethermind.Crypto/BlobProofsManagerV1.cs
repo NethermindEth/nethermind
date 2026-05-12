@@ -53,7 +53,7 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
         int blobCount = wrapper.Commitments.Length;
         int proofCount = blobCount * Ckzg.CellsPerExtBlob;
 
-        if (blobCount != wrapper.Blobs.Length || proofCount != wrapper.Proofs.Length)
+        if ((wrapper.Blobs.Length != 0 && blobCount != wrapper.Blobs.Length) || proofCount != wrapper.Proofs.Length)
         {
             return false;
         }

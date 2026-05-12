@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Extensions;
@@ -12,7 +12,6 @@ public class TxPoolConfig : ITxPoolConfig
     public int MinBaseFeeThreshold { get; set; } = 70;
     public int Size { get; set; } = 2048;
     public BlobsSupportMode BlobsSupport { get; set; } = BlobsSupportMode.StorageWithReorgs;
-    public SparseBlobPoolMode SparseBlobPoolMode { get; set; } = SparseBlobPoolMode.Auto;
     public int SparseBlobProviderProbabilityBasisPoints { get; set; } = 1_500;
     public int PersistentBlobStorageSize { get; set; } = 16 * 1024; // theoretical max - 13GB (128KB * 6 * 16384); for one-blob txs - 2GB (128KB * 1 * 16384);
                                                                     // practical max - something between, but closer to 2GB than 12GB. Geth is limiting it to 10GB.
