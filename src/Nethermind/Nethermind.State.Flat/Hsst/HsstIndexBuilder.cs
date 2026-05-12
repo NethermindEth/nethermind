@@ -19,9 +19,10 @@ namespace Nethermind.State.Flat.Hsst;
 ///
 /// Per-key state during this build phase is one <c>long</c> position; full keys are
 /// recovered on demand by reading them back from the data section through the
-/// supplied reader. Leaf separators (disambiguators against the immediately preceding
-/// entry) are precomputed once into <see cref="_sepLengthsArr"/> by
-/// <see cref="PrecomputeSeparatorLengths"/>; internal-node separators are produced
+/// supplied reader. Per-entry common prefix lengths against the prior entry's key are
+/// precomputed once into <see cref="_commonPrefixArr"/> by
+/// <see cref="PrecomputeCommonPrefixLengths"/>; leaf separators are derived as
+/// <c>min(commonPrefix + 1, currKeyLen)</c>. Internal-node separators are produced
 /// via <see cref="WriteSeparatorBetween"/> over the two boundary keys.
 /// </summary>
 public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
@@ -34,11 +35,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private ref TWriter _writer;
     private TReader _reader;
     private readonly ReadOnlySpan<long> _entryPositions;
-    // One byte per entry: natural separator length against the prior entry's key. Filled
-    // once by PrecomputeSeparatorLengths at Build() entry and read by ChooseLeafLayout /
-    // WriteLeafIndexNode instead of recomputing ComputeSeparatorLength twice per entry.
-    // Rented from ArrayPool; returned in Build's finally.
-    private byte[]? _sepLengthsArr;
+    // One byte per entry: LCP(prev_i, curr_i) — the common prefix length of each entry's
+    // key against the prior entry's key. Filled once by PrecomputeCommonPrefixLengths at
+    // Build() entry; ChooseLeafLayout / WriteLeafIndexNode derive the natural separator
+    // length on demand as min(commonPrefix + 1, currKeyLen). Rented from ArrayPool;
+    // returned in Build's finally.
+    private byte[]? _commonPrefixArr;
 
     public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions)
     {
@@ -114,7 +116,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int valueScratchEntries = Math.Max(maxLeafEntries, maxIntermediateEntries);
         byte[] valueScratchArr = ArrayPool<byte>.Shared.Rent(Math.Max(64, valueScratchEntries * (2 + 8)));
 
-        _sepLengthsArr = ArrayPool<byte>.Shared.Rent(_entryPositions.Length);
+        _commonPrefixArr = ArrayPool<byte>.Shared.Rent(_entryPositions.Length);
 
         // lastNodeLen tracks the byte length of the most recently written node; the
         // returned value is the root node's size (the last node emitted).
@@ -122,7 +124,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         try
         {
-            PrecomputeSeparatorLengths();
+            PrecomputeCommonPrefixLengths();
 
             int currentLevelCount = 0;
             int entryIdx = 0;
@@ -229,8 +231,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             ArrayPool<byte>.Shared.Return(leafSepScratchArr);
             ArrayPool<byte>.Shared.Return(internalSepScratchArr);
             ArrayPool<byte>.Shared.Return(valueScratchArr);
-            ArrayPool<byte>.Shared.Return(_sepLengthsArr);
-            _sepLengthsArr = null;
+            ArrayPool<byte>.Shared.Return(_commonPrefixArr);
+            _commonPrefixArr = null;
         }
 
         return lastNodeLen;
@@ -253,9 +255,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// pairs of <c>commonPrefix(sep[i-1], sep[i]) + 1</c>) used to retry-truncate
     /// stored separators.
     ///
-    /// Reads each entry's full key on demand through the data-section reader; pulls
-    /// the per-entry separator length from <see cref="_sepLengthsArr"/> (filled once
-    /// by <see cref="PrecomputeSeparatorLengths"/>).
+    /// Reads each entry's full key on demand through the data-section reader; derives
+    /// the per-entry separator length from <see cref="_commonPrefixArr"/> (filled once
+    /// by <see cref="PrecomputeCommonPrefixLengths"/>) as <c>min(cp + 1, currKeyLen)</c>.
     /// </summary>
     private LeafLayout ChooseLeafLayout(
         int entryIdx, int minLeafEntries, int maxLeafEntries,
@@ -282,7 +284,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         // Seed running state from the first entry alone.
         int currKeyLen = ReadKey(entryIdx, currKey);
-        int firstSepLen = _sepLengthsArr![entryIdx];
+        int firstSepLen = Math.Min(_commonPrefixArr![entryIdx] + 1, currKeyLen);
         currKey[..firstSepLen].CopyTo(firstSep);
         currKey[..firstSepLen].CopyTo(prevSep);
         int prevSepLen = firstSepLen;
@@ -301,7 +303,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         while (count < hardMax)
         {
             int nextKeyLen = ReadKey(entryIdx + count, nextKey);
-            int nextSepLen = _sepLengthsArr![entryIdx + count];
+            int nextSepLen = Math.Min(_commonPrefixArr![entryIdx + count] + 1, nextKeyLen);
 
             int la = prevSepLen;
             int lb = nextSepLen;
@@ -425,7 +427,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         {
             int globalIdx = globalStartIndex + i;
             int currKeyLen = ReadKey(globalIdx, currKey);
-            int sepLen = _sepLengthsArr![globalIdx];
+            int sepLen = Math.Min(_commonPrefixArr![globalIdx] + 1, currKeyLen);
 
             sepOffsets[i] = totalSepBytes;
             sepLengths[i] = sepLen;
@@ -670,14 +672,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// One-pass pre-computation of per-entry natural separator length against the prior
-    /// entry's key — <c>min(LCP(prev, curr) + 1, curr.Length)</c>. Writes into
-    /// <see cref="_sepLengthsArr"/> (one byte per entry — fits because the result is
-    /// capped at curr.Length ≤ <see cref="MaxKeyLen"/> = 255). Both
-    /// <see cref="ChooseLeafLayout"/> and <see cref="WriteLeafIndexNode"/> read from
-    /// this table instead of recomputing the same value twice per entry.
+    /// One-pass pre-computation of per-entry <c>LCP(prev, curr)</c> — the common prefix
+    /// length of each entry's key against the prior entry's key. Writes into
+    /// <see cref="_commonPrefixArr"/> (one byte per entry — fits because LCP is bounded
+    /// by min(prev.Length, curr.Length) ≤ <see cref="MaxKeyLen"/> = 255). Consumers
+    /// derive the natural separator length as <c>min(cp + 1, currKeyLen)</c>.
     /// </summary>
-    private void PrecomputeSeparatorLengths()
+    private void PrecomputeCommonPrefixLengths()
     {
         int n = _entryPositions.Length;
         Span<byte> prevKey = stackalloc byte[MaxKeyLen];
@@ -686,8 +687,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         for (int i = 0; i < n; i++)
         {
             int currKeyLen = ReadKey(i, currKey);
-            int sepLen = Math.Min(CommonPrefixLength(prevKey[..prevKeyLen], currKey[..currKeyLen]) + 1, currKeyLen);
-            _sepLengthsArr![i] = (byte)sepLen;
+            int cp = CommonPrefixLength(prevKey[..prevKeyLen], currKey[..currKeyLen]);
+            _commonPrefixArr![i] = (byte)cp;
             currKey[..currKeyLen].CopyTo(prevKey);
             prevKeyLen = currKeyLen;
         }
