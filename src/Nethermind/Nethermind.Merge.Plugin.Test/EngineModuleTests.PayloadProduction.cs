@@ -391,10 +391,13 @@ public partial class EngineModuleTests
     }
 
     [Test, Retry(3)]
+    [Parallelizable(ParallelScope.None)] // Timing sensitive
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
-        TimeSpan timePerSlot = 50 * delay;
+        // PayloadPreparationService stops scheduling improvements past startDateTime + timePerSlot * 1.3,
+        // so the 3 add-tx/wait rounds below must fit inside that window — keep timePerSlot generous.
+        TimeSpan timePerSlot = 500 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
             timePerSlot, delay: delay);
