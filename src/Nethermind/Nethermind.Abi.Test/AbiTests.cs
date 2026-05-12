@@ -681,7 +681,7 @@ public class AbiTests
         AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
 
         result.Should().BeOfType<AbiArray>();
-        var arrayType = (AbiArray)result;
+        AbiArray arrayType = (AbiArray)result;
         arrayType.ElementType.Should().BeOfType<AbiTuple>();
         // Empty tuple since we don't have components at this level
         arrayType.Name.Should().Be("()[]");
@@ -695,7 +695,7 @@ public class AbiTests
         AbiType result = JsonSerializer.Deserialize<AbiType>(json)!;
 
         result.Should().BeOfType<AbiFixedLengthArray>();
-        var arrayType = (AbiFixedLengthArray)result;
+        AbiFixedLengthArray arrayType = (AbiFixedLengthArray)result;
         arrayType.ElementType.Should().BeOfType<AbiTuple>();
         arrayType.Length.Should().Be(3);
         arrayType.Name.Should().Be("()[3]");
@@ -716,10 +716,10 @@ public class AbiTests
     public void AbiTuple_Name_Reflects_Elements()
     {
         // Test that AbiTuple with elements has correct Name for signature generation
-        var tuple = new AbiTuple(AbiType.UInt8, AbiType.UInt64);
+        AbiTuple tuple = new(AbiType.UInt8, AbiType.UInt64);
         tuple.Name.Should().Be("(uint8,uint64)");
 
-        var tupleArray = new AbiArray(tuple);
+        AbiArray tupleArray = new(tuple);
         tupleArray.Name.Should().Be("(uint8,uint64)[]");
     }
 }

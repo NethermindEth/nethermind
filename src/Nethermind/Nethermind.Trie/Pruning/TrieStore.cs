@@ -1027,8 +1027,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore, IClearableCache
         // Wait for any in-progress pruning to finish
         _pruningTask.Wait();
 
-        using var scopeL = _scopeLock.EnterScope();
-        using var pruneL = _pruningLock.EnterScope();
+        using Lock.Scope scopeL = _scopeLock.EnterScope();
+        using Lock.Scope pruneL = _pruningLock.EnterScope();
 
         // Clear dirty nodes cache (all shards)
         for (int i = 0; i < _dirtyNodes.Length; i++)
