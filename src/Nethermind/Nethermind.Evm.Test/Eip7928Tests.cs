@@ -210,11 +210,28 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             _ => throw new System.ArgumentOutOfRangeException(nameof(callOpcode), callOpcode, null)
         };
 
+    private static byte[] BuildCreateThenPopCode(Instruction createOpcode, byte[] initCode, byte[] salt, UInt256 value) =>
+        (createOpcode == Instruction.CREATE2
+            ? Prepare.EvmCode.Create2(initCode, salt, value)
+            : Prepare.EvmCode.Create(initCode, value))
+        .Op(Instruction.POP)
+        .Op(Instruction.STOP)
+        .Done;
+
     private AuthorizationTuple SignAuthorization(PrivateKey signer, Address codeAddress, ulong nonce = 0)
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         return ecdsa.Sign(signer, SpecProvider.ChainId, codeAddress, nonce);
     }
+
+    private static Transaction BuildCallTx(Address to) =>
+        Build.A.Transaction
+            .To(to)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithValue(UInt256.Zero)
+            .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
+            .TestObject;
 
     private BlockAccessList ExecuteSetCodeCall(params AuthorizationTuple[] authorizationList) =>
         ExecuteSetCodeCall(wrapPrecompileCache: false, authorizationList);
@@ -228,6 +245,22 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithBaseFee(1)
             .TestObject;
         Transaction tx = BuildSetCodeCallTx(_callTargetAddress, authorizationList);
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        Assert.That(res.TransactionExecuted, Is.True, res.ToString());
+        return tracedState.GetGeneratingBlockAccessList();
+    }
+
+    private BlockAccessList ExecuteCallTx(Address to)
+    {
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(120_000_000)
+            .WithBaseFee(1)
+            .TestObject;
+        Transaction tx = BuildCallTx(to);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
@@ -690,7 +723,60 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    private void InitWorldState(IWorldState worldState, byte[]? extraCode = null, Address? delegationTarget = null)
+    [TestCase(Instruction.CREATE, Instruction.SLOAD, TestName = "EIP7928_create_sload_selfdestruct_records_storage_read")]
+    [TestCase(Instruction.CREATE, Instruction.SSTORE, TestName = "EIP7928_create_sstore_selfdestruct_records_storage_read")]
+    [TestCase(Instruction.CREATE2, Instruction.SLOAD, TestName = "EIP7928_create2_sload_selfdestruct_records_storage_read")]
+    [TestCase(Instruction.CREATE2, Instruction.SSTORE, TestName = "EIP7928_create2_sstore_selfdestruct_records_storage_read")]
+    public void Eip7928_same_tx_created_selfdestruct_records_storage_as_read(
+        Instruction createOpcode,
+        Instruction storageOpcode)
+    {
+        UInt256 slot = UInt256.One;
+        Address beneficiary = TestItem.AddressB;
+        byte[] childInitCode = storageOpcode == Instruction.SSTORE
+            ? Prepare.EvmCode
+                .PushData(1)
+                .PushData(slot)
+                .Op(Instruction.SSTORE)
+                .SELFDESTRUCT(beneficiary)
+                .Done
+            : Prepare.EvmCode
+                .PushData(slot)
+                .Op(Instruction.SLOAD)
+                .Op(Instruction.POP)
+                .SELFDESTRUCT(beneficiary)
+                .Done;
+        byte[] salt = [0x01];
+        UInt256 createdBalance = 100;
+        Address createdAddress = createOpcode == Instruction.CREATE2
+            ? ContractAddress.From(_callTargetAddress, salt.PadLeft(32), childInitCode)
+            : ContractAddress.From(_callTargetAddress, 0);
+        byte[] factoryCode = BuildCreateThenPopCode(createOpcode, childInitCode, salt, createdBalance);
+
+        InitWorldState(TestState, factoryCode, callTargetBalance: createdBalance);
+
+        BlockAccessList bal = ExecuteCallTx(_callTargetAddress);
+        AccountChanges? createdChanges = bal.GetAccountChanges(createdAddress);
+        AccountChanges? beneficiaryChanges = bal.GetAccountChanges(beneficiary);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdChanges, Is.Not.Null);
+            Assert.That(createdChanges!.StorageReads, Does.Contain(slot));
+            Assert.That(createdChanges.StorageChanges, Is.Empty);
+            Assert.That(createdChanges.NonceChanges, Is.Empty);
+            Assert.That(createdChanges.CodeChanges, Is.Empty);
+            Assert.That(beneficiaryChanges, Is.Not.Null);
+            Assert.That(beneficiaryChanges!.BalanceChanges, Has.Count.EqualTo(1));
+            Assert.That(beneficiaryChanges.BalanceChanges[0].Value, Is.EqualTo(createdBalance));
+        }
+    }
+
+    private void InitWorldState(
+        IWorldState worldState,
+        byte[]? extraCode = null,
+        Address? delegationTarget = null,
+        UInt256 callTargetBalance = default)
     {
         worldState.CreateAccount(TestItem.AddressA, _accountBalance);
 
@@ -712,7 +798,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             worldState.InsertCode(_delegationTargetAddress, ValueKeccak.Compute(_delegatedCode), _delegatedCode, SpecProvider.GenesisSpec);
         }
 
-        worldState.CreateAccount(_callTargetAddress, 0);
+        worldState.CreateAccount(_callTargetAddress, callTargetBalance);
         if (extraCode is not null)
         {
             ValueHash256 codeHash = ValueKeccak.Compute(extraCode);
