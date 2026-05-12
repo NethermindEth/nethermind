@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -50,7 +49,7 @@ public class Eip7939Tests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput result = Execute(Activation, 50000, code);
 
-        result.StatusCode.Should().Be(StatusCode.Success);
+        Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
         AssertGas(result, gasCostOfCallingWrapper + GasCostOf.Low);
         return (int)new UInt256(result.ReturnValue, true);
 

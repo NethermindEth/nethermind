@@ -3,7 +3,6 @@
 
 using System.Text;
 using System.Text.Json.Nodes;
-using FluentAssertions;
 using Nethermind.Tools.Kute.JsonRpcValidator;
 using Nethermind.Tools.Kute.JsonRpcValidator.Eth;
 using NUnit.Framework;
@@ -24,7 +23,7 @@ public class JsonRpcValidatorTests
         var response = CreateErrorResponse();
         bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -33,7 +32,7 @@ public class JsonRpcValidatorTests
         var response = CreateResponse(status: Status.VALID);
         bool result = _validator.IsValid(CreateSingleRequest(null), response);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -42,7 +41,7 @@ public class JsonRpcValidatorTests
         var response = CreateResponse(status: Status.VALID);
         bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -53,7 +52,7 @@ public class JsonRpcValidatorTests
             var response = CreateResponse(status);
             bool result = _validator.IsValid(CreateSingleRequest("eth_getBlockByNumber"), response);
 
-            result.Should().BeTrue();
+            Assert.That(result, Is.True);
         }
     }
 
@@ -67,7 +66,7 @@ public class JsonRpcValidatorTests
                 var response = CreateResponse(status);
                 bool result = _validator.IsValid(CreateSingleRequest(methodName), response);
 
-                result.Should().Be(status == Status.VALID);
+                Assert.That(result, Is.EqualTo(status == Status.VALID));
             }
         }
     }
@@ -78,7 +77,7 @@ public class JsonRpcValidatorTests
         var response = CreateBatchResponse(CreateResponse(status: Status.VALID));
         bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
 
-        result.Should().BeTrue();
+        Assert.That(result, Is.True);
     }
 
     [Test]
@@ -87,7 +86,7 @@ public class JsonRpcValidatorTests
         var response = CreateBatchResponse(CreateResponse(status: Status.INVALID));
         bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload")), response);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -97,7 +96,7 @@ public class JsonRpcValidatorTests
         bool result = _validator.IsValid(
             CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1), CreateSingleRequest("eth_logs", 2)), response);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -106,7 +105,7 @@ public class JsonRpcValidatorTests
         var response = CreateBatchResponse(CreateResponse(status: Status.VALID, 1), CreateResponse(status: Status.VALID, 2));
         bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1)), response);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -115,7 +114,7 @@ public class JsonRpcValidatorTests
         var response = CreateBatchResponse(CreateResponse(status: Status.VALID, 2));
         bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1)), response);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     [Test]
@@ -124,7 +123,7 @@ public class JsonRpcValidatorTests
         var response = CreateResponse(status: Status.VALID, 1);
         bool result = _validator.IsValid(CreateBatchRequest(CreateSingleRequest("engine_newPayload", 1)), response);
 
-        result.Should().BeFalse();
+        Assert.That(result, Is.False);
     }
 
     private static JsonRpc.Request.Single CreateSingleRequest(string? method, int id = 1)

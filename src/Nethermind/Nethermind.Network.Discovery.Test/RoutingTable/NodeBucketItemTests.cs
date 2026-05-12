@@ -4,7 +4,6 @@
 using System;
 using System.Net;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
@@ -20,7 +19,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
         {
             Node node = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
             NodeBucketItem nodeBucketItem = new(node, DateTime.UtcNow);
-            nodeBucketItem.LastContactTime.Should().BeAfter(DateTime.UtcNow.AddDays(-1));
+            Assert.That(nodeBucketItem.LastContactTime, Is.GreaterThan(DateTime.UtcNow.AddDays(-1)));
         }
 
         [Test]
@@ -33,7 +32,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             await Task.Delay(10);
             nodeBucketItem.OnContactReceived();
             DateTime dateTime2 = nodeBucketItem.LastContactTime;
-            dateTime2.Should().BeAfter(dateTime);
+            Assert.That(dateTime2, Is.GreaterThan(dateTime));
         }
 
         [Test]
@@ -41,7 +40,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
         {
             Node node = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
             NodeBucketItem nodeBucketItem = new(node, DateTime.UtcNow);
-            nodeBucketItem.IsBonded(DateTime.UtcNow).Should().BeTrue();
+            Assert.That(nodeBucketItem.IsBonded(DateTime.UtcNow), Is.True);
         }
 
         [Test]
@@ -51,7 +50,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
 
             NodeBucketItem nodeBucketItem = new(node, DateTime.UtcNow);
             NodeBucketItem nodeBucketItem2 = new(node, DateTime.UtcNow);
-            nodeBucketItem.Should().Be(nodeBucketItem2);
+            Assert.That(nodeBucketItem, Is.EqualTo(nodeBucketItem2));
         }
 
         [Test]
@@ -62,7 +61,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
 
             NodeBucketItem nodeBucketItem = new(node, DateTime.UtcNow);
             NodeBucketItem nodeBucketItem2 = new(node2, DateTime.UtcNow);
-            nodeBucketItem.Should().NotBe(nodeBucketItem2);
+            Assert.That(nodeBucketItem, Is.Not.EqualTo(nodeBucketItem2));
         }
 
         [Test]
@@ -72,7 +71,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
 
             NodeBucketItem nodeBucketItem = new(node, DateTime.UtcNow);
             NodeBucketItem nodeBucketItem2 = new(node, DateTime.UtcNow);
-            nodeBucketItem.GetHashCode().Should().Be(nodeBucketItem2.GetHashCode());
+            Assert.That(nodeBucketItem.GetHashCode(), Is.EqualTo(nodeBucketItem2.GetHashCode()));
         }
 
         [Test]
@@ -80,7 +79,8 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
         {
             Node node = new(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
             NodeBucketItem nodeBucketItem = new(node, DateTime.UtcNow);
-            nodeBucketItem.Should().Be(nodeBucketItem);
+            NodeBucketItem nodeBucketItem2 = new(node, DateTime.UtcNow);
+            Assert.That(nodeBucketItem, Is.EqualTo(nodeBucketItem2));
         }
     }
 }

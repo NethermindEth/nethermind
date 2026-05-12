@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -32,11 +31,11 @@ public class SnapshotDecoderTests
         Snapshot decoded = encoder.Decode(ref ctx)!;
         if (original is null)
         {
-            decoded.Should().BeNull();
+            Assert.That(decoded, Is.Null);
         }
         else
         {
-            decoded.Should().BeEquivalentTo(original);
+            XdcTestAssertions.AssertSnapshot(decoded, original);
         }
     }
 
@@ -49,6 +48,6 @@ public class SnapshotDecoderTests
 
         SnapshotDecoder decoder = new();
         Snapshot decoded = decoder.Decode(stream.Data.AsSpan());
-        decoded.Should().BeEquivalentTo(original);
+        XdcTestAssertions.AssertSnapshot(decoded, original);
     }
 }

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
@@ -54,10 +53,10 @@ public partial class EngineModuleTests
             .TestObject;
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
         // sync has not started yet
-        chain.BeaconSync!.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+        Assert.That(chain.BeaconSync!.IsBeaconSyncHeadersFinished(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(block.Header), Is.True);
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
         BlockTreePointers pointers = new()
         {
             BestKnownNumber = 0,
@@ -71,12 +70,11 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header), Is.False);
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
 
         block.Header.TotalDifficulty = 0;
@@ -220,10 +218,10 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
         // sync has not started yet
-        chain.BeaconSync!.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+        Assert.That(chain.BeaconSync!.IsBeaconSyncHeadersFinished(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(block.Header), Is.True);
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
         BlockTreePointers pointers = new()
         {
             BestKnownNumber = 0,
@@ -237,12 +235,11 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header).Should().BeFalse();
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash!)?.Header), Is.False);
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
 
         block.Header.TotalDifficulty = 0;
@@ -254,12 +251,11 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(nextUnconnectedBlock));
         forkchoiceStateV1 = new(nextUnconnectedBlock.Hash!, startingHead, startingHead);
         forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash!)?.Header).Should().BeFalse();
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash!)?.Header), Is.False);
         AssertBeaconPivotValues(chain.BeaconPivot, nextUnconnectedBlock.Header);
 
         nextUnconnectedBlock.Header.TotalDifficulty = 0;
@@ -297,14 +293,13 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
 
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, 1);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         }
 
         ExecutionPayload[] invalidRequests = CreateBlockRequestBranch(chain, requests[0], TestItem.AddressD, 1);
@@ -314,8 +309,8 @@ public partial class EngineModuleTests
             newBlock!.Header.GasLimit = long.MaxValue; // incorrect gas limit
             newBlock.Header.Hash = newBlock.CalculateHash();
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock));
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Invalid).ToUpper());
-            payloadStatus.Data.LatestValidHash.Should().BeNull();
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Invalid).ToUpper()));
+            Assert.That(payloadStatus.Data.LatestValidHash, Is.Null);
         }
     }
 
@@ -332,10 +327,10 @@ public partial class EngineModuleTests
         foreach (ExecutionPayload r in requests)
         {
             payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
-            chain.BeaconSync!.IsBeaconSyncHeadersFinished().Should().BeTrue();
-            chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
-            chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
+            Assert.That(chain.BeaconSync!.IsBeaconSyncHeadersFinished(), Is.True);
+            Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+            Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
         }
 
         int pivotNum = 3;
@@ -344,21 +339,20 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(pivotBlock!.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // trigger insertion of blocks in cache into block tree
         payloadStatus = await rpc.engine_newPayloadV1(requests[^1]);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // check it is syncing
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncFinished(pivotBlock.Header).Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(pivotBlock.Header), Is.False);
         AssertBeaconPivotValues(chain.BeaconPivot!, pivotBlock.Header);
         // check correct blocks are inserted
         for (int i = pivotNum; i < requests.Length; i++)
         {
-            chain.BlockTree.FindBlock(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
-            chain.BlockTree.FindHeader(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
+            Assert.That(chain.BlockTree.FindBlock(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
+            Assert.That(chain.BlockTree.FindHeader(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
         }
 
         AssertExecutionStatusNotChanged(chain.BlockFinder, pivotBlock.Hash!, startingHead, startingHead);
@@ -389,17 +383,16 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
             ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            lvl.Should().NotBeNull();
-            lvl!.BlockInfos.Length.Should().Be(1);
-            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
+            Assert.That(lvl, Is.Not.Null);
+            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
         }
 
         AssertBeaconPivotValues(chain.BeaconPivot!, block.Header);
@@ -430,27 +423,26 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
             ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            lvl.Should().NotBeNull();
-            lvl!.BlockInfos.Length.Should().Be(1);
-            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
+            Assert.That(lvl, Is.Not.Null);
+            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
         }
 
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
             ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            lvl.Should().NotBeNull();
-            lvl!.BlockInfos.Length.Should().Be(1);
-            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
+            Assert.That(lvl, Is.Not.Null);
+            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
         }
     }
 
@@ -460,10 +452,10 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
-        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
-        last.Should().NotBeNull();
-        last!.IsGenesis.Should().BeTrue();
+        Assert.That(last, Is.Not.Null);
+        Assert.That(last!.IsGenesis, Is.True);
 
         Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1)
             .WithParent(chain.BlockTree.Head!)
@@ -482,10 +474,10 @@ public partial class EngineModuleTests
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock2.CalculateHash();
 
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+        Assert.That(chain.BeaconPivot!.BeaconPivotExists(), Is.False);
         ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
-        result.Data.Status.Should().Be(PayloadStatus.Syncing);
-        chain.BeaconPivot.BeaconPivotExists().Should().BeTrue();
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(chain.BeaconPivot.BeaconPivotExists(), Is.True);
     }
 
 
@@ -495,10 +487,10 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
-        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
-        last.Should().NotBeNull();
-        last!.IsGenesis.Should().BeTrue();
+        Assert.That(last, Is.Not.Null);
+        Assert.That(last!.IsGenesis, Is.True);
 
         Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1)
             .WithParent(chain.BlockTree.Head!)
@@ -520,8 +512,8 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
 
         await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock2.Hash!, newBlock2.Hash!, newBlock2.Hash!), null);
-        chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.None);
-        chain.BlockTree.FindLevel(newBlock2.Number)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody);
+        Assert.That(chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.None));
+        Assert.That(chain.BlockTree.FindLevel(newBlock2.Number)!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody));
     }
 
 
@@ -531,10 +523,10 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
-        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
         Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, static b => b.IsGenesis, true);
-        last.Should().NotBeNull();
-        last!.IsGenesis.Should().BeTrue();
+        Assert.That(last, Is.Not.Null);
+        Assert.That(last!.IsGenesis, Is.True);
 
         Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1)
             .WithParent(chain.BlockTree.Head!)
@@ -557,10 +549,10 @@ public partial class EngineModuleTests
 
         await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
         Block? block = chain.BlockTree.FindBlock(newBlock2.GetOrCalculateHash(), BlockTreeLookupOptions.None);
-        block?.TotalDifficulty.Should().NotBe((UInt256)0);
+        Assert.That(block?.TotalDifficulty, Is.Not.EqualTo((UInt256)0));
         BlockInfo? blockInfo = chain.BlockTree.FindLevel(newBlock2.Number!)?.BlockInfos[0];
-        blockInfo?.TotalDifficulty.Should().NotBe(0);
-        blockInfo?.Metadata.Should().Be(BlockMetadata.None);
+        Assert.That(blockInfo!.TotalDifficulty, Is.Not.EqualTo(UInt256.Zero));
+        Assert.That(blockInfo?.Metadata, Is.EqualTo(BlockMetadata.None));
     }
 
     [Test]
@@ -588,29 +580,28 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, startingNewPayload, Address.Zero, 4);
         foreach (ExecutionPayload r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
             ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            lvl.Should().NotBeNull();
-            lvl!.BlockInfos.Length.Should().Be(1);
-            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
+            Assert.That(lvl, Is.Not.Null);
+            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
         }
 
         ExecutionPayload[] secondNewPayloads = CreateBlockRequestBranch(chain, startingNewPayload, TestItem.AddressD, 4);
         foreach (ExecutionPayload r in secondNewPayloads)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
             ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            lvl.Should().NotBeNull();
-            lvl!.BlockInfos.Length.Should().Be(2);
-            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
-            lvl!.BlockInfos[1].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+            Assert.That(lvl, Is.Not.Null);
+            Assert.That(lvl!.BlockInfos.Length, Is.EqualTo(2));
+            Assert.That(lvl!.BlockInfos[0].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain));
+            Assert.That(lvl!.BlockInfos[1].Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader));
         }
     }
 
@@ -671,9 +662,9 @@ public partial class EngineModuleTests
             foreach (BlockInfo blockInfo in lvl!.BlockInfos)
             {
                 if (mainChainRequests!.Any(x => x.BlockHash == blockInfo.BlockHash))
-                    blockInfo.Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain, $"BlockNumber {r.BlockNumber}");
+                    Assert.That(blockInfo.Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain), $"BlockNumber {r.BlockNumber}");
                 else
-                    blockInfo.Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader, $"BlockNumber {r.BlockNumber}");
+                    Assert.That(blockInfo.Metadata, Is.EqualTo(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader), $"BlockNumber {r.BlockNumber}");
             }
         }
     }
@@ -690,15 +681,14 @@ public partial class EngineModuleTests
         for (int i = 4; i < requests.Length - 1; i++)
         {
             payloadStatus = await rpc.engine_newPayloadV1(requests[i]);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         }
 
         // use third last block request as beacon pivot so there are blocks in cache
         ForkchoiceStateV1 forkchoiceStateV1 = new(requests[^3].BlockHash, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // complete headers sync
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata
                                                      | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
@@ -710,18 +700,18 @@ public partial class EngineModuleTests
 
         // trigger dangling block insert
         payloadStatus = await rpc.engine_newPayloadV1(requests[^1]);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // b0 <- h1 ... <- b5 <- b6 <- b7
         // check state is correct and beacon blocks in cache inserted
         for (int i = requests.Length; i-- > requests.Length - 3;)
         {
-            chain.BlockTree.FindBlock(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
-            chain.BlockTree.FindHeader(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
+            Assert.That(chain.BlockTree.FindBlock(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
+            Assert.That(chain.BlockTree.FindHeader(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Not.Null);
         }
 
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader), Is.False);
     }
 
     [Test]
@@ -745,7 +735,7 @@ public partial class EngineModuleTests
         // setting up beacon pivot
         ExecutionPayload pivotRequest = branchBlocks[gap];
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         Block? pivotBlock = pivotRequest.TryGetBlock().Block;
         // check block tree pointers
         BlockTreePointers pointers = new()
@@ -761,12 +751,11 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(pivotBlock!.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // trigger insertion of blocks in cache into block tree by adding new block
         ExecutionPayload bestBeaconBlockRequest = branchBlocks[gap + 1];
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // simulate headers sync by inserting 3 headers from pivot backwards
         int filledNum = 3;
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
@@ -778,9 +767,9 @@ public partial class EngineModuleTests
 
         // b0 <- ... h5 <- h6 <- h7 <- b8 <- b9
         // b8: beacon pivot, h5: lowest inserted headers
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncFinished(pivotBlock.Header).Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(pivotBlock.Header), Is.False);
         AssertBeaconPivotValues(chain.BeaconPivot!, pivotBlock.Header);
         pointers.LowestInsertedBeaconHeader = missingBlocks[^filledNum].Header;
         pointers.BestKnownBeaconBlock = 9;
@@ -794,9 +783,9 @@ public partial class EngineModuleTests
         // headers sync should be finished but not forwards beacon sync
         pointers.LowestInsertedBeaconHeader = missingBlocks[0].Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader), Is.False);
 
         // finish beacon forwards sync
         Block? bestBeaconBlock = bestBeaconBlockRequest.TryGetBlock().Block;
@@ -823,9 +812,9 @@ public partial class EngineModuleTests
             Is.EqualTo(PayloadStatus.Valid).After(1000, 100)
         );
 
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeTrue();
+        Assert.That(chain.BeaconSync.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader), Is.True);
     }
 
     [Test]
@@ -850,8 +839,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
-        chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().BeNull();
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
+        Assert.That(chain.BlockTree.FindBlock(prePivotRequest.BlockHash), Is.Null);
     }
 
     [Test]
@@ -881,8 +870,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatus.Valid).ToUpper());
-        chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().NotBeNull();
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatus.Valid).ToUpper()));
+        Assert.That(chain.BlockTree.FindBlock(prePivotRequest.BlockHash), Is.Not.Null);
     }
 
     [Test]
@@ -914,7 +903,7 @@ public partial class EngineModuleTests
         // setting up beacon pivot
         ExecutionPayload pivotRequest = CreateBlockRequest(chain, requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         Block? pivotBlock = pivotRequest.TryGetBlock().Block;
         // check block tree pointers
         BlockTreePointers pointers = new()
@@ -931,12 +920,11 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(pivotBlock!.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // trigger insertion of blocks in cache into block tree by adding new block
         ExecutionPayload bestBeaconBlockRequest = CreateBlockRequest(chain, pivotRequest, Address.Zero);
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        Assert.That(payloadStatus.Data.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
         // fill in beacon headers until fast headers pivot
         BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
                                                      BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
@@ -951,9 +939,9 @@ public partial class EngineModuleTests
         pointers.LowestInsertedBeaconHeader = destinationBlock!.Header;
         pointers.BestKnownBeaconBlock = 13;
         AssertBlockTreePointers(chain.BlockTree, pointers);
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
-        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
-        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
+        Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
+        Assert.That(chain.BeaconSync.IsBeaconSyncHeadersFinished(), Is.True);
+        Assert.That(chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader), Is.False);
         // TODO: post merge sync checking pointers after state sync
     }
 
@@ -964,12 +952,12 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
-        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
 
         // send newPayload
         ExecutionPayload validBlockOnTopOfHead = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(validBlockOnTopOfHead)).Data;
-        payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // send block with invalid state root
         ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
@@ -977,11 +965,11 @@ public partial class EngineModuleTests
         TryCalculateHash(blockWithInvalidStateRoot, out Hash256? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
         PayloadStatusV1 invalidStateRootNewPayloadResponse = (await rpc.engine_newPayloadV1(blockWithInvalidStateRoot)).Data;
-        invalidStateRootNewPayloadResponse.Status.Should().Be(PayloadStatus.Invalid);
+        Assert.That(invalidStateRootNewPayloadResponse.Status, Is.EqualTo(PayloadStatus.Invalid));
 
         // send fcU to last new payload
         ForkchoiceUpdatedV1Result response = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(validBlockOnTopOfHead.BlockHash, validBlockOnTopOfHead.BlockHash, validBlockOnTopOfHead.BlockHash))).Data;
-        response.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(response.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // invalid best state calculation
         Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
@@ -1001,12 +989,12 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 30, CreateParentBlockRequestOnHead(chain.BlockTree), true))
             .LastOrDefault()?.BlockHash ?? Keccak.Zero;
-        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(lastHash));
 
         // send newPayload
         ExecutionPayload validBlockOnTopOfHead = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV1(validBlockOnTopOfHead)).Data;
-        payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // send block with invalid state root
         ExecutionPayload blockWithInvalidStateRoot = CreateBlockRequest(chain, validBlockOnTopOfHead, TestItem.AddressA);
@@ -1014,11 +1002,11 @@ public partial class EngineModuleTests
         TryCalculateHash(blockWithInvalidStateRoot, out Hash256? hash);
         blockWithInvalidStateRoot.BlockHash = hash;
         PayloadStatusV1 invalidStateRootNewPayloadResponse = (await rpc.engine_newPayloadV1(blockWithInvalidStateRoot)).Data;
-        invalidStateRootNewPayloadResponse.Status.Should().Be(PayloadStatus.Invalid);
+        Assert.That(invalidStateRootNewPayloadResponse.Status, Is.EqualTo(PayloadStatus.Invalid));
 
         // send fcU to last new payload
         ForkchoiceUpdatedV1Result response = (await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(validBlockOnTopOfHead.BlockHash, validBlockOnTopOfHead.BlockHash, validBlockOnTopOfHead.BlockHash))).Data;
-        response.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(response.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // invalid best state calculation
         Assert.That(chain.BlockTree.BestSuggestedBody!.Number, Is.LessThan(chain.BlockTree.Head!.Number));
@@ -1063,20 +1051,20 @@ public partial class EngineModuleTests
         IBlockTree blockTree,
         BlockTreePointers pointers)
     {
-        blockTree.BestKnownNumber.Should().Be(pointers.BestKnownNumber);
-        blockTree.BestSuggestedHeader.Should().Be(pointers.BestSuggestedHeader);
-        blockTree.BestSuggestedBody?.Header.Should().Be(pointers.BestSuggestedBody?.Header);
-        blockTree.BestSuggestedBody?.Body.Should().Be(pointers.BestSuggestedBody?.Body);
+        Assert.That(blockTree.BestKnownNumber, Is.EqualTo(pointers.BestKnownNumber));
+        Assert.That(blockTree.BestSuggestedHeader, Is.EqualTo(pointers.BestSuggestedHeader));
+        Assert.That(blockTree.BestSuggestedBody?.Header, Is.EqualTo(pointers.BestSuggestedBody?.Header));
+        Assert.That(blockTree.BestSuggestedBody?.Body, Is.EqualTo(pointers.BestSuggestedBody?.Body));
         // TODO: post merge sync change to best beacon block
-        (blockTree.BestSuggestedBeaconHeader?.Number ?? 0).Should().Be(pointers.BestKnownBeaconBlock);
-        blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(pointers.LowestInsertedBeaconHeader);
+        Assert.That((blockTree.BestSuggestedBeaconHeader?.Number ?? 0), Is.EqualTo(pointers.BestKnownBeaconBlock));
+        MergeTestAssertions.AssertHeaderEquivalent(blockTree.LowestInsertedBeaconHeader, pointers.LowestInsertedBeaconHeader);
     }
 
     private void AssertBeaconPivotValues(IBeaconPivot beaconPivot, BlockHeader blockHeader)
     {
-        beaconPivot.BeaconPivotExists().Should().BeTrue();
-        beaconPivot.PivotNumber.Should().Be(blockHeader.Number);
-        beaconPivot.PivotHash.Should().Be(blockHeader.Hash ?? blockHeader.CalculateHash());
+        Assert.That(beaconPivot.BeaconPivotExists(), Is.True);
+        Assert.That(beaconPivot.PivotNumber, Is.EqualTo(blockHeader.Number));
+        Assert.That(beaconPivot.PivotHash, Is.EqualTo(blockHeader.Hash ?? blockHeader.CalculateHash()));
     }
 
     private class BlockTreePointers

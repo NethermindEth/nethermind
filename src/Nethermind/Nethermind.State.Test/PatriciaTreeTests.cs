@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -108,7 +107,7 @@ namespace Nethermind.Store.Test
                 stateTree.Commit(skipRoot);
             }
 
-            fullTrieStore.HasRoot(stateRoot).Should().Be(hasRoot);
+            Assert.That(fullTrieStore.HasRoot(stateRoot), Is.EqualTo(hasRoot));
         }
 
 
@@ -127,7 +126,7 @@ namespace Nethermind.Store.Test
             tree.Set(new ValueHash256("2222222222222222222222222222222222222222222222222222222222222222").BytesAsSpan, [2]);
             tree.UpdateRootHash();
 
-            tree.RootHash.Should().NotBe(rootHash);
+            Assert.That(tree.RootHash, Is.Not.EqualTo(rootHash));
         }
 
         [Test]

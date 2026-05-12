@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -108,7 +107,7 @@ public class RewardTests
         BlockReward[] rewardsAt3E = rewardCalculator.CalculateRewards(block3E);
 
         Address foundation = spec.FoundationWallet;
-        foundation.Should().NotBeNull();
+        Assert.That(foundation, Is.Not.Null);
 
         Assert.That(rewardsAt3E, Has.Length.EqualTo(2));
 
@@ -173,7 +172,7 @@ public class RewardTests
 
         Block block5E = chain.BlockTree.Head!;
         BlockReward[] rewardsAt5E = rewardCalculator.CalculateRewards(block5E);
-        rewardsAt5E.Should().BeEmpty();
+        Assert.That(rewardsAt5E, Is.Empty);
     }
 
     // Test ported from XDC reward_test :

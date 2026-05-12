@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
@@ -38,9 +37,9 @@ public class PruningTrieStateAdminModuleTests
     [Test]
     public async Task Test_admin_verifyTrie()
     {
-        (await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")).Should().Contain("Unable to start verify trie");
+        Assert.That((await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")), Does.Contain("Unable to start verify trie"));
         _stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
         _verifyTrieStarter.TryStartVerifyTrie(Arg.Any<BlockHeader>()).Returns(true);
-        (await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")).Should().Contain("Starting");
+        Assert.That((await RpcTest.TestSerializedRequest(_adminRpcModuleModule, "admin_verifyTrie", "latest")), Does.Contain("Starting"));
     }
 }

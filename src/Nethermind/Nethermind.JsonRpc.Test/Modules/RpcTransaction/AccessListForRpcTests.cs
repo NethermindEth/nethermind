@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
@@ -28,7 +27,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]""");
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":[]}]""")));
     }
 
     [Test]
@@ -49,7 +48,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""");
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""")));
     }
 
     [Test]
@@ -71,7 +70,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000001"]}]""");
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002","0x0000000000000000000000000000000000000000000000000000000000000003","0x0000000000000000000000000000000000000000000000000000000000000001"]}]""")));
     }
 
     [Test]
@@ -93,7 +92,7 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000003"]}]""");
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000003"]}]""")));
     }
 
     [Test]
@@ -116,6 +115,6 @@ public class AccessListForRpcTests
         AccessListForRpc forRpc = AccessListForRpc.FromAccessList(accessList);
         string serialized = _serializer.Serialize(forRpc);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""");
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse("""[{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000002"]},{"address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","storageKeys":["0x0000000000000000000000000000000000000000000000000000000000000001","0x0000000000000000000000000000000000000000000000000000000000000003"]}]""")));
     }
 }

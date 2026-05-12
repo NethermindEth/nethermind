@@ -39,7 +39,7 @@ public class MetricsCodeAndSlotsTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.StateCompSlotCountHistogram, Has.Count.EqualTo(16));
+            Assert.That((Metrics.StateCompSlotCountHistogram).Count, Is.EqualTo(16));
             for (int i = 0; i < 16; i++)
                 Assert.That(Metrics.StateCompSlotCountHistogram[i], Is.EqualTo(vals[i]), $"bucket {i}");
         }

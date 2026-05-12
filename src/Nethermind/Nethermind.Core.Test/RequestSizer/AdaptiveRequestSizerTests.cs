@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.RequestSizer;
@@ -24,6 +23,6 @@ public class AdaptiveRequestSizerTests
 
         await sizer.Run((requestSize => Task.FromResult((requestSize, direction))));
 
-        sizer.RequestSize.Should().Be(afterRequestSize);
+        Assert.That(sizer.RequestSize, Is.EqualTo(afterRequestSize));
     }
 }

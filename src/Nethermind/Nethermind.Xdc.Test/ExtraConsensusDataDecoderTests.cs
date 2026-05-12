@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -27,7 +26,7 @@ internal class ExtraConsensusDataDecoderTests
 
         ExtraFieldsV2 unencoded = decoder.Decode((ReadOnlySpan<byte>)encodedExtraData.Bytes);
 
-        unencoded.Should().BeEquivalentTo(decodedExtraData);
+        XdcTestAssertions.AssertExtraFields(unencoded, decodedExtraData);
     }
 
     [TestCase(true)]
@@ -51,7 +50,7 @@ internal class ExtraConsensusDataDecoderTests
             decodedExtraData = decoder.Decode(ref context);
         }
 
-        decodedExtraData.Should().BeEquivalentTo(extraFields);
+        XdcTestAssertions.AssertExtraFields(decodedExtraData, extraFields);
     }
 
     [Test]
@@ -64,7 +63,7 @@ internal class ExtraConsensusDataDecoderTests
 
         ExtraFieldsV2 unencoded = decoder.Decode((ReadOnlySpan<byte>)encodedExtraData.Bytes);
 
-        unencoded.Should().BeEquivalentTo(extraFieldsV2);
+        XdcTestAssertions.AssertExtraFields(unencoded, extraFieldsV2);
     }
 
 }

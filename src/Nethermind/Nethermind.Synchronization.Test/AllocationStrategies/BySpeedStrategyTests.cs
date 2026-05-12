@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -55,7 +54,7 @@ public class BySpeedStrategyTests
         PeerInfo selectedPeer = strategy.Allocate(currentPeer, peers, nodeStatsManager, Build.A.BlockTree().TestObject)!;
 
         int selectedPeerIdx = peers.IndexOf(selectedPeer);
-        selectedPeerIdx.Should().Be(expectedSelectedPeerIdx);
+        Assert.That(selectedPeerIdx, Is.EqualTo(expectedSelectedPeerIdx));
     }
 
     [TestCase(1, 0, 0, false)]
@@ -84,11 +83,11 @@ public class BySpeedStrategyTests
         int selectedPeerIdx = peers.IndexOf(selectedPeer);
         if (pickedNewPeer)
         {
-            selectedPeerIdx.Should().Be(peerWithKnownSpeed); // It picked the first peer with unknown speed
+            Assert.That(selectedPeerIdx, Is.EqualTo(peerWithKnownSpeed)); // It picked the first peer with unknown speed
         }
         else
         {
-            selectedPeerIdx.Should().BeLessThan(peerWithKnownSpeed); // It picked earlier peers which have known speed
+            Assert.That(selectedPeerIdx, Is.LessThan(peerWithKnownSpeed)); // It picked earlier peers which have known speed
         }
     }
 
@@ -106,7 +105,7 @@ public class BySpeedStrategyTests
 
         PeerInfo selectedPeer = strategy.Allocate(null, peers, nodeStatsManager, Build.A.BlockTree().TestObject)!;
         int selectedPeerIdx = peers.IndexOf(selectedPeer);
-        selectedPeerIdx.Should().BeGreaterThan(50);
+        Assert.That(selectedPeerIdx, Is.GreaterThan(50));
     }
 
     [TestCase(10, 0, 0, 0)]
@@ -147,8 +146,7 @@ public class BySpeedStrategyTests
 
         double noSpeedPeerChance = (double)peerWithoutSpeedPicked / (peerWithSpeedPicked + peerWithoutSpeedPicked);
         double marginOfError = 0.1;
-        noSpeedPeerChance.Should().BeInRange(chanceOfPickingPeerWithNoSpeed - marginOfError,
-            chanceOfPickingPeerWithNoSpeed + marginOfError);
+        Assert.That(noSpeedPeerChance, Is.InRange(chanceOfPickingPeerWithNoSpeed - marginOfError, chanceOfPickingPeerWithNoSpeed + marginOfError));
     }
 
     private static PeerInfo CreatePeerInfoWithSpeed(long? speed, INodeStatsManager nodeStatsManager)

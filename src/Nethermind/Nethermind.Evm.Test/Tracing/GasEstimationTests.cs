@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
@@ -45,7 +44,7 @@ namespace Nethermind.Evm.Test.Tracing
                 Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(0));
             Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
         }
 
@@ -53,15 +52,15 @@ namespace Nethermind.Evm.Test.Tracing
         public void Only_traces_actions_and_receipts()
         {
             EstimateGasTracer tracer = new();
-            (tracer.IsTracingActions && tracer.IsTracingReceipt).Should().BeTrue();
-            (tracer.IsTracingBlockHash
+            Assert.That((tracer.IsTracingActions && tracer.IsTracingReceipt), Is.True);
+            Assert.That((tracer.IsTracingBlockHash
              || tracer.IsTracingState
              || tracer.IsTracingStorage
              || tracer.IsTracingCode
              || tracer.IsTracingInstructions
              || tracer.IsTracingMemory
              || tracer.IsTracingStack
-             || tracer.IsTracingOpLevelStorage).Should().BeFalse();
+             || tracer.IsTracingOpLevelStorage), Is.False);
         }
 
         [Test]
@@ -75,7 +74,7 @@ namespace Nethermind.Evm.Test.Tracing
                 ExecutionType.TRANSACTION, false);
             testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(0);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(0));
             Assert.That(err, Is.EqualTo("insufficient funds for transfer"));
         }
 
@@ -103,7 +102,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(14L);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(14L));
             Assert.That(err, Is.Null);
         }
 
@@ -133,7 +132,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(24L);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(24L));
             Assert.That(err, Is.Null);
         }
 
@@ -158,7 +157,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
             testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(35146L);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(35146L));
             Assert.That(err, Is.Null);
         }
 
@@ -176,7 +175,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
             testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? _).Should().Be(1);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? _), Is.EqualTo(1));
         }
 
         [Test]
@@ -192,9 +191,9 @@ namespace Nethermind.Evm.Test.Tracing
 
             Action reportError = () => testEnvironment.tracer.ReportActionError(EvmExceptionType.OutOfGas);
 
-            reportError.Should().NotThrow();
-            reportError.Should().NotThrow();
-            reportError.Should().NotThrow();
+            Assert.That(reportError, Throws.Nothing);
+            Assert.That(reportError, Throws.Nothing);
+            Assert.That(reportError, Throws.Nothing);
         }
 
         [Test]
@@ -223,7 +222,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(18);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(18));
             Assert.That(err, Is.Null);
         }
 
@@ -253,7 +252,7 @@ namespace Nethermind.Evm.Test.Tracing
                 testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err).Should().Be(17);
+            Assert.That(testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err), Is.EqualTo(17));
             Assert.That(err, Is.Null);
         }
 
@@ -384,9 +383,9 @@ namespace Nethermind.Evm.Test.Tracing
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when OutOfGas is detected");
-            err.Should().NotBeNull("Error message should be provided when OutOfGas is detected");
-            testEnvironment.tracer.OutOfGas.Should().BeTrue("OutOfGas should be set to true");
+            Assert.That(estimate, Is.EqualTo(0), "Should return 0 when OutOfGas is detected");
+            Assert.That(err, Is.Not.Null, "Error message should be provided when OutOfGas is detected");
+            Assert.That(testEnvironment.tracer.OutOfGas, Is.True, "OutOfGas should be set to true");
         }
 
         [Test]
@@ -403,9 +402,9 @@ namespace Nethermind.Evm.Test.Tracing
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when StatusCode is Failure");
-            err.Should().NotBeNull("Error message should be provided when transaction always fails");
-            testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Failure);
+            Assert.That(estimate, Is.EqualTo(0), "Should return 0 when StatusCode is Failure");
+            Assert.That(err, Is.Not.Null, "Error message should be provided when transaction always fails");
+            Assert.That(testEnvironment.tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         }
 
         [Test]
@@ -424,10 +423,10 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.MarkAsSuccess(Address.Zero, 63, Array.Empty<byte>(), Array.Empty<LogEntry>());
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            estimate.Should().Be(1, "Should match the Easy_one_level_case result");
-            err.Should().BeNull("No error should occur");
-            testEnvironment.tracer.OutOfGas.Should().BeFalse("No OutOfGas should be detected");
-            testEnvironment.tracer.StatusCode.Should().Be(StatusCode.Success, "StatusCode should be Success");
+            Assert.That(estimate, Is.EqualTo(1), "Should match the Easy_one_level_case result");
+            Assert.That(err, Is.Null, "No error should occur");
+            Assert.That(testEnvironment.tracer.OutOfGas, Is.False, "No OutOfGas should be detected");
+            Assert.That(testEnvironment.tracer.StatusCode, Is.EqualTo(StatusCode.Success), "StatusCode should be Success");
         }
 
         [Test]
@@ -447,8 +446,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when Address.Zero has insufficient balance for value transfer");
-            err.Should().Be("insufficient balance", "Should provide insufficient balance error message");
+            Assert.That(estimate, Is.EqualTo(0), "Should return 0 when Address.Zero has insufficient balance for value transfer");
+            Assert.That(err, Is.EqualTo("insufficient balance"), "Should provide insufficient balance error message");
         }
 
         [Test]
@@ -469,8 +468,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when Address.Zero transaction runs out of gas");
-            err.Should().Be("Gas estimation failed due to out of gas", "Should provide out of gas error message");
+            Assert.That(estimate, Is.EqualTo(0), "Should return 0 when Address.Zero transaction runs out of gas");
+            Assert.That(err, Is.EqualTo("Gas estimation failed due to out of gas"), "Should provide out of gas error message");
         }
 
         [Test]
@@ -490,8 +489,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when Address.Zero transaction always fails");
-            err.Should().Be("execution reverted", "Should provide the specific execution failure message");
+            Assert.That(estimate, Is.EqualTo(0), "Should return 0 when Address.Zero transaction always fails");
+            Assert.That(err, Is.EqualTo("execution reverted"), "Should provide the specific execution failure message");
         }
 
         [Test]
@@ -512,8 +511,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            estimate.Should().BeGreaterThan(0, "Should succeed when Address.Zero has no value transfer");
-            err.Should().BeNull("No error should occur for Address.Zero with no value transfer");
+            Assert.That(estimate, Is.GreaterThan(0), "Should succeed when Address.Zero has no value transfer");
+            Assert.That(err, Is.Null, "No error should occur for Address.Zero with no value transfer");
         }
 
         [Test]
@@ -534,9 +533,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long estimate = testEnvironment.estimator.Estimate(tx, block.Header, tracer, out string? err);
 
-            estimate.Should().Be(0, "Should return 0 when gas spent exceeds limits");
-            err.Should().Be("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap",
-                "Should provide gas limit exceeded error message");
+            Assert.That(estimate, Is.EqualTo(0), "Should return 0 when gas spent exceeds limits");
+            Assert.That(err, Is.EqualTo("Cannot estimate gas, gas spent exceeded transaction and block gas limit or transaction gas limit cap"), "Should provide gas limit exceeded error message");
         }
 
         [Test]
@@ -554,7 +552,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(25000, Array.Empty<byte>());
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            result.Should().BeGreaterThan(0, "Should estimate positive gas, ignoring precompile costs");
+            Assert.That(result, Is.GreaterThan(0), "Should estimate positive gas, ignoring precompile costs");
             Assert.That(err, Is.Null);
         }
 
@@ -570,7 +568,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportActionEnd(28000, Array.Empty<byte>());
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
-            result.Should().BeGreaterThan(0, "Should estimate positive gas for successful transaction");
+            Assert.That(result, Is.GreaterThan(0), "Should estimate positive gas for successful transaction");
             Assert.That(err, Is.Null);
         }
 
@@ -599,13 +597,12 @@ namespace Nethermind.Evm.Test.Tracing
 
             if (shouldSucceed)
             {
-                result.Should().BeGreaterThan(1_000_000,
-                    "Gas estimation should account for the gas threshold in the contract");
-                err.Should().BeNull();
+                Assert.That(result, Is.GreaterThan(1_000_000), "Gas estimation should account for the gas threshold in the contract");
+                Assert.That(err, Is.Null);
             }
             else
             {
-                err.Should().NotBeNull("Gas estimation should fail when the gas limit is too low");
+                Assert.That(err, Is.Not.Null, "Gas estimation should fail when the gas limit is too low");
             }
         }
 
@@ -636,10 +633,10 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0);
-            err.Should().BeNull();
-            testEnvironment.tracer.TopLevelRevert.Should().BeFalse();
-            testEnvironment.tracer.OutOfGas.Should().BeFalse();
+            Assert.That(result, Is.GreaterThan(0));
+            Assert.That(err, Is.Null);
+            Assert.That(testEnvironment.tracer.TopLevelRevert, Is.False);
+            Assert.That(testEnvironment.tracer.OutOfGas, Is.False);
         }
 
         [Test]
@@ -659,9 +656,9 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().Be(0);
-            err.Should().Be("execution reverted");
-            testEnvironment.tracer.TopLevelRevert.Should().BeTrue();
+            Assert.That(result, Is.EqualTo(0));
+            Assert.That(err, Is.EqualTo("execution reverted"));
+            Assert.That(testEnvironment.tracer.TopLevelRevert, Is.True);
         }
 
         [Test]
@@ -710,8 +707,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed when inner call reverts but transaction succeeds overall");
-            err.Should().BeNull("No error should occur - inner reverts should not be treated as top-level failures");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed when inner call reverts but transaction succeeds overall");
+            Assert.That(err, Is.Null, "No error should occur - inner reverts should not be treated as top-level failures");
         }
 
         [Test]
@@ -771,8 +768,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for CREATE2 + setup call pattern");
-            err.Should().BeNull("No error for CREATE2 + setup call");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed for CREATE2 + setup call pattern");
+            Assert.That(err, Is.Null, "No error for CREATE2 + setup call");
         }
 
         [Test]
@@ -830,8 +827,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed with mixed inner reverts");
-            err.Should().BeNull("No error when inner calls revert but overall tx succeeds");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed with mixed inner reverts");
+            Assert.That(err, Is.Null, "No error when inner calls revert but overall tx succeeds");
         }
 
         [Test]
@@ -890,8 +887,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed when inner call OOGs but caller handles it");
-            err.Should().BeNull("No error - inner OOG should not affect top-level estimation");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed when inner call OOGs but caller handles it");
+            Assert.That(err, Is.Null, "No error - inner OOG should not affect top-level estimation");
         }
 
         [TestCase(50_000, true)]
@@ -927,13 +924,13 @@ namespace Nethermind.Evm.Test.Tracing
 
             if (shouldSucceed)
             {
-                result.Should().BeGreaterThan(0, "Gas estimation should find enough gas for the success path");
-                err.Should().BeNull("No error - binary search should find gas level above threshold");
+                Assert.That(result, Is.GreaterThan(0), "Gas estimation should find enough gas for the success path");
+                Assert.That(err, Is.Null, "No error - binary search should find gas level above threshold");
             }
             else
             {
-                result.Should().BeGreaterThan(0, "Low threshold should always succeed");
-                err.Should().BeNull();
+                Assert.That(result, Is.GreaterThan(0), "Low threshold should always succeed");
+                Assert.That(err, Is.Null);
             }
         }
 
@@ -989,8 +986,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for CREATE with constructor that makes calls");
-            err.Should().BeNull("No error for constructor-call pattern");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed for CREATE with constructor that makes calls");
+            Assert.That(err, Is.Null, "No error for constructor-call pattern");
         }
 
         [Test]
@@ -1039,11 +1036,11 @@ namespace Nethermind.Evm.Test.Tracing
 
                 long result = freshEnv.estimator.Estimate(tx, block.Header, freshEnv.tracer, out string? err);
 
-                result.Should().BeGreaterThan(0, $"Iteration {i}: gas estimation should succeed");
-                err.Should().BeNull($"Iteration {i}: no error expected");
+                Assert.That(result, Is.GreaterThan(0), $"Iteration {i}: gas estimation should succeed");
+                Assert.That(err, Is.Null, $"Iteration {i}: no error expected");
 
                 firstResult ??= result;
-                result.Should().Be(firstResult.Value, $"Iteration {i}: result should be consistent");
+                Assert.That(result, Is.EqualTo(firstResult.Value), $"Iteration {i}: result should be consistent");
 
                 freshEnv.Dispose();
             }
@@ -1116,8 +1113,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for deeply nested call chain");
-            err.Should().BeNull("No error for deeply nested calls");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed for deeply nested call chain");
+            Assert.That(err, Is.Null, "No error for deeply nested calls");
         }
 
         [Test]
@@ -1174,8 +1171,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed for CREATE2 with inner revert in constructor");
-            err.Should().BeNull("No error for GnosisSafe-like CREATE2 pattern");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed for CREATE2 with inner revert in constructor");
+            Assert.That(err, Is.Null, "No error for GnosisSafe-like CREATE2 pattern");
         }
 
         [Test]
@@ -1206,10 +1203,10 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().Be(0, "Gas estimation should fail when top-level call reverts");
-            err.Should().NotBeNull("Should report an error when top-level reverts");
+            Assert.That(result, Is.EqualTo(0), "Gas estimation should fail when top-level call reverts");
+            Assert.That(err, Is.Not.Null, "Should report an error when top-level reverts");
             // The error contains the revert data (hex-encoded output from the REVERT opcode)
-            testEnvironment.tracer.TopLevelRevert.Should().BeTrue("TopLevelRevert should be set for top-level REVERT");
+            Assert.That(testEnvironment.tracer.TopLevelRevert, Is.True, "TopLevelRevert should be set for top-level REVERT");
         }
 
         [Test]
@@ -1252,8 +1249,8 @@ namespace Nethermind.Evm.Test.Tracing
 
             long result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out string? err);
 
-            result.Should().BeGreaterThan(0, "Gas estimation should succeed when DELEGATECALL reverts but caller handles it");
-            err.Should().BeNull("No error for caught DELEGATECALL revert");
+            Assert.That(result, Is.GreaterThan(0), "Gas estimation should succeed when DELEGATECALL reverts but caller handles it");
+            Assert.That(err, Is.Null, "No error for caught DELEGATECALL revert");
         }
 
         private class TestEnvironment : IDisposable

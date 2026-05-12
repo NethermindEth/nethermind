@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CkzgLib;
-using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,7 +44,7 @@ public partial class ShardBlobTxDecoderTests
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
-        decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+        decoded.EqualToTransaction(testCase.Tx);
     }
 
     [Test]
@@ -54,12 +53,12 @@ public partial class ShardBlobTxDecoderTests
         byte[] bytes = Bytes.FromHexString(
             "b8aa03f8a7018001808252089400000000000000000000000000000000000000000180c001f841a00100000000000000000000000000000000000000000000000000000000000000a0010000000000000000000000000000000000000000000000000000000000000080a00fb9ad625df88e2fea9e088b69a31497f0d9b767067db8c03fd2453d7092e7bfa0086f2930db968d992d0fb06ddc903ca5522ba38bedc0530eb28b61082897efa1");
 
-        Func<Transaction> tryDecode = () =>
+        TestDelegate tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(bytes);
-            return _txDecoder.Decode(ref ctx);
+            _txDecoder.Decode(ref ctx);
         };
-        tryDecode.Should().Throw<RlpException>();
+        Assert.That(tryDecode, Throws.TypeOf<RlpException>());
     }
 
     [TestCaseSource(nameof(TestCaseSource))]
@@ -75,7 +74,7 @@ public partial class ShardBlobTxDecoderTests
         decoded!.SenderAddress =
             new EthereumEcdsa(TestBlockchainIds.ChainId).RecoverAddress(decoded);
         decoded.Hash = decoded.CalculateHash();
-        decoded.Should().BeEquivalentTo(testCase.Tx, testCase.Description);
+        decoded.EqualToTransaction(testCase.Tx);
     }
 
     private static IEnumerable<Transaction> TamperedTestCaseSource()
@@ -113,12 +112,12 @@ public partial class ShardBlobTxDecoderTests
         }
 
         // Decoding should fail
-        Func<Transaction> tryDecode = () =>
+        TestDelegate tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(stream.Data);
-            return _txDecoder.Decode(ref ctx);
+            _txDecoder.Decode(ref ctx);
         };
-        tryDecode.Should().Throw<RlpException>();
+        Assert.That(tryDecode, Throws.TypeOf<RlpException>());
     }
 
     [TestCaseSource(nameof(OverLimitCollectionDecodeCases))]
@@ -208,8 +207,8 @@ public partial class ShardBlobTxDecoderTests
         Rlp encoded = _txDecoder.Encode(decoded!, rlpBehaviors);
         Rlp encodedWithDecodedByValueDecoderContext =
             _txDecoder.Encode(decodedByValueDecoderContext!, rlpBehaviors);
-        Assert.That(encoded.Bytes, Is.EquivalentTo(spanIncomingTxRlp));
-        Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EquivalentTo(spanIncomingTxRlp));
+        Assert.That(encoded.Bytes, Is.EqualTo(spanIncomingTxRlp));
+        Assert.That(encodedWithDecodedByValueDecoderContext.Bytes, Is.EqualTo(spanIncomingTxRlp));
     }
 
     private static IEnumerable<TestCaseData> OverLimitCollectionDecodeCases()

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core.Container;
 using NUnit.Framework;
 
@@ -21,9 +20,9 @@ public class OrderedComponentsTests
             .AddLast(_ => new Item("4"))
             .Build();
 
-        ctx.Resolve<Item[]>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3", "4"]);
-        ctx.Resolve<IEnumerable<Item>>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3", "4"]);
-        ctx.Resolve<IReadOnlyList<Item>>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3", "4"]);
+        Assert.That(ctx.Resolve<Item[]>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+        Assert.That(ctx.Resolve<IEnumerable<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
+        Assert.That(ctx.Resolve<IReadOnlyList<Item>>().Select(item => item.Name), Is.EqualTo(["1", "2", "3", "4"]));
     }
 
     [Test]
@@ -35,7 +34,7 @@ public class OrderedComponentsTests
             .AddFirst(_ => new Item("1"))
             .Build();
 
-        ctx.Resolve<Item[]>().Select(item => item.Name).Should().BeEquivalentTo(["1", "2", "3"]);
+        Assert.That(ctx.Resolve<Item[]>().Select(item => item.Name), Is.EqualTo(["1", "2", "3"]));
     }
 
     [Test]
@@ -46,7 +45,7 @@ public class OrderedComponentsTests
             .AddSingleton<Item>(_ => new Item("2"))
             .Build();
 
-        act.Should().Throw<InvalidOperationException>();
+        Assert.That(act, Throws.TypeOf<InvalidOperationException>());
     }
 
     [Test]
@@ -60,8 +59,8 @@ public class OrderedComponentsTests
             .Build();
 
         IItem resolved = ctx.Resolve<IItem>();
-        resolved.Should().BeOfType<CompositeItem>();
-        ((CompositeItem)resolved).Items.Select(i => i.Name).Should().BeEquivalentTo(["1", "2"]);
+        Assert.That(resolved, Is.TypeOf<CompositeItem>());
+        Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
     }
 
     [Test]
@@ -75,8 +74,8 @@ public class OrderedComponentsTests
             .Build();
 
         IItem resolved = ctx.Resolve<IItem>();
-        resolved.Should().BeOfType<CompositeItem>();
-        ((CompositeItem)resolved).Items.Select(i => i.Name).Should().BeEquivalentTo(["1", "2"]);
+        Assert.That(resolved, Is.TypeOf<CompositeItem>());
+        Assert.That(((CompositeItem)resolved).Items.Select(i => i.Name), Is.EqualTo(["1", "2"]));
     }
 
     private class ModuleA : Module

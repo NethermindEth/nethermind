@@ -10,7 +10,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -143,7 +142,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        result.Data.Status.Should().Be(expectedPayloadStatus);
+        Assert.That(result.Data.Status, Is.EqualTo(expectedPayloadStatus));
     }
 
     [TestCase(false, PayloadStatus.Syncing)]
@@ -167,7 +166,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        result.Data.Status.Should().Be(expectedPayloadStatus);
+        Assert.That(result.Data.Status, Is.EqualTo(expectedPayloadStatus));
     }
 
     [Test]
@@ -184,7 +183,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
         Assert.That(result.Data.ValidationError, Does.StartWith("InvalidBlockNumber"));
     }
 
@@ -202,7 +201,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
         Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
     }
 
@@ -222,7 +221,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
         Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
     }
 
@@ -238,7 +237,7 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
-        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.Status, Is.EqualTo("INVALID"));
         Assert.That(result.Data.ValidationError, Does.StartWith("Transaction 0 is not valid"));
     }
 
@@ -564,15 +563,15 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 higherFinalized = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block2.BlockHash, safeBlockHash: block2.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> higherFinalizedResult = await rpcModule.engine_forkchoiceUpdatedV3(higherFinalized, null);
-        higherFinalizedResult.ErrorCode.Should().Be(0);
-        higherFinalizedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(higherFinalizedResult.ErrorCode, Is.EqualTo(0));
+        Assert.That(higherFinalizedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
         ForkchoiceStateV1 repeatedHead = new(headBlockHash: block3.BlockHash, finalizedBlockHash: block1.BlockHash, safeBlockHash: block2.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpcModule.engine_forkchoiceUpdatedV3(repeatedHead, payloadAttributes);
 
-        result.ErrorCode.Should().Be(0);
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        result.Data.PayloadId.Should().NotBeNull();
+        Assert.That(result.ErrorCode, Is.EqualTo(0));
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        Assert.That(result.Data.PayloadId, Is.Not.Null);
     }
 
     [Test]
@@ -594,13 +593,13 @@ public partial class EngineModuleTests
 
         if (requestSize > 128)
         {
-            result.Result.Should().BeEquivalentTo(Result.Fail($"The number of requested blobs must not exceed 128"));
-            result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+            Assert.That(result.Result, Is.EqualTo(Result.Fail($"The number of requested blobs must not exceed 128")));
+            Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
         }
         else
         {
-            result.Result.Should().Be(Result.Success);
-            result.Data.Should().HaveCount(requestSize);
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data.Count, Is.EqualTo(requestSize));
         }
     }
 
@@ -615,8 +614,8 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1([]);
 
-        result.Result.Should().Be(Result.Success);
-        result.Data.Should().BeEquivalentTo(ArraySegment<BlobAndProofV1?>.Empty);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.EqualTo(ArraySegment<BlobAndProofV1?>.Empty));
     }
 
     [Test]
@@ -635,13 +634,13 @@ public partial class EngineModuleTests
             .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
-        result.Data.Select(static b => b!.Blob).Should().BeEquivalentTo(wrapper.Blobs);
-        result.Data.Select(static b => b!.Proof).Should().BeEquivalentTo(wrapper.Proofs);
+        Assert.That(result.Data.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
+        Assert.That(result.Data.Select(static b => b!.Proof), Is.EqualTo(wrapper.Proofs));
     }
 
     [Test]
@@ -664,8 +663,8 @@ public partial class EngineModuleTests
         // requesting hashes that are not present in TxPool
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobTx.BlobVersionedHashes!);
 
-        result.Data.Should().HaveCount(numberOfRequestedBlobs);
-        result.Data.Should().AllBeEquivalentTo<BlobAndProofV1?>(null);
+        Assert.That(result.Data.Count, Is.EqualTo(numberOfRequestedBlobs));
+        Assert.That(result.Data, Is.All.EqualTo(null));
     }
 
     [Test]
@@ -686,7 +685,7 @@ public partial class EngineModuleTests
             .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
-        chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         List<byte[]> blobVersionedHashesRequest = new(requestSize);
         List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
@@ -704,19 +703,18 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<BlobAndProofV1?>> result = await rpcModule.engine_getBlobsV1(blobVersionedHashesRequest.ToArray());
 
-        result.Data.Should().BeEquivalentTo(blobsAndProofs);
         BlobAndProofV1?[] resultBlobsAndProofs = result.Data.ToArray();
-        resultBlobsAndProofs.Length.Should().Be(requestSize);
+        Assert.That(resultBlobsAndProofs.Length, Is.EqualTo(requestSize));
         for (int i = 0; i < requestSize; i++)
         {
             if (i % 10 == 0)
             {
-                resultBlobsAndProofs[i]!.Blob.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]);
-                resultBlobsAndProofs[i]!.Proof.Should().BeEquivalentTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]);
+                Assert.That(resultBlobsAndProofs[i]!.Blob, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]));
+                Assert.That(resultBlobsAndProofs[i]!.Proof, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]));
             }
             else
             {
-                resultBlobsAndProofs[i].Should().BeNull();
+                Assert.That(resultBlobsAndProofs[i], Is.Null);
             }
         }
     }
@@ -745,7 +743,7 @@ public partial class EngineModuleTests
 
         string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
 
-        streamedJson.Should().Be(stjJson);
+        Assert.That(streamedJson, Is.EqualTo(stjJson));
     }
 
     [Test]
@@ -796,8 +794,8 @@ public partial class EngineModuleTests
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(payloadResultA2.BlockHash, chainC.BlockTree.GenesisHash, chainC.BlockTree.GenesisHash), null);
         await Task.Delay(1000);
 
-        (await rpcModuleC.engine_newPayloadV3(payloadResultB2, [], TestItem.KeccakE)).Data.Status.Should().Be("SYNCING");
-        (await rpcModuleC.engine_newPayloadV3(payloadResultB3, [], TestItem.KeccakE)).Data.Status.Should().Be("SYNCING");
+        Assert.That((await rpcModuleC.engine_newPayloadV3(payloadResultB2, [], TestItem.KeccakE)).Data.Status, Is.EqualTo("SYNCING"));
+        Assert.That((await rpcModuleC.engine_newPayloadV3(payloadResultB3, [], TestItem.KeccakE)).Data.Status, Is.EqualTo("SYNCING"));
 
         await Task.Delay(1000);
         AddBlockResult res = chainC.BlockTree.Insert(chainB.BlockTree.FindBlock(2)!.Header, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);

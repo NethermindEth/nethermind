@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,7 +10,6 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -58,12 +57,12 @@ public partial class EngineModuleTests
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> forkchoiceResponse = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
         byte[] payloadId = Bytes.FromHexString(forkchoiceResponse.Result.Data.PayloadId!);
         ResultWrapper<ExecutionPayload?> responseFirst = await rpc.engine_getPayloadV1(payloadId);
-        responseFirst.Should().NotBeNull();
-        responseFirst.Result.ResultType.Should().Be(ResultType.Success);
+        Assert.That(responseFirst, Is.Not.Null);
+        Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
         ResultWrapper<ExecutionPayload?> responseSecond = await rpc.engine_getPayloadV1(payloadId);
-        responseSecond.Should().NotBeNull();
-        responseSecond.Result.ResultType.Should().Be(ResultType.Success);
-        responseSecond.Data!.BlockHash!.Should().Be(responseFirst.Data!.BlockHash!);
+        Assert.That(responseSecond, Is.Not.Null);
+        Assert.That(responseSecond.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(responseSecond.Data!.BlockHash!, Is.EqualTo(responseFirst.Data!.BlockHash!));
     }
 
     [Test]
@@ -101,7 +100,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        response.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+        Assert.That(response.ErrorCode, Is.EqualTo(MergeErrorCodes.UnknownPayload));
     }
 
     [Test]
@@ -127,22 +126,23 @@ public partial class EngineModuleTests
         await blockImprovementLock.WaitAsync(cancellationToken);
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
+        Assert.That(getPayloadResult.StateRoot, Is.Not.EqualTo(chain.BlockTree.Genesis!.StateRoot!));
 
         Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Transactions;
-        transactionsInBlock.Should().BeEquivalentTo(transactions, o => o
-            .Excluding(t => t.ChainId)
-            .Excluding(t => t.SenderAddress)
-            .Excluding(t => t.Timestamp)
-            .Excluding(t => t.PoolIndex)
-            .Excluding(t => t.GasBottleneck));
+        transactionsInBlock.EqualToTransactions(
+            transactions,
+            nameof(Transaction.ChainId),
+            nameof(Transaction.SenderAddress),
+            nameof(Transaction.Timestamp),
+            nameof(Transaction.PoolIndex),
+            nameof(Transaction.GasBottleneck));
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         UInt256 totalValue = ((int)(count * value)).GWei;
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.BlockHash);
-        chain.StateReader.GetBalance(payloadBlock, recipient).Should().Be(totalValue);
+        Assert.That(chain.StateReader.GetBalance(payloadBlock, recipient), Is.EqualTo(totalValue));
     }
 
     public static IEnumerable WaitTestCases
@@ -244,11 +244,11 @@ public partial class EngineModuleTests
         Address? suggestedFeeRecipient = TestItem.AddressC;
         PayloadAttributes? payloadAttributes = new() { PrevRandao = random, Timestamp = timestamp, SuggestedFeeRecipient = suggestedFeeRecipient };
         ExecutionPayload getPayloadResult = await BuildAndGetPayloadResult(chain, rpc, payloadAttributes);
-        getPayloadResult.ParentHash.Should().Be(startingHead);
+        Assert.That(getPayloadResult.ParentHash, Is.EqualTo(startingHead));
 
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         BlockHeader? currentHeader = chain.BlockTree.BestSuggestedHeader!;
 
@@ -274,7 +274,7 @@ public partial class EngineModuleTests
         byte[] requestedPayloadId = Bytes.FromHexString("0x45bd36a8143d860d");
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(requestedPayloadId);
 
-        response.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+        Assert.That(response.ErrorCode, Is.EqualTo(MergeErrorCodes.UnknownPayload));
     }
 
     [Test]
@@ -333,7 +333,7 @@ public partial class EngineModuleTests
 
         string parameters = payloadId.ToHexString(true);
         string result = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", parameters);
-        result.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38001,\"message\":\"unknown payload\"},\"id\":67}");
+        Assert.That(result, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-38001,\"message\":\"unknown payload\"},\"id\":67}"));
     }
 
     [Test]
@@ -378,16 +378,16 @@ public partial class EngineModuleTests
         await waitForImprovement;
 
         SpinWait.SpinUntil(() => improvementContextFactory.CreatedContexts.Count >= 3, TimeSpan.FromSeconds(10));
-        improvementContextFactory.CreatedContexts.Count.Should().BeGreaterOrEqualTo(3);
+        Assert.That(improvementContextFactory.CreatedContexts.Count, Is.GreaterThanOrEqualTo(3));
 
         cts.Cancel();
         await addingTx;
 
-        improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).Should().OnlyContain(static i => i.Disposed);
+        Assert.That(improvementContextFactory.CreatedContexts.Take(improvementContextFactory.CreatedContexts.Count - 1).All(static i => i.Disposed), Is.True);
 
         await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
-        improvementContextFactory.CreatedContexts.Should().OnlyContain(static i => i.Disposed);
+        Assert.That(improvementContextFactory.CreatedContexts.All(static i => i.Disposed), Is.True);
     }
 
     [Parallelizable(ParallelScope.None)] // Timing sensitive
@@ -425,10 +425,10 @@ public partial class EngineModuleTests
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
-        transactionsLength.Should().Equal(3, 6, 11);
+        Assert.That(transactionsLength, Is.EqualTo(new[] { 3, 6, 11 }));
         Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
-        txs.Should().HaveCount(11);
+        Assert.That(txs.Length, Is.EqualTo(11));
     }
 
     [Test, Retry(3)]
@@ -478,11 +478,11 @@ public partial class EngineModuleTests
         List<int?> transactionsLength = improvementContextFactory.CreatedContexts
             .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
 
-        transactionsLength.Should().Equal(1, 2);
+        Assert.That(transactionsLength, Is.EqualTo(new[] { 1, 2 }));
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
         Transaction[] txs = getPayloadResult.TryGetTransactions().Transactions;
 
-        txs.Should().HaveCount(2);
+        Assert.That(txs.Length, Is.EqualTo(2));
     }
 
     [Test]
@@ -516,8 +516,8 @@ public partial class EngineModuleTests
         IBlockImprovementContext cancelledContext = await cancelledContextTask;
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
-        getPayloadResult.TryGetTransactions().Transactions.Should().HaveCount(3);
-        cancelledContext?.Disposed.Should().BeTrue();
+        Assert.That(getPayloadResult.TryGetTransactions().Transactions.Length, Is.EqualTo(3));
+        Assert.That(cancelledContext?.Disposed, Is.True);
     }
 
     [Test]
@@ -559,7 +559,7 @@ public partial class EngineModuleTests
         await blockImprovementWait;
 
         ExecutionPayload getPayloadResultBlock31A = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadIdBlock31A))).Data!;
-        getPayloadResultBlock31A.Should().NotBeNull();
+        Assert.That(getPayloadResultBlock31A, Is.Not.Null);
         await rpc.engine_newPayloadV1(getPayloadResultBlock31A);
 
         // current main chain block 30->31A, we start building payload 32A
@@ -589,10 +589,10 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, block31A.GetOrCalculateHash(), TestItem.PrivateKeyC, TestItem.AddressF, 3, 10, out _, out _));
         await blockImprovementWait;
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        getPayloadResult.Should().NotBeNull();
+        Assert.That(getPayloadResult, Is.Not.Null);
 
         ResultWrapper<PayloadStatusV1> finalResult = await rpc.engine_newPayloadV1(getPayloadResult);
-        finalResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(finalResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test, Repeat(100)]
@@ -629,7 +629,7 @@ public partial class EngineModuleTests
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyC, TestItem.AddressA, 3, 10, out _, out _));
 
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-        getPayloadResult.Should().NotBeNull();
+        Assert.That(getPayloadResult, Is.Not.Null);
         chain.AddTransactions(BuildTransactions(chain, blockX, TestItem.PrivateKeyA, TestItem.AddressC, 5, 10, out _, out _));
 
         await improvementTask;
@@ -644,7 +644,7 @@ public partial class EngineModuleTests
             }
         }
 
-        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
 
         // starting building on block X
@@ -674,7 +674,7 @@ public partial class EngineModuleTests
             }
         }
 
-        secondBlock.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(secondBlock.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test]
@@ -697,7 +697,7 @@ public partial class EngineModuleTests
             },
             flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV1(ExecutionPayload.Create(emptyBlock));
-        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test]
@@ -719,7 +719,7 @@ public partial class EngineModuleTests
         };
         Block emptyBlock = (await blockProducer.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes, flags: IBlockProducer.Flags.PrepareEmptyBlock))!;
         Task<ResultWrapper<PayloadStatusV1>> result1 = await rpc.engine_newPayloadV2(ExecutionPayload.Create(emptyBlock));
-        result1.Result.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(result1.Result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     private async Task<MergeTestBlockchain> CreateBlockchainWithImprovementContext(

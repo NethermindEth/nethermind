@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -24,7 +23,7 @@ namespace Nethermind.Mining.Test
         {
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
             FollowOtherMiners followOtherMiners = new(MainnetSpecProvider.Instance);
-            followOtherMiners.GetGasLimit(header).Should().Be(expected);
+            Assert.That(followOtherMiners.GetGasLimit(header), Is.EqualTo(expected));
         }
 
         [TestCase(1000000, 2000000)]
@@ -41,7 +40,7 @@ namespace Nethermind.Mining.Test
             TestSpecProvider specProvider = new(spec);
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).WithNumber(forkNumber - 1).TestObject;
             FollowOtherMiners followOtherMiners = new(specProvider);
-            followOtherMiners.GetGasLimit(header).Should().Be(expected);
+            Assert.That(followOtherMiners.GetGasLimit(header), Is.EqualTo(expected));
         }
     }
 }

@@ -1,12 +1,12 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -78,10 +78,10 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(4), Is.Null, "level 4");
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
-        tree.Head!.Header.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header);
-        tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
-        tree.BestKnownNumber.Should().Be(2);
+        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.Head!.Header, block2.Header);
+        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.BestSuggestedHeader, block2.Header);
+        BlockTestAssertions.AssertBlockBodyEquivalent(tree.BestSuggestedBody?.Body, block2.Body);
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
     }
 
     [Retry(30)]
@@ -207,7 +207,7 @@ public class StartupTreeFixerTests
         Assert.That(blockInfosDb.Get(5), Is.Null, "level 5");
 
         Assert.That(tree.BestKnownNumber, Is.EqualTo(2L), "best known");
-        Assert.That(tree.Head?.Header, Is.EqualTo(block2.Header), "head");
-        Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(block2.Hash), "suggested");
+        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.Head?.Header, block2.Header);
+        BlockTestAssertions.AssertBlockHeaderEquivalent(tree.BestSuggestedHeader, block2.Header);
     }
 }

@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -74,7 +73,7 @@ public class HeaderDecoderTests
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-        blockHeader.BaseFeePerGas.Should().Be((UInt256)123);
+        Assert.That(blockHeader.BaseFeePerGas, Is.EqualTo((UInt256)123));
     }
 
     [Test]
@@ -82,7 +81,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(0).WithNonce(0).WithDifficulty(0).TestObject;
         Rlp rlp = Rlp.Encode(header);
-        Convert.ToHexString(rlp.Bytes).ToLower().Should().Be("f901f6a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2880000000000000000");
+        Assert.That(Convert.ToHexString(rlp.Bytes).ToLower(), Is.EqualTo("f901f6a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2880000000000000000"));
     }
 
     [Test]
@@ -92,7 +91,7 @@ public class HeaderDecoderTests
             .WithWithdrawalsRoot(Keccak.Compute("withdrawals")).TestObject;
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
-        blockHeader.WithdrawalsRoot.Should().Be(Keccak.Compute("withdrawals"));
+        Assert.That(blockHeader.WithdrawalsRoot, Is.EqualTo(Keccak.Compute("withdrawals")));
     }
 
     [Test]
@@ -100,7 +99,7 @@ public class HeaderDecoderTests
     {
         BlockHeader header = Build.A.BlockHeader.WithBaseFee(1).WithNonce(0).WithDifficulty(0).TestObject;
         Rlp rlp = Rlp.Encode(header);
-        Convert.ToHexString(rlp.Bytes).ToLower().Should().Be("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001");
+        Assert.That(Convert.ToHexString(rlp.Bytes).ToLower(), Is.EqualTo("f901f7a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008080833d090080830f424083010203a02ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e288000000000000000001"));
     }
 
     [TestCase(-1)]
@@ -115,9 +114,9 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
 
-        blockHeader.GasUsed.Should().Be(negativeLong);
-        blockHeader.Number.Should().Be(negativeLong);
-        blockHeader.GasLimit.Should().Be(negativeLong);
+        Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
+        Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
+        Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
     }
 
     [TestCase(-1)]
@@ -132,9 +131,9 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.GasUsed.Should().Be(negativeLong);
-        blockHeader.Number.Should().Be(negativeLong);
-        blockHeader.GasLimit.Should().Be(negativeLong);
+        Assert.That(blockHeader.GasUsed, Is.EqualTo(negativeLong));
+        Assert.That(blockHeader.Number, Is.EqualTo(negativeLong));
+        Assert.That(blockHeader.GasLimit, Is.EqualTo(negativeLong));
     }
 
     [TestCaseSource(nameof(CancunFieldsSource))]
@@ -151,8 +150,8 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.BlobGasUsed.Should().Be(blobGasUsed);
-        blockHeader.ExcessBlobGas.Should().Be(excessBlobGas);
+        Assert.That(blockHeader.BlobGasUsed, Is.EqualTo(blobGasUsed));
+        Assert.That(blockHeader.ExcessBlobGas, Is.EqualTo(excessBlobGas));
     }
 
     [Test]
@@ -170,7 +169,7 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakB);
+        Assert.That(blockHeader.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakB));
     }
 
     [Test]
@@ -188,7 +187,7 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.Should().BeEquivalentTo(header);
+        BlockTestAssertions.AssertBlockHeaderEquivalent(blockHeader, header);
     }
 
     [Test]
@@ -235,7 +234,7 @@ public class HeaderDecoderTests
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
-        blockHeader.Should().BeEquivalentTo(header);
+        BlockTestAssertions.AssertBlockHeaderEquivalent(blockHeader, header);
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()

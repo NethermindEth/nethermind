@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -31,6 +30,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.AuRa.Test.Validators;
 
@@ -106,28 +106,28 @@ public class ContractBasedValidatorTests
     public void throws_ArgumentNullException_on_empty_validatorStore()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, null, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
     public void throws_ArgumentNullException_on_empty_validSealerStrategy()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, null, _blockFinalizationManager, default, _logManager, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
     public void throws_ArgumentNullException_on_empty_blockTree()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, null, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
     public void throws_ArgumentNullException_on_empty_logManager()
     {
         Action act = () => new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, null, 1);
-        act.Should().Throw<ArgumentNullException>();
+        Assert.That(act, Throws.TypeOf<ArgumentNullException>());
     }
 
     [Test]
@@ -162,7 +162,7 @@ public class ContractBasedValidatorTests
             Raise.EventWith(new FinalizeEventArgs(_block.Header,
                 Build.A.BlockHeader.WithNumber(blockNumber).WithHash(blockHash).TestObject));
 
-        validator.Validators.Should().BeEquivalentTo(validators, static o => o.WithStrictOrdering());
+        Assert.That(validator.Validators, Is.EqualTo(validators));
     }
 
     [TestCase(1)]
@@ -197,8 +197,8 @@ public class ContractBasedValidatorTests
 
         // initial validator should be true
         Address[] expectedValidators = { initialValidator };
-        validator.Validators.Should().BeEquivalentTo(expectedValidators, o => o.WithStrictOrdering());
-        _validatorStore.GetValidators().Should().BeEquivalentTo(expectedValidators.AsEnumerable());
+        Assert.That(validator.Validators, Is.EqualTo(expectedValidators));
+        Assert.That(_validatorStore.GetValidators(), Is.EqualTo(expectedValidators.AsEnumerable()));
     }
 
     public static IEnumerable<TestCaseData> ConsecutiveInitiateChangeData
@@ -522,7 +522,7 @@ public class ContractBasedValidatorTests
             _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
             Action preProcess = () => validator.OnBlockProcessingStart(_block);
-            preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
+            AssertDoesNotThrowExceptionOfType<InvalidOperationException>(preProcess, test.TestName);
             validator.OnBlockProcessingEnd(_block, txReceipts);
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);
@@ -531,7 +531,7 @@ public class ContractBasedValidatorTests
                         .WithHash(Keccak.Compute((finalizedNumber + hashSeeds[finalizedNumber]).ToString())).TestObject));
 
             currentValidators = test.GetCurrentValidators(blockNumber);
-            validator.Validators.Should().BeEquivalentTo(currentValidators, o => o.WithStrictOrdering(), $"Validator address should be recognized in block {blockNumber}");
+            Assert.That(validator.Validators, Is.EqualTo(currentValidators), $"Validator address should be recognized in block {blockNumber}");
         }
 
         ValidateFinalizationForChain(test.Current);
@@ -596,8 +596,19 @@ public class ContractBasedValidatorTests
             pendingValidators = new PendingValidators(block.Number, block.Hash, new[] { TestItem.Addresses[block.Number * 10] });
         }
 
-        _validatorStore.PendingValidators.Should().BeEquivalentTo(pendingValidators);
+        Assert.That(ToComparablePendingValidators(_validatorStore.PendingValidators), Is.EqualTo(ToComparablePendingValidators(pendingValidators)));
     }
+
+    private static ComparablePendingValidators? ToComparablePendingValidators(PendingValidators pendingValidators) =>
+        pendingValidators is null
+            ? null
+            : new ComparablePendingValidators(
+                pendingValidators.BlockNumber,
+                pendingValidators.BlockHash,
+                string.Join(",", pendingValidators.Addresses.Select(static address => address.ToString())),
+                pendingValidators.AreFinalized);
+
+    private sealed record ComparablePendingValidators(long BlockNumber, Hash256 BlockHash, string Addresses, bool AreFinalized);
 
 
     private void ValidateFinalizationForChain(ConsecutiveInitiateChangeTestParameters.ChainInfo chain)

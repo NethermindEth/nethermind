@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -74,8 +74,8 @@ public class DebugModuleTests
         // timeout CTS has been disposed). The second bundle throws unconditionally, so the
         // call only succeeds if the result is a deferred sequence and we stop after the first.
         using IEnumerator<IEnumerable<GethLikeTxTrace>> outer = result.Data.GetEnumerator();
-        outer.MoveNext().Should().BeTrue();
-        outer.Current.Count().Should().Be(1);
+        Assert.That(outer.MoveNext(), Is.True);
+        Assert.That(outer.Current.Count(), Is.EqualTo(1));
     }
 
     private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)
@@ -327,7 +327,11 @@ public class DebugModuleTests
             }
         );
 
-        debugTraceCall.Should().BeEquivalentTo(expected);
+        Assert.That(debugTraceCall.Result, Is.EqualTo(expected.Result));
+        Assert.That(debugTraceCall.ErrorCode, Is.EqualTo(expected.ErrorCode));
+        JsonTestAssertions.AssertEquivalent(
+            JsonSerializer.Serialize(debugTraceCall.Data),
+            JsonSerializer.Serialize(expected.Data));
     }
 
     [Test]
@@ -379,7 +383,9 @@ public class DebugModuleTests
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
-        actual.Should().BeEquivalentTo(ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash)));
+        Assert.That(actual.Result, Is.EqualTo(Result.Success));
+        Assert.That(actual.ErrorCode, Is.Zero);
+        Assert.That(actual.Data, Is.EqualTo(GetFileNames(blockHash)));
     }
 
     [TestCase(false)]
@@ -395,9 +401,9 @@ public class DebugModuleTests
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
-        actual.Result.ResultType.Should().Be(ResultType.Failure);
-        actual.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
-        actual.Result.Error.Should().Contain("Cannot find header");
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
     }
 
     [TestCase(false)]
@@ -415,8 +421,8 @@ public class DebugModuleTests
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
             : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
-        actual.Result.ResultType.Should().Be(ResultType.Failure);
-        actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
-        actual.Result.Error.Should().Contain("No state available");
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        Assert.That(actual.Result.Error, Does.Contain("No state available"));
     }
 }

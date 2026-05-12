@@ -3,12 +3,12 @@
 
 using System;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using NUnit.Framework;
@@ -52,7 +52,7 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
-            scope.Get(TestItem.AddressA).Should().Be(null);
+            Assert.That(scope.Get(TestItem.AddressA), Is.EqualTo(null));
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
                 writeBatch.Set(TestItem.AddressA, new Account(100, 100));
@@ -62,12 +62,12 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-        if (!useFlat) ctx.Kv.WritesCount.Should().Be(1);
+        Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(1));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            scope.Get(TestItem.AddressA).Balance.Should().Be(100);
+            Assert.That(scope.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
         }
     }
 
@@ -79,7 +79,7 @@ public class ScopeProviderTests(bool useFlat)
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
-            scope.Get(TestItem.AddressA).Should().Be(null);
+            Assert.That(scope.Get(TestItem.AddressA), Is.EqualTo(null));
 
             using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
             {
@@ -95,13 +95,13 @@ public class ScopeProviderTests(bool useFlat)
             stateRoot = scope.RootHash;
         }
 
-        stateRoot.Should().NotBe(Keccak.EmptyTreeHash);
-        if (!useFlat) ctx.Kv.WritesCount.Should().Be(2);
+        Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(2));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
-            storage.Get(1).Should().BeEquivalentTo([1, 2, 3]);
+            Assert.That(storage.Get(1), Is.EqualTo([1, 2, 3]));
         }
     }
 
@@ -120,12 +120,12 @@ public class ScopeProviderTests(bool useFlat)
 
         if (!useFlat)
         {
-            ctx.CodeKv.WritesCount.Should().Be(1);
+            Assert.That(ctx.CodeKv.WritesCount, Is.EqualTo(1));
         }
         else
         {
             using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
-            scope.CodeDb.GetCode(TestItem.KeccakA).Should().BeEquivalentTo([1, 2, 3]);
+            Assert.That(scope.CodeDb.GetCode(TestItem.KeccakA), Is.EqualTo([1, 2, 3]));
         }
     }
 

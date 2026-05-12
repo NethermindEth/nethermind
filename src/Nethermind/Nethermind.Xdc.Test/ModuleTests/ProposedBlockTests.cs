@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -57,7 +56,7 @@ internal class ProposedBlockTests
         BlockHeader? parentOfHead = blockChain.BlockTree.FindHeader(head.ParentHash!);
         BlockHeader? grandParentOfHead = blockChain.BlockTree.FindHeader(parentOfHead!.ParentHash!);
 
-        grandParentOfHead!.Hash!.Should().Be(blockChain.XdcContext.HighestCommitBlock.Hash);
+        Assert.That(grandParentOfHead!.Hash!, Is.EqualTo(blockChain.XdcContext.HighestCommitBlock.Hash));
     }
 
     [Test]
@@ -83,8 +82,8 @@ internal class ProposedBlockTests
 
         await blockChain.SimulateVoting();
 
-        blockChain.XdcContext.HighestCommitBlock.Should().Be(beforeTimeoutFinalized);
-        blockChain.XdcContext.HighestQC.Should().NotBe(beforeTimeoutQC);
+        Assert.That(blockChain.XdcContext.HighestCommitBlock, Is.EqualTo(beforeTimeoutFinalized));
+        Assert.That(blockChain.XdcContext.HighestQC, Is.Not.EqualTo(beforeTimeoutQC));
     }
 
     [Test]
@@ -112,7 +111,8 @@ internal class ProposedBlockTests
 
         QuorumCertificate beforeFinalVote = blockChain.XdcContext.HighestQC!;
         //Our highest QC should be 1 number behind head
-        beforeFinalVote.ProposedBlockInfo.BlockNumber.Should().Be(head.Number - 1);
+        // Our highest QC should be 1 number behind head
+        Assert.That(beforeFinalVote.ProposedBlockInfo.BlockNumber, Is.EqualTo(head.Number - 1));
 
         TaskCompletionSource newRoundWaitHandle = new();
         blockChain.XdcContext.NewRoundSetEvent += (s, a) => { newRoundWaitHandle.SetResult(); };
@@ -129,7 +129,7 @@ internal class ProposedBlockTests
             Assert.Fail("Timed out waiting for the round to start. The vote threshold was not reached?");
         }
 
-        blockChain.XdcContext.HighestQC!.ProposedBlockInfo.Hash.Should().Be(head.Hash!);
+        Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.Hash, Is.EqualTo(head.Hash!));
     }
 
     [TestCase(1)]
@@ -153,9 +153,9 @@ internal class ProposedBlockTests
         for (int i = 1; i <= count; i++)
         {
             await blockChain.TriggerAndSimulateBlockProposalAndVoting();
-            blockChain.BlockTree.Head.Number.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber.Should().Be(startBlock.Number + i);
-            blockChain.XdcContext.HighestCommitBlock.BlockNumber.Should().Be(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2);
+            Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(startBlock.Number + i));
+            Assert.That(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber, Is.EqualTo(startBlock.Number + i));
+            Assert.That(blockChain.XdcContext.HighestCommitBlock.BlockNumber, Is.EqualTo(blockChain.XdcContext.HighestQC!.ProposedBlockInfo.BlockNumber - 2));
         }
     }
 
@@ -198,6 +198,6 @@ internal class ProposedBlockTests
 
         await Task.Delay(100);
 
-        blockChain.XdcContext.CurrentRound.Should().Be(roundCountBeforeStart);
+        Assert.That(blockChain.XdcContext.CurrentRound, Is.EqualTo(roundCountBeforeStart));
     }
 }

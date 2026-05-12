@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -109,7 +108,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 int txCount = blockNum * 2;
                 defaultDb.KeyWasWritten((item => item.Item2 is null), txCount);
                 ((TestMemDb)receiptColumnDb.GetColumnDb(ReceiptsColumns.Blocks)).KeyWasRemoved((_ => true), blockNum);
-                outMemoryReceiptStorage.Count.Should().Be(txCount);
+                Assert.That(outMemoryReceiptStorage.Count, Is.EqualTo(txCount));
             }
             else
             {

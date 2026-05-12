@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -46,7 +45,7 @@ public class FlatRocksDbConfigAdjusterTests
 
         IRocksDbConfig result = adjuster.GetForDatabase("State0", null);
 
-        result.Should().BeSameAs(_baseConfig);
+        Assert.That(result, Is.SameAs(_baseConfig));
     }
 
     [Test]
@@ -59,9 +58,9 @@ public class FlatRocksDbConfigAdjusterTests
 
         IRocksDbConfig result = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Metadata));
 
-        result.RocksDbOptions.Should().NotContain("optimize_filters_for_hits");
-        result.RocksDbOptions.Should().NotContain("partition_filters");
-        result.RocksDbOptions.Should().NotContain("kTwoLevelIndexSearch");
+        Assert.That(result.RocksDbOptions, Does.Not.Contain("optimize_filters_for_hits"));
+        Assert.That(result.RocksDbOptions, Does.Not.Contain("partition_filters"));
+        Assert.That(result.RocksDbOptions, Does.Not.Contain("kTwoLevelIndexSearch"));
     }
 
     [Test]
@@ -74,9 +73,9 @@ public class FlatRocksDbConfigAdjusterTests
 
         IRocksDbConfig result = adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Metadata));
 
-        result.RocksDbOptions.Should().Contain("optimize_filters_for_hits=true;");
-        result.RocksDbOptions.Should().Contain("block_based_table_factory.partition_filters=true;");
-        result.RocksDbOptions.Should().Contain("block_based_table_factory.index_type=kTwoLevelIndexSearch;");
+        Assert.That(result.RocksDbOptions, Does.Contain("optimize_filters_for_hits=true;"));
+        Assert.That(result.RocksDbOptions, Does.Contain("block_based_table_factory.partition_filters=true;"));
+        Assert.That(result.RocksDbOptions, Does.Contain("block_based_table_factory.index_type=kTwoLevelIndexSearch;"));
     }
 
     [Test]

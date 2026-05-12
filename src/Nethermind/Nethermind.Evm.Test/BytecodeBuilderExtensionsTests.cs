@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -604,5 +603,5 @@ public class BytecodeBuilderExtensionsTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void code_emitted_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test) => test.FluentCodes.Should().BeEquivalentTo(test.ResultCodes, test.Description);
+    public void code_emitted_by_fluent_is_same_as_expected([ValueSource(nameof(FluentBuilderTestCases))] TestCase test) => Assert.That(test.FluentCodes, Is.EqualTo(test.ResultCodes), test.Description);
 }

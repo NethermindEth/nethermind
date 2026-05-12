@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
-using FluentAssertions;
 using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -540,7 +539,13 @@ public class AbiTests
             new Address("0x4173c8cE71a385e325357d8d79d6B7bc1c708F40")
         ];
 
-        objects.Should().BeEquivalentTo(expectedObjects);
+        Assert.That(objects, Has.Length.EqualTo(expectedObjects.Length));
+        Assert.That(objects[1], Is.EqualTo(expectedObjects[1]));
+
+        UserOperationAbi[] decodedOperations = (UserOperationAbi[])objects[0];
+        UserOperationAbi[] expectedOperations = (UserOperationAbi[])expectedObjects[0];
+        Assert.That(decodedOperations, Has.Length.EqualTo(expectedOperations.Length));
+        AssertUserOperation(decodedOperations[0], expectedOperations[0]);
     }
 
     [Test]
@@ -555,8 +560,8 @@ public class AbiTests
 
         byte[] encoded = abi.Encode(array, false);
 
-        abi.Encode(list, false).Should().BeEquivalentTo(encoded);
-        abi.Encode(pool, false).Should().BeEquivalentTo(encoded);
+        Assert.That(abi.Encode(list, false), Is.EqualTo(encoded));
+        Assert.That(abi.Encode(pool, false), Is.EqualTo(encoded));
     }
 
     [Test]
@@ -578,6 +583,23 @@ public class AbiTests
 
         Assert.Throws<AbiException>(() => new AbiEncoder().Decode(AbiEncodingStyle.None, abi, data));
     }
+
+    private static void AssertUserOperation(UserOperationAbi actual, UserOperationAbi expected) =>
+        Assert.Multiple(() =>
+        {
+            Assert.That(actual.Target, Is.EqualTo(expected.Target));
+            Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
+            Assert.That(actual.InitCode, Is.EqualTo(expected.InitCode));
+            Assert.That(actual.CallData, Is.EqualTo(expected.CallData));
+            Assert.That(actual.CallGas, Is.EqualTo(expected.CallGas));
+            Assert.That(actual.VerificationGas, Is.EqualTo(expected.VerificationGas));
+            Assert.That(actual.MaxFeePerGas, Is.EqualTo(expected.MaxFeePerGas));
+            Assert.That(actual.MaxPriorityFeePerGas, Is.EqualTo(expected.MaxPriorityFeePerGas));
+            Assert.That(actual.Paymaster, Is.EqualTo(expected.Paymaster));
+            Assert.That(actual.PaymasterData, Is.EqualTo(expected.PaymasterData));
+            Assert.That(actual.Signer, Is.EqualTo(expected.Signer));
+            Assert.That(actual.Signature, Is.EqualTo(expected.Signature));
+        });
 
     private class UserOperationAbi
     {
@@ -669,6 +691,6 @@ public class AbiTests
             new BigInteger[] { 0x456, 0x789 },
             Encoding.ASCII.GetBytes("1234567890"),
             Encoding.ASCII.GetBytes("Hello, world!"));
-        encoded.ToHexString().Should().BeEquivalentTo(expectedValue.ToHexString());
+        Assert.That(encoded.ToHexString(), Is.EqualTo(expectedValue.ToHexString()));
     }
 }

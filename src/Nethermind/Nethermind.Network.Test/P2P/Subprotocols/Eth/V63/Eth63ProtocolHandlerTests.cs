@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             _ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
             using IOwnedReadOnlyList<TxReceipt[]> result = await task;
-            Assert.That(result, Has.Count.EqualTo(count));
+            Assert.That((result).Count, Is.EqualTo(count));
         }
 
         [Test]

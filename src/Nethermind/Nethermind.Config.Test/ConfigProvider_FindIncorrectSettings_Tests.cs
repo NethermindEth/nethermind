@@ -72,7 +72,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(1));
+        Assert.That(Errors.Count, Is.EqualTo(1));
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("XYZ"));
@@ -98,7 +98,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(3));
+        Assert.That(Errors.Count, Is.EqualTo(3));
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("Concurrenc"));
@@ -123,7 +123,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
-        Assert.That(Errors, Has.Count.EqualTo(1));
+        Assert.That(Errors.Count, Is.EqualTo(1));
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("NETWORKCONFIGMAXCANDIDATEPEERCOUNT"));

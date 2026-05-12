@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -40,7 +39,7 @@ public class PreimageRecordingPersistenceTests
         // CreateReader
         IPersistence.IPersistenceReader expectedReader = Substitute.For<IPersistence.IPersistenceReader>();
         _innerPersistence.CreateReader().Returns(expectedReader);
-        _sut.CreateReader().Should().BeSameAs(expectedReader);
+        Assert.That(_sut.CreateReader(), Is.SameAs(expectedReader));
 
         // CreateWriteBatch
         StateId from = StateId.PreGenesis;
@@ -79,15 +78,15 @@ public class PreimageRecordingPersistenceTests
 
         // Verify address preimages
         ValueHash256 addressAPath = addressA.ToAccountPath;
-        _preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressA.Bytes.ToArray());
+        Assert.That(_preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]), Is.EqualTo(addressA.Bytes.ToArray()));
 
         ValueHash256 addressBPath = addressB.ToAccountPath;
-        _preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressB.Bytes.ToArray());
+        Assert.That(_preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]), Is.EqualTo(addressB.Bytes.ToArray()));
 
         // Verify slot preimage
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
-        _preimageDb.Get(slotHash.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(slot.ToBigEndian());
+        Assert.That(_preimageDb.Get(slotHash.BytesAsSpan[..PreimageLookupSize]), Is.EqualTo(slot.ToBigEndian()));
     }
 
     [Test]
@@ -122,7 +121,7 @@ public class PreimageRecordingPersistenceTests
         innerBatch.Received(1).SetAccountRaw(addrHash, account);
 
         // No preimages should be recorded for trie/raw operations
-        _preimageDb.Keys.Should().BeEmpty();
+        Assert.That(_preimageDb.Keys, Is.Empty);
     }
 
     [Test]
@@ -207,6 +206,6 @@ public class PreimageRecordingPersistenceTests
 
         // Preimages should be flushed after dispose
         ValueHash256 addressPath = TestItem.AddressA.ToAccountPath;
-        _preimageDb.Get(addressPath.BytesAsSpan[..PreimageLookupSize]).Should().NotBeNull();
+        Assert.That(_preimageDb.Get(addressPath.BytesAsSpan[..PreimageLookupSize]), Is.Not.Null);
     }
 }

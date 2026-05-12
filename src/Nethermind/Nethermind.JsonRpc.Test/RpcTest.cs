@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using FluentAssertions;
-using FluentAssertions.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Utils;
@@ -32,7 +30,7 @@ public static class RpcTest
 
     public static async Task<string> TestSerializedRequest<T>(T module, string method, params object?[]? parameters) where T : class, IRpcModule
     {
-        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : 60.Seconds());
+        using AutoCancelTokenSource cts = AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromSeconds(60));
         await using IContainer container = CreateContainerForModule<T>(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
@@ -57,7 +55,7 @@ public static class RpcTest
 
         await TestContext.Out.WriteLineAsync(serialized);
 
-        size.Should().Be(serialized.Length);
+        Assert.That(size, Is.EqualTo(serialized.Length));
 
         return serialized;
     }

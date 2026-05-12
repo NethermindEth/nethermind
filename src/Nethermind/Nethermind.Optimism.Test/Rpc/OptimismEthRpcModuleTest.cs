@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
-using FluentAssertions.Json;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -20,6 +18,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
@@ -27,7 +26,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -70,7 +68,7 @@ public class OptimismEthRpcModuleTest
         string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes.ToHexString());
 
         await txSender.Received().SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast);
-        serialized.Should().BeEquivalentTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}""");
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}"""));
     }
 
     [Test]
@@ -143,7 +141,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        JsonTestAssertions.AssertEquivalent(serialized, expected);
     }
 
     [Test]
@@ -217,7 +215,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        JsonTestAssertions.AssertEquivalent(serialized, expected);
     }
 
     [Test]
@@ -289,12 +287,12 @@ public class OptimismEthRpcModuleTest
         {
             // By block hash
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            JsonTestAssertions.AssertEquivalent(serialized, expected);
         }
         {
             // By block number
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            JsonTestAssertions.AssertEquivalent(serialized, expected);
         }
     }
 
@@ -367,12 +365,12 @@ public class OptimismEthRpcModuleTest
         {
             // By block hash
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockHashAndIndex", block.Hash, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            JsonTestAssertions.AssertEquivalent(serialized, expected);
         }
         {
             // By block number
             string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByBlockNumberAndIndex", block.Number, 0);
-            JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+            JsonTestAssertions.AssertEquivalent(serialized, expected);
         }
     }
 
@@ -484,7 +482,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        JsonTestAssertions.AssertEquivalent(serialized, expected);
     }
 
     [Test]
@@ -561,7 +559,7 @@ public class OptimismEthRpcModuleTest
                             "id":67
                          }
                          """;
-        JToken.Parse(serialized).Should().BeEquivalentTo(expected);
+        JsonTestAssertions.AssertEquivalent(serialized, expected);
     }
 }
 

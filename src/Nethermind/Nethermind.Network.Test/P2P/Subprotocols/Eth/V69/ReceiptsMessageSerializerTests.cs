@@ -3,7 +3,6 @@
 
 using System.Linq;
 using DotNetty.Buffers;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -188,6 +187,6 @@ public class ReceiptsMessageSerializerTests
         message.EthMessage.TxReceipts[0]![0].Bloom = length.HasValue
             ? new(Enumerable.Range(0, length.Value).Select(i => (byte)i).ToArray())
             : null;
-        serializer.Serialize(message).Should().Equal(encoded);
+        Assert.That(serializer.Serialize(message), Is.EqualTo(encoded));
     }
 }

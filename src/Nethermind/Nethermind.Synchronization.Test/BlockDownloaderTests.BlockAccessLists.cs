@@ -67,18 +67,18 @@ public partial class BlockDownloaderTests
             0,
             CancellationToken.None))!;
 
-        Assert.That(bodyRequest.BodiesRequests, Has.Count.EqualTo(1));
-        Assert.That(bodyRequest.BlockAccessListsRequests, Has.Count.EqualTo(0));
-        Assert.That(bodyRequest.ReceiptsRequests, Has.Count.EqualTo(0));
+        Assert.That(bodyRequest.BodiesRequests.Count, Is.EqualTo(1));
+        Assert.That(bodyRequest.BlockAccessListsRequests.Count, Is.EqualTo(0));
+        Assert.That(bodyRequest.ReceiptsRequests.Count, Is.EqualTo(0));
 
         using BlocksRequest blockAccessListRequest = (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Insert,
             0,
             CancellationToken.None))!;
 
-        Assert.That(blockAccessListRequest.BodiesRequests, Has.Count.EqualTo(0));
-        Assert.That(blockAccessListRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
-        Assert.That(blockAccessListRequest.ReceiptsRequests, Has.Count.EqualTo(0));
+        Assert.That(blockAccessListRequest.BodiesRequests.Count, Is.EqualTo(0));
+        Assert.That(blockAccessListRequest.BlockAccessListsRequests.Count, Is.EqualTo(1));
+        Assert.That(blockAccessListRequest.ReceiptsRequests.Count, Is.EqualTo(0));
 
         BlocksRequest? noRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Insert,
@@ -101,8 +101,8 @@ public partial class BlockDownloaderTests
             0,
             CancellationToken.None))!;
 
-        Assert.That(bodyRequest.BodiesRequests, Has.Count.EqualTo(1));
-        Assert.That(bodyRequest.BlockAccessListsRequests, Has.Count.EqualTo(0));
+        Assert.That(bodyRequest.BodiesRequests.Count, Is.EqualTo(1));
+        Assert.That(bodyRequest.BlockAccessListsRequests.Count, Is.EqualTo(0));
 
         BlocksRequest? noRequest = await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Process,

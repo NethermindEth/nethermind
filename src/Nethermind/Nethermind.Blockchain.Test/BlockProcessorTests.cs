@@ -138,8 +138,8 @@ public class BlockProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates, Has.Count.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltWorldStates.Count, Is.EqualTo(2));
             Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
             Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
         }
@@ -211,7 +211,7 @@ public class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(1));
+            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(1));
             Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
         }
 

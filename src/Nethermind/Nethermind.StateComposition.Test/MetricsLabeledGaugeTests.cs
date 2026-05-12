@@ -33,11 +33,11 @@ public class MetricsLabeledGaugeTests
         using (Assert.EnterMultipleScope())
         {
             // Per-depth cardinality: 2 tries × 16 depths × 3 kinds.
-            Assert.That(Metrics.StateCompTrieDepthNodes, Has.Count.EqualTo(96));
+            Assert.That((Metrics.StateCompTrieDepthNodes).Count, Is.EqualTo(96));
             // Per-depth byte cardinality: 2 tries × 16 depths.
-            Assert.That(Metrics.StateCompTrieDepthBytes, Has.Count.EqualTo(32));
+            Assert.That((Metrics.StateCompTrieDepthBytes).Count, Is.EqualTo(32));
             // Branch occupancy cardinality: 16 child-count buckets.
-            Assert.That(Metrics.StateCompAccountBranchOccupancy, Has.Count.EqualTo(16));
+            Assert.That((Metrics.StateCompAccountBranchOccupancy).Count, Is.EqualTo(16));
 
             Assert.That(Metrics.StateCompTrieDepthNodes[("account", 3, "full")], Is.EqualTo(stats.AccountFullNodes[3]));
             Assert.That(Metrics.StateCompTrieDepthNodes[("account", 3, "short")], Is.EqualTo(stats.AccountShortNodes[3]));

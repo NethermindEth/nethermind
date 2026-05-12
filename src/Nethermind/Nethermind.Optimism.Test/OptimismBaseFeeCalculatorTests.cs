@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -48,7 +47,7 @@ public class OptimismBaseFeeCalculatorTests
 
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
 
-        actualBaseFee.Should().Be((UInt256)expectedBaseFee);
+        Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }
 
     private static class JovianTest
@@ -104,6 +103,6 @@ public class OptimismBaseFeeCalculatorTests
 
         UInt256 actualBaseFee = BaseFeeCalculator.Calculate(blockHeader, releaseSpec);
 
-        actualBaseFee.Should().Be((UInt256)expectedBaseFee);
+        Assert.That(actualBaseFee, Is.EqualTo((UInt256)expectedBaseFee));
     }
 }

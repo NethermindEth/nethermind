@@ -30,7 +30,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default);
 
     protected override void AssertSerializationBlockResult(SimulateBlockResult<GethLikeTxTrace> blockResult) =>
-        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EquivalentTo(new[] { false, false }));
+        Assert.That(blockResult.Traces.Select(static c => c.Failed), Is.EqualTo(new[] { false, false }));
 
     [Test]
     public async Task Test_debug_simulate_caps_gas_to_gas_cap()

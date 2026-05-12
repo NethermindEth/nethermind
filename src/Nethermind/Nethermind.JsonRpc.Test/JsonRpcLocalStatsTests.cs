@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Test;
@@ -85,7 +84,7 @@ namespace Nethermind.JsonRpc.Test
                 MakeTimePass(60);
             }
 
-            _testLogger.LogList.Should().HaveCountGreaterThan(0);
+            Assert.That((_testLogger.LogList).Count, Is.GreaterThan(0));
         }
 
         [Test]
@@ -99,7 +98,7 @@ namespace Nethermind.JsonRpc.Test
             localStats.ReportCall("A", 100, true);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
-            _testLogger.LogList.Should().HaveCount(0);
+            Assert.That((_testLogger.LogList).Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -108,7 +107,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcLocalStats localStats = new(_manualTimestamper, _config, _logManager);
             MakeTimePass();
             localStats.ReportCall("A", 300, true);
-            _testLogger.LogList.Should().HaveCount(0);
+            Assert.That((_testLogger.LogList).Count, Is.EqualTo(0));
         }
 
         [Test]
@@ -151,8 +150,8 @@ namespace Nethermind.JsonRpc.Test
             await localStats.ReportCall("B", 3, false);
             MakeTimePass();
             await localStats.ReportCall("A", 300, true);
-            _testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal));
-            _testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal).Should().BeLessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal));
+            Assert.That(_testLogger.LogList[0].IndexOf("A   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal)));
+            Assert.That(_testLogger.LogList[0].IndexOf("B   ", StringComparison.Ordinal), Is.LessThan(_testLogger.LogList[0].IndexOf("C   ", StringComparison.Ordinal)));
         }
 
         [Test]
@@ -170,10 +169,10 @@ namespace Nethermind.JsonRpc.Test
 
                 await localStats.ReportCall(new RpcReport("eth_call", 0, true), elapsedMicroseconds: 123);
 
-                silentLogger.LogList.Should().BeEmpty();
-                observer.Observations.Should().HaveCount(1);
-                observer.Observations[0].Value.Should().Be(123);
-                observer.Observations[0].Labels.Should().Equal("eth_call", "success");
+                Assert.That(silentLogger.LogList, Is.Empty);
+                Assert.That((observer.Observations).Count, Is.EqualTo(1));
+                Assert.That(observer.Observations[0].Value, Is.EqualTo(123));
+                Assert.That(observer.Observations[0].Labels, Is.EqualTo(new[] { "eth_call", "success" }));
             }
             finally
             {
@@ -193,6 +192,6 @@ namespace Nethermind.JsonRpc.Test
 
         private void MakeTimePass() => _manualTimestamper.UtcNow = _manualTimestamper.UtcNow.AddSeconds(_config.ReportIntervalSeconds + 1);
 
-        private void CheckLogLine(string line) => _testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)).Should().BeTrue(string.Join(Environment.NewLine, _testLogger.LogList));
+        private void CheckLogLine(string line) => Assert.That(_testLogger.LogList.Exists(l => l.Replace(" ", String.Empty).Contains(line)), Is.True, string.Join(Environment.NewLine, _testLogger.LogList));
     }
 }

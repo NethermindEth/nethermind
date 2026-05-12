@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
@@ -27,8 +26,8 @@ public class NodeFilterTests
         NodeFilter filter = CreateFilter(exactMatchOnly: true);
         IPAddress ip = IPAddress.Parse(address);
 
-        filter.TryAccept(ip).Should().BeTrue("first attempt should be accepted");
-        filter.TryAccept(ip).Should().BeFalse("second attempt within timeout should be rejected");
+        Assert.That(filter.TryAccept(ip), Is.True, "first attempt should be accepted");
+        Assert.That(filter.TryAccept(ip), Is.False, "second attempt within timeout should be rejected");
     }
 
     [Test]
@@ -38,8 +37,8 @@ public class NodeFilterTests
         IPAddress ip1 = IPAddress.Parse("192.0.2.1");
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
 
-        filter.TryAccept(ip1).Should().BeTrue("first address should be accepted");
-        filter.TryAccept(ip2).Should().BeTrue("different address should be accepted");
+        Assert.That(filter.TryAccept(ip1), Is.True, "first address should be accepted");
+        Assert.That(filter.TryAccept(ip2), Is.True, "different address should be accepted");
     }
 
     [TestCase("192.0.2.1", "192.0.2.50", false, Description = "Subnet: same /24 blocked")]
@@ -62,8 +61,8 @@ public class NodeFilterTests
     public void TryAccept_FiltersSecondAddress(string first, string second, bool secondAccepted)
     {
         NodeFilter filter = CreateFilter();
-        filter.TryAccept(IPAddress.Parse(first)).Should().BeTrue("first address should be accepted");
-        filter.TryAccept(IPAddress.Parse(second)).Should().Be(secondAccepted);
+        Assert.That(filter.TryAccept(IPAddress.Parse(first)), Is.True, "first address should be accepted");
+        Assert.That(filter.TryAccept(IPAddress.Parse(second)), Is.EqualTo(secondAccepted));
     }
 
     [Test]
@@ -100,7 +99,7 @@ public class NodeFilterTests
 
         Task.WaitAll([.. tasks]);
 
-        acceptedCount.Should().Be(threadCount * attemptsPerThread, "all unique addresses should be accepted");
+        Assert.That(acceptedCount, Is.EqualTo(threadCount * attemptsPerThread), "all unique addresses should be accepted");
     }
 
     [Test]
@@ -131,8 +130,8 @@ public class NodeFilterTests
         Task.WaitAll([.. tasks]);
 
         // At least one call should succeed, but not all attempts should be accepted for the same IP
-        acceptedCount.Should().BeGreaterThan(0, "at least one concurrent attempt should be accepted");
-        acceptedCount.Should().BeLessThan(threadCount * attemptsPerThread, "not all concurrent attempts should be accepted for the same address");
+        Assert.That(acceptedCount, Is.GreaterThan(0), "at least one concurrent attempt should be accepted");
+        Assert.That(acceptedCount, Is.LessThan(threadCount * attemptsPerThread), "not all concurrent attempts should be accepted for the same address");
     }
 
     [TestCase("192.0.2.1", "10.0.0.1", 0, 0, Description = "IPv4 /0 prefix - all match")]
@@ -144,7 +143,7 @@ public class NodeFilterTests
         NodeFilter.IpSubnetKey key1 = new(IPAddress.Parse(addr1), v4PrefixBits: v4Prefix, v6PrefixBits: v6Prefix);
         NodeFilter.IpSubnetKey key2 = new(IPAddress.Parse(addr2), v4PrefixBits: v4Prefix, v6PrefixBits: v6Prefix);
 
-        key1.Should().Be(key2);
+        Assert.That(key1, Is.EqualTo(key2));
     }
 
     [Test]
@@ -155,14 +154,14 @@ public class NodeFilterTests
         IPAddress ip2 = IPAddress.Parse("192.0.2.2");
         IPAddress ip3 = IPAddress.Parse("192.0.2.3");
 
-        filter.TryAccept(ip1).Should().BeTrue("first address should be accepted");
-        filter.TryAccept(ip2).Should().BeTrue("second address should be accepted");
-        filter.TryAccept(ip3).Should().BeTrue("third address should be accepted");
+        Assert.That(filter.TryAccept(ip1), Is.True, "first address should be accepted");
+        Assert.That(filter.TryAccept(ip2), Is.True, "second address should be accepted");
+        Assert.That(filter.TryAccept(ip3), Is.True, "third address should be accepted");
 
         bool ip1Accepted = filter.TryAccept(ip1);
         bool ip2Accepted = filter.TryAccept(ip2);
 
-        (ip1Accepted || ip2Accepted).Should().BeTrue("at least one of the first two addresses should be evicted and accepted again");
+        Assert.That((ip1Accepted || ip2Accepted), Is.True, "at least one of the first two addresses should be evicted and accepted again");
     }
 
     [Test]
@@ -171,15 +170,15 @@ public class NodeFilterTests
         NodeFilter filter = NodeFilter.AcceptAll;
         IPAddress ip = IPAddress.Parse("192.0.2.1");
 
-        filter.TryAccept(ip).Should().BeTrue();
-        filter.TryAccept(ip).Should().BeTrue("AcceptAll should always accept");
+        Assert.That(filter.TryAccept(ip), Is.True);
+        Assert.That(filter.TryAccept(ip), Is.True, "AcceptAll should always accept");
     }
 
     [Test]
     public void Create_WhenDisabled_ReturnsAcceptAll()
     {
         NodeFilter filter = NodeFilter.Create(50, filterEnabled: false, subnetBucketing: true, currentIp: null);
-        filter.Should().BeSameAs(NodeFilter.AcceptAll);
+        Assert.That(filter, Is.SameAs(NodeFilter.AcceptAll));
     }
 
     [TestCase("192.0.2.1", "192.0.2.1", true, Description = "Same address - equal")]
@@ -191,12 +190,12 @@ public class NodeFilterTests
 
         if (expectEqual)
         {
-            key1.Should().Be(key2);
-            key1.GetHashCode().Should().Be(key2.GetHashCode());
+            Assert.That(key1, Is.EqualTo(key2));
+            Assert.That(key1.GetHashCode(), Is.EqualTo(key2.GetHashCode()));
         }
         else
         {
-            key1.Should().NotBe(key2);
+            Assert.That(key1, Is.Not.EqualTo(key2));
         }
     }
 
@@ -205,16 +204,16 @@ public class NodeFilterTests
     public void IpSubnetKey_Matches(string bucketAddr, string testAddr, bool expected)
     {
         NodeFilter.IpSubnetKey key = NodeFilter.IpSubnetKey.Bucket(IPAddress.Parse(bucketAddr), v4PrefixBits: 24, v6PrefixBits: 64);
-        key.Matches(IPAddress.Parse(testAddr)).Should().Be(expected);
+        Assert.That(key.Matches(IPAddress.Parse(testAddr)), Is.EqualTo(expected));
     }
 
     [TestCase("192.0.2.1", "192.0.2.50", true, Description = "Same /24 IPv4")]
     [TestCase("192.0.2.1", "192.0.3.1", false, Description = "Different /24 IPv4")]
     [TestCase("2001:db8::1", "2001:db8::ffff", true, Description = "Same /64 IPv6")]
     [TestCase("2001:db8::1", "2001:db8:0:1::1", false, Description = "Different /64 IPv6")]
-    public void IpSubnetKey_AreInSameSubnet(string a, string b, bool expected) => NodeFilter.IpSubnetKey.AreInSameSubnet(
+    public void IpSubnetKey_AreInSameSubnet(string a, string b, bool expected) => Assert.That(NodeFilter.IpSubnetKey.AreInSameSubnet(
             IPAddress.Parse(a), IPAddress.Parse(b),
-            v4PrefixBits: 24, v6PrefixBits: 64).Should().Be(expected);
+            v4PrefixBits: 24, v6PrefixBits: 64), Is.EqualTo(expected));
 
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
     [TestCase("::1", true, Description = "IPv6 loopback")]
@@ -228,7 +227,7 @@ public class NodeFilterTests
     [TestCase("fe80::1", true, Description = "IPv6 link-local")]
     [TestCase("8.8.8.8", false, Description = "Public IPv4")]
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
-    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)).Should().Be(expected);
+    public void IpSubnetKey_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(NodeFilter.IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(IPAddress.Parse(address)), Is.EqualTo(expected));
 
     [TestCase("192.168.1.10", "192.168.1.20", "203.0.113.1", false, Description = "Private addresses use exact keying")]
     [TestCase("203.0.113.1", "203.0.113.50", "198.51.100.1", true, Description = "Public addresses in same /24 use subnet bucketing")]
@@ -239,9 +238,9 @@ public class NodeFilterTests
         NodeFilter.IpSubnetKey key2 = NodeFilter.IpSubnetKey.CreateNodeFilterKey(IPAddress.Parse(remote2), IPAddress.Parse(current));
 
         if (expectEqual)
-            key1.Should().Be(key2);
+            Assert.That(key1, Is.EqualTo(key2));
         else
-            key1.Should().NotBe(key2);
+            Assert.That(key1, Is.Not.EqualTo(key2));
     }
 
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Exact match reaccepts after timeout")]
@@ -252,12 +251,12 @@ public class NodeFilterTests
         IPAddress ip1 = IPAddress.Parse(first);
         IPAddress ip2 = IPAddress.Parse(second);
 
-        filter.TryAccept(ip1).Should().BeTrue("first attempt should be accepted");
-        filter.TryAccept(ip2).Should().BeFalse("second attempt within timeout should be rejected");
+        Assert.That(filter.TryAccept(ip1), Is.True, "first attempt should be accepted");
+        Assert.That(filter.TryAccept(ip2), Is.False, "second attempt within timeout should be rejected");
 
         await Task.Delay(500);
 
-        filter.TryAccept(ip2).Should().BeTrue("attempt after timeout expiry should be accepted again");
+        Assert.That(filter.TryAccept(ip2), Is.True, "attempt after timeout expiry should be accepted again");
     }
 
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Touch refreshes exact match timeout")]
@@ -268,7 +267,7 @@ public class NodeFilterTests
         IPAddress ip1 = IPAddress.Parse(firstAddr);
         IPAddress ip2 = IPAddress.Parse(touchAddr);
 
-        filter.TryAccept(ip1).Should().BeTrue("first attempt should be accepted");
+        Assert.That(filter.TryAccept(ip1), Is.True, "first attempt should be accepted");
 
         await Task.Delay(500);
 
@@ -276,10 +275,10 @@ public class NodeFilterTests
 
         await Task.Delay(1000);
 
-        filter.TryAccept(ip1).Should().BeFalse("touch should refresh the timeout window");
+        Assert.That(filter.TryAccept(ip1), Is.False, "touch should refresh the timeout window");
 
         await Task.Delay(1500);
 
-        filter.TryAccept(ip1).Should().BeTrue("address should be accepted again after the refreshed timeout expires");
+        Assert.That(filter.TryAccept(ip1), Is.True, "address should be accepted again after the refreshed timeout expires");
     }
 }

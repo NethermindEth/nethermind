@@ -6,7 +6,6 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -75,7 +74,7 @@ namespace Nethermind.Merge.Plugin.Test
                 3 => (await rpc.engine_getPayloadV3(payloadId)).ErrorCode,
                 _ => throw new ArgumentOutOfRangeException(nameof(version))
             };
-            errorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+            Assert.That(errorCode, Is.EqualTo(MergeErrorCodes.UnknownPayload));
         }
 
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,

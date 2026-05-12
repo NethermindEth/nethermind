@@ -6,7 +6,6 @@ using System.IO;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -46,7 +45,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void It_supports_the_types_that_it_needs_to_support(Type type)
         {
             IdConverter converter = new();
-            converter.CanConvert(type).Should().Be(true);
+            Assert.That(converter.CanConvert(type), Is.EqualTo(true));
         }
 
         [TestCase(typeof(object))]
@@ -54,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Data
         public void It_supports_all_silly_types_and_we_can_live_with_it(Type type)
         {
             IdConverter converter = new();
-            converter.CanConvert(type).Should().Be(true);
+            Assert.That(converter.CanConvert(type), Is.EqualTo(true));
         }
 
         [Test]

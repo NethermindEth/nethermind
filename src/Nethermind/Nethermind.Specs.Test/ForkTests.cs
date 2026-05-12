@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -31,7 +30,17 @@ public class ForkTests
         IReleaseSpec forkLatest = Fork.GetLatest();
 
         // Compare all properties except Name (ChainSpecBasedSpecProvider doesn't set it)
-        forkLatest.Should().BeEquivalentTo(chainSpecLatest,
-            options => options.Excluding(s => s.Name));
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (System.Reflection.PropertyInfo property in typeof(IReleaseSpec).GetProperties())
+            {
+                if (property.Name == nameof(IReleaseSpec.Name))
+                {
+                    continue;
+                }
+
+                Assert.That(property.GetValue(forkLatest), Is.EqualTo(property.GetValue(chainSpecLatest)), property.Name);
+            }
+        }
     }
 }

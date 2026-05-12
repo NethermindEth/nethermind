@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,7 +25,7 @@ internal class EraReaderTests
         for (int i = 0; i < totalCount; i++)
         {
             (Block block, _) = await sut.GetBlockByNumber(i);
-            block.Number.Should().Be(i);
+            Assert.That(block.Number, Is.EqualTo(i));
         }
     }
 
@@ -37,7 +36,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         (Block block, _) = await sut.GetBlockByNumber(2);
-        block.TotalDifficulty.Should().Be(file.Contents[2].Block.TotalDifficulty);
+        Assert.That(block.TotalDifficulty, Is.EqualTo(file.Contents[2].Block.TotalDifficulty));
     }
 
     [Test]
@@ -63,7 +62,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
-        verifiedRoot.Should().Be(expectedRoot);
+        Assert.That(verifiedRoot, Is.EqualTo(expectedRoot));
     }
 
     [Test]
@@ -73,8 +72,8 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         List<(Block, TxReceipt[])> result = await sut.ToListAsync();
-        result.Should().HaveCount(3);
-        result.Select(r => r.Item1.Number).Should().BeEquivalentTo([0L, 1L, 2L]);
+        Assert.That((result).Count, Is.EqualTo(3));
+        Assert.That(result.Select(r => r.Item1.Number), Is.EqualTo([0L, 1L, 2L]));
     }
 
     [Test]
@@ -93,7 +92,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         ValueHash256 result = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
-        result.Should().Be(default, "post-merge epochs have no accumulator");
+        Assert.That(result, Is.EqualTo(default(ValueHash256)), "post-merge epochs have no accumulator");
     }
 
     [Test]
@@ -110,8 +109,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
-        verifiedRoot.Should().Be(expectedRoot,
-            "transition epoch accumulator must only cover pre-merge blocks");
+        Assert.That(verifiedRoot, Is.EqualTo(expectedRoot), "transition epoch accumulator must only cover pre-merge blocks");
     }
 
     [Test]
@@ -121,7 +119,7 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         (Block postMergeBlock, _) = await sut.GetBlockByNumber(2);
-        postMergeBlock.Header.IsPostMerge.Should().BeTrue();
+        Assert.That(postMergeBlock.Header.IsPostMerge, Is.True);
     }
 
     [Test]
@@ -150,8 +148,8 @@ internal class EraReaderTests
 
         (_, TxReceipt[] receipts) = await sut.GetBlockByNumber(0);
 
-        receipts.Should().NotBeEmpty();
-        receipts[0].Bloom.Should().NotBeNull("bloom must be auto-computed from logs");
+        Assert.That(receipts, Is.Not.Empty);
+        Assert.That(receipts[0].Bloom, Is.Not.Null, "bloom must be auto-computed from logs");
     }
 
 }

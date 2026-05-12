@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -8,8 +8,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 
-using FluentAssertions;
-using FluentAssertions.Equivalency;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
@@ -23,22 +21,6 @@ namespace Nethermind.JsonRpc.Test
     [Explicit]
     public partial class ConsensusHelperTests
     {
-        private static readonly Func<EquivalencyAssertionOptions<ReceiptForRpc>, EquivalencyAssertionOptions<ReceiptForRpc>> ReceiptOptions = static options => options.WithStrictOrdering()
-                .IncludingNestedObjects()
-                .Including(static r => r.TransactionHash)
-                .Including(static r => r.TransactionIndex)
-                .Including(static r => r.BlockHash)
-                .Including(static r => r.BlockNumber)
-                .Including(static r => r.From)
-                .Including(static r => r.To)
-                .Including(static r => r.CumulativeGasUsed)
-                .Including(static r => r.GasUsed)
-                .Including(static r => r.ContractAddress)
-                .Including(static r => r.LogsBloom)
-                .Including(static r => r.Logs)
-                .Including(static r => r.Root)
-                .Including(static r => r.Status);
-
         public static IEnumerable Tests
         {
             get
@@ -56,7 +38,7 @@ namespace Nethermind.JsonRpc.Test
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt1Source = GetSource<IEnumerable<ReceiptForRpc>>(uri1);
             using IConsensusDataSource<IEnumerable<ReceiptForRpc>> receipt2Source = GetSource<IEnumerable<ReceiptForRpc>>(uri2);
             TrySetData(blockHash, receipt1Source, receipt2Source);
-            await CompareCollection(receipt1Source, receipt2Source, false, ReceiptOptions);
+            await CompareCollection(receipt1Source, receipt2Source, false);
         }
 
         [TestCaseSource(nameof(Tests))]
@@ -65,7 +47,7 @@ namespace Nethermind.JsonRpc.Test
             using IConsensusDataSource<ReceiptForRpc> receipt1Source = GetSource<ReceiptForRpc>(uri1);
             using IConsensusDataSource<ReceiptForRpc> receipt2Source = GetSource<ReceiptForRpc>(uri2);
             TrySetData(blockHash, receipt1Source, receipt2Source);
-            await Compare(receipt1Source, receipt2Source, false, ReceiptOptions);
+            await Compare(receipt1Source, receipt2Source, false);
         }
 
         [TestCaseSource(nameof(Tests))]
@@ -154,26 +136,21 @@ namespace Nethermind.JsonRpc.Test
 
         private static async Task Compare<T>(IConsensusDataSource<T> source1,
             IConsensusDataSource<T> source2,
-            bool compareJson,
-            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
+            bool compareJson)
         {
 
             if (compareJson)
             {
-                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
-                data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"]!.ToString());
+                AssertJsonEquivalentWithoutError(await source1.GetJsonData(), await source2.GetJsonData());
             }
             else
             {
                 string dataJson = string.Empty, expectationJson = string.Empty;
                 try
                 {
-                    T data, expectation;
-                    (data, dataJson) = await source1.GetData();
-                    (expectation, expectationJson) = await source2.GetData();
-                    data.Should().BeEquivalentTo(expectation, options ?? (static o => o));
+                    (_, dataJson) = await source1.GetData();
+                    (_, expectationJson) = await source2.GetData();
+                    AssertNormalizedJsonEquivalent(dataJson, expectationJson);
                 }
                 finally
                 {
@@ -184,26 +161,21 @@ namespace Nethermind.JsonRpc.Test
 
         private static async Task CompareCollection<T>(IConsensusDataSource<IEnumerable<T>> source1,
             IConsensusDataSource<IEnumerable<T>> source2,
-            bool compareJson,
-            Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? options = null)
+            bool compareJson)
         {
 
             if (compareJson)
             {
-                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
-                data.Should().BeEquivalentTo(expectation);
-                data["error"].Should().BeNull(data["error"]!.ToString());
+                AssertJsonEquivalentWithoutError(await source1.GetJsonData(), await source2.GetJsonData());
             }
             else
             {
                 string dataJson = string.Empty, expectationJson = string.Empty;
                 try
                 {
-                    IEnumerable<T> data, expectation;
-                    (data, dataJson) = await source1.GetData();
-                    (expectation, expectationJson) = await source2.GetData();
-                    data.Should().BeEquivalentTo(expectation, options ?? (static o => o));
+                    (_, dataJson) = await source1.GetData();
+                    (_, expectationJson) = await source2.GetData();
+                    AssertNormalizedJsonEquivalent(dataJson, expectationJson);
                 }
                 finally
                 {
@@ -211,6 +183,22 @@ namespace Nethermind.JsonRpc.Test
                 }
 
             }
+        }
+
+        private static void AssertJsonEquivalentWithoutError(string dataJson, string expectationJson)
+        {
+            AssertNormalizedJsonEquivalent(dataJson, expectationJson);
+
+            JsonNode data = JsonHelper.ParseNormalize(dataJson);
+            JsonNode? error = data["error"];
+            Assert.That(error, Is.Null, error?.ToString());
+        }
+
+        private static void AssertNormalizedJsonEquivalent(string dataJson, string expectationJson)
+        {
+            JsonNode data = JsonHelper.ParseNormalize(dataJson);
+            JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+            JsonTestAssertions.AssertEquivalent(data.ToJsonString(), expectation.ToJsonString());
         }
 
         private static async Task WriteOutJson(string dataJson, string expectationJson)

@@ -7,7 +7,6 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
@@ -82,11 +81,11 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
-        executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
-        executionPayloadV1.GasLimit.Should().Be(10_000_000L);
-        executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block, o => o.IgnoringCyclicReferences());
-        sentItem.Profit.Should().Be(0);
+        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
+        Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(10_000_000L));
+        MergeTestAssertions.AssertJsonEquivalent(executionPayloadV1, sentItem!.Block);
+        Assert.That(sentItem.Profit, Is.EqualTo(UInt256.Zero));
     }
 
     [TestCase(
@@ -181,8 +180,8 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
-        executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
+        Assert.That(executionPayloadV1.FeeRecipient, Is.EqualTo(TestItem.AddressA));
+        Assert.That(executionPayloadV1.PrevRandao, Is.EqualTo(TestItem.KeccakA));
 
         mockHttp.VerifyNoOutstandingExpectation();
     }
@@ -227,6 +226,6 @@ public partial class EngineModuleTests
         ResultWrapper<ExecutionPayload?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayload executionPayloadV1 = response.Data!;
-        executionPayloadV1.GasLimit.Should().Be(4_000_000L);
+        Assert.That(executionPayloadV1.GasLimit, Is.EqualTo(4_000_000L));
     }
 }

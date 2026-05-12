@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -17,21 +16,21 @@ public class RefList16Tests
     {
         RefList16<Hash256> pool = new();
 
-        pool.Count.Should().Be(0);
+        Assert.That(pool.Count, Is.EqualTo(0));
 
         pool.Add(TestItem.KeccakA);
-        pool.Count.Should().Be(1);
+        Assert.That(pool.Count, Is.EqualTo(1));
 
         pool.Add(TestItem.KeccakB);
-        pool.Count.Should().Be(2);
+        Assert.That(pool.Count, Is.EqualTo(2));
 
-        pool[0].Should().Be(TestItem.KeccakA);
-        pool[1].Should().Be(TestItem.KeccakB);
+        Assert.That(pool[0], Is.EqualTo(TestItem.KeccakA));
+        Assert.That(pool[1], Is.EqualTo(TestItem.KeccakB));
 
         Span<Hash256> span = pool.AsSpan();
-        span.Length.Should().Be(2);
-        span[0].Should().Be(TestItem.KeccakA);
-        span[1].Should().Be(TestItem.KeccakB);
+        Assert.That(span.Length, Is.EqualTo(2));
+        Assert.That(span[0], Is.EqualTo(TestItem.KeccakA));
+        Assert.That(span[1], Is.EqualTo(TestItem.KeccakB));
     }
 
     [Test]
@@ -43,7 +42,7 @@ public class RefList16Tests
         {
             pool.Add(Hash256.Zero);
         }
-        pool.Count.Should().Be(16);
+        Assert.That(pool.Count, Is.EqualTo(16));
 
         try
         {

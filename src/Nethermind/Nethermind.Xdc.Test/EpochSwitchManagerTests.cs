@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -483,7 +482,7 @@ internal class EpochSwitchManagerTests
 
         _tree.FindHeader(blockNumber).Returns(header);
         EpochSwitchInfo? result = _epochSwitchManager.GetEpochSwitchInfo(header);
-        result.Should().BeEquivalentTo(expected);
+        XdcTestAssertions.AssertEpochSwitchInfo(result, expected);
     }
 
     [Test]
@@ -507,7 +506,7 @@ internal class EpochSwitchManagerTests
         EpochSwitchInfo? result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
 
         Assert.That(result, Is.Not.Null);
-        result.Should().BeEquivalentTo(expected);
+        XdcTestAssertions.AssertEpochSwitchInfo(result, expected);
     }
 
     [Test]
@@ -540,7 +539,7 @@ internal class EpochSwitchManagerTests
 
         EpochSwitchInfo? result = _epochSwitchManager.GetEpochSwitchInfo(chainHead.Hash!);
         Assert.That(result, Is.Not.Null);
-        result.Should().BeEquivalentTo(expected);
+        XdcTestAssertions.AssertEpochSwitchInfo(result, expected);
     }
 
     [Test]
@@ -637,8 +636,8 @@ internal class EpochSwitchManagerTests
         // TC round 12 is within epoch that started at round 10
         TimeoutCertificate timeoutCertificate = new(12, [], 0);
         EpochSwitchInfo? result = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
-        result.Should().NotBeNull();
-        result!.EpochSwitchBlockInfo.Round.Should().Be(10);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.EpochSwitchBlockInfo.Round, Is.EqualTo(10));
     }
 
     private XdcBlockHeader GetChainOfBlocks(IBlockTree tree, ISnapshotManager snapManager, IXdcReleaseSpec spec, int length, int startRound = 0)

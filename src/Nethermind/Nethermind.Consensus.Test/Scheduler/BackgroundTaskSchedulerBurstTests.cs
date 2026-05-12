@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
@@ -68,19 +67,19 @@ public class BackgroundTaskSchedulerBurstTests
             await Task.Delay(200);
         }
 
-        totalDropped.Should().Be(0, $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
-        totalScheduled.Should().Be(cycles * tasksPerCycle);
+        Assert.That(totalDropped, Is.EqualTo(0), $"no tasks should be dropped — {totalDropped} of {totalScheduled + totalDropped} were dropped");
+        Assert.That(totalScheduled, Is.EqualTo(cycles * tasksPerCycle));
 
         // After all block processing cycles, new tasks should execute normally
         int postCycleExecuted = 0;
         int postCycleCount = Math.Min(capacity, 100);
         for (int i = 0; i < postCycleCount; i++)
         {
-            scheduler.TryScheduleTask(i, (_, _) =>
+            Assert.That(scheduler.TryScheduleTask(i, (_, _) =>
             {
                 Interlocked.Increment(ref postCycleExecuted);
                 return Task.CompletedTask;
-            }).Should().BeTrue($"post-cycle task {i} should be accepted");
+            }), Is.True, $"post-cycle task {i} should be accepted");
         }
 
         Assert.That(

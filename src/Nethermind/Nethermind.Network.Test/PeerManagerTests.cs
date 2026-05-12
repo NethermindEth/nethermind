@@ -9,7 +9,6 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -50,7 +49,7 @@ namespace Nethermind.Network.Test
             await ctx.PeerManager.StopAsync();
             ctx.RlpxPeer.CreateRandomIncoming();
 
-            ctx.PeerManager.ActivePeers.Count.Should().Be(0);
+            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(0));
         }
 
         [TestCase(0, 0, TestName = "Stop completes cleanly while idle")]
@@ -68,7 +67,7 @@ namespace Nethermind.Network.Test
 
             Task stopTask = ctx.PeerManager.StopAsync();
             bool completed = await Task.WhenAny(stopTask, Task.Delay(5000)) == stopTask;
-            completed.Should().BeTrue("StopAsync should complete within 5 seconds");
+            Assert.That(completed, Is.True, "StopAsync should complete within 5 seconds");
             await stopTask;
         }
 
@@ -187,7 +186,7 @@ namespace Nethermind.Network.Test
             session2.RemoteNodeId = TestItem.PublicKeyA;
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
-            ctx.PeerManager.ActivePeers.Count.Should().Be(1);
+            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
         }
 
         [Test]
@@ -208,13 +207,13 @@ namespace Nethermind.Network.Test
 
             InitSession(freshSession);
 
-            freshSession.State.Should().Be(SessionState.Initialized);
-            ctx.PeerManager.ActivePeers.Single().InSession.Should().BeSameAs(freshSession);
+            Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
+            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
 
             staleSession.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
 
-            freshSession.State.Should().Be(SessionState.Initialized);
-            ctx.PeerManager.ActivePeers.Single().InSession.Should().BeSameAs(freshSession);
+            Assert.That(freshSession.State, Is.EqualTo(SessionState.Initialized));
+            Assert.That(ctx.PeerManager.ActivePeers.Single().InSession, Is.SameAs(freshSession));
         }
 
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
@@ -249,16 +248,16 @@ namespace Nethermind.Network.Test
         public void Will_parse_ports_correctly_when_there_are_two_different_ports()
         {
             Enode enode = new(enode6String);
-            enode.Port.Should().Be(12345);
-            enode.DiscoveryPort.Should().Be(12345);
+            Assert.That(enode.Port, Is.EqualTo(12345));
+            Assert.That(enode.DiscoveryPort, Is.EqualTo(12345));
         }
 
         [Test]
         public void Will_parse_port_correctly_when_there_is_only_one()
         {
             Enode enode = new(enode7String);
-            enode.Port.Should().Be(12345);
-            enode.DiscoveryPort.Should().Be(6789);
+            Assert.That(enode.Port, Is.EqualTo(12345));
+            Assert.That(enode.DiscoveryPort, Is.EqualTo(6789));
         }
 
         [Test]
@@ -292,7 +291,7 @@ namespace Nethermind.Network.Test
                 LimboLogs.Instance);
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
-            ctx.PeerManager.ActivePeers.Count.Should().Be(2);
+            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(2));
         }
 
         [TestCase(true, ConnectionDirection.In)]
@@ -535,7 +534,7 @@ namespace Nethermind.Network.Test
                 currentCount += 25;
                 maxCount += 50;
                 Assert.That(() => ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, maxCount).After(_delayLonger * 2, 10));
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, maxCount);
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, maxCount));
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_delay);
                 ctx.DisconnectAllSessions();
@@ -567,7 +566,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += count;
                 await Task.Delay(_delayLong);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + count);
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, currentCount + count));
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_delay);
                 ctx.DisconnectAllSessions();
@@ -592,7 +591,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += count;
                 await Task.Delay(_delayLong);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + count);
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.InRange(currentCount, currentCount + count));
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_delay);
                 ctx.CreateIncomingSessions();
@@ -653,8 +652,8 @@ namespace Nethermind.Network.Test
             ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NodeEventArgs(
                 new Node(staticNodes.First())));
 
-            ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount - 1);
-            disconnections.Should().Be(1);
+            Assert.That(ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic), Is.EqualTo(nodesCount - 1));
+            Assert.That(disconnections, Is.EqualTo(1));
         }
 
         [Test, Retry(3)]
@@ -669,13 +668,13 @@ namespace Nethermind.Network.Test
             await Task.Delay(_delayLong);
 
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
-            ctx.PeerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(new[] { node.NodeId });
+            Assert.That(ctx.PeerManager.ActivePeers.Select(p => p.Node.Id), Is.EqualTo(new[] { node.NodeId }));
 
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
-            ctx.PeerPool.TryRemove(node.NodeId, out _).Should().BeTrue();
-            ctx.PeerManager.ActivePeers.Should().BeEmpty();
-            disconnections.Should().Be(1);
+            Assert.That(ctx.PeerPool.TryRemove(node.NodeId, out _), Is.True);
+            Assert.That(ctx.PeerManager.ActivePeers, Is.Empty);
+            Assert.That(disconnections, Is.EqualTo(1));
         }
 
         [Test]
@@ -689,7 +688,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.GetOrAdd(node);
             ctx.PeerPool.GetOrAdd(node);
             await Task.Delay(_delayLong);
-            ctx.PeerManager.ActivePeers.Should().HaveCount(1);
+            Assert.That((ctx.PeerManager.ActivePeers).Count, Is.EqualTo(1));
         }
 
         [Test]

@@ -4,10 +4,10 @@
 using System;
 using Autofac;
 using Autofac.Core;
-using FluentAssertions;
 using Nethermind.Core.Container;
 using Nethermind.Core.Exceptions;
 using NUnit.Framework;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Core.Test.Container;
 
@@ -24,10 +24,10 @@ public class FallbackToFieldFromApiTests
         IContainer container = containerBuilder.Build();
 
         Action act = (() => container.Resolve<TargetService>());
-        act.Should().Throw<DependencyResolutionException>();
+        Assert.That(act, Throws.TypeOf<DependencyResolutionException>());
 
         container.Resolve<Api>().TargetService = new TargetService();
-        container.Resolve<TargetService>().Should().NotBeNull();
+        Assert.That(container.Resolve<TargetService>(), Is.Not.Null);
     }
 
     [TestCase(false)]
@@ -44,11 +44,11 @@ public class FallbackToFieldFromApiTests
         Action act = (() => container.Resolve<TargetService>());
         if (allowRedundantRegistrations)
         {
-            act.Should().NotThrow<InvalidConfigurationException>();
+            AssertDoesNotThrowExceptionOfType<InvalidConfigurationException>(act);
         }
         else
         {
-            act.Should().Throw<InvalidConfigurationException>();
+            Assert.That(act, Throws.TypeOf<InvalidConfigurationException>());
         }
     }
 
@@ -65,11 +65,11 @@ public class FallbackToFieldFromApiTests
 
         if (directlyDeclaredOnly)
         {
-            container.ResolveOptional<TargetService>().Should().BeNull();
+            Assert.That(container.ResolveOptional<TargetService>(), Is.Null);
         }
         else
         {
-            container.ResolveOptional<TargetService>().Should().NotBeNull();
+            Assert.That(container.ResolveOptional<TargetService>(), Is.Not.Null);
         }
     }
 

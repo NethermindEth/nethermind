@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Optimism.ProtocolVersion;
 using NUnit.Framework;
@@ -35,8 +34,8 @@ public class OptimismProtocolVersionTest
         actual.Write(bytesWritten);
         string bytesWrittenHex = bytesWritten.ToHexString(withZeroX: true);
 
-        actual.Should().Be(testCase.Expected);
-        testCase.HexString.Should().Be(bytesWrittenHex);
+        Assert.That(actual, Is.EqualTo(testCase.Expected));
+        Assert.That(testCase.HexString, Is.EqualTo(bytesWrittenHex));
     }
 
     private static IEnumerable<(OptimismProtocolVersion.V0, OptimismProtocolVersion.V0, int)> V0CompareCases()
@@ -79,8 +78,8 @@ public class OptimismProtocolVersionTest
     [TestCaseSource(nameof(V0CompareCases))]
     public void OptimismProtocolVersionV0_Compare((OptimismProtocolVersion.V0 Left, OptimismProtocolVersion.V0 Right, int Expected) testCase)
     {
-        testCase.Left.CompareTo(testCase.Right).Should().Be(testCase.Expected);
-        testCase.Right.CompareTo(testCase.Left).Should().Be(testCase.Expected * -1);
+        Assert.That(testCase.Left.CompareTo(testCase.Right), Is.EqualTo(testCase.Expected));
+        Assert.That(testCase.Right.CompareTo(testCase.Left), Is.EqualTo(testCase.Expected * -1));
     }
 
     [TestCase(4)]
@@ -92,7 +91,7 @@ public class OptimismProtocolVersionTest
         byte[] build = new byte[buildLength];
 
         Func<OptimismProtocolVersion> read = () => new OptimismProtocolVersion.V0(build, 0, 0, 0, 0);
-        read.Should().Throw<ArgumentException>();
+        Assert.That(read, Throws.TypeOf<ArgumentException>());
     }
 
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", false)]
@@ -107,11 +106,11 @@ public class OptimismProtocolVersionTest
 
         if (shouldThrow)
         {
-            read.Should().Throw<OptimismProtocolVersion.ParseException>();
+            Assert.That(read, Throws.TypeOf<OptimismProtocolVersion.ParseException>());
         }
         else
         {
-            read.Should().NotThrow();
+            Assert.That(read, Throws.Nothing);
         }
     }
 
@@ -125,7 +124,7 @@ public class OptimismProtocolVersionTest
     public void OptimismProtocolVersion_Throws_Invalid_Length(byte[] bytes)
     {
         Action read = () => OptimismProtocolVersion.Read(bytes);
-        read.Should().Throw<OptimismProtocolVersion.ParseException>();
+        Assert.That(read, Throws.TypeOf<OptimismProtocolVersion.ParseException>());
     }
 
     [TestCase(1)]
@@ -137,6 +136,6 @@ public class OptimismProtocolVersionTest
         bytes[0] = version;
 
         Action read = () => OptimismProtocolVersion.Read(bytes);
-        read.Should().Throw<OptimismProtocolVersion.ParseException>();
+        Assert.That(read, Throws.TypeOf<OptimismProtocolVersion.ParseException>());
     }
 }

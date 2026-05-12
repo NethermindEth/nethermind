@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Db;
@@ -60,7 +59,7 @@ public class CompressingStoreTests
         ctx.Compressed[Key] = encoded.Bytes;
 
         Assert.That(encoded.Bytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
-        ctx.Wrapped[Key]!.Length.Should().Be(5);
+        Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
     }
 
     [Test]
@@ -81,7 +80,7 @@ public class CompressingStoreTests
         {
             ctx.Compressed.DangerousReleaseMemory(span);
         }
-        ctx.Wrapped[Key]!.Length.Should().Be(5);
+        Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
     }
 
     [Test]
@@ -107,7 +106,7 @@ public class CompressingStoreTests
 
         Assert.That(EOABytes, Is.EqualTo(ctx.Compressed[Key]).AsCollection);
 
-        ctx.Wrapped[Key]!.Length.Should().Be(5);
+        Assert.That(ctx.Wrapped[Key]!.Length, Is.EqualTo(5));
     }
 
     [Test]
@@ -123,7 +122,7 @@ public class CompressingStoreTests
 
         tunable.Tune(ITunableDb.TuneType.HeavyWrite);
 
-        ctx.Wrapped.WasTunedWith(ITunableDb.TuneType.HeavyWrite).Should().BeTrue();
+        Assert.That(ctx.Wrapped.WasTunedWith(ITunableDb.TuneType.HeavyWrite), Is.True);
     }
 
     private class Context

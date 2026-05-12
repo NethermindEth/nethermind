@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -43,13 +42,13 @@ public class DbTrackerTests
         IDbFactory dbFactory = container.Resolve<IDbFactory>();
 
         DbMonitoringModule.DbTracker tracker = container.Resolve<DbMonitoringModule.DbTracker>();
-        tracker.GetAllDbMeta().Count().Should().Be(0);
+        Assert.That(tracker.GetAllDbMeta().Count(), Is.EqualTo(0));
 
         dbFactory.CreateDb(new DbSettings("TestDb", "TestDb"));
 
-        tracker.GetAllDbMeta().Count().Should().Be(1);
+        Assert.That(tracker.GetAllDbMeta().Count(), Is.EqualTo(1));
         KeyValuePair<string, IDbMeta> firstEntry = tracker.GetAllDbMeta().First();
-        firstEntry.Key.Should().Be("TestDb");
+        Assert.That(firstEntry.Key, Is.EqualTo("TestDb"));
     }
 
     [Parallelizable(ParallelScope.None)]

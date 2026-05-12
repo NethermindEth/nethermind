@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
@@ -38,7 +37,7 @@ namespace Nethermind.Network.Test
         public async Task init_should_load_static_nodes_from_the_file()
         {
             await _staticNodesManager.InitAsync();
-            _staticNodesManager.Nodes.Count().Should().Be(2);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(2));
         }
 
         [Test]
@@ -46,18 +45,18 @@ namespace Nethermind.Network.Test
         {
             ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();
 
-            _staticNodesManager.Nodes.Count().Should().Be(0);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(1);
-            (await listTask).Count.Should().Be(1);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
+            Assert.That((await listTask).Count, Is.EqualTo(1));
         }
 
         [Test]
         public async Task is_static_should_report_correctly()
         {
-            _staticNodesManager.IsStatic(Enode).Should().BeFalse();
+            Assert.That(_staticNodesManager.IsStatic(Enode), Is.False);
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.IsStatic(Enode).Should().BeTrue();
+            Assert.That(_staticNodesManager.IsStatic(Enode), Is.True);
         }
 
         [Test]
@@ -68,7 +67,7 @@ namespace Nethermind.Network.Test
             await _staticNodesManager.AddAsync(Enode, false);
             List<Node> nodes = await listTask;
 
-            nodes[0].IsStatic.Should().BeTrue();
+            Assert.That(nodes[0].IsStatic, Is.True);
         }
 
         [Test]
@@ -77,10 +76,10 @@ namespace Nethermind.Network.Test
             bool eventRaised = false;
             _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; };
             await _staticNodesManager.AddAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(1);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(1));
             await _staticNodesManager.RemoveAsync(Enode, false);
-            _staticNodesManager.Nodes.Count().Should().Be(0);
-            eventRaised.Should().BeTrue();
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
+            Assert.That(eventRaised, Is.True);
         }
 
         [Test]
@@ -90,7 +89,7 @@ namespace Nethermind.Network.Test
             await File.WriteAllTextAsync(tempFile.Path, string.Empty);
             _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
             await _staticNodesManager.InitAsync();
-            _staticNodesManager.Nodes.Count().Should().Be(0);
+            Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
         }
     }
 }

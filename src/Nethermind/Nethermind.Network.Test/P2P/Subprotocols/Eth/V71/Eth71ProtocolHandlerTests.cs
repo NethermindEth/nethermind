@@ -156,7 +156,7 @@ public class Eth71ProtocolHandlerTests
         HandleZeroMessage(response!, Eth71MessageCode.BlockAccessLists);
 
         using IByteArrayList result = await task;
-        Assert.That(result, Has.Count.EqualTo(2));
+        Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].SequenceEqual(bal1), Is.True);
         Assert.That(result[1].SequenceEqual(bal2), Is.True);
         Assert.Throws<ObjectDisposedException>(() => _ = sentRequest!.Hashes[0]);
@@ -179,7 +179,7 @@ public class Eth71ProtocolHandlerTests
         IByteArrayList result = await _handler.GetBlockAccessLists(
             Array.Empty<Hash256>(), CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(0));
+        Assert.That(result.Count, Is.EqualTo(0));
         result.Dispose();
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetBlockAccessListsMessage>());
     }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -44,8 +43,8 @@ public class ProcessedTransactionsDbCleanerTests
             blobTxStorage.AddBlobTransactionsFromBlock(blockOfTxs, txs);
         }
 
-        blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs).Should().BeTrue();
-        returnedTxs!.Length.Should().Be(2);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out Transaction[]? returnedTxs), Is.True);
+        Assert.That(returnedTxs!.Length, Is.EqualTo(2));
 
         IBlockFinalizationManager finalizationManager = Substitute.For<IBlockFinalizationManager>();
         ProcessedTransactionsDbCleaner dbCleaner = new(finalizationManager, columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs), _logManager);
@@ -56,6 +55,6 @@ public class ProcessedTransactionsDbCleanerTests
 
         await dbCleaner.CleaningTask;
 
-        blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out _).Should().Be(blockOfTxs > finalizedBlock);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockOfTxs, out _), Is.EqualTo(blockOfTxs > finalizedBlock));
     }
 }

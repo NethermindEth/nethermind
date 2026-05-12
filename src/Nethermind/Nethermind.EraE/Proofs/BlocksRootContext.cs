@@ -20,6 +20,8 @@ public enum AccumulatorType
 
 public sealed class BlocksRootContext : IDisposable
 {
+    private const int SlotsPerHistoricalRoot = 8192;
+
     private readonly ArrayPoolList<ValueHash256> _blockRoots = new(8192);
     private readonly ArrayPoolList<ValueHash256> _stateRoots = new(8192);
     private readonly ArrayPoolList<(Hash256 Hash, UInt256 Td)> _blockHashes = new(8192);
@@ -87,6 +89,7 @@ public sealed class BlocksRootContext : IDisposable
                 break;
 
             case AccumulatorType.HistoricalRoots:
+                PadRootVectors();
                 HistoricalBatch.Merkleize(
                     HistoricalBatch.From(_blockRoots.AsSpan(), _stateRoots.AsSpan()),
                     out UInt256 historicalRoot);
@@ -94,6 +97,7 @@ public sealed class BlocksRootContext : IDisposable
                 break;
 
             case AccumulatorType.HistoricalSummaries:
+                PadRootVectors();
                 ValueHash256Vector.Merkleize(ValueHash256Vector.From(_blockRoots.AsSpan()), out UInt256 blockRoot);
                 ValueHash256Vector.Merkleize(ValueHash256Vector.From(_stateRoots.AsSpan()), out UInt256 stateRoot);
                 _historicalSummary = new HistoricalSummary(
@@ -119,6 +123,15 @@ public sealed class BlocksRootContext : IDisposable
             _ when specProvider.MergeBlockNumber is { BlockNumber: var merge } && forkActivation.BlockNumber >= merge => AccumulatorType.HistoricalRoots,
             _ => AccumulatorType.HistoricalHashesAccumulator
         };
+
+    private void PadRootVectors()
+    {
+        while (_blockRoots.Count < SlotsPerHistoricalRoot)
+        {
+            _blockRoots.Add(default);
+            _stateRoots.Add(default);
+        }
+    }
 
     private static ValueHash256 UInt256ToHash(ref UInt256 value) =>
         new(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref value, 1)));

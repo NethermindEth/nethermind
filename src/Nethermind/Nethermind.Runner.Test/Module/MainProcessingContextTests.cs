@@ -4,7 +4,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -50,6 +49,6 @@ public class MainProcessingContextTests
                 .Signed(TestItem.PrivateKeyA)
                 .TestObject);
 
-        totalTransactionProcessed.Should().Be(1);
+        Assert.That(totalTransactionProcessed, Is.EqualTo(1));
     }
 }

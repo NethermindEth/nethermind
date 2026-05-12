@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -81,7 +80,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext valueContext = rlp.Bytes.AsRlpValueContext();
             TxReceipt deserialized = decoder.Decode(ref valueContext, RlpBehaviors.Storage);
 
-            deserialized.Should().BeEquivalentTo(GetExpected());
+            deserialized.AssertEquivalentTo(GetExpected());
         }
 
         [Test]
@@ -130,15 +129,15 @@ namespace Nethermind.Core.Test.Encoding
             decoder.DecodeStructRef(ref ctx, RlpBehaviors.Storage, out TxReceiptStructRef deserialized);
 
             Assert.That(deserialized.TxType, Is.EqualTo(txReceipt.TxType), "tx type");
-            deserialized.BlockHash.Bytes.Length.Should().Be(0);
+            Assert.That(deserialized.BlockHash.Bytes.Length, Is.EqualTo(0));
             Assert.That(deserialized.BlockNumber, Is.EqualTo(0), "block number");
             Assert.That(deserialized.Index, Is.EqualTo(0), "index");
-            deserialized.ContractAddress.Bytes.Length.Should().Be(0);
+            Assert.That(deserialized.ContractAddress.Bytes.Length, Is.EqualTo(0));
             Assert.That(deserialized.Sender.ToString(), Is.EqualTo(txReceipt.Sender.ToString()), "sender");
             Assert.That(deserialized.GasUsed, Is.EqualTo(0), "gas used");
             Assert.That(deserialized.GasUsedTotal, Is.EqualTo(txReceipt.GasUsedTotal), "gas used total");
-            deserialized.Bloom.Bytes.Length.Should().Be(0);
-            deserialized.Recipient.Bytes.Length.Should().Be(0);
+            Assert.That(deserialized.Bloom.Bytes.Length, Is.EqualTo(0));
+            Assert.That(deserialized.Recipient.Bytes.Length, Is.EqualTo(0));
             Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
         }
 
@@ -207,7 +206,7 @@ namespace Nethermind.Core.Test.Encoding
             using (NettyRlpStream nettyRlpStream = decoder.EncodeToNewNettyStream(receipts))
             {
                 byte[] nettyBytes = nettyRlpStream.AsSpan().ToArray();
-                nettyBytes.Should().BeEquivalentTo(rlp.Bytes);
+                Assert.That(nettyBytes, Is.EqualTo(rlp.Bytes));
             }
         }
 

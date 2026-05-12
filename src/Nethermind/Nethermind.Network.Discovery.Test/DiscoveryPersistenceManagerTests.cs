@@ -5,7 +5,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -81,7 +80,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await cts.CancelAsync();
 
-            _discoveryDb.Count.Should().Be(nodes.Length);
+            Assert.That(_discoveryDb.Count, Is.EqualTo(nodes.Length));
         }
     }
 }

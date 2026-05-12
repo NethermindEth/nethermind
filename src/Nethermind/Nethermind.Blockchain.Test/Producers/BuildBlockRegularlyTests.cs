@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using NUnit.Framework;
 
@@ -20,6 +19,6 @@ public class BuildBlockRegularlyTests
         trigger.TriggerBlockProduction += (s, e) => triggered++;
         await Task.Delay(50);
 
-        triggered.Should().BeInRange(1, 20);
+        Assert.That(triggered, Is.InRange(1, 20));
     }
 }

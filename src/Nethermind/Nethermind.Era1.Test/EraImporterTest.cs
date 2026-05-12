@@ -6,7 +6,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
 using System.IO.Abstractions;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Era1.Exceptions;
@@ -176,7 +175,7 @@ public class EraImporterTest
         reachedBlock11.Wait(token);
         await Task.Delay(100);
 
-        maxSuggestedBlocks.Should().Be(expectedStopBlock);
+        Assert.That(maxSuggestedBlocks, Is.EqualTo(expectedStopBlock));
         shouldUpdateMainChain = true;
         inTree.UpdateMainChain([inTree.FindBlock(expectedStopBlock, BlockTreeLookupOptions.None)!], true);
 
@@ -208,6 +207,6 @@ public class EraImporterTest
         Func<Task> act = () => sut.Import(destinationPath, 30, long.MaxValue,
             Path.Join(destinationPath, EraExporter.AccumulatorFileName), token);
 
-        await act.Should().ThrowAsync<ArgumentException>();
+        Assert.That(async () => await act(), Throws.TypeOf<ArgumentException>());
     }
 }

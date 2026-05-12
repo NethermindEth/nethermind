@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -474,8 +473,7 @@ namespace Nethermind.Blockchain.Test
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
-            selectedTransactions.Should()
-                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+            selectedTransactions.EqualToTransactions(testCase.ExpectedSelectedTransactions);
         }
 
         [Test]
@@ -502,8 +500,7 @@ namespace Nethermind.Blockchain.Test
             testCase.ExpectedSelectedTransactions.Add(first);
 
             IReadOnlyList<Transaction> selectedTransactions = SelectTransactions(testCase);
-            selectedTransactions.Should()
-                .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
+            selectedTransactions.EqualToTransactions(testCase.ExpectedSelectedTransactions);
         }
 
         private static IReadOnlyList<Transaction> SelectTransactions(ProperTransactionsSelectedTestCase testCase)

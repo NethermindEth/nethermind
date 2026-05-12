@@ -3,7 +3,6 @@
 
 using System.IO;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.BalRecorder.Test;
@@ -33,7 +32,7 @@ public class EraFlatStoreTests
 
             store.Write(100, payload);
 
-            TryReadBytes(store, 100).Should().Equal(payload);
+            Assert.That(TryReadBytes(store, 100), Is.EqualTo(payload));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -43,7 +42,7 @@ public class EraFlatStoreTests
     {
         using SlotStore store = new(TempDir());
         bool found = store.TryRead(999, static (_, _) => { }, 0);
-        found.Should().BeFalse();
+        Assert.That(found, Is.False);
     }
 
     [Test]
@@ -56,7 +55,7 @@ public class EraFlatStoreTests
             store.Write(0, [0xAA]);
 
             // slot 1 is in the same era file but was never written
-            store.TryRead(1, static (_, _) => { }, 0).Should().BeFalse();
+            Assert.That(store.TryRead(1, static (_, _) => { }, 0), Is.False);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -71,8 +70,8 @@ public class EraFlatStoreTests
             store.Write(0, [0xAA]);
             store.Write(1, [0xBB, 0xCC]);
 
-            TryReadBytes(store, 0).Should().Equal([0xAA]);
-            TryReadBytes(store, 1).Should().Equal([0xBB, 0xCC]);
+            Assert.That(TryReadBytes(store, 0), Is.EqualTo([0xAA]));
+            Assert.That(TryReadBytes(store, 1), Is.EqualTo([0xBB, 0xCC]));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -87,10 +86,10 @@ public class EraFlatStoreTests
             store.Write(0, [0xAA]);
             store.Write(8192, [0xBB]);
 
-            Directory.GetFiles(dir, "*.bin").Length.Should().Be(2);
+            Assert.That(Directory.GetFiles(dir, "*.bin").Length, Is.EqualTo(2));
 
-            TryReadBytes(store, 0).Should().Equal([0xAA]);
-            TryReadBytes(store, 8192).Should().Equal([0xBB]);
+            Assert.That(TryReadBytes(store, 0), Is.EqualTo([0xAA]));
+            Assert.That(TryReadBytes(store, 8192), Is.EqualTo([0xBB]));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -105,7 +104,7 @@ public class EraFlatStoreTests
             store.Write(42, [0xAA]);
             store.Write(42, [0xBB]);
 
-            TryReadBytes(store, 42).Should().Equal([0xAA]);
+            Assert.That(TryReadBytes(store, 42), Is.EqualTo([0xAA]));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -119,8 +118,8 @@ public class EraFlatStoreTests
             using SlotStore store = new(dir, "bal");
             store.Write(0, [0x01]);
 
-            Directory.GetFiles(dir, "*.bal").Should().HaveCount(1);
-            Directory.GetFiles(dir, "*.bin").Should().HaveCount(0);
+            Assert.That((Directory.GetFiles(dir, "*.bal")).Length, Is.EqualTo(1));
+            Assert.That((Directory.GetFiles(dir, "*.bin")).Length, Is.EqualTo(0));
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -141,7 +140,7 @@ public class EraFlatStoreTests
 
             for (int i = 0; i < 64; i++)
             {
-                TryReadBytes(store, i).Should().Equal([(byte)i], $"slot {i} should be intact");
+                Assert.That(TryReadBytes(store, i), Is.EqualTo(new[] { (byte)i }), $"slot {i} should be intact");
             }
         }
         finally { Directory.Delete(dir, true); }
@@ -155,7 +154,7 @@ public class EraFlatStoreTests
         {
             using (SlotStore w = new(dir)) w.Write(5, [0xEE]);
             using SlotStore r = new(dir);
-            TryReadBytes(r, 5).Should().Equal([0xEE]);
+            Assert.That(TryReadBytes(r, 5), Is.EqualTo([0xEE]));
         }
         finally { Directory.Delete(dir, true); }
     }

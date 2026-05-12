@@ -1,12 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL.Decoding;
@@ -63,8 +60,31 @@ public class BatchDecoderTests
         byte[] bytes = Bytes.FromHexString(hex);
         List<BatchV1> decoded = BatchDecoder.DecodeSpanBatches(bytes).ToList();
 
-        decoded.Count.Should().Be(1);
-        decoded[0].Should().BeEquivalentTo(expected, options => options
-            .Using((IEqualityComparer<ReadOnlyMemory<byte>>)new MemoryContentsComparer<byte>()));
+        Assert.That(decoded.Count, Is.EqualTo(1));
+        AssertBatchEqual(decoded[0], expected);
+    }
+
+    private static void AssertBatchEqual(BatchV1 actual, BatchV1 expected)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.RelTimestamp, Is.EqualTo(expected.RelTimestamp));
+            Assert.That(actual.L1OriginNum, Is.EqualTo(expected.L1OriginNum));
+            Assert.That(actual.ParentCheck.ToArray(), Is.EqualTo(expected.ParentCheck.ToArray()));
+            Assert.That(actual.L1OriginCheck.ToArray(), Is.EqualTo(expected.L1OriginCheck.ToArray()));
+            Assert.That(actual.BlockCount, Is.EqualTo(expected.BlockCount));
+            Assert.That(actual.OriginBits, Is.EqualTo(expected.OriginBits));
+            Assert.That(actual.BlockTxCounts, Is.EqualTo(expected.BlockTxCounts));
+            Assert.That(actual.Txs.ContractCreationBits, Is.EqualTo(expected.Txs.ContractCreationBits));
+            Assert.That(actual.Txs.YParityBits, Is.EqualTo(expected.Txs.YParityBits));
+            Assert.That(actual.Txs.Signatures, Is.EqualTo(expected.Txs.Signatures));
+            Assert.That(actual.Txs.Tos, Is.EqualTo(expected.Txs.Tos));
+            Assert.That(actual.Txs.Data.Select(static d => d.ToArray()).ToArray(), Is.EqualTo(expected.Txs.Data.Select(static d => d.ToArray()).ToArray()));
+            Assert.That(actual.Txs.Types, Is.EqualTo(expected.Txs.Types));
+            Assert.That(actual.Txs.TotalLegacyTxCount, Is.EqualTo(expected.Txs.TotalLegacyTxCount));
+            Assert.That(actual.Txs.Nonces, Is.EqualTo(expected.Txs.Nonces));
+            Assert.That(actual.Txs.Gases, Is.EqualTo(expected.Txs.Gases));
+            Assert.That(actual.Txs.ProtectedBits, Is.EqualTo(expected.Txs.ProtectedBits));
+        }
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -27,6 +26,7 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V67;
 
@@ -84,14 +84,14 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Metadata_correct()
     {
-        _handler.ProtocolCode.Should().Be("eth");
-        _handler.Name.Should().Be("eth67");
-        _handler.ProtocolVersion.Should().Be(67);
-        _handler.MessageIdSpaceSize.Should().Be(17);
-        _handler.IncludeInTxPool.Should().BeTrue();
-        _handler.ClientId.Should().Be(_session.Node?.ClientId);
-        _handler.HeadHash.Should().BeNull();
-        _handler.HeadNumber.Should().Be(0);
+        Assert.That(_handler.ProtocolCode, Is.EqualTo("eth"));
+        Assert.That(_handler.Name, Is.EqualTo("eth67"));
+        Assert.That(_handler.ProtocolVersion, Is.EqualTo(67));
+        Assert.That(_handler.MessageIdSpaceSize, Is.EqualTo(17));
+        Assert.That(_handler.IncludeInTxPool, Is.True);
+        Assert.That(_handler.ClientId, Is.EqualTo(_session.Node?.ClientId));
+        Assert.That(_handler.HeadHash, Is.Null);
+        Assert.That(_handler.HeadNumber, Is.EqualTo(0));
     }
 
     [Test]
@@ -113,7 +113,7 @@ public class Eth67ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        act.Should().NotThrow<SubprotocolException>();
+        AssertDoesNotThrowExceptionOfType<SubprotocolException>(act);
     }
 
     [Test]

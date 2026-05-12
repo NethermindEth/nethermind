@@ -6,7 +6,6 @@
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
@@ -90,11 +89,9 @@ public class BlockCachePreWarmerTests
         await preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
         // With pool capacity 1 and two parallel workers, at least one eviction must occur.
-        created.Count.Should().BeGreaterThanOrEqualTo(2,
-            "two distinct senders must have exercised two concurrent workers");
+        Assert.That(created.Count, Is.GreaterThanOrEqualTo(2), "two distinct senders must have exercised two concurrent workers");
         int evictedCount = created.Count - 1; // at most 1 retained in pool
-        disposed.Count.Should().BeGreaterThanOrEqualTo(evictedCount,
-            "all envs evicted from the pool must have Dispose() called immediately");
+        Assert.That(disposed.Count, Is.GreaterThanOrEqualTo(evictedCount), "all envs evicted from the pool must have Dispose() called immediately");
     }
 
     /// <summary>
@@ -110,13 +107,12 @@ public class BlockCachePreWarmerTests
 
         await preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
 
-        disposed.Count.Should().Be(0, "no eviction should have occurred with a large pool");
-        created.Count.Should().BeGreaterThanOrEqualTo(1, "at least one env must have been created");
+        Assert.That(disposed.Count, Is.EqualTo(0), "no eviction should have occurred with a large pool");
+        Assert.That(created.Count, Is.GreaterThanOrEqualTo(1), "at least one env must have been created");
 
         preWarmer.Dispose();
 
-        disposed.Count.Should().Be(created.Count,
-            "all retained envs must be disposed when the prewarmer is disposed");
+        Assert.That(disposed.Count, Is.EqualTo(created.Count), "all retained envs must be disposed when the prewarmer is disposed");
     }
 
     /// <summary>
@@ -142,10 +138,8 @@ public class BlockCachePreWarmerTests
 
         await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
 
-        preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().BeTrue(
-            "AddressA is in the BAL and should be pre-warmed");
-        preBlockCaches.StateCache.TryGetValue(TestItem.AddressB, out _).Should().BeTrue(
-            "AddressB is in the BAL and should be pre-warmed");
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA is in the BAL and should be pre-warmed");
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressB, out _), Is.True, "AddressB is in the BAL and should be pre-warmed");
     }
 
     /// <summary>
@@ -179,14 +173,11 @@ public class BlockCachePreWarmerTests
         await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
 
         // Changed slot should be warmed
-        preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _).Should().BeTrue(
-            "slot 1 (changed) should be pre-warmed via BAL");
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _), Is.True, "slot 1 (changed) should be pre-warmed via BAL");
         // Read-only slot should be warmed
-        preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _).Should().BeTrue(
-            "slot 2 (read-only) should be pre-warmed via BAL");
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _), Is.True, "slot 2 (read-only) should be pre-warmed via BAL");
         // Storage from a different account
-        preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _).Should().BeTrue(
-            "slot 10 on AddressB should be pre-warmed via BAL");
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _), Is.True, "slot 10 on AddressB should be pre-warmed via BAL");
     }
 
     /// <summary>
@@ -212,8 +203,7 @@ public class BlockCachePreWarmerTests
 
         await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
 
-        preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _).Should().BeFalse(
-            "BAL path should be skipped when ParallelExecutionBatchRead is disabled");
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _), Is.False, "BAL path should be skipped when ParallelExecutionBatchRead is disabled");
     }
 
     /// <summary>
@@ -243,8 +233,7 @@ public class BlockCachePreWarmerTests
 
         // AddressA should still be warmed via speculative tx execution (not BAL path)
         // since it's a sender in the transactions
-        preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().BeTrue(
-            "AddressA should be warmed via speculative execution even without BAL path");
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA should be warmed via speculative execution even without BAL path");
     }
 
     /// <summary>
@@ -280,8 +269,7 @@ public class BlockCachePreWarmerTests
 
         await preWarmer.PreWarmCaches(block, BuildParentHeader(), spec);
 
-        preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().Be(expectWarmed,
-            $"ParallelExec={parallelExecution}, BALs={hasBal}, BatchRead={batchRead} => warmed={expectWarmed}");
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.EqualTo(expectWarmed), $"ParallelExec={parallelExecution}, BALs={hasBal}, BatchRead={batchRead} => warmed={expectWarmed}");
     }
 
     [Test]
@@ -307,35 +295,35 @@ public class BlockCachePreWarmerTests
         await preWarmer.PreWarmCaches(block, BuildParentHeader(), Amsterdam.Instance);
 
         AddressAsKey warmedAddress = TestItem.AddressA;
-        preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _).Should().BeTrue();
-        preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _).Should().BeTrue();
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in warmedAddress, out _), Is.True);
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in warmedCell, out _), Is.True);
 
         preBlockCaches.StateCache.Set(in warmedAddress, new Account((UInt256)777));
         preBlockCaches.StorageCache.Set(in warmedCell, [0x24]);
 
         AddressAsKey missedAddress = TestItem.AddressB;
         StorageCell missedCell = new(TestItem.AddressB, 10);
-        preBlockCaches.StateCache.TryGetValue(in missedAddress, out _).Should().BeFalse();
-        preBlockCaches.StorageCache.TryGetValue(in missedCell, out _).Should().BeFalse();
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out _), Is.False);
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out _), Is.False);
 
         BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy validationPolicy = new(envFactory, preBlockCaches);
         using IReadOnlyTxProcessorSource source = validationPolicy.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(BuildParentHeader());
 
         IPreBlockCaches scopedCaches = (IPreBlockCaches)scope.WorldState.ScopeProvider;
-        scopedCaches.Caches.Should().BeSameAs(preBlockCaches);
-        scopedCaches.IsWarmWorldState.Should().BeFalse("parallel validation parent readers must populate cache misses");
+        Assert.That(scopedCaches.Caches, Is.SameAs(preBlockCaches));
+        Assert.That(scopedCaches.IsWarmWorldState, Is.False, "parallel validation parent readers must populate cache misses");
 
-        scope.WorldState.GetBalance(TestItem.AddressA).Should().Be((UInt256)777);
-        new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true).Should().Be((UInt256)0x24);
+        Assert.That(scope.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)777));
+        Assert.That(new UInt256(scope.WorldState.Get(warmedCell), isBigEndian: true), Is.EqualTo((UInt256)0x24));
 
-        scope.WorldState.GetBalance(TestItem.AddressB).Should().Be(1_000_000.Ether);
-        new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true).Should().Be((UInt256)0x99);
+        Assert.That(scope.WorldState.GetBalance(TestItem.AddressB), Is.EqualTo(1_000_000.Ether));
+        Assert.That(new UInt256(scope.WorldState.Get(missedCell), isBigEndian: true), Is.EqualTo((UInt256)0x99));
 
-        preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount).Should().BeTrue();
-        populatedAccount!.Balance.Should().Be(1_000_000.Ether);
-        preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage).Should().BeTrue();
-        new UInt256(populatedStorage, isBigEndian: true).Should().Be((UInt256)0x99);
+        Assert.That(preBlockCaches.StateCache.TryGetValue(in missedAddress, out Account? populatedAccount), Is.True);
+        Assert.That(populatedAccount!.Balance, Is.EqualTo(1_000_000.Ether));
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage), Is.True);
+        Assert.That(new UInt256(populatedStorage, isBigEndian: true), Is.EqualTo((UInt256)0x99));
     }
 
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)

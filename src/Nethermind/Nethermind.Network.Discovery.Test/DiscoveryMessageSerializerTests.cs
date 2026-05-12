@@ -15,7 +15,6 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats.Model;
-using FluentAssertions;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -160,10 +159,7 @@ public class DiscoveryMessageSerializerTests
         EnrResponseMsg msg = BuildEnrResponse(differentKey.CompressedPublicKey);
         using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
 
-        _messageSerializationService
-            .Invoking(s => s.Deserialize<EnrResponseMsg>(serialized))
-            .Should().Throw<NetworkingException>()
-            .Where(ex => ex.Message.Contains("Invalid ENR signature"));
+        Assert.That(() => _messageSerializationService.Deserialize<EnrResponseMsg>(serialized), Throws.TypeOf<NetworkingException>().And.Matches<NetworkingException>(ex => ex.Message.Contains("Invalid ENR signature")));
     }
 
     [Test]

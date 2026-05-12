@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -51,11 +50,11 @@ public class RlpByteArrayListTests
     public void SequentialAccess_ReturnsCorrectData(byte[][] items)
     {
         using RlpByteArrayList list = CreateList(items);
-        list.Count.Should().Be(items.Length);
+        Assert.That(list.Count, Is.EqualTo(items.Length));
 
         for (int i = 0; i < items.Length; i++)
         {
-            list[i].ToArray().Should().BeEquivalentTo(items[i], $"item {i} should match");
+            Assert.That(list[i].ToArray(), Is.EqualTo(items[i]), $"item {i} should match");
         }
     }
 
@@ -68,7 +67,7 @@ public class RlpByteArrayListTests
         {
             byte[] first = list[i].ToArray();
             byte[] second = list[i].ToArray();
-            second.Should().BeEquivalentTo(first, $"re-access of item {i} should be identical");
+            Assert.That(second, Is.EqualTo(first), $"re-access of item {i} should be identical");
         }
     }
 
@@ -80,14 +79,14 @@ public class RlpByteArrayListTests
         using RlpByteArrayList list = CreateList(items);
 
         // Access last item first to set cache forward
-        list[items.Length - 1].ToArray().Should().BeEquivalentTo(items[^1]);
+        Assert.That(list[items.Length - 1].ToArray(), Is.EqualTo(items[^1]));
         // Then access first item (requires cache reset)
-        list[0].ToArray().Should().BeEquivalentTo(items[0]);
+        Assert.That(list[0].ToArray(), Is.EqualTo(items[0]));
         // Access middle if possible
         if (items.Length > 2)
         {
             int mid = items.Length / 2;
-            list[mid].ToArray().Should().BeEquivalentTo(items[mid]);
+            Assert.That(list[mid].ToArray(), Is.EqualTo(items[mid]));
         }
     }
 

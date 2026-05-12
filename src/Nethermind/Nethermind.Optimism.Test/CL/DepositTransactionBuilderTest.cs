@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
@@ -42,7 +41,7 @@ public class DepositTransactionBuilderTest
         ReceiptForRpc[] receipts = [];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
     [Test]
@@ -66,7 +65,7 @@ public class DepositTransactionBuilderTest
         ];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
 
@@ -159,7 +158,7 @@ public class DepositTransactionBuilderTest
             },
         ];
         Action build = () => _builder.BuildUserDepositTransactions(receipts).ToArray();
-        build.Should().Throw<ArgumentException>();
+        Assert.That(build, Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -207,7 +206,7 @@ public class DepositTransactionBuilderTest
         ];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
     [Test]
@@ -269,10 +268,10 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(1);
+        Assert.That(depositTransactions.Length, Is.EqualTo(1));
         // NOTE: Check if we can simplify this assertion
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
+        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction);
+        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction.Data.ToArray()));
     }
 
     [Test]
@@ -333,10 +332,10 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(1);
+        Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
+        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction);
+        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction.Data.ToArray()));
     }
 
     [Test]
@@ -421,10 +420,10 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(1);
+        Assert.That(depositTransactions.Length, Is.EqualTo(1));
 
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction.Data.ToArray());
+        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction);
+        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction.Data.ToArray()));
     }
 
     [Test]
@@ -524,12 +523,12 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_1.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(2);
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data.ToArray());
+        Assert.That(depositTransactions.Length, Is.EqualTo(2));
+        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction_0);
+        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction_0.Data.ToArray()));
 
-        depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
-        depositTransactions[1].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data.ToArray());
+        AssertEquivalentExceptData(depositTransactions[1], expectedTransaction_1);
+        Assert.That(depositTransactions[1].Data.ToArray(), Is.EqualTo(expectedTransaction_1.Data.ToArray()));
     }
 
     [Test]
@@ -601,7 +600,7 @@ public class DepositTransactionBuilderTest
         ];
         Transaction[] depositTransactions = _builder.BuildUserDepositTransactions(receipts).ToArray();
 
-        depositTransactions.Length.Should().Be(0);
+        Assert.That(depositTransactions.Length, Is.EqualTo(0));
     }
 
     [Test]
@@ -712,11 +711,53 @@ public class DepositTransactionBuilderTest
             .WithData(depositLogEventV0_1.Data.ToArray())
             .TestObject;
 
-        depositTransactions.Length.Should().Be(2);
-        depositTransactions[0].Should().BeEquivalentTo(expectedTransaction_0, config => config.Excluding(x => x.Data));
-        depositTransactions[0].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_0.Data.ToArray());
+        Assert.That(depositTransactions.Length, Is.EqualTo(2));
+        AssertEquivalentExceptData(depositTransactions[0], expectedTransaction_0);
+        Assert.That(depositTransactions[0].Data.ToArray(), Is.EqualTo(expectedTransaction_0.Data.ToArray()));
 
-        depositTransactions[1].Should().BeEquivalentTo(expectedTransaction_1, config => config.Excluding(x => x.Data));
-        depositTransactions[1].Data.ToArray().Should().BeEquivalentTo(expectedTransaction_1.Data.ToArray());
+        AssertEquivalentExceptData(depositTransactions[1], expectedTransaction_1);
+        Assert.That(depositTransactions[1].Data.ToArray(), Is.EqualTo(expectedTransaction_1.Data.ToArray()));
+    }
+    private static void AssertEquivalentExceptData(Transaction actual, Transaction expected)
+    {
+        ReadOnlyMemory<byte> actualData = actual.Data;
+        ReadOnlyMemory<byte> expectedData = expected.Data;
+        actual.Data = ReadOnlyMemory<byte>.Empty;
+        expected.Data = ReadOnlyMemory<byte>.Empty;
+
+        try
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(actual.ChainId, Is.EqualTo(expected.ChainId));
+                Assert.That(actual.Type, Is.EqualTo(expected.Type));
+                Assert.That(actual.IsAnchorTx, Is.EqualTo(expected.IsAnchorTx));
+                Assert.That(actual.SourceHash, Is.EqualTo(expected.SourceHash));
+                Assert.That(actual.Mint, Is.EqualTo(expected.Mint));
+                Assert.That(actual.IsOPSystemTransaction, Is.EqualTo(expected.IsOPSystemTransaction));
+                Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
+                Assert.That(actual.GasPrice, Is.EqualTo(expected.GasPrice));
+                Assert.That(actual.GasBottleneck, Is.EqualTo(expected.GasBottleneck));
+                Assert.That(actual.DecodedMaxFeePerGas, Is.EqualTo(expected.DecodedMaxFeePerGas));
+                Assert.That(actual.GasLimit, Is.EqualTo(expected.GasLimit));
+                Assert.That(actual.To, Is.EqualTo(expected.To));
+                Assert.That(actual.Value, Is.EqualTo(expected.Value));
+                Assert.That(actual.SenderAddress, Is.EqualTo(expected.SenderAddress));
+                Assert.That(actual.Signature, Is.EqualTo(expected.Signature));
+                Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+                Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
+                Assert.That(actual.AccessList, Is.EqualTo(expected.AccessList));
+                Assert.That(actual.MaxFeePerBlobGas, Is.EqualTo(expected.MaxFeePerBlobGas));
+                Assert.That(actual.BlobVersionedHashes, Is.EqualTo(expected.BlobVersionedHashes));
+                Assert.That(actual.NetworkWrapper, Is.EqualTo(expected.NetworkWrapper));
+                Assert.That(actual.IsServiceTransaction, Is.EqualTo(expected.IsServiceTransaction));
+                Assert.That(actual.PoolIndex, Is.EqualTo(expected.PoolIndex));
+            });
+        }
+        finally
+        {
+            actual.Data = actualData;
+            expected.Data = expectedData;
+        }
     }
 }

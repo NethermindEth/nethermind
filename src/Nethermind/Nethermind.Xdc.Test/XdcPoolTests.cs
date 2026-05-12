@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -26,7 +25,7 @@ public class XdcPoolTests
         XdcPool<Vote> pool = new();
         Vote vote = new(MakeBlockInfo(), 0); // no Signer set
 
-        pool.Invoking(p => p.Add(vote)).Should().Throw<ArgumentException>();
+        Assert.That(() => pool.Add(vote), Throws.TypeOf<ArgumentException>());
     }
 
     [Test]
@@ -38,7 +37,7 @@ public class XdcPoolTests
         pool.Add(vote);
         pool.Add(vote);
 
-        pool.GetCount(vote).Should().Be(1);
+        Assert.That(pool.GetCount(vote), Is.EqualTo(1));
     }
 
     [Test]
@@ -56,14 +55,14 @@ public class XdcPoolTests
         };
 
         // Same content and same signer, but not equal since signature is different
-        vote1.PoolKey().Should().Be(vote2.PoolKey());
-        vote1.Should().NotBe(vote2);
+        Assert.That(vote1.PoolKey(), Is.EqualTo(vote2.PoolKey()));
+        Assert.That(vote1, Is.Not.EqualTo(vote2));
 
         pool.Add(vote1);
         pool.Add(vote2);
 
         // only one — signer dedup prevents the second vote from being added
-        pool.GetCount(vote1).Should().Be(1);
+        Assert.That(pool.GetCount(vote1), Is.EqualTo(1));
     }
 
     [Test]
@@ -77,7 +76,7 @@ public class XdcPoolTests
         pool.Add(vote1);
         pool.Add(vote2);
 
-        pool.GetCount(vote1).Should().Be(2);
+        Assert.That(pool.GetCount(vote1), Is.EqualTo(2));
     }
 
     [Test]
@@ -91,7 +90,7 @@ public class XdcPoolTests
         pool.Add(voteRound2);
         pool.EndRound(1);
 
-        pool.GetCount(voteRound1).Should().Be(0);
-        pool.GetCount(voteRound2).Should().Be(1);
+        Assert.That(pool.GetCount(voteRound1), Is.EqualTo(0));
+        Assert.That(pool.GetCount(voteRound2), Is.EqualTo(1));
     }
 }

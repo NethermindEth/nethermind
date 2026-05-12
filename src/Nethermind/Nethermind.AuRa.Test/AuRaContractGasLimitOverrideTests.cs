@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -53,7 +52,7 @@ namespace Nethermind.AuRa.Test
 
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(3999999).WithNumber(blockNumber - 1).TestObject;
 
-            gasLimitOverride.GetGasLimit(header).Should().Be(expected);
+            Assert.That(gasLimitOverride.GetGasLimit(header), Is.EqualTo(expected));
         }
     }
 }

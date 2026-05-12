@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -32,7 +31,7 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(1);
+            Assert.That(result.StatusCode, Is.EqualTo(1));
             AssertGas(result, GasCostOf.Transaction + expectedGasExcludingTx);
         }
 

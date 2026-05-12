@@ -6,7 +6,6 @@ using System.Collections;
 using System.Text;
 using System.Text.Json;
 
-using FluentAssertions;
 using Nethermind.Blockchain.Contracts.Json;
 
 using NUnit.Framework;
@@ -78,9 +77,9 @@ namespace Nethermind.Abi.Test.Json
             try
             {
                 AbiParameter result = converter.Read(ref jsonReader, typeof(AbiParameter), JsonSerializerOptions.Default);
-                AbiParameter expectation = new() { Name = "theName", Type = expectedType };
-                expectedException.Should().BeNull();
-                result.Should().BeEquivalentTo(expectation);
+                Assert.That(expectedException, Is.Null);
+                Assert.That(result.Name, Is.EqualTo("theName"));
+                Assert.That(result.Type, Is.EqualTo(expectedType));
             }
             catch (Exception e)
             {

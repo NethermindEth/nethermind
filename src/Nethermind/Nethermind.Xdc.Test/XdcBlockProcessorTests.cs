@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -48,7 +47,7 @@ internal class XdcBlockProcessorTests
 
         BlockExecutionContext ctx = _processor.CreateBlockExecutionContext(header, spec);
 
-        ctx.PrevRandao.Should().Be(new ValueHash256(expectedPrevRandaoHex));
+        Assert.That(ctx.PrevRandao, Is.EqualTo(new ValueHash256(expectedPrevRandaoHex)));
     }
 
     private class TestableXdcBlockProcessor : XdcBlockProcessor

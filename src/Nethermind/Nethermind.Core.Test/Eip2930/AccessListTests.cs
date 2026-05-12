@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -33,7 +32,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey2, storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -57,7 +56,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey2, storageKey3, storageKey1 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -82,7 +81,7 @@ public class AccessListTests
             (address, new[] { storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -108,7 +107,7 @@ public class AccessListTests
             (address, new[] { storageKey1, storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -128,7 +127,7 @@ public class AccessListTests
             (address2, Array.Empty<UInt256>())
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -154,7 +153,7 @@ public class AccessListTests
             (address2, new[] { storageKey3 })
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]
@@ -185,7 +184,7 @@ public class AccessListTests
             (address2, Array.Empty<UInt256>()),
         };
 
-        accessList.Should().BeEquivalentTo(expected);
+        Assert.That(accessList, Is.EqualTo(expected));
     }
 
     [Test]

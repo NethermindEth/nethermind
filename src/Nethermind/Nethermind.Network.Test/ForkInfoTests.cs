@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -331,7 +330,7 @@ public class ForkInfoTests
         syncServer.Genesis.Returns(Build.A.BlockHeader.WithHash(KnownHashes.MainnetGenesis).TestObject);
         ForkInfo forkInfo = new(specProvider, syncServer);
 
-        forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header).Should().Be(result);
+        Assert.That(forkInfo.ValidateForkId(new ForkId(Bytes.ReadEthUInt32(Bytes.FromHexString(hash)), next), head.Header), Is.EqualTo(result));
     }
 
 
@@ -348,10 +347,10 @@ public class ForkInfoTests
         ChainSpec spec = loader.Load(memoryStream);
         ChainSpecBasedSpecProvider provider = new(spec);
 
-        spec.ChainId.Should().Be(expectedChainId);
-        spec.NetworkId.Should().Be(expectedNetworkId);
-        provider.ChainId.Should().Be(expectedChainId);
-        provider.NetworkId.Should().Be(expectedNetworkId);
+        Assert.That(spec.ChainId, Is.EqualTo(expectedChainId));
+        Assert.That(spec.NetworkId, Is.EqualTo(expectedNetworkId));
+        Assert.That(provider.ChainId, Is.EqualTo(expectedChainId));
+        Assert.That(provider.NetworkId, Is.EqualTo(expectedNetworkId));
     }
 
     public static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
@@ -378,20 +377,20 @@ public class ForkInfoTests
         ForkInfo forkInfo = new(specProvider, syncServer);
         ForkId forkId = forkInfo.GetForkId(head, headTimestamp);
 
-        forkId.Next.Should().Be(next);
-        forkId.ForkHash.Should().Be(expectedForkHash);
+        Assert.That(forkId.Next, Is.EqualTo(next));
+        Assert.That(forkId.ForkHash, Is.EqualTo(expectedForkHash));
 
         // Validate fork info summary
         BlockHeader header = Build.A.BlockHeader.WithNumber(head).WithTimestamp(headTimestamp).TestObject;
         ForkActivationsSummary forkActivationsSummary = forkInfo.GetForkActivationsSummary(header);
 
-        forkActivationsSummary.Current.Id.ForkHash.Should().Be(expectedForkHash);
-        forkActivationsSummary.Current.Id.Next.Should().Be(next);
+        Assert.That(forkActivationsSummary.Current.Id.ForkHash, Is.EqualTo(expectedForkHash));
+        Assert.That(forkActivationsSummary.Current.Id.Next, Is.EqualTo(next));
 
         if (next is 0)
         {
-            forkActivationsSummary.Next.Should().BeNull();
-            forkActivationsSummary.Last.Should().BeNull();
+            Assert.That(forkActivationsSummary.Next, Is.Null);
+            Assert.That(forkActivationsSummary.Last, Is.Null);
             return;
         }
 
@@ -399,11 +398,11 @@ public class ForkInfoTests
 
         if (nextActivation.Timestamp is not null)
         {
-            nextActivation.Timestamp.Should().Be(next);
+            Assert.That(nextActivation.Timestamp, Is.EqualTo(next));
         }
         else
         {
-            nextActivation.BlockNumber.Should().Be((long)next);
+            Assert.That(nextActivation.BlockNumber, Is.EqualTo((long)next));
         }
     }
 

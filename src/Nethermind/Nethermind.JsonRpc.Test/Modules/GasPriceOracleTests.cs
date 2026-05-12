@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -32,9 +31,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = GasPriceOracle.SelectKthSmallestInPlace(list, k);
 
-            result.Should().Be(expected);
-            list.Should().HaveCount(values.Length);
-            list.Should().BeEquivalentTo(values.Select(static v => (UInt256)v)); // ensures mutation doesn't lose/duplicate items
+            Assert.That(result, Is.EqualTo(expected));
+            Assert.That((list).Count, Is.EqualTo(values.Length));
+            Assert.That(list, Is.EquivalentTo(values.Select(static v => (UInt256)v))); // ensures mutation doesn't lose/duplicate items
         }
 
         [TestCaseSource(nameof(SelectKthSmallestInPlace_InvalidKCases))]
@@ -44,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Action act = () => GasPriceOracle.SelectKthSmallestInPlace(list, k);
 
-            act.Should().Throw<ArgumentOutOfRangeException>();
+            Assert.That(act, Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
         private static IEnumerable<TestCaseData> SelectKthSmallestInPlace_Cases()
@@ -97,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = await testGasPriceOracle.GetGasPriceEstimate();
 
-            result.Should().Be((UInt256)7);
+            Assert.That(result, Is.EqualTo((UInt256)7));
         }
 
         [TestCase(null)]
@@ -110,7 +109,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
             UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.Wei) / 100;
-            estimate.Should().BeEquivalentTo(expectedGasPrice);
+            Assert.That(estimate, Is.EqualTo(expectedGasPrice));
         }
 
         [TestCase(3)]
@@ -126,7 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
 
-            estimate.Should().BeEquivalentTo((UInt256?)lastGasPrice);
+            Assert.That(estimate, Is.EqualTo((UInt256?)lastGasPrice));
         }
 
         [TestCase(null)]
@@ -142,7 +141,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = await testGasPriceOracle.GetGasPriceEstimate();
-            estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.Wei)) * 110 / 100);
+            Assert.That(estimate, Is.EqualTo((baseFeePerGas + (gasPrice ?? 1.Wei)) * 110 / 100));
         }
 
         [Test]
@@ -158,7 +157,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256 result = await testGasPriceOracle.GetGasPriceEstimate();
 
-            result.Should().Be(500.GWei);
+            Assert.That(result, Is.EqualTo(500.GWei));
         }
 
         [Test]
@@ -239,7 +238,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Action act = () => testGasPriceOracle.GetGasPriceEstimate();
 
-            act.Should().NotThrow();
+            Assert.That(act, Throws.Nothing);
         }
 
         [Test]
@@ -254,7 +253,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Count().Should().Be(3);
+            Assert.That(results.Count(), Is.EqualTo(3));
         }
 
         [Test]
@@ -268,7 +267,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = testGasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Should().BeEquivalentTo(expected);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
 
         private Transaction[] GetFiveTransactionsWithDifferentGasPrices()
@@ -301,7 +300,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<UInt256> expected = new() { 8, 9 };
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
-            results.Should().BeEquivalentTo(expected);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
 
         [TestCase(true, new ulong[] { 26, 27, 27 })]
@@ -321,7 +320,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             List<UInt256> expectedList = expected.Select(static n => (UInt256)n).ToList();
-            results.Should().BeEquivalentTo(expectedList);
+            Assert.That(results, Is.EquivalentTo(expectedList));
         }
 
         [TestCase(true, new ulong[] { 25, 26, 27 })]
@@ -341,7 +340,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
             List<UInt256> expectedList = expected.Select(static n => (UInt256)n).ToList();
-            results.Should().BeEquivalentTo(expectedList);
+            Assert.That(results, Is.EquivalentTo(expectedList));
         }
 
         public static ISpecProvider GetSpecProviderWithEip1559EnabledAs(bool isEip1559) =>
@@ -364,7 +363,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.ToList().Should().BeEquivalentTo(expected);
+            Assert.That(results.ToList(), Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -379,7 +378,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.ToList().Should().BeEquivalentTo(expected);
+            Assert.That(results.ToList(), Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -399,7 +398,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Should().BeEquivalentTo(expected);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
 
         [Test]
@@ -419,7 +418,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IEnumerable<UInt256> results = gasPriceOracle.GetGasPricesFromRecentBlocks(0);
 
-            results.Should().BeEquivalentTo(expected);
+            Assert.That(results, Is.EquivalentTo(expected));
         }
     }
 }

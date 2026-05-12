@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,7 +33,7 @@ internal class XdcBlockTreeTests
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        blockTree.SuggestBlock(block1).Should().Be(AddBlockResult.AlreadyKnown);
+        Assert.That(blockTree.SuggestBlock(block1), Is.EqualTo(AddBlockResult.AlreadyKnown));
     }
 
     [Test]
@@ -54,7 +53,7 @@ internal class XdcBlockTreeTests
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
         Block unknown = XdcBlock(1, genesis.Hash!, nonce: 1);
-        blockTree.SuggestBlock(unknown).Should().Be(AddBlockResult.InvalidBlock);
+        Assert.That(blockTree.SuggestBlock(unknown), Is.EqualTo(AddBlockResult.InvalidBlock));
     }
 
     [Test]
@@ -76,7 +75,7 @@ internal class XdcBlockTreeTests
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
         Block block3Alt = XdcBlock(3, block2.Hash!, nonce: 1);
-        blockTree.SuggestBlock(block3Alt).Should().Be(AddBlockResult.Added);
+        Assert.That(blockTree.SuggestBlock(block3Alt), Is.EqualTo(AddBlockResult.Added));
     }
 
     [Test]
@@ -102,7 +101,7 @@ internal class XdcBlockTreeTests
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        blockTree.SuggestBlock(block3Fork).Should().Be(AddBlockResult.InvalidBlock);
+        Assert.That(blockTree.SuggestBlock(block3Fork), Is.EqualTo(AddBlockResult.InvalidBlock));
     }
 
     [Test]
@@ -119,7 +118,7 @@ internal class XdcBlockTreeTests
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block1.Hash!, 1, block1.Number));
 
         Block disconnected = XdcBlock(2, Keccak.Compute("other"));
-        blockTree.SuggestBlock(disconnected).Should().Be(AddBlockResult.UnknownParent);
+        Assert.That(blockTree.SuggestBlock(disconnected), Is.EqualTo(AddBlockResult.UnknownParent));
     }
 
     private static Block XdcBlock(long number, Hash256 parentHash, ulong nonce = 0)

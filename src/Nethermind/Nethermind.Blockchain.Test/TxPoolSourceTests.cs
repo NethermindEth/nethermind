@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Transactions;
@@ -10,6 +10,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Config;
@@ -20,7 +21,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.TxPool.Comparison;
-using FluentAssertions;
 
 namespace Nethermind.Consensus.Producers.Test;
 
@@ -120,7 +120,7 @@ public class TxPoolSourceTests
         IComparer<Transaction> comparer = transactionComparerProvider.GetDefaultProducerComparer(
             new BlockPreparationContext(UInt256.Zero, 1));
         int compareResult = comparer.Compare(highPriorityBlobTx, lowerPriorityRegularTx);
-        compareResult.Should().Be(TxComparisonResult.XFirst, "Higher priority transaction should compare as XFirst (negative)");
+        Assert.That(compareResult, Is.EqualTo(TxComparisonResult.XFirst), "Higher priority transaction should compare as XFirst (negative)");
 
         // Setup mocks
         ITxPool txPool = Substitute.For<ITxPool>();
@@ -148,6 +148,6 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
-        result.Should().BeEquivalentTo([highPriorityBlobTx, lowerPriorityRegularTx], o => o.WithStrictOrdering());
+        result.EqualToTransactions([highPriorityBlobTx, lowerPriorityRegularTx]);
     }
 }

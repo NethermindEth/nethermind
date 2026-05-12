@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Text.Encodings.Web;
 using System.Text.Json;
-using FluentAssertions;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 
@@ -56,7 +55,7 @@ public class CustomTimeDurationConverterTests
 
     [TestCaseSource(nameof(ValidGoDurationCases))]
     public void read_go_duration_format_parses_correctly(string json, TimeSpan? expected) =>
-        Deserialize(json).Should().Be(expected);
+        Assert.That(Deserialize(json), Is.EqualTo(expected));
 
     private static IEnumerable<TestCaseData> ValidCSharpTimeSpanCases() =>
     [
@@ -68,7 +67,7 @@ public class CustomTimeDurationConverterTests
 
     [TestCaseSource(nameof(ValidCSharpTimeSpanCases))]
     public void read_csharp_timespan_format_parses_correctly(string json, TimeSpan? expected) =>
-        Deserialize(json).Should().Be(expected);
+        Assert.That(Deserialize(json), Is.EqualTo(expected));
 
     private static IEnumerable<TestCaseData> InvalidDurationCases() =>
     [
@@ -92,7 +91,7 @@ public class CustomTimeDurationConverterTests
     public void read_invalid_duration_throws(string json)
     {
         Action act = () => Deserialize(json);
-        act.Should().Throw<JsonException>();
+        Assert.That(act, Throws.TypeOf<JsonException>());
     }
 
     private static IEnumerable<TestCaseData> WriteCases() =>
@@ -117,7 +116,7 @@ public class CustomTimeDurationConverterTests
 
     [TestCaseSource(nameof(WriteCases))]
     public void write_serializes_as_go_duration_string(TimeSpan? value, string expected) =>
-        Serialize(value).Should().Be(expected);
+        Assert.That(Serialize(value), Is.EqualTo(expected));
 
     private static IEnumerable<TestCaseData> ExtremeWriteCases() =>
     [
@@ -128,8 +127,12 @@ public class CustomTimeDurationConverterTests
     ];
 
     [TestCaseSource(nameof(ExtremeWriteCases))]
-    public void write_extreme_timespan_emits_correct_hour_prefix(TimeSpan value, string expectedPrefix) =>
-        Serialize(value).Should().StartWith(expectedPrefix).And.EndWith("s\"");
+    public void write_extreme_timespan_emits_correct_hour_prefix(TimeSpan value, string expectedPrefix)
+    {
+        string serialized = Serialize(value);
+        Assert.That(serialized, Does.StartWith(expectedPrefix));
+        Assert.That(serialized, Does.EndWith("s\""));
+    }
 
     private static IEnumerable<TestCaseData> RoundTripCases() =>
     [
@@ -151,6 +154,6 @@ public class CustomTimeDurationConverterTests
     public void round_trip_serialize_then_deserialize_returns_original(TimeSpan value)
     {
         string json = Serialize(value);
-        Deserialize(json).Should().Be(value);
+        Assert.That(Deserialize(json), Is.EqualTo(value));
     }
 }

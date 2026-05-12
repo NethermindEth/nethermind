@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -78,7 +77,7 @@ public class SszMultiSegmentDecodeTests
 
         string[] decoded = SszCodec.DecodeCapabilitiesRequest(Multi(encoded, segSize));
 
-        decoded.Should().BeEquivalentTo(caps);
+        Assert.That(decoded, Is.EqualTo(caps));
     }
 
     [TestCaseSource(nameof(SegmentSizes))]
@@ -94,9 +93,9 @@ public class SszMultiSegmentDecodeTests
 
         byte[][] decoded = SszCodec.DecodeGetBlobsRequest(Multi(encoded, segSize));
 
-        decoded.Should().HaveCount(hashes.Length);
+        Assert.That(decoded.Length, Is.EqualTo(hashes.Length));
         for (int i = 0; i < hashes.Length; i++)
-            decoded[i].Should().BeEquivalentTo(hashes[i].Bytes.ToArray());
+            Assert.That(decoded[i], Is.EqualTo(hashes[i].Bytes.ToArray()));
     }
 
     [TestCaseSource(nameof(SegmentSizes))]
@@ -112,8 +111,8 @@ public class SszMultiSegmentDecodeTests
 
         (long start, long count) = SszCodec.DecodeGetPayloadBodiesByRangeRequest(Multi(encoded, segSize));
 
-        start.Should().Be((long)startVal);
-        count.Should().Be((long)countVal);
+        Assert.That(start, Is.EqualTo((long)startVal));
+        Assert.That(count, Is.EqualTo((long)countVal));
     }
 
     [TestCaseSource(nameof(SegmentSizes))]
@@ -133,13 +132,14 @@ public class SszMultiSegmentDecodeTests
 
         NewPayloadV3RequestWire.Decode(Multi(encoded, segSize), out NewPayloadV3RequestWire decoded);
 
-        decoded.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakC);
-        decoded.ExpectedBlobVersionedHashes.Should().NotBeNull().And.HaveCount(2);
-        decoded.ExpectedBlobVersionedHashes![0].Should().Be(TestItem.KeccakA);
-        decoded.ExpectedBlobVersionedHashes[1].Should().Be(TestItem.KeccakB);
+        Assert.That(decoded.ParentBeaconBlockRoot, Is.EqualTo(TestItem.KeccakC));
+        Assert.That(decoded.ExpectedBlobVersionedHashes, Is.Not.Null);
+        Assert.That(decoded.ExpectedBlobVersionedHashes!.Length, Is.EqualTo(2));
+        Assert.That(decoded.ExpectedBlobVersionedHashes![0], Is.EqualTo(TestItem.KeccakA));
+        Assert.That(decoded.ExpectedBlobVersionedHashes[1], Is.EqualTo(TestItem.KeccakB));
         ExecutionPayloadV3 payload = decoded.ExecutionPayload.Unwrap();
-        payload.BlockNumber.Should().Be(100);
-        payload.BlockHash.Should().Be(TestItem.KeccakE);
+        Assert.That(payload.BlockNumber, Is.EqualTo(100));
+        Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
     }
 
     private delegate void SequenceDecode<T>(ReadOnlySequence<byte> data, out T result);
@@ -154,11 +154,11 @@ public class SszMultiSegmentDecodeTests
         byte[] data, int splitAt, T expected, SequenceDecode<T> decode)
     {
         ReadOnlySequence<byte> seq = Multi(data, splitAt);
-        seq.IsSingleSegment.Should().BeFalse("test setup must produce multi-segment input");
+        Assert.That(seq.IsSingleSegment, Is.False, "test setup must produce multi-segment input");
 
         decode(seq, out T value);
 
-        value.Should().Be(expected);
+        Assert.That(value, Is.EqualTo(expected));
     }
 
     [TestCase(1)]

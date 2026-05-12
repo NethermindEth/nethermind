@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -77,7 +76,7 @@ namespace Nethermind.Core.Test.Encoding
             Rlp.ValueDecoderContext ctx = new(rlp.AsSpan());
             TxReceipt[] deserialized = decoder.Decode(ref ctx, RlpBehaviors.Storage);
 
-            deserialized.Should().BeEquivalentTo(GetExpectedArray());
+            deserialized.AssertEquivalentTo(GetExpectedArray());
         }
     }
 }

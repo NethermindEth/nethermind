@@ -10,7 +10,6 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
@@ -223,7 +222,7 @@ public class MetricsTests
     private static void CheckDescribedOrHidden(PropertyInfo property)
     {
         System.ComponentModel.DescriptionAttribute attribute = property.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>();
-        attribute.Should().NotBeNull();
+        Assert.That(attribute, Is.Not.Null);
     }
 
     private static void ForEachProperty(Action<PropertyInfo> verifier)

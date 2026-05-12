@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test.Persistence.BloomFilter;
@@ -25,7 +24,7 @@ public class BloomFilterTests
         bloom.Add(hash);
 
         // Assert
-        bloom.MightContain(hash).Should().BeTrue();
+        Assert.That(bloom.MightContain(hash), Is.True);
     }
 
     [Test]
@@ -44,7 +43,7 @@ public class BloomFilterTests
         // Assert
         foreach (ulong hash in hashes)
         {
-            bloom.MightContain(hash).Should().BeTrue($"hash {hash} should be found");
+            Assert.That(bloom.MightContain(hash), Is.True, $"hash {hash} should be found");
         }
     }
 
@@ -79,7 +78,7 @@ public class BloomFilterTests
         // Assert - All items should be found
         foreach (ulong hash in addedHashes)
         {
-            bloom.MightContain(hash).Should().BeTrue($"hash {hash} should be found");
+            Assert.That(bloom.MightContain(hash), Is.True, $"hash {hash} should be found");
         }
     }
 
@@ -141,7 +140,7 @@ public class BloomFilterTests
         // Act & Assert
         // Empty bloom filter should generally return false (though false positives are theoretically possible)
         bool result = bloom.MightContain(99999);
-        result.Should().BeFalse("empty bloom filter should return false for items not added");
+        Assert.That(result, Is.False, "empty bloom filter should return false for items not added");
     }
 
     [Test]
@@ -158,12 +157,12 @@ public class BloomFilterTests
         }
 
         // Assert - Verify count
-        bloom.Count.Should().Be(totalItems);
+        Assert.That(bloom.Count, Is.EqualTo(totalItems));
 
         // Verify sample of items can be found
         for (ulong i = 0; i < 50; i++)
         {
-            bloom.MightContain(i).Should().BeTrue($"hash {i} should be found");
+            Assert.That(bloom.MightContain(i), Is.True, $"hash {i} should be found");
         }
     }
 

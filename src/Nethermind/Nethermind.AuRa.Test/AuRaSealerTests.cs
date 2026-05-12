@@ -5,7 +5,6 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -77,7 +76,7 @@ namespace Nethermind.AuRa.Test
             signature.V += Signature.VOffset;
             Address? recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));
 
-            recoveredAddress.Should().Be(_address);
+            Assert.That(recoveredAddress, Is.EqualTo(_address));
         }
     }
 }

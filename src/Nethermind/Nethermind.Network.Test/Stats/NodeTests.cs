@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
@@ -25,7 +24,7 @@ namespace Nethermind.Network.Test.Stats
         {
             Node node = new(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
             // ReSharper disable once SuspiciousTypeConversion.Global
-            node.Equals(1).Should().BeFalse();
+            Assert.That(node.Equals(1), Is.False);
         }
 
         [TestCase("s", "127.0.0.1:303")]
@@ -41,10 +40,10 @@ namespace Nethermind.Network.Test.Stats
                 new(TestItem.PublicKeyA, host, 303) { ClientId = "ClientId", EthDetails = "Details" };
 
             Node node = GetNode("127.0.0.1");
-            node.ToString(format).Should().Be(expectedFormat);
+            Assert.That(node.ToString(format), Is.EqualTo(expectedFormat));
 
             node = GetNode("::ffff:127.0.0.1");
-            node.ToString(format).Should().Be(expectedFormat);
+            Assert.That(node.ToString(format), Is.EqualTo(expectedFormat));
         }
 
 

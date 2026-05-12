@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -188,11 +187,11 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That((bool)result.Result, Is.EqualTo(true), result.Result.ToString());
-        Assert.That(data, Has.Count.EqualTo(7));
+        Assert.That((data).Count, Is.EqualTo(7));
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
-        blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
-        blockResult.Calls.Should().OnlyContain(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value);
+        Assert.That(blockResult.Calls.Select(static c => c.Status), Is.EqualTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success }));
+        Assert.That(blockResult.Calls.All(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value), Is.True);
 
     }
 
@@ -381,7 +380,7 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulatePayload<TransactionForRpc> payload = CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         JsonRpcResponse response = await RpcTest.TestRequest(chain.EthRpcModule, "eth_simulateV1", payload!, "latest");
-        response.Should().BeOfType<JsonRpcSuccessResponse>();
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
         JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
         Log[] logs = data[0].Calls.First().Logs.ToArray();
@@ -435,7 +434,7 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         SimulateBlockResult<SimulateCallResult> block = result.Data.First();
-        Assert.That(block.Calls, Has.Count.EqualTo(2));
+        Assert.That((block.Calls).Count, Is.EqualTo(2));
 
         SimulateCallResult[] calls = block.Calls.ToArray();
 
@@ -463,8 +462,8 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        result.ErrorCode.Should().Be(expectedErrorCode);
-        result.Result.Error.Should().Be(expectedMessage);
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
+        Assert.That(result.Result.Error, Is.EqualTo(expectedMessage));
     }
 
     // Minimal bytecode: PREVRANDAO PUSH1 0x00 MSTORE PUSH1 0x20 PUSH1 0x00 RETURN
@@ -521,11 +520,12 @@ public class EthSimulateTestsBlocksAndTransactions
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
-        result.Result.ResultType.Should().Be(Core.ResultType.Success);
+        Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success));
         SimulateCallResult callResult = result.Data.First().Calls.First();
-        callResult.Status.Should().Be((ulong)ResultType.Success);
-        callResult.ReturnData.Should().NotBeNull().And.HaveCount(32);
-        new Hash256(callResult.ReturnData!).Should().Be(expected);
+        Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(callResult.ReturnData, Is.Not.Null);
+        Assert.That(callResult.ReturnData!.Length, Is.EqualTo(32));
+        Assert.That(new Hash256(callResult.ReturnData!), Is.EqualTo(expected));
     }
 
     // Regression test for https://github.com/NethermindEth/nethermind/issues/8480

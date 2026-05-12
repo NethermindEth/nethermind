@@ -37,7 +37,7 @@ public class TaikoChainSpecEngineParametersTests
 
         Assert.That(blockNumbers, Is.Empty,
             "Ontake/Pacaya at block 0 must be filtered — EIP-2124 skips activations at or before genesis");
-        Assert.That(timestamps, Is.EquivalentTo(new[] { 0x69df3615ul }),
+        Assert.That(timestamps, Is.EqualTo(new[] { 0x69df3615ul }),
             "Shasta=0 must be filtered; Unzen at a future ts must be folded");
     }
 
@@ -57,8 +57,8 @@ public class TaikoChainSpecEngineParametersTests
 
         parameters.AddTransitions(blockNumbers, timestamps);
 
-        Assert.That(blockNumbers, Is.EquivalentTo(new[] { 0x836c0L, 0x11CAB0L }));
-        Assert.That(timestamps, Is.EquivalentTo(new[] { 0x69CE6BD4ul }));
+        Assert.That(blockNumbers, Is.EqualTo(new[] { 0x836c0L, 0x11CAB0L }));
+        Assert.That(timestamps, Is.EqualTo(new[] { 0x69CE6BD4ul }));
     }
 
     [Test]

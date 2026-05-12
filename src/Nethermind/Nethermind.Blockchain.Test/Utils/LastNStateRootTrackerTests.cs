@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,8 +34,7 @@ public class LastNStateRootTrackerTests
 
         for (int i = 0; i < 30; i++)
         {
-            tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                .Should().Be(i is >= 10 and < 20);
+            Assert.That(tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray())), Is.EqualTo(i is >= 10 and < 20));
         }
     }
 
@@ -68,8 +66,7 @@ public class LastNStateRootTrackerTests
 
         for (int i = 0; i < 30; i++)
         {
-            tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                .Should().Be(i is >= 11 and < 21);
+            Assert.That(tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray())), Is.EqualTo(i is >= 11 and < 21));
         }
     }
 
@@ -101,11 +98,10 @@ public class LastNStateRootTrackerTests
 
         for (int i = 0; i < 30; i++)
         {
-            tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                .Should().Be(i is >= 6 and < 15);
+            Assert.That(tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray())), Is.EqualTo(i is >= 6 and < 15));
         }
 
-        tracker.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())).Should().BeTrue();
+        Assert.That(tracker.HasStateRoot(Keccak.Compute(100.ToBigEndianByteArray())), Is.True);
     }
 
     [Test]
@@ -130,8 +126,7 @@ public class LastNStateRootTrackerTests
 
         for (int i = 0; i < 320; i++)
         {
-            tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray()))
-                .Should().Be(i is >= 44 and < 300);
+            Assert.That(tracker.HasStateRoot(Keccak.Compute(i.ToBigEndianByteArray())), Is.EqualTo(i is >= 44 and < 300));
         }
     }
 }

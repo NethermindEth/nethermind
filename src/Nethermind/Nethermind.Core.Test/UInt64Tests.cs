@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -21,7 +20,7 @@ namespace Nethermind.Core.Test
         {
             byte[] bytes = Bytes.FromHexString(hexBytes);
             ulong number = bytes.ToULongFromBigEndianByteArrayWithoutLeadingZeros();
-            number.Should().Be(expectedValue);
+            Assert.That(number, Is.EqualTo(expectedValue));
         }
     }
 }

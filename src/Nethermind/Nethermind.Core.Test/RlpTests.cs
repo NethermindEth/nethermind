@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
-using FluentAssertions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -276,7 +275,7 @@ namespace Nethermind.Core.Test
         [TestCase(new byte[] { 128 }, false)]
         [TestCase(new byte[] { 1 }, true)]
         public void Decode_bool(byte[] rlp, bool expectedBool) =>
-            rlp.AsRlpValueContext().DecodeBool().Should().Be(expectedBool);
+            Assert.That(rlp.AsRlpValueContext().DecodeBool(), Is.EqualTo(expectedBool));
 
         [TestCase(new byte[] { 0 })]
         [TestCase(new byte[] { 2 })]
@@ -370,11 +369,10 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < 3; i++)
             {
                 Memory<byte> slice = context.DecodeByteArrayMemory();
-                slice.Should().NotBeNull();
                 MemoryMarshal.TryGetArray(slice, out ArraySegment<byte> segment);
 
                 bool isACopy = (segment.Offset == 0 && segment.Count == slice.Length);
-                isACopy.Should().NotBe(sliceValue);
+                Assert.That(isACopy, Is.Not.EqualTo(sliceValue));
             }
         }
 
@@ -516,10 +514,10 @@ namespace Nethermind.Core.Test
                 data[0] = (byte)prefix;
 
                 Rlp.ValueDecoderContext ctx = new(data);
-                ctx.PeekNextRlpLength().Should().Be(expected, $"ValueDecoderContext prefix {prefix}");
+                Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(expected), $"ValueDecoderContext prefix {prefix}");
 
                 ValueRlpStream vrs = new(data);
-                vrs.PeekNextRlpLength().Should().Be(expected, $"ValueRlpStream prefix {prefix}");
+                Assert.That(vrs.PeekNextRlpLength(), Is.EqualTo(expected), $"ValueRlpStream prefix {prefix}");
             }
         }
 
@@ -532,10 +530,10 @@ namespace Nethermind.Core.Test
             byte[] data = BuildLongFormRlp(prefix, contentLength);
 
             Rlp.ValueDecoderContext ctx = new(data);
-            ctx.PeekNextRlpLength().Should().Be(data.Length, $"ValueDecoderContext prefix {prefix}");
+            Assert.That(ctx.PeekNextRlpLength(), Is.EqualTo(data.Length), $"ValueDecoderContext prefix {prefix}");
 
             ValueRlpStream vrs = new(data);
-            vrs.PeekNextRlpLength().Should().Be(data.Length, $"ValueRlpStream prefix {prefix}");
+            Assert.That(vrs.PeekNextRlpLength(), Is.EqualTo(data.Length), $"ValueRlpStream prefix {prefix}");
         }
 
         [TestCase(0, 0, 1)]       // single byte: prefix=0, content=1
@@ -553,13 +551,13 @@ namespace Nethermind.Core.Test
 
             Rlp.ValueDecoderContext ctx = new(data);
             (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
-            pLen.Should().Be(expectedPrefixLen, $"ValueDecoderContext prefix length for {prefix}");
-            cLen.Should().Be(expectedContentLen, $"ValueDecoderContext content length for {prefix}");
+            Assert.That(pLen, Is.EqualTo(expectedPrefixLen), $"ValueDecoderContext prefix length for {prefix}");
+            Assert.That(cLen, Is.EqualTo(expectedContentLen), $"ValueDecoderContext content length for {prefix}");
 
             ValueRlpStream vrs = new(data);
             (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
-            pLen2.Should().Be(expectedPrefixLen, $"ValueRlpStream prefix length for {prefix}");
-            cLen2.Should().Be(expectedContentLen, $"ValueRlpStream content length for {prefix}");
+            Assert.That(pLen2, Is.EqualTo(expectedPrefixLen), $"ValueRlpStream prefix length for {prefix}");
+            Assert.That(cLen2, Is.EqualTo(expectedContentLen), $"ValueRlpStream content length for {prefix}");
         }
 
         [TestCase(184, 56)]   // long string, lengthOfLength=1
@@ -571,13 +569,13 @@ namespace Nethermind.Core.Test
 
             Rlp.ValueDecoderContext ctx = new(data);
             (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
-            pLen.Should().Be(1 + lengthOfLength, $"ValueDecoderContext prefix length for {prefix}");
-            cLen.Should().Be(contentLength, $"ValueDecoderContext content length for {prefix}");
+            Assert.That(pLen, Is.EqualTo(1 + lengthOfLength), $"ValueDecoderContext prefix length for {prefix}");
+            Assert.That(cLen, Is.EqualTo(contentLength), $"ValueDecoderContext content length for {prefix}");
 
             ValueRlpStream vrs = new(data);
             (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
-            pLen2.Should().Be(1 + lengthOfLength, $"ValueRlpStream prefix length for {prefix}");
-            cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
+            Assert.That(pLen2, Is.EqualTo(1 + lengthOfLength), $"ValueRlpStream prefix length for {prefix}");
+            Assert.That(cLen2, Is.EqualTo(contentLength), $"ValueRlpStream content length for {prefix}");
         }
 
         [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "LongString_4ByteLength_Int32Max")]
@@ -657,11 +655,11 @@ namespace Nethermind.Core.Test
         {
             Rlp.ValueDecoderContext ctx = new(rlp);
             ctx.ReadSequenceLength();
-            ctx.PeekNumberOfItemsRemaining().Should().Be(expected);
+            Assert.That(ctx.PeekNumberOfItemsRemaining(), Is.EqualTo(expected));
 
             ValueRlpStream vrs = new(rlp);
             vrs.ReadSequenceLength();
-            vrs.PeekNumberOfItemsRemaining().Should().Be(expected);
+            Assert.That(vrs.PeekNumberOfItemsRemaining(), Is.EqualTo(expected));
         }
 
         [TestCase(184, 10)]  // long string with content < 56
@@ -720,7 +718,7 @@ namespace Nethermind.Core.Test
             // These prefixes declare a multi-byte length field, but the data is truncated
             // before all length bytes are present. The bounds check should catch this.
             Action act = () => RlpHelpers.PeekNextRlpLength(truncatedData, 0);
-            act.Should().Throw<RlpException>();
+            Assert.That(act, Throws.TypeOf<RlpException>());
         }
     }
 }

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
@@ -49,9 +48,9 @@ public class FilterManagerTests
     public async Task removing_filter_removes_data()
     {
         LogsShouldNotBeEmpty(static _ => { }, static _ => { });
-        _filterManager.GetLogs(0).Should().NotBeEmpty();
+        NUnit.Framework.Assert.That(_filterManager.GetLogs(0), Is.Not.Empty);
         await Task.Delay(600);
-        _filterManager.GetLogs(0).Should().BeEmpty();
+        NUnit.Framework.Assert.That(_filterManager.GetLogs(0), Is.Empty);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -275,7 +274,7 @@ public class FilterManagerTests
                         .WithTopics(TestItem.KeccakB, TestItem.KeccakC).TestObject
                 ).ToArray()),
             receiptCount: txCount,
-            logsAssertion: logs => logs.Select(l => l.LogIndex).Should().BeEquivalentTo(Enumerable.Range(0, txCount * logsPerTx))
+            logsAssertion: logs => NUnit.Framework.Assert.That(logs.Select(l => l.LogIndex), Is.EqualTo(Enumerable.Range(0, txCount * logsPerTx)))
         );
     }
 
@@ -323,7 +322,7 @@ public class FilterManagerTests
         allTasks.Add(consumer);
         await Task.WhenAll(allTasks);
 
-        totalPolled.Should().Be(blockCount);
+        NUnit.Framework.Assert.That(totalPolled, Is.EqualTo(blockCount));
     }
 
     private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder, Action<ReceiptBuilder> receiptBuilder)
@@ -333,10 +332,10 @@ public class FilterManagerTests
         => LogsShouldBeEmpty([filterBuilder], [receiptBuilder]);
 
     private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().NotBeEmpty());
+        => Assert(filterBuilders, receiptBuilders, static logs => NUnit.Framework.Assert.That(logs, Is.Not.Empty));
 
     private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders, IEnumerable<Action<ReceiptBuilder>> receiptBuilders)
-        => Assert(filterBuilders, receiptBuilders, static logs => logs.Should().BeEmpty());
+        => Assert(filterBuilders, receiptBuilders, static logs => NUnit.Framework.Assert.That(logs, Is.Empty));
 
     private void Assert(Action<FilterBuilder, int> filterBuilder, int filterCount,
         Action<ReceiptBuilder, int> receiptBuilder, int receiptCount,

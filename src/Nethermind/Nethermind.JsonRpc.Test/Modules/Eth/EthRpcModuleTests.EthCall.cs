@@ -6,9 +6,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
-using FluentAssertions.Execution;
-using FluentAssertions.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -65,8 +62,8 @@ public partial class EthRpcModuleTests
             $"{{\"from\":\"{TestAccountAddress}\",\"gasPrice\":\"0x100000\", \"data\": \"{BalanceOfCallData}\", \"to\": \"{BatTokenAddress}\", \"value\": 500, \"gas\": 1000000}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
-        parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
-        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
+        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds"));
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -190,7 +187,7 @@ public partial class EthRpcModuleTests
         };
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        serialized.Should().Be("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"contract creation without any data provided\"},\"id\":67}"));
     }
 
     [Test]
@@ -208,7 +205,7 @@ public partial class EthRpcModuleTests
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
-        serialized.Should().StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,");
+        Assert.That(serialized, Does.StartWith("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32002,"));
     }
 
     [Test]
@@ -307,8 +304,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
 
-        JToken.Parse(serialized).Value<string>("result")!
-            .Should().Be($"0x{new string('0', 24)}{TestItem.AddressC.Bytes.ToHexString()}");
+        Assert.That(JToken.Parse(serialized).Value<string>("result")!, Is.EqualTo($"0x{new string('0', 24)}{TestItem.AddressC.Bytes.ToHexString()}"));
     }
 
     [Test]
@@ -321,8 +317,8 @@ public partial class EthRpcModuleTests
             $"{{\"type\": \"0x2\", \"value\":\"{1.Ether}\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
-        parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
-        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
+        Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32003));
+        Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain("insufficient funds"));
     }
 
     [Test]
@@ -437,7 +433,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
-        JToken.Parse(serialized).Should().BeEquivalentTo(expectedResult);
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse(expectedResult)));
     }
 
     [TestCase(
@@ -468,10 +464,10 @@ public partial class EthRpcModuleTests
 
         string resultOverrideAfter = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
-        using (new AssertionScope())
+        using (Assert.EnterMultipleScope())
         {
-            JToken.Parse(resultOverrideBefore).Should().BeEquivalentTo(resultOverrideAfter);
-            JToken.Parse(resultNoOverride).Should().NotBeEquivalentTo(resultOverrideAfter);
+            Assert.That(JToken.Parse(resultOverrideBefore), Is.EqualTo(JToken.Parse(resultOverrideAfter)));
+            Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)));
         }
     }
 
@@ -485,8 +481,7 @@ public partial class EthRpcModuleTests
             $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
-        JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}");
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}")));
     }
 
     [Test]
@@ -532,8 +527,8 @@ public partial class EthRpcModuleTests
 
         // gas available = gasLimit - intrinsicGas; if gas cap works, gasLimit ≤ 50K so gas available < 50K
         // Without gas cap, gas available would be ~79K (100K - 21K intrinsic)
-        gasAvailable.Should().BeLessThan(gasCap);
-        gasAvailable.Should().BeGreaterThan(0);
+        Assert.That(gasAvailable, Is.LessThan(gasCap));
+        Assert.That(gasAvailable, Is.GreaterThan(0));
     }
 
     /// <summary>
@@ -570,9 +565,7 @@ public partial class EthRpcModuleTests
 
         // With the bug: gas available ≈ blockGasLimit - intrinsicGas < blockGasLimit
         // With the fix: gas available ≈ gasCap - intrinsicGas > blockGasLimit
-        gasAvailable.Should().BeGreaterThan((UInt256)blockGasLimit,
-            "gas available ({0}) should reflect gasCap ({1}), not block gas limit ({2})",
-            gasAvailable, gasCap, blockGasLimit);
+        Assert.That(gasAvailable, Is.GreaterThan((UInt256)blockGasLimit), $"gas available ({gasAvailable}) should reflect gasCap ({gasCap}), not block gas limit ({blockGasLimit})");
     }
 
     [Test]
@@ -790,7 +783,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         JsonElement txParam = JsonDocument.Parse(txJson).RootElement;
         string serialized = await ctx.Test.TestEthRpc("eth_call", txParam, "latest");
-        JToken.Parse(serialized)["error"]!["code"]!.Value<int>().Should().Be(-32602);
+        Assert.That(JToken.Parse(serialized)["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
     [Test]
@@ -800,8 +793,8 @@ public partial class EthRpcModuleTests
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>("{\"from\":\"0xEF04bc7821433f080461BBAE815182E3d7bBb61A\",\"to\":\"0x4debB0dF4da8D1f51EF67B727c3F1c0eCC7ed009\",\"gas\":\"0x5208\"}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "0xFFFFFFFF");
 
-        JToken.Parse(serialized)["error"]!["code"]!.Value<int>().Should().Be(-32000);
-        JToken.Parse(serialized)["error"]!["message"]!.Value<string>().Should().Be("header not found");
+        Assert.That(JToken.Parse(serialized)["error"]!["code"]!.Value<int>(), Is.EqualTo(-32000));
+        Assert.That(JToken.Parse(serialized)["error"]!["message"]!.Value<string>(), Is.EqualTo("header not found"));
     }
 
     private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit)
@@ -811,8 +804,7 @@ public partial class EthRpcModuleTests
             $"{{\"from\": \"{SecondaryTestAddress}\"{gasParam}, \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
-        JToken.Parse(serialized).Should().BeEquivalentTo(
-            $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}");
+        Assert.That(JToken.Parse(serialized), Is.EqualTo(JToken.Parse($"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32003,\"message\":\"out of gas\"}},\"id\":67}}")));
     }
 
     // Each test uses a state override to inject one-opcode contract code at the target address,
@@ -855,7 +847,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride, blockOverride);
 
-        JToken.Parse(serialized)["result"]!.Value<string>().Should().Be(expectedResult);
+        Assert.That(JToken.Parse(serialized)["result"]!.Value<string>(), Is.EqualTo(expectedResult));
     }
 
     [Test]
@@ -870,8 +862,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", null, blockOverride);
 
-        JToken.Parse(serialized)["error"].Should().BeNull(because:
-            "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
+        Assert.That(JToken.Parse(serialized)["error"], Is.Null, "fee-less call must succeed even when blockOverride.baseFeePerGas > 0");
     }
 
     [Test]
@@ -905,13 +896,13 @@ public partial class EthRpcModuleTests
 
         JToken parsed = JToken.Parse(withOverride);
 
-        parsed["error"]?.Should().BeNull("opcode must be valid under Cancun");
+        Assert.That(parsed["error"], Is.Null, "opcode must be valid under Cancun");
 
         string? resultHex = parsed["result"]?.Value<string>();
-        resultHex.Should().NotBeNull();
+        Assert.That(resultHex, Is.Not.Null);
 
         UInt256 overriddenFee = Bytes.FromHexString(resultHex!).ToUInt256();
-        overriddenFee.Should().Be((UInt256)0x02);
+        Assert.That(overriddenFee, Is.EqualTo((UInt256)0x02));
     }
 
 }

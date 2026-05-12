@@ -4,7 +4,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
@@ -109,7 +108,7 @@ public class BlockhashProviderTests
         Block head = tree.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
 
         Block branch = Build.A.Block.WithParent(notCanonParent).WithTransactions(Build.A.Transaction.TestObject).TestObject;
-        tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader).Should().Be(AddBlockResult.Added);
+        Assert.That(tree.Insert(branch, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
         tree.UpdateMainChain(branch); // Update branch
 
         tree.UpdateMainChain([headParent, head], true); // Update back to original again, but skipping the branch block.

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -66,8 +65,8 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = new ForkchoiceUpdatedV1Result
@@ -80,7 +79,7 @@ public partial class EngineModuleTests
                     ValidationError = null
                 }
             }
-        }));
+        })));
 
         Hash256 expectedBlockHash = new(blockHash);
         Block block = new(
@@ -111,19 +110,19 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = expectedPayload
-        }));
+        })));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV2",
             chain.JsonSerializer.Serialize(ExecutionPayload.Create(block)));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = new PayloadStatusV1
@@ -132,7 +131,7 @@ public partial class EngineModuleTests
                 Status = PayloadStatus.Valid,
                 ValidationError = null
             }
-        }));
+        })));
 
         fcuState = new
         {
@@ -145,8 +144,8 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        Assert.That(successResponse, Is.Not.Null);
+        Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
             Result = new ForkchoiceUpdatedV1Result
@@ -159,7 +158,7 @@ public partial class EngineModuleTests
                     ValidationError = null
                 }
             }
-        }));
+        })));
     }
 
     [Test]
@@ -189,10 +188,10 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV1", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
-        errorResponse.Should().NotBeNull();
-        errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
-        errorResponse!.Error!.Message.Should().Be("PayloadAttributesV1 expected");
+        Assert.That(errorResponse, Is.Not.Null);
+        Assert.That(errorResponse!.Error, Is.Not.Null);
+        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+        Assert.That(errorResponse!.Error!.Message, Is.EqualTo("PayloadAttributesV1 expected"));
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -228,10 +227,10 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
-        errorResponse.Should().NotBeNull();
-        errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
-        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
+        Assert.That(errorResponse, Is.Not.Null);
+        Assert.That(errorResponse!.Error, Is.Not.Null);
+        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+        Assert.That(errorResponse!.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "PayloadAttributes")));
     }
 
     [Test]
@@ -254,9 +253,9 @@ public partial class EngineModuleTests
 
         byte[] payloadId = Bytes.FromHexString(forkchoiceResponse.Result.Data.PayloadId!);
         ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
-        responseFirst.Should().NotBeNull();
-        responseFirst.Result.ResultType.Should().Be(ResultType.Success);
-        responseFirst.Data!.BlockValue.Should().Be(0);
+        Assert.That(responseFirst, Is.Not.Null);
+        Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(responseFirst.Data!.BlockValue, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -294,12 +293,12 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayload);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         BlockHeader? payloadBlock = chain.BlockFinder.FindHeader(getPayloadResult.ExecutionPayload.BlockHash);
         UInt256 finalBalance = chain.StateReader.GetBalance(payloadBlock, feeRecipient);
 
-        (finalBalance - startingBalance).Should().Be(getPayloadResult.BlockValue);
+        Assert.That((finalBalance - startingBalance), Is.EqualTo(getPayloadResult.BlockValue));
     }
 
     [Test]
@@ -327,7 +326,7 @@ public partial class EngineModuleTests
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
         };
 
-        payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
+        MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
@@ -353,7 +352,7 @@ public partial class EngineModuleTests
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
-        payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
+        MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
     }
 
     [Test]
@@ -365,7 +364,7 @@ public partial class EngineModuleTests
             rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = [];
 
-        payloadBodies.Should().BeEquivalentTo(expected);
+        Assert.That(payloadBodies, Is.EqualTo(expected));
     }
 
     [Test]
@@ -376,7 +375,7 @@ public partial class EngineModuleTests
         Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1025);
 
-        result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+        Assert.That(result.Result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
     }
 
     [Test]
@@ -388,7 +387,7 @@ public partial class EngineModuleTests
         Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByHashV1(hashes);
 
-        result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
+        Assert.That(result.Result.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest));
     }
 
     [Test]
@@ -399,11 +398,11 @@ public partial class EngineModuleTests
         Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(0, 1);
 
-        result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+        Assert.That(result.Result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
 
         result = await rpc.engine_getPayloadBodiesByRangeV1(1, 0);
 
-        result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+        Assert.That(result.Result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
@@ -429,12 +428,12 @@ public partial class EngineModuleTests
                 rpc, chain, head.Hash!, head.Hash!, head.Hash!, 1001, Keccak.Zero, Address.Zero, withdrawals);
             ResultWrapper<PayloadStatusV1> execResult = await rpc.engine_newPayloadV2(executionPayload2);
 
-            execResult.Data.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(execResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
             ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(
                 new ForkchoiceStateV1(executionPayload2.BlockHash!, head.Hash!, head.Hash!));
 
-            fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
             IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
                 rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
@@ -443,7 +442,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(txsA, withdrawals)
             ];
 
-            payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
+            MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
         }
 
         // Second branch
@@ -460,7 +459,7 @@ public partial class EngineModuleTests
 
             ResultWrapper<PayloadStatusV1> fcuResult = await rpc.engine_newPayloadV2(ExecutionPayload.Create(newBlock));
 
-            fcuResult.Data.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(fcuResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
             await rpc.engine_forkchoiceUpdatedV2(
                 new ForkchoiceStateV1(newBlock.Hash!, newBlock.Hash!, newBlock.Hash!));
@@ -472,7 +471,7 @@ public partial class EngineModuleTests
                 new(Array.Empty<Transaction>(), withdrawals), new(Array.Empty<Transaction>(), withdrawals)
             ];
 
-            payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
+            MergeTestAssertions.AssertJsonEquivalent(payloadBodies, expected);
         }
     }
 
@@ -498,7 +497,7 @@ public partial class EngineModuleTests
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
-        payloadBodies.Should().BeEquivalentTo(input.Outcome);
+        MergeTestAssertions.AssertJsonEquivalent(payloadBodies, input.Outcome);
     }
 
     [Test]
@@ -521,7 +520,7 @@ public partial class EngineModuleTests
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 7).Result.Data;
 
-        payloadBodies.Count.Should().Be(5);
+        Assert.That(payloadBodies.Count, Is.EqualTo(5));
     }
 
     [Test]
@@ -552,10 +551,10 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(expectedPayload));
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
-        errorResponse.Should().NotBeNull();
-        errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
-        errorResponse!.Error!.Message.Should().Be("ExecutionPayloadV1 expected");
+        Assert.That(errorResponse, Is.Not.Null);
+        Assert.That(errorResponse!.Error, Is.Not.Null);
+        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+        Assert.That(errorResponse!.Error!.Message, Is.EqualTo("ExecutionPayloadV1 expected"));
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -597,10 +596,10 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(expectedPayload));
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
-        errorResponse.Should().NotBeNull();
-        errorResponse.Error.Should().NotBeNull();
-        errorResponse.Error!.Code.Should().Be(input.ErrorCode);
-        errorResponse.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
+        Assert.That(errorResponse, Is.Not.Null);
+        Assert.That(errorResponse.Error, Is.Not.Null);
+        Assert.That(errorResponse.Error!.Code, Is.EqualTo(input.ErrorCode));
+        Assert.That(errorResponse.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "ExecutionPayload")));
     }
 
     protected static IEnumerable<(
@@ -639,9 +638,9 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
 
         if (input.IsValid)
-            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         else
-            resultWrapper.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
+            Assert.That(resultWrapper.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
     [TestCaseSource(nameof(WithdrawalsTestCases))]
@@ -672,10 +671,10 @@ public partial class EngineModuleTests
             ExecutionPayload payload =
                 (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayload!;
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(payload!);
-            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             ResultWrapper<ForkchoiceUpdatedV1Result> resultFcu = await rpc.engine_forkchoiceUpdatedV2(
                 new(payload.BlockHash, payload.BlockHash, payload.BlockHash));
-            resultFcu.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            Assert.That(resultFcu.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
         }
 
         // check balance increase
@@ -684,7 +683,7 @@ public partial class EngineModuleTests
             (Address Account, UInt256 BalanceIncrease) accountIncrease = input.ExpectedAccountIncrease[index];
             UInt256 currentBalance =
                 chain.StateReader.GetBalance(chain.BlockTree.Head!.Header!, accountIncrease.Account);
-            currentBalance.Should().Be(accountIncrease.BalanceIncrease + initialBalances[index]);
+            Assert.That(currentBalance, Is.EqualTo(accountIncrease.BalanceIncrease + initialBalances[index]));
         }
     }
 
@@ -705,7 +704,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload =
             CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
         ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV2(executionPayload);
-        resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(resultWrapper.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         // Block with withdrawals, Timestamp = 3
         PayloadAttributes payloadAttributes = new()
@@ -719,12 +718,12 @@ public partial class EngineModuleTests
             (await BuildAndGetPayloadResultV2(rpc, chain, payloadAttributes))?.ExecutionPayload!;
         ResultWrapper<PayloadStatusV1> resultWithWithdrawals = await rpc.engine_newPayloadV2(payloadWithWithdrawals!);
 
-        resultWithWithdrawals.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(resultWithWithdrawals.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(
             new(payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash, payloadWithWithdrawals.BlockHash));
 
-        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
     }
 
     [Test]
@@ -738,8 +737,7 @@ public partial class EngineModuleTests
             Withdrawals = new[] { TestItem.WithdrawalA_1Eth }
         };
 
-        attrs.ToString().Should().Be(
-            $"PayloadAttributes {{Timestamp: {attrs.Timestamp}, PrevRandao: {attrs.PrevRandao}, SuggestedFeeRecipient: {attrs.SuggestedFeeRecipient}, Withdrawals count: {attrs.Withdrawals.Length}}}");
+        Assert.That(attrs.ToString(), Is.EqualTo($"PayloadAttributes {{Timestamp: {attrs.Timestamp}, PrevRandao: {attrs.PrevRandao}, SuggestedFeeRecipient: {attrs.SuggestedFeeRecipient}, Withdrawals count: {attrs.Withdrawals.Length}}}"));
     }
 
     [TestCaseSource(nameof(PayloadIdTestCases))]
@@ -756,7 +754,7 @@ public partial class EngineModuleTests
 
         string payloadId = payloadAttributes.GetPayloadId(blockHeader);
 
-        payloadId.Should().Be(input.PayloadId);
+        Assert.That(payloadId, Is.EqualTo(input.PayloadId));
     }
 
     private static async Task<GetPayloadV2Result> BuildAndGetPayloadResultV2(
@@ -850,7 +848,7 @@ public partial class EngineModuleTests
             Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV2(executionPayload);
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
         return executionPayload;
     }
 
@@ -860,7 +858,7 @@ public partial class EngineModuleTests
         ExecutionPayload executionPayload = CreateBlockRequest(chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV2(executionPayload);
 
-        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
         return executionPayload;
     }

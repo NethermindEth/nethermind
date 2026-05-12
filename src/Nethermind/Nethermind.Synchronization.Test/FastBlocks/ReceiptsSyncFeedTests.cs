@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -180,21 +179,21 @@ public class ReceiptsSyncFeedTests
         _feed.InitializeFeed();
 
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        request.Should().BeNull();
-        _feed.CurrentState.Should().Be(SyncFeedState.Finished);
+        Assert.That(request, Is.Null);
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
     }
 
     [Test]
     public void Contexts_are_correct() =>
-        _feed.Contexts.Should().Be(AllocationContexts.Receipts);
+        Assert.That(_feed.Contexts, Is.EqualTo(AllocationContexts.Receipts));
 
     [Test]
     public void Should_be_multifeed() =>
-        _feed.IsMultiFeed.Should().BeTrue();
+        Assert.That(_feed.IsMultiFeed, Is.True);
 
     [Test]
     public void Should_start_dormant() =>
-        _feed.CurrentState.Should().Be(SyncFeedState.Dormant);
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant));
 
     [Test]
     public void When_activating_should_emit_an_event()
@@ -202,14 +201,14 @@ public class ReceiptsSyncFeedTests
         SyncFeedState state = SyncFeedState.Dormant;
         _feed.StateChanged += (_, e) => state = e.NewState;
         _feed.Activate();
-        state.Should().Be(SyncFeedState.Active);
+        Assert.That(state, Is.EqualTo(SyncFeedState.Active));
     }
 
     [Test]
     public void When_no_bodies_downloaded_then_request_will_be_empty()
     {
         _feed.InitializeFeed();
-        _feed.PrepareRequest().Result.Should().BeNull();
+        Assert.That(_feed.PrepareRequest().Result, Is.Null);
     }
 
     [Test]
@@ -219,7 +218,7 @@ public class ReceiptsSyncFeedTests
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
         _feed.HandleResponse(request);
         using ReceiptsSyncBatch? request2 = await _feed.PrepareRequest();
-        request2?.MinNumber.Should().Be(request?.MinNumber);
+        Assert.That(request2?.MinNumber, Is.EqualTo(request?.MinNumber));
     }
 
     [Test]
@@ -227,9 +226,9 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        request.Should().NotBeNull();
-        request!.MinNumber.Should().Be(1024);
-        request.Prioritized.Should().Be(true);
+        Assert.That(request, Is.Not.Null);
+        Assert.That(request!.MinNumber, Is.EqualTo(1024));
+        Assert.That(request.Prioritized, Is.EqualTo(true));
     }
 
     [Test]
@@ -239,9 +238,9 @@ public class ReceiptsSyncFeedTests
         _syncConfig.DownloadReceiptsInFastSync = false;
 
         using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-        request.Should().BeNull();
-        _feed.CurrentState.Should().Be(SyncFeedState.Finished);
-        _progressLogger.HasEnded.Should().BeTrue();
+        Assert.That(request, Is.Null);
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        Assert.That(_progressLogger.HasEnded, Is.True);
     }
 
     [TestCase(1, 1024, false, null, false)]
@@ -263,7 +262,7 @@ public class ReceiptsSyncFeedTests
             _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         LoadScenario(_256BodiesWithOneTxEach);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
-        _feed.IsFinished.Should().Be(shouldFinish);
+        Assert.That(_feed.IsFinished, Is.EqualTo(shouldFinish));
     }
 
     [Test]
@@ -307,7 +306,7 @@ public class ReceiptsSyncFeedTests
         _feed.InitializeFeed();
         using ReceiptsSyncBatch? _ = await _feed.PrepareRequest();
 
-        _feed.IsFinished.Should().BeTrue();
+        Assert.That(_feed.IsFinished, Is.True);
     }
 
     // Regression for #9002: decreasing AncientReceiptsBarrier after a partial sync must not leave the feed stuck.
@@ -324,7 +323,7 @@ public class ReceiptsSyncFeedTests
         _feed.InitializeFeed();
 
         // Receipts 256..767 are still missing — feed must stay active.
-        _feed.IsFinished.Should().BeFalse();
+        Assert.That(_feed.IsFinished, Is.False);
     }
 
     private void LoadScenario(Scenario scenario) =>
@@ -397,13 +396,13 @@ public class ReceiptsSyncFeedTests
 
         for (int i = 0; i < expectedBatches; i++)
         {
-            batches[i].Should().NotBeNull();
-            batches[i]!.ToString().Should().NotBeNull();
+            Assert.That(batches[i], Is.Not.Null);
+            Assert.That(batches[i]!.ToString(), Is.Not.Null);
         }
 
         for (int i = expectedBatches; i < 100; i++)
         {
-            batches[i].Should().BeNull();
+            Assert.That(batches[i], Is.Null);
         }
     }
 
@@ -424,7 +423,7 @@ public class ReceiptsSyncFeedTests
         batch.ResponseSourcePeer = peerInfo;
 
         SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
-        handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
+        Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.NoProgress));
 
         _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.InvalidReceiptRoot, Arg.Any<string>());
     }
@@ -449,9 +448,9 @@ public class ReceiptsSyncFeedTests
         FillBatchResponses(batch!);
         _feed.HandleResponse(batch);
         _syncPointers.LowestInsertedReceiptBlockNumber.Returns(1);
-        _feed.PrepareRequest().Result.Should().Be(null);
+        Assert.That(_feed.PrepareRequest().Result, Is.EqualTo(null));
 
-        _feed.CurrentState.Should().Be(SyncFeedState.Finished);
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
     }
 
     [Test]
