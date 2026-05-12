@@ -21,6 +21,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Nethermind.Trie;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
@@ -260,14 +261,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
 
-            { InnerException: InvalidTransactionException e } =>
-                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
-
-            InvalidTransactionException e =>
-                GetErrorResponse(methodName, ErrorCodes.Default, e.Reason.ErrorDescription, null, request.Id, returnAction),
+            InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
 
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
+
+            MissingTrieNodeException e =>
+                HandleMissingTrieNode(e, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException e } =>
+                HandleMissingTrieNode(e, methodName, request, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
@@ -276,6 +280,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
+        }
+
+        JsonRpcErrorResponse HandleMissingTrieNode(MissingTrieNodeException ex, string methodName, JsonRpcRequest request, Action? returnAction)
+        {
+            // HasStateForBlock only checks the state root; subtree nodes can still be pruned out
+            // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
+            // can investigate whether it's a legitimate pruning gap or a deeper issue.
+            if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
+            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), request.Id, returnAction);
         }
     }
 

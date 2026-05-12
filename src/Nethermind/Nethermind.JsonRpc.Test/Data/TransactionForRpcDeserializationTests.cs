@@ -112,8 +112,9 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
 
-            // gasPrice → Legacy, not defaulted
+            // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
             yield return Make(TxType.Legacy, """{"gasPrice":"0x1"}""", London.Instance);
+            yield return Make(TxType.Legacy, """{"gasPrice":"0x1"}""", Istanbul.Instance);
 
             // No spec (null) → keeps defaulted EIP1559
             yield return Make(TxType.EIP1559, """{}""", null);

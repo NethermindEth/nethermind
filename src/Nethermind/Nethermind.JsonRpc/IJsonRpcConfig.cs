@@ -151,7 +151,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of the method names not to log.",
-        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3]")]
+        DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3,eth_signTransaction]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
     [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
@@ -168,7 +168,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max number of JSON-RPC requests in a batch.", DefaultValue = "1024")]
     int MaxBatchSize { get; set; }
 
-    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "128")]
+    [ConfigItem(Description = "The maximum depth of JSON response object tree.", DefaultValue = "4096")]
     int JsonSerializationMaxDepth { get; set; }
 
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
@@ -179,6 +179,12 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
+
+    [ConfigItem(Description = "Maximum total tx fee (gasPrice * gasLimit, in wei) the node will sign in eth_signTransaction. 0 disables the cap. Default 1 ETH.", DefaultValue = "1000000000000000000")]
+    ulong RpcTxFeeCap { get; set; }
+
+    [ConfigItem(Description = "Whether to enable eth_signTransaction. Disabled by default; enable only on nodes that explicitly manage unlocked accounts.", DefaultValue = "false")]
+    bool EnableEthSignTransaction { get; set; }
 
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
