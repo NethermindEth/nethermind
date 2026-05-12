@@ -70,8 +70,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "0x1")]
         ResultWrapper<UInt256?> eth_blobBaseFee();
 
-        [JsonRpcMethod(IsImplemented = false,
-            Description = "Returns accounts",
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns a list of addresses owned by the client",
             IsSharable = true,
             ExampleResponse = "[\"0x9b96a7841d6e0b76872c85c86082959189a27342\"]")]
         ResultWrapper<IEnumerable<Address>> eth_accounts();
@@ -139,7 +139,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Returns account code at given address and block", IsSharable = true)]
         ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null);
 
-        [JsonRpcMethod(IsImplemented = false, Description = "Signs a transaction", IsSharable = true)]
+        [JsonRpcMethod(IsImplemented = true, Description = "Returns an EIP-191 signature over the provided message", IsSharable = true)]
         ResultWrapper<string> eth_sign(Address addressData, byte[] message);
 
         [JsonRpcMethod(IsImplemented = true,
