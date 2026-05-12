@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.State;
 
-namespace Nethermind.Init;
+namespace Nethermind.Blockchain;
 
 /// <summary>
 /// Detects and clears state-availability metadata that no longer matches the on-disk state.
@@ -15,7 +14,7 @@ namespace Nethermind.Init;
 /// MetadataDb/BlockInfoDb the recorded floors would otherwise misreport availability
 /// (e.g. <c>eth_capabilities</c>) until sync rewrites them.
 /// </summary>
-internal static class StateMetadataValidator
+public static class StateMetadataValidator
 {
     public static void DiscardStaleFloors(IWorldStateManager worldStateManager, IBlockTree blockTree, ILogManager logManager)
     {
@@ -38,7 +37,7 @@ internal static class StateMetadataValidator
 
     private static bool IsStateMissing(long blockNumber, IWorldStateManager worldStateManager, IBlockTree blockTree)
     {
-        BlockHeader? header = blockTree.FindHeader(blockNumber);
+        BlockHeader? header = blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
         // Unknown header — can't verify, leave the marker alone (next writer will overwrite).
         if (header is null) return false;
         return !worldStateManager.GlobalStateReader.HasStateForBlock(header);
