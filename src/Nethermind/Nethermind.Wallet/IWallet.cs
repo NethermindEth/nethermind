@@ -4,7 +4,6 @@
 using System;
 using System.Security;
 using System.Security.Cryptography;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -28,12 +27,7 @@ namespace Nethermind.Wallet
                 ?? throw new CryptographicException($"Failed to sign tx {tx.Hash} using the {tx.SenderAddress} address.");
             tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * chainId : (ulong)(tx.Signature.RecoveryId + 27);
         }
-        Signature SignMessage(byte[] message, Address address)
-        {
-            string m = Encoding.UTF8.GetString(message);
-            string signatureText = $"\u0019Ethereum Signed Message:\n{m.Length}{m}";
-            return Sign(Keccak.Compute(signatureText), address);
-        }
+        Signature SignMessage(byte[] message, Address address) => Sign(Eip191Hasher.HashMessage(message), address);
         event EventHandler<AccountLockedEventArgs> AccountLocked;
         event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
     }

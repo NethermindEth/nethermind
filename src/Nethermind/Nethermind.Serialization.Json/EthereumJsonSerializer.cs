@@ -13,6 +13,7 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json
 {
@@ -105,6 +106,7 @@ namespace Nethermind.Serialization.Json
                     new JavaScriptObjectConverter(),
                     new PublicKeyHashedConverter(),
                     new PublicKeyConverter(),
+                    new SignatureConverter(),
                     new ValueHash256Converter(strictHexFormat),
                     new Hash256Converter(strictHexFormat),
                     new IPAddressConverter(),
