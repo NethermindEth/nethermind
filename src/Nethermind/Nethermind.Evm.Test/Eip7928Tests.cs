@@ -159,12 +159,52 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         Assert.That(accountChanges.NonceChanges[0].Value, Is.EqualTo(value));
     }
 
+    private static void AssertCodeChange(BlockAccessList bal, Address address, byte[] code)
+    {
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.CodeChanges, Has.Count.EqualTo(1));
+        Assert.That(accountChanges.CodeChanges[0].Index, Is.EqualTo(0u));
+        Assert.That(accountChanges.CodeChanges[0].Code, Is.EqualTo(code));
+    }
+
+    private static void AssertStorageRead(BlockAccessList bal, Address address, UInt256 key)
+    {
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.StorageChanges, Is.Empty);
+        Assert.That(accountChanges.StorageReads, Does.Contain(key));
+    }
+
+    private static byte[] BuildDelegationCode(Address target) =>
+        [.. Eip7702Constants.DelegationHeader, .. target.Bytes];
+
     private static byte[] BuildStorageWriteCode(UInt256 key, UInt256 value) =>
         Prepare.EvmCode
             .PushData(value)
             .PushData(key)
             .Op(Instruction.SSTORE)
             .Done;
+
+    private static byte[] BuildCallResultStorageWriteCode(Address target, UInt256 slot) =>
+        Prepare.EvmCode
+            .Call(target, 50_000)
+            .PushData(slot)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+    private static byte[] BuildCallWithValueResultStorageWriteCode(Address target, UInt256 slot, UInt256 value) =>
+        Prepare.EvmCode
+            .CallWithValue(target, 50_000, value)
+            .PushData(slot)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+    private AuthorizationTuple SignAuthorization(PrivateKey signer, Address codeAddress, ulong nonce = 0)
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        return ecdsa.Sign(signer, SpecProvider.ChainId, codeAddress, nonce);
+    }
 
     private BlockAccessList ExecuteSetCodeCall(params AuthorizationTuple[] authorizationList)
     {
@@ -475,17 +515,12 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         byte[] entryCode = BuildStorageWriteCode(UInt256.Zero, UInt256.One);
         byte[] authorityCode = [(byte)Instruction.STOP];
-        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         Address authority = TestItem.AddressB;
 
         InitWorldState(TestState, entryCode);
         AddAccountToState(authority, code: authorityCode);
 
-        AuthorizationTuple authorization = ecdsa.Sign(
-            TestItem.PrivateKeyB,
-            SpecProvider.ChainId,
-            _delegationTargetAddress,
-            0);
+        AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, _delegationTargetAddress);
 
         BlockAccessList bal = ExecuteSetCodeCall(authorization);
 
@@ -494,6 +529,124 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
             AssertPureAccountRead(bal.GetAccountChanges(authority));
             Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
+        }
+    }
+
+    [TestCase(true, TestName = "EIP7702_authorization_valid_nonce_records_signer_target_and_entry_change")]
+    [TestCase(false, TestName = "EIP7702_authorization_invalid_nonce_records_signer_read_and_noop_sstore_read")]
+    public void Eip7702_authorization_nonce_validity_records_bal(bool validAuthorizationNonce)
+    {
+        Address authority = TestItem.AddressB;
+        byte[] entryCode = validAuthorizationNonce
+            ? BuildCallResultStorageWriteCode(authority, UInt256.Zero)
+            : BuildCallWithValueResultStorageWriteCode(authority, UInt256.Zero, UInt256.One);
+
+        InitWorldState(TestState, entryCode, delegationTarget: _delegationTargetAddress);
+        AddAccountToState(authority);
+        if (validAuthorizationNonce)
+        {
+            AddAccountToState(_delegationTargetAddress, code: [(byte)Instruction.STOP]);
+        }
+
+        AuthorizationTuple authorization = SignAuthorization(
+            TestItem.PrivateKeyB,
+            _delegationTargetAddress,
+            validAuthorizationNonce ? 0ul : 1ul);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (validAuthorizationNonce)
+            {
+                AssertNonceChange(bal, authority, 1);
+                AssertCodeChange(bal, authority, BuildDelegationCode(_delegationTargetAddress));
+                AssertPureAccountRead(bal.GetAccountChanges(_delegationTargetAddress));
+                AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
+            }
+            else
+            {
+                AssertPureAccountRead(bal.GetAccountChanges(authority));
+                Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
+                AssertStorageRead(bal, _callTargetAddress, UInt256.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Eip7702_multi_hop_delegation_resolves_one_hop_in_bal()
+    {
+        Address authority = TestItem.AddressB;
+        Address intermediate = TestItem.AddressE;
+        Address finalTarget = TestItem.AddressF;
+        byte[] entryCode = BuildCallResultStorageWriteCode(authority, UInt256.Zero);
+
+        InitWorldState(TestState, entryCode, delegationTarget: intermediate);
+        AddAccountToState(authority);
+        AddAccountToState(intermediate, code: BuildDelegationCode(finalTarget));
+        AddAccountToState(finalTarget, code: [(byte)Instruction.STOP]);
+
+        AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, intermediate);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, authority, 1);
+            AssertCodeChange(bal, authority, BuildDelegationCode(intermediate));
+            AssertPureAccountRead(bal.GetAccountChanges(intermediate));
+            Assert.That(bal.GetAccountChanges(finalTarget), Is.Null);
+            AssertStorageRead(bal, _callTargetAddress, UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip7702_self_delegation_resolves_one_hop_to_designator_code()
+    {
+        Address authority = TestItem.AddressB;
+        byte[] entryCode = BuildCallResultStorageWriteCode(authority, UInt256.Zero);
+
+        InitWorldState(TestState, entryCode, delegationTarget: authority);
+        AddAccountToState(authority);
+
+        AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, authority);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, authority, 1);
+            AssertCodeChange(bal, authority, BuildDelegationCode(authority));
+            AssertStorageRead(bal, _callTargetAddress, UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip7702_same_tx_delegation_chain_resolves_one_hop_in_bal()
+    {
+        Address authority = TestItem.AddressB;
+        Address intermediate = TestItem.AddressE;
+        Address finalTarget = TestItem.AddressF;
+        byte[] entryCode = BuildCallResultStorageWriteCode(authority, UInt256.Zero);
+
+        InitWorldState(TestState, entryCode, delegationTarget: intermediate);
+        AddAccountToState(authority);
+        AddAccountToState(intermediate);
+        AddAccountToState(finalTarget, code: [(byte)Instruction.STOP]);
+
+        AuthorizationTuple authorityAuthorization = SignAuthorization(TestItem.PrivateKeyB, intermediate);
+        AuthorizationTuple intermediateAuthorization = SignAuthorization(TestItem.PrivateKeyE, finalTarget);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorityAuthorization, intermediateAuthorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, authority, 1);
+            AssertCodeChange(bal, authority, BuildDelegationCode(intermediate));
+            AssertNonceChange(bal, intermediate, 1);
+            AssertCodeChange(bal, intermediate, BuildDelegationCode(finalTarget));
+            Assert.That(bal.GetAccountChanges(finalTarget), Is.Null);
+            AssertStorageRead(bal, _callTargetAddress, UInt256.Zero);
         }
     }
 
