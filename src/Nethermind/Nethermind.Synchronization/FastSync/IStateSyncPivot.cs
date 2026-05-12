@@ -13,5 +13,6 @@ public interface IStateSyncPivot
     void UpdateHeaderForcefully();
     ConcurrentHashSet<Hash256> UpdatedStorages { get; }
     long Diff { get; }
+    /// <summary>Returns <c>true</c> if state sync can be finalized at <paramref name="pivot"/>.</summary>
     bool CanFinalize(BlockHeader pivot);
 }

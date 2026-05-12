@@ -22,7 +22,7 @@ public class XdcStateSyncSnapshotManager(
     IBlockTree blockTree,
     ISnapshotManager snapshotManager,
     IMasternodeVotingContract masternodeVotingContract
-    )
+    ) : IXdcStateSyncSnapshotManager
 {
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;

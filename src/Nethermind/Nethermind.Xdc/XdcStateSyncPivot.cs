@@ -16,7 +16,7 @@ public class XdcStateSyncPivot(
     IBlockTree blockTree,
     ISyncConfig syncConfig,
     IStateReader stateReader,
-    XdcStateSyncSnapshotManager syncSnapshotManager) : IStateSyncPivot
+    IXdcStateSyncSnapshotManager syncSnapshotManager) : IStateSyncPivot
 {
     private readonly IBlockTree _blockTree = blockTree;
     private readonly ISyncConfig _syncConfig = syncConfig;
@@ -25,7 +25,7 @@ public class XdcStateSyncPivot(
     private XdcBlockHeader? _pivotHeader;
     private bool _initialized;
 
-    private readonly XdcStateSyncSnapshotManager _syncSnapshotManager = syncSnapshotManager;
+    private readonly IXdcStateSyncSnapshotManager _syncSnapshotManager = syncSnapshotManager;
 
     public BlockHeader? GetPivotHeader()
     {
@@ -48,7 +48,11 @@ public class XdcStateSyncPivot(
     public void UpdateHeaderForcefully() { }
     public ConcurrentHashSet<Hash256> UpdatedStorages { get; } = new();
     public long Diff => (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_pivotHeader?.Number ?? 0);
-    public bool CanFinalize(BlockHeader pivot) => pivot.Hash == _pivotHeader?.Hash;
+    public bool CanFinalize(BlockHeader pivot)
+    {
+        EnsureInitialized();
+        return _pivotHeader is not null && pivot.Hash == _pivotHeader.Hash;
+    }
 
     private void EnsureInitialized()
     {
