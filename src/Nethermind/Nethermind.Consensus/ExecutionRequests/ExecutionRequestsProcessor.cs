@@ -23,6 +23,12 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
+    /// <summary>Tests whether <paramref name="log"/> is an EIP-6110 deposit event emitted by the configured deposit contract.</summary>
+    public static bool IsDepositLog(LogEntry log, Address depositContractAddress) =>
+        log.Address == depositContractAddress
+        && log.Topics.Length >= 1
+        && log.Topics[0] == DepositEventAbi.Hash;
+
     private const long GasLimit = 30_000_000L;
 
     private readonly ITransactionProcessor _transactionProcessor;
@@ -104,7 +110,7 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                 for (int j = 0; j < logEntries.Length; j++)
                 {
                     LogEntry log = logEntries[j];
-                    if (log.Address == spec.DepositContractAddress && log.Topics.Length >= 1 && log.Topics[0] == DepositEventAbi.Hash)
+                    if (IsDepositLog(log, spec.DepositContractAddress))
                     {
                         Span<byte> depositRequestBuffer = new byte[ExecutionRequestExtensions.DepositRequestsBytesSize];
                         DecodeDepositRequest(block, log, depositRequestBuffer);

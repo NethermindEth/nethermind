@@ -6,6 +6,8 @@ namespace Nethermind.Core;
 public static class Eip6110Constants
 {
     public const string ContractAddressKey = "DEPOSIT_CONTRACT_ADDRESS";
+    /// <summary>Maximum number of EIP-6110 deposit requests permitted per produced block (EIP-8254).</summary>
+    public const int MaxDepositRequestsPerBlock = 8192;
 
     public static readonly Address MainnetDepositContractAddress = new("0x00000000219ab540356cbb839cbe05303d7705fa");
     public static readonly Address HoleskyDepositContractAddress = new("0x4242424242424242424242424242424242424242");

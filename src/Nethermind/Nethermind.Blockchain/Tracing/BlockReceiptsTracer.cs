@@ -253,6 +253,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
     private readonly List<(long Regular, long State)> _cumulativeBlockGasPerTx = new();  // Track pre-refund block gas for restore (regular + EIP-8037 state)
+    private readonly Stack<(int Receipts, int Other)> _otherTracerSnapshots = new();
     private long _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
@@ -285,10 +286,51 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
     public ITxTracer InnerTracer => _currentTxTracer;
 
-    public int TakeSnapshot() => _txReceipts.Count;
+    /// <inheritdoc />
+    /// <remarks>
+    /// Returns the current receipt count and, when the wrapped other-tracer also implements
+    /// <see cref="IJournal{Int32}"/>, takes its snapshot in lockstep so a later <see cref="Restore"/>
+    /// can rewind both consistently.
+    /// </remarks>
+    public int TakeSnapshot()
+    {
+        int snapshot = _txReceipts.Count;
+        if (_otherTracer is IJournal<int> journal)
+        {
+            _otherTracerSnapshots.Push((snapshot, journal.TakeSnapshot()));
+        }
 
+        return snapshot;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Cascades to any <see cref="IJournal{Int32}"/> other-tracer by popping every entry whose
+    /// receipt depth is &gt;= <paramref name="snapshot"/> and restoring it to the deepest popped state.
+    /// <paramref name="snapshot"/> must be a value previously returned by <see cref="TakeSnapshot"/>;
+    /// passing a raw <see cref="TxReceipts"/>.Length probe risks rewinding the other-tracer to an
+    /// unrelated earlier state.
+    /// </remarks>
     public void Restore(int snapshot)
     {
+        if (_otherTracer is IJournal<int> journal)
+        {
+            Debug.Assert(_otherTracerSnapshots.Count > 0,
+                "Restore called without a preceding TakeSnapshot for the other tracer");
+
+            int otherToRestore = 0;
+            bool hasOther = false;
+            while (_otherTracerSnapshots.TryPeek(out (int Receipts, int Other) top) && top.Receipts >= snapshot)
+            {
+                otherToRestore = _otherTracerSnapshots.Pop().Other;
+                hasOther = true;
+            }
+            if (hasOther)
+            {
+                journal.Restore(otherToRestore);
+            }
+        }
+
         int numToRemove = _txReceipts.Count - snapshot;
         if (numToRemove > 0)
         {
@@ -305,6 +347,8 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        _currentIndex = snapshot;
+        CurrentTx = null;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -318,6 +362,7 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
         _currentTxTracer = NullTxTracer.Instance;
         _txReceipts.Clear();
         _cumulativeBlockGasPerTx.Clear();
+        _otherTracerSnapshots.Clear();
         _cumulativeReceiptGas = 0;
 
         _otherTracer.StartNewBlockTrace(block);

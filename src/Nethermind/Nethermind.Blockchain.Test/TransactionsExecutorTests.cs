@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -353,7 +354,7 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB - 1);
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance, NullBlockAccessListManager.Instance);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, specProvider, txPicker, LimboLogs.Instance, NullBlockAccessListManager.Instance);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
@@ -410,6 +411,68 @@ namespace Nethermind.Blockchain.Test
             Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
         }
 
+        [Test]
+        public void BlockProductionTransactionsExecutor_skips_transaction_that_would_exceed_deposit_request_cap()
+        {
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+            Transaction atCap = BuildTransaction(1, Eip6110Constants.MainnetDepositContractAddress);
+            Transaction overCap = BuildTransaction(2, Eip6110Constants.MainnetDepositContractAddress);
+            Transaction normal = BuildTransaction(3, TestItem.AddressB);
+            Transaction[] transactions = [atCap, overCap, normal];
+
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                stateProvider.CreateAccount(transactions[i].SenderAddress!, 1.Ether);
+            }
+
+            IReleaseSpec spec = Prague.Instance;
+            stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
+
+            Block block = Build.A.Block
+                .WithNumber(0)
+                .WithBaseFeePerGas(0)
+                .WithGasLimit(GasCostOf.Transaction * transactions.Length)
+                .WithTransactions(transactions)
+                .TestObject;
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+
+            Dictionary<Hash256, int> depositRequestsByTxHash = new()
+            {
+                [atCap.Hash!] = Eip6110Constants.MaxDepositRequestsPerBlock,
+                [overCap.Hash!] = 1
+            };
+
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                new DepositRequestCountingTransactionProcessor(stateProvider, depositRequestsByTxHash),
+                stateProvider,
+                specProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
+                LimboLogs.Instance,
+                NullBlockAccessListManager.Instance);
+
+            FeesTracer feesTracer = new();
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.SetOtherTracer(feesTracer);
+            receiptsTracer.StartNewBlockTrace(blockToProduce);
+
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
+            TxReceipt[] receipts = txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
+            Transaction[] selectedTransactions = blockToProduce.Transactions.ToArray();
+
+            Assert.That(selectedTransactions, Has.Length.EqualTo(2));
+            Assert.That(selectedTransactions[0], Is.SameAs(atCap));
+            Assert.That(selectedTransactions[1], Is.SameAs(normal));
+            Assert.That(receipts, Has.Length.EqualTo(2));
+            Assert.That(blockToProduce.Header.GasUsed, Is.EqualTo(GasCostOf.Transaction * 2));
+            Assert.That(feesTracer.Fees, Is.EqualTo((UInt256)2));
+            Assert.That(stateProvider.GetNonce(overCap.SenderAddress!), Is.EqualTo(UInt256.Zero));
+            Assert.That(stateProvider.GetNonce(normal.SenderAddress!), Is.EqualTo(UInt256.One));
+        }
+
         private static Transaction[] RunBlockProduction(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
@@ -420,6 +483,7 @@ namespace Nethermind.Blockchain.Test
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
                 transactionProcessor,
                 stateProvider,
+                specProvider,
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
                 LimboLogs.Instance,
                 NullBlockAccessListManager.Instance);
@@ -440,6 +504,57 @@ namespace Nethermind.Blockchain.Test
         {
             BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
             return RunBlockProduction(transactionProcessor, stateProvider, new TestSingleReleaseSpecProvider(spec), blockToProduce, spec);
+        }
+
+        private static Transaction BuildTransaction(int id, Address to) =>
+            Build.A.Transaction
+                .WithSenderAddress(Address.FromNumber((UInt256)id))
+                .WithTo(to)
+                .WithValue(0)
+                .WithGasPrice(1)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithHash(TestItem.KeccakFromNumber(id))
+                .TestObject;
+
+        private sealed class DepositRequestCountingTransactionProcessor(
+            IWorldState stateProvider,
+            IReadOnlyDictionary<Hash256, int> depositRequestsByTxHash) : ITransactionProcessorAdapter
+        {
+            public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+            {
+                stateProvider.IncrementNonce(transaction.SenderAddress!);
+                txTracer.ReportFees(1, UInt256.Zero);
+
+                GasConsumed gasConsumed = GasCostOf.Transaction;
+                txTracer.MarkAsSuccess(
+                    transaction.To ?? Address.Zero,
+                    in gasConsumed,
+                    [],
+                    CreateDepositLogs(depositRequestsByTxHash.GetValueOrDefault(transaction.Hash!, 0)));
+
+                return TransactionResult.Ok;
+            }
+
+            public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) { }
+
+            private static LogEntry[] CreateDepositLogs(int count)
+            {
+                if (count == 0)
+                {
+                    return [];
+                }
+
+                LogEntry[] logs = new LogEntry[count];
+                for (int i = 0; i < logs.Length; i++)
+                {
+                    logs[i] = new LogEntry(
+                        Eip6110Constants.MainnetDepositContractAddress,
+                        [],
+                        [ExecutionRequestsProcessor.DepositEventAbi.Hash]);
+                }
+
+                return logs;
+            }
         }
     }
 

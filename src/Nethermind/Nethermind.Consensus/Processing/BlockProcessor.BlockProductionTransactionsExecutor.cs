@@ -3,12 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -24,6 +28,7 @@ namespace Nethermind.Consensus.Processing
         public class BlockProductionTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
+            ISpecProvider specProvider,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager,
             IBlockAccessListManager balManager)
@@ -58,6 +63,8 @@ namespace Nethermind.Consensus.Processing
                 // Don't use blockToProduce.Transactions.Count() as that would fully enumerate which is expensive
                 int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
                 IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
+                IReleaseSpec spec = specProvider.GetSpec(block.Header);
+                DepositRequestsLimiter depositRequestsLimiter = new(spec);
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
 
@@ -68,7 +75,7 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx, ref depositRequestsLimiter);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -96,7 +103,8 @@ namespace Nethermind.Consensus.Processing
                 int index,
                 BlockReceiptsTracer receiptsTracer,
                 ProcessingOptions processingOptions,
-                HashSet<Transaction> transactionsInBlock)
+                HashSet<Transaction> transactionsInBlock,
+                ref DepositRequestsLimiter depositRequestsLimiter)
             {
                 AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
 
@@ -106,13 +114,43 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
+                    bool rollbackOnDepositRequestOverflow = depositRequestsLimiter.CanExceedCap(currentTx.GasLimit);
+                    Snapshot stateSnapshot = rollbackOnDepositRequestOverflow ? stateProvider.TakeSnapshot() : default;
+                    int receiptsCountBeforeTx = rollbackOnDepositRequestOverflow ? receiptsTracer.TakeSnapshot() : receiptsTracer.TxReceipts.Length;
+
                     ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
                     TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
                     {
-                        _transactionProcessed?.Invoke(this,
-                            new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+                        // Stub adapters in tests can return Ok without emitting a receipt; production adapters always do.
+                        TxReceipt? txReceipt = receiptsTracer.TxReceipts.Length > receiptsCountBeforeTx ? receiptsTracer.LastReceipt : null;
+                        if (depositRequestsLimiter.Enabled
+                            && txReceipt?.Logs is { Length: > 0 } logs
+                            && !depositRequestsLimiter.TryAdd(logs, out int depositRequestsInTx))
+                        {
+                            if (!rollbackOnDepositRequestOverflow)
+                            {
+                                ThrowDepositRequestCapInvariantViolation(currentTx, depositRequestsInTx);
+                            }
+
+                            stateProvider.Restore(stateSnapshot);
+                            receiptsTracer.Restore(receiptsCountBeforeTx);
+                            balManager.Rollback();
+                            ResetGasUsed(currentTx);
+                            if (_logger.IsDebug)
+                            {
+                                args.Set(TxAction.Skip, $"EIP-8254 deposit request cap reached: transaction has {depositRequestsInTx} deposit request(s)");
+                                DebugSkipReason(currentTx, args);
+                            }
+                            return TxAction.Skip;
+                        }
+
+                        if (txReceipt is not null)
+                        {
+                            _transactionProcessed?.Invoke(this,
+                                new TxProcessedEventArgs(index, currentTx, block.Header, txReceipt));
+                        }
                         balManager.NextTransaction();
                     }
                     else
@@ -127,6 +165,73 @@ namespace Nethermind.Consensus.Processing
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void DebugSkipReason(Transaction currentTx, AddingTxEventArgs args)
                     => _logger.Debug($"Skipping transaction {currentTx.ToShortString()} because: {args.Reason}.");
+            }
+
+            private static void ResetGasUsed(Transaction tx)
+            {
+                tx.SpentGas = 0;
+                tx.BlockGasUsed = 0;
+            }
+
+            [DoesNotReturn, MethodImpl(MethodImplOptions.NoInlining)]
+            private static void ThrowDepositRequestCapInvariantViolation(Transaction tx, int depositRequestsInTx) =>
+                throw new InvalidOperationException(
+                    $"Transaction {tx.ToShortString()} exceeded the EIP-8254 deposit request cap without a rollback snapshot. Deposit requests in tx: {depositRequestsInTx}.");
+
+            /// <summary>Per-block tally of EIP-6110 deposit requests included while building, gated by the EIP-8254 cap.</summary>
+            private struct DepositRequestsLimiter(IReleaseSpec spec)
+            {
+                // 5x32 offsets + 5x32 lengths + ceil-32-pad(48+32+8+96+8) = 576 bytes (see ExecutionRequestsProcessor.DepositEventAbi).
+                private const int DepositEventAbiEncodedDataSize = 576;
+
+                // LOG-only floor (375 + 375 + 8*576 = 5358). Deposit contract burns more before each emit, so this
+                // over-estimates max deposits/tx as a divisor in CanExceedCap. ThrowDepositRequestCapInvariantViolation
+                // backstops any miscount.
+                private const long MinDepositLogGas =
+                    GasCostOf.Log + GasCostOf.LogTopic + GasCostOf.LogData * DepositEventAbiEncodedDataSize;
+                private readonly Address? _depositContractAddress = spec.DepositContractAddress;
+                private int _depositRequests;
+
+                public readonly bool Enabled => _depositContractAddress is not null;
+
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public readonly bool CanExceedCap(long gasLimit) =>
+                    Enabled
+                    && (long)_depositRequests + gasLimit / MinDepositLogGas > Eip6110Constants.MaxDepositRequestsPerBlock;
+
+                [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                public bool TryAdd(LogEntry[] logs, out int depositRequestsInTx)
+                {
+                    depositRequestsInTx = CountDepositRequests(logs);
+                    if (depositRequestsInTx == 0)
+                    {
+                        return true;
+                    }
+
+                    if (_depositRequests + depositRequestsInTx > Eip6110Constants.MaxDepositRequestsPerBlock)
+                    {
+                        return false;
+                    }
+
+                    _depositRequests += depositRequestsInTx;
+                    return true;
+                }
+
+                private readonly int CountDepositRequests(LogEntry[] logs)
+                {
+                    Debug.Assert(_depositContractAddress is not null, "Reachable only via TryAdd, which is gated by Enabled.");
+                    Address depositContract = _depositContractAddress;
+                    int depositRequests = 0;
+                    for (int i = 0; i < logs.Length; i++)
+                    {
+                        if (ExecutionRequestsProcessor.IsDepositLog(logs[i], depositContract))
+                        {
+                            depositRequests++;
+                        }
+                    }
+
+                    return depositRequests;
+                }
             }
         }
     }
