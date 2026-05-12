@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -23,6 +23,9 @@ using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -34,6 +37,7 @@ using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
+using Nethermind.Xdc.Discovery;
 
 namespace Nethermind.Xdc;
 
@@ -125,6 +129,7 @@ public class XdcModule : Module
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
+            .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
 
             .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
@@ -135,8 +140,12 @@ public class XdcModule : Module
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
 
-            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
-            ;
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>();
+
+        // Overrides DiscoveryApp and NodeLifecycleManagerFactory registered in DiscoveryModule (via NethermindModule).
+        // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
+        builder.RegisterType<XdcDiscoveryApp>().As<DiscoveryApp>().WithAttributeFiltering().SingleInstance().ExternallyOwned();
+        builder.RegisterType<XdcNodeLifecycleManagerFactory>().As<INodeLifecycleManagerFactory>().SingleInstance();
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);
