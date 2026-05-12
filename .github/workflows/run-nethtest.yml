@@ -178,9 +178,9 @@ jobs:
             "https://www.nuget.org/api/v2/package/JetBrains.dotMemory.Console.linux-x64/$DOTMEMORY_VERSION" \
             -o "$DOTMEMORY_PACKAGE"
           unzip -q -o "$DOTMEMORY_PACKAGE" -d "$DOTMEMORY_HOME"
-          chmod +x "$DOTMEMORY_HOME/tools/dotMemory.sh" "$DOTMEMORY_HOME/tools/dotmemory"
-          echo "DOTMEMORY_CMD=$DOTMEMORY_HOME/tools/dotMemory.sh" >> "$GITHUB_ENV"
-          "$DOTMEMORY_HOME/tools/dotMemory.sh" help start | head -80
+          find "$DOTMEMORY_HOME/tools" -type f \( -name '*.sh' -o -name 'dotmemory' -o -name 'dotnet' -o -name 'createdump' -o -name 'crossgen2' \) -exec chmod +x {} +
+          echo "DOTMEMORY_CMD=$DOTMEMORY_HOME/tools/dotmemory" >> "$GITHUB_ENV"
+          "$DOTMEMORY_HOME/tools/dotmemory" help start | head -80
 
       - name: Resolve EEST release
         id: eest_release
