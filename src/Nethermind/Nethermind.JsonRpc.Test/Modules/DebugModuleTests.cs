@@ -12,7 +12,6 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -212,14 +211,14 @@ public class DebugModuleTests
     public async Task Get_raw_block_access_list()
     {
         Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
-        BlockAccessList bal = new();
+        byte[] rawBal = [0xc0];
         _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
-        _blockchainBridge.GetBlockAccessList(block.Hash!).Returns(bal);
+        _blockchainBridge.GetBlockAccessListRlp(block.Hash!).Returns(rawBal);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcSuccessResponse;
 
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(new byte[] { 0xc0 }));
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rawBal));
     }
 
     [Test]
@@ -250,7 +249,7 @@ public class DebugModuleTests
     {
         Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
         _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
-        _blockchainBridge.GetBlockAccessList(block.Hash!).ReturnsNull();
+        _blockchainBridge.GetBlockAccessListRlp(block.Hash!).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcErrorResponse;

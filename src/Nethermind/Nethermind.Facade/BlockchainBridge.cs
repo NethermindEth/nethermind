@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
@@ -467,6 +468,12 @@ namespace Nethermind.Facade
 
         public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
             => balStore.Get(blockHash);
+
+        public byte[]? GetBlockAccessListRlp(Hash256 blockHash)
+        {
+            using MemoryManager<byte>? rlp = balStore.GetRlp(blockHash);
+            return rlp?.Memory.ToArray();
+        }
 
         // for testing
         public void DeleteBlockAccessList(Hash256 blockHash)

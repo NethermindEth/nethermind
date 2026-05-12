@@ -58,6 +58,7 @@ namespace Nethermind.Facade
         Witness GenerateExecutionWitness(BlockHeader header, Transaction tx);
 
         BlockAccessList? GetBlockAccessList(Hash256 blockHash);
+        byte[]? GetBlockAccessListRlp(Hash256 blockHash);
         void DeleteBlockAccessList(Hash256 blockHash);
     }
 }
