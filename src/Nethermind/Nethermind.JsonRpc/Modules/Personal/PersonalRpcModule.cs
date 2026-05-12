@@ -57,8 +57,10 @@ namespace Nethermind.JsonRpc.Modules.Personal
             }
 
             Hash256 msgHash = Eip191Hasher.HashMessage(message);
-            PublicKey publicKey = ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
-            return ResultWrapper<Address>.Success(publicKey.Address);
+            PublicKey? publicKey = ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
+            return publicKey is null
+                ? ResultWrapper<Address>.Fail("Could not recover public key from the provided signature.", ErrorCodes.InvalidParams)
+                : ResultWrapper<Address>.Success(publicKey.Address);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
