@@ -53,6 +53,40 @@ public static class ZkGasSchedule
     public static ulong ResolveBlockZkGasLimit(ulong chainId) =>
         chainId == TaikoMasayaChainId ? MasayaBlockZkGasLimit : BlockZkGasLimit;
 
+    /// <summary>
+    /// Mainnet batch-lookup threshold: the first allowed block id (first Shasta block).
+    /// Resolved batch lookup results <em>strictly less than</em> this value are reported
+    /// to the driver as JSON null; the value itself passes through unchanged. Sourced
+    /// from taiko-geth PR #558 and alethia-reth PR #177. Named for the comparison
+    /// semantics rather than the upstream "last Pacaya" label, which is inverted
+    /// relative to the strict-<c>&lt;</c> operator.
+    /// </summary>
+    public const ulong TaikoMainnetBatchLookupThreshold = 4_990_434;
+
+    /// <summary>
+    /// Hoodi batch-lookup threshold: the first allowed block id (first Shasta block).
+    /// Resolved batch lookup results <em>strictly less than</em> this value are reported
+    /// to the driver as JSON null; the value itself passes through unchanged. Sourced
+    /// from taiko-geth PR #558 and alethia-reth PR #177.
+    /// </summary>
+    public const ulong TaikoHoodiBatchLookupThreshold = 3_951_005;
+
+    /// <summary>
+    /// Returns the per-network minimum block id for batch lookup RPC results, or
+    /// <c>null</c> on networks with no threshold (Devnet, Masaya, unknown). When a
+    /// threshold is configured, <c>taikoAuth_last{Certain,}{L1Origin,BlockID}ByBatchID</c>
+    /// must report JSON null for any resolved block id strictly below it. Mirrors
+    /// <c>batchLookupBlockThresholds</c> in taiko-geth (PR #558) and
+    /// <c>batch_lookup_last_pacaya_block_threshold</c> in alethia-reth (PR #177).
+    /// </summary>
+    /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
+    public static ulong? ResolveBatchLookupThreshold(ulong chainId) => chainId switch
+    {
+        TaikoMainnetChainId => TaikoMainnetBatchLookupThreshold,
+        TaikoHoodiChainId => TaikoHoodiBatchLookupThreshold,
+        _ => null,
+    };
+
     /// <summary>Fail-safe multiplier for any opcode or precompile not explicitly listed.</summary>
     public const ushort FailsafeMultiplier = ushort.MaxValue;
 
