@@ -134,9 +134,7 @@ public class BlockAccessListDecoderTests
     [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
     {
-        // SlotChanges = [StorageKey, List[StorageChange]]. An empty StorageChange list means a
-        // slot with no changes — that slot belongs in storage_reads instead. Geth bal-devnet-4
-        // rejects this with "empty storage writes".
+        // EIP-7928 represents a slot with no writes in storage_reads, so empty storage_changes is invalid.
         SlotChanges withEmptyChanges = new(123u, new SortedList<uint, StorageChange>(PrestateAwareIndexComparer.Instance));
         byte[] rlp = Rlp.Encode(withEmptyChanges).Bytes;
 
@@ -490,9 +488,8 @@ public class BlockAccessListDecoderTests
     {
         UInt256 slot1 = UInt256.One;
         UInt256 slot2 = new(2);
-        // Each SlotChanges must have at least one StorageChange (per EIP-7928 / geth bal-devnet-4
-        // "empty storage_changes" rejection). Add a real change so this test exercises the
-        // unsorted-slot-order check rather than the empty-changes check.
+        // Each SlotChanges must have at least one StorageChange under EIP-7928. Add a real
+        // change so this test exercises the unsorted-slot-order check rather than the empty-changes check.
         SortedList<uint, StorageChange> innerChanges1 = new(PrestateAwareIndexComparer.Instance) { { 0, new StorageChange(0, 1) } };
         SortedList<uint, StorageChange> innerChanges2 = new(PrestateAwareIndexComparer.Instance) { { 0, new StorageChange(0, 2) } };
         SortedList<UInt256, SlotChanges> storageChanges = new(DescendingComparer<UInt256>())

@@ -58,7 +58,8 @@ public class JsonRpcConfig : IJsonRpcConfig
         "engine_newPayloadV3",
         "engine_forkchoiceUpdatedV1",
         "engine_forkchoiceUpdatedV2",
-        "flashbots_validateBuilderSubmissionV3"
+        "flashbots_validateBuilderSubmissionV3",
+        "eth_signTransaction"
     };
     public string EngineHost { get; set; } = "127.0.0.1";
     public int? EnginePort { get; set; } = null;
@@ -68,6 +69,8 @@ public class JsonRpcConfig : IJsonRpcConfig
     public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
     public int EstimateErrorMargin { get; set; } = 150;
+    public ulong RpcTxFeeCap { get; set; } = (ulong)1.Ether;
+    public bool EnableEthSignTransaction { get; set; }
     public string[] CorsOrigins { get; set; } = ["*"];
     public int WebSocketsProcessingConcurrency { get; set; } = 1;
     public int IpcProcessingConcurrency { get; set; } = 1;
@@ -75,4 +78,6 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
     public bool StrictHexFormat { get; set; } = true;
+    public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
+    public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
 };

@@ -75,6 +75,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ILogManager _logManager;
         private readonly bool _parallel;
         private long _blockCumulativeReceiptGas;
+        private long _blockCumulativeRegularGas;
+        private long _blockCumulativeStateGas;
 
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
@@ -107,6 +109,8 @@ namespace Nethermind.Evm.TransactionProcessing
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             _blockCumulativeReceiptGas = 0;
+            _blockCumulativeRegularGas = 0;
+            _blockCumulativeStateGas = 0;
             VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
         }
 
@@ -216,7 +220,7 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
 
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
-            using StackAccessTracker accessTracker = new();
+            using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
 
             int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
@@ -712,7 +716,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static TransactionResult InsufficientFundsForTransfer(Transaction tx, UInt256 senderBalance) =>
             TransactionResult.ErrorType.InsufficientSenderBalance.WithDetail(
-                $"insufficient funds for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
+                $"insufficient sender balance for transfer: address {tx.SenderAddress?.ToString(withEip55Checksum: true)} have {senderBalance} want {tx.Value}");
 
         private static TransactionResult InsufficientFundsForGas(Transaction tx, UInt256 senderBalance, UInt256 gasPrice)
         {
@@ -818,11 +822,8 @@ namespace Nethermind.Evm.TransactionProcessing
             byte statusCode = StatusCode.Failure;
             long selfDestructStateRefund = 0;
 
-            // EIP-7702 + EIP-8037: capture the tx-start state reservoir (post-Apply8037DelegationRefunds).
-            // The halt path needs this to correctly initialize the reservoir in ResetForHalt; the
-            // intrinsicGasStandard-based formula misses the auth refund and would charge the sender
-            // for unconsumed reservoir gas (1x AccountCreationCost = 131,488 per valid auth on
-            // existing account).
+            // EIP-7702 + EIP-8037: capture the tx-start state reservoir after authorization refunds.
+            // The halt path needs this to correctly initialize the reservoir in ResetForHalt.
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
 
             Snapshot snapshot = WorldState.TakeSnapshot();
@@ -955,21 +956,29 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
             {
-                header.GasUsed += gasConsumed.EffectiveBlockGas;
+                if (spec.IsEip8037Enabled)
+                {
+                    _blockCumulativeRegularGas += gasConsumed.EffectiveBlockGas;
+                    _blockCumulativeStateGas += gasConsumed.BlockStateGas;
+                    header.GasUsed = Math.Max(_blockCumulativeRegularGas, _blockCumulativeStateGas);
+                }
+                else
+                {
+                    header.GasUsed += gasConsumed.EffectiveBlockGas;
+                }
             }
 
             return statusCode;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void RefundRevertedExecutionStateGas(IReleaseSpec spec, in TGasPolicy intrinsicGas, ref TGasPolicy gas)
+        static void RefundRevertedExecutionStateGas(IReleaseSpec spec, long stateGasFloor, ref TGasPolicy gas)
         {
             if (!spec.IsEip8037Enabled)
             {
                 return;
             }
 
-            long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGas);
             long revertedStateGas = TGasPolicy.GetStateGasUsed(in gas);
             if (revertedStateGas > stateGasFloor)
             {
@@ -991,10 +1000,15 @@ namespace Nethermind.Evm.TransactionProcessing
             long floorGas,
             long postIntrinsicStateReservoir)
         {
-            RefundRevertedExecutionStateGas(spec, in intrinsicGasStandard, ref gas);
-            long refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gas);
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            TGasPolicy.ResetForHalt(ref gas, postIntrinsicStateReservoir, intrinsicStateGas);
+            long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
+            long initialStateReservoir = CalculateInitialStateReservoir(tx.GasLimit, in intrinsicGasStandard);
+            long refundedIntrinsicStateGas = Math.Max(0, postIntrinsicStateReservoir - initialStateReservoir) + refundedTopLevelCreateStateGas;
+            long postHaltIntrinsicStateGas = Math.Max(0, intrinsicStateGas - refundedIntrinsicStateGas);
+            RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
+            long refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gas);
+            long postHaltStateReservoir = Math.Max(postIntrinsicStateReservoir, TGasPolicy.GetStateReservoir(in gas));
+            TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
             return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, refundedCreateStateSpillForHalt);
         }
 
@@ -1019,7 +1033,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, blockStateGas);
         }
 
-        private GasConsumed RefundOnContractCollision(
+        protected virtual GasConsumed RefundOnContractCollision(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
@@ -1031,11 +1045,18 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
 
-            long remainingRegularGas = TGasPolicy.GetRemainingGas(in gas);
-            long blockGas = Calculate8037BlockRegularGas(in gas, in intrinsicGasStandard, tx.GasLimit, floorGas, remainingRegularGas);
-            long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
+            TGasPolicy gasAfterCollision = gas;
+            long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
+            if (refundedTopLevelCreateStateGas > 0)
+            {
+                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard) - refundedTopLevelCreateStateGas;
+                TGasPolicy.RefundStateGas(ref gasAfterCollision, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
+            }
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, tx.GasLimit, blockGas, blockStateGas);
+            long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterCollision);
+            long spentGas = Math.Max(tx.GasLimit - TGasPolicy.GetStateReservoir(in gasAfterCollision), floorGas);
+
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, spentGas, blockStateGas);
         }
 
         private GasConsumed RefundOnTopLevelHalt(
@@ -1053,11 +1074,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
             long spentGas = Math.Max(tx.GasLimit - stateReservoir, floorGas);
-            long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
+            long intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
             long spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned) + refundedCreateStateSpillForHalt;
-            long blockGas = Math.Max(tx.GasLimit - effectiveStateGas - initialReservoir, floorGas);
+            long blockGas = Math.Max(tx.GasLimit - stateReservoir - effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas);
         }
@@ -1228,9 +1248,30 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             TGasPolicy gasAfterExecution = unspentGas;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-            if (selfDestructStateRefund > 0)
+            if (substate.ShouldRevert && spec.IsEip8037Enabled)
             {
-                TGasPolicy.RefundStateGas(ref gasAfterExecution, selfDestructStateRefund, stateGasFloor);
+                long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
+                if (refundedTopLevelCreateStateGas > 0)
+                {
+                    stateGasFloor -= refundedTopLevelCreateStateGas;
+                    TGasPolicy.RefundStateGas(ref gasAfterExecution, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
+                }
+            }
+
+            long topLevelCreateStateRefund = selfDestructStateRefund > 0
+                ? Math.Min(
+                    selfDestructStateRefund,
+                    CalculateTopLevelCreateSelfDestructStateRefund(tx, in substate, in gasAfterExecution))
+                : 0;
+            long stateGasRefundToReservoir = selfDestructStateRefund - topLevelCreateStateRefund;
+            if (stateGasRefundToReservoir > 0)
+            {
+                TGasPolicy.RefundStateGas(ref gasAfterExecution, stateGasRefundToReservoir, stateGasFloor);
+            }
+
+            if (topLevelCreateStateRefund > 0)
+            {
+                TGasPolicy.DiscardStateGas(ref gasAfterExecution, topLevelCreateStateRefund, Math.Max(0, stateGasFloor - topLevelCreateStateRefund));
             }
 
             long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
@@ -1240,8 +1281,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 // Use postIntrinsicStateReservoir captured before EVM execution so any
                 // EIP-7702 auth refund applied via Apply8037DelegationRefunds is preserved
-                // through the halt-reset; otherwise we'd charge the sender for unconsumed
-                // auth-refund reservoir gas (1x AccountCreationCost = 131,488 per refund).
+                // through the halt-reset.
                 return CompleteEip8037Halt(tx, spec, opts, ref gasAfterExecution, in gasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
             }
 
@@ -1255,6 +1295,47 @@ namespace Nethermind.Evm.TransactionProcessing
                 PayRefund(tx, (ulong)(tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, blockStateGas, Math.Max(spentGas, floorGasLong));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static long CalculateTopLevelCreateSelfDestructStateRefund(
+            Transaction tx,
+            in TransactionSubstate substate,
+            in TGasPolicy gasAfterExecution)
+        {
+            if (!tx.IsContractCreation || tx.SenderAddress is null)
+            {
+                return 0;
+            }
+
+            Address contractAddress = Nethermind.Evm.ContractAddress.From(tx.SenderAddress, tx.Nonce);
+            return substate.DestroyList.Contains(contractAddress)
+                ? TGasPolicy.GetCreateStateCost(in gasAfterExecution)
+                : 0;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static long CalculateTopLevelCreateIntrinsicStateRefund(
+            Transaction tx,
+            in TGasPolicy intrinsicGasStandard)
+        {
+            if (!tx.IsContractCreation)
+            {
+                return 0;
+            }
+
+            return Math.Min(
+                TGasPolicy.GetCreateStateCost(in intrinsicGasStandard),
+                TGasPolicy.GetStateReservoir(in intrinsicGasStandard));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static long CalculateInitialStateReservoir(
+            long txGasLimit,
+            in TGasPolicy intrinsicGasStandard)
+        {
+            long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            return Math.Max(0, txGasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
         }
 
         private (long spentGas, long refund) CalculateSpentGasAndRefund(
@@ -1399,7 +1480,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "intrinsic gas too low");
         public static readonly TransactionResult InsufficientMaxFeePerGasForSenderBalance = new(ErrorType.InsufficientMaxFeePerGasForSenderBalance, errorDescription: "insufficient sender balance for gas * price + value");
-        public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient funds for transfer");
+        public static readonly TransactionResult InsufficientSenderBalance = new(ErrorType.InsufficientSenderBalance, errorDescription: "insufficient sender balance for transfer");
         public static readonly TransactionResult MalformedTransaction = new(ErrorType.MalformedTransaction, errorDescription: "malformed");
         public static readonly TransactionResult MinerPremiumNegative = new(ErrorType.MinerPremiumNegative, errorDescription: "miner premium is negative");
         public static readonly TransactionResult NonceOverflow = new(ErrorType.NonceOverflow, errorDescription: "nonce overflow");

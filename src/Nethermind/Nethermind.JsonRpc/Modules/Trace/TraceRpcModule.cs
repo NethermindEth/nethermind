@@ -150,10 +150,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader header = headerSearch.Object!.Clone();
             Block block = new(header, [tx], []);
 
+            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
             ITracer tracer = env.Component;
 
-            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
             IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(tracer, block, new(traceTypes1));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(result.SingleOrDefault()));
         }
@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<ParityTxTraceFromReplay>(parentSearch.Object);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = ExecuteBlock(parentSearch.Object, block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentSearch.Object, block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
         }
 

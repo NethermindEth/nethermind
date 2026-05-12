@@ -24,20 +24,20 @@ namespace Nethermind.Network.Discovery;
 public class DiscoveryApp : IDiscoveryApp
 {
     private readonly IDiscoveryConfig _discoveryConfig;
-    private readonly ITimestamper _timestamper;
+    protected readonly ITimestamper _timestamper;
     private readonly INodesLocator _nodesLocator;
-    private readonly IDiscoveryManager _discoveryManager;
+    protected readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
-    private readonly ILogManager _logManager;
+    protected readonly ILogManager _logManager;
     private readonly ILogger _logger;
-    private readonly IMessageSerializationService _messageSerializationService;
+    protected readonly IMessageSerializationService _messageSerializationService;
     private readonly ICryptoRandom _cryptoRandom;
     private readonly INetworkStorage _discoveryStorage;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IProcessExitSource _processExitSource;
     private readonly INetworkConfig _networkConfig;
     private readonly CancellationTokenSource _stopCts;
-    private readonly NodeFilter? _inboundMessageFilter;
+    protected readonly NodeFilter? _inboundMessageFilter;
 
     private NettyDiscoveryHandler? _discoveryHandler;
     private Task? _runningTask;
@@ -178,10 +178,12 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
+    protected virtual NettyDiscoveryHandler CreateDiscoveryHandler(IChannel channel) =>
+        new(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager, _inboundMessageFilter);
+
     public void InitializeChannel(IChannel channel)
     {
-        _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService,
-            _timestamper, _logManager, _inboundMessageFilter);
+        _discoveryHandler = CreateDiscoveryHandler(channel);
         _discoveryManager.MsgSender = _discoveryHandler;
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
