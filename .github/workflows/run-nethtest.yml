@@ -35,7 +35,7 @@ on:
       workers:
         description: Parallel workers
         required: false
-        default: '1'
+        default: '2'
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -52,7 +52,7 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
-  WORKERS: ${{ inputs.workers || '1' }}
+  WORKERS: ${{ inputs.workers || '2' }}
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
 
@@ -62,13 +62,13 @@ defaults:
 
 jobs:
   nethtest:
-    name: nethtest ${{ matrix.test_setup }} --${{ inputs.test_type || 'engineTest' }}
-    runs-on: ubuntu-latest
+    name: nethtest ${{ matrix.test_setup }} on ${{ matrix.runner }} --${{ inputs.test_type || 'engineTest' }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((inputs.test_setup || 'all') == 'current_spec' && '[{"test_setup":"current_spec","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || (inputs.test_setup || 'all') == 'new_spec' && '[{"test_setup":"new_spec","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"}]' || ('ethereum/execution-spec-tests' == 'ethereum/execution-specs' && 'v5.4.0' == 'tests-bal@v7.0.0' && 'fixtures_stable.tar.gz' == 'fixtures_bal.tar.gz' && '[{"test_setup":"current_spec","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || '[{"test_setup":"current_spec","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"new_spec","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"}]')) }}
+        include: ${{ fromJSON((inputs.test_setup || 'all') == 'current_spec' && '[{"test_setup":"current_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"ubuntu-arm64-4-core","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"windows-latest","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || (inputs.test_setup || 'all') == 'new_spec' && '[{"test_setup":"new_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"}]' || ('ethereum/execution-spec-tests' == 'ethereum/execution-specs' && 'v5.4.0' == 'tests-bal@v7.0.0' && 'fixtures_stable.tar.gz' == 'fixtures_bal.tar.gz' && '[{"test_setup":"current_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"ubuntu-arm64-4-core","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"windows-latest","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || '[{"test_setup":"current_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"new_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"},{"test_setup":"current_spec","runner":"ubuntu-arm64-4-core","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"windows-latest","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]')) }}
     env:
       TEST_SETUP: ${{ matrix.test_setup }}
       EEST_REPOSITORY: ${{ matrix.eest_repository }}
@@ -87,8 +87,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
-          restore-keys: nuget-${{ runner.os }}-
+          key: nuget-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Build Nethermind.Test.Runner
         working-directory: src/Nethermind
@@ -97,12 +97,16 @@ jobs:
       - name: Cache EEST fixtures
         uses: actions/cache@v5
         with:
-          path: /tmp/eest-fixtures
+          path: ${{ runner.temp }}/eest-fixtures
           key: eest-${{ matrix.eest_repository }}-${{ matrix.eest_version }}-${{ matrix.eest_archive }}
 
       - name: Download EEST fixtures
         run: |
-          EEST_DIR="/tmp/eest-fixtures/$EEST_VERSION"
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$EEST_VERSION"
           if [ ! -d "$EEST_DIR" ]; then
             mkdir -p "$EEST_DIR"
             ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$EEST_VERSION/$EEST_ARCHIVE"
@@ -115,7 +119,11 @@ jobs:
       - name: Resolve fixture path
         id: fixtures
         run: |
-          EEST_DIR="/tmp/eest-fixtures/$EEST_VERSION"
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$EEST_VERSION"
           if [ "$TEST_TYPE" = "engineTest" ]; then
             FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'blockchain_tests_engine' | head -1)"
           elif [ "$TEST_TYPE" = "blockTest" ]; then
@@ -143,22 +151,32 @@ jobs:
             FILTER_ARG="--filter $FILTER"
           fi
 
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          RESULTS_FILE="$RUNNER_TMP/nethtest-results.json"
+          STDERR_FILE="$RUNNER_TMP/nethtest-stderr.log"
+          CLEAN_FILE="$RUNNER_TMP/nethtest-clean.log"
+          LOW_MEMORY_FILE="$RUNNER_TMP/nethtest-low-memory"
+          WATCHDOG_TIMEOUT_FILE="$RUNNER_TMP/nethtest-watchdog-timeout"
+
           # Write summary even if the process crashes
           write_summary() {
             echo ""
             echo "=== Writing summary ==="
             # Strip ANSI codes and extract only PASS/FAIL/EXCEPTION lines
-            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log 2>/dev/null | grep -E "(^|[ \t])(PASS|FAIL|EXCEPTION) " | sed 's/.*\(PASS\|FAIL\|EXCEPTION\)/\1/' > /tmp/nethtest-clean.log 2>/dev/null || true
+            sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null | grep -E "(^|[ \t])(PASS|FAIL|EXCEPTION) " | sed 's/.*\(PASS\|FAIL\|EXCEPTION\)/\1/' > "$CLEAN_FILE" 2>/dev/null || true
 
             HAS_JSON=false
-            if [ -s /tmp/nethtest-results.json ] && jq empty /tmp/nethtest-results.json 2>/dev/null; then
+            if [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
               HAS_JSON=true
-              TOTAL=$(jq 'length' /tmp/nethtest-results.json)
-              PASSED=$(jq '[.[] | select(.pass == true)] | length' /tmp/nethtest-results.json)
-              FAILED=$(jq '[.[] | select(.pass == false)] | length' /tmp/nethtest-results.json)
+              TOTAL=$(jq 'length' "$RESULTS_FILE")
+              PASSED=$(jq '[.[] | select(.pass == true)] | length' "$RESULTS_FILE")
+              FAILED=$(jq '[.[] | select(.pass == false)] | length' "$RESULTS_FILE")
             else
-              TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null || echo 0)
-              PASSED=$(grep -c "^PASS " /tmp/nethtest-clean.log 2>/dev/null || echo 0)
+              TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null || echo 0)
+              PASSED=$(grep -c "^PASS " "$CLEAN_FILE" 2>/dev/null || echo 0)
               FAILED=$(( TOTAL - PASSED ))
             fi
 
@@ -179,6 +197,7 @@ jobs:
               echo "| EEST repository | \`$EEST_REPOSITORY\` |"
               echo "| EEST version | \`$EEST_VERSION\` |"
               echo "| EEST archive | \`$EEST_ARCHIVE\` |"
+              echo "| Runner | \`${{ matrix.runner }}\` |"
               echo "| Workers | $WORKERS |"
               echo "| Total | $TOTAL |"
               echo "| Passed | **$PASSED** |"
@@ -190,11 +209,11 @@ jobs:
               echo "### Failures by error type" >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
               if [ "$HAS_JSON" = true ]; then
-                jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
+                jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' "$RESULTS_FILE" \
                   | awk 'NR <= 30' | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
               else
                 # Group by error: extract text after the status separator
-                grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
+                grep -E "^(FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null \
                   | sed -E 's/.*( - |— )//' | sort | uniq -c | sort -rn \
                   | awk 'NR <= 30 {printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
                   | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
@@ -207,10 +226,10 @@ jobs:
                 echo '```'
               } >> "$GITHUB_STEP_SUMMARY"
               if [ "$HAS_JSON" = true ]; then
-                jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name) | \(.error[:100])"' /tmp/nethtest-results.json \
+                jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name) | \(.error[:100])"' "$RESULTS_FILE" \
                   | sort >> "$GITHUB_STEP_SUMMARY"
               else
-                grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
+                grep -E "^(FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null \
                   | sort >> "$GITHUB_STEP_SUMMARY"
               fi
               { echo '```'; echo "</details>"; } >> "$GITHUB_STEP_SUMMARY"
@@ -255,14 +274,14 @@ jobs:
 
           trap cleanup EXIT
 
-          touch /tmp/nethtest-results.json /tmp/nethtest-stderr.log
-          rm -f /tmp/nethtest-watchdog-timeout /tmp/nethtest-low-memory
+          touch "$RESULTS_FILE" "$STDERR_FILE"
+          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE"
 
           print_diagnostics() {
             echo ""
             echo "=== nethtest diagnostics $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
-            echo "Results file size: $(wc -c < /tmp/nethtest-results.json) bytes"
-            echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
+            echo "Results file size: $(wc -c < "$RESULTS_FILE") bytes"
+            echo "Stderr lines: $(wc -l < "$STDERR_FILE")"
             echo ""
             echo "--- memory ---"
             free -h || true
@@ -279,7 +298,7 @@ jobs:
             ps -eo pid,ppid,stat,comm,%mem,rss,vsz,etime,args --sort=-rss | head -20 || true
             echo ""
             echo "--- recent nethtest status ---"
-            tail -30 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g' || true
+            tail -30 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g' || true
             echo "================================"
           }
 
@@ -296,7 +315,7 @@ jobs:
             available_mb=$(awk '/MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null || echo 0)
             if [ "$available_mb" -gt 0 ] && [ "$available_mb" -lt 1024 ]; then
               echo "::error::MemAvailable is ${available_mb}MiB; terminating nethtest before the runner OOMs"
-              touch /tmp/nethtest-low-memory
+              touch "$LOW_MEMORY_FILE"
               print_diagnostics
               terminate_nethtest
               return 1
@@ -330,14 +349,14 @@ jobs:
               check_memory_pressure || exit 0
 
               local last_progress
-              last_progress=$(stat -c %Y /tmp/nethtest-stderr.log 2>/dev/null || echo 0)
+              last_progress=$(stat -c %Y "$STDERR_FILE" 2>/dev/null || echo 0)
               local now
               now=$(date +%s)
               local idle_seconds=$((now - last_progress))
 
               if [ "$idle_seconds" -ge "$idle_timeout_seconds" ]; then
                 echo "::error::nethtest produced no stderr progress for ${idle_seconds}s; terminating it"
-                touch /tmp/nethtest-watchdog-timeout
+                touch "$WATCHDOG_TIMEOUT_FILE"
                 print_diagnostics
                 terminate_nethtest
                 exit 0
@@ -354,8 +373,8 @@ jobs:
             --workers $WORKERS \
             --neverTrace \
             $FILTER_ARG \
-            > /tmp/nethtest-results.json \
-            2> >(tee /tmp/nethtest-stderr.log >&2) &
+            > "$RESULTS_FILE" \
+            2> >(tee "$STDERR_FILE" >&2) &
           NETHTEST_PID=$!
           watchdog &
           WATCHDOG_PID=$!
@@ -364,13 +383,13 @@ jobs:
           set -e
 
           echo "Exit code: $rc"
-          echo "Results file size: $(wc -c < /tmp/nethtest-results.json) bytes"
-          echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
+          echo "Results file size: $(wc -c < "$RESULTS_FILE") bytes"
+          echo "Stderr lines: $(wc -l < "$STDERR_FILE")"
 
-          if [ -f /tmp/nethtest-low-memory ]; then
+          if [ -f "$LOW_MEMORY_FILE" ]; then
             echo "::error::nethtest was terminated because runner memory was nearly exhausted"
             rc=137
-          elif [ -f /tmp/nethtest-watchdog-timeout ]; then
+          elif [ -f "$WATCHDOG_TIMEOUT_FILE" ]; then
             echo "::error::nethtest was terminated by the idle watchdog"
             rc=124
           fi
@@ -378,7 +397,7 @@ jobs:
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
             echo "--- stderr (last 50 lines) ---"
-            tail -50 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g'
+            tail -50 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g'
             exit $rc
           fi
 
@@ -386,8 +405,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: nethtest-results-${{ matrix.test_setup }}-${{ env.TEST_TYPE }}
+          name: nethtest-results-${{ matrix.test_setup }}-${{ matrix.runner }}-${{ env.TEST_TYPE }}
           path: |
-            /tmp/nethtest-results.json
-            /tmp/nethtest-stderr.log
+            ${{ runner.temp }}/nethtest-results.json
+            ${{ runner.temp }}/nethtest-stderr.log
           retention-days: 30
