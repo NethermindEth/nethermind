@@ -18,6 +18,8 @@ namespace Nethermind.Test.Runner;
 
 internal class Program
 {
+    private const int ProgressReportInterval = 100;
+
     public class Options
     {
         public static Option<string> Input { get; } =
@@ -181,10 +183,18 @@ internal class Program
         await KzgPolynomialCommitments.InitializeAsync();
         int completedTests = 0;
         int totalTests = CountBlockTestCases(files, filter, workers);
-        string GetProgressPrefix() => $"[{Interlocked.Increment(ref completedTests)}/{totalTests}]";
+        string? UpdateProgress(bool forceReport)
+        {
+            int completed = Interlocked.Increment(ref completedTests);
+            if (forceReport || completed % ProgressReportInterval == 0 || completed == totalTests)
+                return $"[{completed}/{totalTests}]";
+
+            return null;
+        }
+
         void WriteFileExceptionStatus(string name, Exception ex)
         {
-            Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {GetProgressPrefix()} {name} - {ex.Message}");
+            Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {UpdateProgress(true)} {name} - {ex.Message}");
             Console.Error.Flush();
         }
 
@@ -196,7 +206,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: jsonOutput, suppressOutput: true, progressPrefixFactory: GetProgressPrefix);
+                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: jsonOutput, suppressOutput: true, progressUpdateFactory: UpdateProgress);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     allResults.AddRange(results);
                 }
@@ -219,7 +229,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace: false, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true, progressPrefixFactory: GetProgressPrefix);
+                    BlockchainTestsRunner runner = new(source, filter, chainId, trace: false, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true, progressUpdateFactory: UpdateProgress);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     bag.Add((item.index, results));
                 }

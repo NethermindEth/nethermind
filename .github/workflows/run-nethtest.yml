@@ -143,6 +143,7 @@ jobs:
       - name: Run nethtest and parse results
         working-directory: src/Nethermind
         timeout-minutes: 55
+        continue-on-error: true
         run: |
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
@@ -158,13 +159,14 @@ jobs:
           CLEAN_FILE="$RUNNER_TMP/nethtest-clean.log"
           LOW_MEMORY_FILE="$RUNNER_TMP/nethtest-low-memory"
           WATCHDOG_TIMEOUT_FILE="$RUNNER_TMP/nethtest-watchdog-timeout"
+          STEP_FAILED_FILE="$RUNNER_TMP/nethtest-step-failed"
 
           # Write summary even if the process crashes
           write_summary() {
             echo ""
             echo "=== Writing summary ==="
-            # Strip ANSI codes and extract only PASS/FAIL/EXCEPTION lines
-            sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null | grep -E "(^|[ \t])(PASS|FAIL|EXCEPTION) " | sed 's/.*\(PASS\|FAIL\|EXCEPTION\)/\1/' > "$CLEAN_FILE" 2>/dev/null || true
+            # Strip ANSI codes and extract only progress/failure lines
+            sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null | grep -E "^(PROGRESS|FAIL|EXCEPTION) " > "$CLEAN_FILE" 2>/dev/null || true
 
             HAS_JSON=false
             if [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
@@ -173,9 +175,16 @@ jobs:
               PASSED=$(jq '[.[] | select(.pass == true)] | length' "$RESULTS_FILE")
               FAILED=$(jq '[.[] | select(.pass == false)] | length' "$RESULTS_FILE")
             else
-              TOTAL=$(grep -cE "^(PASS|FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null || echo 0)
-              PASSED=$(grep -c "^PASS " "$CLEAN_FILE" 2>/dev/null || echo 0)
-              FAILED=$(( TOTAL - PASSED ))
+              FAILED=$(grep -cE "^(FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null || echo 0)
+              PROGRESS_STATS=$(grep -E "^(PROGRESS|FAIL|EXCEPTION) \\[[0-9]+/[0-9]+\\]" "$CLEAN_FILE" 2>/dev/null \
+                | sed -E 's/.*\[([0-9]+)\/([0-9]+)\].*/\1 \2/' \
+                | awk '{ if ($1 > done) done = $1; total = $2 } END { printf "%d %d", done, total }')
+              DONE="${PROGRESS_STATS%% *}"
+              TOTAL="${PROGRESS_STATS##* }"
+              if [ "$TOTAL" -eq 0 ]; then
+                TOTAL=$FAILED
+              fi
+              PASSED=$(( DONE > FAILED ? DONE - FAILED : 0 ))
             fi
 
             HEADER="nethtest results"
@@ -278,7 +287,7 @@ jobs:
           trap cleanup EXIT
 
           touch "$RESULTS_FILE" "$STDERR_FILE"
-          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE"
+          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE" "$STEP_FAILED_FILE"
 
           print_diagnostics() {
             echo ""
@@ -329,6 +338,7 @@ jobs:
 
           on_termination() {
             echo "::warning::Run step received a termination signal"
+            touch "$STEP_FAILED_FILE"
             print_diagnostics
             exit 143
           }
@@ -397,7 +407,21 @@ jobs:
             rc=124
           fi
 
+          if [ $rc -eq 0 ]; then
+            if [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
+              FAILED_AFTER_RUN=$(jq '[.[] | select(.pass == false)] | length' "$RESULTS_FILE")
+            else
+              FAILED_AFTER_RUN=$(sed 's/\x1b\[[0-9;]*m//g' "$STDERR_FILE" 2>/dev/null | grep -cE "^(FAIL|EXCEPTION) " || echo 0)
+            fi
+
+            if [ "$FAILED_AFTER_RUN" -gt 0 ]; then
+              echo "::error::$FAILED_AFTER_RUN nethtest cases failed"
+              rc=1
+            fi
+          fi
+
           if [ $rc -ne 0 ]; then
+            touch "$STEP_FAILED_FILE"
             echo "::warning::nethtest exited with code $rc"
             echo "--- stderr (last 50 lines) ---"
             tail -50 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g'
@@ -413,3 +437,15 @@ jobs:
             ${{ runner.temp }}/nethtest-results.json
             ${{ runner.temp }}/nethtest-stderr.log
           retention-days: 30
+
+      - name: Check nethtest result
+        if: always()
+        run: |
+          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
+          if command -v cygpath >/dev/null 2>&1; then
+            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
+          fi
+          if [ -f "$RUNNER_TMP/nethtest-step-failed" ]; then
+            echo "::error::nethtest failed; see the summary and uploaded artifacts for details"
+            exit 1
+          fi

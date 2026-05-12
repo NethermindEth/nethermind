@@ -25,7 +25,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     private readonly bool traceNoStack;
     private readonly bool jsonOutput;
     private readonly bool suppressOutput;
-    private readonly Func<string>? progressPrefixFactory;
+    private readonly Func<bool, string?>? progressUpdateFactory;
 
     public BlockchainTestsRunner(
         ITestSourceLoader testsSource,
@@ -36,7 +36,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         bool traceNoStack = false,
         bool jsonOutput = false,
         bool suppressOutput = false,
-        Func<string>? progressPrefixFactory = null)
+        Func<bool, string?>? progressUpdateFactory = null)
     {
         _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
@@ -46,7 +46,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         this.traceNoStack = traceNoStack;
         this.jsonOutput = jsonOutput;
         this.suppressOutput = suppressOutput;
-        this.progressPrefixFactory = progressPrefixFactory;
+        this.progressUpdateFactory = progressUpdateFactory;
     }
 
     /// <summary>
@@ -60,7 +60,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         bool traceNoStack = false,
         bool jsonOutput = false,
         bool suppressOutput = false,
-        Func<string>? progressPrefixFactory = null)
+        Func<bool, string?>? progressUpdateFactory = null)
     {
         _testsSource = null;
         _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
@@ -70,7 +70,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         this.traceNoStack = traceNoStack;
         this.jsonOutput = jsonOutput;
         this.suppressOutput = suppressOutput;
-        this.progressPrefixFactory = progressPrefixFactory;
+        this.progressUpdateFactory = progressUpdateFactory;
     }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
@@ -86,6 +86,8 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
             {
                 if (!jsonOutput && !suppressOutput) WriteRed(loadedTest.LoadFailure);
                 testResults.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure));
+                if (suppressOutput)
+                    WriteStatus("EXCEPTION", progressUpdateFactory?.Invoke(true), loadedTest.LoadFailure, false);
                 continue;
             }
 
@@ -105,6 +107,8 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
             {
                 if (!jsonOutput && !suppressOutput) WriteRed(test.LoadFailure);
                 testResults.Add(new EthereumTestResult(test.Name, test.LoadFailure));
+                if (suppressOutput)
+                    WriteStatus("EXCEPTION", progressUpdateFactory?.Invoke(true), test.LoadFailure, false);
             }
             else
             {
@@ -115,7 +119,17 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
                     EthereumTestResult result = await RunTest(test, tracer: tracer);
                     testResults.Add(result);
                     if (suppressOutput)
-                        WriteStatus(result.Pass ? "PASS" : "FAIL", test.Name, result.Pass);
+                    {
+                        string? progress = progressUpdateFactory?.Invoke(!result.Pass);
+                        if (result.Pass)
+                        {
+                            WriteProgress(progress);
+                        }
+                        else
+                        {
+                            WriteStatus("FAIL", progress, test.Name, false);
+                        }
+                    }
                     else if (!jsonOutput)
                     {
                         if (result.Pass)
@@ -128,7 +142,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
                 {
                     testResults.Add(new EthereumTestResult(test.Name, test.ForkName, ex.Message));
                     if (suppressOutput)
-                        WriteStatus("EXCEPTION", $"{test.Name} — {ex.Message}", false);
+                        WriteStatus("EXCEPTION", progressUpdateFactory?.Invoke(true), $"{test.Name} — {ex.Message}", false);
                     else if (!jsonOutput)
                         WriteRed($"EXCEPTION: {ex.Message}");
                 }
@@ -163,12 +177,20 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         Console.ForegroundColor = _defaultColor;
     }
 
-    private void WriteStatus(string prefix, string message, bool pass)
+    private static void WriteProgress(string? progress)
+    {
+        if (progress is null)
+            return;
+
+        Console.Error.WriteLine($"PROGRESS {progress}");
+        Console.Error.Flush();
+    }
+
+    private static void WriteStatus(string prefix, string? progress, string message, bool pass)
     {
         string color = pass ? "\x1b[32m" : "\x1b[31m";
-        string? progressPrefix = progressPrefixFactory?.Invoke();
-        string progress = string.IsNullOrEmpty(progressPrefix) ? "" : $"{progressPrefix} ";
-        Console.Error.WriteLine($"{color}{prefix}\x1b[0m {progress}{message}");
+        string progressPart = string.IsNullOrEmpty(progress) ? "" : $"{progress} ";
+        Console.Error.WriteLine($"{color}{prefix}\x1b[0m {progressPart}{message}");
         Console.Error.Flush();
     }
 }
