@@ -130,9 +130,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .TestObject;
     }
 
-    private void AddAccountToState(Address address, UInt256 nonce = default, byte[]? code = null)
+    private void AddAccountToState(Address address, UInt256 nonce = default, byte[]? code = null, UInt256 balance = default)
     {
-        TestState.CreateAccount(address, 0, nonce);
+        TestState.CreateAccount(address, balance, nonce);
         if (code is not null)
         {
             TestState.InsertCode(address, ValueKeccak.Compute(code), code, SpecProvider.GenesisSpec);
@@ -983,6 +983,52 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             {
                 Assert.That(TestState.AccountExists(_callTargetAddress), Is.False);
             }
+        }
+    }
+
+    [Test]
+    public void Eip7928_extcodehash_records_boundary_account_reads()
+    {
+        Address emptyAccount = TestItem.AddressB;
+        byte[] selfdestructInitCode = Prepare.EvmCode
+            .SELFDESTRUCT(emptyAccount)
+            .Done;
+        byte[] salt = [0x01];
+        Address createdEmptyAddress = ContractAddress.From(_callTargetAddress, 0);
+        Address destroyedAddress = ContractAddress.From(_callTargetAddress, salt.PadLeft(32), selfdestructInitCode);
+        byte[] factoryCode = Prepare.EvmCode
+            .PushData(emptyAccount)
+            .Op(Instruction.EXTCODEHASH)
+            .Op(Instruction.POP)
+            .Create([], 0)
+            .Op(Instruction.POP)
+            .PushData(createdEmptyAddress)
+            .Op(Instruction.EXTCODEHASH)
+            .Op(Instruction.POP)
+            .Create2(selfdestructInitCode, salt, 0)
+            .Op(Instruction.POP)
+            .PushData(destroyedAddress)
+            .Op(Instruction.EXTCODEHASH)
+            .Op(Instruction.POP)
+            .Done;
+
+        InitWorldState(TestState, factoryCode);
+        AddAccountToState(emptyAccount, balance: UInt256.One);
+
+        BlockAccessList bal = ExecuteCallTx(_callTargetAddress);
+        AccountChanges? emptyChanges = bal.GetAccountChanges(emptyAccount);
+        AccountChanges? createdEmptyChanges = bal.GetAccountChanges(createdEmptyAddress);
+        AccountChanges? destroyedChanges = bal.GetAccountChanges(destroyedAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertPureAccountRead(emptyChanges);
+            Assert.That(createdEmptyChanges, Is.Not.Null);
+            Assert.That(createdEmptyChanges!.BalanceChanges, Is.Empty);
+            Assert.That(createdEmptyChanges.NonceChanges, Has.Count.EqualTo(1));
+            Assert.That(createdEmptyChanges.NonceChanges[0], Is.EqualTo(new NonceChange(0, 1)));
+            Assert.That(createdEmptyChanges.CodeChanges, Is.Empty);
+            AssertPureAccountRead(destroyedChanges);
         }
     }
 
