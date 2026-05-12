@@ -35,6 +35,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private TReader _reader;
     private readonly ReadOnlySpan<long> _entryPositions;
     private readonly int _minSepLen;
+    // One byte per entry: separator length against the prior entry's key (under the active
+    // _minSepLen floor). Filled once by PrecomputeSeparatorLengths at Build() entry and read
+    // by ChooseLeafLayout / WriteLeafIndexNode instead of recomputing ComputeSeparatorLength
+    // twice per entry. Rented from ArrayPool; returned in Build's finally.
+    private byte[]? _sepLengthsArr;
 
     public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int minSepLen)
     {
@@ -111,12 +116,16 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int valueScratchEntries = Math.Max(maxLeafEntries, maxIntermediateEntries);
         byte[] valueScratchArr = ArrayPool<byte>.Shared.Rent(Math.Max(64, valueScratchEntries * (2 + 8)));
 
+        _sepLengthsArr = ArrayPool<byte>.Shared.Rent(_entryPositions.Length);
+
         // lastNodeLen tracks the byte length of the most recently written node; the
         // returned value is the root node's size (the last node emitted).
         int lastNodeLen = 0;
 
         try
         {
+            PrecomputeSeparatorLengths();
+
             int currentLevelCount = 0;
             int entryIdx = 0;
 
@@ -139,7 +148,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 // full key (the global predecessor for the next leaf) into leafLastKey.
                 LeafLayout layout = ChooseLeafLayout(
                     entryIdx, minLeafEntries, maxLeafEntries,
-                    prevKey[..prevKeyLen],
                     _writer.Written, firstOffset,
                     leafLastKey, out int leafLastKeyLen);
                 int count = layout.Count;
@@ -223,6 +231,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             ArrayPool<byte>.Shared.Return(leafSepScratchArr);
             ArrayPool<byte>.Shared.Return(internalSepScratchArr);
             ArrayPool<byte>.Shared.Return(valueScratchArr);
+            ArrayPool<byte>.Shared.Return(_sepLengthsArr);
+            _sepLengthsArr = null;
         }
 
         return lastNodeLen;
@@ -245,13 +255,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// pairs of <c>commonPrefix(sep[i-1], sep[i]) + 1</c>) used to retry-truncate
     /// stored separators.
     ///
-    /// Reads each entry's full key on demand through the data-section reader and
-    /// recomputes its natural separator length against the immediately-preceding
-    /// key (deterministic: same answer the writer would have eagerly produced).
+    /// Reads each entry's full key on demand through the data-section reader; pulls
+    /// the per-entry separator length from <see cref="_sepLengthsArr"/> (filled once
+    /// by <see cref="PrecomputeSeparatorLengths"/>).
     /// </summary>
     private LeafLayout ChooseLeafLayout(
         int entryIdx, int minLeafEntries, int maxLeafEntries,
-        scoped ReadOnlySpan<byte> globalPrevKey,
         long nodeStart, long firstOffset,
         scoped Span<byte> leafLastKeyOut, out int leafLastKeyLen)
     {
@@ -275,7 +284,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         // Seed running state from the first entry alone.
         int currKeyLen = ReadKey(entryIdx, currKey);
-        int firstSepLen = HsstSeparator.ComputeSeparatorLength(globalPrevKey, currKey[..currKeyLen], default, _minSepLen);
+        int firstSepLen = _sepLengthsArr![entryIdx];
         currKey[..firstSepLen].CopyTo(firstSep);
         currKey[..firstSepLen].CopyTo(prevSep);
         int prevSepLen = firstSepLen;
@@ -294,7 +303,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         while (count < hardMax)
         {
             int nextKeyLen = ReadKey(entryIdx + count, nextKey);
-            int nextSepLen = HsstSeparator.ComputeSeparatorLength(currKey[..currKeyLen], nextKey[..nextKeyLen], default, _minSepLen);
+            int nextSepLen = _sepLengthsArr![entryIdx + count];
 
             int la = prevSepLen;
             int lb = nextSepLen;
@@ -418,7 +427,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         {
             int globalIdx = globalStartIndex + i;
             int currKeyLen = ReadKey(globalIdx, currKey);
-            int sepLen = HsstSeparator.ComputeSeparatorLength(prevKey[..prevKeyLen], currKey[..currKeyLen], default, _minSepLen);
+            int sepLen = _sepLengthsArr![globalIdx];
 
             sepOffsets[i] = totalSepBytes;
             sepLengths[i] = sepLen;
@@ -660,6 +669,32 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             indexWriter.AddKey(sep[prefixLen..], valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
+    }
+
+    /// <summary>
+    /// One-pass pre-computation of per-entry natural separator length against the prior
+    /// entry's key, with the active <c>_minSepLen</c> floor applied. Writes into
+    /// <see cref="_sepLengthsArr"/> (one byte per entry — fits because
+    /// <see cref="HsstSeparator.ComputeSeparatorLength"/> caps at currKey.Length ≤
+    /// <see cref="MaxKeyLen"/> = 255). Both <see cref="ChooseLeafLayout"/> and
+    /// <see cref="WriteLeafIndexNode"/> read from this table instead of recomputing the
+    /// same value twice per entry.
+    /// </summary>
+    private void PrecomputeSeparatorLengths()
+    {
+        int n = _entryPositions.Length;
+        Span<byte> prevKey = stackalloc byte[MaxKeyLen];
+        Span<byte> currKey = stackalloc byte[MaxKeyLen];
+        int prevKeyLen = 0;
+        for (int i = 0; i < n; i++)
+        {
+            int currKeyLen = ReadKey(i, currKey);
+            int sepLen = HsstSeparator.ComputeSeparatorLength(
+                prevKey[..prevKeyLen], currKey[..currKeyLen], default, _minSepLen);
+            _sepLengthsArr![i] = (byte)sepLen;
+            currKey[..currKeyLen].CopyTo(prevKey);
+            prevKeyLen = currKeyLen;
+        }
     }
 
     /// <summary>
