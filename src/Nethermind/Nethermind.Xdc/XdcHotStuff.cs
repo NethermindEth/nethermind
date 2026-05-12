@@ -123,6 +123,8 @@ namespace Nethermind.Xdc
             }
         }
 
+        private TimeSpan? _lastRoundDuration;
+
         private void OnNewRound(object sender, NewRoundEventArgs args)
         {
             XdcBlockHeader head = _blockTree.Head.Header as XdcBlockHeader
@@ -134,7 +136,7 @@ namespace Nethermind.Xdc
             _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
 
             if (args.LastRoundDuration is { } lastRoundDuration)
-                _logger.Info($"Round {args.PreviousRound} completed in {lastRoundDuration.TotalSeconds:F2}s");
+                _lastRoundDuration = args.LastRoundDuration;
 
             _writeRoundInfo = true;
         }
@@ -225,7 +227,11 @@ namespace Nethermind.Xdc
             bool isMyTurn = IsMyTurn(roundParent, currentRound, spec);
 
             if (_writeRoundInfo)
-                _logger.Info($"Round {currentRound}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+            {
+                string roundDuration = _lastRoundDuration.HasValue ? $" completed in {_lastRoundDuration.Value.TotalSeconds:F2}s" : "";
+                _logger.Info($"Round {currentRound}{roundDuration}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+                _writeRoundInfo = false;
+            }
 
             if (isMyTurn && IsItTimeToPropose(roundParent, currentRound, spec))
             {
@@ -243,8 +249,6 @@ namespace Nethermind.Xdc
                     await _signTransactionManager.SubmitTransactionSign(roundParent, spec);
                 }
             }
-
-            _writeRoundInfo = false;
         }
 
         private XdcBlockHeader? GetParentForRound() => _blockTree.Head?.Header as XdcBlockHeader;
@@ -373,8 +377,8 @@ namespace Nethermind.Xdc
             if (e.Block.Header is not XdcBlockHeader xdcHead)
                 throw new InvalidOperationException($"Expected an XDC header, but got {e.Block.Header.GetType().FullName}");
 
-            if (_logger.IsInfo)
-                _logger.Info($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, hash={xdcHead.Hash}, our round={_xdcContext.CurrentRound}");
+            if (_logger.IsDebug)
+                _logger.Debug($"New head block #{xdcHead.Number}, round={xdcHead.ExtraConsensusData?.BlockRound}, hash={xdcHead.Hash}, our round={_xdcContext.CurrentRound}");
 
             if (xdcHead.ExtraConsensusData is null)
                 throw new InvalidOperationException("New head block missing ExtraConsensusData");

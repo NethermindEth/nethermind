@@ -130,12 +130,14 @@ internal class QuorumCertificateManager(
         if (_context.HighestCommitBlock is not null
             && (_context.HighestCommitBlock.Round >= grandParentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
         {
-            error = $"Committed block (round={_context.HighestCommitBlock.Round} #{_context.HighestCommitBlock.BlockNumber} hash={_context.HighestCommitBlock.Hash}) has higher round or block number than proposed header grandparent #{grandParentHeader.Number} round={grandParentHeader.ExtraConsensusData.BlockRound} hash={grandParentHeader.Hash}.";
-            return false;
+            if (_logger.IsDebug)
+                _logger.Debug($"Committed block (round={_context.HighestCommitBlock.Round} #{_context.HighestCommitBlock.BlockNumber} hash={_context.HighestCommitBlock.Hash}) has higher round or block number than proposed header grandparent #{grandParentHeader.Number} round={grandParentHeader.ExtraConsensusData.BlockRound} hash={grandParentHeader.Hash}.");
+            error = null;
+            return true;
         }
 
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
-        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
+        _logger.Info($"Committed new block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         _ = _forensicsProcessor.ForensicsMonitoring([parentHeader, proposedBlockHeader], proposedQuorumCert);
         //Mark grandparent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
