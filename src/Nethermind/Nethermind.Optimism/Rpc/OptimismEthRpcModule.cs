@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -37,6 +38,7 @@ public class OptimismEthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
+    IBlockTree blockTree,
     IReceiptFinder receiptFinder,
     IStateReader stateReader,
     ITxPool txPool,
@@ -55,10 +57,12 @@ public class OptimismEthRpcModule(
     ITxSealer sealer,
     ILogIndexConfig? logIndexConfig,
     IOptimismSpecHelper opSpecHelper,
+    HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider)
     : EthRpcModule(rpcConfig,
         blockchainBridge,
         blockFinder,
+        blockTree,
         receiptFinder,
         stateReader,
         txPool,
@@ -73,6 +77,7 @@ public class OptimismEthRpcModule(
         forkInfo,
         logIndexConfig,
         secondsPerSlot,
+        headBlockSignal,
         capabilitiesProvider), IOptimismEthRpcModule
 {
     public override ResultWrapper<ReceiptForRpc[]?> eth_getBlockReceipts(BlockParameter blockParameter)

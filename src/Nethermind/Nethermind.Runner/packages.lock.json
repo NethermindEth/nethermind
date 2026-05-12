@@ -981,7 +981,9 @@
       "nethermind.merge.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.38.0-unstable, )"
+          "Nethermind.Api": "[1.38.0-unstable, )",
+          "Nethermind.Merkleization": "[1.38.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[1.38.0-unstable, )"
         }
       },
       "nethermind.merkleization": {
