@@ -226,7 +226,7 @@ namespace Nethermind.Xdc
 
             bool isMyTurn = IsMyTurn(roundParent, currentRound, spec);
 
-            if (_writeRoundInfo)
+            if (_writeRoundInfo && _logger.IsInfo)
             {
                 string roundDuration = _lastRoundDuration.HasValue ? $" completed in {_lastRoundDuration.Value.TotalSeconds:F2}s" : "";
                 _logger.Info($"Round {currentRound}{roundDuration}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
