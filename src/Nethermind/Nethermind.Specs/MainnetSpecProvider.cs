@@ -46,7 +46,7 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider, IForkAwareSpecProvi
     public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
     public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
 
-    private MainnetSpecProvider() : base(
+    public MainnetSpecProvider() : base(
     [
         new(0L, Frontier.Instance),
         new(HomesteadBlockNumber, Homestead.Instance),
