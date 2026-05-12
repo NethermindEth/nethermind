@@ -4,13 +4,18 @@
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using System;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace Nethermind.Specs
 {
     public class SpecNameParser
     {
-        public static IReleaseSpec Parse(string specName)
+        private static readonly ConcurrentDictionary<string, IReleaseSpec> _specs = new(StringComparer.Ordinal);
+
+        public static IReleaseSpec Parse(string specName) => _specs.GetOrAdd(specName, ParseUncached);
+
+        private static IReleaseSpec ParseUncached(string specName)
         {
             string unambiguousSpecName = new StringBuilder(specName)
                 .Replace("EIP150", "TangerineWhistle")

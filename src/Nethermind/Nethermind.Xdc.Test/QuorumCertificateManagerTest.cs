@@ -114,6 +114,32 @@ public class QuorumCertificateManagerTest
     }
 
     [Test]
+    public void Initialize_GenesisBlockWithNoConsensusData_SetsHighestQCAndRound()
+    {
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.SwitchBlock.Returns(900L);
+        xdcReleaseSpec.Gap.Returns(450);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+        XdcConsensusContext context = new();
+        QuorumCertificateManager quorumCertificateManager = new(
+            context,
+            Substitute.For<IBlockTree>(),
+            specProvider,
+            Substitute.For<IEpochSwitchManager>(),
+            Substitute.For<ILogManager>(),
+            Substitute.For<IForensicsProcessor>());
+
+        XdcBlockHeader genesisBlock = Build.A.XdcBlockHeader().WithNumber(0).TestObject;
+
+        Assert.That(() => quorumCertificateManager.Initialize(genesisBlock), Throws.Nothing);
+        Assert.That(context.HighestQC, Is.Not.Null);
+        Assert.That(context.HighestQC.ProposedBlockInfo.BlockNumber, Is.EqualTo(0));
+        Assert.That(context.HighestQC.ProposedBlockInfo.Round, Is.EqualTo(0UL));
+        Assert.That(context.CurrentRound, Is.EqualTo(1UL));
+    }
+
+    [Test]
     public void CommitCertificate_HeaderDoesNotExists_ThrowInvalidOperationException()
     {
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();

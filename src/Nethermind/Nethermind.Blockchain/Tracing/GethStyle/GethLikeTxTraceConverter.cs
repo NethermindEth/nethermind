@@ -34,15 +34,15 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             if (reader.ValueTextEquals("gas"u8))
             {
                 reader.Read();
-                NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
-                ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
+                NumberConversion previousValue = ForcedNumberConversion.Value;
+                ForcedNumberConversion.Value = NumberConversion.Raw;
                 try
                 {
                     trace.Gas = JsonSerializer.Deserialize<long>(ref reader, options);
                 }
                 finally
                 {
-                    ForcedNumberConversion.ForcedConversion.Value = previousValue;
+                    ForcedNumberConversion.Value = previousValue;
                 }
 
                 continue;
@@ -95,8 +95,8 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
 
         writer.WriteStartObject();
 
-        NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
-        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
+        NumberConversion previousValue = ForcedNumberConversion.Value;
+        ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
             writer.WritePropertyName("gas"u8);
@@ -104,7 +104,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = previousValue;
+            ForcedNumberConversion.Value = previousValue;
         }
 
         writer.WritePropertyName("failed"u8);

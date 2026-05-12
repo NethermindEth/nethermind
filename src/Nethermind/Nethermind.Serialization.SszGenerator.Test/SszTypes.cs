@@ -170,4 +170,17 @@ namespace Nethermind.Serialization.SszGenerator.Test
         CurrentValue = 2,
     }
 
+    [SszContainer]
+    public partial class ShadowBase
+    {
+        public ulong A { get; set; }
+        public ulong X { get; set; }
+    }
+
+    [SszContainer]
+    public partial class ShadowDerived : ShadowBase
+    {
+        public new uint X { get; set; }
+    }
+
 }

@@ -980,7 +980,9 @@
       "nethermind.merge.plugin": {
         "type": "Project",
         "dependencies": {
-          "Nethermind.Api": "[1.38.0-unstable, )"
+          "Nethermind.Api": "[1.38.0-unstable, )",
+          "Nethermind.Merkleization": "[1.38.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[1.38.0-unstable, )"
         }
       },
       "nethermind.merkleization": {
@@ -1250,7 +1252,8 @@
           "Nethermind.Api": "[1.38.0-unstable, )",
           "Nethermind.Consensus": "[1.38.0-unstable, )",
           "Nethermind.Core": "[1.38.0-unstable, )",
-          "Nethermind.Init": "[1.38.0-unstable, )"
+          "Nethermind.Init": "[1.38.0-unstable, )",
+          "Nethermind.Network.Discovery": "[1.38.0-unstable, )"
         }
       },
       "AspNetCore.HealthChecks.UI": {

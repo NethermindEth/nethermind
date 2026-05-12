@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -27,6 +27,9 @@ public class VmState<TGasPolicy> : IDisposable
     public byte[]? DataStack;
     public TGasPolicy Gas;
     public long InitialStateReservoir;
+    public long InitialStateGasUsed;
+    public long StateGasRefund;
+    public long StateGasRefundPending;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
     public long Refund { get; set; }
@@ -125,8 +128,13 @@ public class VmState<TGasPolicy> : IDisposable
             _accessTracker.WasCreated(env.ExecutingAccount);
         }
         _accessTracker.TakeSnapshot();
+        Debug.Assert(StateGasRefund == 0, "Pooled VmState returned with uncleared StateGasRefund.");
+        Debug.Assert(StateGasRefundPending == 0, "Pooled VmState returned with uncleared StateGasRefundPending.");
         Gas = gas;
         InitialStateReservoir = TGasPolicy.GetStateReservoir(in gas);
+        InitialStateGasUsed = TGasPolicy.GetStateGasUsed(in gas);
+        StateGasRefund = 0;
+        StateGasRefundPending = 0;
         OutputDestination = outputDestination;
         OutputLength = outputLength;
         Refund = 0;
@@ -194,6 +202,8 @@ public class VmState<TGasPolicy> : IDisposable
         if (!IsTopLevel) _env?.Dispose();
         _env = null;
         _snapshot = default;
+        StateGasRefund = 0;
+        StateGasRefundPending = 0;
 
         _statePool.Enqueue(this);
 

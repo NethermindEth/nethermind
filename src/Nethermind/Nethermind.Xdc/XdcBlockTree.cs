@@ -35,18 +35,21 @@ internal class XdcBlockTree(
 
     protected override AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
     {
+        if (!CanAcceptNewBlocks) return AddBlockResult.CannotAccept;
+
         BlockRoundInfo finalizedBlockInfo = _xdcConsensus.HighestCommitBlock;
         if (finalizedBlockInfo is null)
             return base.Suggest(block, header, options);
-        if (finalizedBlockInfo.Hash == header.Hash)
-        {
-            //Weird case if re-suggesting the finalized block
-            return AddBlockResult.AlreadyKnown;
-        }
+
         if (finalizedBlockInfo.BlockNumber >= header.Number)
         {
-            return AddBlockResult.InvalidBlock;
+            // During sync, already-finalized blocks may be re-suggested (e.g. gap filling).
+            // Accept them as AlreadyKnown instead of treating them as invalid reorg attempts.
+            return IsKnownBlock(header.Number, header.Hash) && (BestSuggestedHeader?.Number ?? 0) >= header.Number
+                ? AddBlockResult.AlreadyKnown
+                : AddBlockResult.InvalidBlock;
         }
+
         BlockHeader current = header;
         for (long i = header.Number; i >= finalizedBlockInfo.BlockNumber; i--)
         {

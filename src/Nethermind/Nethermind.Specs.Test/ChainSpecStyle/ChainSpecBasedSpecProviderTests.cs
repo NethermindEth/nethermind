@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -761,6 +761,34 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
             Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
             Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
+        }
+    }
+
+    [Test]
+    public void Amsterdam_timestamp_enables_bundled_floor_pricing_eips_when_individual_transitions_are_missing()
+    {
+        const ulong amsterdamTimestamp = 15;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters
+            {
+                Eip7623TransitionTimestamp = 0,
+                Eip7928TransitionTimestamp = amsterdamTimestamp,
+            },
+            AmsterdamTimestamp = amsterdamTimestamp,
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec preAmsterdam = provider.GetSpec(ForkActivation.TimestampOnly(amsterdamTimestamp - 1));
+        IReleaseSpec amsterdam = provider.GetSpec(ForkActivation.TimestampOnly(amsterdamTimestamp));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preAmsterdam.IsEip7976Enabled, Is.False);
+            Assert.That(preAmsterdam.IsEip7981Enabled, Is.False);
+            Assert.That(amsterdam.IsEip7976Enabled, Is.True);
+            Assert.That(amsterdam.IsEip7981Enabled, Is.True);
         }
     }
 
