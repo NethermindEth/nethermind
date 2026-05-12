@@ -140,7 +140,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true, Description = "Returns an EIP-191 signature over the provided message", IsSharable = true)]
-        ResultWrapper<string> eth_sign(Address addressData, byte[] message);
+        ResultWrapper<Signature> eth_sign(Address addressData, byte[] message);
 
         [JsonRpcMethod(IsImplemented = true,
             Description = "Send a transaction to the tx pool and broadcasting",

@@ -3,12 +3,15 @@
 
 using System;
 using System.Buffers.Text;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Core.Crypto
 {
     public static class Eip191Hasher
     {
-        private static ReadOnlySpan<byte> Header => "Ethereum Signed Message:\n"u8;
+        // EIP-191 version byte (0x19) followed by the personal_sign domain separator.
+        private static readonly byte[] HeaderBytes = [0x19, .."Ethereum Signed Message:\n"u8];
+        private static ReadOnlySpan<byte> Header => HeaderBytes;
 
         // EIP-191: keccak256("\x19Ethereum Signed Message:\n" || ascii(byteLength) || messageBytes).
         // Operates on raw bytes — never round-trip through UTF-8, since the message may not be valid UTF-8.
@@ -17,12 +20,13 @@ namespace Nethermind.Core.Crypto
             Span<byte> lengthDigits = stackalloc byte[20];
             Utf8Formatter.TryFormat(message.Length, lengthDigits, out int lengthByteCount);
 
-            byte[] buffer = new byte[Header.Length + lengthByteCount + message.Length];
-            Span<byte> span = buffer;
+            int totalLength = Header.Length + lengthByteCount + message.Length;
+            using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(totalLength, out byte[] buffer);
+            Span<byte> span = buffer.AsSpan(0, totalLength);
             Header.CopyTo(span);
             lengthDigits[..lengthByteCount].CopyTo(span[Header.Length..]);
             message.CopyTo(span[(Header.Length + lengthByteCount)..]);
-            return Keccak.Compute(buffer);
+            return Keccak.Compute(span);
         }
     }
 }

@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<string> personal_sign(byte[] message, Address address, string passphrase = null)
+        public ResultWrapper<Signature> personal_sign(byte[] message, Address address, string passphrase = null)
         {
             if (!wallet.IsUnlocked(address) && passphrase is not null)
             {
@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
                 wallet.UnlockAccount(address, notSecuredHere);
             }
 
-            return ResultWrapper<string>.Success(wallet.SignMessage(message, address).ToString());
+            return ResultWrapper<Signature>.Success(wallet.SignMessage(message, address));
         }
     }
 }
