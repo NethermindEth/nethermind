@@ -383,11 +383,11 @@ public class BlockProcessorTests
     [Test]
     public void IncrementalValidation_rejects_eip8037_tx_at_inclusion_when_worst_case_exceeds_remaining_budget()
     {
-        // execution-specs PR 2703: the per-tx 2D inclusion check rejects a tx whose
-        // worst-case dimension contribution exceeds the remaining budget, even if its
-        // actual post-execution gas would have fit. tx1.GasLimit (50_000) exceeds the
-        // remaining regular budget of 35_000 left after tx0's 65_000 actual usage, so
-        // the spec rejects tx1 at inclusion regardless of its actual usage.
+        // The EIP-8037 per-tx 2D inclusion check rejects a tx whose worst-case dimension
+        // contribution exceeds the remaining budget, even if its actual post-execution gas
+        // would have fit. tx1.GasLimit (50_000) exceeds the remaining regular budget of
+        // 35_000 left after tx0's 65_000 actual usage, so tx1 is rejected at inclusion
+        // regardless of its actual usage.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
             .WithHash(TestItem.KeccakA)

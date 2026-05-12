@@ -23,15 +23,12 @@ using System.Threading.Tasks;
 namespace Nethermind.Blockchain.Test;
 
 /// <summary>
-/// Integration tests exercising EIP-8037 (bal-devnet-6) per-tx 2D block-gas accounting
-/// against Nethermind's <c>BlockAccessListManager.IncrementalValidation</c>. Each test
-/// mirrors a scenario from execution-specs PR 2703. The sequential executor regression
-/// pins the same inclusion rule on the BAL-off/parallel-disabled path.
-///
-/// Tests pinned to <c>Assert.DoesNotThrow</c> verify spec acceptance; tests pinned to
-/// <c>Assert.Throws&lt;InvalidBlockException&gt;</c> verify spec rejection. Failures
-/// indicate Nethermind diverges from spec PR 2703 in that scenario.
-///
+/// Integration tests for EIP-8037 (bal-devnet-6) per-tx 2D block-gas accounting against
+/// Nethermind's <c>BlockAccessListManager.IncrementalValidation</c>. Each test names the
+/// scenario it pins: tests asserting <c>DoesNotThrow</c> verify the inclusion check
+/// accepts; tests asserting <c>Assert.Throws&lt;InvalidBlockException&gt;</c> verify it
+/// rejects. The sequential executor regression at the bottom pins the same inclusion
+/// rule on the BAL-off / parallel-disabled path.
 /// </summary>
 [Parallelizable(ParallelScope.All)]
 public class Eip8037BlockGasIntegrationTests
@@ -79,11 +76,12 @@ public class Eip8037BlockGasIntegrationTests
         => new(blockGasUsed, blockStateGasUsed, EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit), exception);
 
     /// <summary>
-    /// PR 2703 boundary[exact_fit]: post-tx cumulative state hits limit exactly.
-    /// IncrementalValidation uses strict <c>&gt;</c>, so cumS == limit must be accepted.
+    /// Boundary: post-tx cumulative state gas hits the block gas limit exactly.
+    /// <c>IncrementalValidation</c> compares with strict <c>&gt;</c>, so an exact-fit
+    /// max(cumR, cumS) == limit must be accepted.
     /// </summary>
     [Test]
-    public void Spec_pr2703_boundary_state_exact_fit_accepts()
+    public void State_dimension_exact_fit_at_block_gas_limit_accepts()
     {
         long blockGasLimit = 200_000;
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
@@ -99,10 +97,10 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// PR 2703 boundary[exceeded]: post-tx cumulative state exceeds limit by 1 -> reject.
+    /// Boundary: post-tx cumulative state gas exceeds the block gas limit by 1 — reject.
     /// </summary>
     [Test]
-    public void Spec_pr2703_boundary_state_exceeded_by_one_rejects()
+    public void State_dimension_one_over_block_gas_limit_rejects()
     {
         long blockGasLimit = 200_000;
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
@@ -118,14 +116,13 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// PR 2703 <c>test_creation_tx_regular_check_subtracts_intrinsic_state</c>:
-    /// in the spec scenario the creation tx is accepted at inclusion because the new
-    /// formula subtracts <c>intrinsic.state</c>. With actual post-execution gas modest
-    /// (the create succeeds well under cap), <c>IncrementalValidation</c> also accepts.
-    /// This test verifies acceptance.
+    /// A creation tx is accepted at inclusion because the regular-dimension worst case is
+    /// <c>tx.gas - intrinsic.state</c>, i.e. intrinsic state is subtracted out so it cannot
+    /// double-count against the regular budget. With actual post-execution gas modest (the
+    /// create succeeds well under cap), <c>IncrementalValidation</c> also accepts.
     /// </summary>
     [Test]
-    public void Spec_pr2703_creation_tx_regular_check_actual_usage_modest_accepts()
+    public void Creation_tx_intrinsic_state_excluded_from_regular_worst_case_accepts()
     {
         long blockGasLimit = 16_777_216 + 53_000 + 1; // cap + intrinsic_regular + 1
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
@@ -145,17 +142,16 @@ public class Eip8037BlockGasIntegrationTests
     }
 
     /// <summary>
-    /// PR 2703 <c>test_single_tx_state_check_exceeds_block_limit</c>: a single tx
-    /// whose worst-case state contribution exceeds <c>block_gas_limit</c> must be
-    /// rejected. Spec rejects at inclusion (pre-execution).
+    /// A single tx whose state-dimension worst case <c>(tx.gas - intrinsic.regular)</c>
+    /// exceeds <c>block_gas_limit</c> must be rejected at inclusion, before execution.
     ///
-    /// Here we simulate Nethermind running the tx anyway and report modest actual
-    /// post-execution gas (well under limit). Spec says reject; if Nethermind
-    /// accepts because IncrementalValidation only sees post-execution numbers,
-    /// this test FAILS - exposing the missing pre-tx inclusion check.
+    /// To prove inclusion does the rejecting (and not post-execution gas accounting), the
+    /// test reports modest actual post-execution gas — well under the limit. If
+    /// <c>IncrementalValidation</c> ever silently relied on post-execution numbers and
+    /// skipped the inclusion check, this test would fail.
     /// </summary>
     [Test]
-    public void Spec_pr2703_single_tx_state_check_exceeds_block_limit_rejects()
+    public void Single_tx_state_worst_case_over_block_gas_limit_rejects_at_inclusion()
     {
         long blockGasLimit = 16_777_216 + 100; // cap + tiny headroom
         // tx.gas = blockGasLimit + intrinsic_regular + 1 -> spec inclusion check rejects on state dim.
@@ -170,16 +166,17 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None),
-            "spec PR 2703 requires rejection at inclusion when tx.gas - intrinsic.regular > block_gas_limit");
+            "EIP-8037 requires rejection at inclusion when tx.gas - intrinsic.regular > block_gas_limit");
     }
 
     /// <summary>
-    /// PR 2703 <c>test_creation_tx_state_check_exceeded</c>: creation tx whose state
-    /// contribution exceeds remaining state budget. Spec rejects on state dimension.
-    /// Same harness-limitation as above: post-execution gas is modest, but inclusion must reject.
+    /// A creation tx whose state-dimension worst case exceeds the remaining state-gas
+    /// budget after the previous tx must be rejected on the state dimension at inclusion.
+    /// Like the previous test, post-execution gas is modest — only the inclusion check
+    /// catches it.
     /// </summary>
     [Test]
-    public void Spec_pr2703_creation_tx_state_check_exceeded_rejects()
+    public void Creation_tx_state_worst_case_over_remaining_state_budget_rejects_at_inclusion()
     {
         long blockGasLimit = 16_777_216 + 200_000; // cap + headroom for filler state
         Transaction filler = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
@@ -196,17 +193,16 @@ public class Eip8037BlockGasIntegrationTests
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None),
-            "spec PR 2703 requires rejection on state dimension at inclusion");
+            "EIP-8037 requires rejection on the state dimension at inclusion");
     }
 
     /// <summary>
-    /// EIP-7825 cap: even when (tx.gas - intrinsic.state) is huge, regular worst-case is
-    /// capped at TX_MAX_GAS_LIMIT. Test that IncrementalValidation correctly accepts a
-    /// block where a single tx with massive headroom on regular dim still fits because
-    /// post-execution actual gas is modest.
+    /// Even when <c>tx.gas - intrinsic.state</c> is huge, EIP-7825 caps the regular-dimension
+    /// worst case at <c>TX_MAX_GAS_LIMIT</c>. A single tx with massive headroom on the
+    /// regular dimension still fits when post-execution actual gas is modest.
     /// </summary>
     [Test]
-    public void Spec_pr2703_eip7825_cap_with_modest_actual_gas_accepts()
+    public void Regular_worst_case_capped_by_eip7825_with_modest_post_exec_gas_accepts()
     {
         long blockGasLimit = 16_777_216 + 100;
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
