@@ -200,15 +200,29 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .Op(Instruction.SSTORE)
             .Done;
 
+    private static byte[] BuildCallOpcodeResultStorageWriteCode(Instruction callOpcode, Address target, UInt256 slot) =>
+        callOpcode switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(target, 50_000).PushData(slot).Op(Instruction.SSTORE).Done,
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(target, 50_000).PushData(slot).Op(Instruction.SSTORE).Done,
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(target, 50_000).PushData(slot).Op(Instruction.SSTORE).Done,
+            Instruction.CALLCODE => Prepare.EvmCode.CallCode(target, 50_000).PushData(slot).Op(Instruction.SSTORE).Done,
+            _ => throw new System.ArgumentOutOfRangeException(nameof(callOpcode), callOpcode, null)
+        };
+
     private AuthorizationTuple SignAuthorization(PrivateKey signer, Address codeAddress, ulong nonce = 0)
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         return ecdsa.Sign(signer, SpecProvider.ChainId, codeAddress, nonce);
     }
 
-    private BlockAccessList ExecuteSetCodeCall(params AuthorizationTuple[] authorizationList)
+    private BlockAccessList ExecuteSetCodeCall(params AuthorizationTuple[] authorizationList) =>
+        ExecuteSetCodeCall(wrapPrecompileCache: false, authorizationList);
+
+    private BlockAccessList ExecuteSetCodeCall(bool wrapPrecompileCache, params AuthorizationTuple[] authorizationList)
     {
-        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessor(wrapPrecompileCache: wrapPrecompileCache);
         BlockHeader header = Build.A.BlockHeader
             .WithGasLimit(120_000_000)
             .WithBaseFee(1)
@@ -647,6 +661,32 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             AssertCodeChange(bal, intermediate, BuildDelegationCode(finalTarget));
             Assert.That(bal.GetAccountChanges(finalTarget), Is.Null);
             AssertStorageRead(bal, _callTargetAddress, UInt256.Zero);
+        }
+    }
+
+    [TestCase(Instruction.CALL, TestName = "EIP7702_set_code_to_precompile_records_BAL_for_CALL")]
+    [TestCase(Instruction.STATICCALL, TestName = "EIP7702_set_code_to_precompile_records_BAL_for_STATICCALL")]
+    [TestCase(Instruction.DELEGATECALL, TestName = "EIP7702_set_code_to_precompile_records_BAL_for_DELEGATECALL")]
+    [TestCase(Instruction.CALLCODE, TestName = "EIP7702_set_code_to_precompile_records_BAL_for_CALLCODE")]
+    public void Eip7702_set_code_to_precompile_records_bal_for_call_opcode(Instruction callOpcode)
+    {
+        Address authority = TestItem.AddressB;
+        Address precompile = Sha256Precompile.Address;
+        byte[] entryCode = BuildCallOpcodeResultStorageWriteCode(callOpcode, authority, UInt256.Zero);
+
+        InitWorldState(TestState, entryCode, delegationTarget: precompile);
+        AddAccountToState(authority);
+
+        AuthorizationTuple authorization = SignAuthorization(TestItem.PrivateKeyB, precompile);
+
+        BlockAccessList bal = ExecuteSetCodeCall(wrapPrecompileCache: true, authorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, authority, 1);
+            AssertCodeChange(bal, authority, BuildDelegationCode(precompile));
+            AssertPureAccountRead(bal.GetAccountChanges(precompile));
+            AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
         }
     }
 
