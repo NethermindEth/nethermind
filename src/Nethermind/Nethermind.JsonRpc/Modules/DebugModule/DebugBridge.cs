@@ -19,6 +19,7 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -36,6 +37,7 @@ public class DebugBridge : IDebugBridge
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
+    private readonly IStateReader _stateReader;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -47,7 +49,8 @@ public class DebugBridge : IDebugBridge
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore)
+        IBadBlockStore badBlockStore,
+        IStateReader stateReader)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -57,6 +60,7 @@ public class DebugBridge : IDebugBridge
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
         _badBlockStore = badBlockStore;
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -88,6 +92,38 @@ public class DebugBridge : IDebugBridge
     public byte[] GetDbValue(string dbName, byte[] key) => _dbMappings[dbName][key];
 
     public ChainLevelInfo GetLevelInfo(long number) => _blockTree.FindLevel(number);
+
+    public long? GetFirstFullStateBlock()
+    {
+        Block? head = _blockTree.Head;
+        if (head is null) return null;
+
+        long high = head.Number;
+        if (!HasStateAt(head.Header)) return null;
+
+        long low = 0;
+        long answer = high;
+
+        while (low <= high)
+        {
+            long mid = low + ((high - low) >> 1);
+            BlockHeader? header = _blockTree.FindHeader(mid, BlockTreeLookupOptions.RequireCanonical);
+            if (header is not null && HasStateAt(header))
+            {
+                answer = mid;
+                high = mid - 1;
+            }
+            else
+            {
+                low = mid + 1;
+            }
+        }
+
+        return answer;
+    }
+
+    private bool HasStateAt(BlockHeader header) =>
+        header.StateRoot == Keccak.EmptyTreeHash || _stateReader.HasStateForBlock(header);
 
     public int DeleteChainSlice(long startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
 

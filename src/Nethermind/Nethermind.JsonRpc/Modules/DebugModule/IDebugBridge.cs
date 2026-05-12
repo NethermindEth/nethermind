@@ -42,4 +42,8 @@ public interface IDebugBridge
     Transaction? GetTransactionFromHash(Hash256 hash);
     Hash256? GetTransactionBlockHash(Hash256 transactionHash);
     IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, long? gasCap, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+
+    /// <summary>Returns the number of the earliest canonical block whose full state is locally available, or <see langword="null"/> when no such block exists.</summary>
+    /// <remarks>Implemented as a binary search across the canonical chain on the assumption that state availability is monotonic — once state is available at height H, every later canonical height also has state. Useful for surfacing how far back history is queryable on a snap-synced node.</remarks>
+    long? GetFirstFullStateBlock();
 }
