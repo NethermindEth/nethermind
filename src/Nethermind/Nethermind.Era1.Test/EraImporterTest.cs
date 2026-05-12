@@ -9,7 +9,6 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Era1.Exceptions;
-using NUnit.Framework;
 
 namespace Nethermind.Era1.Test;
 

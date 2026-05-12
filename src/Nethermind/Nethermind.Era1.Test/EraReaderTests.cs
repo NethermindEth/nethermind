@@ -12,7 +12,6 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
-using NUnit.Framework;
 
 namespace Nethermind.Era1.Test;
 

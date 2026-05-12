@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Tools.Kute.Auth;
 using Nethermind.Tools.Kute.SecretProvider;
 using Nethermind.Tools.Kute.SystemClock;
@@ -23,7 +22,7 @@ public class AuthTests
         var auth = new JwtAuth(clock, secretProvider);
         string token = auth.AuthToken;
 
-        token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw");
+        Assert.That(token, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw"));
     }
 
     [Test]
@@ -42,28 +41,28 @@ public class AuthTests
         {
             clock.UtcNow.Returns(initialTime);
             string token = auth.AuthToken;
-            token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw");
+            Assert.That(token, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw"));
         }
 
         // Before TTL
         {
             clock.UtcNow.Returns(initialTime.Add(ttl.Subtract(TimeSpan.FromSeconds(1))));
             string token = auth.AuthToken;
-            token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw");
+            Assert.That(token, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjB9.tWzIC8uadmVRHxZrv1TK57PyW95hmGrS0PgsV7FiFvw"));
         }
 
         // After TTL, first iteration
         {
             clock.UtcNow.Returns(initialTime.Add(ttl));
             string token = auth.AuthToken;
-            token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjEwfQ.XjVeTLNz9GnJiBuQMbcsDJyHOW3saZDmYH4MsyUhXBw");
+            Assert.That(token, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjEwfQ.XjVeTLNz9GnJiBuQMbcsDJyHOW3saZDmYH4MsyUhXBw"));
         }
 
         // After TTL, second iteration
         {
             clock.UtcNow.Returns(initialTime.Add(ttl).Add(ttl));
             string token = auth.AuthToken;
-            token.Should().BeEquivalentTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjIwfQ.NcHVs9-I1hgy0D664ruwgW4L1IrNT6fM2NZ45oQXbfY");
+            Assert.That(token, Is.EqualTo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjIwfQ.NcHVs9-I1hgy0D664ruwgW4L1IrNT6fM2NZ45oQXbfY"));
         }
     }
 }

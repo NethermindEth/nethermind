@@ -7,7 +7,6 @@ using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.IO;
-using NUnit.Framework;
 
 namespace Nethermind.Era1.Test;
 

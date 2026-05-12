@@ -800,7 +800,11 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     try
                     {
-                        Assert.That(trieStore.FindCachedOrUnknown(TreePath.Empty, trieNode.Keccak).GetChildHash(i % 16), Is.EqualTo(TestItem.Keccaks[i % 16]), i.ToString());
+                        Hash256? childHash = trieStore.FindCachedOrUnknown(TreePath.Empty, trieNode.Keccak).GetChildHash(i % 16);
+                        if (!TestItem.Keccaks[i % 16].Equals(childHash))
+                        {
+                            throw new AssertionException(i.ToString());
+                        }
                     }
                     catch (Exception)
                     {

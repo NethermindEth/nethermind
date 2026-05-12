@@ -24,7 +24,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;

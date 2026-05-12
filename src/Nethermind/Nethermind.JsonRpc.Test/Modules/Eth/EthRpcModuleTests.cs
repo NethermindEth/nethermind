@@ -34,7 +34,6 @@ using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;

@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
-using NUnit.Framework;
 using Nethermind.Tools.Kute.Metrics;
 using NSubstitute;
+using NUnit.Framework;
 using System.Text.Json.Nodes;
 
 namespace Nethermind.Tools.Kute.Test;
@@ -53,16 +52,16 @@ public class MetricsTests
 
         var report = reporter.Report();
 
-        report.TotalTime.Should().BeGreaterThan(TimeSpan.FromMilliseconds(90));
-        report.TotalTime.Should().BeLessThan(TimeSpan.FromMilliseconds(110));
+        Assert.That(report.TotalTime, Is.GreaterThan(TimeSpan.FromMilliseconds(90)));
+        Assert.That(report.TotalTime, Is.LessThan(TimeSpan.FromMilliseconds(110)));
 
-        report.Singles.Should().HaveCount(1);
-        report.Singles.Should().ContainKey("method1");
-        report.Singles["method1"].Should().HaveCount(1);
-        report.Singles["method1"].Should().ContainKey("42");
+        Assert.That(report.Singles, Has.Count.EqualTo(1));
+        Assert.That(report.Singles, Does.ContainKey("method1"));
+        Assert.That(report.Singles["method1"], Has.Count.EqualTo(1));
+        Assert.That(report.Singles["method1"], Does.ContainKey("42"));
 
-        report.Batches.Should().HaveCount(1);
-        report.Batches.Should().ContainKey("43:45");
+        Assert.That(report.Batches, Has.Count.EqualTo(1));
+        Assert.That(report.Batches, Does.ContainKey("43:45"));
     }
 
     [Test]

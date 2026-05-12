@@ -20,7 +20,6 @@ using Nethermind.Int256;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm.State;
 using NSubstitute;
-using NUnit.Framework;
 
 namespace Nethermind.Era1.Test;
 

@@ -19,7 +19,6 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.JsonRpc.Test;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;

@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 

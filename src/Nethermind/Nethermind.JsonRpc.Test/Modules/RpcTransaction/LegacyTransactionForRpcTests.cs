@@ -5,7 +5,6 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.RpcTransaction;
 

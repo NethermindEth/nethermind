@@ -18,7 +18,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Api.Test;
