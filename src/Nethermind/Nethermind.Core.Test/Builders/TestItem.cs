@@ -168,7 +168,7 @@ namespace Nethermind.Core.Test.Builders
         {
             accountDecoder ??= _accountDecoder;
             Account account = GenerateRandomAccount();
-            byte[] value = EncodeAccount(accountDecoder, account);
+            byte[] value = Rlp.Encode(accountDecoder, account).Bytes;
             return value;
         }
 
@@ -186,15 +186,8 @@ namespace Nethermind.Core.Test.Builders
             accountDecoder ??= _accountDecoder;
 
             Account account = GenerateIndexedAccount(index);
-            byte[] value = EncodeAccount(accountDecoder, account);
+            byte[] value = Rlp.Encode(accountDecoder, account).Bytes;
             return value;
-        }
-
-        private static byte[] EncodeAccount(AccountDecoder accountDecoder, Account account)
-        {
-            RlpStream stream = new(accountDecoder.GetLength(account));
-            accountDecoder.Encode(stream, account);
-            return stream.Data.ToArray()!;
         }
 
         public static UInt256 GetRandomAmount(Random? random = null)

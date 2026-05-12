@@ -281,13 +281,20 @@ namespace Nethermind.Serialization.Rlp
             IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
             if (rlpStreamEncoder is not null)
             {
-                int totalLength = rlpStreamEncoder.GetLength(item, behaviors);
-                RlpStream stream = new(totalLength);
-                rlpStreamEncoder.Encode(stream, item, behaviors);
-                return new Rlp(stream.Data.ToArray());
+                return Encode(rlpStreamEncoder, item, behaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+        }
+
+        public static Rlp Encode<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T item, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            ArgumentNullException.ThrowIfNull(rlpStreamEncoder);
+
+            int totalLength = rlpStreamEncoder.GetLength(item, behaviors);
+            RlpStream stream = new(totalLength);
+            rlpStreamEncoder.Encode(stream, item, behaviors);
+            return new Rlp(stream.Data.ToArray());
         }
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -300,13 +307,20 @@ namespace Nethermind.Serialization.Rlp
             IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
             if (rlpStreamEncoder is not null)
             {
-                int totalLength = rlpStreamEncoder.GetLength(items, behaviors);
-                RlpStream stream = new(totalLength);
-                rlpStreamEncoder.Encode(stream, items, behaviors);
-                return new Rlp(stream.Data.ToArray());
+                return Encode(rlpStreamEncoder, items, behaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
+        }
+
+        public static Rlp Encode<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
+            ArgumentNullException.ThrowIfNull(rlpStreamEncoder);
+
+            int totalLength = rlpStreamEncoder.GetLength(items, behaviors);
+            RlpStream stream = new(totalLength);
+            rlpStreamEncoder.Encode(stream, items, behaviors);
+            return new Rlp(stream.Data.ToArray());
         }
 
         public static Rlp Encode(int[] integers)
