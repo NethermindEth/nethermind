@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -309,7 +310,15 @@ public class DebugRpcModule(
         using CancellationTokenSource? timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
 
-        IReadOnlyCollection<Hash256> roots = debugBridge.GetBlockIntermediateRoots(blockHash, cancellationToken, options);
+        IReadOnlyCollection<Hash256> roots;
+        try
+        {
+            roots = debugBridge.GetBlockIntermediateRoots(blockHash, cancellationToken, options);
+        }
+        catch (GenesisNotTraceableException e)
+        {
+            return ResultWrapper<IReadOnlyCollection<Hash256>>.Fail(e.Message, ErrorCodes.InvalidInput);
+        }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_intermediateRoots)} request {blockHash}, roots: {roots.Count}");
 

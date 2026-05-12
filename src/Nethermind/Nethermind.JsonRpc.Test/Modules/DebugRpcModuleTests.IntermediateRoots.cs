@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -34,9 +33,10 @@ public partial class DebugRpcModuleTests
         using Context context = await Context.Create();
         Hash256 genesisHash = context.Blockchain.BlockTree.Genesis!.Hash!;
 
-        Func<ResultWrapper<IReadOnlyCollection<Hash256>>> act =
-            () => context.DebugRpcModule.debug_intermediateRoots(genesisHash);
+        ResultWrapper<IReadOnlyCollection<Hash256>> result = context.DebugRpcModule.debug_intermediateRoots(genesisHash);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*genesis*");
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        result.Result.Error.Should().Contain("genesis");
     }
 }
