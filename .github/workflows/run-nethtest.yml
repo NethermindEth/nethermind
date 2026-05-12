@@ -131,7 +131,7 @@ jobs:
     needs: approval-state
     if: needs.approval-state.outputs.should_run == 'true'
     runs-on: ${{ inputs.runner_label || matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: ${{ inputs.dotmemory && 360 || 60 }}
     strategy:
       fail-fast: false
       matrix:
@@ -257,7 +257,7 @@ jobs:
 
       - name: Run nethtest and parse results
         working-directory: src/Nethermind
-        timeout-minutes: 55
+        timeout-minutes: ${{ inputs.dotmemory && 350 || 55 }}
         env:
           RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
         run: |
