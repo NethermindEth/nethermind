@@ -518,7 +518,7 @@ jobs:
               --save-to-dir="$DOTMEMORY_OUTPUT_DIR" \
               --trigger-on-activation \
               --trigger-timer="${DOTMEMORY_TIMER_SECONDS}s" \
-              dotnet "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
+              dotnet -- "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
               > "$STDOUT_FILE" \
               2> >(tee "$STDERR_FILE" >&2) &
           else
