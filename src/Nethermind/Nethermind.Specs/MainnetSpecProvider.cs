@@ -39,34 +39,53 @@ public class MainnetSpecProvider : IForkAwareSpecProvider
     public const ulong BPO5BlockTimestamp = ulong.MaxValue - 1;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue;
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-        forkActivation switch
+    private static readonly ForkSpec[] ForkSchedule =
+    [
+        new(0L, Frontier.Instance),
+        new(HomesteadBlockNumber, Homestead.Instance),
+        new(DaoBlockNumberConst, Dao.Instance),
+        new(TangerineWhistleBlockNumber, TangerineWhistle.Instance),
+        new(SpuriousDragonBlockNumber, SpuriousDragon.Instance),
+        new(ByzantiumBlockNumber, Byzantium.Instance),
+        new(ConstantinopleFixBlockNumber, ConstantinopleFix.Instance),
+        new(IstanbulBlockNumber, Istanbul.Instance),
+        new(MuirGlacierBlockNumber, MuirGlacier.Instance),
+        new(BerlinBlockNumber, Berlin.Instance),
+        new(LondonBlockNumber, London.Instance),
+        new(ArrowGlacierBlockNumber, ArrowGlacier.Instance),
+        new(GrayGlacierBlockNumber, GrayGlacier.Instance),
+        new(ParisBlockNumber, Paris.Instance),
+        new(ShanghaiBlockTimestamp, Shanghai.Instance),
+        new(CancunBlockTimestamp, Cancun.Instance),
+        new(PragueBlockTimestamp, Prague.Instance),
+        new(OsakaBlockTimestamp, Osaka.Instance),
+        new(BPO1BlockTimestamp, BPO1.Instance),
+        new(BPO2BlockTimestamp, BPO2.Instance),
+        new(BPO3BlockTimestamp, BPO3.Instance),
+        new(BPO4BlockTimestamp, BPO4.Instance),
+        new(BPO5BlockTimestamp, BPO5.Instance),
+        new(AmsterdamBlockTimestamp, Amsterdam.Instance),
+    ];
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    {
+        if (forkActivation.Timestamp is ulong ts)
         {
-            { BlockNumber: < HomesteadBlockNumber } => Frontier.Instance,
-            { BlockNumber: < DaoBlockNumberConst } => Homestead.Instance,
-            { BlockNumber: < TangerineWhistleBlockNumber } => Dao.Instance,
-            { BlockNumber: < SpuriousDragonBlockNumber } => TangerineWhistle.Instance,
-            { BlockNumber: < ByzantiumBlockNumber } => SpuriousDragon.Instance,
-            { BlockNumber: < ConstantinopleFixBlockNumber } => Byzantium.Instance,
-            { BlockNumber: < IstanbulBlockNumber } => ConstantinopleFix.Instance,
-            { BlockNumber: < MuirGlacierBlockNumber } => Istanbul.Instance,
-            { BlockNumber: < BerlinBlockNumber } => MuirGlacier.Instance,
-            { BlockNumber: < LondonBlockNumber } => Berlin.Instance,
-            { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
-            { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
-            { BlockNumber: < ParisBlockNumber } => GrayGlacier.Instance,
-            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
-            { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
-            { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
-            { Timestamp: < OsakaBlockTimestamp } => Prague.Instance,
-            { Timestamp: < BPO1BlockTimestamp } => Osaka.Instance,
-            { Timestamp: < BPO2BlockTimestamp } => BPO1.Instance,
-            { Timestamp: < BPO3BlockTimestamp } => BPO2.Instance,
-            { Timestamp: < BPO4BlockTimestamp } => BPO3.Instance,
-            { Timestamp: < BPO5BlockTimestamp } => BPO4.Instance,
-            { Timestamp: < AmsterdamBlockTimestamp } => BPO5.Instance,
-            _ => Amsterdam.Instance
-        };
+            for (int i = ForkSchedule.Length - 1; i >= 0; i--)
+            {
+                if (ForkSchedule[i].Timestamp is ulong forkTs && ts >= forkTs)
+                    return ForkSchedule[i].Spec;
+            }
+        }
+
+        for (int i = ForkSchedule.Length - 1; i >= 0; i--)
+        {
+            if (ForkSchedule[i].Block is long forkBlock && forkActivation.BlockNumber >= forkBlock)
+                return ForkSchedule[i].Spec;
+        }
+
+        return ForkSchedule[0].Spec;
+    }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
@@ -96,34 +115,8 @@ public class MainnetSpecProvider : IForkAwareSpecProvider
     public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
     public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
     public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
-    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
-    {
-        [nameof(Frontier)] = Frontier.Instance,
-        [nameof(Homestead)] = Homestead.Instance,
-        [nameof(Dao)] = Dao.Instance,
-        [nameof(TangerineWhistle)] = TangerineWhistle.Instance,
-        [nameof(SpuriousDragon)] = SpuriousDragon.Instance,
-        [nameof(Byzantium)] = Byzantium.Instance,
-        [nameof(Constantinople)] = Constantinople.Instance,
-        [nameof(ConstantinopleFix)] = ConstantinopleFix.Instance,
-        [nameof(Istanbul)] = Istanbul.Instance,
-        [nameof(MuirGlacier)] = MuirGlacier.Instance,
-        [nameof(Berlin)] = Berlin.Instance,
-        [nameof(London)] = London.Instance,
-        [nameof(ArrowGlacier)] = ArrowGlacier.Instance,
-        [nameof(GrayGlacier)] = GrayGlacier.Instance,
-        [nameof(Paris)] = Paris.Instance,
-        [nameof(Shanghai)] = Shanghai.Instance,
-        [nameof(Cancun)] = Cancun.Instance,
-        [nameof(Prague)] = Prague.Instance,
-        [nameof(Osaka)] = Osaka.Instance,
-        [nameof(BPO1)] = BPO1.Instance,
-        [nameof(BPO2)] = BPO2.Instance,
-        [nameof(BPO3)] = BPO3.Instance,
-        [nameof(BPO4)] = BPO4.Instance,
-        [nameof(BPO5)] = BPO5.Instance,
-        [nameof(Amsterdam)] = Amsterdam.Instance,
-    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+    public static readonly FrozenDictionary<string, IReleaseSpec> Forks =
+        ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase);
 
     private static readonly string[] _availableForks = [.. Forks.Keys.Order()];
 

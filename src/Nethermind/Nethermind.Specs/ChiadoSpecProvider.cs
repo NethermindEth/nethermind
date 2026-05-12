@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Frozen;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -22,28 +21,31 @@ public class ChiadoSpecProvider : ISpecProvider
 
     public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
 
-    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
-    {
-        [nameof(London)] = London.Instance,
-        [nameof(Shanghai)] = ShanghaiGnosis.Instance,
-        [nameof(Cancun)] = CancunGnosis.Instance,
-        [nameof(Prague)] = PragueGnosis.Instance,
-        [nameof(Osaka)] = OsakaGnosis.Instance,
-    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
-
     private ChiadoSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
+    private static readonly ForkSpec[] ForkSchedule =
+    [
+        new(0ul, London.Instance),
+        new(ShanghaiTimestamp, ShanghaiGnosis.Instance),
+        new(CancunTimestamp, CancunGnosis.Instance),
+        new(PragueTimestamp, PragueGnosis.Instance),
+        new(OsakaTimestamp, OsakaGnosis.Instance),
+    ];
+
+    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase);
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
-        _ => forkActivation.Timestamp switch
+        ulong timestamp = forkActivation.Timestamp ?? 0;
+
+        for (int i = ForkSchedule.Length - 1; i >= 0; i--)
         {
-            null or < ShanghaiTimestamp => GenesisSpec,
-            < CancunTimestamp => ShanghaiGnosis.Instance,
-            < PragueTimestamp => CancunGnosis.Instance,
-            < OsakaTimestamp => PragueGnosis.Instance,
-            _ => OsakaGnosis.Instance
+            if (timestamp >= ForkSchedule[i].Timestamp)
+                return ForkSchedule[i].Spec;
         }
-    };
+
+        return ForkSchedule[0].Spec;
+    }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {

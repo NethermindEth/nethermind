@@ -29,28 +29,31 @@ public class SepoliaSpecProvider : ISpecProvider
 
     private SepoliaSpecProvider() { }
 
-    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
-    {
-        [nameof(London)] = London.Instance,
-        [nameof(Shanghai)] = Shanghai.Instance,
-        [nameof(Cancun)] = Cancun.Instance,
-        [nameof(Prague)] = Prague,
-        [nameof(Osaka)] = Osaka.Instance,
-        [nameof(BPO1)] = BPO1.Instance,
-        [nameof(BPO2)] = BPO2.Instance,
-    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+    private static readonly ForkSpec[] ForkSchedule =
+    [
+        new(0ul, London.Instance),
+        new(ShanghaiTimestamp, Shanghai.Instance),
+        new(CancunTimestamp, Cancun.Instance),
+        new(PragueTimestamp, Prague),
+        new(OsakaTimestamp, Osaka.Instance),
+        new(BPO1Timestamp, BPO1.Instance),
+        new(BPO2Timestamp, BPO2.Instance),
+    ];
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
-        forkActivation switch
+    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase);
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    {
+        ulong timestamp = forkActivation.Timestamp ?? 0;
+
+        for (int i = ForkSchedule.Length - 1; i >= 0; i--)
         {
-            { Timestamp: null } or { Timestamp: < ShanghaiTimestamp } => London.Instance,
-            { Timestamp: < CancunTimestamp } => Shanghai.Instance,
-            { Timestamp: < PragueTimestamp } => Cancun.Instance,
-            { Timestamp: < OsakaTimestamp } => Prague,
-            { Timestamp: < BPO1Timestamp } => Osaka.Instance,
-            { Timestamp: < BPO2Timestamp } => BPO1.Instance,
-            _ => BPO2.Instance
-        };
+            if (timestamp >= ForkSchedule[i].Timestamp)
+                return ForkSchedule[i].Spec;
+        }
+
+        return ForkSchedule[0].Spec;
+    }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {

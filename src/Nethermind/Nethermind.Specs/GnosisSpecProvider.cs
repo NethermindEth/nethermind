@@ -31,22 +31,44 @@ public class GnosisSpecProvider : IForkAwareSpecProvider
 
     private GnosisSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.BlockNumber switch
+    // Lazy because LondonGnosis.Apply → GnosisSpecProvider.FeeCollector → GnosisSpecProvider static
+    // init → LondonGnosis.Instance (still building → null) is a circular init if Chiado or anything
+    // else touches a Gnosis fork instance before GnosisSpecProvider is first directly accessed.
+    private static readonly Lazy<ForkSpec[]> _forkSchedule = new(static () =>
+    [
+        new(0L, Byzantium.Instance),
+        new(ConstantinopleBlockNumber, Constantinople.Instance),
+        new(ConstantinopleFixBlockNumber, ConstantinopleFix.Instance),
+        new(IstanbulBlockNumber, Istanbul.Instance),
+        new(BerlinBlockNumber, Berlin.Instance),
+        new(LondonBlockNumber, LondonGnosis.Instance),
+        new(ShanghaiTimestamp, ShanghaiGnosis.Instance),
+        new(CancunTimestamp, CancunGnosis.Instance),
+        new(PragueTimestamp, PragueGnosis.Instance),
+        new(OsakaTimestamp, OsakaGnosis.Instance),
+    ]);
+
+    private static ForkSpec[] ForkSchedule => _forkSchedule.Value;
+
+    public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
-        < ConstantinopleBlockNumber => GenesisSpec,
-        < ConstantinopleFixBlockNumber => Constantinople.Instance,
-        < IstanbulBlockNumber => ConstantinopleFix.Instance,
-        < BerlinBlockNumber => Istanbul.Instance,
-        < LondonBlockNumber => Berlin.Instance,
-        _ => forkActivation.Timestamp switch
+        if (forkActivation.Timestamp is ulong ts)
         {
-            null or < ShanghaiTimestamp => LondonGnosis.Instance,
-            < CancunTimestamp => ShanghaiGnosis.Instance,
-            < PragueTimestamp => CancunGnosis.Instance,
-            < OsakaTimestamp => PragueGnosis.Instance,
-            _ => OsakaGnosis.Instance
+            for (int i = ForkSchedule.Length - 1; i >= 0; i--)
+            {
+                if (ForkSchedule[i].Timestamp is ulong forkTs && ts >= forkTs)
+                    return ForkSchedule[i].Spec;
+            }
         }
-    };
+
+        for (int i = ForkSchedule.Length - 1; i >= 0; i--)
+        {
+            if (ForkSchedule[i].Block is long forkBlock && forkActivation.BlockNumber >= forkBlock)
+                return ForkSchedule[i].Spec;
+        }
+
+        return ForkSchedule[0].Spec;
+    }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {
@@ -82,23 +104,15 @@ public class GnosisSpecProvider : IForkAwareSpecProvider
         (LondonBlockNumber, OsakaTimestamp),
     ];
 
-    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = new Dictionary<string, IReleaseSpec>(StringComparer.OrdinalIgnoreCase)
-    {
-        [nameof(Byzantium)] = Byzantium.Instance,
-        [nameof(Constantinople)] = Constantinople.Instance,
-        [nameof(ConstantinopleFix)] = ConstantinopleFix.Instance,
-        [nameof(Istanbul)] = Istanbul.Instance,
-        [nameof(Berlin)] = Berlin.Instance,
-        [nameof(London)] = LondonGnosis.Instance,
-        [nameof(Shanghai)] = ShanghaiGnosis.Instance,
-        [nameof(Cancun)] = CancunGnosis.Instance,
-        [nameof(Prague)] = PragueGnosis.Instance,
-        [nameof(Osaka)] = OsakaGnosis.Instance,
-    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+    private static readonly Lazy<FrozenDictionary<string, IReleaseSpec>> _forks =
+        new(static () => ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase));
 
-    private static readonly string[] _availableForks = [.. Forks.Keys.Order()];
+    public static FrozenDictionary<string, IReleaseSpec> Forks => _forks.Value;
 
-    public IEnumerable<string> AvailableForks => _availableForks;
+    private static readonly Lazy<string[]> _availableForks =
+        new(static () => [.. Forks.Keys.Order()]);
+
+    public IEnumerable<string> AvailableForks => _availableForks.Value;
     public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
 
     public static GnosisSpecProvider Instance { get; } = new();
