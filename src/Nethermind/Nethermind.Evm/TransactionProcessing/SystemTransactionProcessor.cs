@@ -104,7 +104,9 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     protected override bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
     {
         Address? sender = tx.SenderAddress;
-        return (sender is null || (sender == spec.Eip158IgnoredAccount && !WorldState.AccountExists(sender)))
+
+        return sender != Address.SystemUser
+               && (sender is null || (sender == spec.Eip158IgnoredAccount && !WorldState.AccountExists(sender)))
                && base.RecoverSenderIfNeeded(tx, spec, opts, in effectiveGasPrice);
     }
 
