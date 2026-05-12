@@ -55,11 +55,11 @@ jobs:
       matrix:
         include:
           - test_setup: current_spec
-            runner: ubuntu-lowchad
+            runner: ubuntu-gigachad
             eest_repository: ethereum/execution-spec-tests
             eest_version: v5.4.0
             eest_archive: fixtures_stable.tar.gz
-            workers: '4'
+            workers: '8'
           - test_setup: new_spec
             runner: ubuntu-gigachad
             eest_repository: ethereum/execution-specs
