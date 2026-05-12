@@ -151,22 +151,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     // On explicit REVERT, restore the child's remaining state reservoir plus its reverted
-    // state gas usage. State-gas refunds mark their spilled portion in StateGasSpillRefunded;
-    // any remaining unrefunded spill stays in the regular dimension.
+    // state gas usage. Propagate spill so block-regular accounting can exclude it.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir, long childStateRefund)
     {
-        long unrefundedSpill = GetUnrefundedStateGasSpill(in childGas, childStateRefund);
-        long reclassifiedSpill = childGas.StateGasSpillReclassified;
-        if (childStateRefund > 0)
-        {
-            reclassifiedSpill += GetUnclassifiedStateGasSpill(in childGas, unrefundedSpill);
-        }
-
         parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed;
         parentGas.StateGasSpill += childGas.StateGasSpill;
-        parentGas.StateGasSpillBurned += unrefundedSpill;
-        parentGas.StateGasSpillReclassified += reclassifiedSpill;
+        parentGas.StateGasSpillBurned += childGas.StateGasSpillBurned;
+        parentGas.StateGasSpillReclassified += childGas.StateGasSpillReclassified;
         parentGas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
     }
 
@@ -200,10 +192,6 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             Math.Min(stateRefund, childGas.StateGasSpill));
         return Math.Max(0, childGas.StateGasSpill - refundedSpill);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long GetUnclassifiedStateGasSpill(in EthereumGasPolicy childGas, long unrefundedSpill) =>
-        Math.Max(0, unrefundedSpill - childGas.StateGasSpillReclassified);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void SetOutOfGas(ref EthereumGasPolicy gas) => gas.Value = 0;
@@ -380,9 +368,9 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (codeInsertRefunds > 0 && spec.IsEip8037Enabled)
         {
-            // EIP-8037 keeps EIP-7702 authority-code intrinsic state gas in block accounting;
-            // only the state allowance returns to the reservoir.
-            gas.StateReservoir += checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
+            long stateGasRefund = checked(GetNewAccountStateCost(in gas) * codeInsertRefunds);
+            long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
+            RefundStateGas(ref gas, stateGasRefund, refundFloor, trackSpillRefund: false);
         }
 
         return GetCodeInsertRegularRefund(codeInsertRefunds, spec);

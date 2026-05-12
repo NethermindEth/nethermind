@@ -972,14 +972,13 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static void RefundRevertedExecutionStateGas(IReleaseSpec spec, in TGasPolicy intrinsicGas, ref TGasPolicy gas)
+        static void RefundRevertedExecutionStateGas(IReleaseSpec spec, long stateGasFloor, ref TGasPolicy gas)
         {
             if (!spec.IsEip8037Enabled)
             {
                 return;
             }
 
-            long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGas);
             long revertedStateGas = TGasPolicy.GetStateGasUsed(in gas);
             if (revertedStateGas > stateGasFloor)
             {
@@ -1001,11 +1000,15 @@ namespace Nethermind.Evm.TransactionProcessing
             long floorGas,
             long postIntrinsicStateReservoir)
         {
-            RefundRevertedExecutionStateGas(spec, in intrinsicGasStandard, ref gas);
-            long refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gas);
             long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
+            long initialStateReservoir = CalculateInitialStateReservoir(tx.GasLimit, in intrinsicGasStandard);
+            long refundedIntrinsicStateGas = Math.Max(0, postIntrinsicStateReservoir - initialStateReservoir) + refundedTopLevelCreateStateGas;
+            long postHaltIntrinsicStateGas = Math.Max(0, intrinsicStateGas - refundedIntrinsicStateGas);
+            RefundRevertedExecutionStateGas(spec, postHaltIntrinsicStateGas, ref gas);
+            long refundedCreateStateSpillForHalt = CalculateRefundedCreateStateSpillForHalt(in gas);
             long postHaltStateReservoir = Math.Max(postIntrinsicStateReservoir, TGasPolicy.GetStateReservoir(in gas));
-            TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, intrinsicStateGas);
+            TGasPolicy.ResetForHalt(ref gas, postHaltStateReservoir, postHaltIntrinsicStateGas);
             return RefundOnTopLevelHalt(tx, spec, opts, in gas, in gasPrice, in intrinsicGasStandard, floorGas, refundedCreateStateSpillForHalt);
         }
 
@@ -1042,11 +1045,18 @@ namespace Nethermind.Evm.TransactionProcessing
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
 
-            long remainingRegularGas = TGasPolicy.GetRemainingGas(in gas);
-            long blockGas = Calculate8037BlockRegularGas(in gas, in intrinsicGasStandard, tx.GasLimit, floorGas, remainingRegularGas);
-            long blockStateGas = TGasPolicy.GetStateGasUsed(in gas);
+            TGasPolicy gasAfterCollision = gas;
+            long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
+            if (refundedTopLevelCreateStateGas > 0)
+            {
+                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard) - refundedTopLevelCreateStateGas;
+                TGasPolicy.RefundStateGas(ref gasAfterCollision, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
+            }
 
-            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, tx.GasLimit, blockGas, blockStateGas);
+            long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterCollision);
+            long spentGas = Math.Max(tx.GasLimit - TGasPolicy.GetStateReservoir(in gasAfterCollision), floorGas);
+
+            return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, spentGas, blockStateGas);
         }
 
         private GasConsumed RefundOnTopLevelHalt(
@@ -1064,7 +1074,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             long stateReservoir = TGasPolicy.GetStateReservoir(in gas);
             long spentGas = Math.Max(tx.GasLimit - stateReservoir, floorGas);
-            long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            long intrinsicStateGas = TGasPolicy.GetStateGasUsed(in gas);
             long spillBurned = TGasPolicy.GetStateGasSpillBurned(in gas);
             long effectiveStateGas = Math.Max(0, intrinsicStateGas - spillBurned) + refundedCreateStateSpillForHalt;
             long blockGas = Math.Max(tx.GasLimit - stateReservoir - effectiveStateGas, floorGas);
@@ -1238,6 +1248,16 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             TGasPolicy gasAfterExecution = unspentGas;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            if (substate.ShouldRevert && spec.IsEip8037Enabled)
+            {
+                long refundedTopLevelCreateStateGas = CalculateTopLevelCreateIntrinsicStateRefund(tx, in intrinsicGasStandard);
+                if (refundedTopLevelCreateStateGas > 0)
+                {
+                    stateGasFloor -= refundedTopLevelCreateStateGas;
+                    TGasPolicy.RefundStateGas(ref gasAfterExecution, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
+                }
+            }
+
             long topLevelCreateStateRefund = Math.Min(
                 selfDestructStateRefund,
                 CalculateTopLevelCreateSelfDestructStateRefund(tx, in substate, in gasAfterExecution));
@@ -1289,6 +1309,28 @@ namespace Nethermind.Evm.TransactionProcessing
             return substate.DestroyList.Contains(contractAddress)
                 ? TGasPolicy.GetCreateStateCost(in gasAfterExecution)
                 : 0;
+        }
+
+        private static long CalculateTopLevelCreateIntrinsicStateRefund(
+            Transaction tx,
+            in TGasPolicy intrinsicGasStandard)
+        {
+            if (!tx.IsContractCreation)
+            {
+                return 0;
+            }
+
+            return Math.Min(
+                TGasPolicy.GetCreateStateCost(in intrinsicGasStandard),
+                TGasPolicy.GetStateReservoir(in intrinsicGasStandard));
+        }
+
+        private static long CalculateInitialStateReservoir(
+            long txGasLimit,
+            in TGasPolicy intrinsicGasStandard)
+        {
+            long intrinsicStateGas = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            return Math.Max(0, txGasLimit - intrinsicStateGas - Eip7825Constants.DefaultTxGasLimitCap);
         }
 
         private (long spentGas, long refund) CalculateSpentGasAndRefund(

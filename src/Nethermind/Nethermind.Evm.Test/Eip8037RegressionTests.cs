@@ -144,11 +144,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
             "CREATE tx with oversized code return should fail");
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.NewAccountState),
-            "The reverted initcode new-account state gas returns to the reservoir before transaction billing.");
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - 2 * GasCostOf.NewAccountState),
+            "Reverted initcode and top-level CREATE state gas return to the reservoir before transaction billing.");
         Assert.That(tracer.GasConsumedResult.BlockStateGas,
-            Is.EqualTo(GasCostOf.CreateState),
-            "Reverted initcode state gas (NewAccountState) must NOT contribute to block_state_gas_used.");
+            Is.Zero,
+            "Reverted state gas must not contribute to block_state_gas_used.");
         Assert.That(TestState.AccountExists(TestItem.AddressC), Is.False,
             "The initcode CALL target must be reverted together with its state gas.");
     }
@@ -198,17 +198,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long expectedRegularGas = GasCostOf.Transaction + GasCostOf.CreateRegular + GasCostOf.TxDataZero + GasCostOf.InitCodeWord;
-        long expectedFloorGas = GasCostOf.Transaction + 4 * GasCostOf.TotalCostFloorPerTokenEip7976;
-
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState));
-        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(Math.Max(expectedRegularGas, expectedFloorGas)));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
     }
 
     [Test]
-    public void Eip8037_authorization_refund_remains_in_block_state_gas()
+    public void Eip8037_authorization_refund_excludes_existing_authority_from_block_state_gas()
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         Address codeSource = TestItem.AddressC;
@@ -237,7 +234,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long expectedAuthorizationStateGas = GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState;
+        long expectedAuthorizationStateGas = GasCostOf.PerAuthBaseState;
         long expectedPaidGas = GasCostOf.Transaction + GasCostOf.PerAuthBaseRegular + GasCostOf.PerAuthBaseState;
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
@@ -304,12 +301,12 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState),
-            "Only the intrinsic top-level create state gas should remain after the initcode failure reverts the inner CREATE.");
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero,
+            "Reverted top-level CREATE state gas should not remain after the initcode failure.");
     }
 
     [Test]
-    public void Eip8037_top_level_halt_must_keep_refunded_inner_create_spill_in_state_dimension()
+    public void Eip8037_top_level_halt_must_refund_reverted_create_state_gas()
     {
         byte[] childInitCode = Prepare.EvmCode
             .Create([], UInt256.One)
@@ -338,19 +335,16 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        long refundedStateGas = 2 * GasCostOf.CreateState;
-        long expectedStateGas = GasCostOf.CreateState;
-        long expectedBlockRegularGas = gasLimit - 3 * GasCostOf.CreateState;
+        long refundedStateGas = 3 * GasCostOf.CreateState;
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - refundedStateGas));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas),
-            "The refunded inner CREATE spill should still reduce the top-level halt's regular block gas.");
-        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(expectedBlockRegularGas));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - refundedStateGas));
     }
 
     [Test]
-    public void Eip8037_top_level_halt_must_not_treat_successful_inner_create_spill_as_refunded()
+    public void Eip8037_top_level_halt_must_refund_successful_inner_create_spill()
     {
         byte[] childInitCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -378,9 +372,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
         Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState),
-            "The successful inner CREATE spill is reverted only by the top-level halt, not by a nested state refund.");
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
     }
 
@@ -418,8 +411,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
         Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.CreateState));
     }
 
