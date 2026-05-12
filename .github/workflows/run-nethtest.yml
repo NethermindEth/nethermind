@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [master, feat/evm-enginetest]
+    branches: [master, feat/evm-enginetest, feat/evm-enginetest-dotmemory]
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
   pull_request_review:
@@ -37,6 +37,26 @@ on:
         required: false
         default: '10'
         type: string
+      dotmemory:
+        description: Capture dotMemory snapshots for the nethtest process
+        required: false
+        default: false
+        type: boolean
+      dotmemory_timer_seconds:
+        description: dotMemory periodic snapshot interval in seconds
+        required: false
+        default: '120'
+        type: string
+      runner_label:
+        description: Override runner label for workflow_dispatch smoke runs
+        required: false
+        default: ''
+        type: string
+      workers:
+        description: Override matrix worker count
+        required: false
+        default: ''
+        type: string
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
@@ -44,6 +64,8 @@ env:
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
+  DOTMEMORY: ${{ inputs.dotmemory || 'false' }}
+  DOTMEMORY_TIMER_SECONDS: ${{ inputs.dotmemory_timer_seconds || '120' }}
 
 defaults:
   run:
@@ -75,7 +97,7 @@ jobs:
             exit 0
           fi
 
-          if [ "$EVENT_NAME" = "push" ] && [ "$REF_NAME" = "master" ]; then
+          if [ "$EVENT_NAME" = "push" ] && { [ "$REF_NAME" = "master" ] || [ "$REF_NAME" = "feat/evm-enginetest-dotmemory" ]; }; then
             echo "should_run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -105,10 +127,10 @@ jobs:
           fi
 
   nethtest:
-    name: nethtest ${{ matrix.test_setup }} on ${{ matrix.runner }} --${{ inputs.test_type || 'engineTest' }}
+    name: nethtest ${{ matrix.test_setup }} on ${{ inputs.runner_label || matrix.runner }} --${{ inputs.test_type || 'engineTest' }}
     needs: approval-state
     if: needs.approval-state.outputs.should_run == 'true'
-    runs-on: ${{ matrix.runner }}
+    runs-on: ${{ inputs.runner_label || matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -131,7 +153,7 @@ jobs:
       EEST_REPOSITORY: ${{ matrix.eest_repository }}
       EEST_VERSION: ${{ matrix.eest_version }}
       EEST_ARCHIVE: ${{ matrix.eest_archive }}
-      WORKERS: ${{ matrix.workers }}
+      WORKERS: ${{ inputs.workers || matrix.workers }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -144,6 +166,21 @@ jobs:
       - name: Build Nethermind.Test.Runner
         working-directory: src/Nethermind
         run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false
+
+      - name: Install dotMemory command-line tools
+        if: ${{ env.DOTMEMORY == 'true' }}
+        run: |
+          DOTMEMORY_VERSION="2026.1.1"
+          DOTMEMORY_HOME="$RUNNER_TEMP/dotmemory-clt"
+          DOTMEMORY_PACKAGE="$RUNNER_TEMP/JetBrains.dotMemory.Console.linux-x64.$DOTMEMORY_VERSION.nupkg"
+          mkdir -p "$DOTMEMORY_HOME"
+          curl -fsSL --max-time 300 --retry 3 --retry-delay 5 \
+            "https://www.nuget.org/api/v2/package/JetBrains.dotMemory.Console.linux-x64/$DOTMEMORY_VERSION" \
+            -o "$DOTMEMORY_PACKAGE"
+          unzip -q -o "$DOTMEMORY_PACKAGE" -d "$DOTMEMORY_HOME"
+          chmod +x "$DOTMEMORY_HOME/tools/dotMemory.sh" "$DOTMEMORY_HOME/tools/dotmemory"
+          echo "DOTMEMORY_CMD=$DOTMEMORY_HOME/tools/dotMemory.sh" >> "$GITHUB_ENV"
+          "$DOTMEMORY_HOME/tools/dotMemory.sh" help start | head -80
 
       - name: Resolve EEST release
         id: eest_release
@@ -234,8 +271,10 @@ jobs:
             RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
           fi
           RESULTS_FILE="$RUNNER_TMP/nethtest-results.json"
+          STDOUT_FILE="$RUNNER_TMP/nethtest-stdout.log"
           STDERR_FILE="$RUNNER_TMP/nethtest-stderr.log"
           CLEAN_FILE="$RUNNER_TMP/nethtest-clean.log"
+          DOTMEMORY_OUTPUT_DIR="$RUNNER_TMP/dotmemory"
           LOW_MEMORY_FILE="$RUNNER_TMP/nethtest-low-memory"
           WATCHDOG_TIMEOUT_FILE="$RUNNER_TMP/nethtest-watchdog-timeout"
 
@@ -285,7 +324,7 @@ jobs:
                 echo "| EEST version input | \`$EEST_VERSION\` |"
               fi
               echo "| EEST archive | \`$EEST_ARCHIVE\` |"
-              echo "| Runner | \`${{ matrix.runner }}\` |"
+              echo "| Runner | \`${{ inputs.runner_label || matrix.runner }}\` |"
               echo "| Workers | $WORKERS |"
               echo "| Total | $TOTAL |"
               echo "| Passed | **$PASSED** |"
@@ -344,7 +383,7 @@ jobs:
               echo "# 2. Build and run"
               echo "cd src/Nethermind"
               echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release -p:PublishReadyToRun=false"
-              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers '$WORKERS' --neverTrace${FILTER_CMD}"
+              echo "dotnet artifacts/bin/Nethermind.Test.Runner/release/nethtest.dll --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --jsonout-file /tmp/nethtest-results.json --workers '$WORKERS' --neverTrace${FILTER_CMD}"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
 
@@ -367,13 +406,15 @@ jobs:
 
           trap cleanup EXIT
 
-          touch "$RESULTS_FILE" "$STDERR_FILE"
+          touch "$RESULTS_FILE" "$STDOUT_FILE" "$STDERR_FILE"
+          mkdir -p "$DOTMEMORY_OUTPUT_DIR"
           rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE"
 
           print_diagnostics() {
             echo ""
             echo "=== nethtest diagnostics $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
             echo "Results file size: $(wc -c < "$RESULTS_FILE") bytes"
+            echo "Stdout lines: $(wc -l < "$STDOUT_FILE")"
             echo "Stderr lines: $(wc -l < "$STDERR_FILE")"
             echo ""
             echo "--- memory ---"
@@ -458,16 +499,33 @@ jobs:
           }
 
           set +e
-          dotnet run --no-build --no-launch-profile -c Release \
-            --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- \
-            --$TEST_TYPE \
-            --input "${{ steps.fixtures.outputs.fixture_dir }}" \
-            --jsonout \
-            --workers "$WORKERS" \
-            --neverTrace \
-            $FILTER_ARG \
-            > "$RESULTS_FILE" \
-            2> >(tee "$STDERR_FILE" >&2) &
+          RUNNER_DLL="artifacts/bin/Nethermind.Test.Runner/release/nethtest.dll"
+          NETHTEST_ARGS=(
+            --$TEST_TYPE
+            --input "${{ steps.fixtures.outputs.fixture_dir }}"
+            --jsonout
+            --jsonout-file "$RESULTS_FILE"
+            --workers "$WORKERS"
+            --neverTrace
+          )
+          if [ -n "$FILTER" ]; then
+            NETHTEST_ARGS+=(--filter "$FILTER")
+          fi
+
+          if [ "$DOTMEMORY" = "true" ]; then
+            echo "Running nethtest under dotMemory. Snapshots: $DOTMEMORY_OUTPUT_DIR"
+            "$DOTMEMORY_CMD" start \
+              --save-to-dir="$DOTMEMORY_OUTPUT_DIR" \
+              --trigger-on-activation \
+              --trigger-timer="${DOTMEMORY_TIMER_SECONDS}s" \
+              dotnet "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
+              > "$STDOUT_FILE" \
+              2> >(tee "$STDERR_FILE" >&2) &
+          else
+            dotnet "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
+              > "$STDOUT_FILE" \
+              2> >(tee "$STDERR_FILE" >&2) &
+          fi
           NETHTEST_PID=$!
           watchdog &
           WATCHDOG_PID=$!
@@ -477,6 +535,7 @@ jobs:
 
           echo "Exit code: $rc"
           echo "Results file size: $(wc -c < "$RESULTS_FILE") bytes"
+          echo "Stdout lines: $(wc -l < "$STDOUT_FILE")"
           echo "Stderr lines: $(wc -l < "$STDERR_FILE")"
 
           if [ -f "$LOW_MEMORY_FILE" ]; then
@@ -502,17 +561,48 @@ jobs:
 
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
+            echo "--- stdout (last 50 lines) ---"
+            tail -50 "$STDOUT_FILE" | sed 's/\x1b\[[0-9;]*m//g'
             echo "--- stderr (last 50 lines) ---"
             tail -50 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g'
             exit $rc
+          fi
+
+      - name: Verify dotMemory snapshots
+        if: ${{ always() && env.DOTMEMORY == 'true' }}
+        run: |
+          DOTMEMORY_OUTPUT_DIR="${RUNNER_TEMP:-/tmp}/dotmemory"
+          echo "dotMemory files:"
+          find "$DOTMEMORY_OUTPUT_DIR" -maxdepth 3 -type f -printf "%p %s bytes\n" | sort || true
+          FILE_COUNT="$(find "$DOTMEMORY_OUTPUT_DIR" -type f | wc -l)"
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "::error::dotMemory did not produce any snapshot files"
+            exit 1
+          fi
+
+          if ! find "$DOTMEMORY_OUTPUT_DIR" -type f \( -name '*.dmw' -o -name '*.dmw.*' -o -name '*00001*' -o -name '*00002*' \) | grep -q .; then
+            echo "::warning::dotMemory produced files, but no .dmw or numbered workspace chunk was found"
           fi
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: nethtest-results-${{ matrix.test_setup }}-${{ matrix.runner }}-${{ env.TEST_TYPE }}
+          name: nethtest-results-${{ matrix.test_setup }}-${{ inputs.runner_label || matrix.runner }}-${{ env.TEST_TYPE }}
           path: |
             ${{ runner.temp }}/nethtest-results.json
+            ${{ runner.temp }}/nethtest-stdout.log
             ${{ runner.temp }}/nethtest-stderr.log
           retention-days: 30
+
+      - name: Upload dotMemory snapshots
+        if: ${{ always() && env.DOTMEMORY == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethtest-dotmemory-${{ matrix.test_setup }}-${{ inputs.runner_label || matrix.runner }}-${{ env.TEST_TYPE }}
+          path: |
+            ${{ runner.temp }}/dotmemory
+            ${{ runner.temp }}/nethtest-stdout.log
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
