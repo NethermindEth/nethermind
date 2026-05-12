@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
+using static Nethermind.Core.Threading.ProcessingThread;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -33,8 +34,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
-    private static readonly AsyncLocal<bool> _isMainProcessingThread = new();
-    public static bool IsMainProcessingThread => _isMainProcessingThread.Value;
+    public static bool IsMainProcessingThread => IsBlockProcessingThread;
     public bool IsMainProcessor { get; init; }
 
     public ITracerBag Tracers => _compositeBlockTracer;
@@ -101,7 +101,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Options options,
         IProcessingStats processingStats)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
         _recoveryStep = recoveryStep;
@@ -116,10 +116,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
         => NewProcessingStatistics?.Invoke(sender, stats);
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        _lastProcessedBlock = DateTime.UtcNow;
-    }
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e) => _lastProcessedBlock = DateTime.UtcNow;
 
     private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
     {
@@ -301,8 +298,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private async Task RunProcessing()
     {
-        _isMainProcessingThread.Value = IsMainProcessor;
-
         try
         {
             await RunProcessingLoop();
@@ -329,16 +324,19 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
-            using var handle = Thread.CurrentThread.SetHighestPriority();
+            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
+            bool previousMainThread = IsBlockProcessingThread;
+            IsBlockProcessingThread = IsMainProcessor;
             try
             {
                 ProcessBlocks();
             }
             finally
             {
+                IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
             }
 
@@ -492,7 +490,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             int blockQueueCount = _blockQueue.Reader.Count;
             Metrics.RecoveryQueueSize = Math.Max(_queueCount - blockQueueCount - (IsProcessingBlock ? 1 : 0), 0);
             Metrics.ProcessingQueueSize = blockQueueCount;
-            _stats.UpdateStats(lastProcessed, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
+            _stats.UpdateStats(processedBlocks, processingBranch.BaseBlock, blockProcessingTimeInMicrosecs);
         }
 
         bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
@@ -767,9 +765,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             => _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceBranchingConditions(BlockHeader branchingPoint, bool notFoundTheBranchingPointYet, bool hasState, bool notInForceProcessing)
-        {
-            _logger.Trace(
+        void TraceBranchingConditions(BlockHeader branchingPoint, bool notFoundTheBranchingPointYet, bool hasState, bool notInForceProcessing) => _logger.Trace(
                 $" Current branching point: " +
                 $"{branchingPoint.Number}," +
                 $" {branchingPoint.Hash} " +
@@ -778,7 +774,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
                 $"hasState: {hasState}, " +
                 $"notInForceProcessing: {notInForceProcessing}, ");
-        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceBranchingPoint(BlockHeader? branchingPoint)

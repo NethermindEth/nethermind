@@ -316,12 +316,7 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// Eof execution env in EVM
-        /// </summary>
-        bool IsEofEnabled { get; }
-
-        /// <summary>
-        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE for legacy (non-EOF) code
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
         bool IsEip8024Enabled { get; }
 
@@ -346,7 +341,7 @@ namespace Nethermind.Core.Specs
         bool IsEip4844FeeCollectorEnabled { get; }
 
         /// <summary>
-        /// Secp256r1 precompile
+        /// SecP256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }
@@ -383,6 +378,16 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip7934Enabled { get; }
         int Eip7934MaxRlpBlockSize { get; }
+
+        /// <summary>
+        ///  Increase Calldata Floor Cost
+        /// </summary>
+        bool IsEip7976Enabled { get; }
+
+        /// <summary>
+        /// Access List Token Floor Pricing
+        /// </summary>
+        bool IsEip7981Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.
@@ -443,23 +448,19 @@ namespace Nethermind.Core.Specs
         public bool IsEip7939Enabled { get; }
 
         /// <summary>
-        /// EIP-7907: Meter Contract Code Size And Increase Limit
-        /// </summary>
-        public bool IsEip7907Enabled { get; }
-
-        /// <summary>
-        /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
-        /// </summary>
-        public bool IsRip7728Enabled { get; }
-
-        /// <summary>
         /// EIP-7928: Block-Level Access Lists
         /// </summary>
         public bool IsEip7928Enabled { get; }
         bool BlockLevelAccessListsEnabled => IsEip7928Enabled;
 
         /// <summary>
-        /// EIP-7708: ETH transfers emit a log
+        /// EIP-8037: Cost Per State Byte / State Size Limit.
+        /// Two-dimensional gas metering for state growth control.
+        /// </summary>
+        public bool IsEip8037Enabled { get; }
+
+        /// <summary>
+        /// EIP-7708: ETH transfers and burns emit a log
         /// </summary>
         public bool IsEip7708Enabled { get; }
 
@@ -467,6 +468,13 @@ namespace Nethermind.Core.Specs
         /// EIP-7843: SLOTNUM opcode
         /// </summary>
         public bool IsEip7843Enabled { get; }
+
+        /// <summary>
+        /// EIP-7954: Increase Maximum Contract Size
+        /// </summary>
+        public bool IsEip7954Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

@@ -6,8 +6,8 @@ using System.Collections.Generic;
 
 namespace Nethermind.Shutter;
 
-[SszSerializable]
-public struct SlotDecryptionIdentities
+[SszContainer]
+public partial struct SlotDecryptionIdentities
 {
     public ulong InstanceID { get; set; }
     public ulong Eon { get; set; }
@@ -18,8 +18,8 @@ public struct SlotDecryptionIdentities
     public List<IdentityPreimage> IdentityPreimages { get; set; }
 }
 
-[SszSerializable]
-public struct IdentityPreimage(byte[] data)
+[SszContainer]
+public partial struct IdentityPreimage(byte[] data)
 {
     [SszVector(52)]
     public byte[] Data { get; set; } = data;

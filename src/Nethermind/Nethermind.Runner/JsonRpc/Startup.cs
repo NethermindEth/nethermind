@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Security.Authentication;
@@ -53,6 +54,28 @@ public class Startup : IStartup
     private static ReadOnlySpan<byte> _jsonOpeningBracket => [(byte)'['];
     private static ReadOnlySpan<byte> _jsonComma => [(byte)','];
     private static ReadOnlySpan<byte> _jsonClosingBracket => [(byte)']'];
+
+    public Startup() { }
+
+    // for tests
+    internal Startup(
+        JsonRpcProcessor jsonRpcProcessor,
+        JsonRpcService jsonRpcService,
+        IJsonRpcLocalStats jsonRpcLocalStats,
+        EthereumJsonSerializer jsonSerializer,
+        IJsonRpcConfig jsonRpcConfig,
+        IRpcAuthentication? rpcAuthentication = null,
+        ILogger logger = default
+    )
+    {
+        _jsonRpcProcessor = jsonRpcProcessor;
+        _jsonRpcService = jsonRpcService;
+        _jsonRpcLocalStats = jsonRpcLocalStats;
+        _jsonSerializer = jsonSerializer;
+        _jsonRpcConfig = jsonRpcConfig;
+        _logger = logger;
+        _rpcAuthentication = rpcAuthentication;
+    }
 
     IServiceProvider IStartup.ConfigureServices(IServiceCollection services) => Build(services);
 
@@ -130,7 +153,7 @@ public class Startup : IStartup
         }
 
         ILogManager? logManager = app.ApplicationServices.GetService<ILogManager>() ?? NullLogManager.Instance;
-        ILogger logger = logManager.GetClassLogger();
+        ILogger logger = logManager.GetClassLogger<Startup>();
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
@@ -181,9 +204,14 @@ public class Startup : IStartup
             builder => builder.UseWebSocketsModules());
         }
 
+        string[] healthHostPatterns = jsonRpcUrlCollection.Values
+            .Where(url => url.IsModuleEnabled(ModuleType.Health))
+            .Select(url => $"*:{url.Port}")
+            .ToArray();
+
         app.UseEndpoints(endpoints =>
         {
-            if (healthChecksConfig.Enabled)
+            if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
             {
                 try
                 {
@@ -191,18 +219,18 @@ public class Startup : IStartup
                     {
                         Predicate = _ => true,
                         ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
-                    });
+                    }).RequireHost(healthHostPatterns);
                     if (healthChecksConfig.UIEnabled)
                     {
-                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")));
+                        endpoints.MapHealthChecksUI(setup => setup.AddCustomStylesheet(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "nethermind.css")))
+                            .RequireHost(healthHostPatterns);
                     }
+                    endpoints.MapDataFeeds(lifetime).RequireHost(healthHostPatterns);
                 }
                 catch (Exception e)
                 {
                     if (logger.IsError) logger.Error("Unable to initialize health checks. Check if you have Nethermind.HealthChecks.dll in your plugins folder.", e);
                 }
-
-                endpoints.MapDataFeeds(lifetime);
             }
         });
 
@@ -238,12 +266,17 @@ public class Startup : IStartup
             }
         }));
 
-        if (healthChecksConfig.Enabled)
+        if (healthChecksConfig.Enabled && healthHostPatterns.Length > 0)
         {
-            var fileProvider = new ManifestEmbeddedFileProvider(typeof(Startup).Assembly, "wwwroot");
+            ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
 
-            app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
-            app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+            app.UseWhen(
+                ctx => jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl url) && url.IsModuleEnabled(ModuleType.Health),
+                builder =>
+                {
+                    builder.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
+                    builder.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
+                });
         }
     }
 
@@ -268,11 +301,8 @@ public class Startup : IStartup
         }
     }
 
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response)
-    {
-        return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
+    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
-    }
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
     {
@@ -283,7 +313,7 @@ public class Startup : IStartup
         await ctx.Response.CompleteAsync();
     }
 
-    private async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
+    internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
         {
@@ -418,7 +448,7 @@ public class Startup : IStartup
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
-        using var jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
 
         jsonWriter.WriteStartObject();
         jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);
@@ -477,13 +507,10 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(Utf8JsonWriter writer, object? id)
-        {
-            JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
-        }
+        static void WriteOther(Utf8JsonWriter writer, object id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
-    private static async ValueTask WriteStreamableResponseAsync(
+    internal static async ValueTask WriteStreamableResponseAsync(
         CountingWriter writer, JsonRpcResponse response,
         IStreamableResult streamable, CancellationToken ct)
     {
@@ -518,13 +545,14 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(PipeWriter writer, object? id)
+        static void WriteOther(PipeWriter writer, object? id)
         {
             switch (id)
             {
                 case string strId:
                     {
-                        // JSON-RPC IDs are simple values (typically numeric); no escaping needed
+                        // escaping is intentionally skipped for max performance;
+                        // JSON-RPC IDs are usually simple values (typically numeric)
                         Span<byte> buf = writer.GetSpan(strId.Length * 3 + 2);
                         buf[0] = (byte)'"';
                         int len = Encoding.UTF8.GetBytes(strId, buf[1..]);
@@ -533,8 +561,10 @@ public class Startup : IStartup
                         break;
                     }
                 default:
-                    writer.Write("null"u8);
-                    break;
+                    {
+                        writer.Write("null"u8);
+                        break;
+                    }
             }
         }
     }
@@ -561,10 +591,7 @@ public class Startup : IStartup
             stream.AdvanceTo(consumed, examined);
         }
 
-        public override void CancelPendingRead()
-        {
-            stream.CancelPendingRead();
-        }
+        public override void CancelPendingRead() => stream.CancelPendingRead();
 
         public override void Complete(Exception? exception = null)
         {

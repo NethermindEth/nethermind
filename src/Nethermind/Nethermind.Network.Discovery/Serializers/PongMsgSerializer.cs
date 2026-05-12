@@ -10,12 +10,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PongMsg>
+public class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PongMsg>
 {
-    public PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
-
     public void Serialize(IByteBuffer byteBuffer, PongMsg msg)
     {
         if (msg.FarAddress is null)
@@ -48,7 +44,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         ctx.ReadSequenceLength();
 
         // GetAddress(ctx.DecodeByteArray(), ctx.DecodeInt());
-        ctx.DecodeByteArraySpan();
+        ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
         ctx.DecodeInt(); // TCP port
         byte[] token = ctx.DecodeByteArray();

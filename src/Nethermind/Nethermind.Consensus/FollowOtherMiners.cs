@@ -6,14 +6,9 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus
 {
-    public class FollowOtherMiners : IGasLimitCalculator
+    public class FollowOtherMiners(ISpecProvider specProvider) : IGasLimitCalculator
     {
-        private readonly ISpecProvider _specProvider;
-
-        public FollowOtherMiners(ISpecProvider specProvider)
-        {
-            _specProvider = specProvider;
-        }
+        private readonly ISpecProvider _specProvider = specProvider;
 
         public long GetGasLimit(BlockHeader parentHeader)
         {

@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using System;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -17,7 +18,7 @@ namespace Nethermind.Consensus.Processing;
 /// <param name="envFactory"></param>
 public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFactory) : IShareableTxProcessorSource
 {
-    ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new EnvPoolPolicy(envFactory));
+    ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPoolProvider().Create(new EnvPoolPolicy(envFactory));
 
     public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
     {
@@ -26,36 +27,25 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
         return new ScopeWrapper(source, _envPool, scope);
     }
 
+    public void Dispose() => (_envPool as IDisposable)?.Dispose();
+
     private class EnvPoolPolicy(IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public IReadOnlyTxProcessorSource Create()
-        {
-            return envFactory.Create();
-        }
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create();
 
-        public bool Return(IReadOnlyTxProcessorSource obj)
-        {
-            return true;
-        }
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private class ScopeWrapper : IReadOnlyTxProcessingScope
+    private class ScopeWrapper(IReadOnlyTxProcessorSource source, ObjectPool<IReadOnlyTxProcessorSource> envPool, IReadOnlyTxProcessingScope scope) : IReadOnlyTxProcessingScope
     {
-        private readonly IReadOnlyTxProcessingScope _scope;
-        private readonly IReadOnlyTxProcessorSource _source;
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool2;
-
-        public ScopeWrapper(IReadOnlyTxProcessorSource source, ObjectPool<IReadOnlyTxProcessorSource> envPool2, IReadOnlyTxProcessingScope scope)
-        {
-            _scope = scope;
-            _source = source;
-            _envPool2 = envPool2;
-        }
+        private readonly IReadOnlyTxProcessingScope _scope = scope;
+        private readonly IReadOnlyTxProcessorSource _source = source;
+        private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = envPool;
 
         public void Dispose()
         {
             _scope.Dispose();
-            _envPool2.Return(_source);
+            _envPool.Return(_source);
         }
 
         public ITransactionProcessor TransactionProcessor => _scope.TransactionProcessor;

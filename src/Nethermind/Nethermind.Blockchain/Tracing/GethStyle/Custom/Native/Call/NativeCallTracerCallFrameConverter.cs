@@ -4,7 +4,6 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Evm;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -13,14 +12,14 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
 {
     public override void Write(Utf8JsonWriter writer, NativeCallTracerCallFrame value, JsonSerializerOptions options)
     {
-        NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
+        NumberConversion previousValue = ForcedNumberConversion.Value;
         try
         {
             writer.WriteStartObject();
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
             writer.WritePropertyName("type"u8);
-            JsonSerializer.Serialize(writer, value.Type.GetName(), options);
+            JsonSerializer.Serialize(writer, Enum.GetName(value.Type), options);
 
             writer.WritePropertyName("from"u8);
             JsonSerializer.Serialize(writer, value.From, options);
@@ -87,12 +86,11 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = previousValue;
+            ForcedNumberConversion.Value = previousValue;
         }
     }
 
-    public override NativeCallTracerCallFrame Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
+    public override NativeCallTracerCallFrame Read(
+        ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         throw new NotSupportedException();
-    }
 }

@@ -23,7 +23,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             .Returns(call =>
             {
                 IDictionary vars = _env.GetEnvironmentVariables();
-                var key = call.Arg<string>();
+                string key = call.Arg<string>();
 
                 return vars.Contains(key) ? vars[key] : null;
             });
@@ -49,7 +49,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         configProvider.AddSource(argsSource);
 
         configProvider.Initialize();
-        (_, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (_, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Is.Empty);
     }
@@ -70,7 +70,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(1));
         Assert.Multiple(() =>
@@ -96,15 +96,15 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(3));
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("Concurrenc"));
-            Assert.That(Errors[1].Category, Is.EqualTo("BlomConfig"));
+            Assert.That(Errors[1].Category, Is.EqualTo("BloomsConfig"));
             Assert.That(Errors[2].Name, Is.EqualTo("MAXCANDIDATEPERCOUNT"));
-            Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BlomConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
+            Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BloomsConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
         });
     }
 
@@ -121,7 +121,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(1));
         Assert.Multiple(() =>
@@ -145,7 +145,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         ConfigProvider? configProvider = new();
         configProvider.AddSource(envSource);
 
-        (bool isSet, object value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
+        (bool isSet, object? value) = envSource.GetValue(typeof(string), "BlocksConfig", "ExtraData");
 
         Assert.Multiple(() =>
         {
@@ -171,7 +171,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         Assert.DoesNotThrow(configProvider.Initialize);
 
-        (bool isSet, object value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
+        (bool isSet, object? value) = envSource.GetValue(typeof(bool), "BloomConfig", "Index");
 
         Assert.Multiple(() =>
         {

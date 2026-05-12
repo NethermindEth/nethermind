@@ -16,12 +16,11 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -29,16 +28,11 @@ public static class NettyMemoryEstimator
 {
     private const uint PageSize = 8192;
 
-    public static void SetPageSize()
-    {
+    public static void SetPageSize() =>
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-    }
 
-    public static long Estimate(uint arenaCount, int arenaOrder)
-    {
-        return arenaCount * (1L << arenaOrder) * PageSize;
-    }
+    public static long Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1L << arenaOrder) * PageSize;
 }
 
 [RunnerStepDependencies(
@@ -47,13 +41,13 @@ public static class NettyMemoryEstimator
     typeof(ResolveIps),
     typeof(InitializePlugins),
     typeof(InitializeBlockchain))]
+#pragma warning disable IDE0290 // Primary constructor would shadow discard `_` used in fire-and-forget patterns
 public class InitializeNetwork : IStep
 {
     protected readonly IApiWithNetwork _api;
     protected readonly INodeStatsManager NodeStatsManager;
     protected readonly ISynchronizer _synchronizer;
     protected readonly ISyncPeerPool _syncPeerPool;
-    protected readonly IForkInfo _forkInfo;
     protected readonly IDiscoveryApp _discoveryApp;
     protected readonly Lazy<IPeerPool> _peerPool;
     protected readonly INetworkStorage _peerStorage;
@@ -62,6 +56,7 @@ public class InitializeNetwork : IStep
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    protected readonly IProtocolHandlerFactory[] _protocolHandlerFactories;
 
     private readonly ILogger _logger;
 
@@ -74,8 +69,8 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        IForkInfo forkInfo,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+        IProtocolHandlerFactory[] protocolHandlerFactories,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -89,19 +84,16 @@ public class InitializeNetwork : IStep
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
-        _forkInfo = forkInfo;
         _peerStorage = peerStorage;
+        _protocolHandlerFactories = protocolHandlerFactories;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
 
-    public virtual Task Execute(CancellationToken cancellationToken)
-    {
-        return Initialize(cancellationToken);
-    }
+    public virtual Task Execute(CancellationToken cancellationToken) => Initialize(cancellationToken);
 
     private async Task Initialize(CancellationToken cancellationToken)
     {
@@ -120,8 +112,6 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -139,6 +129,7 @@ public class InitializeNetwork : IStep
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            _api.DisposeStack.Push(snapCapabilitySwitcher);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
@@ -259,24 +250,12 @@ public class InitializeNetwork : IStep
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
         if (_api.TxPool is null) throw new StepDependencyException(nameof(_api.TxPool));
 
-        await _api.RlpxPeer.Init();
-
-        await _api.StaticNodesManager.InitAsync();
-
-        await _api.TrustedNodesManager.InitAsync();
-
         _api.ProtocolsManager = CreateProtocolManager();
 
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
         }
-        if (_api.WorldStateManager!.HashServer is null)
-        {
-            _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
-        }
-
-
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
             // Feed some nodes into discoveryApp in case all bootnodes is faulty.
@@ -287,28 +266,24 @@ public class InitializeNetwork : IStep
         {
             await plugin.InitNetworkProtocol();
         }
+
+        // Capabilities must be finalized before the RLPx listener accepts peers. Otherwise
+        // early sessions can negotiate only the default ETH version and never upgrade.
+        await _api.RlpxPeer.Init();
+
+        await _api.StaticNodesManager.InitAsync();
+
+        await _api.TrustedNodesManager.InitAsync();
     }
 
-    protected virtual IProtocolsManager CreateProtocolManager()
-    {
-        ISyncServer syncServer = _api.SyncServer!;
-        return new ProtocolsManager(
+    protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(
             _api.SyncPeerPool!,
-            syncServer,
-            _api.BackgroundTaskScheduler,
             _api.TxPool!,
             _discoveryApp,
-            _api.MessageSerializationService,
             _api.RlpxPeer,
             NodeStatsManager,
             _api.ProtocolValidator,
             _peerStorage,
-            _forkInfo,
-            _api.GossipPolicy,
-            _api.WorldStateManager!,
-            _api.LogManager,
-            _api.Config<ITxPoolConfig>(),
-            _api.SpecProvider!,
-            _api.TxGossipPolicy);
-    }
+            _protocolHandlerFactories,
+            _api.LogManager);
 }

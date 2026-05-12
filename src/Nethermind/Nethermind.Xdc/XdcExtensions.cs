@@ -9,6 +9,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
@@ -33,21 +34,35 @@ internal static partial class XdcExtensions
 
     public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, XdcBlockHeader xdcBlockHeader, ulong round = 0)
     {
-        IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
-        if (spec is null)
+        if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
+            return xdcProvider.GetXdcSpec(xdcBlockHeader, round);
+        if (round == 0)
+            round = xdcBlockHeader.ExtraConsensusData?.BlockRound ?? 0;
+        return specProvider.GetXdcSpec(xdcBlockHeader.Number, round);
+    }
+
+    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
+    {
+        if (specProvider is XdcChainSpecBasedSpecProvider xdcProvider)
+            return xdcProvider.GetXdcSpec(blockNumber, round);
+        // Fallback for testing; note that this mutates the spec instance
+        if (specProvider.GetSpec(blockNumber, null) is not IXdcReleaseSpec spec)
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
         spec.ApplyV2Config(round);
         return spec;
     }
 
-    public static IXdcReleaseSpec GetXdcSpec(this ISpecProvider specProvider, long blockNumber, ulong round = 0)
+    public static Address[] ParseV1Masternodes(this byte[] extraData)
     {
-        IXdcReleaseSpec spec = specProvider.GetSpec(blockNumber, null) as IXdcReleaseSpec;
-        if (spec is null)
-            throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
-        spec.ApplyV2Config(round);
-        return spec;
+        int length = (extraData.Length - XdcConstants.ExtraVanity - XdcConstants.ExtraSeal) / Address.Size;
+        if (length <= 0)
+            throw new ArgumentException($"ExtraData too short to contain masternodes: length={extraData.Length}", nameof(extraData));
+        Address[] masternodes = new Address[length];
+        for (int i = 0; i < length; i++)
+            masternodes[i] = new Address(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
+        return masternodes;
     }
+
     public static Address[]? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
@@ -72,7 +87,7 @@ internal static partial class XdcExtensions
         ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
         if (sigBytes.Length != Signature.Size + 2)
             throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
-        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
+        Signature signature = new(sigBytes.Slice(2, 64), sigBytes[66]);
         decoderContext.SkipItem();
         return signature;
     }
@@ -85,4 +100,19 @@ internal static partial class XdcExtensions
         stream.Position = ctx.Position;
         return signature;
     }
+
+    public static bool IsGapPlusOne(this XdcSubnetBlockHeader header, IXdcReleaseSpec spec)
+    {
+        if (header.Number == 1)
+            return true;
+        return (header.Number % spec.EpochLength) == (spec.EpochLength - spec.Gap + 1);
+    }
+
+    /// <summary>
+    /// Compares two lists of addresses for equality, ignoring order since the order of masternodes in XDC header validation does not matter.
+    /// </summary>
+    /// <param name="a"></param>
+    /// <param name="b"></param>
+    /// <returns>Returns <see cref="true"/> if the lists contain the same addresses, ignoring order; otherwise, <see cref="false"/>.</returns>
+    public static bool ListsAreEqual(this IList<Address> a, IList<Address> b) => a.Count == b.Count && new HashSet<Address>(a).SetEquals(b);
 }

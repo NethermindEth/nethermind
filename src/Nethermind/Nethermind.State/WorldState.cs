@@ -52,7 +52,7 @@ namespace Nethermind.State
             _stateProvider = new StateProvider(logManager);
             _persistentStorageProvider = new PersistentStorageProvider(_stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<WorldState>();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -71,10 +71,7 @@ namespace Nethermind.State
         }
 
         [StackTraceHidden, DoesNotReturn]
-        private void ThrowOutOfScope()
-        {
-            throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
-        }
+        private void ThrowOutOfScope() => throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
 
         public Account GetAccount(Address address)
         {
@@ -82,7 +79,7 @@ namespace Nethermind.State
             return _stateProvider.GetAccount(address);
         }
 
-        bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
+        public bool TryGetAccount(Address address, out AccountStruct account)
         {
             // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
             account = _stateProvider.GetAccount(address)
@@ -92,33 +89,13 @@ namespace Nethermind.State
             return !account.IsTotallyEmpty;
         }
 
-        UInt256 IAccountStateProvider.GetNonce(Address address)
-        {
-            return _stateProvider.GetAccount(address).Nonce;
-        }
-
-        UInt256 IAccountStateProvider.GetBalance(Address address)
-        {
-            return _stateProvider.GetAccount(address).Balance;
-        }
-
-        bool IAccountStateProvider.IsStorageEmpty(Address address)
-        {
-            return _persistentStorageProvider.IsStorageEmpty(address);
-        }
-
-        bool IAccountStateProvider.HasCode(Address address)
-        {
-            return _stateProvider.GetAccount(address).HasCode;
-        }
-
         public bool IsContract(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.IsContract(address);
         }
 
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
         {
             DebugGuardInScope();
             return _persistentStorageProvider.GetOriginal(storageCell);
@@ -188,10 +165,7 @@ namespace Nethermind.State
             _stateProvider.CreateAccount(address, balance, nonce);
         }
 
-        public void CreateEmptyAccountIfDeleted(Address address)
-        {
-            _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
-        }
+        public void CreateEmptyAccountIfDeleted(Address address) => _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
@@ -204,26 +178,17 @@ namespace Nethermind.State
             _stateProvider.AddToBalance(address, balanceChange, spec, out oldBalance);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-            => AddToBalance(address, balanceChange, spec, out _);
+            => AddToBalance(address, balanceChange, spec, out UInt256 oldBalance);
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
             return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         }
-        public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-            => AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        {
-            DebugGuardInScope();
-            _stateProvider.SubtractFromBalance(address, balanceChange, spec, out _);
-        }
-        public void IncrementNonce(Address address, UInt256 delta)
-            => IncrementNonce(address, delta, out _);
         public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
         {
             DebugGuardInScope();
@@ -248,6 +213,10 @@ namespace Nethermind.State
             DebugGuardInScope();
             return _stateProvider.GetNonce(address);
         }
+
+        public bool IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
+
+        public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
         public IDisposable BeginScope(BlockHeader? baseBlock)
         {
@@ -276,10 +245,10 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public ref readonly UInt256 GetBalance(Address address)
+        public UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
-            return ref _stateProvider.GetBalance(address);
+            return _stateProvider.GetBalance(address);
         }
 
         public ValueHash256 GetStorageRoot(Address address)
@@ -301,13 +270,7 @@ namespace Nethermind.State
             return _stateProvider.GetCode(in codeHash);
         }
 
-        public ref readonly ValueHash256 GetCodeHash(Address address)
-        {
-            DebugGuardInScope();
-            return ref _stateProvider.GetCodeHash(address);
-        }
-
-        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
+        public ValueHash256 GetCodeHash(Address address)
         {
             DebugGuardInScope();
             return _stateProvider.GetCodeHash(address);

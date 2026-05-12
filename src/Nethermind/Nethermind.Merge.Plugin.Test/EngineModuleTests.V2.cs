@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -36,6 +35,7 @@ public partial class EngineModuleTests
         "0xe89937a887c84cf0422c4445780f573929fa8bdec06eaac39be91cd428a9c249",
         "0x0cb5b20122ce36c5d13058d8d6ec33b9fee729730f41a3adeacfb76dd8116ab7",
         "0x0c26dbd2461b7b5d")]
+    [NonParallelizable]
     public virtual async Task Should_process_block_as_expected_V2(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -52,10 +52,7 @@ public partial class EngineModuleTests
             safeBlockHash = startingHead.ToString(),
             finalizedBlockHash = Keccak.Zero.ToString()
         };
-        Withdrawal[] withdrawals = new[]
-        {
-            new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
-        };
+        Withdrawal[] withdrawals = [new() { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }];
         var payloadAttrs = new
         {
             timestamp = timestamp.ToHexString(true),
@@ -63,13 +60,10 @@ public partial class EngineModuleTests
             suggestedFeeRecipient = feeRecipient.ToString(),
             withdrawals
         };
-        string?[] @params = new string?[]
-        {
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
-        };
+        string?[] @params = [chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)];
         string expectedPayloadId = payloadId;
 
-        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
@@ -236,7 +230,7 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
+        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
     }
 
@@ -309,18 +303,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public virtual async Task getPayloadV2_should_fail_on_unknown_payload()
-    {
-        using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        byte[] payloadId = Bytes.FromHexString("0x0");
-        ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
-        responseFirst.Should().NotBeNull();
-        responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
-        responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
-    }
+    public virtual async Task getPayloadV2_should_fail_on_unknown_payload() =>
+        await GetPayload_should_fail_on_unknown_payload(2);
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
     public virtual async Task
@@ -336,11 +320,8 @@ public partial class EngineModuleTests
         chain.AddTransactions(txs);
 
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        Hash256[] blockHashes = new Hash256[]
-        {
-            executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash
-        };
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        Hash256[] blockHashes = [executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash];
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV1(blockHashes).Data;
         ExecutionPayloadBodyV1Result?[] expected = {
             new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
@@ -368,7 +349,7 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
             executionPayload2.BlockHash!, executionPayload2.BlockHash!));
 
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
 
@@ -380,7 +361,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1).Result.Data;
         ExecutionPayloadBodyV1Result?[] expected = [];
 
@@ -392,7 +373,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
+        Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(1, 1025);
 
         result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
@@ -404,7 +385,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256[] hashes = Enumerable.Repeat(TestItem.KeccakA, 1025).ToArray();
-        Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
+        Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByHashV1(hashes);
 
         result.Result.ErrorCode.Should().Be(MergeErrorCodes.TooLargeRequest);
@@ -415,7 +396,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV1Result?>>> result =
+        Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>> result =
             rpc.engine_getPayloadBodiesByRangeV1(0, 1);
 
         result.Result.ErrorCode.Should().Be(ErrorCodes.InvalidParams);
@@ -432,8 +413,8 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
 
-        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload1.BlockHash!,
-            executionPayload1.BlockHash!, executionPayload1.BlockHash!));
+        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload1.BlockHash,
+            executionPayload1.BlockHash!, executionPayload1.BlockHash));
 
         Block head = chain.BlockTree.Head!;
 
@@ -455,7 +436,7 @@ public partial class EngineModuleTests
 
             fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-            IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+            IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
                 rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
             ExecutionPayloadBodyV1Result[] expected =
             [
@@ -484,12 +465,12 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV2(
                 new ForkchoiceStateV1(newBlock.Hash!, newBlock.Hash!, newBlock.Hash!));
 
-            IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+            IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
                 rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
             ExecutionPayloadBodyV1Result[] expected =
-            {
+            [
                 new(Array.Empty<Transaction>(), withdrawals), new(Array.Empty<Transaction>(), withdrawals)
-            };
+            ];
 
             payloadBodies.Should().BeEquivalentTo(expected, static o => o.WithStrictOrdering());
         }
@@ -498,7 +479,7 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(PayloadBodiesByRangeNullTrimTestCases))]
     public async Task getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies(
         (Func<CallInfo, Block?> Impl,
-            IEnumerable<ExecutionPayloadBodyV1Result?> Outcome) input)
+            IReadOnlyList<ExecutionPayloadBodyV1Result?> Outcome) input)
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
 
@@ -514,7 +495,7 @@ public partial class EngineModuleTests
                 }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
         payloadBodies.Should().BeEquivalentTo(input.Outcome);
@@ -537,10 +518,10 @@ public partial class EngineModuleTests
             }));
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 7).Result.Data;
 
-        payloadBodies.Count().Should().Be(5);
+        payloadBodies.Count.Should().Be(5);
     }
 
     [Test]
@@ -617,9 +598,9 @@ public partial class EngineModuleTests
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
         errorResponse.Should().NotBeNull();
-        errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
-        errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
+        errorResponse.Error.Should().NotBeNull();
+        errorResponse.Error!.Code.Should().Be(input.ErrorCode);
+        errorResponse.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
     }
 
     protected static IEnumerable<(
@@ -764,8 +745,8 @@ public partial class EngineModuleTests
     [TestCaseSource(nameof(PayloadIdTestCases))]
     public void Should_compute_payload_id_with_withdrawals((Withdrawal[]? Withdrawals, string PayloadId) input)
     {
-        var blockHeader = Build.A.BlockHeader.TestObject;
-        var payloadAttributes = new PayloadAttributes
+        BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
+        PayloadAttributes payloadAttributes = new()
         {
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
@@ -773,7 +754,7 @@ public partial class EngineModuleTests
             Withdrawals = input.Withdrawals
         };
 
-        var payloadId = payloadAttributes.GetPayloadId(blockHeader);
+        string payloadId = payloadAttributes.GetPayloadId(blockHeader);
 
         payloadId.Should().Be(input.PayloadId);
     }
@@ -793,29 +774,24 @@ public partial class EngineModuleTests
         Withdrawal[][] Withdrawals, // withdrawals per payload
         (Address, UInt256)[] expectedAccountIncrease)> WithdrawalsTestCases()
     {
-        yield return (new[] { Array.Empty<Withdrawal>() }, Array.Empty<(Address, UInt256)>());
-        yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth } },
-            new[] { (TestItem.AddressA, 1.Ether), (TestItem.AddressB, 2.Ether) });
-        yield return (new[] { new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth } },
-            new[] { (TestItem.AddressA, 2.Ether), (TestItem.AddressB, 0.Ether) });
-        yield return (
-            new[]
-            {
-                new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, new[] { TestItem.WithdrawalA_1Eth }
-            }, new[] { (TestItem.AddressA, 3.Ether), (TestItem.AddressB, 0.Ether) });
-        yield return (new[]
-            {
-                new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth }, // 1st payload
-                new[] { TestItem.WithdrawalA_1Eth }, // 2nd payload
+        yield return ([Array.Empty<Withdrawal>()], Array.Empty<(Address, UInt256)>());
+        yield return ([[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalB_2Eth]],
+            [(TestItem.AddressA, 1.Ether), (TestItem.AddressB, 2.Ether)]);
+        yield return ([[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth]],
+            [(TestItem.AddressA, 2.Ether), (TestItem.AddressB, 0.Ether)]);
+        yield return ([[TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth], [TestItem.WithdrawalA_1Eth]],
+            [(TestItem.AddressA, 3.Ether), (TestItem.AddressB, 0.Ether)]);
+        yield return ([
+                [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalA_1Eth], // 1st payload
+                [TestItem.WithdrawalA_1Eth], // 2nd payload
                 [], // 3rd payload
-                new[] { TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth }, // 4th payload
-                new[] { TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth }, // 5th payload
-            },
-            new[]
-            {
+                [TestItem.WithdrawalA_1Eth, TestItem.WithdrawalC_3Eth], // 4th payload
+                [TestItem.WithdrawalB_2Eth, TestItem.WithdrawalF_6Eth] // 5th payload
+            ],
+            [
                 (TestItem.AddressA, 4.Ether), (TestItem.AddressB, 2.Ether), (TestItem.AddressC, 3.Ether),
                 (TestItem.AddressF, 6.Ether)
-            });
+            ]);
     }
 
     protected static IEnumerable<IList<Withdrawal>> GetPayloadWithdrawalsTestCases()
@@ -842,8 +818,8 @@ public partial class EngineModuleTests
             ? chain.WaitForImprovedBlock()
             : Task.CompletedTask;
 
-        ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-        PayloadAttributes payloadAttributes = new PayloadAttributes
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
+        PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = random,
@@ -904,25 +880,25 @@ public partial class EngineModuleTests
 
     protected static IEnumerable<(
         Func<CallInfo, Block?>,
-        IEnumerable<ExecutionPayloadBodyV1Result?>
+        IReadOnlyList<ExecutionPayloadBodyV1Result?>
         )> PayloadBodiesByRangeNullTrimTestCases()
     {
         Block block = Build.A.Block.TestObject;
-        ExecutionPayloadBodyV1Result result = new ExecutionPayloadBodyV1Result(Array.Empty<Transaction>(), null);
+        ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
         yield return (
-            new Func<CallInfo, Block?>(i => null),
+            _ => null,
             new ExecutionPayloadBodyV1Result?[] { null, null, null, null, null }
         );
 
         yield return (
-            new Func<CallInfo, Block?>(i => i.ArgAt<long>(0) % 2 == 0 ? block : null),
+            i => i.ArgAt<long>(0) % 2 == 0 ? block : null,
             new[] { null, result, null, result, null }
         );
 
         yield return (
-            new Func<CallInfo, Block?>(i => block),
-            Enumerable.Repeat(result, 5)
+            _ => block,
+            (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]
         );
     }
 
@@ -933,6 +909,6 @@ public partial class EngineModuleTests
     {
         yield return (null, "0xe3b6f7433feedc38");
         yield return (Array.Empty<Withdrawal>(), "0xf74921b673b2e08e");
-        yield return (new[] { Build.A.Withdrawal.TestObject }, "0xe0d0b996245ec3a6");
+        yield return ([Build.A.Withdrawal.TestObject], "0xe0d0b996245ec3a6");
     }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -14,6 +13,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 [Rlp.SkipGlobalRegistration] // Created explicitly
 public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
 {
+    // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
+    private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
+
     protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (ctx.IsNextItemEmptyList())
@@ -48,7 +50,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
         int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
         int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
-        ctx.GuardLimit(numberOfReceipts);
+        ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
@@ -107,7 +109,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
     private static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (var i = 0; i < item.Logs.Length; i++)
+        for (int i = 0; i < item.Logs.Length; i++)
         {
             logsLength += Rlp.LengthOf(item.Logs[i]);
         }
@@ -151,7 +153,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         rlpStream.StartSequence(logsLength);
         LogEntry[] logs = item.Logs;
-        for (var i = 0; i < logs.Length; i++)
+        for (int i = 0; i < logs.Length; i++)
         {
             rlpStream.Encode(logs[i]);
         }

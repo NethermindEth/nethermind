@@ -11,19 +11,13 @@ namespace Nethermind.Serialization.Json
 {
     public class BigIntegerConverter : JsonConverter<BigInteger>
     {
-        public override BigInteger Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override BigInteger Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
         {
-            return reader.TokenType switch
-            {
-                JsonTokenType.Number => new BigInteger(reader.GetInt64()),
-                JsonTokenType.String => BigInteger.Parse(reader.GetString()),
-                _ => throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(BigInteger)}")
-            };
-        }
+            JsonTokenType.Number => new BigInteger(reader.GetInt64()),
+            JsonTokenType.String => BigInteger.Parse(reader.GetString()),
+            _ => throw new JsonException($"Cannot convert {reader.TokenType} to {nameof(BigInteger)}")
+        };
 
-        public override void Write(Utf8JsonWriter writer, BigInteger value, JsonSerializerOptions options)
-        {
-            writer.WriteStringValue(value.ToString(CultureInfo.InvariantCulture));
-        }
+        public override void Write(Utf8JsonWriter writer, BigInteger value, JsonSerializerOptions options) => writer.WriteStringValue(value.ToString(CultureInfo.InvariantCulture));
     }
 }

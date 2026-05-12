@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -21,6 +21,7 @@ public class SimulateTxExecutor<TTrace>(
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
     IJsonRpcConfig rpcConfig,
+    ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
     ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
@@ -29,7 +30,7 @@ public class SimulateTxExecutor<TTrace>(
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call)
+    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
         List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
 
@@ -47,12 +48,13 @@ public class SimulateTxExecutor<TTrace>(
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        var callTransactionModel = blockStateCall.Calls[i];
+                        TransactionForRpc callTransactionModel = blockStateCall.Calls[i];
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation);
+                        IReleaseSpec spec = specProvider.GetSpec(header);
+                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, gasCap: _rpcConfig.GasCap, spec: spec);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
@@ -98,7 +100,7 @@ public class SimulateTxExecutor<TTrace>(
 
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
-                $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidInputTooManyBlocks);
+                $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
@@ -126,7 +128,7 @@ public class SimulateTxExecutor<TTrace>(
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls)
             {
                 blockToSimulate.BlockOverrides ??= new BlockOverride();
-                ulong givenNumber = blockToSimulate.BlockOverrides.Number ?? (ulong)lastBlockNumber + 1;
+                ulong givenNumber = blockToSimulate.BlockOverrides.GetBlockNumber(lastBlockNumber);
 
                 if (givenNumber > long.MaxValue)
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
@@ -167,6 +169,20 @@ public class SimulateTxExecutor<TTrace>(
                 }
                 lastBlockNumber = (long)givenNumber;
 
+                if (blockToSimulate.StateOverrides is not null)
+                {
+                    IReleaseSpec spec = specProvider.GetSpec((long)givenNumber, blockToSimulate.BlockOverrides.Time);
+                    foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                    {
+                        if (accountOverride.MovePrecompileToAddress is null) continue;
+
+                        if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
+                            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                                "MovePrecompileToAddress referenced itself in replacement",
+                                ErrorCodes.MovePrecompileSelfReference);
+                    }
+                }
+
                 completeBlockStateCalls.Add(blockToSimulate);
             }
             call.BlockStateCalls = [.. completeBlockStateCalls];
@@ -174,7 +190,7 @@ public class SimulateTxExecutor<TTrace>(
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
 
-        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call);
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
         return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
             : Execute(header.Clone(), data, stateOverride, timeout.Token);
@@ -212,11 +228,17 @@ public class SimulateTxExecutor<TTrace>(
             ? null
             : MapSimulateErrorCode(results.TransactionResult);
         if (results.IsInvalidInput) errorCode = ErrorCodes.Default;
-        return results.Error is null
-            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
-            : errorCode is not null
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, errorCode.Value)
-                : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
+
+        if (results.Error is null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items]);
+
+        if (errorCode is not null)
+        {
+            string message = MapSimulateErrorMessage(results.TransactionResult) ?? results.Error!;
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(message, errorCode.Value);
+        }
+
+        return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
     }
 
     private static int MapSimulateErrorCode(TransactionResult txResult)
@@ -230,13 +252,14 @@ public class SimulateTxExecutor<TTrace>(
                 TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
                     or TransactionResult.ErrorType.InsufficientSenderBalance => ErrorCodes.InsufficientFunds,
                 TransactionResult.ErrorType.MalformedTransaction => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
+                    or TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.FeeCapBelowBaseFee,
                 TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.SenderIsNotEoa,
                 TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.NonceTooHigh,
+                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.NonceTooLow,
                 _ => ErrorCodes.InternalError
             };
         }
@@ -244,10 +267,51 @@ public class SimulateTxExecutor<TTrace>(
         return MapEvmExceptionType(txResult.EvmExceptionType);
     }
 
+    /// <summary>
+    /// Returns the spec-mandated error message for well-known eth_simulateV1 error types,
+    /// or <see langword="null"/> when no override is required.
+    /// </summary>
+    private static string? MapSimulateErrorMessage(TransactionResult txResult) =>
+        txResult.Error switch
+        {
+            TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+                => SimulateErrorMessages.IntrinsicGas,
+            TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
+                or TransactionResult.ErrorType.MinerPremiumNegative
+                => SimulateErrorMessages.FeeCapBelowBaseFee,
+            TransactionResult.ErrorType.InsufficientSenderBalance
+                or TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance
+                => SimulateErrorMessages.InsufficientFunds,
+            _ => null
+        };
 
     private static int MapEvmExceptionType(EvmExceptionType type) => type switch
     {
         EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
         _ => ErrorCodes.VMError
     };
+}
+
+/// <summary>
+/// Canonical eth_simulateV1 error message strings shared between the executor and tests.
+/// </summary>
+internal static class SimulateErrorMessages
+{
+    /// <summary>
+    /// Returned when the transaction gas limit is below the intrinsic gas cost
+    /// (error code <see cref="ErrorCodes.IntrinsicGas"/>).
+    /// </summary>
+    public const string IntrinsicGas = "Not enough gas provided to pay for intrinsic gas for a transaction";
+
+    /// <summary>
+    /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
+    /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).
+    /// </summary>
+    public const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+
+    /// <summary>
+    /// Returned when the sender does not have enough balance to cover gas + value
+    /// (error code <see cref="ErrorCodes.InsufficientFunds"/>).
+    /// </summary>
+    public const string InsufficientFunds = "Insufficient funds to pay for gas fees and value for a transaction";
 }

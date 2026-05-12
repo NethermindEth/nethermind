@@ -3,7 +3,6 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -12,16 +11,13 @@ namespace Nethermind.Benchmarks.Rlp
         private byte[][] _scenarios;
 
         [GlobalSetup]
-        public void GlobalSetup()
-        {
-            _scenarios = new[]
+        public void GlobalSetup() => _scenarios = new[]
             {
                 Serialization.Rlp.Rlp.Encode(Keccak.Zero).Bytes,
                 Serialization.Rlp.Rlp.Encode(Keccak.EmptyTreeHash).Bytes,
                 Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptyString).Bytes,
                 Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptySequenceRlp).Bytes,
             };
-        }
 
         [Params(0, 1, 2, 3)]
         public int ScenarioIndex { get; set; }

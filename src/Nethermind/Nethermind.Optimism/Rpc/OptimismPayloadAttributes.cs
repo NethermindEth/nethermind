@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -49,7 +49,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                return TxDecoder.Instance.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {
@@ -78,7 +78,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
-        var offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
+        int offset = base.WritePayloadIdMembers(parentHeader, inputSpan);
 
         inputSpan[offset] = NoTxPool ? (byte)1 : (byte)0;
         offset += 1;
@@ -105,7 +105,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         return offset;
     }
 
-    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int apiVersion,
+    public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)
     {
         if (GasLimit == 0)
@@ -122,7 +122,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         }
         if (releaseSpec.IsOpHoloceneEnabled)
         {
-            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out var decodeError))
+            if (!this.TryDecodeEIP1559Parameters(out EIP1559Parameters parameters, out string? decodeError))
             {
                 error = decodeError;
                 return PayloadAttributesValidationResult.InvalidPayloadAttributes;
@@ -150,7 +150,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
             error = $"Error decoding transactions: {e}";
             return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
-        return base.Validate(specProvider, apiVersion, out error);
+        return base.Validate(specProvider, fcuVersion, out error);
     }
 
     public override string ToString()

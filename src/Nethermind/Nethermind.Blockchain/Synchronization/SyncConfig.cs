@@ -33,8 +33,10 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public bool DownloadBlockAccessListsInFastSync { get; set; } = true;
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
+        public long AncientBlockAccessListsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
         private long _pivotNumber = 0;
         public long PivotNumber
@@ -67,7 +69,9 @@ namespace Nethermind.Blockchain.Synchronization
         public int MallocTrimIntervalSec { get; set; } = 300;
         public bool? SnapServingEnabled { get; set; } = null;
         public int SnapServingMaxDepth { get; set; } = 128;
+        public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
+        public int AllocationSlots { get; set; } = 2;
         public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;
         public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
         public bool NeedToWaitForHeader { get; set; }
@@ -85,14 +89,12 @@ namespace Nethermind.Blockchain.Synchronization
 
         public ulong FastHeadersMemoryBudget { get; set; } = (ulong)128.MB;
         public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
+        public bool EnableSnapDoubleWriteCheck { get; set; } = false;
         public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB;
         public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB;
 
-        public override string ToString()
-        {
-            return
-                $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
-        }
+        public override string ToString() =>
+            $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
 
     }
 }

@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Validators
         protected readonly ISealValidator _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
         protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly long? _daoBlockNumber = specProvider.DaoBlockNumber;
-        protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        protected readonly ILogger _logger = logManager?.GetClassLogger<HeaderValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         public static bool ValidateHash(BlockHeader header, out Hash256 actualHash)
@@ -74,10 +74,7 @@ namespace Nethermind.Consensus.Validators
         public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
             Validate<OffFlag>(header, parent, isUncle, out error);
 
-#if !ZK_EVM
-        virtual
-#endif
-        protected bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
+        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
@@ -147,6 +144,9 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateBlockNumber(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // No parent-relative block-number check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
             if (header.Number != parent.Number + 1)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
@@ -259,6 +259,10 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
+            // ValidateParent (called earlier in the chain) accepts a null parent only for genesis.
+            // Gas-limit-vs-parent comparisons don't apply at genesis, so skip them.
+            if (parent is null) return true;
+
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
@@ -268,7 +272,7 @@ namespace Nethermind.Consensus.Validators
             // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
             // In hive we have tests that using long.MaxValue in the genesis block
             // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
-            var gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
+            bool gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)
             {
@@ -293,6 +297,9 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // No parent-relative timestamp check at genesis (parent is null only when ValidateParent already accepted genesis).
+            if (parent is null) return true;
+
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
             {
@@ -304,14 +311,21 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateTotalDifficulty(BlockHeader header, BlockHeader parent, ref string? error)
         {
+            // Same class of null-parent exposure as ValidateBlockNumber/GasLimitRange/Timestamp:
+            // ValidateParent accepts null for genesis, but the non-zero-total-difficulty branch
+            // below dereferences parent. No current fixture triggers this (TotalDifficulty is
+            // typically null on uncle headers), but the guard keeps the method consistent with
+            // its siblings.
+            if (parent is null) return true;
+
             bool result = true;
 
             if (header.TotalDifficulty is not null)
             {
-                if (header.TotalDifficulty == 0)
+                if (header.TotalDifficulty.Value.IsZero)
                 {
                     // Same as in BlockTree.SetTotalDifficulty
-                    if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
+                    if (!(_blockTree.Genesis!.Difficulty.IsZero && _specProvider.TerminalTotalDifficulty?.IsZero == true))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
                         result = false;
@@ -383,14 +397,12 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec)
-        {
-            return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-        }
+        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) =>
+            BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
 
-        private bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            if (spec.IsEip7928Enabled)
+            if (spec.BlockLevelAccessListsEnabled)
             {
                 if (header.BlockAccessListHash is null)
                 {

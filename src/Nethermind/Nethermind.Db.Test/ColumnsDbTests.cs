@@ -43,10 +43,7 @@ public class ColumnsDbTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _db.Dispose();
-    }
+    public void TearDown() => _db.Dispose();
 
     [Test]
     public void SmokeTest()
@@ -92,9 +89,9 @@ public class ColumnsDbTests
     [Test]
     public void TestWriteBatch_WriteToAllColumn()
     {
-        var batch = _db.StartWriteBatch();
-        var colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
-        var colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
+        IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch();
+        IWriteBatch colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+        IWriteBatch colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
 
         colA.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA.Bytes, TestItem.KeccakB.BytesToArray());
@@ -122,5 +119,28 @@ public class ColumnsDbTests
 
         snapshot.GetColumn(ReceiptsColumns.Blocks)
             .Get(TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
+    }
+
+    [Test]
+    public void Snapshot_DoubleDispose_DoesNotThrow()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.Dispose()).Should().NotThrow();
+    }
+
+    [Test]
+    public void Snapshot_GetColumn_AfterDispose_ThrowsObjectDisposedException()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.GetColumn(ReceiptsColumns.Blocks))
+            .Should().Throw<ObjectDisposedException>();
     }
 }

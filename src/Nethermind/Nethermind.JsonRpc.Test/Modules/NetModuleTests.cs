@@ -4,6 +4,7 @@
 using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -43,16 +44,17 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task NetVersionSuccessTest()
         {
             Enode enode = new(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            var blockTree = Substitute.For<IBlockTree>();
-            blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
-            blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
-            var syncConfig = Substitute.For<ISyncConfig>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
+            blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
+            ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(
                 Substitute.For<IWorldStateManager>(),
                 Substitute.For<IReadOnlyKeyValueStore>(),
                 blockTree,
                 Substitute.For<IReceiptFinder>(),
+                Substitute.For<IBlockAccessListStore>(),
                 Substitute.For<IBlockValidator>(),
                 Substitute.For<ISealValidator>(),
                 Substitute.For<ISyncPeerPool>(),

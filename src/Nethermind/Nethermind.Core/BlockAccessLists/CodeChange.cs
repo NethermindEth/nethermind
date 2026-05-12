@@ -2,23 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public readonly record struct CodeChange(ushort BlockAccessIndex, [property: JsonConverter(typeof(ByteArrayConverter))] byte[] NewCode) : IIndexedChange
+public readonly struct CodeChange(uint index, byte[] code) : IIndexedChange, IEquatable<CodeChange>
 {
+    public uint Index { get; init; } = index;
+
+    [JsonConverter(typeof(ByteArrayConverter))]
+    public byte[] Code { get; init; } = code;
+
+    public ValueHash256 CodeHash { get; init; } = code is null ? default : ValueKeccak.Compute(code);
+
     public bool Equals(CodeChange other) =>
-        BlockAccessIndex == other.BlockAccessIndex &&
-        CompareByteArrays(NewCode, other.NewCode);
+        Index == other.Index &&
+        CodeHash == other.CodeHash;
 
     public override int GetHashCode() =>
-        HashCode.Combine(BlockAccessIndex, NewCode);
+        HashCode.Combine(Index, Code);
 
-    private static bool CompareByteArrays(byte[]? left, byte[]? right) =>
-        ReferenceEquals(left, right) || (left is not null && right is not null && left.SequenceEqual(right));
-
-    public override string ToString() => $"{BlockAccessIndex}:0x{Convert.ToHexString(NewCode ?? [])}";
+    public override string ToString() => $"{Index}:0x{Convert.ToHexString(Code ?? [])}";
 }

@@ -13,6 +13,7 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : BlockTracerBase<SimulateCallResult, SimulateTxTracer>
 {
     private ulong _txIndex = 0;
+    private ulong _logIndex = 0;
 
     private ulong _blockNumber;
     private ulong _blockTimestamp;
@@ -20,10 +21,14 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
 
     protected override SimulateTxTracer OnStart(Transaction? tx) =>
         tx?.Hash is not null
-            ? new(_isTracingLogs, tx, _blockNumber, Hash256.Zero, _blockTimestamp, _txIndex++)
+            ? new(_isTracingLogs, tx, _blockNumber, Hash256.Zero, _blockTimestamp, _txIndex++, _logIndex)
             : throw new InvalidOperationException($"{nameof(SimulateBlockTracer)} does not support tracing rewards.");
 
-    protected override SimulateCallResult OnEnd(SimulateTxTracer txTracer) => txTracer.TraceResult!;
+    protected override SimulateCallResult OnEnd(SimulateTxTracer txTracer)
+    {
+        _logIndex += (ulong)txTracer.LogCount;
+        return txTracer.TraceResult!;
+    }
 
     public void ReapplyBlockHash(Hash256 hash)
     {
@@ -39,6 +44,7 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
     public override void StartNewBlockTrace(Block block)
     {
         _txIndex = 0;
+        _logIndex = 0;
         _blockNumber = (ulong)block.Number;
         _blockTimestamp = block.Timestamp;
         _isTracingLogs &= !spec.GetSpec(block.Header).IsEip7708Enabled;

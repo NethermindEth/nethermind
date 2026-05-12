@@ -11,19 +11,16 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PingMsg>
+public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
 {
-    public PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
+    protected virtual byte MsgTypeByte => (byte)MsgType.Ping;
 
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
     {
         (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
 
         byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
+        PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
         NettyRlpStream stream = new(byteBuffer);
         stream.StartSequence(contentLength);
         stream.Encode(msg.Version);
@@ -52,7 +49,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         int version = ctx.DecodeInt();
 
         ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
 
         // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
         // our discovery messages will not be routed correctly (the fix will not be part of this commit)
@@ -61,7 +58,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
         IPEndPoint source = GetAddress(sourceAddress, tcpPort);
         ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         IPEndPoint destination = GetAddress(destinationAddress, ctx.DecodeInt());
         ctx.DecodeInt(); // UDP port
 

@@ -10,18 +10,18 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>
+public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2Request, IReadOnlyList<BlobAndProofV2?>?>
 {
     private const int MaxRequest = 128;
 
-    private static readonly Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> NotFound = Task.FromResult(ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(null));
+    private static readonly Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> NotFound = Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(null));
 
-    public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> HandleAsync(GetBlobsHandlerV2Request request)
+    public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> HandleAsync(GetBlobsHandlerV2Request request)
     {
         if (request.BlobVersionedHashes.Length > MaxRequest)
         {
             string error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
@@ -40,10 +40,10 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
         }
 
         Metrics.GetBlobsRequestsSuccessTotal++;
-        return ResultWrapper<IEnumerable<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse(blobs, proofs, n));
+        return ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new BlobsV2DirectResponse(blobs, proofs, n));
     }
 
-    private Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> ReturnEmptyArray()
+    private Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> ReturnEmptyArray()
     {
         Metrics.GetBlobsRequestsFailureTotal++;
         return NotFound;

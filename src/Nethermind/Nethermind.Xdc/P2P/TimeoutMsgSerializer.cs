@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
@@ -13,7 +12,7 @@ namespace Nethermind.Xdc.P2P;
 
 internal class TimeoutMsgSerializer : IZeroInnerMessageSerializer<TimeoutMsg>
 {
-    private static readonly TimeoutDecoder _timeDecoder = new TimeoutDecoder();
+    private static readonly TimeoutDecoder _timeDecoder = new();
 
     public void Serialize(IByteBuffer byteBuffer, TimeoutMsg message)
     {

@@ -69,5 +69,16 @@ The rule: **if production modules already wire a component, use them — don't c
 ## Test guidelines
 
 - Add tests to existing test files rather than creating new ones
-- When adding similar tests, write one test with test cases (`[TestCase(...)]`)
-- Check if previous tests can be reused with a new test case
+- **Do not duplicate test methods that differ only in parameters** — use `[TestCase(...)]` or `[TestCaseSource(...)]` to parameterize a single method
+- Before writing a new test, check if an existing test can be extended with another `[TestCase]` or use `[TestCaseSource]`
+- **When only parts of tests are similar** — extract the shared parts into helper methods or types instead of copy-pasting:
+  - Shared arrange/build steps → a private helper method, an existing builder (`Build.A.Block...`, `Build.A.Transaction...`, `TestItem.*`), or a new builder if the pattern is reused across files
+  - Shared assertions → a helper method like `AssertExpectedState(...)` so each test asserts in one line and the failure message stays meaningful
+  - Shared scenarios spanning multiple test classes → a base fixture, a shared `static` helper class, or a fixture-level `[SetUp]`
+  - Keep each test body focused on what makes the case unique; the helper should not hide behavior that matters for understanding the test
+- Use `[TestCaseSource]` (not `[TestCase]`) when cases need non-constant data, named scenarios, or grow beyond a handful — keep the source method or `IEnumerable<TestCaseData>` next to the test it feeds
+
+## DotNetty `IByteBuffer` in tests
+
+- Prefer `using DisposableByteBuffer` via `.AsDisposable()` for releasing `IByteBuffer` in tests
+- For leak-detection tests, use `PooledBufferLeakDetector` from `Nethermind.Network.Test`

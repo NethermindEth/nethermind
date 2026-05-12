@@ -14,7 +14,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing;
 
-public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
@@ -81,9 +81,17 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     /// <returns>The cumulative post-refund gas for receipts</returns>
     protected long UpdateCumulativeGasTracking(in GasConsumed gasConsumed)
     {
-        // Track cumulative block gas for restore (pre-refund)
-        long cumulativeBlockGas = (_cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : 0) + gasConsumed.EffectiveBlockGas;
-        _cumulativeBlockGasPerTx.Add(cumulativeBlockGas);
+        // Track cumulative block gas for restore (regular + EIP-8037 state)
+        (long prevRegular, long prevState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
+        long cumulativeBlockGas = prevRegular + gasConsumed.EffectiveBlockGas;
+        long cumulativeBlockStateGas = prevState + gasConsumed.BlockStateGas;
+        _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
+
+        // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
+        if (!parallel)
+        {
+            Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
+        }
 
         // Track cumulative receipt gas (post-refund)
         _cumulativeReceiptGas += gasConsumed.SpentGas;
@@ -99,6 +107,11 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         long cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
         Transaction transaction = CurrentTx!;
+        // Diagnostic-only: effective gas price after EIP-1559 baseFee adjustment.
+        // Computed eagerly so the diagnostic dump (which doesn't run through the
+        // ReceiptForRpc pipeline) doesn't see effectiveGasPrice as null.
+        UInt256 baseFee = Block.Header.BaseFeePerGas;
+        UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(eip1559Enabled: baseFee > 0, baseFee);
         TxReceipt txReceipt = new()
         {
             Logs = logEntries,
@@ -111,17 +124,34 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             BlockNumber = Block.Number,
             Index = _currentIndex,
             GasUsed = gasConsumed.SpentGas,  // Post-refund for this tx
+            EffectiveGasPrice = effectiveGasPrice,
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,
             PostTransactionState = stateRoot
         };
 
+        // EIP-7778: regular-dimension block accounting introduces the
+        // pre-refund/post-refund split. BlockGasUsed is pre-refund; ExecutionGasUsed
+        // (= OperationGas) is post-refund without EIP-7976 floor.
+        if (gasConsumed.BlockGas > 0)
+        {
+            txReceipt.BlockGasUsed = gasConsumed.EffectiveBlockGas;
+            txReceipt.ExecutionGasUsed = gasConsumed.OperationGas;
+        }
+
+        // EIP-8037: state-dim block accounting. Only set when the tx actually consumed
+        // state gas - state-untouching txs leave StorageGasUsed at zero.
+        if (gasConsumed.BlockStateGas > 0)
+        {
+            txReceipt.StorageGasUsed = gasConsumed.BlockStateGas;
+        }
+
         return txReceipt;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0) =>
-        _currentTxTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+        _currentTxTracer.StartOperation(pc, opcode, gas, env);
 
     public void ReportOperationError(EvmExceptionType error) =>
         _currentTxTracer.ReportOperationError(error);
@@ -222,12 +252,36 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
-    private readonly List<long> _cumulativeBlockGasPerTx = new();  // Track pre-refund block gas for restore
+    private readonly List<(long Regular, long State)> _cumulativeBlockGasPerTx = new();  // Track pre-refund block gas for restore (regular + EIP-8037 state)
     private long _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
+    public IBlockTracer OtherTracer => _otherTracer;
+
+    /// <summary>
+    /// Diagnostic-only: place a receipt at a specific tx index, leaving any prior gaps as null.
+    /// Leaves <c>_cumulativeBlockGasPerTx</c> alone, and forwards to a wrapped receipts tracer so
+    /// invalid-block dumps see receipts harvested from parallel workers.
+    /// </summary>
+    public void SetReceipt(int index, TxReceipt receipt)
+    {
+        if (_txReceipts.Count <= index) CollectionsMarshal.SetCount(_txReceipts, index + 1);
+        _txReceipts[index] = receipt;
+
+        if (!ReferenceEquals(_otherTracer, this) && _otherTracer is BlockReceiptsTracer receiptsTracer)
+        {
+            receiptsTracer.SetReceipt(index, receipt);
+        }
+    }
+
+    /// <summary>
+    /// EIP-8037: cumulative state gas for the last tracked tx.
+    /// Used by parallel execution to pass state gas back for 2D block gas accounting.
+    /// </summary>
+    public long BlockStateGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].State : 0;
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
+    public long CumulativeRegularGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].Regular : 0;
 
     public ITxTracer InnerTracer => _currentTxTracer;
 
@@ -245,8 +299,9 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         Debug.Assert(_txReceipts.Count == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized after restore");
 
-        // Restore block gas from tracking (pre-refund)
-        Block.Header.GasUsed = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : 0;
+        // Restore block gas from tracking: max(cumulative_regular, cumulative_state) for EIP-8037
+        (long cumulativeRegular, long cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
+        Block.Header.GasUsed = Math.Max(cumulativeRegular, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
@@ -259,11 +314,28 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     {
         Block = block;
         _currentIndex = 0;
+        CurrentTx = null;
+        _currentTxTracer = NullTxTracer.Instance;
         _txReceipts.Clear();
         _cumulativeBlockGasPerTx.Clear();
         _cumulativeReceiptGas = 0;
 
         _otherTracer.StartNewBlockTrace(block);
+    }
+
+    /// <summary>
+    /// Resets a pooled per-transaction tracer without sending block-start events to a
+    /// previously attached tracer. Parallel worker tracers attach the shared
+    /// parallel-safe tracer after reset, matching the old one-shot tracer setup.
+    /// </summary>
+    public void ResetForParallelTx(Block block, IBlockTracer otherTracer)
+    {
+        _otherTracer = NullBlockTracer.Instance;
+        StartNewBlockTrace(block);
+        if (otherTracer != NullBlockTracer.Instance)
+        {
+            SetOtherTracer(otherTracer);
+        }
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
@@ -289,7 +361,10 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             for (int index = 0; index < _txReceipts.Count; index++)
             {
                 TxReceipt? receipt = _txReceipts[index];
-                blockBloom.Accumulate(receipt.Bloom!);
+                if (receipt is not null)
+                {
+                    blockBloom.Accumulate(receipt.Bloom!);
+                }
             }
         }
         _otherTracer = NullBlockTracer.Instance;
@@ -301,8 +376,5 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _otherTracer = blockTracer;
     }
 
-    public void Dispose()
-    {
-        _currentTxTracer.Dispose();
-    }
+    public void Dispose() => _currentTxTracer.Dispose();
 }

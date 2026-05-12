@@ -64,7 +64,7 @@ public class StatusMessageSerializer69 :
 
     private static void EncodeForkId(RlpStream rlpStream, ForkId forkId)
     {
-        var forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
+        int forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
         rlpStream.StartSequence(forkIdContentLength);
         rlpStream.Encode(forkId.HashBytes);
         rlpStream.Encode(forkId.Next);

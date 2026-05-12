@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,7 +9,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
 {
-    public static readonly IdentityPrecompile Instance = new();
+    public static IdentityPrecompile Instance { get; } = new();
 
     private IdentityPrecompile()
     {

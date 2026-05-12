@@ -14,9 +14,37 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
 
     public new XdcSubnetBlockHeader TestObject => (XdcSubnetBlockHeader)base.TestObject;
 
-
-    public XdcSubnetBlockHeaderBuilder()
+    public new XdcSubnetBlockHeaderBuilder WithParent(BlockHeader parentHeader)
     {
+        base.WithParent(parentHeader);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithNumber(long blockNumber)
+    {
+        base.WithNumber(blockNumber);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithTimestamp(ulong timestamp)
+    {
+        base.WithTimestamp(timestamp);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithMixHash(Hash256 mixHash)
+    {
+        base.WithMixHash(mixHash);
+        return this;
+    }
+
+    public new XdcSubnetBlockHeaderBuilder WithGeneratedExtraConsensusData(int signatureNumber = 72)
+    {
+        base.WithGeneratedExtraConsensusData(signatureNumber);
+        return this;
+    }
+
+    public XdcSubnetBlockHeaderBuilder() =>
         TestObjectInternal = new XdcSubnetBlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
@@ -39,7 +67,6 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
             NextValidators = new byte[20 * 2],
             Penalties = Array.Empty<byte>(),
         };
-    }
     public XdcSubnetBlockHeaderBuilder WithNextValidators(byte[] nextValidators)
     {
         XdcTestObjectInternal.NextValidators = nextValidators;
@@ -47,7 +74,7 @@ public class XdcSubnetBlockHeaderBuilder : XdcBlockHeaderBuilder
     }
     public XdcSubnetBlockHeaderBuilder WithNextValidators(Address[] nextValidators)
     {
-        XdcTestObjectInternal.NextValidators = nextValidators.SelectMany(a => a.Bytes).ToArray();
+        XdcTestObjectInternal.NextValidators = nextValidators.SelectMany(a => a.Bytes.ToArray()).ToArray();
         return this;
     }
 }

@@ -79,7 +79,6 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual Address? Eip2935ContractAddress => spec.Eip2935ContractAddress;
     public virtual long Eip2935RingBufferSize => spec.Eip2935RingBufferSize;
     public virtual bool IsEip6780Enabled => spec.IsEip6780Enabled;
-    public virtual bool IsEofEnabled => spec.IsEofEnabled;
     public virtual bool IsEip7702Enabled => spec.IsEip7702Enabled;
     public virtual bool IsEip7823Enabled => spec.IsEip7823Enabled;
     public virtual bool IsEip7825Enabled => spec.IsEip7825Enabled;
@@ -94,6 +93,8 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsOpIsthmusEnabled => spec.IsOpIsthmusEnabled;
     public virtual bool IsOpJovianEnabled => spec.IsOpJovianEnabled;
     public virtual bool IsEip7623Enabled => spec.IsEip7623Enabled;
+    public virtual bool IsEip7976Enabled => spec.IsEip7976Enabled;
+    public virtual bool IsEip7981Enabled => spec.IsEip7981Enabled;
     public virtual bool ValidateChainId => spec.ValidateChainId;
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
@@ -112,12 +113,12 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsTraced { get => spec.EvmInstructionsTraced; set => spec.EvmInstructionsTraced = value; }
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => spec.Precompiles;
     public virtual bool IsEip7939Enabled => spec.IsEip7939Enabled;
-    public virtual bool IsEip7907Enabled => spec.IsEip7907Enabled;
-    public virtual bool IsRip7728Enabled => spec.IsRip7728Enabled;
     public virtual bool IsEip7928Enabled => spec.IsEip7928Enabled;
+    public virtual bool IsEip8037Enabled => spec.IsEip8037Enabled;
     public virtual bool IsEip7708Enabled => spec.IsEip7708Enabled;
     public virtual bool IsEip7778Enabled => spec.IsEip7778Enabled;
     public virtual bool IsEip7843Enabled => spec.IsEip7843Enabled;
+    public virtual bool IsEip7954Enabled => spec.IsEip7954Enabled;
     public virtual bool IsEip8024Enabled => spec.IsEip8024Enabled;
     public SpecGasCosts GasCosts => spec.GasCosts;
 }

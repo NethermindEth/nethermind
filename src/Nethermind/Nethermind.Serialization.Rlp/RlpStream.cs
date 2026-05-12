@@ -4,7 +4,6 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -44,20 +43,11 @@ namespace Nethermind.Serialization.Rlp
                                   + MemorySizes.Align(MemorySizes.ArrayOverhead + Length)
                                   + MemorySizes.Align(sizeof(int));
 
-        public RlpStream(int length)
-        {
-            _data = new byte[length];
-        }
+        public RlpStream(int length) => _data = new byte[length];
 
-        public RlpStream(byte[] data)
-        {
-            _data = data;
-        }
+        public RlpStream(byte[] data) => _data = data;
 
-        public RlpStream(in CappedArray<byte> data)
-        {
-            _data = data;
-        }
+        public RlpStream(in CappedArray<byte> data) => _data = data;
 
         public void EncodeArray<T>(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -258,7 +248,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -275,7 +265,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -292,9 +282,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);
@@ -311,9 +301,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);
@@ -395,6 +385,8 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(int value) => Encode((ulong)(long)value);
 
+        public void Encode(uint value) => Encode((ulong)value);
+
         public void Encode(long value) => Encode((ulong)value);
 
         [SkipLocalsInit]
@@ -446,6 +438,21 @@ namespace Nethermind.Serialization.Rlp
                 Span<byte> bytes = stackalloc byte[32];
                 value.ToBigEndian(bytes);
                 Encode(length != -1 ? bytes.Slice(bytes.Length - length, length) : bytes.WithoutLeadingZeros());
+            }
+        }
+
+        public void Encode(in EvmWord value)
+        {
+            ReadOnlySpan<byte> bytes = MemoryMarshal.CreateReadOnlySpan(
+                ref Unsafe.As<EvmWord, byte>(ref Unsafe.AsRef(in value)), 32);
+            int nonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (nonZero < 0)
+            {
+                WriteByte(EmptyArrayByte);
+            }
+            else
+            {
+                Encode(bytes.Slice(nonZero));
             }
         }
 

@@ -17,6 +17,8 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -46,6 +48,19 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // as anyway all keys recorded in this file should either be read or written to. In both cases, we want
         // trie traversal with trie nodes capture along the path to be compatible with other clients.
         //
+
+        if (!trieStore.TouchedNodesRlp.Any())
+        {
+            // When there are no storage-slot or account reads, lazy TrieNode handling can leave the root node
+            // unrecorded, especially when recording is skipped for nodes with an unknown type.
+            // To ensure the witness still includes the root node in this case, we explicitly resolve it here.
+            // This usually works because trie nodes, and especially the root node, tend to be cached.
+            ITrieNodeResolver stateResolver = trieStore.GetTrieStore(null);
+            TreePath path = TreePath.Empty;
+            TrieNode node = stateResolver.FindCachedOrUnknown(path, parentHeader.StateRoot!);
+            node.ResolveNode(stateResolver, path);
+        }
+
         using PooledSet<byte[]> stateNodes = new(trieStore.TouchedNodesRlp, Bytes.EqualityComparer);
         foreach ((Address account, HashSet<UInt256> slots) in _storageSlots)
         {
@@ -77,7 +92,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         // Keys should be ordered like: <address1><address2><slot1-address2><slot2-address2><address3><slot1-address3>
         foreach (KeyValuePair<Address, HashSet<UInt256>> kvp in _storageSlots)
         {
-            keys.Add(kvp.Key.Bytes);
+            keys.Add(kvp.Key.Bytes.ToArray());
             foreach (UInt256 slot in kvp.Value)
                 keys.Add(slot.ToBigEndian());
         }
@@ -140,19 +155,19 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return inner.IsDeadAccount(address);
     }
 
-    public ref readonly UInt256 GetBalance(Address address)
+    public UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetBalance(address);
+        return inner.GetBalance(address);
     }
 
-    public ref readonly ValueHash256 GetCodeHash(Address address)
+    public ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
-        return ref inner.GetCodeHash(address);
+        return inner.GetCodeHash(address);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
         return inner.GetOriginal(in storageCell);
@@ -230,21 +245,10 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.AddToBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-    {
-        RecordEmptySlots(address);
-        return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec);
-    }
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
         return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
-    }
-
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-    {
-        RecordEmptySlots(address);
-        inner.SubtractFromBalance(address, in balanceChange, spec);
     }
 
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
@@ -253,11 +257,6 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void IncrementNonce(Address address, UInt256 delta)
-    {
-        RecordEmptySlots(address);
-        inner.IncrementNonce(address, delta);
-    }
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         RecordEmptySlots(address);

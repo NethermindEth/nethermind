@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,11 +10,14 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
 
@@ -22,13 +25,14 @@ public class TaikoPayloadPreparationService(
     IBlockchainProcessor processor,
     IWorldState worldState,
     IL1OriginStore l1OriginStore,
+    ISpecProvider specProvider,
     ILogManager logManager,
     IRlpValueDecoder<Transaction> txDecoder) : IPayloadPreparationService
 {
     private const int _emptyBlockProcessingTimeout = 2000;
     private readonly SemaphoreSlim _worldStateLock = new(1);
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TaikoPayloadPreparationService>();
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
 
@@ -114,7 +118,7 @@ public class TaikoPayloadPreparationService(
         throw new EmptyBlockProductionException("Setting state for processing block failed");
     }
 
-    private static BlockHeader BuildHeader(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
+    private BlockHeader BuildHeader(BlockHeader parentHeader, TaikoPayloadAttributes payloadAttributes)
     {
         BlockHeader header = new(
             parentHeader.Hash!,
@@ -130,8 +134,25 @@ public class TaikoPayloadPreparationService(
             ParentBeaconBlockRoot = payloadAttributes.ParentBeaconBlockRoot,
             BaseFeePerGas = payloadAttributes.BaseFeePerGas,
             Difficulty = UInt256.Zero,
-            TotalDifficulty = UInt256.Zero
+            TotalDifficulty = UInt256.Zero,
         };
+
+        ITaikoReleaseSpec taikoSpec = (ITaikoReleaseSpec)specProvider.GetSpec(header);
+
+        // Taiko L2 has no real blobs, no beacon root data, and no execution-layer deposits.
+        // These header fields are pinned only from Unzen onwards (matching alethia-reth's
+        // normalize_parent_beacon_block_root, which gates on is_uzen_active rather than the
+        // chainspec EIP timestamps).  The Taiko driver's isKnownCanonicalBlock requires
+        // ParentBeaconBlockRoot==nil and RequestsHash==nil for pre-Unzen (Shasta) blocks;
+        // pinning them to zero earlier would force the driver to re-derive every proposal
+        // from L1 instead of taking the canonical-chain shortcut.
+        if (taikoSpec.IsUnzenEnabled)
+        {
+            header.BlobGasUsed = 0;
+            header.ExcessBlobGas = 0;
+            header.ParentBeaconBlockRoot = Keccak.Zero;
+            header.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;
+        }
 
         return header;
     }
@@ -151,7 +172,7 @@ public class TaikoPayloadPreparationService(
 
         while (ctx.Position < transactionsCheck)
         {
-            transactions[txIndex++] = txDecoder.Decode(ref ctx)!;
+            transactions[txIndex++] = txDecoder.DecodeGuardNotNull(ref ctx);
         }
 
         ctx.Check(transactionsCheck);
@@ -175,10 +196,7 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
-    public void CancelBlockProduction(string payloadId)
-    {
-        _ = GetPayload(payloadId);
-    }
+    public void CancelBlockProduction(string payloadId) => _ = GetPayload(payloadId);
 
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }

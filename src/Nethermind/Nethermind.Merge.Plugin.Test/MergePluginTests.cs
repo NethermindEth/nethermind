@@ -10,6 +10,7 @@ using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -46,27 +47,29 @@ public class MergePluginTests
     private MergeConfig _mergeConfig = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private MergePlugin _plugin = null!;
-    private CliquePlugin? _consensusPlugin = null;
+    private CliquePlugin? _consensusPlugin;
 
     [SetUp]
     public void Setup()
     {
-        _chainSpec = new ChainSpec()
+        _chainSpec = new ChainSpec
         {
             Parameters = new ChainParameters(),
             SealEngineType = SealEngineType.Clique,
             EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
                 new CliqueChainSpecEngineParameters { Epoch = CliqueConfig.Default.Epoch, Period = CliqueConfig.Default.BlockPeriod }),
         };
-        _mergeConfig = new MergeConfig() { TerminalTotalDifficulty = "0" };
-        _jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = [ModuleType.Engine] };
+        _mergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" };
+        _jsonRpcConfig = new JsonRpcConfig { Enabled = true, EnabledModules = [ModuleType.Engine] };
         _plugin = new MergePlugin(_chainSpec, _mergeConfig);
         _consensusPlugin = new(_chainSpec);
     }
 
-    private IContainer BuildContainer(IConfigProvider? configProvider = null)
-    {
-        return new ContainerBuilder()
+    private IContainer BuildContainer(IConfigProvider? configProvider = null) =>
+        // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
+        // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
+        new ContainerBuilder()
+            .AddModule(new HealthCheckPluginModule())
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
@@ -74,24 +77,30 @@ public class MergePluginTests
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
                 LimboLogs.Instance))
-            .AddSingleton<IRpcModuleProvider>(Substitute.For<IRpcModuleProvider>())
-            .AddModule(new HealthCheckPluginModule()) // The merge RPC require it.
-            .AddSingleton<IBlockProcessingQueue>(Substitute.For<IBlockProcessingQueue>())
-            .OnBuild((ctx) =>
+            .AddSingleton(Substitute.For<IRpcModuleProvider>())
+            .AddSingleton(Substitute.For<IBlockProcessingQueue>())
+            .OnBuild(ctx =>
             {
                 INethermindApi api = ctx.Resolve<INethermindApi>();
                 Build.MockOutNethermindApi((NethermindApi)api);
 
-                api.BlockProcessingQueue?.IsEmpty.Returns(true);
+                api.BlockProcessingQueue.IsEmpty.Returns(true);
             })
             .Build();
+
+    [Test]
+    public void EngineRequestsTracker_resolves_to_ClHealthRequestsTracker_when_HealthChecks_loaded_first()
+    {
+        using IContainer container = BuildContainer();
+
+        container.Resolve<IEngineRequestsTracker>().Should().BeOfType<ClHealthRequestsTracker>();
     }
 
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()
     {
-        JsonConfigSource? jsonSource = new("MisconfiguredConfig.json");
-        ConfigProvider? configProvider = new();
+        JsonConfigSource jsonSource = new("MisconfiguredConfig.json");
+        ConfigProvider configProvider = new();
         configProvider.AddSource(jsonSource);
         configProvider.Initialize();
         IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
@@ -127,7 +136,7 @@ public class MergePluginTests
     [Test]
     public async Task Initializes_correctly()
     {
-        using IContainer container = BuildContainer();
+        await using IContainer container = BuildContainer();
         INethermindApi api = container.Resolve<INethermindApi>();
         Assert.DoesNotThrowAsync(async () => await _consensusPlugin!.Init(api));
         await _plugin.Init(api);
@@ -137,6 +146,17 @@ public class MergePluginTests
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
+    }
+
+    [Test]
+    public async Task Init_registers_gas_limit_calculator_for_testing_rpc_module()
+    {
+        await using IContainer container = BuildContainer();
+        INethermindApi api = container.Resolve<INethermindApi>();
+        await _consensusPlugin!.Init(api);
+        await _plugin.Init(api);
+
+        Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
     }
 
     [TestCase(true, true)]
@@ -151,7 +171,7 @@ public class MergePluginTests
             jsonRpcConfig = new JsonRpcConfig()
             {
                 Enabled = jsonRpcEnabled,
-                AdditionalRpcUrls = new[] { "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth" }
+                AdditionalRpcUrls = ["http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth"]
             };
         }
         else
@@ -172,27 +192,24 @@ public class MergePluginTests
     [Test]
     public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = false,
-            EnabledModules = new string[] { "eth", "subscribe" },
-            AdditionalRpcUrls = new[]
-            {
+            EnabledModules = ["eth", "subscribe"],
+            AdditionalRpcUrls =
+            [
                 "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth",
-                "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client",
-            }
+                "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
+            ]
         };
 
-        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig));
         INethermindApi api = container.Resolve<INethermindApi>();
         await _plugin.Init(api);
 
         jsonRpcConfig.Enabled.Should().BeTrue();
-        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo([]);
-        jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
-        {
-            "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
-        });
+        jsonRpcConfig.EnabledModules.Should().BeEquivalentTo();
+        jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo("http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client");
     }
 
     [TestCase(true, true, true)]
@@ -207,7 +224,7 @@ public class MergePluginTests
             DownloadReceiptsInFastSync = downloadReceipt
         };
 
-        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
+        await using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, _jsonRpcConfig, syncConfig));
         INethermindApi api = container.Resolve<INethermindApi>();
         Func<Task>? invocation = _plugin.Invoking((plugin) => plugin.Init(api));
         if (shouldPass)

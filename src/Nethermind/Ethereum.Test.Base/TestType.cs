@@ -7,5 +7,5 @@ public enum TestType
 {
     Blockchain,
     State,
-    Eof
+    Transaction
 }

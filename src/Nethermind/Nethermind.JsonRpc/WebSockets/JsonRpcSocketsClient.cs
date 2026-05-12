@@ -35,7 +35,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         private bool _disposed = false;
         public ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, true, false) == true) return ValueTask.CompletedTask;
+            if (Interlocked.CompareExchange(ref _disposed, true, false)) return ValueTask.CompletedTask;
             BufferOwner.Dispose();
             return ValueTask.CompletedTask;
         }
@@ -118,7 +118,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         await foreach (ProcessRequest request in _processChannel.Reader.ReadAllAsync(cancellationToken))
         {
-            await using var _ = request;
+            await using ProcessRequest _ = request;
             await HandleRequest(request.Buffer, cancellationToken);
         }
     }
@@ -126,7 +126,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     private async Task HandleRequest(Memory<byte> data, CancellationToken cancellationToken = default)
     {
         PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data));
-        int allResponsesSize = 0;
+        long allResponsesSize = 0;
 
         await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext).WithCancellation(cancellationToken))
         {
@@ -153,7 +153,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IncrementBytesSentMetric(allResponsesSize);
     }
 
-    private void IncrementBytesReceivedMetric(int size)
+    private void IncrementBytesReceivedMetric(long size)
     {
         if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
         {
@@ -166,7 +166,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         }
     }
 
-    private void IncrementBytesSentMetric(int size)
+    private void IncrementBytesSentMetric(long size)
     {
         if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
         {

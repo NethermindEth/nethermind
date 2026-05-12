@@ -10,7 +10,7 @@ using Nethermind.Evm.GasPolicy;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
 namespace Nethermind.Evm;
 
-internal static unsafe partial class EvmInstructions
+public static unsafe partial class EvmInstructions
 {
     /// <summary>
     /// Generates the opcode lookup table for the Ethereum Virtual Machine.
@@ -26,7 +26,7 @@ internal static unsafe partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Allocate lookup table for all possible opcodes.
-        var lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
 
         for (int i = 0; i < lookup.Length; i++)
         {
@@ -84,10 +84,9 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.CALLVALUE] = &InstructionEnvUInt256<TGasPolicy, OpCallValue<TGasPolicy>, TTracingInst>;
         lookup[(int)Instruction.CALLDATALOAD] = &InstructionCallDataLoad<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.CALLDATASIZE] = &InstructionEnvUInt32<TGasPolicy, OpCallDataSize<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CALLDATACOPY] =
-            &InstructionCodeCopy<TGasPolicy, OpCallDataCopy<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt32<TGasPolicy, OpCodeSize<TGasPolicy>, TTracingInst>;
-        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<TGasPolicy, OpCodeCopy<TGasPolicy>, TTracingInst>;
+        lookup[(int)Instruction.CALLDATACOPY] = &InstructionCallDataCopy<TGasPolicy, TTracingInst>;
+        lookup[(int)Instruction.CODESIZE] = &InstructionCodeSize<TGasPolicy, TTracingInst>;
+        lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.GASPRICE] = &InstructionBlkUInt256<TGasPolicy, OpGasPrice<TGasPolicy>, TTracingInst>;
 
         lookup[(int)Instruction.EXTCODESIZE] = &InstructionExtCodeSize<TGasPolicy, TTracingInst>;
@@ -100,12 +99,9 @@ internal static unsafe partial class EvmInstructions
             lookup[(int)Instruction.RETURNDATACOPY] = &InstructionReturnDataCopy<TGasPolicy, TTracingInst>;
         }
 
-        // Extended code hash opcode handling.
         if (spec.ExtCodeHashOpcodeEnabled)
         {
-            lookup[(int)Instruction.EXTCODEHASH] = spec.IsEofEnabled ?
-                &InstructionExtCodeHashEof<TGasPolicy, TTracingInst> :
-                &InstructionExtCodeHash<TGasPolicy, TTracingInst>;
+            lookup[(int)Instruction.EXTCODEHASH] = &InstructionExtCodeHash<TGasPolicy, TTracingInst>;
         }
 
         lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash<TGasPolicy, TTracingInst>;
@@ -151,8 +147,12 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.SLOAD] = &InstructionSLoad<TGasPolicy, TTracingInst>;
         lookup[(int)Instruction.SSTORE] = spec.UseNetGasMetering ?
             (spec.UseNetGasMeteringWithAStipendFix ?
-                &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag> :
-                &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag>
+                (spec.IsEip8037Enabled
+                    ? &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag, OnFlag>
+                    : &InstructionSStoreMetered<TGasPolicy, TTracingInst, OnFlag, OffFlag>) :
+                (spec.IsEip8037Enabled
+                    ? &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag, OnFlag>
+                    : &InstructionSStoreMetered<TGasPolicy, TTracingInst, OffFlag, OffFlag>)
             ) :
             &InstructionSStoreUnmetered<TGasPolicy, TTracingInst>;
 
@@ -258,8 +258,7 @@ internal static unsafe partial class EvmInstructions
         lookup[(int)Instruction.LOG3] = &InstructionLog<TGasPolicy, Op3>;
         lookup[(int)Instruction.LOG4] = &InstructionLog<TGasPolicy, Op4>;
 
-        // EIP-8024: Backward-compatible stack operations for legacy code.
-        // These are registered first and will be overridden by EOF handlers if EOF is enabled.
+        // EIP-8024 stack operations.
         if (spec.IsEip8024Enabled)
         {
             lookup[(int)Instruction.DUPN] = &InstructionDupN<TGasPolicy, TTracingInst>;
@@ -267,59 +266,51 @@ internal static unsafe partial class EvmInstructions
             lookup[(int)Instruction.EXCHANGE] = &InstructionExchange<TGasPolicy, TTracingInst>;
         }
 
-        // Extended opcodes for EO (EoF) mode.
-        if (spec.IsEofEnabled)
-        {
-            lookup[(int)Instruction.DATALOAD] = &InstructionDataLoad<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.DATALOADN] = &InstructionDataLoadN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.DATASIZE] = &InstructionDataSize<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.DATACOPY] = &InstructionDataCopy<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.RJUMP] = &InstructionRelativeJump;
-            lookup[(int)Instruction.RJUMPI] = &InstructionRelativeJumpIf;
-            lookup[(int)Instruction.RJUMPV] = &InstructionJumpTable;
-            lookup[(int)Instruction.CALLF] = &InstructionCallFunction;
-            lookup[(int)Instruction.RETF] = &InstructionReturnFunction;
-            lookup[(int)Instruction.JUMPF] = &InstructionJumpFunction;
-            lookup[(int)Instruction.DUPN] = &InstructionEofDupN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.SWAPN] = &InstructionEofSwapN<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.EXCHANGE] = &InstructionEofExchange<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.EOFCREATE] = &InstructionEofCreate<TGasPolicy, TTracingInst>;
-            lookup[(int)Instruction.RETURNCODE] = &InstructionReturnCode;
-        }
-
         // Contract creation and call opcodes.
-        lookup[(int)Instruction.CREATE] = &InstructionCreate<TGasPolicy, OpCreate, TTracingInst>;
-        lookup[(int)Instruction.CALL] = &InstructionCall<TGasPolicy, OpCall, TTracingInst>;
-        lookup[(int)Instruction.CALLCODE] = &InstructionCall<TGasPolicy, OpCallCode, TTracingInst>;
+        lookup[(int)Instruction.CREATE] = spec.IsEip8037Enabled
+            ? &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OnFlag>
+            : &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OffFlag>;
+        lookup[(int)Instruction.CALL] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        {
+            (true, true) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OnFlag, OnFlag>,
+            (true, false) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OnFlag, OffFlag>,
+            (false, true) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OffFlag, OnFlag>,
+            (false, false) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OffFlag, OffFlag>,
+        };
+        lookup[(int)Instruction.CALLCODE] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        {
+            (true, true) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OnFlag, OnFlag>,
+            (true, false) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OnFlag, OffFlag>,
+            (false, true) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OffFlag, OnFlag>,
+            (false, false) => &InstructionCall<TGasPolicy, OpCallCode, TTracingInst, OffFlag, OffFlag>,
+        };
         lookup[(int)Instruction.RETURN] = &InstructionReturn;
         if (spec.DelegateCallEnabled)
         {
-            lookup[(int)Instruction.DELEGATECALL] = &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst>;
+            lookup[(int)Instruction.DELEGATECALL] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+            {
+                (true, true) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OffFlag, OnFlag>,
+                (false, false) => &InstructionCall<TGasPolicy, OpDelegateCall, TTracingInst, OffFlag, OffFlag>,
+            };
         }
         if (spec.Create2OpcodeEnabled)
         {
-            lookup[(int)Instruction.CREATE2] = &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst>;
+            lookup[(int)Instruction.CREATE2] = spec.IsEip8037Enabled
+                ? &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OnFlag>
+                : &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OffFlag>;
         }
 
-        lookup[(int)Instruction.RETURNDATALOAD] = &InstructionReturnDataLoad<TGasPolicy, TTracingInst>;
         if (spec.StaticCallEnabled)
         {
-            lookup[(int)Instruction.STATICCALL] = &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst>;
-        }
-
-        // Extended call opcodes in EO mode.
-        if (spec.IsEofEnabled)
-        {
-            lookup[(int)Instruction.EXTCALL] = &InstructionEofCall<TGasPolicy, OpEofCall, TTracingInst>;
-            if (spec.DelegateCallEnabled)
+            lookup[(int)Instruction.STATICCALL] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
             {
-                lookup[(int)Instruction.EXTDELEGATECALL] =
-                    &InstructionEofCall<TGasPolicy, OpEofDelegateCall, TTracingInst>;
-            }
-            if (spec.StaticCallEnabled)
-            {
-                lookup[(int)Instruction.EXTSTATICCALL] = &InstructionEofCall<TGasPolicy, OpEofStaticCall, TTracingInst>;
-            }
+                (true, true) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OffFlag, OnFlag>,
+                (false, false) => &InstructionCall<TGasPolicy, OpStaticCall, TTracingInst, OffFlag, OffFlag>,
+            };
         }
 
         if (spec.RevertOpcodeEnabled)
@@ -329,7 +320,13 @@ internal static unsafe partial class EvmInstructions
 
         // Final opcodes.
         lookup[(int)Instruction.INVALID] = &InstructionInvalid;
-        lookup[(int)Instruction.SELFDESTRUCT] = &InstructionSelfDestruct;
+        lookup[(int)Instruction.SELFDESTRUCT] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
+        {
+            (true, true) => &InstructionSelfDestruct<TGasPolicy, OnFlag, OnFlag>,
+            (true, false) => &InstructionSelfDestruct<TGasPolicy, OnFlag, OffFlag>,
+            (false, true) => &InstructionSelfDestruct<TGasPolicy, OffFlag, OnFlag>,
+            (false, false) => &InstructionSelfDestruct<TGasPolicy, OffFlag, OffFlag>,
+        };
 
         return lookup;
     }

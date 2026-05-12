@@ -96,7 +96,7 @@ namespace Nethermind.Wallet.Test
         {
             IKeyStore keyStore = Substitute.For<IKeyStore>();
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
-            KeyStoreConfig keyStoreConfig = new KeyStoreConfig();
+            KeyStoreConfig keyStoreConfig = new();
             IPasswordProvider passwordProvider = Substitute.For<IPasswordProvider>();
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
 

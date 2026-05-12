@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -98,8 +97,8 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_get_node_data()
     {
-        using var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
-        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
+        using GetNodeDataMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
+        using Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetNodeData);
@@ -109,8 +108,8 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_node_data_and_not_throw_when_receiving_unrequested_node_data()
     {
-        using var msg63 = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
-        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
+        using NodeDataMessage msg63 = new(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
+        using Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage msg66 = new(1111, msg63);
 
         HandleIncomingStatusMessage();
         System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
@@ -120,8 +119,8 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_handle_eth66_messages_other_than_GetNodeData_and_NodeData() // e.g. GetBlockHeadersMessage
     {
-        using var msg62 = new GetBlockHeadersMessage();
-        using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(1111, msg62);
+        using GetBlockHeadersMessage msg62 = new();
+        using Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage msg66 = new(1111, msg62);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth66MessageCode.GetBlockHeaders);
@@ -130,18 +129,18 @@ public class Eth67ProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        IByteBuffer getZeroPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getZeroPacket = _svc.ZeroSerialize(msg).AsDisposable();
         getZeroPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
     }
 
     private void HandleIncomingStatusMessage()
     {
-        var statusMsg = new StatusMessage();
+        StatusMessage statusMsg = new();
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }

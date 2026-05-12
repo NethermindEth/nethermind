@@ -22,10 +22,11 @@ namespace Nethermind.Evm.Test
             return block;
         }
 
-        [Test]
-        public void When_author_set_coinbase_return_author()
+        [TestCase(true, Description = "When author set, coinbase returns author")]
+        [TestCase(false, Description = "When author not set, coinbase returns beneficiary")]
+        public void Coinbase_returns_author_or_beneficiary(bool setAuthor)
         {
-            _setAuthor = true;
+            _setAuthor = setAuthor;
 
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.COINBASE)
@@ -35,23 +36,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            AssertStorage(0, TestItem.AddressC);
-        }
-
-        [Test]
-        public void When_author_no_set_coinbase_return_beneficiary()
-        {
-            _setAuthor = false;
-
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.COINBASE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
-
-            Execute(code);
-
-            AssertStorage(0, TestItem.AddressB);
+            AssertStorage(0, setAuthor ? TestItem.AddressC : TestItem.AddressB);
         }
     }
 }

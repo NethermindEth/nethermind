@@ -178,6 +178,11 @@ internal static class RlpHelpers
             ThrowSequenceLengthTooLong();
         }
 
+        if (position + 1 + lengthOfLength > data.Length)
+        {
+            ThrowRlpDataTruncated();
+        }
+
         int contentLength = DeserializeLengthRef(
             ref Unsafe.Add(ref MemoryMarshal.GetReference(data), position + 1),
             lengthOfLength);
@@ -187,6 +192,11 @@ internal static class RlpHelpers
         if (contentLength < SmallPrefixBarrier)
         {
             ThrowUnexpectedLength(contentLength);
+        }
+
+        if (contentLength > data.Length - position - (1 + lengthOfLength))
+        {
+            ThrowRlpDataTruncated();
         }
 
         return (1 + lengthOfLength, contentLength);
@@ -242,15 +252,16 @@ internal static class RlpHelpers
         return result;
 
         [DoesNotReturn]
-        static void ThrowInvalidData()
-        {
-            throw new RlpException("Length starts with 0");
-        }
+        static void ThrowInvalidData() => throw new RlpException("Length starts with 0");
     }
 
     [DoesNotReturn, StackTraceHidden]
-    public static void ThrowUnexpectedByteValue(int buffer0)
-        => throw new RlpException($"Unexpected byte value {buffer0}");
+    public static void ThrowUnexpectedBoolValue(byte value)
+        => throw new RlpException($"Unexpected value for a boolean: {value}");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowUnexpectedByteValue(int position, int value)
+        => throw new RlpException($"Unexpected byte value {value} at {position}");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowInvalidLength(int actualLength, int decodedLength)
@@ -269,18 +280,22 @@ internal static class RlpHelpers
         => throw new RlpException("Expected length of length less than or equal to 4");
 
     [DoesNotReturn, StackTraceHidden]
+    public static void ThrowRlpDataTruncated()
+        => throw new RlpException("RLP data is truncated: not enough bytes for the declared length prefix");
+
+    [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedLength(int length)
         => throw new RlpException($"Expected length greater than or equal to 56 and was {length}");
 
     [DoesNotReturn, StackTraceHidden]
     public static uint ThrowNonCanonicalInteger(int position)
-        => throw new RlpException($"Non-canonical integer (leading zero bytes) at position {position}");
+        => throw new RlpException($"Non-canonical integer at position {position}");
 
     [DoesNotReturn, StackTraceHidden]
-    public static uint ThrowUnexpectedIntegerLength(int length)
-        => throw new RlpException($"Unexpected length of long value: {length}");
+    public static void ThrowUnexpectedIntegerLength(int position, int length)
+        => throw new RlpException($"Unexpected length of integer value {length} at position {position}");
 
     [DoesNotReturn, StackTraceHidden]
-    public static long ThrowNotPositiveLong()
-        => throw new RlpException("Long value is not a non-negative value");
+    public static void ThrowNegativeInteger(int position, long value)
+        => throw new RlpException($"Expected non-negative integer and was {value} at position {position}");
 }

@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<FilterManager>() ?? throw new ArgumentNullException(nameof(logManager));
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;
@@ -64,10 +64,7 @@ namespace Nethermind.Blockchain.Filters
             AddBlock(e.Block);
         }
 
-        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
-        {
-            AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
-        }
+        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e) => AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
         {
@@ -265,17 +262,12 @@ namespace Nethermind.Blockchain.Filters
             return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
         }
 
-        private sealed class Option<T>
+        private sealed class Option<T>(T value)
         {
             private bool _isRemoved;
 
-            public T Value { get; }
+            public T Value { get; } = value;
             public bool IsRemoved => Volatile.Read(ref _isRemoved);
-
-            public Option(T value)
-            {
-                Value = value;
-            }
 
             public void MarkRemoved() => Volatile.Write(ref _isRemoved, true);
         }

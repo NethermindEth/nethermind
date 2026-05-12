@@ -5,40 +5,16 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class NonceChangeDecoder : IRlpValueDecoder<NonceChange>, IRlpStreamEncoder<NonceChange>
+public class NonceChangeDecoder : IndexedChangeDecoder<NonceChange>
 {
-    private static NonceChangeDecoder? _instance = null;
-    public static NonceChangeDecoder Instance => _instance ??= new();
+    public static readonly NonceChangeDecoder Instance = new();
 
-    public NonceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-    {
-        int length = ctx.ReadSequenceLength();
-        int check = length + ctx.Position;
+    protected override NonceChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
+        => new(ctx.DecodeUInt(), ctx.DecodeULong());
 
-        NonceChange nonceChange = new()
-        {
-            BlockAccessIndex = ctx.DecodeUShort(),
-            NewNonce = ctx.DecodeULong()
-        };
+    protected override void EncodeValue(RlpStream stream, NonceChange item)
+        => stream.Encode(item.Value);
 
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            ctx.Check(check);
-        }
-
-        return nonceChange;
-    }
-
-    public int GetLength(NonceChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public void Encode(RlpStream stream, NonceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.BlockAccessIndex);
-        stream.Encode(item.NewNonce);
-    }
-
-    public static int GetContentLength(NonceChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewNonce);
+    protected override int GetValueLength(NonceChange item)
+        => Rlp.LengthOf(item.Value);
 }

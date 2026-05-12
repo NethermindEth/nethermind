@@ -29,16 +29,28 @@ public class TotalDifficultyStrategyTests
 
         for (int i = 0; i < headers.Count - 1; i++)
         {
-            var header = headers[i].Header;
-            var parent = headers[i + 1].Header;
+            BlockHeader header = headers[i].Header;
+            BlockHeader parent = headers[i + 1].Header;
 
             parent.TotalDifficulty = strategy.ParentTotalDifficulty(header);
         }
 
-        foreach (var (header, expectedTotalDifficulty) in headers)
+        foreach ((BlockHeader? header, UInt256 expectedTotalDifficulty) in headers)
         {
             header.TotalDifficulty.Should().Be(expectedTotalDifficulty);
         }
+    }
+
+    [Test]
+    public void ZeroTotalDifficultyStrategy_returns_zero_for_any_header()
+    {
+        ITotalDifficultyStrategy strategy = new ZeroTotalDifficultyStrategy();
+
+        BlockHeader withNonZeroDiff = Build.A.BlockHeader.WithDifficulty(1126457).WithTotalDifficulty(0).TestObject;
+        BlockHeader withZeroDiff = Build.A.BlockHeader.WithDifficulty(0).WithTotalDifficulty(100).TestObject;
+
+        strategy.ParentTotalDifficulty(withNonZeroDiff).Should().Be(UInt256.Zero);
+        strategy.ParentTotalDifficulty(withZeroDiff).Should().Be(UInt256.Zero);
     }
 
     [Test]
@@ -62,13 +74,13 @@ public class TotalDifficultyStrategyTests
 
         for (int i = 0; i < headers.Count - 1; i++)
         {
-            var header = headers[i].Header;
-            var parent = headers[i + 1].Header;
+            BlockHeader header = headers[i].Header;
+            BlockHeader parent = headers[i + 1].Header;
 
             parent.TotalDifficulty = strategy.ParentTotalDifficulty(header);
         }
 
-        foreach (var (header, expectedTotalDifficulty) in headers)
+        foreach ((BlockHeader? header, UInt256 expectedTotalDifficulty) in headers)
         {
             header.TotalDifficulty.Should().Be(expectedTotalDifficulty);
         }

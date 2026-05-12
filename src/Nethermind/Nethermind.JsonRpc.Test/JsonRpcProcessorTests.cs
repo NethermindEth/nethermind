@@ -176,7 +176,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
-        var resultList = await result[0].BatchedResponses!.ToListAsync();
+        List<JsonRpcResult.Entry> resultList = await result[0].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
         Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();
@@ -263,14 +263,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
         result.Should().HaveCount(1);
@@ -283,14 +283,14 @@ public class JsonRpcProcessorTests(bool returnErrors)
     {
         StringBuilder request = new();
         int maxBatchSize = new JsonRpcConfig().MaxBatchSize;
-        request.Append("[");
+        request.Append('[');
         for (int i = 0; i < maxBatchSize + 1; i++)
         {
-            if (i != 0) request.Append(",");
+            if (i != 0) request.Append(',');
             request.Append(
                 "{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
-        request.Append("]");
+        request.Append(']');
 
         JsonRpcUrl url = new(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, []);
         JsonRpcContext context = new(RpcEndpoint.Http, url: url);
@@ -462,12 +462,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public void Cannot_accept_null_file_system()
-    {
-        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
-            Substitute.For<IJsonRpcConfig>(),
-            null!, LimboLogs.Instance));
-    }
+    public void Cannot_accept_null_file_system() => Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+                                                             Substitute.For<IJsonRpcConfig>(),
+                                                             null!, LimboLogs.Instance));
 
     [Test]
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()
@@ -528,5 +525,46 @@ public class JsonRpcProcessorTests(bool returnErrors)
 
         sb.Append("]}");
         return sb.ToString();
+    }
+
+    [Test]
+    public async Task Method_not_found_response_is_reported_with_unknown_method_label()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(ci => new JsonRpcErrorResponse
+            {
+                Id = ci.Arg<JsonRpcRequest>().Id,
+                Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "Method not found" }
+            });
+
+        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        IList<JsonRpcResult> result = await processor
+            .ProcessAsync("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"foo_unregistered\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http))
+            .ToListAsync();
+
+        result.Should().HaveCount(1);
+        result[0].Report.Should().NotBeNull();
+        result[0].Report!.Value.Method.Should().Be(RpcReport.UnknownMethod);
+        result[0].Report!.Value.Success.Should().BeFalse();
+        result.DisposeItems();
+    }
+
+    [Test]
+    public async Task Resolved_method_response_keeps_original_method_name_in_report()
+    {
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>())
+            .Returns(ci => new JsonRpcSuccessResponse { Id = ci.Arg<JsonRpcRequest>().Id });
+
+        JsonRpcProcessor processor = new(service, new JsonRpcConfig(), Substitute.For<IFileSystem>(), LimboLogs.Instance);
+        IList<JsonRpcResult> result = await processor
+            .ProcessAsync("{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[]}", new JsonRpcContext(RpcEndpoint.Http))
+            .ToListAsync();
+
+        result.Should().HaveCount(1);
+        result[0].Report!.Value.Method.Should().Be("eth_getTransactionCount");
+        result[0].Report!.Value.Success.Should().BeTrue();
+        result.DisposeItems();
     }
 }

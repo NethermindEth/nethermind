@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -58,50 +58,24 @@ public static partial class Ssz
         offset++;
     }
 
-    public static bool DecodeBool(Span<byte> span, ref int offset)
-    {
-        return span[offset++] == 1;
-    }
+    public static void Encode(Span<byte> span, byte value) => span[0] = value;
 
-    public static void Encode(Span<byte> span, byte value)
-    {
-        span[0] = value;
-    }
-
-    public static void Encode(Span<byte> span, byte value, ref int offset)
-    {
-        span[offset++] = value;
-    }
+    public static void Encode(Span<byte> span, byte value, ref int offset) => span[offset++] = value;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, ushort value)
-    {
-        BinaryPrimitives.WriteUInt16LittleEndian(span, value);
-    }
+    public static void Encode(Span<byte> span, ushort value) => BinaryPrimitives.WriteUInt16LittleEndian(span, value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, int value)
-    {
-        BinaryPrimitives.WriteUInt32LittleEndian(span, (uint)value);
-    }
+    public static void Encode(Span<byte> span, int value) => BinaryPrimitives.WriteUInt32LittleEndian(span, (uint)value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, uint value)
-    {
-        BinaryPrimitives.WriteUInt32LittleEndian(span, value);
-    }
+    public static void Encode(Span<byte> span, uint value) => BinaryPrimitives.WriteUInt32LittleEndian(span, value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, ulong value)
-    {
-        BinaryPrimitives.WriteUInt64LittleEndian(span, value);
-    }
+    public static void Encode(Span<byte> span, ulong value) => BinaryPrimitives.WriteUInt64LittleEndian(span, value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, long value)
-    {
-        BinaryPrimitives.WriteInt64LittleEndian(span, value);
-    }
+    public static void Encode(Span<byte> span, long value) => BinaryPrimitives.WriteInt64LittleEndian(span, value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, UInt128 value)
@@ -111,22 +85,13 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, UInt256 value)
-    {
-        value.ToLittleEndian(span);
-    }
+    public static void Encode(Span<byte> span, UInt256 value) => value.ToLittleEndian(span);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Encode(Span<byte> span, bool value)
-    {
-        span[0] = Encode(value);
-    }
+    public static void Encode(Span<byte> span, bool value) => span[0] = Encode(value);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte Encode(bool value)
-    {
-        return value ? (byte)1 : (byte)0;
-    }
+    public static byte Encode(bool value) => value ? (byte)1 : (byte)0;
 
     public static void Encode(Span<byte> span, Span<bool> value)
     {
@@ -224,8 +189,28 @@ public static partial class Ssz
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool DecodeBool(Span<byte> span)
     {
-        return span[0] != 0;
+        const int expectedLength = 1;
+        if (span.Length != expectedLength)
+        {
+            throw new InvalidDataException(
+                $"{nameof(DecodeBool)} expects input of length {expectedLength} and received {span.Length}");
+        }
+
+        return span[0] switch
+        {
+            0 => false,
+            1 => true,
+            var x => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {x}")
+        };
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool DecodeBool(Span<byte> span, ref int offset) => span[offset++] switch
+    {
+        0 => false,
+        1 => true,
+        var x => throw new InvalidDataException($"SSZ bool must be 0 or 1, got {x}")
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte DecodeByte(ReadOnlySpan<byte> span)
@@ -241,10 +226,7 @@ public static partial class Ssz
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static byte DecodeByte(ReadOnlySpan<byte> span, ref int offset)
-    {
-        return span[offset++];
-    }
+    public static byte DecodeByte(ReadOnlySpan<byte> span, ref int offset) => span[offset++];
 
     public static ushort DecodeUShort(Span<byte> span)
     {
@@ -303,7 +285,7 @@ public static partial class Ssz
 
         ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span[..8]);
         ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-        return new UInt128(s0, s1);
+        return new UInt128(s1, s0);
     }
 
     public static UInt256 DecodeUInt256(ReadOnlySpan<byte> span)
@@ -410,10 +392,7 @@ public static partial class Ssz
         return MemoryMarshal.Cast<byte, ushort>(span);
     }
 
-    public static Span<bool> DecodeBools(Span<byte> span)
-    {
-        return MemoryMarshal.Cast<byte, bool>(span);
-    }
+    public static Span<bool> DecodeBools(Span<byte> span) => MemoryMarshal.Cast<byte, bool>(span);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ThrowTargetLength<T>(int targetLength, int expectedLength)

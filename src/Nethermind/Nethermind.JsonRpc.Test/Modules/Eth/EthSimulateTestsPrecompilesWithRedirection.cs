@@ -61,7 +61,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
 
@@ -107,7 +107,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             .JUMPDEST()
             .PushData(Bytes.ZeroByte)
             .Op(Instruction.DUP1)
-            .PushData(TestItem.AddressB.Bytes)
+            .PushData(TestItem.AddressB)
             .Op(Instruction.SWAP1)
             .Op(Instruction.POP)
             .Op(Instruction.CALLDATASIZE)
@@ -133,9 +133,9 @@ public class EthSimulateTestsPrecompilesWithRedirection
         byte[] transactionData = EthRpcSimulateTestsBase.GetTxData(chain, TestItem.PrivateKeyA);
 
         Hash256 headHash = chain.BlockFinder.Head!.Hash!;
-        Address contractAddress = await EthRpcSimulateTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EthSimulateTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
+        Address contractAddress = await EthRpcSimulateTestsBase.DeployECRecoverContract(chain, TestItem.PrivateKeyB, EthSimulateTestsSimplePrecompiles.ECRecoverCallerContractBytecode);
 
-        EthRpcSimulateTestsBase.EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
+        EthRpcSimulateTestsBase.ECRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
 
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
@@ -161,7 +161,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         {
-                            EcRecoverPrecompile.Address,
+                            ECRecoverPrecompile.Address,
                             new AccountOverride
                             {
                                 Code = code,
@@ -175,7 +175,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
         Assert.That(chain.ReadOnlyState.AccountExists(contractAddress), Is.True);

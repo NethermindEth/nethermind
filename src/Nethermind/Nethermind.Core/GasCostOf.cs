@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core
@@ -67,7 +67,22 @@ namespace Nethermind.Core
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
         public const long PerAuthBaseCost = 12500; // eip-7702
-        public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7632
+        public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
+        public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
+
+        // EIP-8037: bal-devnet-6 keeps the static cost_per_state_byte = 1174 from bal-devnet-3.
+        public const long CostPerStateByte = 1174;
+        public const long SSetRegular = 2_900;
+        public const long SSetState = 32 * CostPerStateByte;
+        public const long CreateRegular = 9_000;
+        public const long CreateState = 112 * CostPerStateByte;
+        public const long NewAccountState = 112 * CostPerStateByte;
+        public const long CodeDepositRegularPerWord = 6;
+        public const long CodeDepositState = CostPerStateByte;
+        public const long PerAuthBaseRegular = 7_500;
+        public const long PerAuthBaseState = 23 * CostPerStateByte;
+        public const long PerEmptyAccountState = 112 * CostPerStateByte;
+        public const long BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
@@ -75,22 +90,16 @@ namespace Nethermind.Core
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
-        // Eof Execution EIP-7692
-        public const long DataLoad = 4;
-        public const long DataLoadN = 3;
-        public const long DataCopy = 3;
-        public const long DataSize = 2;
-        public const long ReturnCode = 0;
-        public const long EofCreate = 32000;
-        public const long ReturnDataLoad = 3;
-        public const long RJump = 2;
-        public const long RJumpi = 4;
-        public const long RJumpv = 4;
-        public const long Exchange = 3;
-        public const long Swapn = 3;
-        public const long Dupn = 3;
-        public const long Callf = 5;
-        public const long Jumpf = 5;
-        public const long Retf = 3;
+        // EIP-8037 in bal-devnet-6 fixes cost_per_state_byte at the static value, ignoring blockGasLimit.
+        // The parameter is retained on call sites that may revisit per-block scaling in a future devnet.
+        public static long CalculateCostPerStateByte(long blockGasLimit) => CostPerStateByte;
+
+        public static long CalculateSSetState(long costPerStateByte) => checked(32 * costPerStateByte);
+        public static long CalculateCreateState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateNewAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateCodeDepositState(long costPerStateByte, int byteCodeLength) => checked(costPerStateByte * byteCodeLength);
+        public static long CalculatePerAuthBaseState(long costPerStateByte) => checked(23 * costPerStateByte);
+        public static long CalculatePerEmptyAccountState(long costPerStateByte) => checked(112 * costPerStateByte);
+        public static long CalculateSSetReversalRefund(long costPerStateByte) => checked(CalculateSSetState(costPerStateByte) + SSetRegular - WarmStateRead);
     }
 }

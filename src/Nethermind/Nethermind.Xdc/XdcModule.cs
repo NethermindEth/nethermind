@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -14,6 +14,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -21,6 +22,9 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization;
@@ -31,6 +35,7 @@ using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
+using Nethermind.Xdc.Discovery;
 
 namespace Nethermind.Xdc;
 
@@ -38,14 +43,11 @@ public class XdcModule : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
-        builder.AddStep(typeof(XdcInitializeNetwork));
-
         base.Load(builder);
 
-        // Register custom RocksDb config factory that handles XdcSnapshots without validation
-        builder.AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>();
-
         builder
+            .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
+            .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
             .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
@@ -71,6 +73,7 @@ public class XdcModule : Module
                 IAbiEncoder,
                 ISpecProvider,
                 IReadOnlyTxProcessingEnvFactory>(CreateVotingContract)
+            .AddSingleton<IMintedRecordContract, MintedRecordContract>()
 
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
@@ -85,9 +88,10 @@ public class XdcModule : Module
             .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
 
             // forensics handler
-            .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
+            .AddSingleton<IForensicsProcessor, NullForensicsProcessor>()
 
             // Validators
+            .AddSingleton<IBlockValidator, XdcBlockValidator>()
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
             .AddSingleton<ISealValidator, XdcSealValidator>()
             .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
@@ -109,7 +113,7 @@ public class XdcModule : Module
             // sync
             .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
-            .AddSingleton<XdcStateSyncSnapshotManager>()
+            .AddSingleton<IXdcStateSyncSnapshotManager, XdcStateSyncSnapshotManager>()
             .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
 
@@ -121,7 +125,9 @@ public class XdcModule : Module
             .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
+            .AddMessageSerializer<PingMsg, XdcPingMsgSerializer>()
 
+            .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing
@@ -129,16 +135,15 @@ public class XdcModule : Module
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
             .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
+
+        // Overrides DiscoveryApp and NodeLifecycleManagerFactory registered in DiscoveryModule (via NethermindModule).
+        // Safe: plugins are always loaded after NethermindModule in NethermindRunnerModule, so last-registration-wins is guaranteed.
+        builder.RegisterType<XdcDiscoveryApp>().As<DiscoveryApp>().WithAttributeFiltering().SingleInstance().ExternallyOwned();
+        builder.RegisterType<XdcNodeLifecycleManagerFactory>().As<INodeLifecycleManagerFactory>().SingleInstance();
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-    {
-        return new SnapshotManager(db, blockTree, votingContract, specProvider);
-    }
-    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
-    {
-        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
-    }
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider) => new SnapshotManager(db, blockTree, votingContract, specProvider);
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager) => new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
 
     private IMasternodeVotingContract CreateVotingContract(
         IAbiEncoder abiEncoder,

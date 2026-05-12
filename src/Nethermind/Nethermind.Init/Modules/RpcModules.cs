@@ -6,7 +6,6 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Tracing;
@@ -14,9 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Find;
 using Nethermind.Facade.Simulate;
-using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -103,14 +100,11 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
-                .AddScoped<IReceiptsMigration, ReceiptMigration>()
 
             ;
     }
 
-    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx)
-    {
-        return new AdminRpcModule(
+    private IAdminRpcModule CreateAdminRpcModule(IComponentContext ctx) => new AdminRpcModule(
             ctx.Resolve<IBlockTree>(),
             ctx.Resolve<INetworkConfig>(),
             ctx.Resolve<IPeerPool>(),
@@ -120,6 +114,6 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             ctx.Resolve<IInitConfig>().BaseDbPath, // IInitConfig not accessible from IAdminRpcModule, so we construct it manually here
             ctx.Resolve<ChainSpec>().Parameters,
             ctx.Resolve<ITrustedNodesManager>(),
-            ctx.Resolve<ISubscriptionManager>());
-    }
+            ctx.Resolve<ISubscriptionManager>(),
+            ctx.Resolve<IJsonRpcConfig>());
 }

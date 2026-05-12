@@ -7,7 +7,7 @@ namespace Nethermind.Taiko.Config;
 
 public interface ISurgeConfig : IConfig
 {
-    [ConfigItem(Description = "The URL of the L1 execution node JSON-RPC API.", DefaultValue = "null")]
+    [ConfigItem(Description = "The URL of the L1 execution node JSON-RPC API.", DefaultValue = "null", IsSensitive = true)]
     string? L1EthApiEndpoint { get; set; }
 
     [ConfigItem(Description = "Number of L2 blocks per batch.", DefaultValue = "1800")]
@@ -57,4 +57,5 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
     bool TdxEnabled { get; set; }
+
 }

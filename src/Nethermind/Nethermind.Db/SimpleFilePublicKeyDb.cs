@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -30,13 +29,13 @@ namespace Nethermind.Db
         private string DbPath { get; }
         public string Name { get; }
 
-        public ICollection<byte[]> Keys => _cache.Keys.ToArray();
-        public ICollection<byte[]> Values => _cache.Values;
+        public ICollection<byte[]> Keys => _cache.Select(static kvp => kvp.Key).ToArray();
+        public ICollection<byte[]> Values => _cache.Select(static kvp => kvp.Value).ToArray();
         public int Count => _cache.Count;
 
         public SimpleFilePublicKeyDb(string name, string dbDirectoryPath, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SimpleFilePublicKeyDb>() ?? throw new ArgumentNullException(nameof(logManager));
             ArgumentNullException.ThrowIfNull(dbDirectoryPath);
             Name = name ?? throw new ArgumentNullException(nameof(name));
             DbPath = Path.Combine(dbDirectoryPath, DbFileName);
@@ -60,7 +59,11 @@ namespace Nethermind.Db
             set => Set(key, value);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _cacheSpan[key];
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            _cacheSpan.TryGetValue(key, out byte[]? value);
+            return value;
+        }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
@@ -73,14 +76,14 @@ namespace Nethermind.Db
                 return;
             }
 
-            if (!_cacheSpan.TryGetValue(key, out var existingValue) || !Bytes.AreEqual(existingValue, value))
+            if (!_cacheSpan.TryGetValue(key, out byte[] existingValue) || !Bytes.AreEqual(existingValue, value))
             {
                 _cacheSpan[key] = value;
                 _hasPendingChanges = true;
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out var value) ? value : null)).ToArray();
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, _cache.TryGetValue(k, out byte[] value) ? value : null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key)
         {
@@ -102,9 +105,9 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _cache;
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Keys;
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _cache.Select(static kvp => kvp.Key);
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Values;
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _cache.Select(static kvp => kvp.Value);
 
         public IWriteBatch StartWriteBatch() => this.LikeABatch(CommitBatch);
 
@@ -207,7 +210,7 @@ namespace Nethermind.Db
 
             using SafeFileHandle fileHandle = File.OpenHandle(DbPath, FileMode.OpenOrCreate);
 
-            using var handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
+            using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(maxLineLength, out byte[] rentedBuffer);
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;

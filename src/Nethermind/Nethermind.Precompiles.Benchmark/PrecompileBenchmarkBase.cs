@@ -46,7 +46,13 @@ namespace Nethermind.Precompiles.Benchmark
                 foreach (IPrecompile precompile in Precompiles)
                 {
                     List<Param> inputs = [];
-                    var inputsDir = Path.Combine(AppContext.BaseDirectory, InputsDirectory, "current");
+                    string inputsDir = Path.Combine(AppContext.BaseDirectory, InputsDirectory, "current");
+
+                    if (!Directory.Exists(inputsDir))
+                    {
+                        Console.Error.WriteLine($"[PrecompileBenchmark] Input directory not found, skipping: {inputsDir}");
+                        continue;
+                    }
 
                     foreach (string file in Directory.GetFiles(inputsDir, "*.csv", SearchOption.TopDirectoryOnly))
                     {
@@ -82,7 +88,7 @@ namespace Nethermind.Precompiles.Benchmark
         public bool Baseline()
         {
             bool overallResult = true;
-            for (var i = 0; i < Operations; i++)
+            for (int i = 0; i < Operations; i++)
             {
                 Result<byte[]> result = Input.Precompile.Run(Input.Bytes, Cancun.Instance);
                 overallResult &= result;

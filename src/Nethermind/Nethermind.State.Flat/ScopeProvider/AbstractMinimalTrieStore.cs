@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -29,7 +28,6 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
-
 
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {

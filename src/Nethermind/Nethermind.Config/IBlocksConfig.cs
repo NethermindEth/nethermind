@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Int256;
@@ -60,6 +60,16 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(Description = "Builds blocks on main (non-readonly) state", DefaultValue = "false", HiddenFromDocs = true)]
     bool BuildBlocksOnMainState { get; set; }
+
+    [ConfigItem(
+        Description = "Parallelize transaction execution when Block Level Access Lists are available. Experimental Amsterdam/BAL path; disabling falls back to sequential execution and the option is ignored for blocks without BAL bodies.",
+        DefaultValue = "true")]
+    bool ParallelExecution { get; set; }
+
+    [ConfigItem(
+        Description = "Use parallel state reads when Block Level Access Lists are available. Experimental Amsterdam/BAL path; disabling falls back to sequential reads and the option is ignored for blocks without BAL bodies.",
+        DefaultValue = "true")]
+    bool ParallelExecutionBatchRead { get; set; }
 
     byte[] GetExtraDataBytes();
 

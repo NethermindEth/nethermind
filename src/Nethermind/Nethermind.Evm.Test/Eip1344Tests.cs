@@ -5,8 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -14,8 +12,14 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1344Tests : VirtualMachineTestsBase
     {
-        private void Test(ulong expectedChainId)
+        protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
+        protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
+
+        [Test]
+        public void Chain_id_opcode_puts_expected_value_onto_the_stack()
         {
+            ulong expectedChainId = SpecProvider.ChainId;
+
             byte[] code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)
                 .PushData(0)
@@ -26,42 +30,6 @@ namespace Nethermind.Evm.Test
             Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
             AssertStorage(0, ((UInt256)expectedChainId).ToBigEndian());
-        }
-
-        private class Custom0 : Eip1344Tests
-        {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
-
-            [Test]
-            public void given_custom_0_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
-        }
-
-        private class Custom32000 : Eip1344Tests
-        {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => new CustomSpecProvider(((ForkActivation)0, Istanbul.Instance));
-
-            [Test]
-            public void given_custom_custom_32000_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
-        }
-
-        private class Mainnet : Eip1344Tests
-        {
-            protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
-
-            [Test]
-            public void given_mainnet_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
         }
     }
 }

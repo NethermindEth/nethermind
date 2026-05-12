@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -22,8 +21,10 @@ public sealed class SimulateTxTracer : TxTracer
     private readonly ulong _currentBlockNumber;
     private readonly ulong _currentBlockTimestamp;
     private readonly ulong _txIndex;
+    private readonly ulong _logIndexStart;
     private readonly List<LogEntry> _logs;
     private readonly Transaction _tx;
+    private readonly bool _isTracingTransfers;
 
     public SimulateTxTracer(
         bool isTracingTransfers,
@@ -31,7 +32,8 @@ public sealed class SimulateTxTracer : TxTracer
         ulong currentBlockNumber,
         Hash256 currentBlockHash,
         ulong currentBlockTimestamp,
-        ulong txIndex)
+        ulong txIndex,
+        ulong logIndexStart)
     {
         // Note: Tx hash will be mutated as tx is modified while processing the block
         _tx = tx;
@@ -39,17 +41,21 @@ public sealed class SimulateTxTracer : TxTracer
         _currentBlockHash = currentBlockHash;
         _currentBlockTimestamp = currentBlockTimestamp;
         _txIndex = txIndex;
+        _logIndexStart = logIndexStart;
+        _isTracingTransfers = isTracingTransfers;
         IsTracingReceipt = true;
         IsTracingLogs = true;
-        IsTracingActions = isTracingTransfers;
+        IsTracingActions = true;
         _logs = new();
     }
 
+    public int LogCount => _logs.Count;
     public SimulateCallResult? TraceResult { get; set; }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        if (!_isTracingTransfers) return;
         if (callType == ExecutionType.DELEGATECALL) return;
         if (!value.IsZero)
         {
@@ -60,6 +66,7 @@ public sealed class SimulateTxTracer : TxTracer
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
         base.ReportSelfDestruct(address, balance, refundAddress);
+        if (!_isTracingTransfers) return;
         if (!balance.IsZero)
         {
             _logs.Add(TransferLog.CreateSimulateTransfer(address, refundAddress, balance));
@@ -72,43 +79,39 @@ public sealed class SimulateTxTracer : TxTracer
         _logs.Add(log);
     }
 
-    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
-        TraceResult = new SimulateCallResult
+        GasUsed = (ulong)gasSpent.SpentGas,
+        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
+        ReturnData = output,
+        Status = StatusCode.Success,
+        Logs = _logs.Select((entry, i) => new Log
         {
-            GasUsed = (ulong)gasSpent.SpentGas,
-            ReturnData = output,
-            Status = StatusCode.Success,
-            Logs = _logs.Select((entry, i) => new Log
-            {
-                Address = entry.Address,
-                Topics = entry.Topics,
-                Data = entry.Data,
-                LogIndex = _txIndex + (ulong)i,
-                TransactionHash = _tx.Hash!,
-                TransactionIndex = _txIndex,
-                BlockHash = _currentBlockHash,
-                BlockNumber = _currentBlockNumber,
-                BlockTimestamp = _currentBlockTimestamp
-            }).ToList()
-        };
-    }
+            Address = entry.Address,
+            Topics = entry.Topics,
+            Data = entry.Data,
+            LogIndex = _logIndexStart + (ulong)i,
+            TransactionHash = _tx.Hash!,
+            TransactionIndex = _txIndex,
+            BlockHash = _currentBlockHash,
+            BlockNumber = _currentBlockNumber,
+            BlockTimestamp = _currentBlockTimestamp
+        }).ToList()
+    };
 
-    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
-        TraceResult = new SimulateCallResult
+        GasUsed = (ulong)gasSpent.SpentGas,
+        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
+        Error = new Error
         {
-            GasUsed = (ulong)gasSpent.SpentGas,
-            Error = new Error
-            {
-                Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
-                EvmException = _exceptionType,
-                Data = output
-            },
-            ReturnData = [],
-            Status = StatusCode.Failure
-        };
-    }
+            Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
+            EvmException = _exceptionType,
+            Data = output
+        },
+        ReturnData = [],
+        Status = StatusCode.Failure
+    };
 
     private EvmExceptionType _exceptionType = EvmExceptionType.None;
 

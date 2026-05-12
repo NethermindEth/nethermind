@@ -26,18 +26,15 @@ public class HoodiSpecProvider : ISpecProvider
 
     private HoodiSpecProvider() { }
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
+    public IReleaseSpec GetSpec(ForkActivation forkActivation) => forkActivation.Timestamp switch
     {
-        return forkActivation.Timestamp switch
-        {
-            null or < ShanghaiTimestamp => GenesisSpec,
-            < PragueTimestamp => Cancun.Instance,
-            < OsakaTimestamp => Prague,
-            < BPO1Timestamp => Osaka.Instance,
-            < BPO2Timestamp => BPO1.Instance,
-            _ => BPO2.Instance
-        };
-    }
+        null or < ShanghaiTimestamp => GenesisSpec,
+        < PragueTimestamp => Cancun.Instance,
+        < OsakaTimestamp => Prague,
+        < BPO1Timestamp => Osaka.Instance,
+        < BPO2Timestamp => BPO1.Instance,
+        _ => BPO2.Instance
+    };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
     {

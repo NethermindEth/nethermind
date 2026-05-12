@@ -2,7 +2,15 @@
 name: review
 description: Deep code review for an Ethereum execution client. Checks consensus correctness, security, robustness, performance, DI patterns, breaking changes, and observability. Use when asked to "review", "check this PR", "look for bugs", "audit", or "review my changes".
 allowed-tools:
-  [Bash(git diff*), Bash(git merge-base*), Bash(git log*), Bash(git status*), Read, Grep, Glob]
+  [
+    Bash(git diff*),
+    Bash(git merge-base*),
+    Bash(git log*),
+    Bash(git status*),
+    Read,
+    Grep,
+    Glob,
+  ]
 ---
 
 # Code review
@@ -108,15 +116,15 @@ Follow these steps in order. At each checkpoint, list your findings for that cat
 
 Do not comment on anything below. CI will block the merge if any of it fails.
 
-| Concern                                                     | Workflow                                     |
-| ----------------------------------------------------------- | -------------------------------------------- |
-| Code formatting, whitespace, EditorConfig                   | `code-formatting.yml` (`dotnet format`)      |
-| Build errors                                                | `build-solutions.yml`                        |
-| All unit & integration tests                                | `nethermind-tests.yml`                       |
-| CodeQL security analysis                                    | `codeql.yml`                                 |
-| Dependency vulnerabilities                                  | `dependency-review.yml`                      |
-| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml` |
-| JSON-RPC output correctness                                 | `rpc-comparison.yml`                         |
+| Concern                                                     | Workflow                                           |
+| ----------------------------------------------------------- | -------------------------------------------------- |
+| Whitespace formatting only (indentation, spacing)           | `code-formatting.yml` (`dotnet format whitespace`) |
+| Build errors                                                | `build-solutions.yml`                              |
+| All unit & integration tests                                | `nethermind-tests.yml`                             |
+| CodeQL security analysis                                    | `codeql.yml`                                       |
+| Dependency vulnerabilities                                  | `dependency-review.yml`                            |
+| Ethereum Foundation hive tests (consensus, RPC, Engine API) | `hive-tests.yml`, `hive-consensus-tests.yml`       |
+| JSON-RPC output correctness                                 | `rpc-comparison.yml`                               |
 
 Also skip: naming conventions, missing XML docs on `internal`/`private` members, minor grammar, refactoring suggestions that don't fix a real bug, logging improvements (unless security-related), build warnings that have no behavioural impact.
 

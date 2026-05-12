@@ -12,12 +12,10 @@ namespace Nethermind.Serialization.Rlp
     public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
     public interface IBlockHeaderDecoder<T> : IRlpValueDecoder<T>, IRlpStreamEncoder<T> where T : BlockHeader { }
 
-    public sealed class HeaderDecoder : RlpValueDecoder<BlockHeader>, IHeaderDecoder
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
+    public sealed class HeaderDecoder() : RlpValueDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-        public HeaderDecoder() { }
 
         protected override BlockHeader? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -135,7 +133,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[0] = !header.BaseFeePerGas.IsZero;
             requiredItems[1] = header.WithdrawalsRoot is not null;
             requiredItems[2] = header.BlobGasUsed is not null;
-            requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null;
+            requiredItems[3] = header.BlobGasUsed is not null || header.ExcessBlobGas is not null; // EIP-4844: BlobGasUsed, ExcessBlobGas always encoded as a pair
             requiredItems[4] = header.ParentBeaconBlockRoot is not null;
             requiredItems[5] = header.RequestsHash is not null;
             requiredItems[6] = header.BlockAccessListHash is not null;
@@ -212,7 +210,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[0] = !item.BaseFeePerGas.IsZero;
             requiredItems[1] = item.WithdrawalsRoot is not null;
             requiredItems[2] = item.BlobGasUsed is not null;
-            requiredItems[3] = item.BlobGasUsed is not null || item.ExcessBlobGas is not null;
+            requiredItems[3] = item.BlobGasUsed is not null || item.ExcessBlobGas is not null; // EIP-4844: BlobGasUsed, ExcessBlobGas always encoded as a pair
             requiredItems[4] = item.ParentBeaconBlockRoot is not null;
             requiredItems[5] = item.RequestsHash is not null;
             requiredItems[6] = item.BlockAccessListHash is not null;

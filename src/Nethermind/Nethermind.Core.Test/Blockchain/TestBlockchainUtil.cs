@@ -31,10 +31,8 @@ public class TestBlockchainUtil(
 
     private Task _previousAddBlock = Task.CompletedTask;
 
-    public Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
-    {
-        return AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
-    }
+    public Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions) =>
+        AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
     public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)
@@ -49,10 +47,7 @@ public class TestBlockchainUtil(
                 b => true);
 
         Block? invalidBlock = null;
-        void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e)
-        {
-            invalidBlock = e.InvalidBlock;
-        }
+        void OnInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs e) => invalidBlock = e.InvalidBlock;
 
         invalidBlockDetector.OnInvalidBlock += OnInvalidBlock;
 
@@ -117,10 +112,7 @@ public class TestBlockchainUtil(
         return block;
     }
 
-    public Task<Block> AddBlock(CancellationToken cancellationToken)
-    {
-        return AddBlock(AddBlockFlags.None, cancellationToken);
-    }
+    public Task<Block> AddBlock(CancellationToken cancellationToken) => AddBlock(AddBlockFlags.None, cancellationToken);
 
     public async Task<Block> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {

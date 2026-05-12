@@ -10,16 +10,33 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.Int256;
 
 namespace Nethermind.Xdc;
 
-internal class XdcBlockProcessor : BlockProcessor
+internal class XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor, IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager)
 {
-    public XdcBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor, IWorldState stateProvider, IReceiptStorage receiptStorage, IBeaconBlockRootHandler beaconBlockRootHandler, IBlockhashStore blockHashStore, ILogManager logManager, IWithdrawalProcessor withdrawalProcessor, IExecutionRequestsProcessor executionRequestsProcessor) : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
+    protected override BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)
     {
+        // Match Go's big.Int.Bytes() behavior: zero produces empty bytes, not [0x00].
+        ValueHash256 prevRandao = ValueKeccak.Compute(
+            header.Number != 0 ? header.Number.ToBigEndianSpanWithoutLeadingZeros(out _) : default);
+
+        // XDC enables the BLOBBASEFEE opcode without blob transactions — ExcessBlobGas is never set. Check InstructionBlobBaseFee
+        if (spec.BlobBaseFeeEnabled)
+        {
+            BlockHeader clone = header.Clone();
+            clone.ExcessBlobGas = 0;
+            return BlockExecutionContext.WithPrevRandaoAndBlobBaseFee(clone, spec, prevRandao, UInt256.Zero);
+        }
+
+        return BlockExecutionContext.WithPrevRandao(header, spec, prevRandao);
     }
 
     protected override Block PrepareBlockForProcessing(Block suggestedBlock)
@@ -34,7 +51,8 @@ internal class XdcBlockProcessor : BlockProcessor
             bh.Number,
             bh.GasLimit,
             bh.Timestamp,
-            bh.ExtraData
+            bh.ExtraData,
+            bh.IsSelfMined
         )
         {
             Bloom = Bloom.Empty,

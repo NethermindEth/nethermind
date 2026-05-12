@@ -4,13 +4,18 @@
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 using System;
+using System.Collections.Concurrent;
 using System.Text;
 
 namespace Nethermind.Specs
 {
     public class SpecNameParser
     {
-        public static IReleaseSpec Parse(string specName)
+        private static readonly ConcurrentDictionary<string, IReleaseSpec> _specs = new(StringComparer.Ordinal);
+
+        public static IReleaseSpec Parse(string specName) => _specs.GetOrAdd(specName, ParseUncached);
+
+        private static IReleaseSpec ParseUncached(string specName)
         {
             string unambiguousSpecName = new StringBuilder(specName)
                 .Replace("EIP150", "TangerineWhistle")
@@ -18,11 +23,8 @@ namespace Nethermind.Specs
                 .Replace("DAO", "Dao")
                 .Replace("Merged", "Paris")
                 .Replace("Merge", "Paris")
-                .Replace("London+3540+3670", "Shanghai")
-                .Replace("GrayGlacier+3540+3670", "Shanghai")
                 .Replace("GrayGlacier+3860", "Shanghai")
                 .Replace("GrayGlacier+3855", "Shanghai")
-                .Replace("Merge+3540+3670", "Shanghai")
                 .Replace("Shanghai+3855", "Shanghai")
                 .Replace("Shanghai+3860", "Shanghai")
                 .Replace("GrayGlacier+1153", "Cancun")

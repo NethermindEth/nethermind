@@ -29,10 +29,7 @@ public class MerkleTests
     [TestCase(4U, 4U)]
     [TestCase(uint.MaxValue / 2, 2147483648U)]
     [TestCase(uint.MaxValue / 2 + 1, 2147483648U)]
-    public void Can_get_the_next_power_of_two_32(uint value, uint expectedResult)
-    {
-        Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-    }
+    public void Can_get_the_next_power_of_two_32(uint value, uint expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
 
     [TestCase(ulong.MinValue, 1UL)]
     [TestCase(1UL, 1UL)]
@@ -41,10 +38,7 @@ public class MerkleTests
     [TestCase(4UL, 4UL)]
     [TestCase(ulong.MaxValue / 2, 9223372036854775808UL)]
     [TestCase(ulong.MaxValue / 2 + 1, 9223372036854775808UL)]
-    public void Can_get_the_next_power_of_two_64(ulong value, ulong expectedResult)
-    {
-        Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-    }
+    public void Can_get_the_next_power_of_two_64(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
 
     [TestCase(ulong.MinValue, 0UL)]
     [TestCase(1UL, 0UL)]
@@ -53,16 +47,10 @@ public class MerkleTests
     [TestCase(4UL, 2UL)]
     [TestCase(ulong.MaxValue / 2, 63UL)]
     [TestCase(ulong.MaxValue / 2 + 1, 63UL)]
-    public void Can_get_the_next_power_of_two_exponent(ulong value, ulong expectedResult)
-    {
-        Assert.That(Merkle.NextPowerOfTwoExponent(value), Is.EqualTo(expectedResult));
-    }
+    public void Can_get_the_next_power_of_two_exponent(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwoExponent(value), Is.EqualTo(expectedResult));
 
     [Test]
-    public void Zero_hashes_0_is_correct()
-    {
-        Assert.That(Merkle.ZeroHashes[0], Is.EqualTo(UInt256.Zero));
-    }
+    public void Zero_hashes_0_is_correct() => Assert.That(Merkle.ZeroHashes[0], Is.EqualTo(UInt256.Zero));
 
     [Test]
     public void Can_merkleize_bool()
@@ -219,6 +207,32 @@ public class MerkleTests
     }
 
     [Test]
+    public void Merkleizer_Feed_list_produces_correct_root()
+    {
+        // List[uint8, 64] containing just [0xAB]
+        //   pack:        0xAB padded to 32 bytes = 1 chunk
+        //   chunk_limit: ceil(64 * 1 / 32) = 2
+        //   merkleize:   hash tree with 2 leaf slots (our chunk + 1 zero chunk)
+        //   mix_in:      SHA256(merkle_root || little_endian(actual_count = 1))
+        byte[] data = [0xAB];
+        int limit = 64;
+
+        // Manually compute expected root
+        // Step 1: merkleize(pack(data), chunk_limit=2)
+        ulong chunkCount = ((ulong)limit * sizeof(byte) + 31) / 32; // = 2
+        Merkle.Merkleize(out UInt256 expectedRoot, data, chunkCount);
+        // Step 2: mix_in_length(root, actual_count=1)
+        Merkle.MixIn(ref expectedRoot, data.Length);
+
+        // Compute via Merkleizer.Feed
+        Merkleizer merkleizer = new(0);
+        merkleizer.Feed((ReadOnlySpan<byte>)data, limit);
+        UInt256 actualRoot = merkleizer.CalculateRoot();
+
+        Assert.That(actualRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
     public void Can_merkleize_bitvector()
     {
         Merkle.Merkleize(out UInt256 root, new byte[] { 123 });
@@ -228,7 +242,7 @@ public class MerkleTests
     [Test]
     public void Set_check()
     {
-        Merkleizer context = new Merkleizer(1);
+        Merkleizer context = new(1);
         for (int i = 0; i < 64; i++)
         {
             context.SetKthBit(i);
@@ -241,7 +255,7 @@ public class MerkleTests
     [Test]
     public void Check_false()
     {
-        Merkleizer context = new Merkleizer(1);
+        Merkleizer context = new(1);
         for (int i = 0; i < 64; i++)
         {
             Assert.That(context.IsKthBitSet(i), Is.False, i.ToString());
@@ -256,7 +270,7 @@ public class MerkleTests
     [TestCase(64, 6)]
     public void Feed_test(int leafs, int depth)
     {
-        Merkleizer merkleizer = new Merkleizer(depth);
+        Merkleizer merkleizer = new(depth);
         for (int i = 0; i < leafs; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -276,7 +290,7 @@ public class MerkleTests
         UInt256 result = UInt256.Zero;
         for (int j = 0; j < leafs; j++)
         {
-            Merkleizer merkleizer = new Merkleizer(depth);
+            Merkleizer merkleizer = new(depth);
             for (int i = j; i < leafs; i++)
             {
                 merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -291,7 +305,7 @@ public class MerkleTests
     [Test]
     public void Fill()
     {
-        Merkleizer merkleizer = new Merkleizer(6);
+        Merkleizer merkleizer = new(6);
         for (int i = 0; i < 7; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);

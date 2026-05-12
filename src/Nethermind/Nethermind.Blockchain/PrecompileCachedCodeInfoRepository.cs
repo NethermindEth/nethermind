@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,17 +7,16 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
-using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
 public class PrecompileCachedCodeInfoRepository(
+    IWorldState worldState,
     IPrecompileProvider precompileProvider,
     ICodeInfoRepository baseCodeInfoRepository,
     ConcurrentDictionary<PreBlockCaches.PrecompileCacheKey, Result<byte[]>>? precompileCache) : ICodeInfoRepository
@@ -29,34 +28,25 @@ public class PrecompileCachedCodeInfoRepository(
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec,
         out Address? delegationAddress)
     {
-        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out var cachedCodeInfo))
+        if (vmSpec.IsPrecompile(codeSource) && _cachedPrecompile.TryGetValue(codeSource, out CodeInfo cachedCodeInfo))
         {
+            // EIP-7928: mirror base CodeInfoRepository.GetCachedCodeInfo precompile path so the read lands in the BAL.
+            worldState.AddAccountRead(codeSource);
             delegationAddress = null;
             return cachedCodeInfo;
         }
         return baseCodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    {
-        return baseCodeInfoRepository.GetExecutableCodeHash(address, spec);
-    }
-
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
-    {
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         baseCodeInfoRepository.InsertCode(code, codeOwner, spec);
-    }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
-    {
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) =>
         baseCodeInfoRepository.SetDelegation(codeSource, authority, spec);
-    }
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec,
-        [NotNullWhen(true)] out Address? delegatedAddress)
-    {
-        return baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
-    }
+        [NotNullWhen(true)] out Address? delegatedAddress) =>
+        baseCodeInfoRepository.TryGetDelegation(address, spec, out delegatedAddress);
 
     private static CodeInfo CreateCachedPrecompile(
         in KeyValuePair<AddressAsKey, CodeInfo> originalPrecompile,
@@ -80,12 +70,20 @@ public class PrecompileCachedCodeInfoRepository(
 
         public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
-            PreBlockCaches.PrecompileCacheKey key = new(address, inputData);
+            ReadOnlyMemory<byte> effectiveInput = precompile.NormalizeInput(inputData);
+            PreBlockCaches.PrecompileCacheKey key = new(address, effectiveInput);
             if (!cache.TryGetValue(key, out Result<byte[]> result))
             {
                 result = precompile.Run(inputData, releaseSpec);
+
+                // no need to spend memory on caching invalid-length inputs
+                // it's fast to check and is the first verification done by a precompile
+                if (result is { IsError: true, Error: Errors.InvalidInputLength })
+                    return result;
+
                 // we need to rebuild the key with data copy as the data can be changed by VM processing
-                key = new PreBlockCaches.PrecompileCacheKey(address, inputData.ToArray());
+                // effective-input bounds are expected to remain the same
+                key = new(address, effectiveInput.ToArray());
                 cache.TryAdd(key, result);
             }
 

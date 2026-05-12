@@ -9,7 +9,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  spacing-check:
+  format:
     name: Check whitespaces
     runs-on: ubuntu-latest
     permissions:
@@ -21,10 +21,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
 
-      - name: Format
+      - name: Check whitespaces
         run: |
           dotnet format whitespace src/Nethermind/ --folder --verify-no-changes
           dotnet format whitespace tools/ --folder --verify-no-changes
-
-      - name: Check spelling
-        uses: streetsidesoftware/cspell-action@v7

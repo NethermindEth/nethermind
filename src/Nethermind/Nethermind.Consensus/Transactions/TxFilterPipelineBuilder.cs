@@ -11,14 +11,11 @@ namespace Nethermind.Consensus.Transactions
     {
         private readonly TxFilterPipeline _filterPipeline = new(logManager);
 
-        public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager, IBlocksConfig blocksConfig)
-        {
-            return new TxFilterPipelineBuilder(logManager)
+        public static ITxFilterPipeline CreateStandardFilteringPipeline(ILogManager logManager, IBlocksConfig blocksConfig) => new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(blocksConfig)
                 .WithBaseFeeFilter()
                 .WithHeadTxFilter()
                 .Build;
-        }
 
         public TxFilterPipelineBuilder WithHeadTxFilter()
         {

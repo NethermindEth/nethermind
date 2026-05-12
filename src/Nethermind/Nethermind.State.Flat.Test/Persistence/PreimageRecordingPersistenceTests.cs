@@ -44,7 +44,7 @@ public class PreimageRecordingPersistenceTests
 
         // CreateWriteBatch
         StateId from = StateId.PreGenesis;
-        StateId to = new StateId(1, TestItem.KeccakA);
+        StateId to = new(1, TestItem.KeccakA);
         IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
         using IPersistence.IWriteBatch batch = _sut.CreateWriteBatch(from, to, WriteFlags.None);
@@ -55,7 +55,7 @@ public class PreimageRecordingPersistenceTests
     public void SetAccount_SetStorage_SelfDestruct_RecordPreimages()
     {
         StateId from = StateId.PreGenesis;
-        StateId to = new StateId(1, TestItem.KeccakA);
+        StateId to = new(1, TestItem.KeccakA);
         IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
@@ -79,10 +79,10 @@ public class PreimageRecordingPersistenceTests
 
         // Verify address preimages
         ValueHash256 addressAPath = addressA.ToAccountPath;
-        _preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressA.Bytes);
+        _preimageDb.Get(addressAPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressA.Bytes.ToArray());
 
         ValueHash256 addressBPath = addressB.ToAccountPath;
-        _preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressB.Bytes);
+        _preimageDb.Get(addressBPath.BytesAsSpan[..PreimageLookupSize]).Should().BeEquivalentTo(addressB.Bytes.ToArray());
 
         // Verify slot preimage
         ValueHash256 slotHash = ValueKeccak.Zero;
@@ -94,12 +94,12 @@ public class PreimageRecordingPersistenceTests
     public void TrieAndRawOperations_WithoutPreimage_DelegateAsRaw()
     {
         StateId from = StateId.PreGenesis;
-        StateId to = new StateId(1, TestItem.KeccakA);
+        StateId to = new(1, TestItem.KeccakA);
         IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
         TreePath path = TreePath.FromHexString("1234");
-        TrieNode node = new TrieNode(NodeType.Leaf, [0xc1, 0x01]);
+        TrieNode node = new(NodeType.Leaf, [0xc1, 0x01]);
         Hash256 addrHash = TestItem.KeccakA;
         Hash256 slotHash = TestItem.KeccakB;
         Account account = TestItem.GenerateIndexedAccount(0);
@@ -135,14 +135,14 @@ public class PreimageRecordingPersistenceTests
 
         // Pre-populate preimage database with address and slot preimages
         ValueHash256 addrHash = address.ToAccountPath;
-        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes);
+        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes.ToArray());
 
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
         _preimageDb.Set(slotHash.BytesAsSpan[..PreimageLookupSize], slot.ToBigEndian());
 
         StateId from = StateId.PreGenesis;
-        StateId to = new StateId(1, TestItem.KeccakA);
+        StateId to = new(1, TestItem.KeccakA);
         IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
@@ -157,8 +157,8 @@ public class PreimageRecordingPersistenceTests
         innerBatch.Received(1).SetAccount(address, account);
 
         // Raw operations should NOT be called
-        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<Hash256>(), Arg.Any<Hash256>(), Arg.Any<SlotValue?>());
-        innerBatch.DidNotReceive().SetAccountRaw(Arg.Any<Hash256>(), Arg.Any<Account>());
+        innerBatch.DidNotReceive().SetStorageRaw(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>(), Arg.Any<SlotValue?>());
+        innerBatch.DidNotReceive().SetAccountRaw(Arg.Any<ValueHash256>(), Arg.Any<Account>());
     }
 
     [Test]
@@ -170,14 +170,14 @@ public class PreimageRecordingPersistenceTests
 
         // Pre-populate only address preimage (missing slot preimage)
         ValueHash256 addrHash = address.ToAccountPath;
-        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes);
+        _preimageDb.Set(addrHash.BytesAsSpan[..PreimageLookupSize], address.Bytes.ToArray());
 
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
         // Note: NOT setting slot preimage
 
         StateId from = StateId.PreGenesis;
-        StateId to = new StateId(1, TestItem.KeccakA);
+        StateId to = new(1, TestItem.KeccakA);
         IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 
@@ -195,7 +195,7 @@ public class PreimageRecordingPersistenceTests
     public void Dispose_DisposesPreimageBatchAndInnerBatch()
     {
         StateId from = StateId.PreGenesis;
-        StateId to = new StateId(1, TestItem.KeccakA);
+        StateId to = new(1, TestItem.KeccakA);
         IPersistence.IWriteBatch innerBatch = Substitute.For<IPersistence.IWriteBatch>();
         _innerPersistence.CreateWriteBatch(from, to, WriteFlags.None).Returns(innerBatch);
 

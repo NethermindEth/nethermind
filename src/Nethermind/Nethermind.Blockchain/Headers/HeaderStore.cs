@@ -8,6 +8,7 @@ using System.IO;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -25,7 +26,7 @@ public class HeaderStore(
     public const int CacheSize = 256 + 16;
 
     private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
-    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
+    private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
 
     public void Insert(BlockHeader header)
     {
@@ -62,10 +63,7 @@ public class HeaderStore(
         return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
-    public void Cache(BlockHeader header)
-    {
-        _headerCache.Set(header.Hash, header);
-    }
+    public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
 
     public void Delete(Hash256 blockHash)
     {
@@ -73,7 +71,7 @@ public class HeaderStore(
         if (blockNumber is not null) headerDb.Delete(blockNumber.Value, blockHash);
         blockNumberDb.Delete(blockHash);
         headerDb.Delete(blockHash);
-        _headerCache.Delete(blockHash);
+        _headerCache.Delete(in blockHash.ValueHash256);
     }
 
     public void InsertBlockNumber(Hash256 blockHash, long blockNumber)
@@ -111,10 +109,49 @@ public class HeaderStore(
         }
     }
 
+    public IOwnedReadOnlyList<BlockHeader> FindReversedHeaders(long endBlockNumber, Hash256 endBlockHash, int count)
+    {
+        Dictionary<ValueHash256, BlockHeader> prefetched = new(count);
+
+        if (headerDb is ISortedKeyValueStore sorted)
+        {
+            Span<byte> startKey = stackalloc byte[40];
+            Span<byte> endKey = stackalloc byte[40];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(Math.Max(0L, endBlockNumber - count + 1), default, startKey);
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(endBlockNumber + 1, default, endKey);
+
+            using ISortedView view = sorted.GetViewBetween(startKey, endKey);
+            while (view.MoveNext())
+            {
+                if (view.CurrentKey.Length != 40) continue; // skip old hash-only keys
+                BlockHeader header = _headerDecoder.Decode(view.CurrentValue);
+                header.Hash ??= new Hash256(view.CurrentKey[8..]);
+                prefetched[header.Hash.ValueHash256] = header;
+            }
+        }
+
+        BlockHeader? cursor = prefetched.TryGetValue(endBlockHash.ValueHash256, out BlockHeader? found)
+            ? found
+            : Get(endBlockHash, shouldCache: false, blockNumber: endBlockNumber);
+
+        if (cursor is null) return ArrayPoolList<BlockHeader>.Empty();
+
+        ArrayPoolList<BlockHeader> result = new(count) { cursor };
+        while (result.Count < count && cursor.ParentHash is not null)
+        {
+            long parentNumber = cursor.Number - 1;
+            cursor = prefetched.TryGetValue(cursor.ParentHash.ValueHash256, out BlockHeader? dictHeader)
+                ? dictHeader
+                : Get(cursor.ParentHash, shouldCache: false, blockNumber: parentNumber);
+            if (cursor is null) break;
+            result.Add(cursor);
+        }
+
+        result.AsSpan().Reverse();
+        return result;
+    }
+
     BlockHeader? IHeaderFinder.Get(Hash256 blockHash, long? blockNumber) => Get(blockHash, true, blockNumber);
 
-    void IClearableCache.ClearCache()
-    {
-        _headerCache.Clear();
-    }
+    void IClearableCache.ClearCache() => _headerCache.Clear();
 }

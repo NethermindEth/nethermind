@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
@@ -12,15 +11,12 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public sealed class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
+    public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false) : RlpValueDecoder<TxReceipt>
     {
-        private readonly bool _skipStateAndStatus;
+        // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
+        private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
-        public ReceiptMessageDecoder(bool skipStateAndStatus = false)
-        {
-            _skipStateAndStatus = skipStateAndStatus;
-        }
         protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (ctx.IsNextItemEmptyList())
@@ -54,11 +50,14 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
             }
 
-            txReceipt.Bloom = ctx.DecodeBloom();
+            if (!skipBloom)
+                txReceipt.Bloom = ctx.DecodeBloom();
+            // When _skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
             int numberOfReceipts = ctx.PeekNumberOfItemsRemaining(lastCheck);
+            ctx.GuardLimit(numberOfReceipts, LogsRlpLimit);
             LogEntry[] entries = new LogEntry[numberOfReceipts];
             for (int i = 0; i < numberOfReceipts; i++)
             {
@@ -96,14 +95,15 @@ namespace Nethermind.Serialization.Rlp
 
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Bloom);
+            if (!skipBloom)
+                contentLength += Rlp.LengthOf(item.Bloom);
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-            if (!_skipStateAndStatus)
+            if (!skipStateAndStatus)
             {
                 contentLength += isEip658Receipts
                     ? Rlp.LengthOf(item.StatusCode)
@@ -116,7 +116,7 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (var i = 0; i < item.Logs.Length; i++)
+            for (int i = 0; i < item.Logs.Length; i++)
             {
                 logsLength += Rlp.LengthOf(item.Logs[i]);
             }
@@ -178,7 +178,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.StartSequence(totalContentLength);
-            if (!_skipStateAndStatus)
+            if (!skipStateAndStatus)
             {
                 if (isEip658Receipts)
                 {
@@ -191,11 +191,12 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.Encode(item.GasUsedTotal);
-            rlpStream.Encode(item.Bloom);
+            if (!skipBloom)
+                rlpStream.Encode(item.Bloom);
 
             rlpStream.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;
-            for (var i = 0; i < logs.Length; i++)
+            for (int i = 0; i < logs.Length; i++)
             {
                 rlpStream.Encode(logs[i]);
             }
