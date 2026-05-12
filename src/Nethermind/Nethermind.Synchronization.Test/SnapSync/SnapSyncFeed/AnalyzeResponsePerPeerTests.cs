@@ -120,5 +120,49 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
                 feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
             }
         }
+
+        // Regression for #6803: with a single peer connected, repeated failures must trigger
+        // a pivot refresh rather than punish the only peer available.
+        [Test]
+        public void Single_peer_with_consecutive_failures_refreshes_pivot_instead_of_punishing()
+        {
+            PeerInfo peer = new(null!);
+
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            SyncResponseHandlingResult? lastResult = null;
+            for (int i = 0; i <= 6; i++)
+            {
+                lastResult = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer);
+            }
+
+            Assert.That(lastResult, Is.Not.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            snapProvider.Received(1).UpdatePivot();
+        }
+
+        // When a single peer has produced a recent success, a brief failure burst must still
+        // be tolerated and not trigger a pivot refresh on the first failure threshold breach.
+        [Test]
+        public void Single_peer_with_recent_success_is_not_punished_below_threshold()
+        {
+            PeerInfo peer = new(null!);
+
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer);
+            for (int i = 0; i < AllowedInvalidResponses; i++)
+            {
+                SyncResponseHandlingResult result = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer);
+                Assert.That(result, Is.Not.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            }
+
+            snapProvider.DidNotReceive().UpdatePivot();
+        }
+
+        private const int AllowedInvalidResponses = 5;
     }
 }
