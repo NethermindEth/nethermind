@@ -6,7 +6,7 @@ concurrency:
 
 on:
   push:
-    branches: [feat/evm-enginetest]
+    branches: [master]
   pull_request:
     types: [opened, reopened, synchronize, ready_for_review]
   pull_request_review:
@@ -50,8 +50,50 @@ defaults:
     shell: bash
 
 jobs:
+  approval-state:
+    name: Evaluate PR approval
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check approval state
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          PR_STATE: ${{ github.event.pull_request.state || '' }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login || '' }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$PR_STATE" != "open" ]; then
+            echo "PR is not open; nethtest will be skipped."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          APPROVALS="$(gh api --paginate "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews" \
+            | jq -s --arg author "$PR_AUTHOR" --arg approved APPROVED '[.[][] | select(.user.login != $author)] | group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state == $approved)) | length')"
+
+          echo "Latest approval count: $APPROVALS"
+          if [ "$APPROVALS" -gt 0 ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No current approval found; nethtest will be skipped."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   nethtest:
     name: nethtest ${{ matrix.test_setup }} on ${{ matrix.runner }} --${{ inputs.test_type || 'engineTest' }}
+    needs: approval-state
+    if: needs.approval-state.outputs.should_run == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -101,6 +143,7 @@ jobs:
         run: |
           if [ "$EEST_VERSION" = "latest" ]; then
             RESOLVED_EEST_VERSION="$(curl -fsSL \
+              --max-time 300 \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/$EEST_REPOSITORY/releases/latest" \
               | jq -r '.tag_name')"
@@ -135,7 +178,7 @@ jobs:
             mkdir -p "$EEST_DIR"
             ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
             echo "Downloading EEST fixtures from $ARCHIVE_URL"
-            curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR"
+            curl -fsSL --max-time 300 --retry 3 --retry-delay 5 "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR"
           else
             echo "EEST fixtures already cached at $EEST_DIR"
           fi
@@ -294,7 +337,7 @@ jobs:
               echo "# 2. Build and run"
               echo "cd src/Nethermind"
               echo "dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release"
-              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers $WORKERS --neverTrace${FILTER_CMD}"
+              echo "dotnet run --no-build --no-launch-profile -c Release --project Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- --$TEST_TYPE --input /tmp/eest/fixtures --jsonout --workers '$WORKERS' --neverTrace${FILTER_CMD}"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
 
@@ -413,7 +456,7 @@ jobs:
             --$TEST_TYPE \
             --input "${{ steps.fixtures.outputs.fixture_dir }}" \
             --jsonout \
-            --workers $WORKERS \
+            --workers "$WORKERS" \
             --neverTrace \
             $FILTER_ARG \
             > "$RESULTS_FILE" \

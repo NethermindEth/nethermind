@@ -121,7 +121,7 @@ namespace Nethermind.Test.Runner
         {
             test.ChainId = _chainId;
 
-            EthereumTestResult result = null;
+            EthereumTestResult? result = null;
             if (_whenTrace != WhenTrace.Always)
             {
                 if (_enableWarmup)
@@ -154,7 +154,7 @@ namespace Nethermind.Test.Runner
                 WriteErr(txTrace);
             }
 
-            return result;
+            return result!;
         }
     }
 }

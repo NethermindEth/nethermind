@@ -351,10 +351,20 @@ public abstract class BlockchainTestBase
         return (parentHeader, lastBlockError);
     }
 
-    private static readonly Dictionary<int, int> NewPayloadParamCounts = Enumerable
-        .Range(1, EngineApiVersions.NewPayload.Latest)
-        .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
-            ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
+    private static readonly Dictionary<int, int> NewPayloadParamCounts = BuildNewPayloadParamCounts();
+
+    private static Dictionary<int, int> BuildNewPayloadParamCounts()
+    {
+        Dictionary<int, int> result = [];
+        for (int version = 1; version <= EngineApiVersions.NewPayload.Latest; version++)
+        {
+            System.Reflection.MethodInfo method = typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{version}")
+                ?? throw new NotSupportedException($"engine_newPayloadV{version} not found on IEngineRpcModule. Update {nameof(EngineApiVersions.NewPayload.Latest)}.");
+            result[version] = method.GetParameters().Length;
+        }
+
+        return result;
+    }
 
     private async static Task<(string status, string? validationError)> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
@@ -504,6 +514,7 @@ public abstract class BlockchainTestBase
         ("BlockException.INVALID_BAL_EXTRA_ACCOUNT", ValidationErrorRegex(@"Error decoding block access list:.*Account changes were in incorrect order")),
         ("BlockException.INVALID_BAL_MISSING_ACCOUNT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
         ("BlockException.INVALID_DEPOSIT_EVENT_LAYOUT", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
+        // Nethermind currently reports these BAL system-contract failures with the same block access list validation message.
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
     ];
 

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.CommandLine;
 using System.IO;
-using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -142,7 +141,7 @@ internal class Program
 
             if (isEngineTest || isBlockTest)
             {
-                bool forceJson = isEngineTest || jsonOutput;
+                bool forceJson = isEngineTest || isBlockTest || jsonOutput;
                 List<EthereumTestResult> results = await RunBlockTestFiles(files, filter, chainId, trace, traceMemory, excludeStack, forceJson, workers);
                 if (forceJson)
                     Console.Out.Write(_serializer.Serialize(results, true));
@@ -168,10 +167,17 @@ internal class Program
             return [path];
 
         if (Directory.Exists(path))
-            return Directory.GetFiles(path, "*.json", SearchOption.AllDirectories)
-                .Where(f => !f.Contains("/.meta/") && !f.Contains("\\.meta\\"))
-                .OrderBy(f => f)
-                .ToList();
+        {
+            List<string> result = [];
+            foreach (string file in Directory.GetFiles(path, "*.json", SearchOption.AllDirectories))
+            {
+                if (!file.Contains("/.meta/") && !file.Contains("\\.meta\\"))
+                    result.Add(file);
+            }
+
+            result.Sort(StringComparer.Ordinal);
+            return result;
+        }
 
         return [];
     }
@@ -228,9 +234,15 @@ internal class Program
             return allResults;
         }
 
-        System.Collections.Concurrent.ConcurrentBag<(int index, IEnumerable<EthereumTestResult> results)> bag = new();
+        List<(string file, int index)> workItems = [];
+        for (int index = 0; index < files.Count; index++)
+        {
+            workItems.Add((files[index], index));
+        }
+
+        IEnumerable<EthereumTestResult>[] resultsByFile = new IEnumerable<EthereumTestResult>[files.Count];
         await Parallel.ForEachAsync(
-            files.Select((file, index) => (file, index)),
+            workItems,
             new ParallelOptions { MaxDegreeOfParallelism = effectiveWorkers },
             async (item, ct) =>
             {
@@ -239,17 +251,23 @@ internal class Program
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
                     BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true, progressUpdateFactory: UpdateProgress);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
-                    bag.Add((item.index, results));
+                    resultsByFile[item.index] = results;
                 }
                 catch (Exception ex)
                 {
                     string name = Path.GetFileNameWithoutExtension(item.file);
                     WriteFileExceptionStatus(name, ex);
-                    bag.Add((item.index, [new EthereumTestResult(name, ex.Message)]));
+                    resultsByFile[item.index] = [new EthereumTestResult(name, ex.Message)];
                 }
             });
 
-        return bag.OrderBy(x => x.index).SelectMany(x => x.results).ToList();
+        List<EthereumTestResult> combinedResults = [];
+        foreach (IEnumerable<EthereumTestResult> results in resultsByFile)
+        {
+            combinedResults.AddRange(results);
+        }
+
+        return combinedResults;
     }
 
     private static int CountBlockTestCases(List<string> files, string filter, int workers)
@@ -374,7 +392,7 @@ internal class Program
                 results[item.index] = result;
             });
 
-        return results.ToList();
+        return [.. results];
     }
 
     private static List<GeneralStateTest> ParseStateTestFile(string file, Regex? filterRegex)

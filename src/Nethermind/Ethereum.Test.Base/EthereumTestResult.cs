@@ -35,7 +35,8 @@ namespace Ethereum.Test.Base
         public bool Pass { get; set; }
         public string Fork { get; set; }
 
-        public string Error { get; set; } = "";
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Error { get; set; }
 
         [JsonIgnore]
         public double TimeInMs { get; set; }
