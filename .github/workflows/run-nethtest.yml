@@ -500,6 +500,7 @@ jobs:
 
           set +e
           RUNNER_DLL="artifacts/bin/Nethermind.Test.Runner/release/nethtest.dll"
+          DOTNET_EXE="$(command -v dotnet)"
           NETHTEST_ARGS=(
             --$TEST_TYPE
             --input "${{ steps.fixtures.outputs.fixture_dir }}"
@@ -518,11 +519,11 @@ jobs:
               --save-to-dir="$DOTMEMORY_OUTPUT_DIR" \
               --trigger-on-activation \
               --trigger-timer="${DOTMEMORY_TIMER_SECONDS}s" \
-              dotnet -- "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
+              "$DOTNET_EXE" -- "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
               > "$STDOUT_FILE" \
               2> >(tee "$STDERR_FILE" >&2) &
           else
-            dotnet "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
+            "$DOTNET_EXE" "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
               > "$STDOUT_FILE" \
               2> >(tee "$STDERR_FILE" >&2) &
           fi
