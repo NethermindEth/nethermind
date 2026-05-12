@@ -245,6 +245,6 @@ internal static class XdcTestAssertions
             return;
         }
 
-        Assert.That(actual, Is.EquivalentTo(expected));
+        Assert.That(actual, Is.EqualTo(expected));
     }
 }
