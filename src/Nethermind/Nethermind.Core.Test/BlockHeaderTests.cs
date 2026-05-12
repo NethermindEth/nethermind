@@ -123,16 +123,16 @@ public class BlockHeaderTests
         BlockHeader child = parent.CreateSimulatedChild(112);
 
         child.Should().BeOfType<BlockHeader>();
-        child.ParentHash.Should().Be(parent.Hash);
+        child.ParentHash.Should().Be(parent.Hash!);
         child.UnclesHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
-        child.Beneficiary.Should().Be(parent.Beneficiary);
+        child.Beneficiary.Should().Be(parent.Beneficiary!);
         child.Difficulty.Should().Be(UInt256.Zero);
         child.Number.Should().Be(parent.Number + 1);
         child.GasLimit.Should().Be(parent.GasLimit);
         child.Timestamp.Should().Be(112);
         child.ExtraData.Should().BeEmpty();
         child.MixHash.Should().Be(Hash256.Zero);
-        child.RequestsHash.Should().Be(parent.RequestsHash);
+        child.RequestsHash.Should().Be(parent.RequestsHash!);
         child.Hash.Should().BeNull();
         child.Bloom.Should().BeNull();
         child.StateRoot.Should().BeNull();

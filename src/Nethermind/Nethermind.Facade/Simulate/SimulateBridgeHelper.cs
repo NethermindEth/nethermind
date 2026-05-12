@@ -254,7 +254,6 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         if ((ForkActivation)result.Number >= specProvider.MergeBlockNumber)
         {
-            result.Difficulty = UInt256.Zero;
             result.IsPostMerge = true;
         }
         else

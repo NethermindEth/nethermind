@@ -167,7 +167,6 @@ public class BlockHeader
             requestsHash: requestsHash)
         {
             MixHash = Hash256.Zero,
-            RequestsHash = requestsHash,
         };
     }
 
