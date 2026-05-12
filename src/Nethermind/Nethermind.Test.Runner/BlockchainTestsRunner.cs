@@ -107,6 +107,11 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 
                 try
                 {
+                    if (suppressOutput)
+                    {
+                        WriteStatus("RUN", test.Name, true);
+                    }
+
                     EthereumTestResult result = await RunTest(test, tracer: tracer);
                     testResults.Add(result);
                     if (suppressOutput)
@@ -162,5 +167,6 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     {
         string color = pass ? "\x1b[32m" : "\x1b[31m";
         Console.Error.WriteLine($"{color}{prefix}\x1b[0m {message}");
+        Console.Error.Flush();
     }
 }
