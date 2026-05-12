@@ -5,15 +5,16 @@ namespace Nethermind.State.Flat.BSearchIndex;
 
 /// <summary>
 /// Decides the optimal index-node layout — common-key-prefix length plus
-/// (KeyType, KeySlotSize) — for a set of separators in a single pass.
+/// (KeyType, KeySlotSize) — from per-entry separator lengths and a pre-computed
+/// cross-entry LCP.
 ///
-/// Used by callers (e.g. <c>HsstIndexBuilder</c>) that already hold the separator
-/// data in flight; the resulting prefix length and key-type are then passed to
-/// <see cref="BSearchIndexWriter{TWriter}"/> as construction options. This way
-/// the strip-vs-no-strip decision and the layout decision are made together,
-/// with the layout chosen against post-strip (effective) lengths so a node
-/// whose mixed-length keys collapse to fixed-width suffixes after stripping
-/// gets the tightest layout the data supports.
+/// Used by callers (e.g. <c>HsstIndexBuilder</c>) that already know each
+/// separator's length and have the leaf-wide LCP available from their own state
+/// (no byte content needed). The resulting prefix length and key-type are then
+/// passed to <see cref="BSearchIndexWriter{TWriter}"/> as construction options,
+/// with the layout chosen against post-strip (effective) lengths so a node whose
+/// mixed-length keys collapse to fixed-width suffixes after stripping gets the
+/// tightest layout the data supports.
 /// </summary>
 internal static class BSearchIndexLayoutPlanner
 {
@@ -26,13 +27,16 @@ internal static class BSearchIndexLayoutPlanner
     public const int MaxCommonKeyPrefixLen = 128;
 
     /// <summary>
-    /// Compute the longest common prefix and the tightest KeyType+KeySlotSize for
-    /// a node whose separators are described by parallel <paramref name="offsets"/>
-    /// and <paramref name="lengths"/> spans into <paramref name="buffer"/>.
+    /// Compute the tightest KeyType+KeySlotSize for a node whose separator lengths are
+    /// supplied in <paramref name="lengths"/>, given the cross-entry LCP across those
+    /// separators in <paramref name="crossEntryLcp"/>.
     /// </summary>
-    /// <param name="buffer">Backing byte buffer holding all separators contiguously.</param>
-    /// <param name="offsets">Per-entry start offset into <paramref name="buffer"/>.</param>
     /// <param name="lengths">Per-entry separator length. Length determines count.</param>
+    /// <param name="crossEntryLcp">
+    /// Cross-entry common-prefix-length across all separators (the chain-min of adjacent
+    /// key LCPs over the entries this node covers). May exceed individual <paramref name="lengths"/>;
+    /// the planner caps via <c>min(minLen, crossEntryLcp)</c>.
+    /// </param>
     /// <param name="commonKeyPrefixLen">Out: post-gating LCP. 0 if not worth stripping.</param>
     /// <param name="keyType">Out: 0=Variable, 1=Uniform, 2=UniformWithLen.</param>
     /// <param name="keySlotSize">Out: post-strip slot size for Uniform/UniformWithLen; 0 for Variable.</param>
@@ -42,9 +46,8 @@ internal static class BSearchIndexLayoutPlanner
     /// shape: Uniform with <paramref name="keySlotSize"/> ∈ {2,4,8}.
     /// </param>
     public static void Plan(
-        ReadOnlySpan<byte> buffer,
-        ReadOnlySpan<int> offsets,
         ReadOnlySpan<int> lengths,
+        int crossEntryLcp,
         out int commonKeyPrefixLen,
         out int keyType,
         out int keySlotSize,
@@ -67,9 +70,6 @@ internal static class BSearchIndexLayoutPlanner
         bool allSameLen = true;
         int secondLen = -1;
         bool allSameLenExceptFirst = count >= 2;
-        int lcp = firstLen;
-
-        ReadOnlySpan<byte> first = firstLen > 0 ? buffer.Slice(offsets[0], firstLen) : default;
 
         for (int i = 1; i < count; i++)
         {
@@ -79,15 +79,9 @@ internal static class BSearchIndexLayoutPlanner
             if (len != firstLen) allSameLen = false;
             if (i == 1) secondLen = len;
             else if (len != secondLen) allSameLenExceptFirst = false;
-            if (lcp > 0)
-            {
-                int boundary = Math.Min(len, lcp);
-                int common = first[..boundary]
-                    .CommonPrefixLength(buffer.Slice(offsets[i], boundary));
-                if (common < lcp) lcp = common;
-            }
         }
 
+        int lcp = Math.Min(minLen, crossEntryLcp);
         if (lcp > MaxCommonKeyPrefixLen) lcp = MaxCommonKeyPrefixLen;
 
         // Strip-gate: positive savings, no key collapses to empty.
