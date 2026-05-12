@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -844,7 +843,6 @@ namespace Nethermind.Evm.TransactionProcessing
             substate = default;
             gasConsumed = tx.GasLimit;
             byte statusCode = StatusCode.Failure;
-            long selfDestructStateRefund = 0;
 
             // EIP-7702 + EIP-8037: capture the tx-start state reservoir after authorization refunds.
             // The halt path needs this to correctly initialize the reservoir in ResetForHalt.
@@ -919,8 +917,6 @@ namespace Nethermind.Evm.TransactionProcessing
                         }
                     }
 
-                    selfDestructStateRefund = CalculateSelfDestructStateRefund(spec, in substate, in accessedItems, in gasAvailable);
-
                     // EIP-8037: defer destroy list processing to after PayFees so that
                     // burn logs include the priority fee in the balance.
                     bool deferFinalization = spec.IsEip7708Enabled && spec.IsEip8037Enabled;
@@ -955,7 +951,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, selfDestructStateRefund, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, delegationRefunds, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
@@ -1191,67 +1187,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
-        private long CalculateSelfDestructStateRefund(
-            IReleaseSpec spec,
-            in TransactionSubstate substate,
-            in StackAccessTracker accessedItems,
-            in TGasPolicy gasAfterExecution)
-        {
-            if (!spec.IsEip8037Enabled || substate.ShouldRevert || substate.IsError)
-                return 0;
-
-            BlockAccessList? generatedBlockAccessList = WorldState is IBlockAccessListSource blockAccessListSource
-                ? blockAccessListSource.GeneratedBlockAccessList
-                : null;
-
-            long selfDestructStateRefund = 0;
-            foreach (Address toBeDestroyed in substate.DestroyList)
-            {
-                if (!accessedItems.CreateList.Contains(toBeDestroyed))
-                    continue;
-
-                selfDestructStateRefund = checked(selfDestructStateRefund + TGasPolicy.GetNewAccountStateCost(in gasAfterExecution));
-                selfDestructStateRefund = checked(selfDestructStateRefund + TGasPolicy.GetCodeDepositStateCost(in gasAfterExecution, WorldState.GetCode(toBeDestroyed)?.Length ?? 0));
-                selfDestructStateRefund = checked(selfDestructStateRefund + GetCreatedStorageStateRefund(in gasAfterExecution, generatedBlockAccessList, in accessedItems, toBeDestroyed));
-            }
-
-            return selfDestructStateRefund;
-        }
-
-        private long GetCreatedStorageStateRefund(
-            in TGasPolicy gasAfterExecution,
-            BlockAccessList? generatedBlockAccessList,
-            in StackAccessTracker accessedItems,
-            Address address)
-        {
-            int createdSlots = 0;
-            if (generatedBlockAccessList?.GetAccountChanges(address) is { } accountChanges)
-            {
-                foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                {
-                    if (slotChanges.Changes.Count > 0 && slotChanges.Changes.Values[^1].Value != default)
-                    {
-                        createdSlots++;
-                    }
-                }
-            }
-            else
-            {
-                // Non-BAL callers only expose the flat access tracker, so this fallback scans
-                // all touched storage cells. Keep the BAL source path preferred for block
-                // execution; optimize this if selfdestruct refunds become hot outside BAL.
-                foreach (StorageCell storageCell in accessedItems.AccessedStorageCells)
-                {
-                    if (storageCell.Address == address && !WorldState.Get(in storageCell).IsZero())
-                    {
-                        createdSlots++;
-                    }
-                }
-            }
-
-            return checked((long)createdSlots * TGasPolicy.GetStorageSetStateCost(in gasAfterExecution));
-        }
-
         protected bool PrepareDeployment(Address contractAddress)
         {
             if (!WorldState.IsNonZeroAccount(contractAddress, out _))
@@ -1268,7 +1203,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
-            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, long selfDestructStateRefund, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir)
+            in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, int codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir)
         {
             TGasPolicy gasAfterExecution = unspentGas;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
@@ -1280,22 +1215,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     stateGasFloor -= refundedTopLevelCreateStateGas;
                     TGasPolicy.RefundStateGas(ref gasAfterExecution, refundedTopLevelCreateStateGas, stateGasFloor, trackSpillRefund: false);
                 }
-            }
-
-            long topLevelCreateStateRefund = selfDestructStateRefund > 0
-                ? Math.Min(
-                    selfDestructStateRefund,
-                    CalculateTopLevelCreateSelfDestructStateRefund(tx, in substate, in gasAfterExecution))
-                : 0;
-            long stateGasRefundToReservoir = selfDestructStateRefund - topLevelCreateStateRefund;
-            if (stateGasRefundToReservoir > 0)
-            {
-                TGasPolicy.RefundStateGas(ref gasAfterExecution, stateGasRefundToReservoir, stateGasFloor);
-            }
-
-            if (topLevelCreateStateRefund > 0)
-            {
-                TGasPolicy.DiscardStateGas(ref gasAfterExecution, topLevelCreateStateRefund, Math.Max(0, stateGasFloor - topLevelCreateStateRefund));
             }
 
             long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
@@ -1319,23 +1238,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 PayRefund(tx, (ulong)(tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, blockStateGas, Math.Max(spentGas, floorGasLong));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static long CalculateTopLevelCreateSelfDestructStateRefund(
-            Transaction tx,
-            in TransactionSubstate substate,
-            in TGasPolicy gasAfterExecution)
-        {
-            if (!tx.IsContractCreation || tx.SenderAddress is null)
-            {
-                return 0;
-            }
-
-            Address contractAddress = Nethermind.Evm.ContractAddress.From(tx.SenderAddress, tx.Nonce);
-            return substate.DestroyList.Contains(contractAddress)
-                ? TGasPolicy.GetCreateStateCost(in gasAfterExecution)
-                : 0;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
