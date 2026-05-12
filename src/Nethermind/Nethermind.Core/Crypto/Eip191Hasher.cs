@@ -10,7 +10,7 @@ namespace Nethermind.Core.Crypto
     public static class Eip191Hasher
     {
         // EIP-191 version byte (0x19) followed by the personal_sign domain separator.
-        private static readonly byte[] HeaderBytes = [0x19, .."Ethereum Signed Message:\n"u8];
+        private static readonly byte[] HeaderBytes = [0x19, .. "Ethereum Signed Message:\n"u8];
         private static ReadOnlySpan<byte> Header => HeaderBytes;
 
         // EIP-191: keccak256("\x19Ethereum Signed Message:\n" || ascii(byteLength) || messageBytes).
