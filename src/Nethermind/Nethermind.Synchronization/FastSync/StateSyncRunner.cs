@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -26,7 +25,7 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
-    IBlockTree blockTree,
+    IWorldStateManager worldStateManager,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
@@ -112,7 +111,7 @@ public class StateSyncRunner(
 
         // Records the pivot as the oldest block for which we now have state.
         // Reported through eth_capabilities.
-        blockTree.OldestStateBlock = finalPivot.Number;
+        worldStateManager.OldestStateBlock = finalPivot.Number;
 
         if (syncConfig.VerifyTrieOnStateSyncFinished)
             verifyTrieStarter?.TryStartVerifyTrie(finalPivot);

@@ -91,7 +91,9 @@ namespace Nethermind.JsonRpc.Benchmark
                 new LogIndexConfig(),
                 new BlocksConfig().SecondsPerSlot,
                 _headBlockSignal,
-                new EthCapabilitiesProvider(blockTree.AsReadOnly(), _container.Resolve<IWorldStateManager>(),
+                new EthCapabilitiesProvider(
+                    blockTree.AsReadOnly(),
+                    _container.Resolve<IWorldStateManager>(),
                     _container.Resolve<ISyncConfig>(),
                     Substitute.For<ISyncPointers>(),
                     Substitute.For<IHistoryConfig>(),

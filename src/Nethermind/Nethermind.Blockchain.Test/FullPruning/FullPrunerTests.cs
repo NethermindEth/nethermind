@@ -244,6 +244,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                     FullPruningCompletionBehavior = completionBehavior
                 },
                 BlockTree,
+                Substitute.For<IWorldStateManager>(),
                 StateReader,
                 ProcessExitSource,
                 _chainEstimations,

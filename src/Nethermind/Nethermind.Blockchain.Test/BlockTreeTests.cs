@@ -1422,20 +1422,6 @@ public class BlockTreeTests
         Assert.That(loadedTree.Head?.Number, Is.EqualTo(50));
     }
 
-    [Test]
-    public void OldestStateBlock_round_trips_through_metadata_db()
-    {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(2);
-        BlockTree tree = builder.TestObject;
-        Assert.That(tree.OldestStateBlock, Is.Null);
-
-        tree.OldestStateBlock = 42;
-        Assert.That(tree.OldestStateBlock, Is.EqualTo(42L));
-
-        BlockTree reloaded = Build.A.BlockTree().WithDatabaseFrom(builder).TestObject;
-        Assert.That(reloaded.OldestStateBlock, Is.EqualTo(42L));
-    }
-
     [MaxTime(Timeout.MaxTestTime)]
     [TestCase(1L)]
     [TestCase(2L)]

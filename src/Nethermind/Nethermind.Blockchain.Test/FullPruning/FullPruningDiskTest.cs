@@ -65,6 +65,7 @@ public class FullPruningDiskTest
                 PruningTrigger,
                 PruningConfig,
                 BlockTree,
+                Container.Resolve<IWorldStateManager>(),
                 StateReader,
                 ProcessExitSource,
                 DriveInfo,
@@ -115,6 +116,7 @@ public class FullPruningDiskTest
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
+            IWorldStateManager worldStateManager,
             IStateReader stateReader,
             IProcessExitSource processExitSource,
             IDriveInfo driveInfo,
@@ -122,7 +124,7 @@ public class FullPruningDiskTest
             IChainEstimations chainEstimations,
             ILogManager logManager)
             : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
-                stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
+                worldStateManager, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
 

@@ -51,7 +51,9 @@ public partial class EthRpcModuleTests
         syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
         syncPointers.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceipt);
 
-        return new EthCapabilitiesProvider(blockTree, wsm,
+        return new EthCapabilitiesProvider(
+            blockTree,
+            wsm,
             syncConfig ?? new SyncConfig(),
             syncPointers,
             historyConfig ?? Substitute.For<IHistoryConfig>(),
@@ -263,7 +265,9 @@ public partial class EthRpcModuleTests
         blockTree.Head.Returns((Block?)null);
         IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
 
-        EthCapabilities caps = new EthCapabilitiesProvider(blockTree, wsm,
+        EthCapabilities caps = new EthCapabilitiesProvider(
+            blockTree,
+            wsm,
             new SyncConfig(),
             Substitute.For<ISyncPointers>(),
             Substitute.For<IHistoryConfig>(),

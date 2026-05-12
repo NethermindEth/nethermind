@@ -188,7 +188,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.LogIndexConfig,
             @this.BlocksConfig.SecondsPerSlot,
             new HeadBlockSignal(@this.BlockTree),
-            new EthCapabilitiesProvider(@this.BlockTree.AsReadOnly(), @this.WorldStateManager,
+            new EthCapabilitiesProvider(
+                @this.BlockTree.AsReadOnly(),
+                @this.WorldStateManager,
                 @this.Container.Resolve<ISyncConfig>(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),

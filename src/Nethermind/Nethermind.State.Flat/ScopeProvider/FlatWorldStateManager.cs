@@ -22,10 +22,12 @@ public class FlatWorldStateManager(
     Func<FlatOverridableWorldScope> overridableWorldScopeFactory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
-    IOldestStateBlockStore oldestStateBlockStore,
+    IDbProvider dbProvider,
     ILogManager logManager)
     : IWorldStateManager
 {
+    private readonly OldestStateBlockStore _oldestStateBlockStore = new(dbProvider.MetadataDb);
+
     private readonly FlatScopeProvider _mainWorldState = new(
         codeDb,
         flatDbManager,
@@ -54,8 +56,8 @@ public class FlatWorldStateManager(
 
     public long? OldestStateBlock
     {
-        get => oldestStateBlockStore.OldestStateBlock;
-        set => oldestStateBlockStore.OldestStateBlock = value;
+        get => _oldestStateBlockStore.Value;
+        set => _oldestStateBlockStore.Value = value;
     }
 
     // Flat storage can technically reconstruct proofs from flat data, but only for blocks where

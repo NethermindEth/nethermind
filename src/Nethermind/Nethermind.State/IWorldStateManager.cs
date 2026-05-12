@@ -10,17 +10,6 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-/// <summary>
-/// Narrow interface for read/write of the absolute oldest state block floor. Implemented
-/// by <c>BlockTree</c> (which persists it in the metadata DB). Exposed via
-/// <see cref="IWorldStateManager.OldestStateBlock"/> for consumers outside the blockchain
-/// layer that need to know the state retention floor.
-/// </summary>
-public interface IOldestStateBlockStore
-{
-    long? OldestStateBlock { get; set; }
-}
-
 public interface IWorldStateManager
 {
     IWorldStateScopeProvider GlobalWorldState { get; }

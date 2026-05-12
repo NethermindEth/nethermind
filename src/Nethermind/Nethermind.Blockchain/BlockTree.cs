@@ -30,7 +30,7 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain
 {
-    public partial class BlockTree : IBlockTree, Nethermind.State.IOldestStateBlockStore
+    public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
         private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
@@ -1737,21 +1737,6 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsProcessingBlock { get; set; }
-
-        private long? _oldestStateBlock;
-        public long? OldestStateBlock
-        {
-            get => _oldestStateBlock;
-            set
-            {
-                if (_oldestStateBlock == value) return;
-                _oldestStateBlock = value;
-                if (value.HasValue)
-                {
-                    _metadataDb.Set(MetadataDbKeys.OldestStateBlock, Rlp.Encode(value.Value).Bytes);
-                }
-            }
-        }
 
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {

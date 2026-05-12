@@ -71,7 +71,6 @@ public class PruningTrieStateFactory(
             scopeProvider,
             trieStore,
             dbProvider,
-            (Nethermind.State.IOldestStateBlockStore)blockTree,
             logManager,
             pruningConfig,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));
@@ -83,7 +82,7 @@ public class PruningTrieStateFactory(
 
         disposeStack.Push(mainWorldTrieStore);
 
-        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager.GlobalStateReader, trieStore);
+        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager, trieStore);
         if (fullPruner is not null)
         {
             disposeStack.Push(fullPruner);

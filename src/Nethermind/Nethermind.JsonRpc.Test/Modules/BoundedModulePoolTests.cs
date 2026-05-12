@@ -63,9 +63,13 @@ public class BoundedModulePoolTests
             new BlocksConfig(),
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogIndexConfig>(),
-            new EthCapabilitiesProvider(blockTree.AsReadOnly(), Substitute.For<IWorldStateManager>(),
-                new SyncConfig(), Substitute.For<ISyncPointers>(),
-                Substitute.For<IHistoryConfig>(), Substitute.For<IHistoryPruner>())),
+            new EthCapabilitiesProvider(
+                blockTree.AsReadOnly(),
+                Substitute.For<IWorldStateManager>(),
+                new SyncConfig(),
+                Substitute.For<ISyncPointers>(),
+                Substitute.For<IHistoryConfig>(),
+                Substitute.For<IHistoryPruner>())),
              1, 1000);
 
         return Task.CompletedTask;

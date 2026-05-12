@@ -37,13 +37,6 @@ namespace Nethermind.Blockchain
             set => _wrapped.BestPersistedState = value;
         }
 
-        public long? OldestStateBlock
-        {
-            get => _wrapped.OldestStateBlock;
-            set => _wrapped.OldestStateBlock = value;
-        }
-
-
         public BlockHeader? LowestInsertedBeaconHeader
         {
             get => _wrapped.LowestInsertedBeaconHeader;
