@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
         }
 
-        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]>? keyValueStore = null) => new ShaMerkleTree(keyValueStore ?? new MemMerkleTreeStore());
+        private MerkleTree BuildATree(IKeyValueStore<ulong>? keyValueStore = null) => new ShaMerkleTree(keyValueStore ?? new MemMerkleTreeStore());
 
         [Test]
         public void Initially_count_is_0()

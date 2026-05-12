@@ -75,4 +75,6 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int FiltersTimeout { get; set; } = 900000;
     public bool PreloadRpcModules { get; set; }
     public bool StrictHexFormat { get; set; } = true;
+    public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
+    public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
 };

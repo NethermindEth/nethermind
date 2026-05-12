@@ -125,6 +125,55 @@ public class ZkGasTxTracerTests
         Assert.That(meter.TxZkGasUsed, Is.EqualTo(expected));
     }
 
+    // ── spawn opcode — CREATE post-trace bail vs error (regression) ──────────
+
+    /// <summary>
+    /// Regression test for block 11297 mismatch: a CREATE that bails after
+    /// <c>EndInstructionTrace</c> (e.g. EIP-7610 nonce/code collision) reports
+    /// <c>ReportOperationRemainingGas</c> but never fires <c>ReportAction</c>
+    /// nor <c>ReportOperationError</c>. REVM charges the fixed spawn estimate
+    /// in this case, so the deferred CREATE step must be flushed with
+    /// <see cref="ZkGasSchedule.SpawnEstimateCreate"/>, not the raw delta.
+    /// </summary>
+    [Test]
+    public void SpawnOpcode_Create_PostTraceBail_UsesSpawnEstimate()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        // CREATE = 0xf0
+        tracer.StartOperation(0, Instruction.CREATE, gas: 50_000, env: Env());
+        tracer.ReportOperationRemainingGas(49_968); // 32 raw delta — should be ignored
+        // No ReportAction (post-trace bail) and no ReportOperationError.
+        // Deferred step flushed by the next opcode start.
+        tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
+        tracer.ReportOperationRemainingGas(0);
+
+        ulong spawnCharge = ZkGasSchedule.SpawnEstimateCreate * ZkGasSchedule.OpcodeMultipliers[0xf0];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(spawnCharge));
+    }
+
+    /// <summary>
+    /// Regression test for block 259: a CREATE that runs out of gas after
+    /// <c>EndInstructionTrace</c> reports both <c>ReportOperationRemainingGas</c>
+    /// and <c>ReportOperationError</c>. This is NOT a post-trace bail — REVM
+    /// charges the raw measured gas delta, not the spawn estimate.
+    /// </summary>
+    [Test]
+    public void SpawnOpcode_Create_OutOfGasAfterTrace_UsesRawDelta()
+    {
+        (ZkGasTxTracer tracer, ZkGasMeter meter) = Make();
+
+        tracer.StartOperation(0, Instruction.CREATE, gas: 50_000, env: Env());
+        tracer.ReportOperationRemainingGas(49_968); // 32 raw delta
+        tracer.ReportOperationError(EvmExceptionType.OutOfGas);
+        // Deferred step flushed by the next opcode start.
+        tracer.StartOperation(1, Instruction.STOP, gas: 0, env: Env());
+        tracer.ReportOperationRemainingGas(0);
+
+        ulong rawCharge = 32UL * ZkGasSchedule.OpcodeMultipliers[0xf0];
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(rawCharge));
+    }
+
     /// <summary>
     /// Deferred step is flushed with spawn estimate by
     /// <see cref="ZkGasTxTracer.ReportActionEnd(long, ReadOnlyMemory{byte})"/>
