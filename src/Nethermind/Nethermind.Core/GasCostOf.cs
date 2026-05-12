@@ -96,18 +96,5 @@ namespace Nethermind.Core
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
-        public static long CalculateCostPerStateByte(long blockGasLimit) => CostPerStateByte;
-
-        public static long CalculateSSetState(long costPerStateByte) => checked(StateBytesPerStorageSet * costPerStateByte);
-        public static long CalculateCreateState(long costPerStateByte) => checked(StateBytesPerNewAccount * costPerStateByte);
-        public static long CalculateNewAccountState(long costPerStateByte) => checked(StateBytesPerNewAccount * costPerStateByte);
-        public static long CalculateCodeDepositState(long costPerStateByte, int byteCodeLength) => checked(costPerStateByte * byteCodeLength);
-        public static long CalculatePerAuthBaseState(long costPerStateByte) => checked(StateBytesPerAuthBase * costPerStateByte);
-        public static long CalculatePerEmptyAccountState(long costPerStateByte) => checked(StateBytesPerNewAccount * costPerStateByte);
-        public static long CalculateSystemCallStateReservoir(long costPerStateByte) =>
-            checked(StateBytesPerStorageSet * costPerStateByte * SystemMaxSstoresPerCall);
-        public static long CalculateSystemCallGasLimit(long costPerStateByte) =>
-            checked(SystemCallBaseGasLimit + CalculateSystemCallStateReservoir(costPerStateByte));
-        public static long CalculateSSetReversalRefund(long costPerStateByte) => checked(CalculateSSetState(costPerStateByte) + SSetRegular - WarmStateRead);
     }
 }

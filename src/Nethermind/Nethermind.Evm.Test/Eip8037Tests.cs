@@ -36,14 +36,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
     [TestCaseSource(nameof(ConstantsTestCases))]
     public long Constants_are_calculated_correctly(long actual) => actual;
 
-    [TestCase(0L)]
-    [TestCase(1_000_000L)]
-    [TestCase(30_000_000L)]
-    [TestCase(100_000_000L)]
-    [TestCase(200_000_000L)]
-    public void Cost_per_state_byte_is_static(long blockGasLimit) =>
-        Assert.That(GasCostOf.CalculateCostPerStateByte(blockGasLimit), Is.EqualTo(GasCostOf.CostPerStateByte));
-
     [TestCase(1, ExpectedResult = 6L)]
     [TestCase(32, ExpectedResult = 6L)]
     [TestCase(33, ExpectedResult = 12L)]
@@ -107,14 +99,12 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Gas_policy_exposes_dynamic_state_costs()
+    public void Gas_policy_exposes_state_costs()
     {
-        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(30_000_000);
-        EthereumGasPolicy gas = new() { CostPerStateByte = costPerStateByte };
+        EthereumGasPolicy gas = default;
 
         Assert.That(
             (
-                EthereumGasPolicy.GetCostPerStateByte(in gas),
                 EthereumGasPolicy.GetStorageSetStateCost(in gas),
                 EthereumGasPolicy.GetCreateStateCost(in gas),
                 EthereumGasPolicy.GetNewAccountStateCost(in gas),
@@ -122,54 +112,35 @@ public class Eip8037Tests : VirtualMachineTestsBase
             ),
             Is.EqualTo(
                 (
-                    costPerStateByte,
-                    GasCostOf.CalculateSSetState(costPerStateByte),
-                    GasCostOf.CalculateCreateState(costPerStateByte),
-                    GasCostOf.CalculateNewAccountState(costPerStateByte),
-                    GasCostOf.CalculatePerAuthBaseState(costPerStateByte)
+                    GasCostOf.SSetState,
+                    GasCostOf.CreateState,
+                    GasCostOf.NewAccountState,
+                    GasCostOf.PerAuthBaseState
                 )));
     }
 
     [Test]
-    public void Gas_policy_preserves_zero_cost_per_state_byte()
+    public void Generic_code_deposit_cost_uses_fixed_state_pricing()
     {
-        EthereumGasPolicy gas = new() { CostPerStateByte = 0 };
-
-        Assert.That(
-            (
-                EthereumGasPolicy.GetCostPerStateByte(in gas),
-                EthereumGasPolicy.GetStorageSetStateCost(in gas),
-                EthereumGasPolicy.GetCreateStateCost(in gas),
-                EthereumGasPolicy.GetNewAccountStateCost(in gas)
-            ),
-            Is.EqualTo((0L, 0L, 0L, 0L)));
-    }
-
-    [Test]
-    public void Generic_code_deposit_cost_uses_policy_state_pricing()
-    {
-        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(30_000_000);
-        EthereumGasPolicy gas = new() { CostPerStateByte = costPerStateByte };
+        EthereumGasPolicy gas = default;
 
         bool success = CodeDepositHandler.CalculateCost(Amsterdam.Instance, 33, in gas, out long regularCost, out long stateCost);
 
         Assert.That((success, regularCost, stateCost),
-            Is.EqualTo((true, 12L, GasCostOf.CalculateCodeDepositState(costPerStateByte, 33))));
+            Is.EqualTo((true, 12L, GasCostOf.CodeDepositState * 33)));
     }
 
     [Test]
-    public void Intrinsic_gas_carries_dynamic_cost_per_state_byte()
+    public void Intrinsic_gas_uses_fixed_state_costs()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved()
             .WithAuthorizationCode(new AuthorizationTuple(1, TestItem.AddressF, 0, 0, UInt256.One, UInt256.One))
             .TestObject;
 
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(tx, Amsterdam.Instance, 30_000_000);
-        long costPerStateByte = GasCostOf.CalculateCostPerStateByte(30_000_000);
 
-        Assert.That(EthereumGasPolicy.GetCostPerStateByte(intrinsicGas.Standard), Is.EqualTo(costPerStateByte));
         Assert.That(intrinsicGas.Standard.StateReservoir,
-            Is.EqualTo(GasCostOf.CalculateNewAccountState(costPerStateByte) + GasCostOf.CalculatePerAuthBaseState(costPerStateByte)));
+            Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
     }
 
     [Test]
@@ -240,17 +211,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Refund_does_not_copy_child_cost_per_state_byte_to_parent()
-    {
-        EthereumGasPolicy parent = new() { CostPerStateByte = 11, Value = 100 };
-        EthereumGasPolicy child = new() { CostPerStateByte = 11, Value = 50 };
-
-        EthereumGasPolicy.Refund(ref parent, in child);
-
-        Assert.That(parent.CostPerStateByte, Is.EqualTo(11L));
-    }
-
-    [Test]
     public void Child_frame_gets_full_state_reservoir()
     {
         EthereumGasPolicy parent = new() { Value = 1_000, StateReservoir = 333, StateGasUsed = 50 };
@@ -292,7 +252,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
         {
             Value = 2 * GasCostOf.SSetState - GasCostOf.NewAccountState,
             StateGasUsed = intrinsicAuthState,
-            CostPerStateByte = GasCostOf.CostPerStateByte,
         };
 
         long regularRefund = EthereumGasPolicy.ApplyCodeInsertRefunds(ref gas, 1, Amsterdam.Instance, intrinsicAuthState);
@@ -322,7 +281,6 @@ public class Eip8037Tests : VirtualMachineTestsBase
         {
             Value = 1_000_000,
             StateReservoir = GasCostOf.CreateState,
-            CostPerStateByte = GasCostOf.CostPerStateByte,
         };
         StackAccessTracker accessTracker = new();
         using VmState<EthereumGasPolicy> vmState = VmState<EthereumGasPolicy>.RentTopLevel(
