@@ -24,9 +24,9 @@ public sealed class OldestStateBlockStore(IDb metadataDb)
             if (_value == value) return;
             _value = value;
             if (value.HasValue)
-            {
                 metadataDb.Set(MetadataDbKeys.OldestStateBlock, Rlp.Encode(value.Value).Bytes);
-            }
+            else
+                metadataDb.Delete(MetadataDbKeys.OldestStateBlock);
         }
     }
 }
