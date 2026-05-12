@@ -158,9 +158,6 @@ public class PrewarmerScopeProvider(
 
         public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
-            // One fused background pass — baseScope.HintBal walks the BAL in parallel, enqueues
-            // trie-warmer jobs, and uses our CacheSink to populate preBlockCaches off the same
-            // per-account GetAccount lookup that trie warmup already pays for.
             sink ??= new CacheSink(preBlockCache, storageCache);
             return baseScope.HintBal(bal, sink);
         }

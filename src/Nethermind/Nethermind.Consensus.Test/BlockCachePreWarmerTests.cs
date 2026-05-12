@@ -178,14 +178,10 @@ public class BlockCachePreWarmerTests
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
-        // Changed slot should be warmed — SSTORE consults the original value for EIP-2200/3529
-        // gas accounting, so the pre-state is genuinely read during execution.
         preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 1), out _).Should().BeTrue(
             "slot 1 (changed) should be pre-warmed via BAL");
-        // Read-only slot should be warmed
         preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressA, 2), out _).Should().BeTrue(
             "slot 2 (read-only) should be pre-warmed via BAL");
-        // Storage from a different account
         preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressB, 10), out _).Should().BeTrue(
             "slot 10 on AddressB should be pre-warmed via BAL");
     }
@@ -385,18 +381,11 @@ public class BlockCachePreWarmerTests
             .WithGasLimit(30_000_000)
             .TestObject;
 
-    // Mirrors BranchProcessor: open the main worldstate's scope around the prewarmer call and
-    // drive BlockProcessor's HintBal on it. AddressWarmer no longer touches HintBal directly,
-    // but BAL-driven cache fill happens here via the main scope's HintBal Task.
-    //
-    // Synchronous on purpose: TrieStore.BeginScope returns a Lock-based IDisposable that requires
-    // same-thread Dispose; await would let NUnit resume on a different threadpool thread and
-    // throw SynchronizationLockException at scope close.
+    // Sync on purpose — TrieStore's Lock-based BeginScope dispose must run on the same thread.
     private Task RunPreWarmCaches(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent, IReleaseSpec spec)
     {
-        // HintBal reads the BAL's pre-sorted arrays directly and bails out when they aren't built.
-        // Tests construct BALs via the mutation API (no pre-sort), so force the sort once here —
-        // mirrors the RLP-decode path that production HintBal consumers always see.
+        // Force the BAL sort once — HintBal bails when the pre-sorted arrays aren't built and
+        // tests build via the mutation API; production sees RLP-decoded BALs with sort populated.
         if (block.BlockAccessList is not null)
         {
             foreach (AccountChanges ac in block.BlockAccessList.AccountChangesByAddress)

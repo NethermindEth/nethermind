@@ -33,15 +33,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
     private bool _isDisposed = false;
 
-    // tasks within the trie warmer's ring buffer. Volatile so the background HintBal task sees increments without
-    // conflicting with the Interlocked writer.
+    // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
+    // tasks within the trie warmer's ring buffer.
     private volatile int _hintSequenceId = 0;
     private int _outstandingWarmups = 0;
     private StateId _currentStateId;
     internal volatile bool _pausePrewarmer = false;
 
-    // Tracked background HintBal task — StartWriteBatch / Dispose cancel and drain it so the
-    // warmer thread isn't competing with the write batch for CPU or for the snapshot bundle.
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
@@ -165,25 +163,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
-        // Single parallel walk that fuses trie warmup with the (optional) BAL read pass.
-        //
-        // GetAccount(address) is the only blocking op per account, so we do it once per account
-        // and reuse the result for both sides:
-        //   - trie warmup needs the StorageRoot to seed a per-account FlatStorageTree before
-        //     enqueuing slot jobs for StorageChanges (only writes warm the trie — mirrors HintSet);
-        //   - the sink (when provided) receives OnAccountRead + OnStorageRead for both
-        //     StorageChanges and StorageReads. SSTORE consults the original value for
-        //     EIP-2200 / EIP-3529 gas refund accounting, so changed slots are genuinely read
-        //     at runtime; StorageReads ⊥ StorageChanges by BAL construction, so no duplication.
-        // Use the pre-sorted array directly when it's already built (always the case for
-        // RLP-decoded BALs). If it isn't built, bail out rather than trigger an on-demand sort
-        // on a background thread.
         AccountChanges[]? accountChanges = bal.AccountChangesByAddressOrNull;
         if (accountChanges is null || accountChanges.Length == 0) return Task.CompletedTask;
         int accountCount = accountChanges.Length;
 
-        // Cancel and drain any previous in-flight HintBal task before starting a new one —
-        // never overlap two warmups on the same scope.
         CancelHintBal();
 
         _hintBalCts = new CancellationTokenSource();
@@ -194,18 +177,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
-            // Per-account state recorded by phase 1 and consumed by phase 2 (sink slot reads).
-            // selfDestructIdxs[i] is only meaningful when accounts[i] is non-null with non-empty
-            // storage root; phase 2 gates on accounts[i] before reading either.
             Account?[]? accounts = sink is null ? null : new Account?[accountCount];
             int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
 
             try
             {
-                // Phase 1: per-account work — trie warmup pushes, GetAccount, sink.OnAccountRead.
-                // Slot reads via the sink are deferred to phase 2 where they're parallelised across
-                // a flat job list, so a single account with thousands of slots doesn't bottleneck
-                // the worker thread that owned it.
+                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
+                // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
                 Parallel.For(0, accountCount, parallelOptions, (i) =>
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
@@ -213,8 +191,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     AccountChanges ac = accountChanges[i];
                     Address address = ac.Address;
 
-                    // Trie warmup: address path. Gate on ShouldQueuePrewarm so we don't queue
-                    // warmup for addresses the snapshot already covers (mirrors HintGet).
                     if (_snapshotBundle.ShouldQueuePrewarm(address)
                         && _warmer.PushAddressJob(this, address, snapshot))
                         Interlocked.Increment(ref _outstandingWarmups);
@@ -222,9 +198,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     SlotChanges[]? storageChanges = ac.StorageChangesOrNull;
                     int storageChangeCount = storageChanges?.Length ?? 0;
 
-                    // One GetAccount per account — feeds both the sink and the storage-tree seed.
                     Account? account = sink is null && storageChangeCount == 0
-                        ? null // no consumer needs the account in this case
+                        ? null
                         : _snapshotBundle.GetAccount(address);
 
                     if (sink is not null && sink.StillNeeded(address, out _))
@@ -236,8 +211,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                     if (storageChanges is not null && storageChangeCount > 0)
                     {
-                        // Per-account non-cached tree just for trie warmup pushes — the main thread's
-                        // CreateStorageTreeImpl builds its own cached instance on first use.
                         FlatStorageTree storageWarmer = new(
                             this,
                             _warmer,
@@ -251,10 +224,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         foreach (SlotChanges slotChanges in storageChanges)
                         {
                             UInt256 key = slotChanges.Key;
-                            // Gate on ShouldQueuePrewarm (mirrors HintSet/WarmUpSlot) so we don't
-                            // queue slot warmup for cells the snapshot already covers. Pair every
-                            // successful push with an increment — the warmer's WarmUpStorageTrie
-                            // always decrements in its finally block.
                             if (_snapshotBundle.ShouldQueuePrewarm(address, key)
                                 && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
                                 Interlocked.Increment(ref _outstandingWarmups);
@@ -268,8 +237,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     }
                 });
 
-                // Phase 2: flat parallel slot reads into the sink. Both StorageChanges and
-                // StorageReads are read here.
                 if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
@@ -317,8 +284,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         Parallel.For(0, idx, parallelOptions, (j) =>
         {
-            // Defensive re-check — a Commit racing the slot read pass will flip _pausePrewarmer
-            // and we should drop the remaining work rather than hit the snapshot bundle uselessly.
             if (_pausePrewarmer) return;
             (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
             ReadSlotToSink(sink, address, in slot, selfDestructIdx);
@@ -382,8 +347,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
-        // Cancel + drain any in-flight HintBal: write batches are CPU-intensive and the warmer
-        // task would otherwise race with the writer for the snapshot bundle and for CPU.
         CancelHintBal();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }

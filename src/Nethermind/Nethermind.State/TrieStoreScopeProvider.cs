@@ -90,35 +90,22 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public Task HintBal(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {
-            // No trie warmer on the legacy trie-store path — HintBal only does anything when a
-            // sink is provided (the prewarmer wants its caches filled).
+            // Legacy trie-store path: no trie warmer, so HintBal only does work when a sink is given.
             if (sink is null) return Task.CompletedTask;
 
-            // Use the pre-sorted array directly when it's already built (always for RLP-decoded
-            // BALs). If it isn't built, bail out rather than trigger the on-demand sort here.
             AccountChanges[]? accountChanges = bal.AccountChangesByAddressOrNull;
             if (accountChanges is null || accountChanges.Length == 0) return Task.CompletedTask;
             int accountCount = accountChanges.Length;
 
-            // StateTree.Get / StorageTree.Get mutate internal node caches as they traverse,
-            // so they're not thread-safe. Each Parallel.For iteration owns its own tree
-            // instances; iterations run concurrently relative to each other.
-            //
-            // Both StorageChanges and StorageReads are pre-fetched: SSTORE consults the
-            // original slot value for EIP-2200 / EIP-3529 gas accounting, so changed slots
-            // are genuinely read at runtime; the two collections are disjoint by BAL
-            // construction so there's no duplicate work.
             CancelHintBal();
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
 
             return _hintBalTask = Task.Run(() =>
             {
-                // One Parallel.For at the address granularity — each iteration owns its own
-                // StateTree and StorageTree. PatriciaTree.Get mutates shared TrieNode children
-                // in place as it lazily resolves them, so the tree instances must not be shared
-                // across workers. Slots for a single account are read sequentially on the worker
-                // that owns it; large accounts don't get per-slot parallelism on this path.
+                // PatriciaTree.Get mutates shared TrieNode children in place as it resolves them,
+                // so each Parallel.For iteration must own its StateTree / StorageTree — slots per
+                // account are read sequentially on the worker that owns it.
                 ParallelOptions parallelOptions = new() { CancellationToken = token };
                 try
                 {
@@ -190,7 +177,6 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {
-            // Cancel + drain any in-flight HintBal so it doesn't race the writer or hold trie caches busy.
             CancelHintBal();
             return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
         }

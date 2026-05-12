@@ -84,8 +84,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
                 ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
 
-                // BAL makes speculative tx execution redundant — when BAL-based read warming
-                // is in use, drive warmup directly off the suggested block's access list.
                 BlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
                 // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
@@ -99,14 +97,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return Task.CompletedTask;
     }
 
-    // Pre-warming runs in two distinct modes:
-    //  - Speculative tx execution (default): runs txs against a snapshot to seed caches.
-    //    Skipped when parallel execution will actually run, because parallel execution keeps
-    //    its results rather than throwing them away after warmup. Parallel execution requires
-    //    BAL, so when BAL isn't active for this spec we still need speculative prewarming.
-    //  - BAL-based read warming: when parallel execution is on AND batch read is enabled,
-    //    we still warm — but only by reading state/storage referenced by the block's
-    //    access list (no tx execution).
     private bool ShouldPreWarm(IReleaseSpec spec)
         => !_parallelExecutionEnabled
         || !spec.BlockLevelAccessListsEnabled
@@ -392,8 +382,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     }
                 }
 
-                // BAL warmup is driven from BlockProcessor.HintBal on the main scope —
-                // when Bal is set here we just skip the speculative per-tx WarmupSender loop.
+                // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
                 if (Bal is null)
                 {
                     WarmingState<Block> baseState = new(envPool, block, parent);
