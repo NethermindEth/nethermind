@@ -17,17 +17,10 @@ public enum IndexType : byte
     /// same size.
     /// </summary>
     PackedArray = 0x02,
+    // 0x03 is reserved (previously ByteTagMap). Do not reuse without a wire-format bump.
     /// <summary>
-    /// Tiny single-byte-keyed map (≤ 32 entries). Replaces the b-tree with a flat
-    /// trailer of `[Ends: N×u32 LE][Tags: N×u8][Count: u8][IndexType: u8]` over a
-    /// concatenated value region. Lookup is a linear/SIMD scan of the tag bytes
-    /// followed by an index into `Ends` — no LEB128 / b-tree machinery.
-    /// </summary>
-    ByteTagMap = 0x03,
-    /// <summary>
-    /// Byte-addressed array map. Like <see cref="ByteTagMap"/> but the tag byte is
-    /// the array index directly: lookup of single-byte key <c>k</c> resolves to
-    /// <c>Ends[k]</c> with no tag scan. Trailer is
+    /// Byte-addressed array map. The tag byte is the array index directly: lookup of
+    /// single-byte key <c>k</c> resolves to <c>Ends[k]</c> with no tag scan. Trailer is
     /// <c>[Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8]</c> — no tags array.
     /// Entries that were not explicitly written are gap-filled with zero-length
     /// values (the cumulative end equals the previous entry's end). Used by the

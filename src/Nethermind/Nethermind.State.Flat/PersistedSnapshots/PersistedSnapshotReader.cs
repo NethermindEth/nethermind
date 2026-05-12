@@ -17,10 +17,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 public static class PersistedSnapshotReader
 {
-    private const int TopPathThreshold = 5;
+    private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
     private const int StorageHashPrefixLength = 20;
-    private const int SlotPrefixLength = 31;
+    private const int SlotPrefixLength = 30;
 
     /// <summary>
     /// Seek the per-address inner-HSST bound:
@@ -122,8 +122,8 @@ public static class PersistedSnapshotReader
     {
         if (path.Length <= TopPathThreshold)
         {
-            Span<byte> key = stackalloc byte[3];
-            path.EncodeWith3Byte(key);
+            Span<byte> key = stackalloc byte[4];
+            path.EncodeWith4Byte(key);
             return TryGetFromColumn<TReader, TPin>(in reader, PersistedSnapshot.StateTopNodesTag, key, out bound);
         }
         if (path.Length <= CompactPathThreshold)
@@ -141,8 +141,8 @@ public static class PersistedSnapshotReader
     /// <summary>
     /// Look up a storage-trie node within an already-positioned per-address inner HSST
     /// (produced by <see cref="TryGetAddressHsstBound"/> and cached on the snapshot).
-    /// Walks sub-tag <c>StorageTopSubTag</c> for top paths (length 0-5),
-    /// <c>StorageCompactSubTag</c> for compact paths (length 6-15), and
+    /// Walks sub-tag <c>StorageTopSubTag</c> for top paths (length 0-7),
+    /// <c>StorageCompactSubTag</c> for compact paths (length 8-15), and
     /// <c>StorageFallbackSubTag</c> for paths past the compact threshold.
     /// </summary>
     internal static bool TryLoadStorageNodeRlpInBound<TReader, TPin>(scoped in TReader reader, Bound addressBound, in TreePath path, out Bound bound)
@@ -152,8 +152,8 @@ public static class PersistedSnapshotReader
         using HsstReader<TReader, TPin> r = new(in reader, addressBound);
         if (path.Length <= TopPathThreshold)
         {
-            Span<byte> key = stackalloc byte[3];
-            path.EncodeWith3Byte(key);
+            Span<byte> key = stackalloc byte[4];
+            path.EncodeWith4Byte(key);
             if (!r.TrySeek(PersistedSnapshot.StorageTopSubTag, out _) ||
                 !r.TrySeek(key, out _))
             {

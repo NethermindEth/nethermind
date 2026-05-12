@@ -97,7 +97,7 @@ internal static class PersistedSnapshotBloomBuilder
 
     /// <summary>
     /// Bloom key for a state-trie node, hashed from the same encoded byte-sequence
-    /// that the writer stores on disk (3-byte form for length 0–5, 8-byte for 6–15,
+    /// that the writer stores on disk (4-byte form for length 0–7, 8-byte for 8–15,
     /// 33-byte fallback for 16+). Routing through the encoding makes the key
     /// independent of whether the <see cref="TreePath"/> arrived canonical or with a
     /// non-zero tail, and matches the path the scanner reconstructs on reload.
@@ -107,8 +107,8 @@ internal static class PersistedSnapshotBloomBuilder
     {
         Span<byte> encoded = stackalloc byte[33];
         int length = path.Length;
-        if (length < 6)
-            path.EncodeWith3Byte(encoded[..3]);
+        if (length < 8)
+            path.EncodeWith4Byte(encoded[..4]);
         else if (length < 16)
             path.EncodeWith8Byte(encoded[..8]);
         else

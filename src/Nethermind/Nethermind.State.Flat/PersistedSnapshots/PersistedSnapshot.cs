@@ -25,9 +25,9 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///   Column 0x00: Metadata — String key → version, block range, ref_ids list, state root values
 ///   Column 0x01: AddressHash (20 bytes) → per-address HSST {
 ///       0x01 (StorageTopSubTag):      nested HSST (TreePath (3 bytes) → NodeRef, path length 0-5)
-///       0x02 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → NodeRef, path length 6-15)
+///       0x02 (StorageCompactSubTag):  nested HSST (TreePath (8 bytes compact) → NodeRef, path length 8-15)
 ///       0x03 (StorageFallbackSubTag): nested HSST (TreePath.Path (33 bytes) → NodeRef, path length 16+)
-///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(31) → nested ByteTagMap(SlotSuffix(1) → SlotValue))
+///       0x04 (SlotSubTag):            nested HSST (SlotPrefix(30) → nested HSST(SlotSuffix(2) → SlotValue))
 ///       0x05 (AccountSubTag):         raw account slim RLP bytes (empty = deleted account)
 ///       0x06 (SelfDestructSubTag):    raw SD flag bytes (empty = destructed, 0x01 = new account)
 ///   }

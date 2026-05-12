@@ -26,7 +26,6 @@ namespace Nethermind.State.Flat.Hsst;
 /// remain null. Each public method dispatches via a <c>switch</c> on a discriminator.
 ///
 ///   - <see cref="IndexType.PackedArray"/>     → <c>PackedArrayVariant</c> (no offset table; fixed stride).
-///   - <see cref="IndexType.ByteTagMap"/>      → <c>ByteTagMapVariant</c>  (no offset table; offsets via trailing Ends array).
 ///   - <see cref="IndexType.BTree"/>           → <c>BTreeVariant</c>       (offset table; leaves only reachable by recursing the index tree).
 ///
 /// <see cref="MoveNext"/> consumes the reader (variants need it for LEB128 / Ends-array
@@ -39,16 +38,15 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    private enum VariantKind : byte { Empty, PackedArray, ByteTagMap, BTree }
+    private enum VariantKind : byte { Empty, PackedArray, BTree }
 
     // Struct envelope: only thing that needs to live on the value is the
-    // discriminator and the three nullable variant references. All mutable
+    // discriminator and the two nullable variant references. All mutable
     // iteration state lives on the heap-allocated variant objects, so copies
     // of this struct (e.g. via ArrayPoolList<T>'s by-value indexer) still
     // observe / advance the same underlying cursor.
     private readonly VariantKind _kind;
     private readonly PackedArrayVariant? _packed;
-    private readonly ByteTagMapVariant? _byteTag;
     private readonly BTreeVariant? _btree;
 
     public HsstEnumerator(scoped in TReader reader, Bound scope)
@@ -73,10 +71,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 _packed = PackedArrayVariant.TryCreate(in reader, scope);
                 _kind = _packed is not null ? VariantKind.PackedArray : VariantKind.Empty;
                 break;
-            case IndexType.ByteTagMap:
-                _byteTag = ByteTagMapVariant.TryCreate(in reader, scope);
-                _kind = _byteTag is not null ? VariantKind.ByteTagMap : VariantKind.Empty;
-                break;
             case IndexType.BTree:
                 _btree = new BTreeVariant(in reader, scope);
                 _kind = VariantKind.BTree;
@@ -95,7 +89,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     public long Count => _kind switch
     {
         VariantKind.PackedArray => _packed!.Count,
-        VariantKind.ByteTagMap => _byteTag!.Count,
         VariantKind.BTree => _btree!.Count,
         _ => 0,
     };
@@ -103,7 +96,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     public bool MoveNext(scoped in TReader reader) => _kind switch
     {
         VariantKind.PackedArray => _packed!.MoveNext(),
-        VariantKind.ByteTagMap => _byteTag!.MoveNext(in reader),
         VariantKind.BTree => _btree!.MoveNext(in reader),
         _ => false,
     };
@@ -116,7 +108,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     private Bound CurrentKey => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentKey,
-        VariantKind.ByteTagMap => _byteTag!.CurrentKey,
         VariantKind.BTree => _btree!.CurrentKey,
         _ => default,
     };
@@ -126,7 +117,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
 
     /// <summary>
     /// Copy the current key in its LOGICAL (lex/BE) form into <paramref name="dst"/> and
-    /// return that slice. For BTree, ByteTagMap, and BE-stored PackedArray the stored
+    /// return that slice. For BTree and BE-stored PackedArray the stored
     /// bytes already match logical form, so this is a straight copy. For LE-stored
     /// PackedArray (auto-enabled at <c>keySize ∈ {2,4,8}</c>) the on-disk bytes are
     /// byte-reversed and this method un-reverses them — callers see the same lex/BE
@@ -161,7 +152,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     public Bound CurrentValue => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentValue,
-        VariantKind.ByteTagMap => _byteTag!.CurrentValue,
         VariantKind.BTree => _btree!.CurrentValue,
         _ => default,
     };
@@ -169,7 +159,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     public long CurrentMetadataStart => _kind switch
     {
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
-        VariantKind.ByteTagMap => _byteTag!.CurrentMetadataStart,
         VariantKind.BTree => _btree!.CurrentMetadataStart,
         _ => 0,
     };
@@ -227,76 +216,6 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         public Bound CurrentKey => new(_currentEntryStart, _keySize);
         public Bound CurrentValue => new(_currentEntryStart + _keySize, _valueSize);
         public long CurrentMetadataStart => _currentEntryStart + _keySize;
-    }
-
-    // -----------------------------------------------------------------------
-    // ByteTagMap: 1-byte keys, variable-length values driven by the trailing
-    // Ends array. No offset table — derive each entry's offsets in MoveNext.
-    // -----------------------------------------------------------------------
-
-    private sealed class ByteTagMapVariant
-    {
-        private const int OffsetSize = 2;
-
-        private readonly long _scopeStart;
-        private readonly int _count;
-        private readonly long _tagsStart;
-        private readonly long _endsStart;
-        private int _index = -1;
-        private int _prevEnd;
-        private long _currentValStart;
-        private long _currentValLen;
-
-        public static ByteTagMapVariant? TryCreate(scoped in TReader reader, Bound scope)
-        {
-            // Trailer layout:
-            //   [Ends: N×u16 LE][Tags: N×u8][Count: u8 = N - 1][IndexType: u8]
-            if (scope.Length < 2) return null;
-
-            int n;
-            using (TPin hdrPin = reader.PinBuffer(scope.Offset + scope.Length - 2, 1))
-            {
-                n = hdrPin.Buffer[0] + 1;
-            }
-            long trailerLen = 2L + n + (long)n * OffsetSize;
-            if (trailerLen > scope.Length) return null;
-            long tagsStart = scope.Offset + scope.Length - 2 - n;
-            long endsStart = tagsStart - (long)n * OffsetSize;
-            return new ByteTagMapVariant(scope.Offset, n, tagsStart, endsStart);
-        }
-
-        private ByteTagMapVariant(long scopeStart, int count, long tagsStart, long endsStart)
-        {
-            _scopeStart = scopeStart;
-            _count = count;
-            _tagsStart = tagsStart;
-            _endsStart = endsStart;
-            _currentValStart = scopeStart;
-        }
-
-        public long Count => _count;
-
-        public bool MoveNext(scoped in TReader reader)
-        {
-            int next = _index + 1;
-            if (next >= _count) return false;
-            _index = next;
-
-            int thisEnd;
-            using (TPin endPin = reader.PinBuffer(_endsStart + (long)next * OffsetSize, OffsetSize))
-            {
-                thisEnd = BinaryPrimitives.ReadUInt16LittleEndian(endPin.Buffer);
-            }
-            // Ends are scope-relative offsets; convert to absolute.
-            _currentValStart = _scopeStart + _prevEnd;
-            _currentValLen = thisEnd - _prevEnd;
-            _prevEnd = thisEnd;
-            return true;
-        }
-
-        public Bound CurrentKey => new(_tagsStart + _index, 1);
-        public Bound CurrentValue => new(_currentValStart, _currentValLen);
-        public long CurrentMetadataStart => _currentValStart;
     }
 
     // -----------------------------------------------------------------------

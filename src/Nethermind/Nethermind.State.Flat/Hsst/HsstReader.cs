@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.Hsst;
 /// Maintains an active <see cref="Bound"/> (absolute offset+length within the reader).
 /// <see cref="TrySeek"/> dispatches by <see cref="IndexType"/> into the per-layout reader
 /// (<see cref="HsstBTreeReader"/>, <see cref="HsstPackedArrayReader"/>,
-/// <see cref="HsstByteTagMapReader"/>) and repositions the bound to the matched entry's
+/// <see cref="HsstDenseByteIndexReader"/>) and repositions the bound to the matched entry's
 /// value region, also returning that bound via <c>out matched</c>. To save/restore
 /// scope across sibling seeks, capture <see cref="GetBound"/> beforehand and restore
 /// with <see cref="SetBound"/>.
@@ -83,15 +83,6 @@ public ref struct HsstReader<TReader, TPin>(scoped in TReader reader, Bound init
                 {
                     _bound = flatBound;
                     matched = flatBound;
-                    return true;
-                }
-                matched = default;
-                return false;
-            case IndexType.ByteTagMap:
-                if (HsstByteTagMapReader.TrySeek<TReader, TPin>(in _reader, _bound, key, exactMatch, out Bound tagBound))
-                {
-                    _bound = tagBound;
-                    matched = tagBound;
                     return true;
                 }
                 matched = default;

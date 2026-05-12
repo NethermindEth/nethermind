@@ -40,7 +40,6 @@ A compact, immutable binary format for sorted key/value tables.
 |---|---|
 | **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
 | **PackedArray** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x02]` |
-| **ByteTagMap** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x03]` |
 | **DenseByteIndex** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
@@ -50,7 +49,7 @@ the variant by enumerated value (not a bitfield):
 |---|---|---|
 | `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
 | `0x02` | `PackedArray` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
-| `0x03` | `ByteTagMap` | Tiny single-byte-keyed map (≤ 255 entries) — flat tag/end-offset trailer over a concatenated value region. |
+| `0x03` | _reserved_ | Previously `ByteTagMap`; do not reuse without bumping the wire format. |
 | `0x04` | `DenseByteIndex` | Single-byte-keyed map indexed directly by the tag byte; gap-filled with zero-length values. |
 
 Other values are reserved for future index strategies. The root B-tree
@@ -187,77 +186,13 @@ hash table.
 - Random access by entry index is `O(1)`; lookups are
   `O(Depth · log(stride/KeySize) + log N)` reads of `KeySize` bytes each.
 
-### ByteTagMap variant
-
-A specialised layout for tiny single-byte-keyed maps where the b-tree's fixed
-parse cost (LEB128 metadata, separator/full-key duplication, leaf binary
-search) dominates payload work. Targets the persisted-snapshot column
-container (≤7 entries), per-address sub-tag map (≤3 entries), and the
-slot-suffix bucket under a 31-byte slot prefix (≤256 distinct suffix bytes,
-encoded up to the u8 `Count` cap of 255).
-
-```
-[Value_0][Value_1]…[Value_{N-1}][Ends: N·u32 LE][Tags: N·u8][Count: u8 = N][IndexType: u8 = 0x03]
-```
-
-Section ordering rationale: `Tags` is touched on every lookup (linear
-scan); `Ends` is only consulted *after* a tag hit. Placing `Tags`
-adjacent to `[Count][IndexType]` keeps the lookup-critical bytes on the
-same cache line as the trailer bytes the reader fetches first.
-
-- **`Value_i`** — raw bytes of the value associated with the i-th tag
-  (in ascending tag order). Values may themselves be nested HSSTs, exactly
-  like `BTree`. There is no length prefix in front of each value; lengths
-  are derived from `Ends` differences.
-- **`Ends`** — `N` little-endian `u32`s. `Ends[i]` is the **exclusive end
-  offset** of `Value_i` measured from byte 0 of the HSST. Equivalently,
-  the start of `Value_{i+1}` (or the first byte of the `Ends` section
-  itself when `i = N-1`). The start of `Value_i` is `i == 0 ? 0 : Ends[i-1]`,
-  and its length is `Ends[i] - (i == 0 ? 0 : Ends[i-1])`. Because `Ends`
-  values are absolute offsets within the HSST, a single `ByteTagMap` HSST
-  is capped at ≈4 GiB — same effective limit as the b-tree variants.
-- **`Tags`** — `N` bytes, strictly ascending. Used for lookup; uniqueness
-  is a build-time invariant.
-- **`Count`** — single byte, holds `N`. Capped at **255** (the u8 limit;
-  `0` is reserved for the empty case). Beyond that, callers should use
-  `BTree` instead. The empty case (`N = 0`) encodes as the 2-byte sequence
-  `[0x00][0x03]`.
-
-**Lookup procedure** (exact and floor):
-
-1. Read tail byte → `IndexType` must equal `0x03`.
-2. Read byte at `end - 2` → `N`. If `N == 0`, no entry → not found.
-3. `Tags` lives at `[end - 2 - N, end - 2)` — directly adjacent to
-   `Count`, no further offset math. `Ends` lives at
-   `[end - 2 - N - 4·N, end - 2 - N)` and is only consulted after a hit.
-4. Linear scan `Tags` for the requested byte. For floor, take the
-   largest tag whose 1-byte key is `≤` the input's first byte (a
-   multi-byte input compares strictly greater than the matching 1-byte
-   tag, so the floor is still the largest tag `≤ input[0]`). Miss →
-   not found (exact) or fall-through (floor with no candidate ≤).
-5. Hit at index `i`: read `Ends[i]` (and `Ends[i-1]` if `i > 0`) to get
-   `valueStart = i == 0 ? 0 : Ends[i-1]`, `valueEnd = Ends[i]`. Return
-   the value span `[valueStart, valueEnd)`.
-
-No LEB128, no b-tree node parse, no separator/full-key duplication. The
-trailer cost is `5·N + 2` bytes regardless of value sizes.
-
-**Restrictions and trade-offs.**
-
-- All keys are exactly 1 byte. Multi-byte keys are rejected at build time.
-- `N ≤ 32` (one-byte `Count`). Larger maps must use `BTree`.
-- HSST size capped at ≈4 GiB (u32 `Ends`).
-- Per-entry overhead is 5 bytes (1 tag + 4 end-offset); plus the
-  2-byte trailer footer. No b-tree, no leaf metadata, no per-entry
-  LEB128 length prefix in the data region.
-
 ### DenseByteIndex variant
 
-Like `ByteTagMap` but the tag byte *is* the array index — there is no
-separate `Tags` array. The reader resolves single-byte key `k` directly
-to `Ends[k]` with no scan. Used for column containers where the set of
-tag positions is fixed and known (persisted-snapshot outer column
-container; per-address sub-tag container).
+A single-byte-keyed map where the tag byte *is* the array index — no
+`Tags` array. The reader resolves single-byte key `k` directly to
+`Ends[k]` with no scan. Used for column containers where the set of tag
+positions is fixed and known (persisted-snapshot outer column container;
+per-address sub-tag container).
 
 ```
 [Value_0][Value_1]…[Value_{N-1}][Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]
@@ -268,9 +203,9 @@ container; per-address sub-tag container).
   values: `Ends[i] == (i == 0 ? 0 : Ends[i-1])`. Length 0 is therefore
   the in-band "absent" marker — callers that need to distinguish absent
   from present-but-empty must encode a presence byte inside the value.
-- **`Ends`** — `N` little-endian `u32`s. Same semantics as `ByteTagMap`:
-  `Ends[i]` is the exclusive end offset of `Value_i` measured from byte
-  0 of the HSST. `N` is `(highestWrittenTag + 1)`.
+- **`Ends`** — `N` little-endian `u32`s. `Ends[i]` is the exclusive end
+  offset of `Value_i` measured from byte 0 of the HSST. `N` is
+  `(highestWrittenTag + 1)`.
 - **`Count`** — single byte, holds `N − 1` (so `N` ranges over `1..256`
   encoded as `0..255`). The empty case (no values ever written) is not
   representable; callers must always emit at least one entry.
@@ -290,9 +225,9 @@ container; per-address sub-tag container).
 
 - All keys are exactly 1 byte. Multi-byte keys are rejected at build time.
 - `N ≤ 256` (`Count` is a u8 holding `N − 1`).
-- Cheaper than `ByteTagMap` when the tag space is dense (no `Tags`
-  array, no scan); strictly worse when most tag positions are unused
-  (gap-filled `Ends` slots are paid in full).
+- Densest single-byte-keyed encoding (no `Tags` array, no scan); strictly
+  worse when most tag positions are unused (gap-filled `Ends` slots are
+  paid in full).
 
 ## B-tree index node layout
 
@@ -415,8 +350,6 @@ Writers / encoders:
 - `Hsst/IndexType.cs` — enum of valid index-type byte values.
 - `Hsst/HsstPackedArrayBuilder.cs` / `Hsst/HsstPackedArrayReader.cs` — `PackedArray`
   writer / reader (recursive summary index, optional hash table).
-- `Hsst/HsstByteTagMapBuilder.cs` — `ByteTagMap` writer (concatenated
-  values + flat tag/end-offset trailer).
 - `Hsst/HsstDenseByteIndexBuilder.cs` — `DenseByteIndex` writer
   (concatenated values + Ends-only trailer; tag-byte = array index).
 
@@ -426,9 +359,6 @@ Readers / decoders:
 - `Hsst/HsstIndex.cs` — parses a single index node from its tail.
 - `BSearchIndex/BSearchIndexReader.cs` — alternate index-node decoder
   used by the merge path; mirrors `HsstIndex` parsing.
-- `Hsst/HsstByteTagMapReader.cs` — `ByteTagMap` lookup helper (linear
-  tag scan + Ends-derived value bound); dispatched into from
-  `HsstReader`/`HsstEnumerator`/`HsstMergeEnumerator`.
 - `Hsst/HsstDenseByteIndexReader.cs` — `DenseByteIndex` lookup helper
   (direct `Ends[k]` index, no tag scan); dispatched into from
   `HsstReader`.

@@ -23,7 +23,8 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 public sealed class PersistedSnapshotScanner(WholeReadSession session, PersistedSnapshot snapshot)
 {
-    private const int SlotPrefixLength = 31;
+    private const int SlotPrefixLength = 30;
+    private const int SlotSuffixLength = 32 - SlotPrefixLength;
 
     private readonly WholeReadSession _session = session;
     private readonly PersistedSnapshot _snapshot = snapshot;
@@ -239,7 +240,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _suffixEnum;
         private byte _level; // 0=need new addr, 1=have prefixEnum, 2=have suffixEnum
         private ValueHash256 _curAddrHash;
-        // Slot prefix is 31 bytes (BTree, not LE-stored), slot suffix is 1 byte (ByteTagMap).
+        // Slot prefix is 30 bytes (BTree, not LE-stored), slot suffix is 2 bytes (inner BTree).
         // Logical-form copies; HsstRefEnumerator hides any LE-stored layout.
         private readonly byte[] _curPrefix;
         private int _curPrefixLen;
@@ -251,7 +252,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         {
             _reader = reader;
             _curPrefix = new byte[SlotPrefixLength];
-            _curSuffix = new byte[1];
+            _curSuffix = new byte[SlotSuffixLength];
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
             Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
             _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
@@ -334,7 +335,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private readonly byte _stage = stage;
         public TreePath Path => _stage switch
         {
-            0 => TreePath.DecodeWith3Byte(_key),
+            0 => TreePath.DecodeWith4Byte(_key),
             1 => PersistedSnapshotReader.DecodeCompactTreePath(_key),
             _ => new(new ValueHash256(_key[..32]), _key[32]),
         };
@@ -417,7 +418,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         private readonly byte _stage = stage;
         public TreePath Path => _stage switch
         {
-            0 => TreePath.DecodeWith3Byte(_pathKey),
+            0 => TreePath.DecodeWith4Byte(_pathKey),
             1 => PersistedSnapshotReader.DecodeCompactTreePath(_pathKey),
             _ => new(new ValueHash256(_pathKey[..32]), _pathKey[32]),
         };

@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 /// </summary>
 internal static class HsstSizeEstimator
 {
-    private const int TopPathThreshold = 5;
+    private const int TopPathThreshold = 7;
     private const int CompactPathThreshold = 15;
 
     /// <summary>
@@ -43,7 +43,7 @@ internal static class HsstSizeEstimator
 
     /// <summary>
     /// Estimates the serialized size of the storage column (3-level nested).
-    /// Address(20) → prefix HSST(SlotPrefix(31) → suffix ByteTagMap(SlotSuffix(1) → SlotValue))
+    /// Address(20) → prefix HSST(SlotPrefix(30) → suffix HSST(SlotSuffix(2) → SlotValue))
     /// </summary>
     public static int EstimateStorageColumnSize(Snapshot snapshot)
     {
@@ -63,13 +63,12 @@ internal static class HsstSizeEstimator
 
         int slotsPerAddress = storageCount / distinctAddresses;
 
-        // Estimate suffix ByteTagMap sizes (SlotSuffix(1) → SlotValue, ~32 bytes avg value).
-        // Each distinct prefix group averages ~1 suffix entry; ByteTagMap trailer is 3·N + 2.
-        int avgSuffixHsstSize = EstimateByteTagMapSize(slotsPerAddress, slotsPerAddress * 32);
+        // Estimate suffix inner-BTree sizes (SlotSuffix(2) → SlotValue, ~32 bytes avg value).
+        int avgSuffixHsstSize = EstimateSimpleHsstSize(slotsPerAddress, 2, 2, 32);
 
-        // Estimate prefix HSST sizes (SlotPrefix(31) → suffix ByteTagMap)
-        // Most slots share the same 31-byte prefix per address; estimate ~1 prefix group per address
-        int avgPrefixSeparatorLen = 15; // 31-byte prefix keys have ~15-byte separators
+        // Estimate prefix HSST sizes (SlotPrefix(30) → suffix inner HSST)
+        // Most slots share the same 30-byte prefix per address; estimate ~1 prefix group per address
+        int avgPrefixSeparatorLen = 15; // 30-byte prefix keys have ~15-byte separators
         int prefixGroupsPerAddress = Math.Max(1, slotsPerAddress / 4); // conservative estimate
         int avgPrefixHsstSize = EstimateSimpleHsstSize(prefixGroupsPerAddress, avgPrefixSeparatorLen, avgPrefixSeparatorLen, avgSuffixHsstSize);
 
@@ -101,7 +100,7 @@ internal static class HsstSizeEstimator
 
     /// <summary>
     /// Estimates the serialized size of the state top nodes column.
-    /// State top nodes HSST: TreePath(3 bytes) → TrieNode(RLP, ~650 bytes avg), path length 0-5
+    /// State top nodes HSST: TreePath(4 bytes) → TrieNode(RLP, ~650 bytes avg), path length 0-7
     /// </summary>
     public static int EstimateStateTopNodesColumnSize(Snapshot snapshot)
     {
@@ -118,14 +117,14 @@ internal static class HsstSizeEstimator
         if (count == 0)
             return 2; // Minimal HSST
 
-        int avgPathSeparatorLen = 2; // 3-byte top paths have ~2-byte separators
+        int avgPathSeparatorLen = 3; // 4-byte top paths have ~3-byte separators
         int avgNodeRlpSize = 650;
         return EstimateSimpleHsstSize(count, avgPathSeparatorLen, avgPathSeparatorLen, avgNodeRlpSize);
     }
 
     /// <summary>
     /// Estimates the serialized size of the state nodes compact column.
-    /// State nodes compact HSST: TreePath(8 bytes) → TrieNode(RLP, ~650 bytes avg), path length 6-15
+    /// State nodes compact HSST: TreePath(8 bytes) → TrieNode(RLP, ~650 bytes avg), path length 8-15
     /// </summary>
     public static int EstimateStateNodesCompactColumnSize(Snapshot snapshot)
     {
@@ -173,7 +172,7 @@ internal static class HsstSizeEstimator
 
     /// <summary>
     /// Estimates the serialized size of the storage nodes top column (nested).
-    /// Outer HSST: Hash256Prefix(20) → inner HSST(TreePath(3) → TrieNode), path length 0-5
+    /// Outer HSST: Hash256Prefix(20) → inner HSST(TreePath(4) → TrieNode), path length 0-7
     /// </summary>
     public static int EstimateStorageNodesTopColumnSize(Snapshot snapshot)
     {
@@ -199,7 +198,7 @@ internal static class HsstSizeEstimator
         int totalInnerSize = 0;
         int nodesPerHash = nodeCount / distinctHashes;
 
-        int avgPathSeparatorLen = 2; // 3-byte top paths have ~2-byte separators
+        int avgPathSeparatorLen = 3; // 4-byte top paths have ~3-byte separators
         for (int i = 0; i < distinctHashes; i++)
         {
             totalInnerSize += EstimateSimpleHsstSize(nodesPerHash, avgPathSeparatorLen, avgPathSeparatorLen, 650);
@@ -212,7 +211,7 @@ internal static class HsstSizeEstimator
 
     /// <summary>
     /// Estimates the serialized size of the storage nodes compact column (nested).
-    /// Outer HSST: Hash256Prefix(20) → inner HSST(TreePath(8) → TrieNode), path length 6-15
+    /// Outer HSST: Hash256Prefix(20) → inner HSST(TreePath(8) → TrieNode), path length 8-15
     /// </summary>
     public static int EstimateStorageNodesCompactColumnSize(Snapshot snapshot)
     {
@@ -337,18 +336,6 @@ internal static class HsstSizeEstimator
         int leafNodeCount = (entryCount + 63) / 64;
         int avgLeafNodeSize = 6 + 64 * (avgSeparatorLen + 5);
         return (int)((long)leafNodeCount * avgLeafNodeSize);
-    }
-
-    /// <summary>
-    /// Exact size of a <c>ByteTagMap</c> HSST: trailer is <c>3·N + 2</c> bytes
-    /// (1-byte tag + 2-byte u16 LE end-offset per entry + 1-byte Count + 1-byte
-    /// IndexType), plus the concatenated value bytes. End offsets are fixed at
-    /// 2 bytes; values total must fit in u16. No safety margin.
-    /// </summary>
-    internal static int EstimateByteTagMapSize(int entryCount, int sumValueBytes)
-    {
-        if (entryCount <= 0) return 2;
-        return entryCount * 3 + 2 + sumValueBytes;
     }
 
     /// <summary>

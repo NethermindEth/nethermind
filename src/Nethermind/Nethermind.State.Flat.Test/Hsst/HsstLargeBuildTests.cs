@@ -21,7 +21,7 @@ namespace Nethermind.State.Flat.Test.Hsst;
 /// Two scaling strategies are used, picked by the index type's structural cap:
 /// - Multi-byte-keyed indexes (BTree, PackedArray) hit &gt;2 GiB through entry
 ///   volume — see <see cref="EntryCountPerHsst"/> (~150M).
-/// - Single-byte-keyed indexes (ByteTagMap, DenseByteIndex) are hard-capped at
+/// - Single-byte-keyed indexes (DenseByteIndex) are hard-capped at
 ///   256 entries by the format, so they hit &gt;2 GiB through value size:
 ///   <see cref="ByteKeyEntryCount"/> × <see cref="ByteKeyValueSize"/>.
 ///
@@ -29,7 +29,7 @@ namespace Nethermind.State.Flat.Test.Hsst;
 /// memory before writing the index region (~16 B per HsstEntry × N), which
 /// makes the &gt;2 GiB scale take hours of CPU and several GiB of native heap.
 /// PackedArray's per-entry buffer footprint is tiny (sparse checkpoint keys
-/// only), so its run time is dominated by I/O. ByteTagMap / DenseByteIndex
+/// only), so its run time is dominated by I/O. DenseByteIndex
 /// each allocate one ~10 MiB scratch buffer that is reused across entries.
 /// </summary>
 [Explicit("Writes large HSSTs to /tmp; minutes to hours to run at default scale.")]
@@ -45,7 +45,7 @@ public class HsstLargeBuildTests
     // HSST clears the ceiling even with the leaner index footprint.
     private const int PackedValueSize = 16;
 
-    // ByteTagMap / DenseByteIndex (1-byte keys): scale via value size.
+    // DenseByteIndex (1-byte keys): scale via value size.
     // 256 entries × 10 MiB ≈ 2.5 GiB per file — clears the ceiling without
     // multi-GiB scratch buffers (one ByteKeyValueSize buffer is reused).
     private static readonly int ByteKeyEntryCount = 256;
@@ -99,7 +99,6 @@ public class HsstLargeBuildTests
         }
     }
 
-    [TestCase(IndexType.ByteTagMap)]
     [TestCase(IndexType.DenseByteIndex)]
     public unsafe void Hsst_BeyondTwoGiB_LargeValues_RoundTrip(IndexType indexType)
     {
@@ -185,17 +184,6 @@ public class HsstLargeBuildTests
         {
             switch (indexType)
             {
-                case IndexType.ByteTagMap:
-                    {
-                        using HsstByteTagMapBuilder<ArenaBufferWriter> hsst = new(ref writer);
-                        for (int i = 0; i < ByteKeyEntryCount; i++)
-                        {
-                            FillLargeValuePattern((byte)i, valueBuf);
-                            hsst.Add((byte)i, valueBuf);
-                        }
-                        hsst.Build();
-                        break;
-                    }
                 case IndexType.DenseByteIndex:
                     {
                         using HsstDenseByteIndexBuilder<ArenaBufferWriter> hsst = new(ref writer);
@@ -317,27 +305,6 @@ public class HsstLargeBuildTests
 
             switch (indexType)
             {
-                case IndexType.ByteTagMap:
-                    {
-                        using HsstRefEnumerator<MmapByteReader, NoOpPin> e = new(in reader, new Bound(0, size));
-                        Span<byte> tagBuf = stackalloc byte[1];
-                        int i = 0;
-                        while (e.MoveNext())
-                        {
-                            ReadOnlySpan<byte> kSpan = e.CopyCurrentLogicalKey(tagBuf);
-                            Bound vb = e.Current.ValueBound;
-                            using NoOpPin vp = reader.PinBuffer(vb.Offset, vb.Length);
-
-                            Assert.That(kSpan.Length, Is.EqualTo(1), $"{indexType} key length at entry {i}");
-                            Assert.That(kSpan[0], Is.EqualTo((byte)i), $"{indexType} tag at entry {i}");
-                            Assert.That(vb.Length, Is.EqualTo(ByteKeyValueSize), $"{indexType} value length at entry {i}");
-                            if (!LargeValueMatches((byte)i, vp.Buffer))
-                                Assert.Fail($"{indexType} value byte mismatch at entry {i}");
-                            i++;
-                        }
-                        Assert.That(i, Is.EqualTo(ByteKeyEntryCount));
-                        break;
-                    }
                 case IndexType.DenseByteIndex:
                     {
                         // DenseByteIndex has no HsstRefEnumerator support — it's point-lookup only.

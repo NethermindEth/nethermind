@@ -14,7 +14,7 @@ namespace Nethermind.State.Flat.Hsst;
 ///
 /// Thin ref-struct wrapper around <see cref="HsstEnumerator{TReader,TPin}"/> that
 /// stores the reader so callers don't have to pass it on every <see cref="MoveNext"/>.
-/// All layout-specific iteration (PackedArray / ByteTagMap / BTree) lives on the merge
+/// All layout-specific iteration (PackedArray / BTree) lives on the merge
 /// enumerator's variants. Construction is cheap — for BTree it only records the scope
 /// bounds (<see cref="HsstEnumerator{TReader,TPin}"/>'s <c>BTreeVariant</c> ctor); the
 /// actual tree walk happens lazily on each <see cref="MoveNext"/>, descending one leaf
