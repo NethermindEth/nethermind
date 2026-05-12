@@ -360,17 +360,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int globalStartIndex, int count, int naturalMax,
         scoped Span<byte> valueScratch)
     {
-        // Widen the slot target to 4 when every key has ≥4 bytes AND the pair-needed
-        // disambig fits in 4 bytes — gives the planner a uniform-4 input so it picks
-        // Uniform slot=4 (SIMD via uint32 LE compare) instead of an off-SIMD slot like
-        // 1/3. Otherwise fall back to naturalMax (Phase 2 behaviour). All keys share
-        // _keyLength, so a single scalar drives every entry's writeLen.
-        int target = (naturalMax > 0 && naturalMax <= 4 && _keyLength >= 4) ? 4 : naturalMax;
-        int writeLen = Math.Min(target, _keyLength);
+        // Hand the planner the natural sep length; widening to slot=4 (when applicable)
+        // is the planner's call now. All keys share _keyLength, so sepLengths is uniform.
+        int writeLen = Math.Min(naturalMax, _keyLength);
         Span<int> sepLengths = stackalloc int[count];
         sepLengths.Fill(writeLen);
 
-        // Pass 1 (metadata-start range only — key lengths are uniform so no per-entry reads):
+        // Metadata-start range for value-slot sizing — key lengths are uniform, no per-entry reads.
         Span<long> metadataStarts = stackalloc long[count];
         long minVal = long.MaxValue, maxVal = 0;
         for (int i = 0; i < count; i++)
@@ -386,15 +382,16 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
         int crossEntryLcp = ComputeCrossEntryLcpLeaf(globalStartIndex, count);
-        BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp,
+        BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
             out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
 
-        // Pass 2: ReadKey + AddKey. Entry 0's ReadKey also feeds commonPrefix.
+        // Pass 2: ReadKey + AddKey. Entry 0's ReadKey also feeds commonPrefix. The planner's
+        // keySlotSize (post-widen, post-strip) drives slice width — may exceed sepLengths[i]
+        // when the planner widened, in which case we read more bytes from the key.
         Span<byte> currKey = stackalloc byte[MaxKeyLen];
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
 
-        int keyBufSize = 0;
-        for (int i = 0; i < count; i++) keyBufSize += 2 + (sepLengths[i] - prefixLen);
+        int keyBufSize = count * (2 + keySlotSize);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
         Span<byte> valueScratchSlice = valueScratch[..(count * (2 + valueSlotSize))];
 
@@ -413,16 +410,17 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }, keyBuf, valueScratchSlice, commonPrefixBuf);
 
         Span<byte> valueBuf = stackalloc byte[8];
+        int sliceEnd = prefixLen + keySlotSize;
 
         // Entry 0: already in currKey.
         WriteUInt64LE(valueBuf, metadataStarts[0] - baseOffset, valueSlotSize);
-        indexWriter.AddKey(currKey[prefixLen..sepLengths[0]], valueBuf[..valueSlotSize]);
+        indexWriter.AddKey(currKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
 
         for (int i = 1; i < count; i++)
         {
             ReadKey(globalStartIndex + i, currKey);
             WriteUInt64LE(valueBuf, metadataStarts[i] - baseOffset, valueSlotSize);
-            indexWriter.AddKey(currKey[prefixLen..sepLengths[i]], valueBuf[..valueSlotSize]);
+            indexWriter.AddKey(currKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
     }
@@ -572,15 +570,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // BaseOffset.
         int entryCount = childCount > 0 ? childCount - 1 : 0;
 
-        // Widen the slot target to 4 when keys are ≥4 bytes AND the natural max sep fits
-        // in 4 bytes — same rationale as WriteLeafIndexNode. Keys share _keyLength, so a
-        // single scalar drives every sep's writeLen.
-        int target = (maxSepLen > 0 && maxSepLen <= 4 && _keyLength >= 4) ? 4 : maxSepLen;
-        int writeLen = Math.Min(target, _keyLength);
+        // Hand the planner the natural sep length; widening to slot=4 (when applicable)
+        // is the planner's call now. All keys share _keyLength, so sepLengths is uniform.
+        int writeLen = Math.Min(maxSepLen, _keyLength);
         Span<int> sepLengths = stackalloc int[entryCount];
         sepLengths.Fill(writeLen);
 
-        BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp,
+        BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
             out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
 
         // BaseOffset is the leftmost child's absolute offset (always — no
@@ -596,11 +592,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
         // Pass 2: ReadKey rightKey + AddKey. Sep 0's rightKey also feeds commonPrefix.
+        // The planner's keySlotSize (post-widen, post-strip) drives slice width.
         Span<byte> rightKey = stackalloc byte[MaxKeyLen];
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
 
-        int keyBufSize = 0;
-        for (int i = 0; i < entryCount; i++) keyBufSize += 2 + (sepLengths[i] - prefixLen);
+        int keyBufSize = entryCount * (2 + keySlotSize);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
         Span<byte> valueScratchSlice = valueScratch[..(entryCount * (2 + valueSlotSize))];
@@ -623,17 +619,18 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }, keyBuf, valueScratchSlice, commonPrefixBuf);
 
         Span<byte> valueBuf = stackalloc byte[8];
+        int sliceEnd = prefixLen + keySlotSize;
 
         if (entryCount > 0)
         {
             WriteUInt64LE(valueBuf, children[1].ChildOffset - baseOffset, valueSlotSize);
-            indexWriter.AddKey(rightKey[prefixLen..sepLengths[0]], valueBuf[..valueSlotSize]);
+            indexWriter.AddKey(rightKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
         }
         for (int i = 1; i < entryCount; i++)
         {
             ReadKey(children[i + 1].FirstEntry, rightKey);
             WriteUInt64LE(valueBuf, children[i + 1].ChildOffset - baseOffset, valueSlotSize);
-            indexWriter.AddKey(rightKey[prefixLen..sepLengths[i]], valueBuf[..valueSlotSize]);
+            indexWriter.AddKey(rightKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
     }

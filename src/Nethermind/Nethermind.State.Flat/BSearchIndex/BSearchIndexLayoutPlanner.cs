@@ -37,6 +37,12 @@ internal static class BSearchIndexLayoutPlanner
     /// key LCPs over the entries this node covers). May exceed individual <paramref name="lengths"/>;
     /// the planner caps via <c>min(minLen, crossEntryLcp)</c>.
     /// </param>
+    /// <param name="keyLength">
+    /// Per-key byte budget — the uniform key length declared by the HSST. Used to decide
+    /// whether the planner can widen short uniform separators up to a 4-byte slot
+    /// (Uniform slot=4 is SIMD-eligible via uint32 LE compare). Widening only fires when
+    /// the post-strip total <c>prefixLen + keySlotSize</c> stays within this budget.
+    /// </param>
     /// <param name="commonKeyPrefixLen">Out: post-gating LCP. 0 if not worth stripping.</param>
     /// <param name="keyType">Out: 0=Variable, 1=Uniform, 2=UniformWithLen.</param>
     /// <param name="keySlotSize">Out: post-strip slot size for Uniform/UniformWithLen; 0 for Variable.</param>
@@ -48,6 +54,7 @@ internal static class BSearchIndexLayoutPlanner
     public static void Plan(
         ReadOnlySpan<int> lengths,
         int crossEntryLcp,
+        int keyLength,
         out int commonKeyPrefixLen,
         out int keyType,
         out int keySlotSize,
@@ -79,6 +86,21 @@ internal static class BSearchIndexLayoutPlanner
             if (len != firstLen) allSameLen = false;
             if (i == 1) secondLen = len;
             else if (len != secondLen) allSameLenExceptFirst = false;
+        }
+
+        // Slot widening: when every input separator is the same length and ≤ 4 bytes, AND
+        // every key has ≥ 4 bytes available, treat the inputs as 4-byte for lcp + layout
+        // selection. The caller's AddKey must then provide 4 bytes per entry (read from
+        // the key's data section, not the natural sep length). This is the SIMD-eligible
+        // Uniform slot=4 / uint32 LE path. The strip-gate below may still pull lcp > 0 in,
+        // dropping slot to 1/2/3 for non-trivial crossEntryLcp — unchanged from when this
+        // policy lived in the caller as sepLengths.Fill(4).
+        if (allSameLen && firstLen > 0 && firstLen <= 4 && keyLength >= 4)
+        {
+            firstLen = 4;
+            minLen = 4;
+            maxLen = 4;
+            if (secondLen >= 0) secondLen = 4;
         }
 
         int lcp = Math.Min(minLen, crossEntryLcp);
