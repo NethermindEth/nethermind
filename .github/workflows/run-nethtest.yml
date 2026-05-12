@@ -57,7 +57,7 @@ jobs:
           - test_setup: current_spec
             runner: ubuntu-latest-16-cores
             eest_repository: ethereum/execution-spec-tests
-            eest_version: v5.4.0
+            eest_version: latest
             eest_archive: fixtures_stable.tar.gz
             workers: '8'
           - test_setup: new_spec
@@ -92,22 +92,44 @@ jobs:
         working-directory: src/Nethermind
         run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c Release
 
+      - name: Resolve EEST release
+        id: eest_release
+        run: |
+          if [ "$EEST_VERSION" = "latest" ]; then
+            RESOLVED_EEST_VERSION="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$EEST_REPOSITORY/releases/latest" \
+              | jq -r '.tag_name')"
+          else
+            RESOLVED_EEST_VERSION="$EEST_VERSION"
+          fi
+
+          if [ -z "$RESOLVED_EEST_VERSION" ] || [ "$RESOLVED_EEST_VERSION" = "null" ]; then
+            echo "::error::Could not resolve EEST release for $EEST_REPOSITORY ($EEST_VERSION)"
+            exit 1
+          fi
+
+          echo "version=$RESOLVED_EEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved EEST release: $RESOLVED_EEST_VERSION"
+
       - name: Cache EEST fixtures
         uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}/eest-fixtures
-          key: eest-${{ matrix.eest_repository }}-${{ matrix.eest_version }}-${{ matrix.eest_archive }}
+          key: eest-${{ matrix.eest_repository }}-${{ steps.eest_release.outputs.version }}-${{ matrix.eest_archive }}
 
       - name: Download EEST fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
         run: |
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
           if command -v cygpath >/dev/null 2>&1; then
             RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
           fi
-          EEST_DIR="$RUNNER_TMP/eest-fixtures/$EEST_VERSION"
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
           if [ ! -d "$EEST_DIR" ]; then
             mkdir -p "$EEST_DIR"
-            ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$EEST_VERSION/$EEST_ARCHIVE"
+            ARCHIVE_URL="https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE"
             echo "Downloading EEST fixtures from $ARCHIVE_URL"
             curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$EEST_DIR"
           else
@@ -116,12 +138,14 @@ jobs:
 
       - name: Resolve fixture path
         id: fixtures
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
         run: |
           RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
           if command -v cygpath >/dev/null 2>&1; then
             RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
           fi
-          EEST_DIR="$RUNNER_TMP/eest-fixtures/$EEST_VERSION"
+          EEST_DIR="$RUNNER_TMP/eest-fixtures/$RESOLVED_EEST_VERSION"
           if [ "$TEST_TYPE" = "engineTest" ]; then
             FIXTURE_DIR="$(find "$EEST_DIR" -type d -name 'blockchain_tests_engine' | head -1)"
           elif [ "$TEST_TYPE" = "blockTest" ]; then
@@ -143,6 +167,8 @@ jobs:
       - name: Run nethtest and parse results
         working-directory: src/Nethermind
         timeout-minutes: 55
+        env:
+          RESOLVED_EEST_VERSION: ${{ steps.eest_release.outputs.version }}
         run: |
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
@@ -200,7 +226,10 @@ jobs:
               echo "| Test setup | \`$TEST_SETUP\` |"
               echo "| Test type | \`--$TEST_TYPE\` |"
               echo "| EEST repository | \`$EEST_REPOSITORY\` |"
-              echo "| EEST version | \`$EEST_VERSION\` |"
+              echo "| EEST version | \`$RESOLVED_EEST_VERSION\` |"
+              if [ "$EEST_VERSION" != "$RESOLVED_EEST_VERSION" ]; then
+                echo "| EEST version input | \`$EEST_VERSION\` |"
+              fi
               echo "| EEST archive | \`$EEST_ARCHIVE\` |"
               echo "| Runner | \`${{ matrix.runner }}\` |"
               echo "| Workers | $WORKERS |"
@@ -256,7 +285,7 @@ jobs:
               echo ""
               echo '```bash'
               echo "# 1. Download EEST fixtures (once)"
-              echo "mkdir -p /tmp/eest && curl -fsSL https://github.com/$EEST_REPOSITORY/releases/download/$EEST_VERSION/$EEST_ARCHIVE | tar -xz -C /tmp/eest"
+              echo "mkdir -p /tmp/eest && curl -fsSL https://github.com/$EEST_REPOSITORY/releases/download/$RESOLVED_EEST_VERSION/$EEST_ARCHIVE | tar -xz -C /tmp/eest"
               echo ""
               echo "# 2. Build and run"
               echo "cd src/Nethermind"
