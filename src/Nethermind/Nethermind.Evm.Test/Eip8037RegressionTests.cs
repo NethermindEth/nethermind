@@ -24,8 +24,6 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
 
-    // Returns a fresh Prepare with a CREATE or CREATE2 of `initCode` already appended,
-    // ready for the caller to chain post-create instructions.
     private static Prepare BuildCreateFactory(byte[] initCode, UInt256 value, bool create2, byte[]? salt = null) =>
         create2
             ? Prepare.EvmCode.Create2(initCode, salt ?? DefaultCreate2Salt, value)

@@ -107,9 +107,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
     }
 
-    // Shared setup for the *_under_PrecompileCachedCodeInfoRepository tests: init world state
-    // (optionally with a delegation target), wrap the processor in the precompile cache, and
-    // pin the block execution context to Amsterdam.
     private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) SetupPrecompileBalScenario(
         Address? delegationTarget = null)
     {
@@ -617,8 +614,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    // Pre-validation rejections (max nonce, high s) skip the authority lookup entirely, so
-    // neither the authority nor the delegation target appear in the BAL.
     private static IEnumerable<TestCaseData> PreValidationRejectionCases()
     {
         yield return new TestCaseData(
@@ -660,8 +655,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    // Post-validation rejection: the cold authority lookup happens before the existing-code
-    // check fails, so a pure account read is recorded for the authority.
     // Post-validation rejection: the cold authority lookup happens before the existing-code
     // check fails, so a pure account read is recorded for the authority.
     [Test]

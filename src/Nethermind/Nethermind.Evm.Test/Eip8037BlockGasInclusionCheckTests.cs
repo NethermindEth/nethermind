@@ -19,8 +19,6 @@ public class Eip8037BlockGasInclusionCheckTests
     private const long CreateIntrinsicRegular = 53_000;
     private const long SStoreStateGas = 64 * CostPerStateByte; // GasCostOf.SSetState
 
-    // Boundary: state contribution == state_available -> accepted (strict >);
-    // == state_available + 1 -> rejected on state dimension.
     [TestCase(0L, Eip8037BlockGasInclusionCheck.Outcome.Ok, TestName = "Boundary_state_exact_fit_accepts")]
     [TestCase(1L, Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded, TestName = "Boundary_state_exceeded_by_one_rejects_on_state_dimension")]
     public void Boundary_state(long delta, Eip8037BlockGasInclusionCheck.Outcome expected)
@@ -202,8 +200,6 @@ public class Eip8037BlockGasInclusionCheckTests
         }
     }
 
-    // Both cases produce a sub-floor execution component (positive on the first, negative
-    // intermediate on the second). Either way the floor must clamp the final value.
     [TestCase(300L, 100L, TestName = "Calculate_block_regular_gas_floor_clamps_low_regular_gas")]
     [TestCase(0L, 0L, TestName = "Calculate_block_regular_gas_allows_negative_execution_intermediate")]
     public void Calculate_block_regular_gas_clamps_to_floor(long initialRegular, long remainingRegular)
