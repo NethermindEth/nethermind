@@ -163,7 +163,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token)
+    public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token)
     {
         CheckInitialized();
 
@@ -189,7 +189,8 @@ public class BlockAccessListManager(
             {
                 Transaction tx = block.Transactions[j];
 
-                (long blockGasUsed, long blockStateGasUsed, IntrinsicGas<EthereumGasPolicy> intrinsicGas, InvalidBlockException? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                GasValidationResult gasResult = gasResults[j].GetResult();
+                IntrinsicGas<EthereumGasPolicy> intrinsicGas = gasResult.IntrinsicGas;
                 // EIP-8037 per-tx 2D inclusion check (execution-specs PR 2703).
                 // totalRegularGas/totalStateGas reflect the cumulatives BEFORE this tx;
                 // the worst-case per-dimension contribution must fit the remaining budget.
@@ -200,12 +201,12 @@ public class BlockAccessListManager(
                 // Surface the worker's original tx-rejection reason before running any
                 // downstream gas accounting. Otherwise CheckGasUsed can mask the true cause,
                 // unlike the sequential path, which never reaches accounting on a rejected tx.
-                if (ex is not null)
-                    throw new ParallelExecutionException(ex);
+                if (gasResult.Exception is not null)
+                    throw new ParallelExecutionException(gasResult.Exception);
 
-                totalRegularGas += blockGasUsed;
-                totalStateGas += blockStateGasUsed;
-                SpendGas(blockGasUsed);
+                totalRegularGas += gasResult.BlockGasUsed;
+                totalStateGas += gasResult.BlockStateGasUsed;
+                SpendGas(gasResult.BlockGasUsed);
 
                 CheckGasUsed(j, block, totalRegularGas, totalStateGas);
 

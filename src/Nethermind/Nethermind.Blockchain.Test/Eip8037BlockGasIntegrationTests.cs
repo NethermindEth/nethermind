@@ -67,18 +67,16 @@ public class Eip8037BlockGasIntegrationTests
         return (balManager, block);
     }
 
-    private static TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[]
-        ResultsForCount(int n)
+    private static GasValidationResultSlot[] ResultsForCount(int n)
     {
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] arr =
-            new TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[n];
+        GasValidationResultSlot[] arr = new GasValidationResultSlot[n];
         for (int i = 0; i < n; i++) arr[i] = new();
         return arr;
     }
 
-    private static (long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)
+    private static GasValidationResult
         GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
-        => (blockGasUsed, blockStateGasUsed, EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit), exception);
+        => new(blockGasUsed, blockStateGasUsed, EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit), exception);
 
     /// <summary>
     /// PR 2703 boundary[exact_fit]: post-tx cumulative state hits limit exactly.
@@ -91,9 +89,9 @@ public class Eip8037BlockGasIntegrationTests
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx1);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] results = ResultsForCount(1);
+        GasValidationResultSlot[] results = ResultsForCount(1);
         // cumR = 50_000, cumS = 200_000 (exact fit). max = 200_000 == limit -> accept.
-        results[0].SetResult(GasResult(block, 0, 50_000, 200_000));
+        results[0].TrySetResult(GasResult(block, 0, 50_000, 200_000));
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
@@ -110,9 +108,9 @@ public class Eip8037BlockGasIntegrationTests
         Transaction tx1 = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(50_000).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx1);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] results = ResultsForCount(1);
+        GasValidationResultSlot[] results = ResultsForCount(1);
         // cumS = 200_001 -> max = 200_001 > 200_000 -> reject.
-        results[0].SetResult(GasResult(block, 0, 50_000, 200_001));
+        results[0].TrySetResult(GasResult(block, 0, 50_000, 200_001));
 
         InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
@@ -137,10 +135,10 @@ public class Eip8037BlockGasIntegrationTests
             .WithNonce(1).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] results = ResultsForCount(2);
+        GasValidationResultSlot[] results = ResultsForCount(2);
         // Filler used full cap; create tx used modest regular + intrinsic state.
-        results[0].SetResult(GasResult(block, 0, 16_777_216, 0));
-        results[1].SetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
+        results[0].TrySetResult(GasResult(block, 0, 16_777_216, 0));
+        results[1].TrySetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -165,10 +163,10 @@ public class Eip8037BlockGasIntegrationTests
             .WithGasLimit(blockGasLimit + 21_000 + 1).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, onlyTx);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] results = ResultsForCount(1);
+        GasValidationResultSlot[] results = ResultsForCount(1);
         // Simulate execution finishing with modest actual gas (post-execution view).
         // Spec inclusion check rejects before execution even though post-execution gas would fit.
-        results[0].SetResult(GasResult(block, 0, 21_000, 0));
+        results[0].TrySetResult(GasResult(block, 0, 21_000, 0));
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None),
@@ -191,10 +189,10 @@ public class Eip8037BlockGasIntegrationTests
             .WithNonce(1).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, filler, createTx);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] results = ResultsForCount(2);
-        results[0].SetResult(GasResult(block, 0, 50_000, 100_000)); // filler post-exec
+        GasValidationResultSlot[] results = ResultsForCount(2);
+        results[0].TrySetResult(GasResult(block, 0, 50_000, 100_000)); // filler post-exec
         // Simulate creation tx ran with modest actual gas - spec would have rejected at inclusion.
-        results[1].SetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
+        results[1].TrySetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
 
         Assert.Throws<InvalidBlockException>(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None),
@@ -214,8 +212,8 @@ public class Eip8037BlockGasIntegrationTests
         Transaction tx = Build.A.Transaction.WithHash(TestItem.KeccakA).WithGasLimit(16_777_216).TestObject;
         (BlockAccessListManager mgr, Block block) = BuildAmsterdamBlock(blockGasLimit, tx);
 
-        TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] results = ResultsForCount(1);
-        results[0].SetResult(GasResult(block, 0, 50_000, 0));
+        GasValidationResultSlot[] results = ResultsForCount(1);
+        results[0].TrySetResult(GasResult(block, 0, 50_000, 0));
 
         Assert.DoesNotThrow(() =>
             mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));

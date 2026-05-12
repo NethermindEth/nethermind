@@ -32,7 +32,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void NextTransaction() { }
     public void Rollback() { }
     public void ReturnTxProcessor(uint balIndex) { }
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long BlockGasUsed, long BlockStateGasUsed, IntrinsicGas<EthereumGasPolicy> IntrinsicGas, InvalidBlockException? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token) { }
+    public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token) { }
     public void SetBlockAccessList(Block block) { }
     public void LoadPreStateToSuggestedBlockAccessList(Block suggestedBlock) { }
     public void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true) { }
