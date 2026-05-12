@@ -271,14 +271,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
 
-            InvalidTransactionException or { InnerException: InvalidTransactionException } =>
-                GetInvalidTransactionError(GetInvalidTransactionException(ex), methodName, request, returnAction),
+            InvalidTransactionException { Reason.ErrorDescription: var description } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
+
+            { InnerException: InvalidTransactionException { Reason.ErrorDescription: var description } } =>
+                GetErrorResponse(methodName, ErrorCodes.Default, description, null, request.Id, returnAction),
 
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
 
-            MissingTrieNodeException or TargetInvocationException and { InnerException: MissingTrieNodeException } =>
-                GetMissingTrieNodeError(GetMissingTrieNodeException(ex), methodName, request, returnAction),
+            MissingTrieNodeException { Message: var message } =>
+                GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, message, ex.ToString(), request.Id, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException { Message: var message } } =>
+                GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, message, ex.ToString(), request.Id, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
@@ -288,22 +294,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
         }
-
-        JsonRpcErrorResponse GetInvalidTransactionError(InvalidTransactionException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
-            GetErrorResponse(methodName, ErrorCodes.Default, ex.Reason.ErrorDescription, null, request.Id, returnAction);
-
-        JsonRpcErrorResponse GetMissingTrieNodeError(MissingTrieNodeException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
-            GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, ex.ToString(), request.Id, returnAction);
-
-        static InvalidTransactionException GetInvalidTransactionException(Exception ex) =>
-            ex is InvalidTransactionException invalidTransactionException
-                ? invalidTransactionException
-                : (InvalidTransactionException)ex.InnerException!;
-
-        static MissingTrieNodeException GetMissingTrieNodeException(Exception ex) =>
-            ex is MissingTrieNodeException missingTrieNodeException
-                ? missingTrieNodeException
-                : (MissingTrieNodeException)ex.InnerException!;
     }
 
     private PropertyInfo? GetResultProperty(Task task)
