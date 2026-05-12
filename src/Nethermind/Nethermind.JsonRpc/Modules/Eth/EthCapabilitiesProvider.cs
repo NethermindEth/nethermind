@@ -47,17 +47,16 @@ public sealed class EthCapabilitiesProvider(
         long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0L, lowestBody);
 
         ResourceAvailability state = BuildState(head, fastSyncing);
-        // Flat-storage nodes can technically reconstruct proofs from flat data, but that path is
-        // either limited to retained flat snapshots or O(state-size). Routers should not send
-        // proof requests there expecting trie-backed performance, so we gate stateproofs separately.
-        ResourceAvailability stateproofs = worldStateManager.SupportsTrieProofs ? state : Disabled;
 
+        // Stateproofs alias state for both Nethermind storage backends: trie storage stores trie
+        // nodes by hash, flat storage retains them in path-keyed columns (see BaseTriePersistence).
+        // Both serve eth_getProof in O(trie-depth) for any block where state is available.
         return new EthCapabilities(
             Head: new ChainHead(head.Number, head.Hash!),
             State: state,
             Receipts: BuildResource(receiptsSynced, Math.Max(lowestReceipt, historyFloor), historyWindow),
             Blocks: BuildResource(blockTree.BestSuggestedHeader is not null && bodiesSynced, Math.Max(lowestBlock, historyFloor), historyWindow),
-            Stateproofs: stateproofs);
+            Stateproofs: state);
     }
 
     private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)

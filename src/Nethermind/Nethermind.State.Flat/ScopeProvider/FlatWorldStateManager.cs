@@ -60,11 +60,6 @@ public class FlatWorldStateManager(
         set => _oldestStateBlockStore.Value = value;
     }
 
-    // Flat storage can technically reconstruct proofs from flat data, but only for blocks where
-    // a flat snapshot still exists and the reconstruction is O(state-size). Treat it as not
-    // serving trie proofs for routing purposes — eth_getProof callers expect cheap responses.
-    public bool SupportsTrieProofs => false;
-
     public IWorldStateScopeProvider CreateResettableWorldState() =>
         new FlatScopeProvider(
             codeDb,

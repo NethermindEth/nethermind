@@ -63,8 +63,6 @@ public class WorldStateManager : IWorldStateManager
         set => _oldestStateBlockStore.Value = value;
     }
 
-    public bool SupportsTrieProofs => true;
-
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 
     public IReadOnlyKeyValueStore? HashServer => _trieStore.Scheme != INodeStorage.KeyScheme.Hash ? null : _trieStore.TrieNodeRlpStore;

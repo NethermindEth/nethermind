@@ -43,7 +43,6 @@ public partial class EthRpcModuleTests
 
         IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
         wsm.OldestStateBlock.Returns(oldestStateBlock);
-        wsm.SupportsTrieProofs.Returns(true);
         wsm.GetOldestStateBlock(Arg.Any<long>()).Returns(call =>
             retentionWindow is { } w ? Math.Max(0L, (long)call[0] - w) : (long?)null);
 

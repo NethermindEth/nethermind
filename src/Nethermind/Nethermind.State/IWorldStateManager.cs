@@ -33,14 +33,6 @@ public interface IWorldStateManager
     long? OldestStateBlock { get; set; }
 
     /// <summary>
-    /// Whether this manager can serve trie-based state proofs (e.g. for <c>eth_getProof</c>)
-    /// with the same retention guarantees as state queries. Trie-backed implementations return
-    /// true; flat-storage implementations return false because proof reconstruction is either
-    /// limited to retained flat snapshots or requires walking the full state.
-    /// </summary>
-    bool SupportsTrieProofs { get; }
-
-    /// <summary>
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>
