@@ -35,7 +35,7 @@ on:
       workers:
         description: Parallel workers
         required: false
-        default: '4'
+        default: '2'
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -130,6 +130,7 @@ jobs:
 
       - name: Run nethtest and parse results
         working-directory: src/Nethermind
+        timeout-minutes: 55
         run: |
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
@@ -184,12 +185,12 @@ jobs:
               echo "" >> "$GITHUB_STEP_SUMMARY"
               if [ "$HAS_JSON" = true ]; then
                 jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
-                  | head -30 | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
+                  | awk 'NR <= 30' | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
               else
                 # Group by error: extract text after " — " separator
                 grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
                   | sed 's/.*— //' | sort | uniq -c | sort -rn \
-                  | head -30 | awk '{printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
+                  | awk 'NR <= 30 {printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
                   | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
               fi
 
@@ -253,19 +254,13 @@ jobs:
               echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
               if [ -s /tmp/nethtest-stderr.log ]; then
                 echo "--- recent nethtest status ---"
-                sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log | tail -10
+                tail -10 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g'
                 echo "------------------------------"
               fi
             done
           }
           heartbeat &
           HEARTBEAT_PID=$!
-
-          # Named pipe to tee stderr to both console and log file
-          STDERR_PIPE=$(mktemp -u)
-          mkfifo "$STDERR_PIPE"
-          tee /tmp/nethtest-stderr.log < "$STDERR_PIPE" >&2 &
-          TEE_PID=$!
 
           set +e
           dotnet run --no-build --no-launch-profile -c Release \
@@ -277,10 +272,8 @@ jobs:
             --neverTrace \
             $FILTER_ARG \
             > /tmp/nethtest-results.json \
-            2> "$STDERR_PIPE"
+            2> >(tee /tmp/nethtest-stderr.log >&2)
           rc=$?
-          wait $TEE_PID 2>/dev/null || true
-          rm -f "$STDERR_PIPE"
           set -e
 
           echo "Exit code: $rc"
@@ -290,7 +283,7 @@ jobs:
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
             echo "--- stderr (last 50 lines) ---"
-            sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log | tail -50
+            tail -50 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g'
           fi
 
       - name: Upload results
