@@ -126,28 +126,40 @@ namespace Nethermind.Config.Test
             Assert.That(nonDefaults[0].DefaultValue, Is.EqualTo(30303));
         }
 
-        [Test]
-        public void Surfaces_overrides_across_categories()
+        public static IEnumerable<TestCaseData> ReportedKeyCases()
         {
-            HashSet<string> keys = NonDefaultKeys(Provider(
-                ("Network.DiscoveryPort", "12345"),
-                ("JsonRpc.Enabled", "true")));
+            yield return new TestCaseData(
+                new[] { ("Network.DiscoveryPort", "12345"), ("JsonRpc.Enabled", "true") },
+                new[] { "Network.DiscoveryPort", "JsonRpc.Enabled" },
+                Array.Empty<string>())
+                .SetName("Surfaces overrides across categories");
 
-            Assert.That(keys, Does.Contain("Network.DiscoveryPort"));
-            Assert.That(keys, Does.Contain("JsonRpc.Enabled"));
+            yield return new TestCaseData(
+                new[]
+                {
+                    ("KeyStore.TestNodeKey", "0xdeadbeef"),
+                    ("KeyStore.Passwords", "[\"hunter2\"]"),
+                    ("KeyStore.KeyStoreDirectory", "custom-keystore")
+                },
+                new[] { $"KeyStore.{nameof(IKeyStoreConfig.KeyStoreDirectory)}" },
+                new[]
+                {
+                    $"KeyStore.{nameof(IKeyStoreConfig.TestNodeKey)}",
+                    $"KeyStore.{nameof(IKeyStoreConfig.Passwords)}"
+                })
+                .SetName("Skips sensitive properties");
         }
 
-        [Test]
-        public void Skips_sensitive_properties()
+        [TestCaseSource(nameof(ReportedKeyCases))]
+        public void Reports_expected_keys(
+            (string Key, string Value)[] overrides,
+            string[] mustContain,
+            string[] mustNotContain)
         {
-            HashSet<string> keys = NonDefaultKeys(Provider(
-                ("KeyStore.TestNodeKey", "0xdeadbeef"),
-                ("KeyStore.Passwords", "[\"hunter2\"]"),
-                ("KeyStore.KeyStoreDirectory", "custom-keystore")));
+            HashSet<string> keys = NonDefaultKeys(Provider(overrides));
 
-            Assert.That(keys, Does.Not.Contain($"KeyStore.{nameof(IKeyStoreConfig.TestNodeKey)}"));
-            Assert.That(keys, Does.Not.Contain($"KeyStore.{nameof(IKeyStoreConfig.Passwords)}"));
-            Assert.That(keys, Does.Contain($"KeyStore.{nameof(IKeyStoreConfig.KeyStoreDirectory)}"));
+            foreach (string key in mustContain) Assert.That(keys, Does.Contain(key));
+            foreach (string key in mustNotContain) Assert.That(keys, Does.Not.Contain(key));
         }
 
         [Test]

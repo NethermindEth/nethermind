@@ -204,7 +204,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
             count++;
         }
 
-        if (nonDefaults.Length == 0)
+        if (count == 0)
         {
             logger.Info("Configuration: all values at defaults.");
         }
