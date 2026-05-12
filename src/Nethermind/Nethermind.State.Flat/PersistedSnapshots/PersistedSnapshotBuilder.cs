@@ -1441,8 +1441,10 @@ public static class PersistedSnapshotBuilder
 
     /// <summary>
     /// N-way merge of the account column (tag 0x01) across N snapshots.
-    /// Outer: 20-byte address keys (minSep=4). For matching addresses with M sources,
-    /// calls <see cref="NWayMergePerAddressHsst"/>. Single source: copy as-is.
+    /// Outer: 20-byte address keys (minSep=4). Matching addresses always flow through
+    /// <see cref="NWayMergePerAddressHsst"/>, including the single-source case — the
+    /// per-address HSST contains a slot subcolumn whose BTree alignment depends on the
+    /// destination writer position, so a verbatim byte-copy is not safe.
     /// </summary>
     internal static void NWayMergeAccountColumn<TWriter, TReader, TPin>(
         PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -1512,38 +1514,23 @@ public static class PersistedSnapshotBuilder
                         matchingSources[matchCount++] = i;
                 }
 
-                if (matchCount == 1)
+                // Always go through NWayMergePerAddressHsst, even when matchCount == 1:
+                // the per-address HSST contains a slot subcolumn whose BTree alignment
+                // (Uniform slot widening via BSearchIndexLayoutPlanner and the
+                // HsstIndexBuilder page padding) depends on the destination writer's
+                // absolute position, so a verbatim byte-copy bakes in the source's
+                // alignment shape and is not safe to relocate.
+                ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+                ulong addrKey = 0;
+                if (bloom is not null)
                 {
-                    int srcIdx = matchingSources[0];
-                    Bound vb = enums[srcIdx].CurrentValue;
-                    WholeReadSessionReader srcReader = sessions[srcIdx].GetReader();
-                    using NoOpPin perAddrPin = srcReader.PinBuffer(vb.Offset, vb.Length);
-                    ReadOnlySpan<byte> perAddrHsst = perAddrPin.Buffer;
-                    builder.Add(minKey, perAddrHsst);
-                    if (bloom is not null)
-                    {
-                        ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
-                        bloom.Add(addrKey);
-                        HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in srcReader, vb);
-                        if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
-                            AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, bloom);
-                    }
+                    addrKey = MemoryMarshal.Read<ulong>(minKey);
+                    bloom.Add(addrKey);
                 }
-                else
-                {
-                    // M sources share this address: merge per-address HSSTs
-                    ref TWriter perAddrWriter = ref builder.BeginValueWrite();
-                    ulong addrKey = 0;
-                    if (bloom is not null)
-                    {
-                        addrKey = MemoryMarshal.Read<ulong>(minKey);
-                        bloom.Add(addrKey);
-                    }
-                    NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-                        enums, matchingSources, matchCount, sessions,
-                        ref perAddrWriter, bloom, addrKey);
-                    builder.FinishValueWrite(minKey);
-                }
+                NWayMergePerAddressHsst<TWriter, TReader, TPin>(
+                    enums, matchingSources, matchCount, sessions,
+                    ref perAddrWriter, bloom, addrKey);
+                builder.FinishValueWrite(minKey);
 
                 for (int j = 0; j < matchCount; j++)
                 {
@@ -1653,15 +1640,13 @@ public static class PersistedSnapshotBuilder
                     }
                 }
 
-                if (slotSourceCount == 1)
+                if (slotSourceCount >= 1)
                 {
-                    WholeReadSessionReader r = sessions[matchingSources[slotSources[0]]].GetReader();
-                    using NoOpPin slotPin = r.PinBuffer(slotBounds[0].Offset, slotBounds[0].Length);
-                    perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, slotPin.Buffer);
-                }
-                else if (slotSourceCount > 1)
-                {
-                    // N-way nested streaming merge on slot prefix-level HSSTs
+                    // Always merge through NWayNestedStreamingMerge so the slot HSST
+                    // is rebuilt against the destination writer state. A verbatim
+                    // byte-copy (even of a single source) is not safe: the slot
+                    // BTree's Uniform-slot widening and page-alignment padding both
+                    // depend on the destination's absolute write position.
                     using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
                     using ArrayPoolList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
                     using ArrayPoolList<WholeReadSession> slotSessionsList = new(slotSourceCount, slotSourceCount);
