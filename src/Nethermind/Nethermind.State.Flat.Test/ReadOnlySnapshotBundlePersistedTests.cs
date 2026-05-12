@@ -48,7 +48,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -87,7 +87,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -125,7 +125,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s1, PersistedSnapshotType.Full, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -171,13 +171,13 @@ public class ReadOnlySnapshotBundlePersistedTests
         reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data)
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, PersistedSnapshotType type, byte[] data)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
     }
 }

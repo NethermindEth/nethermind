@@ -313,7 +313,7 @@ public class SnapshotRepositoryTests
 
     #endregion
 
-    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to)
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to)
     {
         Snapshot snap = CreateSnapshot(from, to);
         byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
@@ -323,7 +323,7 @@ public class SnapshotRepositoryTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
     }
 
     private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>
@@ -415,7 +415,7 @@ public class SnapshotRepositoryTests
         StateId s5 = CreateStateId(5);
 
         IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
-        using PersistedSnapshot persisted = CreatePersistedSnapshot(1, s0, s5);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s5);
 
         if (asCompacted)
             SetupCompactedSnapshotTo(mockRepo, s5, persisted);
@@ -450,7 +450,7 @@ public class SnapshotRepositoryTests
         StateId s5 = CreateStateId(5);
 
         IPersistedSnapshotRepository mockRepo = Substitute.For<IPersistedSnapshotRepository>();
-        using PersistedSnapshot persisted = CreatePersistedSnapshot(1, s2, s5);
+        using PersistedSnapshot persisted = CreatePersistedSnapshot(s2, s5);
         SetupSnapshotTo(mockRepo, s5, persisted);
 
         SnapshotRepository repo = new(new PersistedSnapshotRepositories(mockRepo, mockRepo), LimboLogs.Instance);

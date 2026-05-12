@@ -63,7 +63,7 @@ public class LongFinalityIntegrationTests
         return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data,
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, PersistedSnapshotType type, byte[] data,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
@@ -71,7 +71,7 @@ public class LongFinalityIntegrationTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
     }
 
     [Test]
@@ -196,14 +196,14 @@ public class LongFinalityIntegrationTests
 
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
-        PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(0, s0, s1, PersistedSnapshotType.Full, data1);
-        PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(1, s1, s2, PersistedSnapshotType.Full, data2);
+        PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, data1);
+        PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, PersistedSnapshotType.Full, data2);
         PersistedSnapshotList toMerge = new(2);
         toMerge.Add(baseSnap1);
         toMerge.Add(baseSnap2);
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
-        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(2, s0, s2, PersistedSnapshotType.Linked, merged,
+        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, PersistedSnapshotType.Linked, merged,
             [baseSnap1, baseSnap2]);
 
         // State node should have newer value

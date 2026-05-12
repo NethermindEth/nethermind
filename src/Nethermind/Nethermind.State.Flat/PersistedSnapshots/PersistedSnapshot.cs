@@ -75,7 +75,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private readonly Dictionary<ushort, BlobArenaFile> _blobFiles;
     private readonly SeqlockValueCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheSets);
 
-    public int Id { get; }
     public StateId From { get; }
     public StateId To { get; }
 
@@ -108,10 +107,9 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// rolling those leases back on construction failure. This ctor just bumps the
     /// metadata reservation lease.
     /// </summary>
-    public PersistedSnapshot(int id, StateId from, StateId to, ArenaReservation reservation,
+    public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
         Dictionary<ushort, BlobArenaFile> blobFiles)
     {
-        Id = id;
         From = from;
         To = to;
         _reservation = reservation;
@@ -241,7 +239,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     private byte[] ReadBlobArenaRlp(ushort blobArenaId, int offset)
     {
         if (!_blobFiles.TryGetValue(blobArenaId, out BlobArenaFile? file))
-            throw new InvalidOperationException($"Blob arena {blobArenaId} not in snapshot {Id}'s referenced set");
+            throw new InvalidOperationException($"Blob arena {blobArenaId} not in snapshot {From}→{To}'s referenced set");
         byte[] rented = ArrayPool<byte>.Shared.Rent(MaxTrieNodeRlpBytes);
         try
         {

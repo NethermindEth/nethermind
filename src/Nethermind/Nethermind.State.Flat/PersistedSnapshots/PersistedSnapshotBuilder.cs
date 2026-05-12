@@ -20,25 +20,13 @@ using HsstEnumerator = Nethermind.State.Flat.Hsst.HsstEnumerator<Nethermind.Stat
 namespace Nethermind.State.Flat.PersistedSnapshots;
 
 /// <summary>
-/// Builds columnar HSST byte data from an in-memory <see cref="Snapshot"/>.
-/// The outer HSST has 7 column entries, each containing an inner HSST.
-/// Inner HSST keys are the entity keys without the tag prefix.
+/// Builds columnar HSST byte data from an in-memory <see cref="Snapshot"/>. All
+/// persisted snapshots are blob-backed: trie-node RLP values are stored as
+/// <see cref="NodeRef"/>s pointing into blob arenas, while account / slot /
+/// self-destruct values are inlined in the metadata HSST.
 ///
-/// Snapshot types:
-/// - Full: all values written directly. Trie RLP values are non-inline (large).
-///   Slot suffix values are inline (small).
-/// - Linked: only trie columns (0x03, 0x05, 0x06, 0x07 inner, 0x08 inner) become
-///   NodeRef(8 bytes, inline) pointing to the Full snapshot's data region.
-///   Account (0x01), slot, and self-destruct values are copied as-is (not NodeRefs).
-///
-/// Size cap: a Full persisted snapshot cannot exceed 2 GiB.
-/// <see cref="NodeRef.RlpDataOffset"/> is a 32-bit int that addresses bytes inside
-/// the referenced Full snapshot, so any byte past 2 GiB is unreachable from a Linked
-/// snapshot's NodeRef. <see cref="ConvertFullToLinked"/> enforces this with an
-/// upfront snapshot-size precondition that throws with snapshot identity if violated.
-/// In practice a Full snapshot covers at most <c>compactSize</c> blocks (the granularity
-/// at which PersistenceManager produces base snapshots) — on mainnet that is around
-/// 40 MiB, so the 2 GiB ceiling is far above the working range.
+/// The outer HSST has 5 column entries, each containing an inner HSST. Inner HSST
+/// keys are the entity keys without the tag prefix.
 /// </summary>
 public static class PersistedSnapshotBuilder
 {
@@ -46,9 +34,9 @@ public static class PersistedSnapshotBuilder
     private const int CompactPathThreshold = 15;
     private const int StorageHashPrefixLength = 20;
 
-    // Outer HSST column tags in iteration order. Shared between ConvertFullToLinked and
-    // NWayMergeSnapshots. Storage-trie data lives inside the per-address column 0x01 as
-    // sub-tags, so 0x07/0x08 are gone from the on-disk layout.
+    // Outer HSST column tags in iteration order, used by NWayMergeSnapshots.
+    // Storage-trie data lives inside the per-address column 0x01 as sub-tags, so
+    // 0x07/0x08 are gone from the on-disk layout.
     private static readonly byte[][] s_columnTags =
     [
         PersistedSnapshot.MetadataTag,
@@ -646,261 +634,6 @@ public static class PersistedSnapshotBuilder
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.StateNodeFallbackTag);
-    }
-
-    /// <summary>
-    /// Convert a Full snapshot into a Linked snapshot where trie RLP values become
-    /// NodeRefs. Metadata column (0x00) copied as-is. Flat state-trie columns (0x03,
-    /// 0x05, 0x06) have values replaced with NodeRef(snapshotId, offset). Per-address
-    /// column (0x01) is rewritten so its inner storage-trie sub-tags (0x01/0x02) have
-    /// their innermost path→RLP values replaced with NodeRefs; the account / slots /
-    /// self-destruct sub-tags are copied as-is because those values are small and not
-    /// shared across snapshots.
-    /// </summary>
-    internal static void ConvertFullToLinked<TWriter, TReader, TPin>(PersistedSnapshot fullSnapshot, ref TWriter writer) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        using WholeReadSession session = fullSnapshot.BeginWholeReadSession();
-        WholeReadSessionReader r = session.GetReader();
-
-        // NodeRef.RlpDataOffset is a 32-bit absolute snapshot offset, so a Full
-        // snapshot referenced by NodeRefs cannot exceed int.MaxValue bytes. The
-        // per-column int casts below silently rely on this; hoist the check up
-        // front so a violation surfaces with snapshot identity instead of a
-        // context-free OverflowException deep inside per-column conversion.
-        if ((ulong)r.Length > int.MaxValue)
-            throw new InvalidOperationException(
-                $"ConvertFullToLinked: source Full snapshot id={fullSnapshot.Id} size={r.Length} exceeds the 2 GiB NodeRef addressing limit.");
-
-        using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
-
-        // ConvertFullToLinked is legacy/unused — Full snapshots aren't produced any more.
-        // The cast guards against silently writing a truncated id if it's ever revived.
-        ushort snapshotId = checked((ushort)fullSnapshot.Id);
-
-        foreach (byte[] tag in s_columnTags)
-        {
-            HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-            if (!hsst.TrySeek(tag, out Bound columnScope)) continue;
-
-            ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-
-            switch (tag[0])
-            {
-                // Metadata: copy as-is
-                case 0x00:
-                    CopyColumn<TWriter>(in r, columnScope, ref valueWriter);
-                    break;
-                // Per-address unified column: storage-trie sub-tags 0x01/0x02 get
-                // their innermost path→RLP values replaced with NodeRefs; the slots /
-                // account / SD sub-tags are small and remain inline.
-                case 0x01:
-                    ConvertAccountColumnToNodeRefs<TWriter, TReader, TPin>(in r, columnScope, ref valueWriter, snapshotId);
-                    break;
-                // Flat trie columns: convert values to NodeRefs (PackedArray, key sizes match column build sites)
-                case 0x03:
-                    ConvertFlatColumnToNodeRefs<TWriter>(in r, columnScope, ref valueWriter, snapshotId, keySize: 8);
-                    break;
-                case 0x05:
-                    ConvertFlatColumnToNodeRefs<TWriter>(in r, columnScope, ref valueWriter, snapshotId, keySize: 4);
-                    break;
-                case 0x06:
-                    ConvertFlatColumnToNodeRefs<TWriter>(in r, columnScope, ref valueWriter, snapshotId, keySize: 33);
-                    break;
-                default:
-                    throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
-            }
-
-            outerBuilder.FinishValueWrite(tag);
-        }
-
-        outerBuilder.Build();
-    }
-
-    private static void CopyColumn<TWriter>(scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer) where TWriter : IByteBufferWriter =>
-        IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref writer, in reader, columnScope);
-
-    /// <summary>
-    /// Convert a flat (non-nested) trie column's values to NodeRefs.
-    /// Each entry's RLP value is replaced with a NodeRef pointing back to the Full snapshot.
-    /// </summary>
-    private static void ConvertFlatColumnToNodeRefs<TWriter>(
-        scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
-        ushort snapshotId,
-        int keySize) where TWriter : IByteBufferWriter
-    {
-        HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
-        using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> e = new(in reader, columnScope);
-        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-        Span<byte> keyBuf = stackalloc byte[Math.Max(1, keySize)];
-
-        while (e.MoveNext())
-        {
-            KeyValueEntry cur = e.Current;
-            // NodeRef points directly at the RLP start; length is recovered from the
-            // RLP header on read, so the referenced index doesn't need length metadata.
-            // ValueBound.Offset is reader-absolute (snapshot-absolute) since the reader
-            // is the snapshot's WholeReadSessionReader — no separate columnOffset add.
-            NodeRef.Write(refBytes, new NodeRef(snapshotId, checked((int)cur.ValueBound.Offset)));
-            builder.Add(e.CopyCurrentLogicalKey(keyBuf), refBytes);
-        }
-
-        builder.Build();
-        builder.Dispose();
-    }
-
-    /// <summary>
-    /// Convert a nested trie column (storage nodes) to NodeRefs.
-    /// Outer keys (address hash prefixes) are preserved. Inner values are replaced with NodeRefs.
-    /// </summary>
-    private static void ConvertNestedColumnToNodeRefs<TWriter, TWriterReader, TWriterPin>(
-        scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
-        ushort snapshotId,
-        int outerKeyLength, int outerMinSep = 0, int innerKeySize = 0) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
-    {
-        HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
-        using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> outerEnum = new(in reader, columnScope);
-        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-        Span<byte> innerKeyBuf = stackalloc byte[Math.Max(1, innerKeySize)];
-        // Outer (BTree) keys are storage-trie path prefixes — bounded ≤33; 64 is safe.
-        Span<byte> outerKeyBuf = stackalloc byte[64];
-
-        while (outerEnum.MoveNext())
-        {
-            Bound innerScope = outerEnum.Current.ValueBound;
-            ReadOnlySpan<byte> outerKey = outerEnum.CopyCurrentLogicalKey(outerKeyBuf);
-
-            ref TWriter innerWriter = ref builder.BeginValueWrite();
-            HsstPackedArrayBuilder<TWriter> innerBuilder = new(ref innerWriter, innerKeySize, NodeRef.Size);
-            using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> innerEnum = new(in reader, innerScope);
-
-            while (innerEnum.MoveNext())
-            {
-                KeyValueEntry inner = innerEnum.Current;
-                // NodeRef points directly at the RLP start (absolute snapshot offset).
-                NodeRef.Write(refBytes, new NodeRef(snapshotId, checked((int)inner.ValueBound.Offset)));
-                innerBuilder.Add(innerEnum.CopyCurrentLogicalKey(innerKeyBuf), refBytes);
-            }
-
-            innerBuilder.Build();
-            innerBuilder.Dispose();
-            builder.FinishValueWrite(outerKey);
-        }
-
-        builder.Build();
-        builder.Dispose();
-    }
-
-    /// <summary>
-    /// Convert column 0x01 (per-address) for a Full→Linked rewrite. Outer (BTree on
-    /// 20-byte address-hash prefix) and inner DenseByteIndex layouts are preserved;
-    /// only the storage-trie sub-tags (0x01 top, 0x02 compact, 0x03 fallback) have their
-    /// inner HSST values rewritten as NodeRefs pointing back into the source Full
-    /// snapshot's column 0x01 region. Sub-tags 0x04 (slots) / 0x05 (account RLP) / 0x06
-    /// (SD) are copied as-is — they're small inline values and aren't shared across
-    /// snapshots.
-    /// </summary>
-    private static void ConvertAccountColumnToNodeRefs<TWriter, TWriterReader, TWriterPin>(
-        scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
-        ushort snapshotId) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
-    {
-        using HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> outerBuilder = new(ref writer, StorageHashPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
-        using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> outerEnum = new(in reader, columnScope);
-        // Outer key is a 20-byte address hash.
-        Span<byte> outerKeyBuf = stackalloc byte[32];
-
-        while (outerEnum.MoveNext())
-        {
-            Bound perAddrScope = outerEnum.Current.ValueBound;
-
-            ref TWriter perAddrWriter = ref outerBuilder.BeginValueWrite();
-            using HsstDenseByteIndexBuilder<TWriter> perAddrBuilder = new(ref perAddrWriter);
-
-            // Sub-tag 0x01: storage trie top. Inner HSST values become NodeRefs.
-            HsstReader<WholeReadSessionReader, NoOpPin> top = new(in reader, perAddrScope);
-            if (top.TrySeek(PersistedSnapshot.StorageTopSubTag, out Bound topBound) && topBound.Length > 0)
-            {
-                ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
-                ConvertStorageTrieSubTagToNodeRefs<TWriter>(
-                    in reader, topBound,
-                    ref subWriter, snapshotId, innerKeySize: 4);
-                perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageTopSubTag);
-            }
-
-            // Sub-tag 0x02: storage trie compact. Same conversion, 8-byte path keys.
-            HsstReader<WholeReadSessionReader, NoOpPin> compact = new(in reader, perAddrScope);
-            if (compact.TrySeek(PersistedSnapshot.StorageCompactSubTag, out Bound compactBound) && compactBound.Length > 0)
-            {
-                ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
-                ConvertStorageTrieSubTagToNodeRefs<TWriter>(
-                    in reader, compactBound,
-                    ref subWriter, snapshotId, innerKeySize: 8);
-                perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageCompactSubTag);
-            }
-
-            // Sub-tag 0x03: storage trie fallback. Same conversion, 33-byte path keys.
-            HsstReader<WholeReadSessionReader, NoOpPin> fallback = new(in reader, perAddrScope);
-            if (fallback.TrySeek(PersistedSnapshot.StorageFallbackSubTag, out Bound fallbackBound) && fallbackBound.Length > 0)
-            {
-                ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
-                ConvertStorageTrieSubTagToNodeRefs<TWriter>(
-                    in reader, fallbackBound,
-                    ref subWriter, snapshotId, innerKeySize: 33);
-                perAddrBuilder.FinishValueWrite(PersistedSnapshot.StorageFallbackSubTag);
-            }
-
-            // Sub-tag 0x04: slots — copy bytes as-is. Slot values are inline, not NodeRefs.
-            HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in reader, perAddrScope);
-            if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound) && slotBound.Length > 0)
-            {
-                using NoOpPin pin = reader.PinBuffer(slotBound.Offset, slotBound.Length);
-                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, pin.Buffer);
-            }
-
-            // Sub-tag 0x05: account RLP — inline.
-            HsstReader<WholeReadSessionReader, NoOpPin> acct = new(in reader, perAddrScope);
-            if (acct.TrySeek(PersistedSnapshot.AccountSubTag, out Bound acctBound) && acctBound.Length > 0)
-            {
-                using NoOpPin pin = reader.PinBuffer(acctBound.Offset, acctBound.Length);
-                perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, pin.Buffer);
-            }
-
-            // Sub-tag 0x06: self-destruct flag — inline.
-            HsstReader<WholeReadSessionReader, NoOpPin> sd = new(in reader, perAddrScope);
-            if (sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out Bound sdBound) && sdBound.Length > 0)
-            {
-                using NoOpPin pin = reader.PinBuffer(sdBound.Offset, sdBound.Length);
-                perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, pin.Buffer);
-            }
-
-            perAddrBuilder.Build();
-            outerBuilder.FinishValueWrite(outerEnum.CopyCurrentLogicalKey(outerKeyBuf));
-        }
-
-        outerBuilder.Build();
-    }
-
-    private static void ConvertStorageTrieSubTagToNodeRefs<TWriter>(
-        scoped in WholeReadSessionReader reader, Bound subTagScope,
-        ref TWriter writer, ushort snapshotId, int innerKeySize) where TWriter : IByteBufferWriter
-    {
-        // The sub-tag value is itself an inner HSST(BTree) of (path → RLP). Walk every
-        // entry, replacing RLP with a NodeRef whose RlpDataOffset points at the RLP
-        // start in the source Full snapshot's column 0x01 region (length is recovered
-        // from the RLP header on read).
-        HsstPackedArrayBuilder<TWriter> innerBuilder = new(ref writer, innerKeySize, NodeRef.Size);
-        using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> innerEnum = new(in reader, subTagScope);
-        Span<byte> refBytes = stackalloc byte[NodeRef.Size];
-        Span<byte> keyBuf = stackalloc byte[Math.Max(1, innerKeySize)];
-
-        while (innerEnum.MoveNext())
-        {
-            KeyValueEntry inner = innerEnum.Current;
-            NodeRef.Write(refBytes, new NodeRef(snapshotId, checked((int)inner.ValueBound.Offset)));
-            innerBuilder.Add(innerEnum.CopyCurrentLogicalKey(keyBuf), refBytes);
-        }
-
-        innerBuilder.Build();
-        innerBuilder.Dispose();
     }
 
     /// <summary>

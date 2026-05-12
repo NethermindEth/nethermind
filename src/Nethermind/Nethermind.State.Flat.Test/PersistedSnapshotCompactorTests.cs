@@ -34,7 +34,7 @@ public class PersistedSnapshotCompactorTests
     public void TearDown() =>
         _memArena.Dispose();
 
-    private PersistedSnapshot CreatePersistedSnapshot(int id, StateId from, StateId to, PersistedSnapshotType type, byte[] data,
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, PersistedSnapshotType type, byte[] data,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
@@ -42,7 +42,7 @@ public class PersistedSnapshotCompactorTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
     }
 
     [Test]

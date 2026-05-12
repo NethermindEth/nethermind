@@ -53,7 +53,6 @@ public sealed class PersistedSnapshotRepository(
     // see <see cref="Dispose"/> which does NOT dispose the manager.
     private readonly PersistedSnapshotBloomFilterManager _bloomManager = bloomManager;
     private readonly Lock _catalogLock = new();
-    private int _nextId;
 
     private bool BloomEnabled => _bloomBitsPerKey > 0 && _trieBloomBitsPerKey > 0;
 
@@ -86,8 +85,6 @@ public sealed class PersistedSnapshotRepository(
             foreach (SnapshotCatalog.CatalogEntry entry in entries)
                 LoadSnapshot(entry);
 
-            _nextId = _catalog.NextId();
-
             // Delete any blob arena file no loaded snapshot referenced — recoverable
             // orphans from a mid-write crash.
             _blobs.SweepUnreferenced();
@@ -111,7 +108,7 @@ public sealed class PersistedSnapshotRepository(
         PersistedSnapshot snapshot;
         try
         {
-            snapshot = new(entry.Id, entry.From, entry.To, reservation, blobFiles);
+            snapshot = new(entry.From, entry.To, reservation, blobFiles);
         }
         catch
         {
@@ -198,14 +195,13 @@ public sealed class PersistedSnapshotRepository(
         Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles([blobArenaId]);
         lock (_catalogLock)
         {
-            int id = _nextId++;
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(id, snapshot.From, snapshot.To, location));
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location));
             _catalog.Save();
 
             PersistedSnapshot persisted;
             try
             {
-                persisted = new(id, snapshot.From, snapshot.To, reservation, blobFiles);
+                persisted = new(snapshot.From, snapshot.To, reservation, blobFiles);
             }
             catch
             {
@@ -238,14 +234,13 @@ public sealed class PersistedSnapshotRepository(
         Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles(referencedBlobArenaIds);
         lock (_catalogLock)
         {
-            int id = _nextId++;
-            _catalog.Add(new SnapshotCatalog.CatalogEntry(id, from, to, location));
+            _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location));
             _catalog.Save();
 
             PersistedSnapshot snapshot;
             try
             {
-                snapshot = new(id, from, to, reservation, blobFiles);
+                snapshot = new(from, to, reservation, blobFiles);
             }
             catch
             {
@@ -395,7 +390,7 @@ public sealed class PersistedSnapshotRepository(
             {
                 if (_baseSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
                 {
-                    RemoveFromCatalog(snapshot.Id);
+                    RemoveFromCatalog(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
                 }
@@ -412,7 +407,7 @@ public sealed class PersistedSnapshotRepository(
             {
                 if (_compactedSnapshots.TryRemove(key, out PersistedSnapshot? snapshot))
                 {
-                    RemoveFromCatalog(snapshot.Id);
+                    RemoveFromCatalog(snapshot.To);
                     snapshot.Dispose();
                     pruned++;
                 }
@@ -449,11 +444,11 @@ public sealed class PersistedSnapshotRepository(
         _bloomManager.Register(new PersistedSnapshotBloom(snapshot.From, snapshot.To, keyBloom, trieBloom));
     }
 
-    private void RemoveFromCatalog(int snapshotId)
+    private void RemoveFromCatalog(in StateId to)
     {
-        SnapshotCatalog.CatalogEntry? entry = _catalog.Find(snapshotId);
+        SnapshotCatalog.CatalogEntry? entry = _catalog.Find(to);
         if (entry is not null)
-            _catalog.Remove(snapshotId);
+            _catalog.Remove(to);
     }
 
     private static long SumMemory(ConcurrentDictionary<StateId, PersistedSnapshot> dict)

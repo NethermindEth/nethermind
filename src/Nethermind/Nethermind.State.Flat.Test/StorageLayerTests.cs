@@ -62,10 +62,8 @@ public class StorageLayerTests
         StateId s2 = new(200, Keccak.Compute("block200"));
 
         SnapshotCatalog catalog = new(catalogDb);
-        int id1 = catalog.NextId();
-        int id2 = catalog.NextId();
-        catalog.Add(new(id1, s0, s1, new(0, 0, 1024)));
-        catalog.Add(new(id2, s1, s2, new(0, 1024, 2048)));
+        catalog.Add(new(s0, s1, new(0, 0, 1024)));
+        catalog.Add(new(s1, s2, new(0, 1024, 2048)));
         catalog.Save();
 
         // Load in new instance
@@ -75,19 +73,14 @@ public class StorageLayerTests
         Assert.That(loaded.Entries.Count, Is.EqualTo(2));
 
         SnapshotCatalog.CatalogEntry e1 = loaded.Entries[0];
-        Assert.That(e1.Id, Is.EqualTo(id1));
         Assert.That(e1.From.BlockNumber, Is.EqualTo(0));
         Assert.That(e1.To.BlockNumber, Is.EqualTo(100));
         Assert.That(e1.Location, Is.EqualTo(new SnapshotLocation(0, 0, 1024)));
 
         SnapshotCatalog.CatalogEntry e2 = loaded.Entries[1];
-        Assert.That(e2.Id, Is.EqualTo(id2));
         Assert.That(e2.From.BlockNumber, Is.EqualTo(100));
         Assert.That(e2.To.BlockNumber, Is.EqualTo(200));
         Assert.That(e2.Location, Is.EqualTo(new SnapshotLocation(0, 1024, 2048)));
-
-        // NextId should be preserved
-        Assert.That(loaded.NextId(), Is.EqualTo(id2 + 1));
     }
 
     [Test]
@@ -95,18 +88,18 @@ public class StorageLayerTests
     {
         StateId s0 = new(0, Keccak.EmptyTreeHash);
         StateId s1 = new(1, Keccak.Compute("1"));
+        StateId s2 = new(2, Keccak.Compute("2"));
+        StateId missing = new(999, Keccak.Compute("missing"));
 
         SnapshotCatalog catalog = new(new MemDb());
-        int id1 = catalog.NextId();
-        int id2 = catalog.NextId();
-        catalog.Add(new(id1, s0, s1, new(0, 0, 100)));
-        catalog.Add(new(id2, s0, s1, new(0, 100, 200)));
+        catalog.Add(new(s0, s1, new(0, 0, 100)));
+        catalog.Add(new(s1, s2, new(0, 100, 200)));
 
-        Assert.That(catalog.Find(id1), Is.Not.Null);
-        Assert.That(catalog.Remove(id1), Is.True);
-        Assert.That(catalog.Find(id1), Is.Null);
+        Assert.That(catalog.Find(s1), Is.Not.Null);
+        Assert.That(catalog.Remove(s1), Is.True);
+        Assert.That(catalog.Find(s1), Is.Null);
         Assert.That(catalog.Entries.Count, Is.EqualTo(1));
-        Assert.That(catalog.Remove(999), Is.False);
+        Assert.That(catalog.Remove(missing), Is.False);
     }
 
     [Test]
@@ -116,14 +109,13 @@ public class StorageLayerTests
         StateId s1 = new(1, Keccak.Compute("1"));
 
         SnapshotCatalog catalog = new(new MemDb());
-        int id = catalog.NextId();
         SnapshotLocation origLoc = new(0, 0, 100);
         SnapshotLocation newLoc = new(1, 500, 100);
-        catalog.Add(new(id, s0, s1, origLoc));
+        catalog.Add(new(s0, s1, origLoc));
 
-        catalog.UpdateLocation(id, newLoc);
+        catalog.UpdateLocation(s1, newLoc);
 
-        Assert.That(catalog.Find(id)!.Location, Is.EqualTo(newLoc));
+        Assert.That(catalog.Find(s1)!.Location, Is.EqualTo(newLoc));
     }
 
     [Test]
