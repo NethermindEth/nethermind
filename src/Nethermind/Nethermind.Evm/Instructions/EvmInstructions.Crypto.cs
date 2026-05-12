@@ -43,7 +43,7 @@ public static partial class EvmInstructions
         KeccakCache.ComputeTo(bytes, out ValueHash256 keccak);
         // Push the 256-bit hash result onto the stack.
         return stack.Push32Bytes<TTracingInst>(in keccak);
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:

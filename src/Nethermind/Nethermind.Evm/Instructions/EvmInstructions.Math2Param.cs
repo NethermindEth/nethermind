@@ -68,7 +68,7 @@ public static partial class EvmInstructions
 
         if (TTracingInst.IsActive) stack.ReportPushUInt256(ref topRef);
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -297,7 +297,7 @@ public static partial class EvmInstructions
         // Perform exponentiation and push the 256-bit result onto the stack.
         UInt256.Exp(in a, in exponent, out UInt256 expResult);
         return stack.PushUInt256<TTracingInst>(in expResult);
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

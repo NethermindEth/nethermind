@@ -26,7 +26,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(tree.Head?.Header?.Number ?? 0);
 
         return epochNumber < (ulong)spec.SwitchEpoch ?
-            CalculateBlockInfoByV1EpochNum(epochNumber):
+            CalculateBlockInfoByV1EpochNum(epochNumber) :
             GetBlockInfoByV2EpochNum(epochNumber);
     }
 

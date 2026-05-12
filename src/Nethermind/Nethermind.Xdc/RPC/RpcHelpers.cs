@@ -16,11 +16,11 @@ namespace Nethermind.Xdc.RPC;
 internal static class RpcHelpers
 {
     public static PublicApiSnapshot BuildRpcSnapshot(this Snapshot snapshot, XdcBlockHeader header) => new()
-        {
-            Number = (ulong)header.Number,
-            Hash = header.Hash,
-            Signers = snapshot.NextEpochCandidates.ToHashSet(),
-        };
+    {
+        Number = (ulong)header.Number,
+        Hash = header.Hash,
+        Signers = snapshot.NextEpochCandidates.ToHashSet(),
+    };
 
     public static PublicApiMissedRoundsMetadata CalculateMissingRounds(
         this XdcBlockHeader header,

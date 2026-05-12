@@ -70,7 +70,7 @@ public static partial class EvmInstructions
         // Perform the shift operation using the specific implementation.
         TOpShift.Operation(in a, in b, out UInt256 result);
         return stack.PushUInt256<TTracingInst>(in result);
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -116,7 +116,7 @@ public static partial class EvmInstructions
         As<UInt256, Int256>(ref b).RightShift((int)a, out Int256 result);
         // Convert the signed result back to unsigned representation.
         return stack.PushUInt256<TTracingInst>(in As<Int256, UInt256>(ref result));
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
