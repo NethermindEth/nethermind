@@ -52,6 +52,9 @@ public class DebugRpcModule(
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
+    public ResultWrapper<long?> debug_getFirstFullStateBlock() =>
+        ResultWrapper<long?>.Success(debugBridge.GetFirstFullStateBlock());
+
     public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)

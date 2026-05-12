@@ -21,6 +21,9 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves a representation of tree branches on a given chain level (Nethermind specific).", IsImplemented = true, IsSharable = true)]
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 
+    [JsonRpcMethod(Description = "Returns the number of the earliest canonical block whose full state is available locally, or null when no block currently has full state. Useful for surfacing how far back a snap-synced node can answer historical state queries (Nethermind specific).", IsImplemented = true, IsSharable = true)]
+    ResultWrapper<long?> debug_getFirstFullStateBlock();
+
     [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific).", IsImplemented = true, IsSharable = true)]
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
