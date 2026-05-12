@@ -361,9 +361,14 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 TGasPolicy intrinsicGasStandard = intrinsicGas.Standard;
                 long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-                long stateGasRefund = checked(
-                    TGasPolicy.GetNewAccountStateCost(in gasAvailable) * delegationRefunds
-                    + TGasPolicy.GetPerAuthBaseStateCost(in gasAvailable) * delegationAuthBaseRefunds);
+                long newAccountStateCost = TGasPolicy.GetNewAccountStateCost(in gasAvailable);
+                long perAuthBaseStateCost = TGasPolicy.GetPerAuthBaseStateCost(in gasAvailable);
+                long newAccountStateRefund = checked(newAccountStateCost * delegationRefunds);
+                long authBaseStateRefund = checked(perAuthBaseStateCost * delegationAuthBaseRefunds);
+                Debug.Assert(
+                    newAccountStateRefund <= long.MaxValue - authBaseStateRefund,
+                    "Authorization refunds are bounded by intrinsic gas validation.");
+                long stateGasRefund = checked(newAccountStateRefund + authBaseStateRefund);
                 long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
                 TGasPolicy.RefundStateGas(ref gasAvailable, stateGasRefund, refundFloor, trackSpillRefund: false);
                 delegationRefunds = 0;
@@ -390,7 +395,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     bool accountExists = WorldState.AccountExists(authority);
-                    bool hasDelegation = accountExists && WorldState.HasCode(authority) && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
+                    bool hasDelegation = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
 
                     if (!accountExists)
                     {
