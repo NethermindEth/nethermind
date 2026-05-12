@@ -38,7 +38,6 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
-  WORKERS: '8'
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
 
@@ -60,16 +59,19 @@ jobs:
             eest_repository: ethereum/execution-spec-tests
             eest_version: v5.4.0
             eest_archive: fixtures_stable.tar.gz
+            workers: '4'
           - test_setup: new_spec
             runner: ubuntu-gigachad
             eest_repository: ethereum/execution-specs
             eest_version: tests-bal@v7.0.0
             eest_archive: fixtures_bal.tar.gz
+            workers: '8'
     env:
       TEST_SETUP: ${{ matrix.test_setup }}
       EEST_REPOSITORY: ${{ matrix.eest_repository }}
       EEST_VERSION: ${{ matrix.eest_version }}
       EEST_ARCHIVE: ${{ matrix.eest_archive }}
+      WORKERS: ${{ matrix.workers }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6

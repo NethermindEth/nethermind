@@ -107,11 +107,6 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 
                 try
                 {
-                    if (suppressOutput)
-                    {
-                        WriteStatus("RUN", test.Name, true);
-                    }
-
                     EthereumTestResult result = await RunTest(test, tracer: tracer);
                     testResults.Add(result);
                     if (suppressOutput)
