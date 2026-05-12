@@ -19,10 +19,10 @@ namespace Nethermind.State.Flat.Hsst;
 ///
 /// Per-key state during this build phase is one <c>long</c> position; full keys are
 /// recovered on demand by reading them back from the data section through the
-/// supplied reader. Separators (leaf-level disambiguators against the immediately
-/// preceding entry) are recomputed on demand using
-/// <see cref="HsstSeparator.ComputeSeparatorLength"/>; internal-node separators are
-/// produced via <see cref="WriteSeparatorBetween"/> over the two boundary keys.
+/// supplied reader. Leaf separators (disambiguators against the immediately preceding
+/// entry) are precomputed once into <see cref="_sepLengthsArr"/> by
+/// <see cref="PrecomputeSeparatorLengths"/>; internal-node separators are produced
+/// via <see cref="WriteSeparatorBetween"/> over the two boundary keys.
 /// </summary>
 public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     where TWriter : IByteBufferWriterWithReader<TReader, TPin>
@@ -671,12 +671,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// One-pass pre-computation of per-entry natural separator length against the prior
-    /// entry's key. Writes into
-    /// <see cref="_sepLengthsArr"/> (one byte per entry — fits because
-    /// <see cref="HsstSeparator.ComputeSeparatorLength"/> caps at currKey.Length ≤
-    /// <see cref="MaxKeyLen"/> = 255). Both <see cref="ChooseLeafLayout"/> and
-    /// <see cref="WriteLeafIndexNode"/> read from this table instead of recomputing the
-    /// same value twice per entry.
+    /// entry's key — <c>min(LCP(prev, curr) + 1, curr.Length)</c>. Writes into
+    /// <see cref="_sepLengthsArr"/> (one byte per entry — fits because the result is
+    /// capped at curr.Length ≤ <see cref="MaxKeyLen"/> = 255). Both
+    /// <see cref="ChooseLeafLayout"/> and <see cref="WriteLeafIndexNode"/> read from
+    /// this table instead of recomputing the same value twice per entry.
     /// </summary>
     private void PrecomputeSeparatorLengths()
     {
@@ -687,8 +686,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         for (int i = 0; i < n; i++)
         {
             int currKeyLen = ReadKey(i, currKey);
-            int sepLen = HsstSeparator.ComputeSeparatorLength(
-                prevKey[..prevKeyLen], currKey[..currKeyLen]);
+            int sepLen = Math.Min(CommonPrefixLength(prevKey[..prevKeyLen], currKey[..currKeyLen]) + 1, currKeyLen);
             _sepLengthsArr![i] = (byte)sepLen;
             currKey[..currKeyLen].CopyTo(prevKey);
             prevKeyLen = currKeyLen;
@@ -832,8 +830,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             }
         }
         // Apply minSeparatorLength floor (clamped to right.Length) so internal-node
-        // separators stay uniform when the caller has signalled a fixed key width —
-        // matching the leaf-side floor in HsstSeparator.ComputeSeparatorLength.
+        // separators stay uniform when the caller has signalled a fixed key width.
         // Extending the prefix further (still a prefix of right) preserves the
         // invariants: the result is > left and ≤ right.
         if (minSeparatorLength > len)
