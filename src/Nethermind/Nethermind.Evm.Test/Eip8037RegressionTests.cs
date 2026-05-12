@@ -799,6 +799,41 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit));
     }
 
+    [TestCase(false, TestName = "Eip8037_selfdestruct_to_new_beneficiary_without_balance_charges_no_state_gas")]
+    [TestCase(true, TestName = "Eip8037_selfdestruct_to_new_beneficiary_with_balance_charges_new_account_state_gas")]
+    public void Eip8037_selfdestruct_to_new_beneficiary_charges_state_gas_only_for_balance_transfer(bool fundContract)
+    {
+        Address beneficiary = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode
+            .SELFDESTRUCT(beneficiary)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            500_000,
+            code,
+            value: 0,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        if (!fundContract)
+        {
+            UInt256 balance = TestState.GetBalance(Recipient);
+            if (!balance.IsZero)
+            {
+                TestState.SubtractFromBalance(Recipient, balance, SpecProvider.GenesisSpec);
+            }
+        }
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        long expectedStateGas = fundContract ? GasCostOf.NewAccountState : 0;
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
+        Assert.That(TestState.GetBalance(beneficiary).IsZero, Is.EqualTo(!fundContract));
+    }
+
     [TestCase(false, TestName = "Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas_CREATE")]
     [TestCase(true, TestName = "Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas_CREATE2")]
     public void Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas(bool create2)
