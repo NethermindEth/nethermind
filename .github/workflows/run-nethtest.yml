@@ -143,7 +143,6 @@ jobs:
       - name: Run nethtest and parse results
         working-directory: src/Nethermind
         timeout-minutes: 55
-        continue-on-error: true
         run: |
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
@@ -159,7 +158,6 @@ jobs:
           CLEAN_FILE="$RUNNER_TMP/nethtest-clean.log"
           LOW_MEMORY_FILE="$RUNNER_TMP/nethtest-low-memory"
           WATCHDOG_TIMEOUT_FILE="$RUNNER_TMP/nethtest-watchdog-timeout"
-          STEP_FAILED_FILE="$RUNNER_TMP/nethtest-step-failed"
 
           # Write summary even if the process crashes
           write_summary() {
@@ -287,7 +285,7 @@ jobs:
           trap cleanup EXIT
 
           touch "$RESULTS_FILE" "$STDERR_FILE"
-          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE" "$STEP_FAILED_FILE"
+          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE"
 
           print_diagnostics() {
             echo ""
@@ -338,7 +336,6 @@ jobs:
 
           on_termination() {
             echo "::warning::Run step received a termination signal"
-            touch "$STEP_FAILED_FILE"
             print_diagnostics
             exit 143
           }
@@ -421,7 +418,6 @@ jobs:
           fi
 
           if [ $rc -ne 0 ]; then
-            touch "$STEP_FAILED_FILE"
             echo "::warning::nethtest exited with code $rc"
             echo "--- stderr (last 50 lines) ---"
             tail -50 "$STDERR_FILE" | sed 's/\x1b\[[0-9;]*m//g'
@@ -437,15 +433,3 @@ jobs:
             ${{ runner.temp }}/nethtest-results.json
             ${{ runner.temp }}/nethtest-stderr.log
           retention-days: 30
-
-      - name: Check nethtest result
-        if: always()
-        run: |
-          RUNNER_TMP="${RUNNER_TEMP:-/tmp}"
-          if command -v cygpath >/dev/null 2>&1; then
-            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
-          fi
-          if [ -f "$RUNNER_TMP/nethtest-step-failed" ]; then
-            echo "::error::nethtest failed; see the summary and uploaded artifacts for details"
-            exit 1
-          fi
