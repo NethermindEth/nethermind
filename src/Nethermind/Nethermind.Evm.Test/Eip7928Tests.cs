@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -104,6 +105,20 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithGasLimit(intrinsicGas + executionGas)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+    }
+
+    // Shared setup for the *_under_PrecompileCachedCodeInfoRepository tests: init world state
+    // (optionally with a delegation target), wrap the processor in the precompile cache, and
+    // pin the block execution context to Amsterdam.
+    private (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) SetupPrecompileBalScenario(
+        Address? delegationTarget = null)
+    {
+        InitWorldState(TestState, delegationTarget: delegationTarget);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
+            CreateTracedProcessor(wrapPrecompileCache: true);
+        Block block = Build.A.Block.TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        return (tracedState, processor, block);
     }
 
     private static void AssertPureAccountRead(AccountChanges? accountChanges)
@@ -486,15 +501,12 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void Delegated_precompile_target_is_recorded_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;
-        InitWorldState(TestState, delegationTarget: precompileAddress);
-        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessor(wrapPrecompileCache: true);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) =
+            SetupPrecompileBalScenario(delegationTarget: precompileAddress);
 
-        Block block = Build.A.Block.TestObject;
         byte[] code = Prepare.EvmCode.Call(_callTargetAddress, 50_000).Done;
         Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
         AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
@@ -517,11 +529,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void Calling_account_delegated_to_precompile_uses_FastCall_per_EIP_7702()
     {
         Address precompileAddress = Sha256Precompile.Address;
-        InitWorldState(TestState, delegationTarget: precompileAddress);
-        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessor(wrapPrecompileCache: true);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) =
+            SetupPrecompileBalScenario(delegationTarget: precompileAddress);
 
-        Block block = Build.A.Block.TestObject;
         byte[] code = Prepare.EvmCode
             .Call(_callTargetAddress, 0)
             .PushData(0)
@@ -529,7 +539,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .Done;
         Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
         AccountChanges? testAddressChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(_testAddress);
@@ -557,15 +566,12 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void DelegateCall_to_precompile_records_codeSource_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;
-        InitWorldState(TestState);
-        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessor(wrapPrecompileCache: true);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, Block block) =
+            SetupPrecompileBalScenario();
 
-        Block block = Build.A.Block.TestObject;
         byte[] code = Prepare.EvmCode.DelegateCall(precompileAddress, 50_000).Done;
         Transaction tx = BuildContractTx(code, _gasLimit, _testAccountBalance, block.Header);
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
         AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
@@ -589,11 +595,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     public void Direct_transaction_to_precompile_records_recipient_in_BAL_under_PrecompileCachedCodeInfoRepository()
     {
         Address precompileAddress = Sha256Precompile.Address;
-        InitWorldState(TestState);
-        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) =
-            CreateTracedProcessor(wrapPrecompileCache: true);
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor, _) =
+            SetupPrecompileBalScenario();
 
-        Block block = Build.A.Block.TestObject;
         Transaction tx = Build.A.Transaction
             .To(precompileAddress)
             .WithData([1, 2, 3])
@@ -601,7 +605,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             .WithValue(UInt256.Zero)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
 
-        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
 
         AccountChanges? precompileChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(precompileAddress);
@@ -614,9 +617,31 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(0ul, TestName = "EIP7702_authorization_max_nonce_keeps_authority_out_of_BAL_account_nonce_zero")]
-    [TestCase(ulong.MaxValue, TestName = "EIP7702_authorization_max_nonce_keeps_authority_out_of_BAL_account_nonce_max")]
-    public void Eip7702_authorization_max_nonce_rejection_does_not_record_authority_or_target(ulong authorityNonce)
+    // Pre-validation rejections (max nonce, high s) skip the authority lookup entirely, so
+    // neither the authority nor the delegation target appear in the BAL.
+    private static IEnumerable<TestCaseData> PreValidationRejectionCases()
+    {
+        yield return new TestCaseData(
+                0ul,
+                (Func<ulong, Address, AuthorizationTuple>)((chainId, authority) =>
+                    new(chainId, _delegationTargetAddress, ulong.MaxValue, 0, UInt256.One, UInt256.One, authority)))
+            .SetName("EIP7702_authorization_max_nonce_keeps_authority_out_of_BAL_account_nonce_zero");
+        yield return new TestCaseData(
+                ulong.MaxValue,
+                (Func<ulong, Address, AuthorizationTuple>)((chainId, authority) =>
+                    new(chainId, _delegationTargetAddress, ulong.MaxValue, 0, UInt256.One, UInt256.One, authority)))
+            .SetName("EIP7702_authorization_max_nonce_keeps_authority_out_of_BAL_account_nonce_max");
+        yield return new TestCaseData(
+                0ul,
+                (Func<ulong, Address, AuthorizationTuple>)((chainId, authority) =>
+                    new(chainId, _delegationTargetAddress, 0, 0, UInt256.One, SecP256k1Curve.HalfNPlusOne, authority)))
+            .SetName("EIP7702_authorization_high_s_keeps_authority_out_of_BAL");
+    }
+
+    [TestCaseSource(nameof(PreValidationRejectionCases))]
+    public void Eip7702_authorization_pre_validation_rejection_does_not_record_authority_or_target(
+        ulong authorityNonce,
+        Func<ulong, Address, AuthorizationTuple> buildAuthorization)
     {
         byte[] entryCode = BuildStorageWriteCode(UInt256.Zero, UInt256.One);
         Address authority = TestItem.AddressB;
@@ -624,16 +649,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         InitWorldState(TestState, entryCode);
         AddAccountToState(authority, authorityNonce);
 
-        AuthorizationTuple authorization = new(
-            SpecProvider.ChainId,
-            _delegationTargetAddress,
-            ulong.MaxValue,
-            0,
-            UInt256.One,
-            UInt256.One,
-            authority);
-
-        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+        BlockAccessList bal = ExecuteSetCodeCall(buildAuthorization(SpecProvider.ChainId, authority));
 
         using (Assert.EnterMultipleScope())
         {
@@ -644,35 +660,10 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void Eip7702_authorization_high_s_rejection_does_not_record_authority_or_target()
-    {
-        byte[] entryCode = BuildStorageWriteCode(UInt256.Zero, UInt256.One);
-        Address authority = TestItem.AddressB;
-
-        InitWorldState(TestState, entryCode);
-        AddAccountToState(authority);
-
-        AuthorizationTuple authorization = new(
-            SpecProvider.ChainId,
-            _delegationTargetAddress,
-            0,
-            0,
-            UInt256.One,
-            SecP256k1Curve.HalfNPlusOne,
-            authority);
-
-        BlockAccessList bal = ExecuteSetCodeCall(authorization);
-
-        using (Assert.EnterMultipleScope())
-        {
-            AssertNonceChange(bal, TestItem.AddressA, 1);
-            AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
-            Assert.That(bal.GetAccountChanges(authority), Is.Null);
-            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
-        }
-    }
-
+    // Post-validation rejection: the cold authority lookup happens before the existing-code
+    // check fails, so a pure account read is recorded for the authority.
+    // Post-validation rejection: the cold authority lookup happens before the existing-code
+    // check fails, so a pure account read is recorded for the authority.
     [Test]
     public void Eip7702_authorization_existing_code_rejection_records_authority_only()
     {
@@ -1857,7 +1848,6 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
-    [Test]
     [TestCase("0x0000000000000000000000000000000000000004", TestName = "Precompile")]
     [TestCase("0x5000001000000000000000000000000000000004", TestName = "RandomAddress")]
     public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)

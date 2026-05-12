@@ -19,37 +19,14 @@ public class Eip8037BlockGasInclusionCheckTests
     private const long CreateIntrinsicRegular = 53_000;
     private const long SStoreStateGas = 64 * CostPerStateByte; // GasCostOf.SSetState
 
-    // Boundary case: state contribution == state_available -> accepted (strict >).
-    [Test]
-    public void Boundary_state_exact_fit_accepts()
+    // Boundary: state contribution == state_available -> accepted (strict >);
+    // == state_available + 1 -> rejected on state dimension.
+    [TestCase(0L, Eip8037BlockGasInclusionCheck.Outcome.Ok, TestName = "Boundary_state_exact_fit_accepts")]
+    [TestCase(1L, Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded, TestName = "Boundary_state_exceeded_by_one_rejects_on_state_dimension")]
+    public void Boundary_state(long delta, Eip8037BlockGasInclusionCheck.Outcome expected)
     {
         // tx1: 50 cold SSTOREs in regular cap budget. Reproduces the spec test
         // setup: tx1_state = num_sstores * sstore_state_gas; tx1_gas = cap + tx1_state.
-        const int numSstores = 50;
-        long tx1State = numSstores * SStoreStateGas;
-        long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + tx1State + 100_000;
-
-        // After tx1 lands: cumR = (some regular), cumS = tx1_state.
-        long cumR_afterTx1 = BaseIntrinsicRegular + 5_000; // arbitrary regular work
-        long cumS_afterTx1 = tx1State;
-
-        // tx2 sized so its worst-case state contribution = state_available exactly.
-        long stateAvailable = blockGasLimit - cumS_afterTx1;
-        long tx2Gas = BaseIntrinsicRegular + stateAvailable + 0; // delta = 0
-        long tx2IntrinsicRegular = BaseIntrinsicRegular;
-        long tx2IntrinsicState = 0;
-
-        Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit, cumR_afterTx1, cumS_afterTx1, tx2Gas, tx2IntrinsicRegular, tx2IntrinsicState);
-
-        Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok),
-            "tx2 worst-case state contribution exactly fills state_available; spec uses strict > so this must be accepted");
-    }
-
-    // Boundary case: state contribution > state_available by 1 -> reject on state.
-    [Test]
-    public void Boundary_state_exceeded_by_one_rejects_on_state_dimension()
-    {
         const int numSstores = 50;
         long tx1State = numSstores * SStoreStateGas;
         long blockGasLimit = Eip7825Constants.DefaultTxGasLimitCap + tx1State + 100_000;
@@ -58,15 +35,12 @@ public class Eip8037BlockGasInclusionCheckTests
         long cumS_afterTx1 = tx1State;
 
         long stateAvailable = blockGasLimit - cumS_afterTx1;
-        long tx2Gas = BaseIntrinsicRegular + stateAvailable + 1; // delta = 1
-        long tx2IntrinsicRegular = BaseIntrinsicRegular;
-        long tx2IntrinsicState = 0;
+        long tx2Gas = BaseIntrinsicRegular + stateAvailable + delta;
 
         Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            blockGasLimit, cumR_afterTx1, cumS_afterTx1, tx2Gas, tx2IntrinsicRegular, tx2IntrinsicState);
+            blockGasLimit, cumR_afterTx1, cumS_afterTx1, tx2Gas, BaseIntrinsicRegular, intrinsicState: 0);
 
-        Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded),
-            "spec must reject on state dimension, not regular");
+        Assert.That(outcome, Is.EqualTo(expected));
     }
 
     // Creation tx: tx.gas > regular_available but (tx.gas - intrinsic.state) fits.
@@ -228,27 +202,16 @@ public class Eip8037BlockGasInclusionCheckTests
         }
     }
 
-    [Test]
-    public void Calculate_block_regular_gas_floor_clamps_low_regular_gas()
+    // Both cases produce a sub-floor execution component (positive on the first, negative
+    // intermediate on the second). Either way the floor must clamp the final value.
+    [TestCase(300L, 100L, TestName = "Calculate_block_regular_gas_floor_clamps_low_regular_gas")]
+    [TestCase(0L, 0L, TestName = "Calculate_block_regular_gas_allows_negative_execution_intermediate")]
+    public void Calculate_block_regular_gas_clamps_to_floor(long initialRegular, long remainingRegular)
     {
         long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
             intrinsicRegularGas: 21_000,
-            initialRegularGas: 300,
-            remainingRegularGas: 100,
-            stateGasSpill: 200,
-            stateGasSpillReclassified: 0,
-            floorGas: 53_000);
-
-        Assert.That(blockRegularGas, Is.EqualTo(53_000));
-    }
-
-    [Test]
-    public void Calculate_block_regular_gas_allows_negative_execution_intermediate()
-    {
-        long blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockRegularGas(
-            intrinsicRegularGas: 21_000,
-            initialRegularGas: 0,
-            remainingRegularGas: 0,
+            initialRegularGas: initialRegular,
+            remainingRegularGas: remainingRegular,
             stateGasSpill: 200,
             stateGasSpillReclassified: 0,
             floorGas: 53_000);

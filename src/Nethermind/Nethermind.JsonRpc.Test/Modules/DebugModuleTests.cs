@@ -221,40 +221,39 @@ public class DebugModuleTests
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rawBal));
     }
 
-    [Test]
-    public async Task Get_raw_block_access_list_when_missing_block()
+    private static IEnumerable<TestCaseData> GetRawBlockAccessListErrorCases()
     {
-        _debugBridge.GetBlock(BlockParameter.Latest).ReturnsNull();
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) => debug.GetBlock(BlockParameter.Latest).ReturnsNull()),
+            ErrorCodes.BlockAccessListResourceNotFound)
+            { TestName = "Get_raw_block_access_list_when_missing_block" };
 
-        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcErrorResponse;
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) =>
+                debug.GetBlock(BlockParameter.Latest).Returns(Build.A.Block.WithNumber(1).TestObject)),
+            ErrorCodes.BlockAccessListResourceNotFound)
+            { TestName = "Get_raw_block_access_list_when_unavailable_before_fork" };
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.BlockAccessListResourceNotFound));
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, chain) =>
+            {
+                Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
+                debug.GetBlock(BlockParameter.Latest).Returns(block);
+                chain.GetBlockAccessListRlp(block.Hash!).ReturnsNull();
+            }),
+            ErrorCodes.PrunedHistoryUnavailable)
+            { TestName = "Get_raw_block_access_list_when_pruned" };
     }
 
-    [Test]
-    public async Task Get_raw_block_access_list_when_unavailable_before_fork()
+    [TestCaseSource(nameof(GetRawBlockAccessListErrorCases))]
+    public async Task Get_raw_block_access_list_error_cases(Action<IDebugBridge, IBlockchainBridge> setup, int expectedErrorCode)
     {
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
+        setup(_debugBridge, _blockchainBridge);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcErrorResponse;
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.BlockAccessListResourceNotFound));
-    }
-
-    [Test]
-    public async Task Get_raw_block_access_list_when_pruned()
-    {
-        Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
-        _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
-        _blockchainBridge.GetBlockAccessListRlp(block.Hash!).ReturnsNull();
-
-        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcErrorResponse;
-
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.PrunedHistoryUnavailable));
+        Assert.That(response?.Error?.Code, Is.EqualTo(expectedErrorCode));
     }
 
     private BlockTree BuildBlockTree(Func<BlockTreeBuilder, BlockTreeBuilder>? builderOptions = null)

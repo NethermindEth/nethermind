@@ -19,9 +19,17 @@ namespace Nethermind.Evm.Test;
 public class Eip8037RegressionTests : VirtualMachineTestsBase
 {
     private const long DynamicStatePricingBlockGasLimit = 100_000_000;
+    private static readonly byte[] DefaultCreate2Salt = [0x01];
 
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+
+    // Returns a fresh Prepare with a CREATE or CREATE2 of `initCode` already appended,
+    // ready for the caller to chain post-create instructions.
+    private static Prepare BuildCreateFactory(byte[] initCode, UInt256 value, bool create2, byte[]? salt = null) =>
+        create2
+            ? Prepare.EvmCode.Create2(initCode, salt ?? DefaultCreate2Salt, value)
+            : Prepare.EvmCode.Create(initCode, value);
 
     /// <summary>
     /// When a nested CREATE's child frame has too little regular gas to cover both
@@ -865,12 +873,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         byte[] childInitCode = Prepare.EvmCode
             .SELFDESTRUCT(beneficiary)
             .Done;
-        byte[] salt = [0x01];
 
-        Prepare factoryCodeBuilder = create2
-            ? Prepare.EvmCode.Create2(childInitCode, salt, (UInt256)createdBalance)
-            : Prepare.EvmCode.Create(childInitCode, (UInt256)createdBalance);
-        byte[] factoryCode = factoryCodeBuilder
+        byte[] factoryCode = BuildCreateFactory(childInitCode, (UInt256)createdBalance, create2)
             .Op(Instruction.POP)
             .Op(Instruction.STOP)
             .Done;
@@ -923,11 +927,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             .Op(Instruction.SELFDESTRUCT)
             .Done;
 
-        byte[] salt = [0x01];
-        Prepare factoryCodeBuilder = create2
-            ? Prepare.EvmCode.Create2(childInitCode, salt, UInt256.Zero)
-            : Prepare.EvmCode.Create(childInitCode, UInt256.Zero);
-        byte[] factoryCode = factoryCodeBuilder
+        byte[] factoryCode = BuildCreateFactory(childInitCode, UInt256.Zero, create2)
             .Op(Instruction.POP)
             .Op(Instruction.STOP)
             .Done;
@@ -950,15 +950,11 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         byte[] childInitCode = Prepare.EvmCode
             .ForInitOf(selfDestructRuntime)
             .Done;
-        byte[] salt = [0x01];
         Address createdAddress = create2
-            ? ContractAddress.From(Recipient, salt.PadLeft(32), childInitCode)
+            ? ContractAddress.From(Recipient, DefaultCreate2Salt.PadLeft(32), childInitCode)
             : ContractAddress.From(Recipient, 0);
 
-        Prepare factoryCodeBuilder = create2
-            ? Prepare.EvmCode.Create2(childInitCode, salt, UInt256.Zero)
-            : Prepare.EvmCode.Create(childInitCode, UInt256.Zero);
-        byte[] factoryCode = factoryCodeBuilder
+        byte[] factoryCode = BuildCreateFactory(childInitCode, UInt256.Zero, create2)
             .Op(Instruction.POP)
             .Call(createdAddress, 100_000)
             .Op(Instruction.POP)
