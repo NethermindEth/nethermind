@@ -194,9 +194,10 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
             if (logger.IsWarn) logger.Warn($"Skipped {configType.Name} in non-default config diff: {error.Message}");
         };
 
-        foreach ((string category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues(onConfigError))
+        foreach ((string? category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues(onConfigError))
         {
-            nonDefaultLines.Add($"  {category}.{name} = {serializer.Serialize(currentValue)}");
+            string qualifiedName = category is null ? name : $"{category}.{name}";
+            nonDefaultLines.Add($"  {qualifiedName} = {serializer.Serialize(currentValue)}");
         }
 
         if (nonDefaultLines.Count == 0)

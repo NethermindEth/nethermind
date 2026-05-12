@@ -63,7 +63,7 @@ public static class ConfigExtensions
     /// (provider lookup or fresh-default construction throws). Enumeration of the
     /// remaining interfaces continues regardless. If <c>null</c>, failures are silent.
     /// </param>
-    public static IEnumerable<(string Category, string Name, object? CurrentValue, object? DefaultValue)>
+    public static IEnumerable<(string? Category, string Name, object? CurrentValue, object? DefaultValue)>
         GetNonDefaultValues(this IConfigProvider configProvider, Action<Type, Exception>? onConfigError = null)
     {
         ArgumentNullException.ThrowIfNull(configProvider);
@@ -74,12 +74,12 @@ public static class ConfigExtensions
 
             IConfig current;
             IConfig fresh;
-            string category;
+            string? category;
             try
             {
                 current = configProvider.GetConfig(configInterface);
                 fresh = (IConfig)Activator.CreateInstance(current.GetType())!;
-                category = GetCategoryName(configInterface) ?? string.Empty;
+                category = GetCategoryName(configInterface);
             }
             catch (Exception e)
             {

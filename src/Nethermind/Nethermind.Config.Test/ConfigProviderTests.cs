@@ -115,7 +115,7 @@ namespace Nethermind.Config.Test
             ConfigProvider configProvider = new();
             configProvider.Initialize();
 
-            List<(string Category, string Name, object? CurrentValue, object? DefaultValue)> nonDefaults =
+            List<(string? Category, string Name, object? CurrentValue, object? DefaultValue)> nonDefaults =
                 configProvider.GetNonDefaultValues().ToList();
 
             Assert.That(nonDefaults, Is.Empty);
@@ -132,7 +132,7 @@ namespace Nethermind.Config.Test
             configProvider.AddSource(new ArgsConfigSource(args));
             configProvider.Initialize();
 
-            List<(string Category, string Name, object? CurrentValue, object? DefaultValue)> nonDefaults =
+            List<(string? Category, string Name, object? CurrentValue, object? DefaultValue)> nonDefaults =
                 configProvider.GetNonDefaultValues()
                     .Where(static x => x.Category == "Network" && x.Name == nameof(INetworkConfig.DiscoveryPort))
                     .ToList();
