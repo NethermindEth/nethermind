@@ -107,6 +107,31 @@ internal static class HsstDenseByteIndexReader
         return false;
     }
 
+    /// <summary>
+    /// Resolve every entry's bound in tag order into <paramref name="dst"/>. Entries with
+    /// zero length (gap-filled) get a default <see cref="Bound"/>. Returns the number of
+    /// entries written (= <c>Layout.Count</c>), or 0 if the layout is invalid or <paramref name="dst"/>
+    /// is too small. Callers size <paramref name="dst"/> to the expected maximum tag + 1
+    /// (e.g. 7 for the per-address HSST whose tags are 0x01..0x06). Pins the <c>Ends</c>
+    /// array once, avoiding the per-tag re-pin and per-tag layout-read cost of repeated
+    /// <see cref="TrySeek{TReader, TPin}"/> calls.
+    /// </summary>
+    public static int TryResolveAll<TReader, TPin>(
+        scoped in TReader reader, Bound bound, Span<Bound> dst)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        if (!TryReadLayout<TReader, TPin>(in reader, bound, out Layout L)) return 0;
+        if (L.Count > dst.Length) return 0;
+        long endsTotal = (long)L.Count * L.OffsetSize;
+        if (endsTotal > int.MaxValue) return 0;
+        using TPin endsPin = reader.PinBuffer(L.EndsStart, endsTotal);
+        ReadOnlySpan<byte> ends = endsPin.Buffer;
+        for (int i = 0; i < L.Count; i++)
+            TryResolveLocal(L, ends, i, out dst[i]);
+        return L.Count;
+    }
+
     private static bool TryResolveLocal(Layout L, ReadOnlySpan<byte> ends, int idx, out Bound entryBound)
     {
         entryBound = default;

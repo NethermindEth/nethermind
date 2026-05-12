@@ -78,7 +78,7 @@ public class PageResidencyTrackerBenchmark
         int evicted = 0;
         for (int i = 0; i < BatchSize; i++)
         {
-            if (tracker.TryTouch(arenas[i], pages[i], out _, out _)) evicted++;
+            if (tracker.TryTouch(arenas[i], pages[i], out _, out _) == TouchOutcome.Evicted) evicted++;
         }
         return evicted;
     }

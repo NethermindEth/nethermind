@@ -134,6 +134,95 @@ public class PersistedSnapshotCompactorTests
         }
     }
 
+    /// <summary>
+    /// Regression for large-tier compactions where N approaches the typical
+    /// <c>compactSize/CompactSize</c> ceiling (~32). Each source carries a unique account
+    /// plus a shared overlapping account (AddressA) with a distinct slot per block, so the
+    /// per-address sub-tag merge runs with <c>matchCount == N</c> on every iteration and
+    /// the slot merge exercises the fused inline bloom path with N slot inputs. Failures
+    /// here flag mis-cached keys, missed bound refresh after <c>MoveNext</c>, or
+    /// destruct-barrier/slot-bound mismatches in <c>NWayMergePerAddressHsst</c>.
+    /// </summary>
+    [TestCase(8)]
+    [TestCase(16)]
+    [TestCase(32)]
+    public void TryCompactPersistedSnapshots_MergesNBaseSnapshots(int n)
+    {
+        string testDir = Path.Combine(Path.GetTempPath(), $"nethermind_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDir);
+        try
+        {
+            using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
+            using BlobArenaCatalog blobCatalog = new(new MemDb());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            repo.LoadFromCatalog();
+
+            // CompactSize=4 → minCompactSize for the large-tier compactor is 8. n is a power of 2
+            // in {8, 16, 32}, so n & -n == n covers the whole window and triggers a single merge.
+            IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
+            PersistedSnapshotCompactor compactor = new(
+                repo, smallArena, config, Nethermind.Logging.LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
+                minCompactSize: config.CompactSize * 2,
+                maxCompactSize: config.PersistedSnapshotMaxCompactSize,
+                tierLabel: "large",
+                reservationTag: ArenaReservationTags.BlobBackedLarge);
+
+            StateId prev = new(0, Keccak.EmptyTreeHash);
+            ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
+            for (int i = 1; i <= n; i++)
+            {
+                StateId next = new(i, Keccak.Compute($"s{i}"));
+                SnapshotContent c = new();
+                // Unique account per block (different address each time).
+                c.Accounts[TestItem.Addresses[i - 1]] = Build.An.Account.WithBalance((UInt256)(i * 100)).TestObject;
+                // Shared overlapping account: same AddressA every block, distinct balance and
+                // a distinct slot — drives matchCount == N through NWayMergePerAddressHsst,
+                // and the slot merge sees N inputs with N unique slot keys.
+                c.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance((UInt256)i).TestObject;
+                c.Storages[(TestItem.AddressA, (UInt256)i)] = new SlotValue(new byte[] { (byte)i });
+                repo.ConvertSnapshotToPersistedSnapshot(new Snapshot(prev, next, c, _pool, ResourcePool.Usage.MainBlockProcessing));
+                prev = next;
+            }
+
+            compactor.DoCompactSnapshot(prev);
+
+            Assert.That(repo.TryLeaseCompactedSnapshotTo(prev, out PersistedSnapshot? compacted), Is.True);
+            try
+            {
+                Assert.That(compacted!.From.BlockNumber, Is.EqualTo(0));
+                Assert.That(compacted.To.BlockNumber, Is.EqualTo(n));
+
+                // Every unique account must survive.
+                for (int i = 1; i <= n; i++)
+                {
+                    Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.Addresses[i - 1].Bytes), out _), Is.True,
+                        $"Account from block {i} missing");
+                }
+
+                // Overlapping account: newest balance wins.
+                Assert.That(compacted.TryGetAccount(hashA, out Account? a), Is.True);
+                Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
+
+                // Every per-block slot must survive (each block wrote a distinct slot index).
+                for (int i = 1; i <= n; i++)
+                {
+                    SlotValue slot = default;
+                    Assert.That(compacted.TryGetSlot(hashA, (UInt256)i, ref slot), Is.True,
+                        $"Slot {i} must survive merge");
+                    Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).AsReadOnlySpan.ToArray()),
+                        $"Slot {i} value mismatch");
+                }
+            }
+            finally { compacted!.Dispose(); }
+        }
+        finally
+        {
+            if (Directory.Exists(testDir))
+                Directory.Delete(testDir, recursive: true);
+        }
+    }
+
     [Test]
     public void CompactPersistedSnapshots_WarmsAddressIndexInPageResidencyTracker()
     {

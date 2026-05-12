@@ -20,6 +20,7 @@ using Prometheus;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.State.Flat;
 
