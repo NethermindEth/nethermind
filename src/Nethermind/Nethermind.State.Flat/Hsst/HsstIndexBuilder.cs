@@ -356,7 +356,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         Span<byte> currKey = stackalloc byte[MaxKeyLen];
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
 
-        int keyBufSize = count * (2 + keySlotSize);
+        // keyBuf must fit the widest per-entry payload across layouts: Uniform takes
+        // keySlotSize bytes, Variable/UniformWithLen take the per-entry natural sep
+        // length (up to _keyLength - prefixLen). Use the max so all paths fit.
+        int perEntryKeyBytes = Math.Max(keySlotSize, _keyLength - prefixLen);
+        int keyBufSize = count * (2 + perEntryKeyBytes);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
         Span<byte> valueScratchSlice = valueScratch[..(count * (2 + valueSlotSize))];
 
@@ -375,20 +379,30 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }, keyBuf, valueScratchSlice, commonPrefixBuf);
 
         Span<byte> valueBuf = stackalloc byte[8];
-        int sliceEnd = prefixLen + keySlotSize;
 
         // Entry 0: already in currKey.
         WriteUInt64LE(valueBuf, metadataStarts[0] - baseOffset, valueSlotSize);
-        indexWriter.AddKey(currKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
+        indexWriter.AddKey(currKey.Slice(prefixLen, KeySliceLength(prefixLen, keyType, keySlotSize, sepLengths[0])), valueBuf[..valueSlotSize]);
 
         for (int i = 1; i < count; i++)
         {
             ReadKey(globalStartIndex + i, currKey);
             WriteUInt64LE(valueBuf, metadataStarts[i] - baseOffset, valueSlotSize);
-            indexWriter.AddKey(currKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
+            indexWriter.AddKey(currKey.Slice(prefixLen, KeySliceLength(prefixLen, keyType, keySlotSize, sepLengths[i])), valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
     }
+
+    /// <summary>
+    /// Slice the per-entry key bytes for the writer based on layout:
+    /// Uniform (keyType=1) takes a fixed <paramref name="keySlotSize"/> bytes;
+    /// Variable (0) and UniformWithLen (2) take the entry's natural sep length
+    /// (<paramref name="sepLength"/>), prefix-stripped. Both are sliced from
+    /// <paramref name="key"/> starting at <paramref name="prefixLen"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int KeySliceLength(int prefixLen, int keyType, int keySlotSize, int sepLength) =>
+        keyType == 1 ? keySlotSize : sepLength - prefixLen;
 
     /// <summary>
     /// Pick the number of children to pack into the next intermediate node by
@@ -562,7 +576,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         Span<byte> rightKey = stackalloc byte[MaxKeyLen];
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
 
-        int keyBufSize = entryCount * (2 + keySlotSize);
+        // keyBuf must fit the widest per-entry payload across layouts (see WriteLeafIndexNode).
+        int perEntryKeyBytes = entryCount > 0 ? Math.Max(keySlotSize, _keyLength - prefixLen) : 0;
+        int keyBufSize = entryCount * (2 + perEntryKeyBytes);
         Span<byte> keyBuf = stackalloc byte[keyBufSize];
 
         Span<byte> valueScratchSlice = valueScratch[..(entryCount * (2 + valueSlotSize))];
@@ -585,18 +601,17 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }, keyBuf, valueScratchSlice, commonPrefixBuf);
 
         Span<byte> valueBuf = stackalloc byte[8];
-        int sliceEnd = prefixLen + keySlotSize;
 
         if (entryCount > 0)
         {
             WriteUInt64LE(valueBuf, children[1].ChildOffset - baseOffset, valueSlotSize);
-            indexWriter.AddKey(rightKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
+            indexWriter.AddKey(rightKey.Slice(prefixLen, KeySliceLength(prefixLen, keyType, keySlotSize, sepLengths[0])), valueBuf[..valueSlotSize]);
         }
         for (int i = 1; i < entryCount; i++)
         {
             ReadKey(children[i + 1].FirstEntry, rightKey);
             WriteUInt64LE(valueBuf, children[i + 1].ChildOffset - baseOffset, valueSlotSize);
-            indexWriter.AddKey(rightKey[prefixLen..sliceEnd], valueBuf[..valueSlotSize]);
+            indexWriter.AddKey(rightKey.Slice(prefixLen, KeySliceLength(prefixLen, keyType, keySlotSize, sepLengths[i])), valueBuf[..valueSlotSize]);
         }
         indexWriter.FinalizeNode();
     }
