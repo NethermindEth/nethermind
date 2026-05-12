@@ -633,7 +633,7 @@ public class BSearchIndexTests
         ReadOnlySpan<int> offsets = [0, 2];
         ReadOnlySpan<int> lengths = [2, 2];
 
-        BSearchIndexLayoutPlanner.Plan(sepBuffer, offsets, lengths,
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 1, keyLength: 2,
             out int prefixLen, out int keyType, out int keySlotSize, out _);
 
         Assert.That(prefixLen, Is.EqualTo(0), "1-byte LCP × 1 saving entry − 1 metadata byte = 0; must not strip");
@@ -860,7 +860,7 @@ public class BSearchIndexTests
             // Distinct keys with no common prefix (high byte differs).
             buf[i * keyLen] = (byte)(i + 1);
         }
-        BSearchIndexLayoutPlanner.Plan(buf, offsets, lengths,
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 0, keyLength: keyLen,
             out _, out int keyType, out _, out bool keyLittleEndian);
         Assert.That(keyType, Is.EqualTo(expectedKeyType));
         Assert.That(keyLittleEndian, Is.EqualTo(expectedLe));
@@ -890,7 +890,7 @@ public class BSearchIndexTests
             offsets[i] = (i - 1) * otherLen;
             lengths[i] = otherLen;
         }
-        BSearchIndexLayoutPlanner.Plan(buf, offsets, lengths,
+        BSearchIndexLayoutPlanner.Plan(lengths, crossEntryLcp: 0, keyLength: otherLen,
             out _, out int keyType, out int keySlotSize, out bool keyLittleEndian);
         Assert.That(keyType, Is.EqualTo(2));
         Assert.That(keySlotSize, Is.EqualTo(expectedSlotSize));
