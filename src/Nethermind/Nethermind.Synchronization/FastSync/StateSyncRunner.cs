@@ -94,7 +94,7 @@ public class StateSyncRunner(
 
             // If sync completed in this round, the pivot it committed against is roundPivot.
             // Capturing here avoids re-reading GetPivotHeader() (mutating) for FinalizeSync.
-            if (treeSync.IsRootComplete)
+            if (treeSync.CanFinalize(roundPivot))
             {
                 finalPivot = roundPivot;
                 break;

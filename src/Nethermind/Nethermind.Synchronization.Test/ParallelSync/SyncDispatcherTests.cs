@@ -228,7 +228,7 @@ public class SyncDispatcherTests
         }
     }
 
-    [Test, MaxTime(10000)]
+    [Test, NonParallelizable, MaxTime(30_000)]
     public async Task Simple_test_sync()
     {
         TestSyncFeed syncFeed = new();

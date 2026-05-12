@@ -84,6 +84,69 @@ public class BlockHeaderTests
     }
 
     [Test]
+    public void CreateSimulatedChild_should_use_explicit_header_defaults()
+    {
+        BlockHeader parent = new(
+            TestItem.KeccakA,
+            Keccak.Zero,
+            TestItem.AddressA,
+            UInt256.One,
+            1,
+            30_000_000,
+            100,
+            [1, 2, 3],
+            blobGasUsed: 1,
+            excessBlobGas: 2,
+            parentBeaconBlockRoot: TestItem.KeccakC,
+            requestsHash: TestItem.KeccakD,
+            slotNumber: 3)
+        {
+            Author = TestItem.AddressB,
+            StateRoot = TestItem.KeccakB,
+            TxRoot = TestItem.KeccakB,
+            ReceiptsRoot = TestItem.KeccakB,
+            Bloom = Bloom.Empty,
+            GasUsed = 1,
+            MixHash = TestItem.KeccakB,
+            Nonce = 1,
+            Hash = TestItem.KeccakB,
+            TotalDifficulty = UInt256.One,
+            AuRaSignature = [1],
+            AuRaStep = 1,
+            BaseFeePerGas = 2,
+            WithdrawalsRoot = TestItem.KeccakB,
+            BlockAccessListHash = TestItem.KeccakB,
+            IsPostMerge = true
+        };
+
+        BlockHeader child = parent.CreateSimulatedChild(112);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(child, Is.TypeOf<BlockHeader>());
+            Assert.That(child.ParentHash, Is.EqualTo(parent.Hash!));
+            Assert.That(child.UnclesHash, Is.EqualTo(Keccak.OfAnEmptySequenceRlp));
+            Assert.That(child.Beneficiary, Is.EqualTo(parent.Beneficiary!));
+            Assert.That(child.Difficulty, Is.EqualTo(UInt256.Zero));
+            Assert.That(child.Number, Is.EqualTo(parent.Number + 1));
+            Assert.That(child.GasLimit, Is.EqualTo(parent.GasLimit));
+            Assert.That(child.Timestamp, Is.EqualTo(112));
+            Assert.That(child.ExtraData, Is.Empty);
+            Assert.That(child.MixHash, Is.EqualTo(Hash256.Zero));
+            Assert.That(child.RequestsHash, Is.EqualTo(parent.RequestsHash!));
+            Assert.That(child.Hash, Is.Null);
+            Assert.That(child.Bloom, Is.Null);
+            Assert.That(child.StateRoot, Is.Null);
+            Assert.That(child.TxRoot, Is.Null);
+            Assert.That(child.ReceiptsRoot, Is.Null);
+            Assert.That(child.BlobGasUsed, Is.Null);
+            Assert.That(child.ExcessBlobGas, Is.Null);
+            Assert.That(child.ParentBeaconBlockRoot, Is.Null);
+            Assert.That(child.SlotNumber, Is.Null);
+        });
+    }
+
+    [Test]
     public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
     {
         IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
