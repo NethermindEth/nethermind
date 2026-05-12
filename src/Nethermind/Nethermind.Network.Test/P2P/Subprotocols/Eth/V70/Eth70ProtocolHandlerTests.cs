@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
@@ -26,7 +28,9 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -630,6 +634,51 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_reject_aura_genesis_withdrawal_block_receipts_when_transaction_count_mismatches()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithGasLimit(100_000).TestObject,
+            Build.A.Transaction.WithGasLimit(100_000).TestObject
+        ];
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithTimestamp(0)
+            .WithGasLimit(1_000_000)
+            .WithGasUsed(GasCostOf.Transaction)
+            .TestObject;
+        Block block = new(header, transactions, [], [TestItem.WithdrawalA_1Eth]);
+        ISpecProvider chainSpecProvider = LoadAuraWithdrawalGenesisSpecProvider();
+        IReleaseSpec releaseSpec = chainSpecProvider.GetSpec(header);
+
+        Assert.That(chainSpecProvider.SealEngine, Is.EqualTo(SealEngineType.AuRa));
+        Assert.That(releaseSpec.IsEip4895Enabled, Is.True);
+
+        _syncManager.FindHeader(blockHash).Returns(header);
+        _syncManager.Find(blockHash).Returns(block);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(callInfo =>
+            chainSpecProvider.GetSpec((ForkActivation)callInfo[0]));
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new[] { Array.Empty<TxReceipt>() }.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        SubprotocolException? exception = Assert.ThrowsAsync<SubprotocolException>(async () => await act());
+        Assert.That(exception?.Message, Does.StartWith("Receipt count mismatch with block transactions count"));
+        Assert.That(exception?.Message, Does.Contain("Block: 1 ("));
+        Assert.That(exception?.Message, Does.Contain("transactions: 2"));
+        Assert.That(exception?.Message, Does.Contain("receipts: 0"));
+        Assert.That(exception?.Message, Does.Contain("deliveredReceipts: 0"));
+    }
+
+    [Test]
     public void Should_reject_receipt_larger_than_transaction_gas_limit_allows()
     {
         Hash256 blockHash = TestItem.KeccakA;
@@ -1100,6 +1149,14 @@ public class Eth70ProtocolHandlerTests
         public override void Dispose() { IsDisposed = true; base.Dispose(); }
     }
 
+    private static ISpecProvider LoadAuraWithdrawalGenesisSpecProvider()
+    {
+        ChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(AuraWithdrawalGenesisChainSpec));
+        ChainSpec chainSpec = loader.Load(stream);
+        return new ChainSpecBasedSpecProvider(chainSpec);
+    }
+
     private static TxReceipt[] BuildSequentialReceipts(int count)
     {
         TxReceipt[] receipts = new TxReceipt[count];
@@ -1249,6 +1306,124 @@ public class Eth70ProtocolHandlerTests
         bool lastBlockIncomplete = scenario == EmptyReceiptsPayloadScenario.FirstIncomplete;
         return new ReceiptsMessage70(sent.RequestId, ArrayPoolList<TxReceipt[]>.Empty(), lastBlockIncomplete);
     }
+
+    private const string AuraWithdrawalGenesisChainSpec = """
+{
+  "version": "1",
+  "engine": {
+    "authorityRound": {
+      "params": {
+        "stepDuration": 5,
+        "blockReward": "0x0",
+        "maximumUncleCountTransition": 0,
+        "maximumUncleCount": 0,
+        "validators": {
+          "multi": {
+            "0": {
+              "list": [
+                "0xa94f5374Fce5edBC8E2a8697C15331677e6EbF0B"
+              ]
+            }
+          }
+        },
+        "blockRewardContractAddress": "0x2000000000000000000000000000000000000001",
+        "blockRewardContractTransition": 0,
+        "blockRewardContractTransitions": {
+          "9186425": "0x481c034c6d9441db23ea48de68bcae812c5d39ba"
+        },
+        "randomnessContractAddress": {
+          "0": "0x3000000000000000000000000000000000000001"
+        },
+        "withdrawalContractAddress": "0xbabe2bed00000000000000000000000000000003",
+        "twoThirdsMajorityTransition": 0,
+        "posdaoTransition": 0,
+        "blockGasLimitContractTransitions": {
+          "0": "0x4000000000000000000000000000000000000001"
+        }
+      }
+    }
+  },
+  "params": {
+    "eip150Transition": "0x0",
+    "eip160Transition": "0x0",
+    "eip161abcTransition": "0x0",
+    "eip161dTransition": "0x0",
+    "eip155Transition": "0x0",
+    "maxCodeSizeTransition": "0x0",
+    "gasLimitBoundDivisor": "0x400",
+    "maxCodeSize": "0x6000",
+    "minGasLimit": "0x1388",
+    "maximumExtraDataSize": "0x20",
+    "maxCodeSizeTransitionTimestamp": "0x0",
+    "terminalTotalDifficulty": "0x0",
+    "registrar": "0x6000000000000000000000000000000000000000",
+    "feeCollector": "0x1559000000000000000000000000000000000000",
+    "eip1559FeeCollectorTransition": 0,
+    "eip1559BaseFeeMaxChangeDenominator": "0x8",
+    "eip1559ElasticityMultiplier": "0x2",
+    "eip140Transition": "0x0",
+    "eip211Transition": "0x0",
+    "eip214Transition": "0x0",
+    "eip658Transition": "0x0",
+    "eip145Transition": "0x0",
+    "eip1014Transition": "0x0",
+    "eip1052Transition": "0x0",
+    "eip1283Transition": "0x0",
+    "eip1283DisableTransition": "0x0",
+    "eip152Transition": "0x0",
+    "eip1108Transition": "0x0",
+    "eip1344Transition": "0x0",
+    "eip1884Transition": "0x0",
+    "eip2028Transition": "0x0",
+    "eip2200Transition": "0x0",
+    "eip2565Transition": "0x0",
+    "eip2718Transition": "0x0",
+    "eip2929Transition": "0x0",
+    "eip2930Transition": "0x0",
+    "eip1559Transition": "0x0",
+    "eip3238Transition": "0x0",
+    "eip3529Transition": "0x0",
+    "eip3541Transition": "0x0",
+    "eip3198Transition": "0x0",
+    "eip3651TransitionTimestamp": "0x0",
+    "eip3855TransitionTimestamp": "0x0",
+    "eip3860TransitionTimestamp": "0x0",
+    "eip4895TransitionTimestamp": "0x0",
+    "eip4844BlobGasPriceUpdateFraction": "0x10fafa",
+    "eip4844MaxBlobGasPerBlock": "0x40000",
+    "eip4844MinBlobGasPrice": "0x3b9aca00",
+    "eip4844TargetBlobGasPerBlock": "0x20000",
+    "eip4844FeeCollectorTransitionTimestamp": "0x0",
+    "depositContractAddress": "0xbabe2bed00000000000000000000000000000003",
+    "eip7934MaxRlpBlockSize": "0x800000",
+    "networkID": "0x1",
+    "chainID": "0x1"
+  },
+  "genesis": {
+    "difficulty": "0x00",
+    "author": "0x0000000000000000000000000000000000000000",
+    "timestamp": "0x00",
+    "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "extraData": "0x00",
+    "gasLimit": "0x0206cc80",
+    "baseFeePerGas": "0x07"
+  },
+  "accounts": {
+    "0xbabe2bed00000000000000000000000000000003": {
+      "nonce": "0x01",
+      "balance": "0x00",
+      "code": "0x",
+      "storage": {}
+    },
+    "0x2000000000000000000000000000000000000001": {
+      "nonce": "0x01",
+      "balance": "0x00",
+      "code": "0x",
+      "storage": {}
+    }
+  }
+}
+""";
 
     private void HandleIncomingStatusMessage()
     {
