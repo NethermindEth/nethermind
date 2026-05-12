@@ -63,7 +63,7 @@ public static class ConfigExtensions
     /// (provider lookup or fresh-default construction throws). Enumeration of the
     /// remaining interfaces continues regardless. If <c>null</c>, failures are silent.
     /// </param>
-    public static IEnumerable<(string? Category, string Name, object? CurrentValue, object? DefaultValue)>
+    public static IEnumerable<NonDefaultConfigValue>
         GetNonDefaultValues(this IConfigProvider configProvider, Action<Type, Exception>? onConfigError = null)
     {
         ArgumentNullException.ThrowIfNull(configProvider);
@@ -107,9 +107,11 @@ public static class ConfigExtensions
 
                 if (!StructuralComparisons.StructuralEqualityComparer.Equals(actual, defaultValue))
                 {
-                    yield return (category, property.Name, actual, defaultValue);
+                    yield return new NonDefaultConfigValue(category, property.Name, actual, defaultValue);
                 }
             }
         }
     }
 }
+
+public readonly record struct NonDefaultConfigValue(string? Category, string Name, object? CurrentValue, object? DefaultValue);

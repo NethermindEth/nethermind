@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -188,25 +189,29 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo)
     {
-        List<string> nonDefaultLines = [];
+        StringBuilder nonDefaults = new();
+        int count = 0;
         Action<Type, Exception> onConfigError = (configType, error) =>
         {
             if (logger.IsWarn) logger.Warn($"Skipped {configType.Name} in non-default config diff: {error.Message}");
         };
 
-        foreach ((string? category, string name, object? currentValue, object? _) in configProvider.GetNonDefaultValues(onConfigError))
+        foreach (NonDefaultConfigValue entry in configProvider.GetNonDefaultValues(onConfigError))
         {
-            string qualifiedName = category is null ? name : $"{category}.{name}";
-            nonDefaultLines.Add($"  {qualifiedName} = {serializer.Serialize(currentValue)}");
+            nonDefaults.Append("\n  ");
+            if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            count++;
         }
 
-        if (nonDefaultLines.Count == 0)
+        if (nonDefaults.Length == 0)
         {
             logger.Info("Configuration: all values at defaults.");
         }
         else
         {
-            logger.Info($"Configuration: {nonDefaultLines.Count} non-default value(s):\n{string.Join('\n', nonDefaultLines)}");
+            nonDefaults.Insert(0, $"Configuration: {count} non-default value(s):");
+            logger.Info(nonDefaults.ToString());
         }
     }
 
