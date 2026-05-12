@@ -19,6 +19,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     static virtual TSelf CreateSystemTransactionIntrinsicGas(long blockGasLimit) => TSelf.FromLong(0);
 
+    static virtual TSelf CreateSystemTransactionAvailableGas(long gasLimit, in TSelf intrinsicGas, IReleaseSpec spec) =>
+        TSelf.CreateAvailableFromIntrinsic(gasLimit, in intrinsicGas, spec);
+
     static abstract long GetRemainingGas(in TSelf gas);
 
     // EIP-8037 state-cost accessors. Pre-EIP-8037 policies return the constant fallback.
@@ -47,12 +50,12 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract void ConsumeCodeDeposit(ref TSelf gas, long cost);
     static abstract void Refund(ref TSelf gas, in TSelf childGas);
 
-    // Revert path: drop child inline state-gas refunds (burned at revert boundary).
-    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir, long childStateRefund) { }
+    // Revert path: restore the child's state gas into the parent reservoir.
+    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas) { }
     // Halt path: preserve inline state-gas refunds (call chain resets to top-most failing call).
-    static virtual void RestoreChildStateGasOnHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    static virtual void RestoreChildStateGasOnHalt(ref TSelf parentGas, in TSelf childGas) { }
     // Code-deposit-failure path: undo prior Refund's state-gas merge and apply halt restoration.
-    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas) { }
 
     static abstract void SetOutOfGas(ref TSelf gasState);
 
