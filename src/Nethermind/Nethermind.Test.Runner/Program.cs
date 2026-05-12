@@ -179,9 +179,14 @@ internal class Program
         bool jsonOutput, int workers)
     {
         await KzgPolynomialCommitments.InitializeAsync();
-        int completedFiles = 0;
-        int totalFiles = files.Count;
-        string GetProgressPrefix() => $"[{Interlocked.Increment(ref completedFiles)}/{totalFiles}]";
+        int completedTests = 0;
+        int totalTests = CountBlockTestCases(files, filter, workers);
+        string GetProgressPrefix() => $"[{Interlocked.Increment(ref completedTests)}/{totalTests}]";
+        void WriteFileExceptionStatus(string name, Exception ex)
+        {
+            Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {GetProgressPrefix()} {name} - {ex.Message}");
+            Console.Error.Flush();
+        }
 
         if (workers <= 1)
         {
@@ -198,6 +203,7 @@ internal class Program
                 catch (Exception ex)
                 {
                     string name = Path.GetFileNameWithoutExtension(file);
+                    WriteFileExceptionStatus(name, ex);
                     allResults.Add(new EthereumTestResult(name, ex.Message));
                 }
             }
@@ -220,11 +226,70 @@ internal class Program
                 catch (Exception ex)
                 {
                     string name = Path.GetFileNameWithoutExtension(item.file);
+                    WriteFileExceptionStatus(name, ex);
                     bag.Add((item.index, [new EthereumTestResult(name, ex.Message)]));
                 }
             });
 
         return bag.OrderBy(x => x.index).SelectMany(x => x.results).ToList();
+    }
+
+    private static int CountBlockTestCases(List<string> files, string filter, int workers)
+    {
+        Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
+
+        if (workers <= 1)
+        {
+            int total = 0;
+            foreach (string file in files)
+            {
+                total += CountBlockTestCasesInFile(file, filterRegex);
+            }
+            return total;
+        }
+
+        int totalTests = 0;
+        Parallel.ForEach(
+            files,
+            new ParallelOptions { MaxDegreeOfParallelism = workers },
+            file =>
+            {
+                int testsInFile = CountBlockTestCasesInFile(file, filterRegex);
+                Interlocked.Add(ref totalTests, testsInFile);
+            });
+
+        return totalTests;
+    }
+
+    private static int CountBlockTestCasesInFile(string file, Regex? filterRegex)
+    {
+        try
+        {
+            int count = 0;
+            TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
+            foreach (EthereumTest loadedTest in source.LoadTests<EthereumTest>())
+            {
+                if (loadedTest is FailedToLoadTest)
+                {
+                    count++;
+                    continue;
+                }
+
+                if (loadedTest is not BlockchainTest test)
+                    continue;
+
+                if (filterRegex is not null && test.Name is not null && !filterRegex.IsMatch(test.Name))
+                    continue;
+
+                count++;
+            }
+
+            return count;
+        }
+        catch (Exception)
+        {
+            return 1;
+        }
     }
 
 

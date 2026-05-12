@@ -203,6 +203,7 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
 
             if [ "$FAILED" -gt 0 ]; then
+              MAX_SUMMARY_FAILURES=500
               echo "" >> "$GITHUB_STEP_SUMMARY"
               echo "### Failures by error type" >> "$GITHUB_STEP_SUMMARY"
               echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -219,16 +220,20 @@ jobs:
 
               {
                 echo ""
-                echo "<details><summary>All $FAILED failed tests</summary>"
+                if [ "$FAILED" -gt "$MAX_SUMMARY_FAILURES" ]; then
+                  echo "> Showing first $MAX_SUMMARY_FAILURES failed tests. Full results are available in the uploaded artifact."
+                  echo ""
+                fi
+                echo "<details><summary>Failed tests</summary>"
                 echo ""
                 echo '```'
               } >> "$GITHUB_STEP_SUMMARY"
               if [ "$HAS_JSON" = true ]; then
                 jq -r '.[] | select(.pass == false) | "\(.fork) | \(.name) | \(.error[:100])"' "$RESULTS_FILE" \
-                  | sort >> "$GITHUB_STEP_SUMMARY"
+                  | sort | awk -v max="$MAX_SUMMARY_FAILURES" 'NR <= max' >> "$GITHUB_STEP_SUMMARY"
               else
                 grep -E "^(FAIL|EXCEPTION) " "$CLEAN_FILE" 2>/dev/null \
-                  | sort >> "$GITHUB_STEP_SUMMARY"
+                  | sort | awk -v max="$MAX_SUMMARY_FAILURES" 'NR <= max' >> "$GITHUB_STEP_SUMMARY"
               fi
               { echo '```'; echo "</details>"; } >> "$GITHUB_STEP_SUMMARY"
             fi
