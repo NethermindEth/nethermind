@@ -53,12 +53,17 @@ public partial class BlockProcessor
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            // Block-building has no suggested BAL to compare against — we are producing it
+            // here. ValidateBlockAccessList would early-return on `BlockAccessList is null`
+            // anyway, but skipping the call avoids the NextTransaction → Validate dance and
+            // makes the building intent explicit on this hot path.
+            bool shouldValidateBal = shouldValidate && !processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock);
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
             long totalRegularGas = 0;
             long totalStateGas = 0;
 
             balManager.NextTransaction();
-            balManager.ValidateBlockAccessList(block, 0u);
+            if (shouldValidateBal) balManager.ValidateBlockAccessList(block, 0u);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -86,7 +91,7 @@ public partial class BlockProcessor
 
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
-                balManager.ValidateBlockAccessList(block, (uint)(i + 1));
+                if (shouldValidateBal) balManager.ValidateBlockAccessList(block, (uint)(i + 1));
             }
 
             return [.. receiptsTracer.TxReceipts];

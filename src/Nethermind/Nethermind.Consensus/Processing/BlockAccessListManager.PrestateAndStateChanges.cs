@@ -32,7 +32,6 @@ public partial class BlockAccessListManager
         // workers' gates were also skipped in PrepareForProcessing in that case, so nothing
         // to signal here either.
         if (suggestedBlock.Hash == _lastLoadedBal) return;
-        _lastLoadedBal = suggestedBlock.Hash;
 
         // Wire BAL validation must run before this method: it appends local-only
         // PrestateIndex entries that are sorted before real tx indices and must not be
@@ -82,6 +81,12 @@ public partial class BlockAccessListManager
             }
             throw;
         }
+
+        // Record success only after a complete load — a retry against the same block hash
+        // (e.g. after a transient inner-state read fault) must re-enter this method and
+        // mutate the BAL in-place. Setting this before the try would silently skip the
+        // retry's load via the early-return above.
+        _lastLoadedBal = suggestedBlock.Hash;
     }
 
     /// <summary>

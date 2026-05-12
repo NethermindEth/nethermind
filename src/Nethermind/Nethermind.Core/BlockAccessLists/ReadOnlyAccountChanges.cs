@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -264,10 +263,12 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
             if (!other._storageChanges.TryGetValue(kv.Key, out ReadOnlySlotChanges? otherVal) || !kv.Value.Equals(otherVal))
                 return false;
         }
-        return _storageReads.SequenceEqual(other._storageReads)
-            && _balanceChanges.SequenceEqual(other._balanceChanges)
-            && _nonceChanges.SequenceEqual(other._nonceChanges)
-            && _codeChanges.SequenceEqual(other._codeChanges);
+        // MemoryExtensions.SequenceEqual on ReadOnlySpan<T>: zero-alloc, no iterator,
+        // not LINQ (see coding-style.md). Implicit array->span conversion suffices.
+        return ((ReadOnlySpan<UInt256>)_storageReads).SequenceEqual(other._storageReads)
+            && ((ReadOnlySpan<BalanceChange>)_balanceChanges).SequenceEqual(other._balanceChanges)
+            && ((ReadOnlySpan<NonceChange>)_nonceChanges).SequenceEqual(other._nonceChanges)
+            && ((ReadOnlySpan<CodeChange>)_codeChanges).SequenceEqual(other._codeChanges);
     }
 
     public override bool Equals(object? obj) => obj is ReadOnlyAccountChanges other && Equals(other);
@@ -346,8 +347,13 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
     /// <c>BlockProcessor.ParallelBlockValidationTransactionsExecutor</c>:
     ///   1. The loader iteration (slot 0) must NEVER call <see cref="WaitForPrestate"/>
     ///      itself — it would deadlock on the gate it is supposed to fulfill.
-    ///   2. ParallelUnbalancedWork must guarantee slot 0 gets a thread independent of the
-    ///      tx-worker queue, so a fully-busy worker pool cannot starve the loader.
+    ///   2. Slot 0 must always be picked up by some worker before all workers are blocked
+    ///      here. Structurally enforced by <c>ParallelUnbalancedWork.For</c>: the calling
+    ///      thread is unconditionally one of the workers (see InitProcessor.For:305 — it
+    ///      runs InitProcessor.Execute() inline rather than queueing) and indices are
+    ///      handed out via an atomic counter starting at <c>fromInclusive</c>, so the very
+    ///      first GetNext() across all workers returns 0. The calling thread cannot be
+    ///      starved by ThreadPool pressure, so slot 0 is guaranteed to begin executing.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void WaitForPrestate()

@@ -118,7 +118,13 @@ public partial class BlockAccessListManager(
             // fast path. Runs once per block; subsequent per-tx ChangesEqual calls become
             // row-aligned span compares. Tally suggested-side chargeable storage reads here
             // so the per-tx surplus-reads gas check can avoid re-walking the BAL.
-            if (suggestedBlock.BlockAccessList is not null)
+            //
+            // Only the parallel path feeds the generated index (via RegisterGeneratedSlice
+            // wired into MergeAndReturnBal). The sequential path's NextTransaction merges
+            // BALs directly through WorldState.MergeGeneratingBal without going through the
+            // callback, so _hasGeneratedValidationIndexUpdates would never flip and the
+            // fast path would never trigger — skip the O(n) build entirely there.
+            if (ParallelExecutionEnabled && suggestedBlock.BlockAccessList is not null)
             {
                 BlockAccessListValidationIndex.AddressIndex addressIndex = new();
                 _suggestedValidationIndex = BlockAccessListValidationIndex.Build(suggestedBlock.BlockAccessList, suggestedBlock.Transactions.Length, addressIndex);
