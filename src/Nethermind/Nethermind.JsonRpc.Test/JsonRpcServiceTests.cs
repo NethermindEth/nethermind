@@ -299,7 +299,7 @@ public class JsonRpcServiceTests
     }
 
     [Test]
-    public void Missing_trie_node_exception_returns_resource_unavailable()
+    public void Missing_trie_node_exception_returns_resource_not_found()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_getLogs(Arg.Any<Filter>())
@@ -307,7 +307,7 @@ public class JsonRpcServiceTests
 
         JsonRpcErrorResponse? response = TestRequest(ethRpcModule, "eth_getLogs", "{}") as JsonRpcErrorResponse;
 
-        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
         Assert.That(response?.Error?.Message, Is.EqualTo("Node missing"));
         response?.Dispose();
     }

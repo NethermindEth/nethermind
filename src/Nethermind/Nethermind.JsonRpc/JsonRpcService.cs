@@ -277,7 +277,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
 
-            MissingTrieNodeException e or TargetInvocationException { InnerException: MissingTrieNodeException e } =>
+            MissingTrieNodeException e =>
+                HandleMissingTrieNode(e, methodName, request, returnAction),
+
+            TargetInvocationException { InnerException: MissingTrieNodeException e } =>
                 HandleMissingTrieNode(e, methodName, request, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
