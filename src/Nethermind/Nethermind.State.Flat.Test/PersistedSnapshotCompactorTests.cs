@@ -42,7 +42,7 @@ public class PersistedSnapshotCompactorTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<int, BlobArenaFile>());
+        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
     }
 
     [Test]
@@ -221,7 +221,7 @@ public class PersistedSnapshotCompactorTests
             StateId prev = new(0, Keccak.EmptyTreeHash);
             StateId[] states = new StateId[9];
             states[0] = prev;
-            HashSet<int> baseRefIds = [];
+            HashSet<ushort> baseRefIds = [];
             for (int i = 1; i <= 8; i++)
             {
                 states[i] = new StateId(i, Keccak.Compute($"{i}"));
@@ -239,7 +239,7 @@ public class PersistedSnapshotCompactorTests
                 {
                     using WholeReadSession session = baseSnap!.BeginWholeReadSession();
                     WholeReadSessionReader reader = session.GetReader();
-                    int[]? ids = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+                    ushort[]? ids = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
                     Assert.That(ids, Is.Not.Null.And.Length.EqualTo(1),
                         $"Base snapshot {i} must carry exactly one blob-arena ref_id");
                     baseRefIds.Add(ids![0]);
@@ -253,9 +253,9 @@ public class PersistedSnapshotCompactorTests
             {
                 using WholeReadSession session = compacted!.BeginWholeReadSession();
                 WholeReadSessionReader reader = session.GetReader();
-                int[]? mergedIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+                ushort[]? mergedIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
                 Assert.That(mergedIds, Is.Not.Null);
-                Assert.That(new HashSet<int>(mergedIds!), Is.EquivalentTo(baseRefIds),
+                Assert.That(new HashSet<ushort>(mergedIds!), Is.EquivalentTo(baseRefIds),
                     "Compacted ref_ids must equal the union of source base blob-arena ids");
             }
         }

@@ -36,8 +36,8 @@ public sealed class BlobArenaManager : IBlobArenaManager
     private readonly string _reservationTag;
     private readonly bool _ownsFiles;
     private readonly Lock _lock = new();
-    private readonly Dictionary<int, ArenaReservation> _reservations = [];
-    private readonly Dictionary<int, int> _refCounts = [];
+    private readonly Dictionary<ushort, ArenaReservation> _reservations = [];
+    private readonly Dictionary<ushort, int> _refCounts = [];
     private bool _disposed;
 
     /// <summary>
@@ -118,11 +118,11 @@ public sealed class BlobArenaManager : IBlobArenaManager
     public BlobArenaWriter CreateWriter(long estimatedSize, string tag)
     {
         ArenaWriter inner = _files.CreateWriter(estimatedSize, tag);
-        int blobArenaId = _catalog.NextId();
+        ushort blobArenaId = _catalog.NextId();
         return new BlobArenaWriter(this, blobArenaId, inner);
     }
 
-    public int RandomRead(int blobArenaId, long offset, Span<byte> destination)
+    public int RandomRead(ushort blobArenaId, long offset, Span<byte> destination)
     {
         ArenaReservation? reservation;
         lock (_lock)
@@ -133,7 +133,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
         return _files.RandomRead(reservation, offset, destination);
     }
 
-    public bool TryLeaseFile(int blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
+    public bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
     {
         ArenaReservation? reservation;
         lock (_lock)
@@ -150,7 +150,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
         return true;
     }
 
-    public void ReleaseBlobArena(int blobArenaId)
+    public void ReleaseBlobArena(ushort blobArenaId)
     {
         ArenaReservation? reservation;
         bool removeFromCatalog;
@@ -190,7 +190,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// by calling <see cref="TryLeaseFile"/>; the caller then drops
     /// the writer-creation lease via <see cref="ReleaseBlobArena"/>.
     /// </summary>
-    internal void RegisterCompleted(int blobArenaId, ArenaReservation reservation)
+    internal void RegisterCompleted(ushort blobArenaId, ArenaReservation reservation)
     {
         lock (_lock)
         {

@@ -33,12 +33,12 @@ public sealed class BlobArenaWriter : IDisposable
 
     private readonly BlobArenaManager _manager;
     private readonly ArenaWriter _inner;
-    private readonly int _blobArenaId;
+    private readonly ushort _blobArenaId;
     private long _written;
     private bool _completed;
     private bool _disposed;
 
-    internal BlobArenaWriter(BlobArenaManager manager, int blobArenaId, ArenaWriter inner)
+    internal BlobArenaWriter(BlobArenaManager manager, ushort blobArenaId, ArenaWriter inner)
     {
         _manager = manager;
         _blobArenaId = blobArenaId;
@@ -49,7 +49,7 @@ public sealed class BlobArenaWriter : IDisposable
     /// The global blob arena id that <see cref="WriteRlp"/> embeds in returned
     /// <see cref="NodeRef"/>s. Stable for the writer's lifetime.
     /// </summary>
-    public int BlobArenaId => _blobArenaId;
+    public ushort BlobArenaId => _blobArenaId;
 
     /// <summary>
     /// Bytes written into this blob arena reservation so far, including pad bytes.

@@ -29,18 +29,18 @@ namespace Nethermind.State.Flat.Storage;
 public sealed class BlobArenaFile : IDisposable
 {
     private readonly IBlobArenaManager _manager;
-    private readonly int _blobArenaId;
+    private readonly ushort _blobArenaId;
     private readonly ArenaReservation _reservation;
     private int _disposed;
 
-    internal BlobArenaFile(IBlobArenaManager manager, int blobArenaId, ArenaReservation reservation)
+    internal BlobArenaFile(IBlobArenaManager manager, ushort blobArenaId, ArenaReservation reservation)
     {
         _manager = manager;
         _blobArenaId = blobArenaId;
         _reservation = reservation;
     }
 
-    public int BlobArenaId => _blobArenaId;
+    public ushort BlobArenaId => _blobArenaId;
 
     /// <summary>
     /// Read <paramref name="destination"/>.Length bytes starting at

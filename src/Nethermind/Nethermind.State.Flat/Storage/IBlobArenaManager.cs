@@ -53,7 +53,7 @@ public interface IBlobArenaManager : IDisposable
     /// Random-access read into the reservation backing <paramref name="blobArenaId"/>.
     /// Used by the <c>NodeRef</c> dereference path on the read side.
     /// </summary>
-    int RandomRead(int blobArenaId, long offset, Span<byte> destination);
+    int RandomRead(ushort blobArenaId, long offset, Span<byte> destination);
 
     /// <summary>
     /// Increment the refcount on the reservation backing <paramref name="blobArenaId"/>
@@ -61,7 +61,7 @@ public interface IBlobArenaManager : IDisposable
     /// this manager doesn't know the id. Disposing the returned
     /// <see cref="BlobArenaFile"/> calls back into <see cref="ReleaseBlobArena"/>.
     /// </summary>
-    bool TryLeaseFile(int blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file);
+    bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file);
 
     /// <summary>
     /// Decrement the refcount. When the last referencing snapshot is released the
@@ -69,7 +69,7 @@ public interface IBlobArenaManager : IDisposable
     /// deletes the underlying file once every reservation in it is dead. Typically
     /// invoked indirectly via <see cref="BlobArenaFile.Dispose"/>.
     /// </summary>
-    void ReleaseBlobArena(int blobArenaId);
+    void ReleaseBlobArena(ushort blobArenaId);
 
     /// <summary>Number of blob arena files currently open. Telemetry only.</summary>
     int BlobArenaFileCount { get; }

@@ -22,22 +22,11 @@ namespace Nethermind.State.Flat.Storage;
 /// </para>
 ///
 /// <para>
-/// Keying: 4-byte big-endian <c>blobArenaId</c>. Reserved id 0 holds metadata
+/// Keying: 2-byte big-endian <c>blobArenaId</c>. Reserved id 0 holds metadata
 /// (<c>nextBlobArenaId:int32 LE + version:int32 LE</c>) so the id counter is
 /// durable. Ids are unique within a catalog (i.e. within a tier), not across
 /// tiers; the owning <see cref="BlobArenaManager"/> resolves an id through
 /// its own catalog only.
-/// </para>
-///
-/// <para>
-/// Lifecycle: an entry is added by <see cref="BlobArenaManager"/> on
-/// reservation creation, and removed when the last lease on the reservation
-/// drops. The file holding the reservation is deleted by the underlying
-/// <see cref="ArenaManager.MarkDead"/> path; catalog removal happens before
-/// the deletion so a crash between the two leaves a dangling on-disk arena
-/// file with no catalog entry — recoverable by scanning the directory on
-/// next startup. The reverse order would leave a phantom catalog entry
-/// pointing at a deleted file.
 /// </para>
 /// </summary>
 public sealed class BlobArenaCatalog(IDb db) : IDisposable
@@ -53,18 +42,21 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
     /// <see cref="ArenaManager"/>; <c>(Offset, Size)</c> is its slice.
     /// </summary>
     public sealed record Entry(
-        int BlobArenaId,
+        ushort BlobArenaId,
         SnapshotLocation Location);
 
-    // Binary layout per entry: blobArenaId(4) + arenaId(4) + offset(8) + size(8) = 24
-    internal const int EntrySize = 24;
+    // Binary layout per entry: blobArenaId(2) + arenaId(4) + offset(8) + size(8) = 22
+    internal const int EntrySize = 22;
 
     // Catalog version: bump when the on-disk binary layout changes incompatibly.
     // v2: dropped the Pool byte (each catalog now serves a single tier).
-    internal const int CurrentVersion = 2;
+    // v3: narrowed BlobArenaId to ushort (key 4→2 bytes, entry 24→22 bytes).
+    internal const int CurrentVersion = 3;
 
     // Reserved id 0 holds (nextBlobArenaId:int32 LE, version:int32 LE).
-    private static readonly byte[] MetadataKey = new byte[4];
+    // Key width is 2 bytes (post-v3); the int32 metadata word leaves headroom
+    // to detect overflow past ushort.MaxValue.
+    private static readonly byte[] MetadataKey = new byte[2];
 
     private readonly IDb _db = db;
     private readonly List<Entry> _entries = [];
@@ -76,14 +68,21 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
     /// Reserve and return the next globally-unique blob arena id. The counter
     /// is durable when <see cref="Add"/> persists the entry; if a writer is
     /// cancelled (no <c>Add</c>) the id is harmlessly skipped on next restart.
+    /// Throws when the per-tier id space (<c>ushort.MaxValue</c>) is exhausted.
     /// </summary>
-    public int NextId() => _nextBlobArenaId++;
+    public ushort NextId()
+    {
+        if (_nextBlobArenaId > ushort.MaxValue)
+            throw new InvalidOperationException(
+                $"Blob arena id space exhausted ({ushort.MaxValue} arenas per tier).");
+        return (ushort)_nextBlobArenaId++;
+    }
 
     public void Add(Entry entry)
     {
         _entries.Add(entry);
-        Span<byte> key = stackalloc byte[4];
-        BinaryPrimitives.WriteInt32BigEndian(key, entry.BlobArenaId);
+        Span<byte> key = stackalloc byte[2];
+        BinaryPrimitives.WriteUInt16BigEndian(key, entry.BlobArenaId);
         byte[] value = new byte[EntrySize];
         WriteEntry(value, entry);
         _db.Set(key, value);
@@ -94,15 +93,15 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
         }
     }
 
-    public bool Remove(int blobArenaId)
+    public bool Remove(ushort blobArenaId)
     {
         for (int i = 0; i < _entries.Count; i++)
         {
             if (_entries[i].BlobArenaId == blobArenaId)
             {
                 _entries.RemoveAt(i);
-                Span<byte> key = stackalloc byte[4];
-                BinaryPrimitives.WriteInt32BigEndian(key, blobArenaId);
+                Span<byte> key = stackalloc byte[2];
+                BinaryPrimitives.WriteUInt16BigEndian(key, blobArenaId);
                 _db.Remove(key);
                 return true;
             }
@@ -135,7 +134,7 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
 
         foreach (KeyValuePair<byte[], byte[]?> kv in _db.GetAll(ordered: false))
         {
-            if (kv.Key.Length == 4 && BinaryPrimitives.ReadInt32BigEndian(kv.Key) == 0) continue;
+            if (kv.Key.Length == 2 && BinaryPrimitives.ReadUInt16BigEndian(kv.Key) == 0) continue;
             if (kv.Value is null || kv.Value.Length != EntrySize) continue;
             _entries.Add(ReadEntry(kv.Value));
         }
@@ -156,18 +155,18 @@ public sealed class BlobArenaCatalog(IDb db) : IDisposable
 
     private static void WriteEntry(Span<byte> span, Entry entry)
     {
-        BinaryPrimitives.WriteInt32LittleEndian(span, entry.BlobArenaId);
-        BinaryPrimitives.WriteInt32LittleEndian(span[4..], entry.Location.ArenaId);
-        BinaryPrimitives.WriteInt64LittleEndian(span[8..], entry.Location.Offset);
-        BinaryPrimitives.WriteInt64LittleEndian(span[16..], entry.Location.Size);
+        BinaryPrimitives.WriteUInt16LittleEndian(span, entry.BlobArenaId);
+        BinaryPrimitives.WriteInt32LittleEndian(span[2..], entry.Location.ArenaId);
+        BinaryPrimitives.WriteInt64LittleEndian(span[6..], entry.Location.Offset);
+        BinaryPrimitives.WriteInt64LittleEndian(span[14..], entry.Location.Size);
     }
 
     private static Entry ReadEntry(ReadOnlySpan<byte> span)
     {
-        int id = BinaryPrimitives.ReadInt32LittleEndian(span);
-        int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[4..]);
-        long offset = BinaryPrimitives.ReadInt64LittleEndian(span[8..]);
-        long size = BinaryPrimitives.ReadInt64LittleEndian(span[16..]);
+        ushort id = BinaryPrimitives.ReadUInt16LittleEndian(span);
+        int arenaId = BinaryPrimitives.ReadInt32LittleEndian(span[2..]);
+        long offset = BinaryPrimitives.ReadInt64LittleEndian(span[6..]);
+        long size = BinaryPrimitives.ReadInt64LittleEndian(span[14..]);
         return new Entry(id, new SnapshotLocation(arenaId, offset, size));
     }
 }

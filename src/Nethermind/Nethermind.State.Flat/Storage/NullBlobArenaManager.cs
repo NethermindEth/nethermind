@@ -21,13 +21,13 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
     public BlobArenaWriter CreateWriter(long estimatedSize, string tag) =>
         throw new InvalidOperationException("NullBlobArenaManager cannot create writers.");
 
-    public int RandomRead(int blobArenaId, long offset, Span<byte> destination) => 0;
-    public bool TryLeaseFile(int blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
+    public int RandomRead(ushort blobArenaId, long offset, Span<byte> destination) => 0;
+    public bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
     {
         file = null;
         return false;
     }
-    public void ReleaseBlobArena(int blobArenaId) { }
+    public void ReleaseBlobArena(ushort blobArenaId) { }
     public int BlobArenaFileCount => 0;
     public long BlobArenaMappedBytes => 0;
     public void Dispose() { }

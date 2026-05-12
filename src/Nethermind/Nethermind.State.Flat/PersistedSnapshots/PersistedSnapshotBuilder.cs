@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Collections.Pooled;
@@ -271,7 +272,7 @@ public static class PersistedSnapshotBuilder
     public static long EstimateSize(Snapshot snapshot) =>
         Math.Min(2.GiB, snapshot.EstimateMemory() + 1.KiB);
 
-    private static void WriteMetadataColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, int blobArenaId) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    private static void WriteMetadataColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, ushort blobArenaId) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // Metadata keys must be in sorted ASCII order:
         // "from_block" < "from_hash" < "ref_ids" < "to_block" < "to_hash" < "version"
@@ -283,14 +284,14 @@ public static class PersistedSnapshotBuilder
         using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, PersistedSnapshot.MetadataKeyLength, expectedKeyCount: 6);
 
         Span<byte> blockNumBytes = stackalloc byte[8];
-        Span<byte> refIdsBytes = stackalloc byte[4];
+        Span<byte> refIdsBytes = stackalloc byte[2];
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.From.BlockNumber);
         inner.Add(PersistedSnapshot.MetadataFromBlockKey, blockNumBytes);
 
         inner.Add(PersistedSnapshot.MetadataFromHashKey, snapshot.From.StateRoot.Bytes);
 
-        BitConverter.TryWriteBytes(refIdsBytes, blobArenaId);
+        BinaryPrimitives.WriteUInt16LittleEndian(refIdsBytes, blobArenaId);
         inner.Add(PersistedSnapshot.MetadataRefIdsKey, refIdsBytes);
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.To.BlockNumber);
@@ -662,7 +663,9 @@ public static class PersistedSnapshotBuilder
 
         using HsstDenseByteIndexBuilder<TWriter> outerBuilder = new(ref writer);
 
-        int snapshotId = fullSnapshot.Id;
+        // ConvertFullToLinked is legacy/unused — Full snapshots aren't produced any more.
+        // The cast guards against silently writing a truncated id if it's ever revived.
+        ushort snapshotId = checked((ushort)fullSnapshot.Id);
 
         foreach (byte[] tag in s_columnTags)
         {
@@ -712,7 +715,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void ConvertFlatColumnToNodeRefs<TWriter>(
         scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
-        int snapshotId,
+        ushort snapshotId,
         int keySize) where TWriter : IByteBufferWriter
     {
         HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
@@ -741,7 +744,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void ConvertNestedColumnToNodeRefs<TWriter, TWriterReader, TWriterPin>(
         scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
-        int snapshotId,
+        ushort snapshotId,
         int outerKeyLength, int outerMinSep = 0, int innerKeySize = 0) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
     {
         HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
@@ -788,7 +791,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     private static void ConvertAccountColumnToNodeRefs<TWriter, TWriterReader, TWriterPin>(
         scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
-        int snapshotId) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
+        ushort snapshotId) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
     {
         using HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> outerBuilder = new(ref writer, StorageHashPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
         using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> outerEnum = new(in reader, columnScope);
@@ -868,7 +871,7 @@ public static class PersistedSnapshotBuilder
 
     private static void ConvertStorageTrieSubTagToNodeRefs<TWriter>(
         scoped in WholeReadSessionReader reader, Bound subTagScope,
-        ref TWriter writer, int snapshotId, int innerKeySize) where TWriter : IByteBufferWriter
+        ref TWriter writer, ushort snapshotId, int innerKeySize) where TWriter : IByteBufferWriter
     {
         // The sub-tag value is itself an inner HSST(BTree) of (path → RLP). Walk every
         // entry, replacing RLP with a NodeRef whose RlpDataOffset points at the RLP
@@ -895,7 +898,7 @@ public static class PersistedSnapshotBuilder
     /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
     /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
     /// </summary>
-    internal static void NWayMergeSnapshots<TWriter, TReader, TPin>(PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> referencedBlobArenaIds, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    internal static void NWayMergeSnapshots<TWriter, TReader, TPin>(PersistedSnapshotList snapshots, ref TWriter writer, HashSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // All snapshots are blob-backed (values in trie columns are NodeRefs), so we can
         // merge them directly without any Full→Linked pre-conversion stage.
@@ -1878,7 +1881,7 @@ public static class PersistedSnapshotBuilder
     /// Emits in sorted key order.
     /// </summary>
     internal static void NWayMetadataMerge<TWriter, TReader, TPin>(
-        PersistedSnapshotList snapshots, ref TWriter writer, HashSet<int> refIds) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        PersistedSnapshotList snapshots, ref TWriter writer, HashSet<ushort> refIds) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         int n = snapshots.Count;
         using WholeReadSession oldestSession = snapshots[0].BeginWholeReadSession();
@@ -1919,11 +1922,11 @@ public static class PersistedSnapshotBuilder
         ReadOnlySpan<byte> version = vPin.Buffer;
 
         // Build ref_ids value
-        byte[] refIdsValue = new byte[refIds.Count * 4];
+        byte[] refIdsValue = new byte[refIds.Count * 2];
         int idx = 0;
-        foreach (int id in refIds)
+        foreach (ushort id in refIds)
         {
-            BitConverter.TryWriteBytes(refIdsValue.AsSpan(idx * 4, 4), id);
+            BinaryPrimitives.WriteUInt16LittleEndian(refIdsValue.AsSpan(idx * 2, 2), id);
             idx++;
         }
 

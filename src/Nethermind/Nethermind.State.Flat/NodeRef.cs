@@ -13,12 +13,17 @@ namespace Nethermind.State.Flat;
 /// addressed by <see cref="BlobArenaId"/>.
 /// </summary>
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
-public readonly struct NodeRef(int blobArenaId, int rlpDataOffset)
+public readonly struct NodeRef(ushort blobArenaId, int rlpDataOffset)
 {
-    public const int Size = 8;
+    public const int Size = 6;
 
-    /// <summary>ID of the blob arena that holds the RLP bytes.</summary>
-    public int BlobArenaId { get; } = blobArenaId;
+    /// <summary>
+    /// ID of the blob arena that holds the RLP bytes. 16-bit: the per-tier id
+    /// space is capped at <c>ushort.MaxValue</c> (65 535) blob arenas. Combined
+    /// with the 2 GiB-per-arena ceiling enforced by <see cref="RlpDataOffset"/>,
+    /// total per-tier capacity is ~128 TiB.
+    /// </summary>
+    public ushort BlobArenaId { get; } = blobArenaId;
 
     /// <summary>
     /// Byte offset of the RLP item's first byte within the blob arena reservation.
@@ -36,15 +41,15 @@ public readonly struct NodeRef(int blobArenaId, int rlpDataOffset)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static NodeRef Read(ReadOnlySpan<byte> data)
     {
-        int id = BinaryPrimitives.ReadInt32LittleEndian(data);
-        int offset = BinaryPrimitives.ReadInt32LittleEndian(data[4..]);
+        ushort id = BinaryPrimitives.ReadUInt16LittleEndian(data);
+        int offset = BinaryPrimitives.ReadInt32LittleEndian(data[2..]);
         return new NodeRef(id, offset);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Write(Span<byte> data, in NodeRef nodeRef)
     {
-        BinaryPrimitives.WriteInt32LittleEndian(data, nodeRef.BlobArenaId);
-        BinaryPrimitives.WriteInt32LittleEndian(data[4..], nodeRef.RlpDataOffset);
+        BinaryPrimitives.WriteUInt16LittleEndian(data, nodeRef.BlobArenaId);
+        BinaryPrimitives.WriteInt32LittleEndian(data[2..], nodeRef.RlpDataOffset);
     }
 }

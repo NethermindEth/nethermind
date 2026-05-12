@@ -41,10 +41,10 @@ internal static class PersistedSnapshotBuilderTestExtensions
             return session.AsSpanIntBounded().ToArray();
         }
 
-        HashSet<int> referencedIds = new();
+        HashSet<ushort> referencedIds = new();
         for (int i = 0; i < snapshots.Count; i++)
         {
-            foreach (int id in snapshots[i].ReferencedBlobArenaIds)
+            foreach (ushort id in snapshots[i].ReferencedBlobArenaIds)
                 referencedIds.Add(id);
         }
 

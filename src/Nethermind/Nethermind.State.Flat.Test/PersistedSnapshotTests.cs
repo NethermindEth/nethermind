@@ -38,7 +38,7 @@ public class PersistedSnapshotTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<int, BlobArenaFile>());
+        return new PersistedSnapshot(id, from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
     }
 
     private static IEnumerable<TestCaseData> RoundTripTestCases()
@@ -181,16 +181,19 @@ public class PersistedSnapshotTests
         Assert.DoesNotThrow(() => PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, new PersistedSnapshotBloomFilterManager()));
     }
 
-    [Test]
-    public void NodeRef_ReadWrite_RoundTrip()
+    [TestCase((ushort)0, 0)]
+    [TestCase((ushort)42, 12345)]
+    [TestCase(ushort.MaxValue, int.MaxValue)]
+    public void NodeRef_ReadWrite_RoundTrip(ushort id, int offset)
     {
-        NodeRef original = new(42, 12345);
+        Assert.That(NodeRef.Size, Is.EqualTo(6));
+        NodeRef original = new(id, offset);
         byte[] buffer = new byte[NodeRef.Size];
         NodeRef.Write(buffer, original);
         NodeRef decoded = NodeRef.Read(buffer);
 
-        Assert.That(decoded.BlobArenaId, Is.EqualTo(42));
-        Assert.That(decoded.RlpDataOffset, Is.EqualTo(12345));
+        Assert.That(decoded.BlobArenaId, Is.EqualTo(id));
+        Assert.That(decoded.RlpDataOffset, Is.EqualTo(offset));
     }
 
     [Test]

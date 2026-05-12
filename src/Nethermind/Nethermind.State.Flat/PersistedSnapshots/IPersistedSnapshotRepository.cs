@@ -18,7 +18,7 @@ public interface IPersistedSnapshotRepository : IDisposable
 
     // Two-layer storage
     void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot);
-    void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedBlobArenaIds, BloomFilter? bloom = null);
+    void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null);
 
     // Compaction assembly (mirrors SnapshotRepository.AssembleSnapshotsUntil)
     PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber);

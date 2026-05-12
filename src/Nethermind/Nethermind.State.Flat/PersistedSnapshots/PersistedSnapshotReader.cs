@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -195,7 +196,7 @@ public static class PersistedSnapshotReader
         return true;
     }
 
-    internal static int[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
+    internal static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
@@ -204,16 +205,16 @@ public static class PersistedSnapshotReader
             !r.TrySeek(PersistedSnapshot.MetadataRefIdsKey, out _))
             return null;
         Bound b = r.GetBound();
-        if (b.Length == 0 || b.Length % 4 != 0) return null;
+        if (b.Length == 0 || b.Length % 2 != 0) return null;
         int len = checked((int)b.Length);
-        int count = len / 4;
+        int count = len / 2;
         Span<byte> buf = stackalloc byte[256];
         if (len > buf.Length)
             buf = new byte[len];
         if (!reader.TryRead(b.Offset, buf[..len])) return null;
-        int[] ids = new int[count];
+        ushort[] ids = new ushort[count];
         for (int i = 0; i < count; i++)
-            ids[i] = BitConverter.ToInt32(buf.Slice(i * 4, 4));
+            ids[i] = BinaryPrimitives.ReadUInt16LittleEndian(buf.Slice(i * 2, 2));
         return ids;
     }
 

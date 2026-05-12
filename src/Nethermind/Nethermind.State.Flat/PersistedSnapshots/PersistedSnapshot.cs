@@ -72,7 +72,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // repository at construction time. Reads dispatch directly into BlobArenaFile.RandomRead
     // (no manager lock, no central lookup). Disposal of each entry calls back into the
     // owning BlobArenaManager for refcount + catalog removal.
-    private readonly Dictionary<int, BlobArenaFile> _blobFiles;
+    private readonly Dictionary<ushort, BlobArenaFile> _blobFiles;
     private readonly SeqlockValueCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheSets);
 
     public int Id { get; }
@@ -84,7 +84,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// metadata HSST. Materialised from <see cref="_blobFiles"/>; allocates a fresh
     /// array each call — cache locally for hot loops.
     /// </summary>
-    public int[] ReferencedBlobArenaIds => [.. _blobFiles.Keys];
+    public ushort[] ReferencedBlobArenaIds => [.. _blobFiles.Keys];
 
     public long Size => _reservation.Size;
 
@@ -109,7 +109,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// metadata reservation lease.
     /// </summary>
     public PersistedSnapshot(int id, StateId from, StateId to, ArenaReservation reservation,
-        Dictionary<int, BlobArenaFile> blobFiles)
+        Dictionary<ushort, BlobArenaFile> blobFiles)
     {
         Id = id;
         From = from;
@@ -120,8 +120,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Materialise the trie-node RLP at <paramref name="localBound"/>. The bound holds an
-    /// 8-byte <see cref="NodeRef"/>; the actual RLP bytes live in a blob arena.
+    /// Materialise the trie-node RLP at <paramref name="localBound"/>. The bound holds a
+    /// 6-byte <see cref="NodeRef"/>; the actual RLP bytes live in a blob arena.
     /// </summary>
     internal byte[] ResolveTrieRlp(Bound localBound)
     {
@@ -228,7 +228,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// Read the "ref_ids" list from a snapshot's metadata column — now interpreted as
     /// referenced <c>BlobArenaId</c>s rather than referenced snapshot ids.
     /// </summary>
-    public static int[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
+    public static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct =>
         PersistedSnapshotReader.ReadRefIdsFromMetadata<TReader, TPin>(in reader);
@@ -238,7 +238,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     // covers any branch node in one pread.
     private const int MaxTrieNodeRlpBytes = 568;
 
-    private byte[] ReadBlobArenaRlp(int blobArenaId, int offset)
+    private byte[] ReadBlobArenaRlp(ushort blobArenaId, int offset)
     {
         if (!_blobFiles.TryGetValue(blobArenaId, out BlobArenaFile? file))
             throw new InvalidOperationException($"Blob arena {blobArenaId} not in snapshot {Id}'s referenced set");

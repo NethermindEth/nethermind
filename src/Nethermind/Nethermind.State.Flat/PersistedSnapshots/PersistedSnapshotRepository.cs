@@ -99,14 +99,14 @@ public sealed class PersistedSnapshotRepository(
         ArenaReservation reservation = _arena.Open(entry.Location, _metaTag);
 
         // Recover the snapshot's referenced blob arena ids from its on-disk metadata.
-        int[]? refIds;
+        ushort[]? refIds;
         using (WholeReadSession refIdsSession = reservation.BeginWholeReadSession())
         {
             WholeReadSessionReader refIdsReader = refIdsSession.GetReader();
             refIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
         }
 
-        Dictionary<int, BlobArenaFile> blobFiles = LeaseBlobFiles(refIds);
+        Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles(refIds);
         PersistedSnapshot snapshot;
         try
         {
@@ -130,13 +130,13 @@ public sealed class PersistedSnapshotRepository(
     /// lease fails the helper releases what was acquired and throws — callers can
     /// trust the returned dict is fully leased or no leases are dangling.
     /// </summary>
-    private Dictionary<int, BlobArenaFile> LeaseBlobFiles(IEnumerable<int>? ids)
+    private Dictionary<ushort, BlobArenaFile> LeaseBlobFiles(IEnumerable<ushort>? ids)
     {
-        Dictionary<int, BlobArenaFile> result = [];
+        Dictionary<ushort, BlobArenaFile> result = [];
         if (ids is null) return result;
         try
         {
-            foreach (int id in ids)
+            foreach (ushort id in ids)
             {
                 if (!_blobs.TryLeaseFile(id, out BlobArenaFile? file))
                     throw new InvalidOperationException($"Blob arena {id} not registered in this tier");
@@ -182,7 +182,7 @@ public sealed class PersistedSnapshotRepository(
 
         SnapshotLocation location;
         ArenaReservation reservation;
-        int blobArenaId;
+        ushort blobArenaId;
         using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize, _blobTag);
         using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize, _metaTag))
         {
@@ -194,7 +194,7 @@ public sealed class PersistedSnapshotRepository(
         blobWriter.Complete();
         blobArenaId = blobWriter.BlobArenaId;
 
-        Dictionary<int, BlobArenaFile> blobFiles = LeaseBlobFiles([blobArenaId]);
+        Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles([blobArenaId]);
         lock (_catalogLock)
         {
             int id = _nextId++;
@@ -232,9 +232,9 @@ public sealed class PersistedSnapshotRepository(
     /// <paramref name="referencedBlobArenaIds"/> is the union of blob arena ids
     /// inherited from the inputs of the N-way merge that produced this snapshot.
     /// </summary>
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<int> referencedBlobArenaIds, BloomFilter? bloom = null)
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null)
     {
-        Dictionary<int, BlobArenaFile> blobFiles = LeaseBlobFiles(referencedBlobArenaIds);
+        Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles(referencedBlobArenaIds);
         lock (_catalogLock)
         {
             int id = _nextId++;
