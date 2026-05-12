@@ -390,7 +390,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<Address[]>.Fail("Unsupported block version : V1");
         }
 
-        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        if (snapshot is null)
+        {
+            return ResultWrapper<Address[]>.Fail($"Snapshot not found for block {header.Number}");
+        }
 
         return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
@@ -422,7 +426,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<Address[]>.Fail("Unsupported block version : V1");
         }
 
-        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        if (snapshot is null)
+        {
+            return ResultWrapper<Address[]>.Fail($"Snapshot not found for block {header.Number}");
+        }
         return ResultWrapper<Address[]>.Success(snapshot.NextEpochCandidates);
     }
 
@@ -450,7 +458,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(header.Number);
 
-        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        if (snapshot is null)
+        {
+            return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
+        }
         return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot((XdcBlockHeader)header));
     }
 
@@ -480,7 +492,11 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
-        Snapshot snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
+        if (snapshot is null)
+        {
+            return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
+        }
         return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot((XdcBlockHeader)header));
     }
 
@@ -528,7 +544,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         if (header.Number <= latestCommittedBlock.BlockNumber)
         {
-            committed = true && !uncle;
+            committed = !uncle;
         }
 
         // Get round number from extra consensus data
