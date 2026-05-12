@@ -133,6 +133,30 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task Debug_getFirstFullStateBlock_returns_bridge_value()
+    {
+        _debugBridge.GetFirstFullStateBlock().Returns((long?)42);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcSuccessResponse? response =
+            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFirstFullStateBlock") as JsonRpcSuccessResponse;
+
+        Assert.That(response?.Result, Is.EqualTo(42L));
+    }
+
+    [Test]
+    public async Task Debug_getFirstFullStateBlock_returns_null_when_no_full_state()
+    {
+        _debugBridge.GetFirstFullStateBlock().Returns((long?)null);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcSuccessResponse? response =
+            await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFirstFullStateBlock") as JsonRpcSuccessResponse;
+
+        Assert.That(response?.Result, Is.Null);
+    }
+
+    [Test]
     public async Task Get_raw_header()
     {
         HeaderDecoder decoder = new();
