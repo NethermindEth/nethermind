@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
@@ -38,6 +39,7 @@ using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Trie;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -1154,6 +1156,18 @@ public class TraceRpcModuleTests
     }
 
     [Test]
+    public void trace_transaction_WhenExecutionMissesTrieNode_ReturnsResourceUnavailable()
+    {
+        TraceRpcModule module = BuildModuleWithMissingTrieNodeOnExecute(TestItem.KeccakA);
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_transaction(TestItem.KeccakA);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);
+        result.Result.Error.Should().Contain("No state available for block");
+    }
+
+    [Test]
     public void trace_transaction_WhenTraceNonCanonicalAndReceiptPointsToNonCanonicalBlock_ProceedsBeyondCanonicalCheck()
     {
         TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
@@ -1191,6 +1205,46 @@ public class TraceRpcModuleTests
             blockFinder,
             new JsonRpcConfig(),
             Substitute.For<IBlockchainBridge>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<IBlocksConfig>());
+    }
+
+    private static TraceRpcModule BuildModuleWithMissingTrieNodeOnExecute(Hash256 txHash)
+    {
+        Hash256 blockHash = TestItem.KeccakB;
+        BlockHeader parent = Build.A.BlockHeader.WithHash(TestItem.KeccakC).TestObject;
+        Block block = Build.A.Block.WithParentHash(parent.Hash!).TestObject;
+
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(blockHash);
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.Head.Returns(block);
+        blockFinder.FindBlock(Arg.Is<BlockParameter>(p => p.BlockHash == blockHash && p.RequireCanonical))
+            .Returns(block);
+        blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical, Arg.Any<long?>())
+            .Returns(block);
+        blockFinder.FindHeader(Arg.Is<BlockParameter>(p => p.BlockHash == parent.Hash))
+            .Returns(parent);
+        blockFinder.FindHeader(parent.Hash!).Returns(parent);
+
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+        blockchainBridge.HasStateForBlock(parent).Returns(true);
+
+        ITracer tracer = Substitute.For<ITracer>();
+        tracer.When(static t => t.Execute(Arg.Any<Block>(), Arg.Any<IBlockTracer>()))
+            .Do(static _ => throw new MissingTrieNodeException("Node missing", null, TreePath.Empty, TestItem.KeccakA));
+
+        IOverridableEnv<ITracer> tracerEnv = Substitute.For<IOverridableEnv<ITracer>>();
+        tracerEnv.BuildAndOverride(Arg.Any<BlockHeader>())
+            .Returns(_ => new Scope<ITracer>(tracer, Substitute.For<IDisposable>()));
+
+        return new TraceRpcModule(
+            receiptFinder,
+            tracerEnv,
+            blockFinder,
+            new JsonRpcConfig(),
+            blockchainBridge,
             Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>());
     }

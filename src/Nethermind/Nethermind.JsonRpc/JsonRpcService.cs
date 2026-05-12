@@ -20,6 +20,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+using Nethermind.Trie;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
@@ -278,6 +279,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
+
+            TargetInvocationException and { InnerException: MissingTrieNodeException e } =>
+                GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, e.Message, ex.ToString(), request.Id, returnAction),
+
+            MissingTrieNodeException e =>
+                GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, e.Message, ex.ToString(), request.Id, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
