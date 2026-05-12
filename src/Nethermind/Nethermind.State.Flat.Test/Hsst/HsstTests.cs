@@ -183,18 +183,17 @@ public class HsstTests
     }
 
     [Test]
-    public void Various_Key_Value_Sizes()
+    public void Various_Value_Sizes()
     {
+        // Same-length keys (uniform-key invariant); values vary from empty to ~10 KiB.
         byte[] longValue = new byte[10000];
         Random.Shared.NextBytes(longValue);
-        byte[] longKey = new byte[255];
-        for (int i = 0; i < longKey.Length; i++) longKey[i] = (byte)'c';
 
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add("a"u8, ReadOnlySpan<byte>.Empty);
             builder.Add("b"u8, longValue);
-            builder.Add(longKey, "x"u8);
+            builder.Add("c"u8, "x"u8);
         });
 
         Assert.That(CountEntries(data), Is.EqualTo(3));
@@ -205,7 +204,7 @@ public class HsstTests
         Assert.That(TryGet(data, "b"u8, out byte[] v2), Is.True);
         Assert.That(v2.AsSpan().SequenceEqual(longValue), Is.True);
 
-        Assert.That(TryGet(data, longKey, out byte[] v3), Is.True);
+        Assert.That(TryGet(data, "c"u8, out byte[] v3), Is.True);
         Assert.That(Encoding.UTF8.GetString(v3), Is.EqualTo("x"));
     }
 
@@ -297,13 +296,14 @@ public class HsstTests
     [TestCase(200, 4, 64, 128, 55)]
     [TestCase(500, 8, 64, 128, 101)]
     [TestCase(1000, 64, 64, 128, 202)]
-    public void Binary_Keys_MultiLevel_And_VariableSize_RoundTrip(int count, int maxLeafEntries, int maxKeyLen, int maxValLen, int seed)
+    public void Binary_Keys_MultiLevel_And_VariableSize_RoundTrip(int count, int maxLeafEntries, int keyLen, int maxValLen, int seed)
     {
+        // Keys are now uniform-length per HSST; this test still exercises multi-level
+        // B-tree builds with variable-length values.
         Random rng = new(seed);
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
         {
-            int keyLen = rng.Next(1, maxKeyLen + 1);
             int valLen = rng.Next(0, maxValLen + 1);
             entries[i].Key = new byte[keyLen];
             entries[i].Value = new byte[valLen];
@@ -324,7 +324,7 @@ public class HsstTests
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
-        }, maxLeafEntries);
+        }, maxLeafEntries: maxLeafEntries);
 
         Assert.That(CountEntries(data), Is.EqualTo(deduped.Count));
 
@@ -566,7 +566,7 @@ public class HsstTests
 
         byte[] buffer = new byte[4096];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> b = new(ref writer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> b = new(ref writer, keyLength: -1);
         try
         {
             ref SpanBufferWriter w = ref b.BeginValueWrite();
@@ -595,11 +595,11 @@ public class HsstTests
         // Outer HSST with one entry whose value is an inner HSST
         byte[] buffer = new byte[4096];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, keyLength: -1);
         try
         {
             ref SpanBufferWriter innerWriter = ref outer.BeginValueWrite();
-            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter);
+            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter, keyLength: -1);
             inner.Add("key1"u8, "val1"u8);
             inner.Add("key2"u8, "val2"u8);
             inner.Build();
@@ -626,20 +626,20 @@ public class HsstTests
         // Outer HSST with 3 columns, each an inner HSST built via shared writer
         byte[] buffer = new byte[65536];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, keyLength: -1);
         try
         {
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 inner.Add("from"u8, "block0"u8);
-                inner.Add("to"u8, "block1"u8);
+                inner.Add("to\0\0"u8, "block1"u8);
                 inner.Build();
                 outer.FinishValueWrite([0x00]);
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 byte[] addr = new byte[20]; addr[0] = 0xAB;
                 inner.Add(addr, [0xC0, 0x80]);
                 inner.Build();
@@ -647,7 +647,7 @@ public class HsstTests
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 inner.Build();
                 outer.FinishValueWrite([0x02]);
             }
@@ -661,6 +661,8 @@ public class HsstTests
         Assert.That(TryGet(outerSpan, [0x00], out byte[] col0), Is.True, "col0");
         Assert.That(CountEntries(col0), Is.EqualTo(2));
         Assert.That(TryGet(col0, "from"u8, out byte[] fromVal), Is.True);
+        Assert.That(TryGet(col0, "to\0\0"u8, out byte[] toVal), Is.True);
+        Assert.That(toVal, Is.EqualTo("block1"u8.ToArray()));
         Assert.That(fromVal, Is.EqualTo("block0"u8.ToArray()));
         Assert.That(TryGet(outerSpan, [0x01], out _), Is.True, "col1");
         Assert.That(TryGet(outerSpan, [0x02], out _), Is.True, "col2");

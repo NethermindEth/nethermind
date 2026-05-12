@@ -80,13 +80,15 @@ public class HsstRefEnumeratorTests
     [TestCase(100, 4, 32, 32, 42)]
     [TestCase(500, 8, 64, 128, 101)]
     [TestCase(1000, 64, 64, 128, 202)]
-    public void Enumerate_BinaryKeys_VariableSize(int count, int maxLeafEntries, int maxKeyLen, int maxValLen, int seed)
+    public void Enumerate_BinaryKeys_VariableSize(int count, int maxLeafEntries, int keyLen, int maxValLen, int seed)
     {
+        // Keys are now uniform-length per HSST; this test still exercises enumeration
+        // across multi-level B-tree builds with variable-length values.
         Random rng = new(seed);
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
         {
-            entries[i].Key = new byte[rng.Next(1, maxKeyLen + 1)];
+            entries[i].Key = new byte[keyLen];
             entries[i].Value = new byte[rng.Next(0, maxValLen + 1)];
             rng.NextBytes(entries[i].Key);
             rng.NextBytes(entries[i].Value);
@@ -105,7 +107,7 @@ public class HsstRefEnumeratorTests
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
-        }, maxLeafEntries);
+        }, maxLeafEntries: maxLeafEntries);
 
         SpanByteReader reader = new(data);
         using HsstRefEnumerator<SpanByteReader, NoOpPin> e = new(in reader, new Bound(0, data.Length));

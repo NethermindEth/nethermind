@@ -52,6 +52,19 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] AccountSubTag = [0x05];
     internal static readonly byte[] SelfDestructSubTag = [0x06];
 
+    // Metadata column keys. The HSST builder requires uniform key length per HSST,
+    // so the original ASCII keys are NUL-padded to a fixed 10 bytes (the longest
+    // original key, "from_block"). NUL-padding preserves the original sort order
+    // because no original key is a prefix of any other.
+    internal const int MetadataKeyLength = 10;
+    internal static readonly byte[] MetadataFromBlockKey = "from_block"u8.ToArray();
+    internal static readonly byte[] MetadataFromHashKey = "from_hash\0"u8.ToArray();
+    internal static readonly byte[] MetadataNodeRefsKey = "noderefs\0\0"u8.ToArray();
+    internal static readonly byte[] MetadataRefIdsKey = "ref_ids\0\0\0"u8.ToArray();
+    internal static readonly byte[] MetadataToBlockKey = "to_block\0\0"u8.ToArray();
+    internal static readonly byte[] MetadataToHashKey = "to_hash\0\0\0"u8.ToArray();
+    internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
+
     private const int AddressBoundCacheSets = 8;
 
     private readonly ArenaReservation _reservation;

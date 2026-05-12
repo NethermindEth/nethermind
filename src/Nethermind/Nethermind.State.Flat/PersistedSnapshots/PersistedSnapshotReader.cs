@@ -201,7 +201,7 @@ public static class PersistedSnapshotReader
     {
         using HsstReader<TReader, TPin> r = new(in reader);
         if (!r.TrySeek(PersistedSnapshot.MetadataTag, out _) ||
-            !r.TrySeek("ref_ids"u8, out _))
+            !r.TrySeek(PersistedSnapshot.MetadataRefIdsKey, out _))
             return null;
         Bound b = r.GetBound();
         if (b.Length == 0 || b.Length % 4 != 0) return null;

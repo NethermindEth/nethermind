@@ -28,10 +28,10 @@ public class HsstReaderTests
     }
 
     [TestCase("a", "alpha")]
-    [TestCase("key1", "value1")]
+    [TestCase("c", "gamma")]
     public void TrySeek_ExactMatch_ReadsCorrectValue(string key, string value)
     {
-        byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"), ("key1", "value1"), ("key2", "value2"));
+        byte[] data = BuildHsst(("a", "alpha"), ("b", "beta"), ("c", "gamma"), ("d", "delta"));
         SpanByteReader reader = new(data);
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
 
@@ -306,18 +306,17 @@ public class HsstReaderTests
     }
 
     [Test]
-    public void Various_Key_Value_Sizes_Reader()
+    public void Various_Value_Sizes_Reader()
     {
+        // Same-length keys (uniform-key invariant); values vary from empty to ~10 KiB.
         byte[] longValue = new byte[10000];
         Random.Shared.NextBytes(longValue);
-        byte[] longKey = new byte[255];
-        for (int i = 0; i < longKey.Length; i++) longKey[i] = (byte)'c';
 
         byte[] data = HsstTestUtil.BuildToArray((ref HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> builder) =>
         {
             builder.Add("a"u8, ReadOnlySpan<byte>.Empty);
             builder.Add("b"u8, longValue);
-            builder.Add(longKey, "x"u8);
+            builder.Add("c"u8, "x"u8);
         });
 
         SpanByteReader reader = new(data);
@@ -335,7 +334,7 @@ public class HsstReaderTests
         Assert.That(v2.SequenceEqual(longValue), Is.True);
 
         r.SetBound(root);
-        Assert.That(r.TrySeek(longKey, out _), Is.True);
+        Assert.That(r.TrySeek("c"u8, out _), Is.True);
         Span<byte> v3 = new byte[r.GetBound().Length];
         r.GetValue(v3);
         Assert.That(Encoding.UTF8.GetString(v3), Is.EqualTo("x"));
@@ -418,13 +417,15 @@ public class HsstReaderTests
     [TestCase(200, 4, 64, 128, 55)]
     [TestCase(500, 8, 64, 128, 101)]
     [TestCase(1000, 64, 64, 128, 202)]
-    public void Binary_Keys_MultiLevel_And_VariableSize_RoundTrip_Reader(int count, int maxLeafEntries, int maxKeyLen, int maxValLen, int seed)
+    public void Binary_Keys_MultiLevel_And_VariableSize_RoundTrip_Reader(int count, int maxLeafEntries, int keyLen, int maxValLen, int seed)
     {
+        // Keys are now uniform-length per HSST; this test still exercises multi-level
+        // B-tree builds with variable-length values.
         Random rng = new(seed);
         (byte[] Key, byte[] Value)[] entries = new (byte[], byte[])[count];
         for (int i = 0; i < count; i++)
         {
-            entries[i].Key = new byte[rng.Next(1, maxKeyLen + 1)];
+            entries[i].Key = new byte[keyLen];
             entries[i].Value = new byte[rng.Next(0, maxValLen + 1)];
             rng.NextBytes(entries[i].Key);
             rng.NextBytes(entries[i].Value);
@@ -443,7 +444,7 @@ public class HsstReaderTests
         {
             foreach ((byte[] key, byte[] value) in deduped)
                 builder.Add(key, value);
-        }, maxLeafEntries);
+        }, maxLeafEntries: maxLeafEntries);
 
         SpanByteReader reader = new(data);
         using HsstReader<SpanByteReader, NoOpPin> r = new(in reader);
@@ -620,11 +621,11 @@ public class HsstReaderTests
     {
         byte[] buffer = new byte[4096];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, keyLength: -1);
         try
         {
             ref SpanBufferWriter innerWriter = ref outer.BeginValueWrite();
-            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter);
+            using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref innerWriter, keyLength: -1);
             inner.Add("key1"u8, "val1"u8);
             inner.Add("key2"u8, "val2"u8);
             inner.Build();
@@ -657,20 +658,20 @@ public class HsstReaderTests
     {
         byte[] buffer = new byte[65536];
         SpanBufferWriter writer = new(buffer);
-        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer);
+        HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> outer = new(ref writer, keyLength: -1);
         try
         {
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 inner.Add("from"u8, "block0"u8);
-                inner.Add("to"u8, "block1"u8);
+                inner.Add("to\0\0"u8, "block1"u8);
                 inner.Build();
                 outer.FinishValueWrite([0x00]);
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 byte[] addr = new byte[20]; addr[0] = 0xAB;
                 inner.Add(addr, [0xC0, 0x80]);
                 inner.Build();
@@ -678,7 +679,7 @@ public class HsstReaderTests
             }
             {
                 ref SpanBufferWriter iw = ref outer.BeginValueWrite();
-                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw);
+                using HsstBTreeBuilder<SpanBufferWriter, SpanByteReader, NoOpPin> inner = new(ref iw, keyLength: -1);
                 inner.Build();
                 outer.FinishValueWrite([0x02]);
             }

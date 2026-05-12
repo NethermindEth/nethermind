@@ -82,34 +82,34 @@ public class HsstCrossFormatTests
         switch (format)
         {
             case Format.BTree:
-            {
-                HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b
-                    = new(ref pooled.GetWriter(), new HsstBTreeOptions { MinSeparatorLength = KeySize });
-                try
                 {
-                    for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
-                    b.Build();
+                    HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b
+                        = new(ref pooled.GetWriter(), KeySize, new HsstBTreeOptions { MinSeparatorLength = KeySize });
+                    try
+                    {
+                        for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
+                        b.Build();
+                    }
+                    finally { b.Dispose(); }
+                    break;
                 }
-                finally { b.Dispose(); }
-                break;
-            }
             case Format.PackedArrayBe:
             case Format.PackedArrayLe:
-            {
-                HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> b = new(
-                    ref pooled.GetWriter(),
-                    keySize: KeySize,
-                    valueSize: ValueSize,
-                    expectedKeyCount: keys.Length,
-                    isLittleEndian: format == Format.PackedArrayLe);
-                try
                 {
-                    for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
-                    b.Build();
+                    HsstPackedArrayBuilder<PooledByteBufferWriter.Writer> b = new(
+                        ref pooled.GetWriter(),
+                        keySize: KeySize,
+                        valueSize: ValueSize,
+                        expectedKeyCount: keys.Length,
+                        isLittleEndian: format == Format.PackedArrayLe);
+                    try
+                    {
+                        for (int i = 0; i < keys.Length; i++) b.Add(keys[i], values[i]);
+                        b.Build();
+                    }
+                    finally { b.Dispose(); }
+                    break;
                 }
-                finally { b.Dispose(); }
-                break;
-            }
             default:
                 throw new ArgumentOutOfRangeException(nameof(format));
         }

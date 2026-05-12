@@ -120,7 +120,7 @@ public class HsstReaderBenchmark
 
     private static void BuildBTree(ref PooledByteBufferWriter.Writer writer, byte[][] keys)
     {
-        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b = new(ref writer, new HsstBTreeOptions
+        HsstBTreeBuilder<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin> b = new(ref writer, KeyLen, new HsstBTreeOptions
         {
             MaxLeafEntries = 256,
             MaxIntermediateEntries = 256,

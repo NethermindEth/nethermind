@@ -280,25 +280,25 @@ public static class PersistedSnapshotBuilder
         // its trie RLPs into. Compactor's NWayMetadataMerge replaces this with the union
         // of input snapshots' referenced ids.
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, expectedKeyCount: 6);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, PersistedSnapshot.MetadataKeyLength, expectedKeyCount: 6);
 
         Span<byte> blockNumBytes = stackalloc byte[8];
         Span<byte> refIdsBytes = stackalloc byte[4];
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.From.BlockNumber);
-        inner.Add("from_block"u8, blockNumBytes);
+        inner.Add(PersistedSnapshot.MetadataFromBlockKey, blockNumBytes);
 
-        inner.Add("from_hash"u8, snapshot.From.StateRoot.Bytes);
+        inner.Add(PersistedSnapshot.MetadataFromHashKey, snapshot.From.StateRoot.Bytes);
 
         BitConverter.TryWriteBytes(refIdsBytes, blobArenaId);
-        inner.Add("ref_ids"u8, refIdsBytes);
+        inner.Add(PersistedSnapshot.MetadataRefIdsKey, refIdsBytes);
 
         BitConverter.TryWriteBytes(blockNumBytes, snapshot.To.BlockNumber);
-        inner.Add("to_block"u8, blockNumBytes);
+        inner.Add(PersistedSnapshot.MetadataToBlockKey, blockNumBytes);
 
-        inner.Add("to_hash"u8, snapshot.To.StateRoot.Bytes);
+        inner.Add(PersistedSnapshot.MetadataToHashKey, snapshot.To.StateRoot.Bytes);
 
-        inner.Add("version"u8, [0x01]);
+        inner.Add(PersistedSnapshot.MetadataVersionKey, [0x01]);
 
         inner.Build();
         outer.FinishValueWrite(PersistedSnapshot.MetadataTag);
@@ -320,7 +320,7 @@ public static class PersistedSnapshotBuilder
 
         // Address-level HSST keyed by 20-byte address-hash prefix.
         ref TWriter addressWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, new HsstBTreeOptions
+        using HsstBTreeBuilder<TWriter, TReader, TPin> addressLevel = new(ref addressWriter, StorageHashPrefixLength, new HsstBTreeOptions
         {
             MinSeparatorLength = 4,
         }, expectedKeyCount: uniqueAddressHashes.Count);
@@ -393,7 +393,7 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter topWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, new HsstBTreeOptions { MinSeparatorLength = 3 },
+                using HsstBTreeBuilder<TWriter, TReader, TPin> topLevel = new(ref topWriter, keyLength: 3, new HsstBTreeOptions { MinSeparatorLength = 3 },
                     expectedKeyCount: storTopIdx - topStart);
                 for (int i = topStart; i < storTopIdx; i++)
                 {
@@ -421,7 +421,7 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter compactWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, new HsstBTreeOptions { MinSeparatorLength = 8 },
+                using HsstBTreeBuilder<TWriter, TReader, TPin> compactLevel = new(ref compactWriter, keyLength: 8, new HsstBTreeOptions { MinSeparatorLength = 8 },
                     expectedKeyCount: storCompactIdx - compactStart);
                 for (int i = compactStart; i < storCompactIdx; i++)
                 {
@@ -449,7 +449,7 @@ public static class PersistedSnapshotBuilder
             {
                 addrRefForStorageNode ??= new Hash256(in addressHash);
                 ref TWriter fbWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, expectedKeyCount: storFallbackIdx - fallbackStart);
+                using HsstBTreeBuilder<TWriter, TReader, TPin> fbLevel = new(ref fbWriter, keyLength: 33, expectedKeyCount: storFallbackIdx - fallbackStart);
                 for (int i = fallbackStart; i < storFallbackIdx; i++)
                 {
                     (ValueHash256 _, TreePath path) = storFallback[i];
@@ -474,7 +474,7 @@ public static class PersistedSnapshotBuilder
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, new HsstBTreeOptions { MinSeparatorLength = 4 });
+                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, slotPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash))
@@ -559,7 +559,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, new HsstBTreeOptions
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 3, new HsstBTreeOptions
         {
             MinSeparatorLength = 3,
         }, expectedKeyCount: stateNodeKeys.Count);
@@ -586,7 +586,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnCompact<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, new HsstBTreeOptions
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 8, new HsstBTreeOptions
         {
             MinSeparatorLength = 8,
         }, expectedKeyCount: stateNodeKeys.Count);
@@ -613,7 +613,7 @@ public static class PersistedSnapshotBuilder
     private static void WriteStateNodesColumnFallback<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         ref TWriter innerWriter = ref outer.BeginValueWrite();
-        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, expectedKeyCount: stateNodeKeys.Count);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> inner = new(ref innerWriter, keyLength: 33, expectedKeyCount: stateNodeKeys.Count);
         Span<byte> keyBuffer = stackalloc byte[33];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
         for (int i = 0; i < stateNodeKeys.Count; i++)
@@ -740,9 +740,9 @@ public static class PersistedSnapshotBuilder
     private static void ConvertNestedColumnToNodeRefs<TWriter, TWriterReader, TWriterPin>(
         scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
         int snapshotId,
-        int outerMinSep = 0, int innerKeySize = 0) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
+        int outerKeyLength, int outerMinSep = 0, int innerKeySize = 0) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
     {
-        HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
+        HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> builder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
         using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> outerEnum = new(in reader, columnScope);
         Span<byte> refBytes = stackalloc byte[NodeRef.Size];
         Span<byte> innerKeyBuf = stackalloc byte[Math.Max(1, innerKeySize)];
@@ -788,7 +788,7 @@ public static class PersistedSnapshotBuilder
         scoped in WholeReadSessionReader reader, Bound columnScope, ref TWriter writer,
         int snapshotId) where TWriter : IByteBufferWriterWithReader<TWriterReader, TWriterPin> where TWriterReader : IHsstByteReader<TWriterPin>, allows ref struct where TWriterPin : struct, IBufferPin, allows ref struct
     {
-        using HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
+        using HsstBTreeBuilder<TWriter, TWriterReader, TWriterPin> outerBuilder = new(ref writer, StorageHashPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
         using HsstRefEnumerator<WholeReadSessionReader, NoOpPin> outerEnum = new(in reader, columnScope);
         // Outer key is a 20-byte address hash.
         Span<byte> outerKeyBuf = stackalloc byte[32];
@@ -1036,10 +1036,11 @@ public static class PersistedSnapshotBuilder
         HsstEnumerator[] enums, bool[] hasMore, int n,
         WholeReadSession[] sessions,
         ref TWriter writer,
+        int outerKeyLength, int innerKeyLength,
         int outerMinSep = 0, int innerMinSep = 0,
         bool innerByteTagMap = false) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
         // Temp list for collecting matching source indices
         using ArrayPoolList<int> matchingSourcesList = new(n, n);
@@ -1100,7 +1101,7 @@ public static class PersistedSnapshotBuilder
                 // M sources: create M inner enumerators and merge
                 ref TWriter innerWriter = ref builder.BeginValueWrite();
                 NWayInnerMerge<TWriter, TReader, TPin>(enums, matchingSources, matchCount, sessions,
-                    ref innerWriter, innerMinSep, innerByteTagMap);
+                    ref innerWriter, innerKeyLength, innerMinSep, innerByteTagMap);
                 builder.FinishValueWrite(minKey);
             }
 
@@ -1125,6 +1126,7 @@ public static class PersistedSnapshotBuilder
         HsstEnumerator[] outerEnums, int[] matchingSources, int matchCount,
         WholeReadSession[] sessions,
         ref TWriter writer,
+        int innerKeyLength,
         int minSeparatorLength = 0,
         bool useByteTagMap = false) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
@@ -1148,7 +1150,7 @@ public static class PersistedSnapshotBuilder
             if (useByteTagMap)
                 MergeIntoByteTagMap<TWriter, TReader, TPin>(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions, ref writer);
             else
-                MergeIntoBTree<TWriter, TReader, TPin>(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions, ref writer, minSeparatorLength);
+                MergeIntoBTree<TWriter, TReader, TPin>(innerEnums, innerHasMore, innerBounds, matchingSources, matchCount, sessions, ref writer, innerKeyLength, minSeparatorLength);
         }
         finally
         {
@@ -1196,9 +1198,9 @@ public static class PersistedSnapshotBuilder
         ArrayPoolList<(long Offset, long Length)> innerBounds,
         int[] matchingSources, int matchCount,
         WholeReadSession[] sessions,
-        ref TWriter writer, int minSeparatorLength) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        ref TWriter writer, int keyLength, int minSeparatorLength) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, keyLength, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
         Span<byte> minKeyBuf = stackalloc byte[64];
         while (true)
         {
@@ -1246,6 +1248,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     internal static void NWayNestedStreamingMerge<TWriter, TReader, TPin>(
         PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
+        int outerKeyLength, int innerKeyLength,
         int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         int n = snapshots.Count;
@@ -1271,7 +1274,7 @@ public static class PersistedSnapshotBuilder
             }
 
             NWayNestedStreamingMerge<TWriter, TReader, TPin>(enums, hasMore, n, sessions,
-                ref writer, outerMinSep, innerMinSep);
+                ref writer, outerKeyLength, innerKeyLength, outerMinSep, innerMinSep);
         }
         finally
         {
@@ -1287,7 +1290,7 @@ public static class PersistedSnapshotBuilder
     /// </summary>
     internal static void NWayNestedStreamingMergeTrie<TWriter, TReader, TPin>(
         PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
-        int outerMinSep, int innerKeySize) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        int outerKeyLength, int outerMinSep, int innerKeySize) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         int n = snapshots.Count;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
@@ -1313,7 +1316,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(in r);
             }
 
-            using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
+            using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
             // Outer keys are storage-hash address prefixes (≤32 bytes); 64 is plenty.
             Span<byte> iKeyBuf = stackalloc byte[64];
@@ -1493,7 +1496,7 @@ public static class PersistedSnapshotBuilder
                 hasMore[i] = enums[i].MoveNext(in r);
             }
 
-            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, new HsstBTreeOptions { MinSeparatorLength = 4 });
+            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, StorageHashPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
             // Outer keys are 20-byte address hashes; 32 covers comfortably.
             Span<byte> iKeyBuf = stackalloc byte[32];
@@ -1619,158 +1622,159 @@ public static class PersistedSnapshotBuilder
         try
         {
 
-        // Sub-tags 0x01 / 0x02 / 0x03: storage trie top / compact / fallback. Each source
-        // carries an inner HSST keyed by encoded TreePath; values are NodeRefs (since
-        // NWayMerge converts Full→Linked first). N-way streaming merge per sub-tag with
-        // newest-wins on key collision; no destruct barrier since orphan nodes are
-        // unreachable from the new storage root.
-        MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sessions, perAddrBounds,
-            ref perAddrBuilder, PersistedSnapshot.StorageTopSubTag, innerKeySize: 3);
-        MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sessions, perAddrBounds,
-            ref perAddrBuilder, PersistedSnapshot.StorageCompactSubTag, innerKeySize: 8);
-        MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sessions, perAddrBounds,
-            ref perAddrBuilder, PersistedSnapshot.StorageFallbackSubTag, innerKeySize: 33);
+            // Sub-tags 0x01 / 0x02 / 0x03: storage trie top / compact / fallback. Each source
+            // carries an inner HSST keyed by encoded TreePath; values are NodeRefs (since
+            // NWayMerge converts Full→Linked first). N-way streaming merge per sub-tag with
+            // newest-wins on key collision; no destruct barrier since orphan nodes are
+            // unreachable from the new storage root.
+            MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sessions, perAddrBounds,
+                ref perAddrBuilder, PersistedSnapshot.StorageTopSubTag, innerKeySize: 3);
+            MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sessions, perAddrBounds,
+                ref perAddrBuilder, PersistedSnapshot.StorageCompactSubTag, innerKeySize: 8);
+            MergeStorageTrieSubTag<TWriter, TReader, TPin>(matchingSources, matchCount, sessions, perAddrBounds,
+                ref perAddrBuilder, PersistedSnapshot.StorageFallbackSubTag, innerKeySize: 33);
 
-        // Find newest destruct barrier: newest j where SelfDestructSubTag is present and
-        // marks "destructed" ([0x00]). With DenseByteIndex per-address encoding, sub-tag
-        // values are presence-marked: length 0 = absent, [0x00] = destructed, [0x01] = new.
-        int destructBarrier = -1;
-        for (int j = 0; j < matchCount; j++)
-        {
-            WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-            HsstReader<WholeReadSessionReader, NoOpPin> sd = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
-            if (!sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out Bound sdb) || sdb.Length != 1) continue;
-            using NoOpPin sdPin = r.PinBuffer(sdb.Offset, 1);
-            if (sdPin.Buffer[0] == 0x00)
-                destructBarrier = j;
-        }
-
-        // Sub-tag 0x04: Slots
-        // Merge slots only from max(0, destructBarrier)..matchCount-1
-        int slotStart = Math.Max(0, destructBarrier);
-
-        {
-            // Collect sources that have slots in the range; opportunistically feed the
-            // bloom filter from the same seek pass — bloom and slot-merge need the
-            // exact same set of sources / sub-tag bounds, so a separate pass would
-            // just duplicate the seek.
-            int slotSourceCount = 0;
-            int slotCapacity = matchCount - slotStart;
-            using ArrayPoolList<int> slotSourcesList = new(slotCapacity, slotCapacity);
-            using ArrayPoolList<(long Offset, long Length)> slotBoundsList = new(slotCapacity, slotCapacity);
-            int[] slotSources = slotSourcesList.UnsafeGetInternalArray();
-            (long Offset, long Length)[] slotBounds = slotBoundsList.UnsafeGetInternalArray();
-            for (int j = slotStart; j < matchCount; j++)
-            {
-                WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-                HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
-                if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
-                {
-                    slotSources[slotSourceCount] = j;
-                    // slotBound is reader-absolute (snapshot-absolute) since the scope was relative to the snapshot.
-                    slotBounds[slotSourceCount] = (slotBound.Offset, slotBound.Length);
-                    slotSourceCount++;
-                    if (bloom is not null)
-                        AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in r, slotBound, addrBloomKey, bloom);
-                }
-            }
-
-            if (slotSourceCount == 1)
-            {
-                WholeReadSessionReader r = sessions[matchingSources[slotSources[0]]].GetReader();
-                using NoOpPin slotPin = r.PinBuffer(slotBounds[0].Offset, slotBounds[0].Length);
-                perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, slotPin.Buffer);
-            }
-            else if (slotSourceCount > 1)
-            {
-                // N-way nested streaming merge on slot prefix-level HSSTs
-                using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
-                using ArrayPoolList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
-                using ArrayPoolList<WholeReadSession> slotSessionsList = new(slotSourceCount, slotSourceCount);
-                HsstEnumerator[] slotEnums = slotEnumsList.UnsafeGetInternalArray();
-                bool[] slotHasMore = slotHasMoreList.UnsafeGetInternalArray();
-                WholeReadSession[] slotSessions = slotSessionsList.UnsafeGetInternalArray();
-                try
-                {
-                    for (int j = 0; j < slotSourceCount; j++)
-                    {
-                        slotSessions[j] = sessions[matchingSources[slotSources[j]]];
-                        WholeReadSessionReader slotReader = slotSessions[j].GetReader();
-                        slotEnums[j] = new HsstEnumerator(in slotReader, new Bound(slotBounds[j].Offset, slotBounds[j].Length));
-                        slotHasMore[j] = slotEnums[j].MoveNext(in slotReader);
-                    }
-
-                    ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
-                    NWayNestedStreamingMerge<TWriter, TReader, TPin>(
-                        slotEnums, slotHasMore, slotSourceCount, slotSessions,
-                        ref slotWriter,
-                        outerMinSep: 4, innerByteTagMap: true);
-                    perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
-                }
-                finally
-                {
-                    for (int j = 0; j < slotSourceCount; j++) slotEnums[j].Dispose();
-                }
-            }
-        }
-
-        // Sub-tag 0x05: Account — newest wins (walk M-1..0, first present (length>0)).
-        {
-            for (int j = matchCount - 1; j >= 0; j--)
-            {
-                WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
-                HsstReader<WholeReadSessionReader, NoOpPin> acct = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
-                if (!acct.TrySeek(PersistedSnapshot.AccountSubTag, out Bound ab) || ab.Length == 0) continue;
-                using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
-                perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, acctPin.Buffer);
-                break;
-            }
-        }
-
-        // Sub-tag 0x06: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
-        // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
-        // filled length 0 under DenseByteIndex) are ignored. Track the winning bound
-        // snapshot-absolute so we can re-pin at the end without holding a span across
-        // iterations.
-        {
-            int sdSrcJ = -1;
-            long sdValOff = 0;
-            long sdValLen = 0;
-
+            // Find newest destruct barrier: newest j where SelfDestructSubTag is present and
+            // marks "destructed" ([0x00]). With DenseByteIndex per-address encoding, sub-tag
+            // values are presence-marked: length 0 = absent, [0x00] = destructed, [0x01] = new.
+            int destructBarrier = -1;
             for (int j = 0; j < matchCount; j++)
             {
                 WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
                 HsstReader<WholeReadSessionReader, NoOpPin> sd = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
-                if (!sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out Bound sdb) || sdb.Length == 0) continue;
+                if (!sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out Bound sdb) || sdb.Length != 1) continue;
+                using NoOpPin sdPin = r.PinBuffer(sdb.Offset, 1);
+                if (sdPin.Buffer[0] == 0x00)
+                    destructBarrier = j;
+            }
 
-                if (sdSrcJ < 0)
+            // Sub-tag 0x04: Slots
+            // Merge slots only from max(0, destructBarrier)..matchCount-1
+            int slotStart = Math.Max(0, destructBarrier);
+
+            {
+                // Collect sources that have slots in the range; opportunistically feed the
+                // bloom filter from the same seek pass — bloom and slot-merge need the
+                // exact same set of sources / sub-tag bounds, so a separate pass would
+                // just duplicate the seek.
+                int slotSourceCount = 0;
+                int slotCapacity = matchCount - slotStart;
+                using ArrayPoolList<int> slotSourcesList = new(slotCapacity, slotCapacity);
+                using ArrayPoolList<(long Offset, long Length)> slotBoundsList = new(slotCapacity, slotCapacity);
+                int[] slotSources = slotSourcesList.UnsafeGetInternalArray();
+                (long Offset, long Length)[] slotBounds = slotBoundsList.UnsafeGetInternalArray();
+                for (int j = slotStart; j < matchCount; j++)
                 {
-                    sdSrcJ = j;
-                    sdValOff = sdb.Offset;
-                    sdValLen = sdb.Length;
+                    WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+                    HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+                    if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
+                    {
+                        slotSources[slotSourceCount] = j;
+                        // slotBound is reader-absolute (snapshot-absolute) since the scope was relative to the snapshot.
+                        slotBounds[slotSourceCount] = (slotBound.Offset, slotBound.Length);
+                        slotSourceCount++;
+                        if (bloom is not null)
+                            AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in r, slotBound, addrBloomKey, bloom);
+                    }
                 }
-                else
+
+                if (slotSourceCount == 1)
                 {
-                    // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
-                    using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
-                    if (firstBytePin.Buffer[0] == 0x00)
+                    WholeReadSessionReader r = sessions[matchingSources[slotSources[0]]].GetReader();
+                    using NoOpPin slotPin = r.PinBuffer(slotBounds[0].Offset, slotBounds[0].Length);
+                    perAddrBuilder.Add(PersistedSnapshot.SlotSubTag, slotPin.Buffer);
+                }
+                else if (slotSourceCount > 1)
+                {
+                    // N-way nested streaming merge on slot prefix-level HSSTs
+                    using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
+                    using ArrayPoolList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
+                    using ArrayPoolList<WholeReadSession> slotSessionsList = new(slotSourceCount, slotSourceCount);
+                    HsstEnumerator[] slotEnums = slotEnumsList.UnsafeGetInternalArray();
+                    bool[] slotHasMore = slotHasMoreList.UnsafeGetInternalArray();
+                    WholeReadSession[] slotSessions = slotSessionsList.UnsafeGetInternalArray();
+                    try
+                    {
+                        for (int j = 0; j < slotSourceCount; j++)
+                        {
+                            slotSessions[j] = sessions[matchingSources[slotSources[j]]];
+                            WholeReadSessionReader slotReader = slotSessions[j].GetReader();
+                            slotEnums[j] = new HsstEnumerator(in slotReader, new Bound(slotBounds[j].Offset, slotBounds[j].Length));
+                            slotHasMore[j] = slotEnums[j].MoveNext(in slotReader);
+                        }
+
+                        ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
+                        NWayNestedStreamingMerge<TWriter, TReader, TPin>(
+                            slotEnums, slotHasMore, slotSourceCount, slotSessions,
+                            ref slotWriter,
+                            outerKeyLength: 31, innerKeyLength: 1,
+                            outerMinSep: 4, innerByteTagMap: true);
+                        perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
+                    }
+                    finally
+                    {
+                        for (int j = 0; j < slotSourceCount; j++) slotEnums[j].Dispose();
+                    }
+                }
+            }
+
+            // Sub-tag 0x05: Account — newest wins (walk M-1..0, first present (length>0)).
+            {
+                for (int j = matchCount - 1; j >= 0; j--)
+                {
+                    WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+                    HsstReader<WholeReadSessionReader, NoOpPin> acct = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+                    if (!acct.TrySeek(PersistedSnapshot.AccountSubTag, out Bound ab) || ab.Length == 0) continue;
+                    using NoOpPin acctPin = r.PinBuffer(ab.Offset, ab.Length);
+                    perAddrBuilder.Add(PersistedSnapshot.AccountSubTag, acctPin.Buffer);
+                    break;
+                }
+            }
+
+            // Sub-tag 0x06: SelfDestruct — iterate 0..M-1, apply TryAdd semantics. Presence
+            // is signalled by length>0 ([0x00]=destructed, [0x01]=new); absent entries (gap-
+            // filled length 0 under DenseByteIndex) are ignored. Track the winning bound
+            // snapshot-absolute so we can re-pin at the end without holding a span across
+            // iterations.
+            {
+                int sdSrcJ = -1;
+                long sdValOff = 0;
+                long sdValLen = 0;
+
+                for (int j = 0; j < matchCount; j++)
+                {
+                    WholeReadSessionReader r = sessions[matchingSources[j]].GetReader();
+                    HsstReader<WholeReadSessionReader, NoOpPin> sd = new(in r, new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length));
+                    if (!sd.TrySeek(PersistedSnapshot.SelfDestructSubTag, out Bound sdb) || sdb.Length == 0) continue;
+
+                    if (sdSrcJ < 0)
                     {
                         sdSrcJ = j;
                         sdValOff = sdb.Offset;
                         sdValLen = sdb.Length;
                     }
+                    else
+                    {
+                        // TryAdd: newer=destructed ([0x00]) -> destructed wins; newer=new ([0x01]) -> keep older.
+                        using NoOpPin firstBytePin = r.PinBuffer(sdb.Offset, 1);
+                        if (firstBytePin.Buffer[0] == 0x00)
+                        {
+                            sdSrcJ = j;
+                            sdValOff = sdb.Offset;
+                            sdValLen = sdb.Length;
+                        }
+                    }
+                }
+
+                if (sdSrcJ >= 0)
+                {
+                    WholeReadSessionReader r = sessions[matchingSources[sdSrcJ]].GetReader();
+                    using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
+                    perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, sdPin.Buffer);
                 }
             }
 
-            if (sdSrcJ >= 0)
-            {
-                WholeReadSessionReader r = sessions[matchingSources[sdSrcJ]].GetReader();
-                using NoOpPin sdPin = r.PinBuffer(sdValOff, sdValLen);
-                perAddrBuilder.Add(PersistedSnapshot.SelfDestructSubTag, sdPin.Buffer);
-            }
-        }
-
-        perAddrBuilder.Build();
+            perAddrBuilder.Build();
         }
         finally
         {
@@ -1918,11 +1922,11 @@ public static class PersistedSnapshotBuilder
         HsstReader<WholeReadSessionReader, NoOpPin> newestRoot = new(in newestReader, new Bound(0, newestReader.Length));
         newestRoot.TrySeek(PersistedSnapshot.MetadataTag, out Bound newestMetaScope);
 
-        Bound fb = SeekField(in oldestReader, oldestMetaScope, "from_block"u8);
-        Bound fh = SeekField(in oldestReader, oldestMetaScope, "from_hash"u8);
-        Bound tb = SeekField(in newestReader, newestMetaScope, "to_block"u8);
-        Bound th = SeekField(in newestReader, newestMetaScope, "to_hash"u8);
-        Bound vb = SeekField(in newestReader, newestMetaScope, "version"u8);
+        Bound fb = SeekField(in oldestReader, oldestMetaScope, PersistedSnapshot.MetadataFromBlockKey);
+        Bound fh = SeekField(in oldestReader, oldestMetaScope, PersistedSnapshot.MetadataFromHashKey);
+        Bound tb = SeekField(in newestReader, newestMetaScope, PersistedSnapshot.MetadataToBlockKey);
+        Bound th = SeekField(in newestReader, newestMetaScope, PersistedSnapshot.MetadataToHashKey);
+        Bound vb = SeekField(in newestReader, newestMetaScope, PersistedSnapshot.MetadataVersionKey);
 
         using NoOpPin fbPin = oldestReader.PinBuffer(fb.Offset, fb.Length);
         using NoOpPin fhPin = oldestReader.PinBuffer(fh.Offset, fh.Length);
@@ -1951,17 +1955,18 @@ public static class PersistedSnapshotBuilder
             idx++;
         }
 
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer);
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshot.MetadataKeyLength);
 
-        // Emit all keys in sorted ASCII order:
-        // "from_block" < "from_hash" < "noderefs" < "ref_ids" < "to_block" < "to_hash" < "version"
-        builder.Add("from_block"u8, fromBlock);
-        builder.Add("from_hash"u8, fromHash);
-        builder.Add("noderefs"u8, [0x01]);
-        builder.Add("ref_ids"u8, refIdsValue);
-        builder.Add("to_block"u8, toBlock);
-        builder.Add("to_hash"u8, toHash);
-        builder.Add("version"u8, version);
+        // Emit all keys in sorted ASCII order. NUL-padding to 10 bytes preserves the
+        // original ASCII sort order:
+        // "from_block" < "from_hash\0" < "noderefs\0\0" < "ref_ids\0\0\0" < "to_block\0\0" < "to_hash\0\0\0" < "version\0\0\0"
+        builder.Add(PersistedSnapshot.MetadataFromBlockKey, fromBlock);
+        builder.Add(PersistedSnapshot.MetadataFromHashKey, fromHash);
+        builder.Add(PersistedSnapshot.MetadataNodeRefsKey, [0x01]);
+        builder.Add(PersistedSnapshot.MetadataRefIdsKey, refIdsValue);
+        builder.Add(PersistedSnapshot.MetadataToBlockKey, toBlock);
+        builder.Add(PersistedSnapshot.MetadataToHashKey, toHash);
+        builder.Add(PersistedSnapshot.MetadataVersionKey, version);
 
         builder.Build();
     }

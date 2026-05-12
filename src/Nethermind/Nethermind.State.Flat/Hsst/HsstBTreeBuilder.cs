@@ -48,6 +48,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private long _writtenBeforeValue;
     private readonly long _baseOffset;
     private readonly HsstBTreeOptions _options;
+    private int _keyLength;
 
     // Per-key metadata position relative to the data section start. Replaces the
     // (separator buffer, HsstEntry triple, prev key buffer) state held by the
@@ -58,16 +59,26 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Create builder writing via the given writer.
     /// The trailing IndexType byte is appended in <see cref="Build"/>.
     /// Allocates working buffers from NativeMemory — call Dispose() to free them.
+    /// <paramref name="keyLength"/> declares the fixed key length (0–255) every entry must use;
+    /// all keys in a single HSST must be exactly this many bytes. Pass -1 to defer the
+    /// declaration to the first <see cref="Add"/>/<see cref="FinishValueWrite(System.ReadOnlySpan{byte})"/>
+    /// call, which then locks the length for the rest of the build. The on-disk format is
+    /// unchanged — the per-entry KeyLength:u8 byte is still written — but the builder
+    /// rejects mismatches at build time so downstream code can rely on uniform keys.
     /// <paramref name="expectedKeyCount"/> sizes the entry-positions buffer up front;
     /// pass an estimate when known to avoid resize allocations. The buffer still grows on demand.
     /// </summary>
-    public HsstBTreeBuilder(ref TWriter writer, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
+    public HsstBTreeBuilder(ref TWriter writer, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
+
         HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
 
         _writer = ref writer;
         _baseOffset = _writer.Written;
         _options = opts;
+        _keyLength = keyLength;
 
         _entryPositions = new NativeMemoryListRef<long>(expectedKeyCount);
     }
@@ -118,7 +129,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// </summary>
     public void FinishValueWrite(scoped ReadOnlySpan<byte> key, long valueLength)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
+        if (_keyLength < 0)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
+            _keyLength = key.Length;
+        }
+        else if (key.Length != _keyLength)
+            throw new ArgumentException($"key length {key.Length} != declared keyLength {_keyLength}", nameof(key));
         ArgumentOutOfRangeException.ThrowIfNegative(valueLength);
         Debug.Assert(
             valueLength <= _writer.Written - _writtenBeforeValue,
@@ -153,7 +170,13 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// </summary>
     public void Add(scoped ReadOnlySpan<byte> key, scoped ReadOnlySpan<byte> value)
     {
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
+        if (_keyLength < 0)
+        {
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(key.Length, 255);
+            _keyLength = key.Length;
+        }
+        else if (key.Length != _keyLength)
+            throw new ArgumentException($"key length {key.Length} != declared keyLength {_keyLength}", nameof(key));
         _writtenBeforeValue = _writer.Written;
         IByteBufferWriter.Copy(ref _writer, value);
         FinishValueWrite(key);
