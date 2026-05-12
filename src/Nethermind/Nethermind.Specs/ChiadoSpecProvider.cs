@@ -38,7 +38,7 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
     public override ulong NetworkId => BlockchainIds.Chiado;
     public override ulong ChainId => BlockchainIds.Chiado;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public static string SealEngine => SealEngineType.AuRa;
+    public string SealEngine => SealEngineType.AuRa;
 
     public static ChiadoSpecProvider Instance { get; } = new();
 }
