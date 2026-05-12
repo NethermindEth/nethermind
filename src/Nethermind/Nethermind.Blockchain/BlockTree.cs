@@ -1761,6 +1761,5 @@ namespace Nethermind.Blockchain
         public long GetLowestBlock() => _oldestBlock;
 
         public void NewOldestBlock(long oldestBlock) => _oldestBlock = oldestBlock;
-
     }
 }
