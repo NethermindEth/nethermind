@@ -1,17 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class MainnetSpecProvider : IForkAwareSpecProvider
+public class MainnetSpecProvider : ForkScheduleSpecProvider, IForkAwareSpecProvider
 {
     public const long HomesteadBlockNumber = 1_150_000;
     public const long DaoBlockNumberConst = 1_920_000;
@@ -39,7 +35,18 @@ public class MainnetSpecProvider : IForkAwareSpecProvider
     public const ulong BPO5BlockTimestamp = ulong.MaxValue - 1;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue;
 
-    private static readonly ForkSpec[] ForkSchedule =
+    public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
+    public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
+    public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
+    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
+    public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
+    public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
+    public static ForkActivation BPO3Activation { get; } = (ParisBlockNumber + 7, BPO3BlockTimestamp);
+    public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
+    public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
+    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
+
+    private MainnetSpecProvider() : base(
     [
         new(0L, Frontier.Instance),
         new(HomesteadBlockNumber, Homestead.Instance),
@@ -65,86 +72,34 @@ public class MainnetSpecProvider : IForkAwareSpecProvider
         new(BPO4BlockTimestamp, BPO4.Instance),
         new(BPO5BlockTimestamp, BPO5.Instance),
         new(AmsterdamBlockTimestamp, Amsterdam.Instance),
-    ];
+    ], terminalTotalDifficulty: new UInt256(15566869308787654656ul, 3184ul)) =>
+        TransitionActivations =
+        [
+            (ForkActivation)HomesteadBlockNumber,
+            (ForkActivation)DaoBlockNumberConst,
+            (ForkActivation)TangerineWhistleBlockNumber,
+            (ForkActivation)SpuriousDragonBlockNumber,
+            (ForkActivation)ByzantiumBlockNumber,
+            (ForkActivation)ConstantinopleFixBlockNumber,
+            (ForkActivation)IstanbulBlockNumber,
+            (ForkActivation)MuirGlacierBlockNumber,
+            (ForkActivation)BerlinBlockNumber,
+            (ForkActivation)LondonBlockNumber,
+            (ForkActivation)ArrowGlacierBlockNumber,
+            (ForkActivation)GrayGlacierBlockNumber,
+            ShanghaiActivation,
+            CancunActivation,
+            PragueActivation,
+            OsakaActivation,
+            BPO1Activation,
+            BPO2Activation,
+            AmsterdamActivation,
+        ];
 
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
-    {
-        if (forkActivation.Timestamp is ulong ts)
-        {
-            for (int i = ForkSchedule.Length - 1; i >= 0; i--)
-            {
-                if (ForkSchedule[i].Timestamp is ulong forkTs && ts >= forkTs)
-                    return ForkSchedule[i].Spec;
-            }
-        }
-
-        for (int i = ForkSchedule.Length - 1; i >= 0; i--)
-        {
-            if (ForkSchedule[i].Block is long forkBlock && forkActivation.BlockNumber >= forkBlock)
-                return ForkSchedule[i].Spec;
-        }
-
-        return ForkSchedule[0].Spec;
-    }
-
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-    {
-        if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
-
-        if (terminalTotalDifficulty is not null)
-            TerminalTotalDifficulty = terminalTotalDifficulty;
-    }
-
-    public ulong NetworkId => Core.BlockchainIds.Mainnet;
-    public ulong ChainId => NetworkId;
-    public long? DaoBlockNumber => DaoBlockNumberConst;
-    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public ForkActivation? MergeBlockNumber { get; private set; } = null;
-    public ulong TimestampFork => ShanghaiBlockTimestamp;
-    // 58750000000000000000000
-    public UInt256? TerminalTotalDifficulty { get; private set; } = new UInt256(15566869308787654656ul, 3184ul);
-    public IReleaseSpec GenesisSpec => Frontier.Instance;
-    public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
-    public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
-    public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
-    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
-    public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
-    public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
-    public static ForkActivation BPO3Activation { get; } = (ParisBlockNumber + 7, BPO3BlockTimestamp);
-    public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
-    public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
-    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
-    public static readonly FrozenDictionary<string, IReleaseSpec> Forks =
-        ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase);
-
-    private static readonly string[] _availableForks = [.. Forks.Keys.Order()];
-
-    public IEnumerable<string> AvailableForks => _availableForks;
-    public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
-
-    public ForkActivation[] TransitionActivations { get; } =
-    {
-        (ForkActivation)HomesteadBlockNumber,
-        (ForkActivation)DaoBlockNumberConst,
-        (ForkActivation)TangerineWhistleBlockNumber,
-        (ForkActivation)SpuriousDragonBlockNumber,
-        (ForkActivation)ByzantiumBlockNumber,
-        (ForkActivation)ConstantinopleFixBlockNumber,
-        (ForkActivation)IstanbulBlockNumber,
-        (ForkActivation)MuirGlacierBlockNumber,
-        (ForkActivation)BerlinBlockNumber,
-        (ForkActivation)LondonBlockNumber,
-        (ForkActivation)ArrowGlacierBlockNumber,
-        (ForkActivation)GrayGlacierBlockNumber,
-        ShanghaiActivation,
-        CancunActivation,
-        PragueActivation,
-        OsakaActivation,
-        BPO1Activation,
-        BPO2Activation,
-        AmsterdamActivation
-    };
+    public override ulong NetworkId => Core.BlockchainIds.Mainnet;
+    public override long? DaoBlockNumber => DaoBlockNumberConst;
+    public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
+    public override ulong TimestampFork => ShanghaiBlockTimestamp;
 
     public static MainnetSpecProvider Instance { get; } = new();
 }

@@ -141,12 +141,12 @@ namespace Nethermind.Specs.ChainSpecStyle
         private static FrozenDictionary<string, IReleaseSpec> ForksForChain(ulong chainId) =>
             chainId switch
             {
-                BlockchainIds.Gnosis => GnosisSpecProvider.Forks,
-                BlockchainIds.Chiado => ChiadoSpecProvider.Forks,
-                BlockchainIds.Sepolia => SepoliaSpecProvider.Forks,
-                BlockchainIds.Hoodi => HoodiSpecProvider.Forks,
-                BlockchainIds.Morden => MordenSpecProvider.Forks,
-                _ => MainnetSpecProvider.Forks,
+                BlockchainIds.Gnosis => GnosisSpecProvider.Instance.Forks,
+                BlockchainIds.Chiado => ChiadoSpecProvider.Instance.Forks,
+                BlockchainIds.Sepolia => SepoliaSpecProvider.Instance.Forks,
+                BlockchainIds.Hoodi => HoodiSpecProvider.Instance.Forks,
+                BlockchainIds.Morden => MordenSpecProvider.Instance.Forks,
+                _ => MainnetSpecProvider.Instance.Forks,
             };
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(

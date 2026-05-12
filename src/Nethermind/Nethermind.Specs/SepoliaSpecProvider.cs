@@ -1,18 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs;
 
-public class SepoliaSpecProvider : ISpecProvider
+public class SepoliaSpecProvider : ForkScheduleSpecProvider
 {
     public const ulong BeaconChainGenesisTimestampConst = 0x62b07d60;
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
@@ -27,9 +23,7 @@ public class SepoliaSpecProvider : ISpecProvider
     private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
         static () => new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress });
 
-    private SepoliaSpecProvider() { }
-
-    private static readonly ForkSpec[] ForkSchedule =
+    private SepoliaSpecProvider() : base(
     [
         new(0ul, London.Instance),
         new(ShanghaiTimestamp, Shanghai.Instance),
@@ -38,50 +32,22 @@ public class SepoliaSpecProvider : ISpecProvider
         new(OsakaTimestamp, Osaka.Instance),
         new(BPO1Timestamp, BPO1.Instance),
         new(BPO2Timestamp, BPO2.Instance),
-    ];
+    ], terminalTotalDifficulty: 17000000000000000) =>
+        TransitionActivations =
+        [
+            (ForkActivation)1735371,
+            (1735371, ShanghaiTimestamp),
+            (1735371, CancunTimestamp),
+            (1735371, PragueTimestamp),
+            (1735371, OsakaTimestamp),
+            (1735371, BPO1Timestamp),
+            (1735371, BPO2Timestamp),
+        ];
 
-    public static readonly FrozenDictionary<string, IReleaseSpec> Forks = ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase);
-
-    public IReleaseSpec GetSpec(ForkActivation forkActivation)
-    {
-        ulong timestamp = forkActivation.Timestamp ?? 0;
-
-        for (int i = ForkSchedule.Length - 1; i >= 0; i--)
-        {
-            if (timestamp >= ForkSchedule[i].Timestamp)
-                return ForkSchedule[i].Spec;
-        }
-
-        return ForkSchedule[0].Spec;
-    }
-
-    public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
-    {
-        if (blockNumber is not null)
-            MergeBlockNumber = (ForkActivation)blockNumber;
-        if (terminalTotalDifficulty is not null)
-            TerminalTotalDifficulty = terminalTotalDifficulty;
-    }
-
-    public ulong NetworkId => BlockchainIds.Sepolia;
-    public ulong ChainId => NetworkId;
+    public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
+    public override ulong NetworkId => BlockchainIds.Sepolia;
+    public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public string SealEngine => SealEngineType.Clique;
-    public long? DaoBlockNumber => null;
-    public ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    public ForkActivation? MergeBlockNumber { get; private set; } = null;
-    public ulong TimestampFork => ISpecProvider.TimestampForkNever;
-    public UInt256? TerminalTotalDifficulty { get; private set; } = 17000000000000000;
-    public IReleaseSpec GenesisSpec => London.Instance;
-    public ForkActivation[] TransitionActivations { get; } =
-    [
-        (ForkActivation)1735371,
-        (1735371, ShanghaiTimestamp),
-        (1735371, CancunTimestamp),
-        (1735371, PragueTimestamp),
-        (1735371, OsakaTimestamp),
-        (1735371, BPO1Timestamp),
-        (1735371, BPO2Timestamp),
-    ];
 
     public static SepoliaSpecProvider Instance { get; } = new();
 }
