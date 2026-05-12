@@ -83,12 +83,4 @@ public class XdcStateSyncSnapshotManager(
         Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, candidates);
         _snapshotManager.StoreSnapshot(snapshot);
     }
-
-    public void StoreSnapshots(XdcBlockHeader pivotHeader)
-    {
-        foreach (XdcBlockHeader gapBlockHeader in GetGapBlocks(pivotHeader))
-        {
-            StoreSnapshot(gapBlockHeader);
-        }
-    }
 }

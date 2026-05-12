@@ -14,5 +14,7 @@ public interface IStateSyncPivot
     ConcurrentHashSet<Hash256> UpdatedStorages { get; }
     long Diff { get; }
     /// <summary>Returns <c>true</c> if state sync can be finalized at <paramref name="pivot"/>.</summary>
+    /// <param name="pivot">The proposed finalization point.</param>
+    /// <returns><c>true</c> if ready to finalize; otherwise <c>false</c>.</returns>
     bool CanFinalize(BlockHeader pivot);
 }

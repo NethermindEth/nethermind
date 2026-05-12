@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using ConcurrentCollections;
 using Nethermind.Blockchain;
@@ -62,7 +63,8 @@ public class XdcStateSyncPivot(
         long pivotNumber = _syncConfig.PivotNumber;
         if (pivotNumber == 0) return;
 
-        XdcBlockHeader pivotHeader = (XdcBlockHeader)_blockTree.FindHeader(pivotNumber);
+        XdcBlockHeader pivotHeader = _blockTree.FindHeader(pivotNumber) as XdcBlockHeader
+            ?? throw new InvalidOperationException($"Pivot block {pivotNumber} not found in block tree.");
 
         XdcBlockHeader[] gapBlockHeaders = _syncSnapshotManager.GetGapBlocks(pivotHeader);
 
