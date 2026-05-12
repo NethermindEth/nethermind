@@ -42,13 +42,19 @@ on:
         required: false
         default: ''
         type: string
+      idle_timeout_minutes:
+        description: Fail nethtest if no test progress is logged for this many minutes
+        required: false
+        default: '10'
+        type: string
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
-  WORKERS: ${{ inputs.workers || '4' }}
+  WORKERS: ${{ inputs.workers || '2' }}
   FILTER: ${{ inputs.filter || '' }}
+  IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
 
 defaults:
   run:
@@ -239,6 +245,11 @@ jobs:
               wait "$HEARTBEAT_PID" 2>/dev/null || true
             fi
 
+            if [ -n "${WATCHDOG_PID:-}" ]; then
+              kill "$WATCHDOG_PID" 2>/dev/null || true
+              wait "$WATCHDOG_PID" 2>/dev/null || true
+            fi
+
             write_summary
           }
 
@@ -246,21 +257,61 @@ jobs:
 
           touch /tmp/nethtest-results.json /tmp/nethtest-stderr.log
 
+          print_diagnostics() {
+            echo ""
+            echo "=== nethtest diagnostics $(date -u '+%Y-%m-%dT%H:%M:%SZ') ==="
+            echo "Results file size: $(wc -c < /tmp/nethtest-results.json) bytes"
+            echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
+            echo ""
+            echo "--- memory ---"
+            free -h || true
+            if [ -f /sys/fs/cgroup/memory.current ]; then
+              echo "cgroup memory.current=$(cat /sys/fs/cgroup/memory.current)"
+              echo "cgroup memory.max=$(cat /sys/fs/cgroup/memory.max)"
+            fi
+            echo ""
+            echo "--- largest processes by RSS ---"
+            ps -eo pid,ppid,stat,comm,%mem,rss,vsz,etime,args --sort=-rss | head -20 || true
+            echo ""
+            echo "--- recent nethtest status ---"
+            tail -30 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g' || true
+            echo "================================"
+          }
+
           heartbeat() {
             while true; do
               sleep 60 || exit 0
               echo "nethtest still running at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-              echo "Results file size: $(wc -c < /tmp/nethtest-results.json) bytes"
-              echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
-              if [ -s /tmp/nethtest-stderr.log ]; then
-                echo "--- recent nethtest status ---"
-                tail -10 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g'
-                echo "------------------------------"
-              fi
+              print_diagnostics
             done
           }
           heartbeat &
           HEARTBEAT_PID=$!
+
+          watchdog() {
+            local idle_timeout_seconds=$((IDLE_TIMEOUT_MINUTES * 60))
+            while kill -0 "$NETHTEST_PID" 2>/dev/null; do
+              sleep 30 || exit 0
+
+              local last_progress
+              last_progress=$(stat -c %Y /tmp/nethtest-stderr.log 2>/dev/null || echo 0)
+              local now
+              now=$(date +%s)
+              local idle_seconds=$((now - last_progress))
+
+              if [ "$idle_seconds" -ge "$idle_timeout_seconds" ]; then
+                echo "::error::nethtest produced no stderr progress for ${idle_seconds}s; terminating it"
+                print_diagnostics
+
+                kill -QUIT "$NETHTEST_PID" 2>/dev/null || true
+                sleep 20
+                kill -TERM "$NETHTEST_PID" 2>/dev/null || true
+                sleep 20
+                kill -KILL "$NETHTEST_PID" 2>/dev/null || true
+                exit 124
+              fi
+            done
+          }
 
           set +e
           dotnet run --no-build --no-launch-profile -c Release \
@@ -272,7 +323,11 @@ jobs:
             --neverTrace \
             $FILTER_ARG \
             > /tmp/nethtest-results.json \
-            2> >(tee /tmp/nethtest-stderr.log >&2)
+            2> >(tee /tmp/nethtest-stderr.log >&2) &
+          NETHTEST_PID=$!
+          watchdog &
+          WATCHDOG_PID=$!
+          wait "$NETHTEST_PID"
           rc=$?
           set -e
 
