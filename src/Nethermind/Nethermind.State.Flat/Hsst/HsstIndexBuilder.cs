@@ -614,7 +614,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int leftLen = ReadKey(children[i].LastEntry, leftKey);
             int rightLen = ReadKey(children[i + 1].FirstEntry, rightKey);
             sepOffsets[i] = tempOffset;
-            sepLengths[i] = WriteSeparatorBetween(sepScratch[tempOffset..], leftKey[..leftLen], rightKey[..rightLen]);
+            sepLengths[i] = WriteSeparatorBetween(sepScratch[tempOffset..], leftKey[..leftLen], rightKey[..rightLen], _minSepLen);
             tempOffset += sepLengths[i];
         }
 
@@ -786,7 +786,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int WriteSeparatorBetween(Span<byte> output, ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    internal static int WriteSeparatorBetween(Span<byte> output, ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, int minSeparatorLength = 0)
     {
         int minLen = Math.Min(left.Length, right.Length);
         int len = right.Length;
@@ -798,6 +798,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 break;
             }
         }
+        // Apply minSeparatorLength floor (clamped to right.Length) so internal-node
+        // separators stay uniform when the caller has signalled a fixed key width —
+        // matching the leaf-side floor in HsstSeparator.ComputeSeparatorLength.
+        // Extending the prefix further (still a prefix of right) preserves the
+        // invariants: the result is > left and ≤ right.
+        if (minSeparatorLength > len)
+            len = Math.Min(minSeparatorLength, right.Length);
         right[..len].CopyTo(output);
         return len;
     }
