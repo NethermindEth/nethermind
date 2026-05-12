@@ -101,13 +101,6 @@ public static class BlockErrorMessages
     public static string BlobGasUsedAboveBlockLimit(ulong blockBlobGasLimit, int blobsCount, ulong blobGasUsed) =>
         $"BlockBlobGasExceeded: A block cannot have more than {blockBlobGasLimit} blob gas, blobs count {blobsCount}, blobs gas used: {blobGasUsed}.";
 
-    // Block-level cumulative blob-gas above the block limit. Uses the
-    // HeaderBlobGasMismatch prefix so the same upstream EEST mapper entry
-    // covers both the > limit path and the != calculated path (the latter is
-    // emitted by HeaderBlobGasMismatch below).
-    public static string HeaderBlobGasAboveBlockLimit(ulong blockBlobGasLimit, int blobsCount, ulong blobGasUsed) =>
-        $"HeaderBlobGasMismatch: A block cannot have more than {blockBlobGasLimit} blob gas, blobs count {blobsCount}, blobs gas used: {blobGasUsed}.";
-
     public static string IncorrectExcessBlobGas(ulong? expected, ulong? actual) =>
         $"HeaderExcessBlobGasMismatch: Excess blob gas in header does not match calculated. Expected {expected}, got {actual}";
 

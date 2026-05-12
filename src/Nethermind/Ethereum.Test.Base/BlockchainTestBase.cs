@@ -430,10 +430,13 @@ public abstract class BlockchainTestBase
         ("TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST", "MissingAuthorizationList: Must be set"),
         ("TransactionException.TYPE_4_TX_CONTRACT_CREATION", "NotAllowedCreateTransaction: To must be set"),
         ("TransactionException.TYPE_4_TX_PRE_FORK", "InvalidTxType: Transaction type in"),
-        // Nethermind emits two HeaderBlobGasMismatch variants from block
-        // validation: HeaderBlobGasMismatch (header value != calculated) and
-        // HeaderBlobGasAboveBlockLimit (cumulative blob gas > block limit).
-        // Both share the prefix; match on that to cover both EEST classes.
+        // BlockValidator emits HeaderBlobGasMismatch when calculated blob gas
+        // differs from header.BlobGasUsed - covers both INCORRECT_BLOB_GAS_USED
+        // (real mismatch) and BLOB_GAS_USED_ABOVE_LIMIT (header inflates the
+        // value above the block limit while real txs use less). The
+        // genuinely-cumulative-overflow case (real txs exceed) emits
+        // BlockBlobGasExceeded: and maps to TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED
+        // via the existing tx-level regex.
         ("BlockException.INCORRECT_BLOB_GAS_USED", "HeaderBlobGasMismatch:"),
         ("BlockException.BLOB_GAS_USED_ABOVE_LIMIT", "HeaderBlobGasMismatch:"),
         ("BlockException.INVALID_REQUESTS", "InvalidRequestsHash: Requests hash mismatch in block"),
