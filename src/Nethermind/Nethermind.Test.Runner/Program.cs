@@ -18,7 +18,8 @@ namespace Nethermind.Test.Runner;
 
 internal class Program
 {
-    private const int ProgressReportInterval = 100;
+    private const int ProgressReportTestInterval = 100;
+    private static readonly TimeSpan ProgressReportTimeInterval = TimeSpan.FromMinutes(1);
 
     public class Options
     {
@@ -181,13 +182,20 @@ internal class Program
         bool jsonOutput, int workers)
     {
         await KzgPolynomialCommitments.InitializeAsync();
+        int effectiveWorkers = trace ? 1 : workers;
         int completedTests = 0;
-        int totalTests = CountBlockTestCases(files, filter, workers);
+        long lastProgressReportTicks = DateTime.UtcNow.Ticks;
+        int totalTests = CountBlockTestCases(files, filter, effectiveWorkers);
         string? UpdateProgress(bool forceReport)
         {
             int completed = Interlocked.Increment(ref completedTests);
-            if (forceReport || completed % ProgressReportInterval == 0 || completed == totalTests)
+            long nowTicks = DateTime.UtcNow.Ticks;
+            bool timeToReport = nowTicks - Volatile.Read(ref lastProgressReportTicks) >= ProgressReportTimeInterval.Ticks;
+            if (forceReport || timeToReport || completed % ProgressReportTestInterval == 0 || completed == totalTests)
+            {
+                Interlocked.Exchange(ref lastProgressReportTicks, nowTicks);
                 return $"[{completed}/{totalTests}]";
+            }
 
             return null;
         }
@@ -198,7 +206,7 @@ internal class Program
             Console.Error.Flush();
         }
 
-        if (workers <= 1)
+        if (effectiveWorkers <= 1)
         {
             List<EthereumTestResult> allResults = [];
             foreach (string file in files)
@@ -223,13 +231,13 @@ internal class Program
         System.Collections.Concurrent.ConcurrentBag<(int index, IEnumerable<EthereumTestResult> results)> bag = new();
         await Parallel.ForEachAsync(
             files.Select((file, index) => (file, index)),
-            new ParallelOptions { MaxDegreeOfParallelism = workers },
+            new ParallelOptions { MaxDegreeOfParallelism = effectiveWorkers },
             async (item, ct) =>
             {
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace: false, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true, progressUpdateFactory: UpdateProgress);
+                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true, progressUpdateFactory: UpdateProgress);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     bag.Add((item.index, results));
                 }
@@ -339,7 +347,7 @@ internal class Program
             }
         }
 
-        if (workers <= 1)
+        if (workers <= 1 || whenTrace != WhenTrace.Never || enableWarmup)
         {
             List<EthereumTestResult> allResults = [];
             foreach ((int index, GeneralStateTest test) in testCases)

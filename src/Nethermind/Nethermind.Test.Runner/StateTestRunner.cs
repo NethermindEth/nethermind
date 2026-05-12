@@ -121,24 +121,40 @@ namespace Nethermind.Test.Runner
         {
             test.ChainId = _chainId;
 
-            if (_whenTrace == WhenTrace.Always)
+            EthereumTestResult result = null;
+            if (_whenTrace != WhenTrace.Always)
+            {
+                if (_enableWarmup)
+                {
+                    Parallel.For(0, 30, (i, s) =>
+                    {
+                        _ = RunTest(test, NullTxTracer.Instance);
+                    });
+
+                    Thread.Sleep(20);
+                    GC.Collect(GC.MaxGeneration);
+                }
+
+                result = RunTest(test, NullTxTracer.Instance);
+            }
+
+            if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
             {
                 StateTestTxTracer txTracer = new();
                 txTracer.IsTracingDetailedMemory = _traceMemory;
                 // EIP-3155 always needs stack; IsTracingStack controls whether
                 // the EVM calls SetOperationStack at all.
-                txTracer.IsTracingStack = true;
-                EthereumTestResult result = RunTest(test, txTracer);
+                txTracer.IsTracingStack = _traceStack;
+                result = RunTest(test, txTracer);
 
                 StateTestTxTrace txTrace = txTracer.BuildResult();
                 txTrace.Result.Time = result.TimeInMs;
                 txTrace.State.StateRoot = result.StateRoot;
                 txTrace.Result.GasUsed -= IntrinsicGasCalculator.Calculate(test.Transaction, test.Fork).Standard;
                 WriteErr(txTrace);
-                return result;
             }
 
-            return RunTest(test, NullTxTracer.Instance);
+            return result;
         }
     }
 }
