@@ -131,10 +131,11 @@ public interface IJsonRpcConfig : IConfig
             - `eth_uninstallFilter`
 
             This limits the load on the CPU and I/O to reasonable levels. If the limit is exceeded,
-            HTTP 503 is returned along with the JSON-RPC error. Also controls the soft retention size
-            of the override-path env pool used by sharable `eth_call` / `eth_estimateGas` /
-            `eth_createAccessList` when called with state or blob-base-fee overrides. Defaults to the
-            number of logical processors.
+            HTTP 503 is returned along with the JSON-RPC error. Also acts as the hard active
+            concurrency cap on the override-path env pool used by sharable `eth_call` /
+            `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
+            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. Defaults
+            to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 

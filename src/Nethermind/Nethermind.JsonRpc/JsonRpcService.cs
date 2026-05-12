@@ -257,6 +257,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, request.Id, returnAction),
 
+            LimitExceededException or ConcurrencyLimitReachedException
+                or { InnerException: LimitExceededException }
+                or { InnerException: ConcurrencyLimitReachedException } =>
+                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, request.Id, returnAction),
+
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
 
