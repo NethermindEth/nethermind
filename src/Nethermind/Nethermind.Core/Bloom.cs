@@ -278,7 +278,7 @@ public ref struct BloomStructRef
     public readonly bool Matches(ReadOnlySpan<byte> sequence)
         => Matches(Bloom.GetExtract(sequence));
 
-    public override readonly string ToString() => Bytes.ToHexString();
+    public readonly override string ToString() => Bytes.ToHexString();
 
     public static bool operator !=(BloomStructRef a, Bloom b) => !(a == b);
     public static bool operator ==(BloomStructRef a, Bloom b) => a.Equals(b);
@@ -298,15 +298,9 @@ public ref struct BloomStructRef
 
     public readonly bool Equals(BloomStructRef other) => Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
 
+    public readonly override bool Equals(object? obj) => obj is Bloom bloom && Equals(bloom);
 
-    public override readonly bool Equals(object? obj)
-    {
-        if (obj is null) return false;
-        if (obj.GetType() != typeof(BloomStructRef)) return false;
-        return Equals((Bloom)obj);
-    }
-
-    public override readonly int GetHashCode() => Bytes.FastHash();
+    public readonly override int GetHashCode() => Bytes.FastHash();
 
     public readonly bool Matches(LogEntry logEntry)
     {

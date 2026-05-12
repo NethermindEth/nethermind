@@ -59,6 +59,7 @@ namespace Nethermind.Synchronization.FastSync
         public bool IsRootSaved => _rootSaved == 1;
         public bool IsRootComplete => _rootSaved == 1 || _rootNode == Keccak.EmptyTreeHash
             || _store.NodeExists(null, TreePath.Empty, _rootNode);
+        public bool CanFinalize(BlockHeader roundPivot) => IsRootComplete && _stateSyncPivot.CanFinalize(roundPivot);
 
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
