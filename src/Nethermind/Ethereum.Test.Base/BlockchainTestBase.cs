@@ -58,7 +58,6 @@ public abstract class BlockchainTestBase
     /// Null means use the default config value.
     /// </summary>
     protected virtual bool? ParallelExecutionBatchReadOverride => null;
-    protected virtual bool? ParallelExecutionBatchReadOverride => null;
 
     /// <summary>
     /// Override to replace the log manager used by internal Nethermind components.
