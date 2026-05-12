@@ -75,10 +75,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ITrieNodeCache, TrieNodeCache>()
             .AddSingleton<ISnapshotCompactor, SnapshotCompactor>()
             .AddSingleton<IPersistenceManager, PersistenceManager>()
-            // Each (ArenaManager, BlobArenaManager, BlobArenaCatalog, PersistedSnapshotRepository,
+            // Each (ArenaManager, BlobArenaManager, PersistedSnapshotRepository,
             // PersistedSnapshotCompactor) set is built per tier in a single factory so both the
             // repo and the compactor share the same ArenaManager instance. Tiers are
-            // independent — small and large each own their own catalogs and file pools;
+            // independent — small and large each own their own catalog and file pools;
             // snapshots only resolve NodeRefs through their own repo's blob manager.
             .AddSingleton<PerTierState>((ctx) =>
             {
@@ -92,10 +92,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 PersistedSnapshotBloomFilterManager bloomManager = ctx.Resolve<PersistedSnapshotBloomFilterManager>();
 
                 ArenaManager smallArena = new(Path.Combine(basePath, "small", "arena"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
-                BlobArenaCatalog smallBlobCatalog = new(columns.GetColumnDb(FlatDbColumns.SmallBlobArenaCatalog));
-                BlobArenaManager smallBlobs = new(Path.Combine(basePath, "small", "blob"), cfg.ArenaFileSizeBytes, smallBlobCatalog, ArenaReservationTags.BlobSmall);
+                BlobArenaManager smallBlobs = new(Path.Combine(basePath, "small", "blob"), cfg.ArenaFileSizeBytes, ArenaReservationTags.BlobSmall);
                 IDb smallCatalogDb = columns.GetColumnDb(FlatDbColumns.SmallPersistedSnapshotCatalog);
-                PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallBlobCatalog, smallCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedSmall, ArenaReservationTags.BlobSmall);
+                PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedSmall, ArenaReservationTags.BlobSmall);
                 PersistedSnapshotCompactor smallCompactor = new(
                     smallRepo, smallArena, cfg, logManager, bloomManager,
                     minCompactSize: cfg.MinCompactSize,
@@ -104,10 +103,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     reservationTag: ArenaReservationTags.BlobBackedSmall);
 
                 ArenaManager largeArena = new(Path.Combine(basePath, "large", "arena"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction);
-                BlobArenaCatalog largeBlobCatalog = new(columns.GetColumnDb(FlatDbColumns.LargeBlobArenaCatalog));
-                BlobArenaManager largeBlobs = new(Path.Combine(basePath, "large", "blob"), cfg.ArenaFileSizeBytes, largeBlobCatalog, ArenaReservationTags.BlobLarge);
+                BlobArenaManager largeBlobs = new(Path.Combine(basePath, "large", "blob"), cfg.ArenaFileSizeBytes, ArenaReservationTags.BlobLarge);
                 IDb largeCatalogDb = columns.GetColumnDb(FlatDbColumns.LargePersistedSnapshotCatalog);
-                PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeBlobCatalog, largeCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedLarge, ArenaReservationTags.BlobLarge);
+                PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedLarge, ArenaReservationTags.BlobLarge);
                 PersistedSnapshotCompactor largeCompactor = new(
                     largeRepo, largeArena, cfg, logManager, bloomManager,
                     minCompactSize: cfg.CompactSize * 2,

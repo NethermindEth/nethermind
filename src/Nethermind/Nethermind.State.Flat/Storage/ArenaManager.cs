@@ -74,6 +74,41 @@ public sealed class ArenaManager : IArenaManager
         }
     }
 
+    public IReadOnlyCollection<int> KnownArenaIds
+    {
+        get
+        {
+            lock (_lock)
+            {
+                List<int> ids = [];
+                foreach (KeyValuePair<int, ArenaFile> kv in _arenas) ids.Add(kv.Key);
+                return ids;
+            }
+        }
+    }
+
+    public bool TryGetFrontier(int arenaId, out long frontier)
+    {
+        lock (_lock) return _frontiers.TryGetValue(arenaId, out frontier);
+    }
+
+    public void DeleteFile(int arenaId)
+    {
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _standaloneFiles.Remove(arenaId);
+            _mutableArenas.Remove(arenaId);
+            if (_arenas.TryRemove(arenaId, out ArenaFile? file))
+            {
+                file.Dispose();
+                File.Delete(file.Path);
+            }
+            _frontiers.Remove(arenaId);
+            _deadBytes.Remove(arenaId);
+        }
+    }
+
     public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold)
     {
         _basePath = basePath;
@@ -154,6 +189,41 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
+    /// Initialize from existing arena files using each file's on-disk length as the frontier.
+    /// Used by the blob-arena path where no per-slice catalog exists — the file length is the
+    /// high-water mark of all completed writes. Non-dedicated files are re-opened as mutable
+    /// so subsequent writers can pack into them.
+    /// </summary>
+    public void InitializeFromFileLengths()
+    {
+        lock (_lock)
+        {
+            foreach (string file in Directory.GetFiles(_basePath, $"*{ArenaFileExtension}"))
+            {
+                string fileName = Path.GetFileName(file);
+                bool isDedicated = fileName.StartsWith(DedicatedArenaFilePrefix, StringComparison.Ordinal);
+                bool isArena = fileName.StartsWith(ArenaFilePrefix, StringComparison.Ordinal);
+                if (!isDedicated && !isArena) continue;
+
+                int arenaId = ParseArenaId(file, isDedicated);
+                if (arenaId < 0) continue;
+
+                long fileLength = new FileInfo(file).Length;
+                long mappedSize = fileLength > 0 ? fileLength : _maxArenaSize;
+
+                ArenaFile arena = new(arenaId, file, mappedSize);
+                _arenas[arenaId] = arena;
+                _frontiers[arenaId] = fileLength;
+                _deadBytes[arenaId] = 0;
+                _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
+
+                if (isDedicated) _standaloneFiles.Add(arenaId);
+                else _mutableArenas.Add(arenaId);
+            }
+        }
+    }
+
+    /// <summary>
     /// Create an <see cref="ArenaWriter"/> for buffered writes.
     /// The arena is marked as reserved until <see cref="CompleteWrite"/> or <see cref="CancelWrite"/>.
     /// </summary>
@@ -202,6 +272,35 @@ public sealed class ArenaManager : IArenaManager
             _arenas.TryGetValue(arenaId, out ArenaFile? arenaFile);
             ArenaReservation reservation = new(this, arenaFile, arenaId, startOffset, actualSize, tag);
             return (location, reservation);
+        }
+    }
+
+    /// <summary>
+    /// Like <see cref="CompleteWrite"/> but skips <see cref="ArenaReservation"/> construction.
+    /// Used by <see cref="ArenaWriter.CompleteSliceless"/> for the blob-arena path.
+    /// </summary>
+    public SnapshotLocation CompleteWriteSliceless(int arenaId, long startOffset, long actualSize, string tag)
+    {
+        lock (_lock)
+        {
+            long newFrontier = startOffset + actualSize;
+            _frontiers[arenaId] = newFrontier;
+            _reservedArenas.Remove(arenaId);
+
+            if (newFrontier > 0
+                && _standaloneFiles.Contains(arenaId)
+                && _arenas.TryGetValue(arenaId, out ArenaFile? oldFile)
+                && newFrontier < oldFile.MappedSize)
+            {
+                string path = oldFile.Path;
+                oldFile.Dispose();
+                using (Microsoft.Win32.SafeHandles.SafeFileHandle h =
+                    File.OpenHandle(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
+                    RandomAccess.SetLength(h, newFrontier);
+                _arenas[arenaId] = new ArenaFile(arenaId, path, newFrontier);
+            }
+
+            return new SnapshotLocation(arenaId, startOffset, actualSize);
         }
     }
 

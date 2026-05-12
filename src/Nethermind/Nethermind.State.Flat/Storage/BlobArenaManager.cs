@@ -11,32 +11,55 @@ namespace Nethermind.State.Flat.Storage;
 /// BlobArenaManager blobs)</c> together backs one tier (Small or Large).
 ///
 /// <para>
-/// One <see cref="BlobArenaCatalog"/> per manager (one per tier). Ids are
-/// unique within a catalog, not across tiers. A <see cref="NodeRef"/> in a
-/// snapshot's metadata is resolved through its owning repo's
-/// <c>BlobArenaManager</c>; nothing tries to cross tiers.
+/// <b>One id per file.</b> A <c>BlobArenaId</c> is the underlying
+/// <c>ArenaFile.Id</c> (narrowed to ushort) — many writers across many base
+/// snapshots append into the same file over its lifetime, claiming the file
+/// for write via the inner <see cref="ArenaManager"/>'s <c>_reservedArenas</c>
+/// mutual-exclusion and releasing on Complete. A new id is only minted when no
+/// existing file has headroom; with a typical 1 GiB max file size, the count
+/// stays well below 65535.
 /// </para>
 ///
 /// <para>
-/// Refcount accounting: this manager tracks its own per-id refcount
-/// (<see cref="_refCounts"/>) that mirrors the <see cref="ArenaReservation"/>
-/// lease count for the same id. When the refcount drops to 0, the catalog
-/// entry is removed *before* the reservation's <c>CleanUp</c> runs
-/// <see cref="ArenaManager.MarkDead"/> (which may delete the underlying
-/// file once all reservations in it are dead). Crashing between catalog
-/// removal and file deletion leaves a dangling on-disk arena file with no
-/// catalog entry — recoverable. The reverse order would leave a phantom
-/// catalog entry pointing at a deleted file.
+/// <b>One whole-file <see cref="ArenaReservation"/> per known file id.</b>
+/// Created lazily on first <see cref="RegisterCompleted"/> or first
+/// <see cref="TryLeaseFile"/> (whichever comes first), covering
+/// <c>[0, frontier)</c>. Subsequent writers for the same file grow the
+/// reservation's <c>Size</c> rather than allocating a new one. Snapshots
+/// <see cref="TryLeaseFile"/> the reservation; the per-id <c>_refCounts</c>
+/// counts snapshot leases (plus the transient writer-creation lease that
+/// <see cref="PersistedSnapshots.PersistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot"/>
+/// drops once the new snapshot takes its own lease). When the count reaches
+/// zero the reservation is disposed; <c>CleanUp</c> runs
+/// <see cref="IArenaManager.MarkDead"/> over the file's full span, which
+/// deletes the file.
+/// </para>
+///
+/// <para>
+/// Read offsets are file-absolute: callers pass <c>RandomRead(id, fileOffset,
+/// dest)</c>. The reservation's <c>Offset</c> is 0, so the underlying
+/// manager's <c>reservation.Offset + subOffset</c> degenerates to
+/// <c>subOffset</c>.
+/// </para>
+///
+/// <para>
+/// Assumption: a snapshot never releases a file while another writer is
+/// mid-write into the same file. In practice persistence writes then leases —
+/// the producer (PersistenceManager.AddToPersistence) never prunes what it
+/// just wrote — so the writer's transient lease always covers the gap.
 /// </para>
 /// </summary>
 public sealed class BlobArenaManager : IBlobArenaManager
 {
     private readonly IArenaManager _files;
-    private readonly BlobArenaCatalog _catalog;
     private readonly string _reservationTag;
     private readonly bool _ownsFiles;
     private readonly Lock _lock = new();
+    // One reservation per known file id, covering [0, current frontier). Size grows as
+    // subsequent writers append. Created lazily on first registration or first lease.
     private readonly Dictionary<ushort, ArenaReservation> _reservations = [];
+    // Per-file refcount: snapshot leases + at most one transient writer-creation lease
+    // per in-flight Complete. Mirrors the underlying reservation's lease count.
     private readonly Dictionary<ushort, int> _refCounts = [];
     private bool _disposed;
 
@@ -48,10 +71,9 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// <see cref="ArenaReservationTags.BlobSmall"/> or
     /// <see cref="ArenaReservationTags.BlobLarge"/>).
     /// </summary>
-    public BlobArenaManager(string basePath, long maxFileSize, BlobArenaCatalog catalog, string reservationTag)
+    public BlobArenaManager(string basePath, long maxFileSize, string reservationTag)
     {
         _files = new ArenaManager(basePath, pageCacheBytes: 0, maxArenaSize: maxFileSize);
-        _catalog = catalog;
         _reservationTag = reservationTag;
         _ownsFiles = true;
     }
@@ -62,10 +84,9 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// so blob arenas don't touch disk. The caller owns disposal of the
     /// supplied manager.
     /// </summary>
-    public BlobArenaManager(IArenaManager files, BlobArenaCatalog catalog, string reservationTag)
+    public BlobArenaManager(IArenaManager files, string reservationTag)
     {
         _files = files;
-        _catalog = catalog;
         _reservationTag = reservationTag;
         _ownsFiles = false;
     }
@@ -74,52 +95,26 @@ public sealed class BlobArenaManager : IBlobArenaManager
     public long BlobArenaMappedBytes => _files.ArenaMappedBytes;
 
     /// <summary>
-    /// Rehydrate the in-memory reservation map from the catalog's entries.
-    /// Must be called before any <c>PersistedSnapshot</c> is constructed so
-    /// <see cref="TryLeaseFile"/> can resolve ids stored in their
-    /// <c>ref_ids</c> metadata.
+    /// Rehydrate the underlying file pool from on-disk file lengths. Must be called
+    /// before any <see cref="PersistedSnapshots.PersistedSnapshot"/> is constructed so
+    /// <see cref="TryLeaseFile"/> can resolve ids stored in their <c>ref_ids</c> metadata.
+    /// Whole-file reservations are created lazily on first lease.
     /// </summary>
-    public void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> entries)
-    {
-        // Build the location list for the underlying ArenaManager.Initialize
-        // (it only uses Location off SnapshotCatalog.CatalogEntry, so synthetic
-        // From/To is fine).
-        List<SnapshotCatalog.CatalogEntry> locations = new(entries.Count);
-        for (int i = 0; i < entries.Count; i++)
-        {
-            locations.Add(new SnapshotCatalog.CatalogEntry(
-                entries[i].BlobArenaId, default, default, entries[i].Location));
-        }
-        _files.Initialize(locations);
-
-        lock (_lock)
-        {
-            for (int i = 0; i < entries.Count; i++)
-            {
-                BlobArenaCatalog.Entry e = entries[i];
-                ArenaReservation reservation = _files.Open(e.Location, _reservationTag);
-                _reservations[e.BlobArenaId] = reservation;
-                // Reservations start with lease=1 (from Open). Track that as our
-                // initial refcount — snapshots' Acquire calls bump it; we never
-                // need to release this initial lease because it persists for the
-                // lifetime of the rehydrated reservation (until the last snapshot
-                // referencing it is disposed). At that point _refCounts will
-                // reach 0 and we'll Remove + Dispose.
-                _refCounts[e.BlobArenaId] = 1;
-            }
-        }
-    }
+    public void Initialize() => _files.InitializeFromFileLengths();
 
     /// <summary>
-    /// Open a writer for a fresh reservation. The writer's
-    /// <see cref="BlobArenaWriter.Complete"/> registers the reservation here
-    /// under the assigned <see cref="BlobArenaWriter.BlobArenaId"/>.
+    /// Open a writer that appends into an existing arena file with headroom (or a
+    /// fresh one if none qualifies). The writer's <see cref="BlobArenaWriter.BlobArenaId"/>
+    /// is the underlying <c>ArenaFile.Id</c>.
     /// </summary>
     public BlobArenaWriter CreateWriter(long estimatedSize, string tag)
     {
         ArenaWriter inner = _files.CreateWriter(estimatedSize, tag);
-        ushort blobArenaId = _catalog.NextId();
-        return new BlobArenaWriter(this, blobArenaId, inner);
+        int arenaId = inner.ArenaId;
+        if ((uint)arenaId > ushort.MaxValue)
+            throw new InvalidOperationException(
+                $"Blob arena file id {arenaId} exceeds ushort range — packing degraded?");
+        return new BlobArenaWriter(this, (ushort)arenaId, inner.StartOffset, inner);
     }
 
     public int RandomRead(ushort blobArenaId, long offset, Span<byte> destination)
@@ -135,15 +130,24 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
     public bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
     {
-        ArenaReservation? reservation;
+        ArenaReservation reservation;
         lock (_lock)
         {
-            if (!_reservations.TryGetValue(blobArenaId, out reservation))
+            if (!_reservations.TryGetValue(blobArenaId, out ArenaReservation? existing))
             {
-                file = null;
-                return false;
+                if (!_files.TryGetFrontier(blobArenaId, out long frontier))
+                {
+                    file = null;
+                    return false;
+                }
+                // Lazy whole-file reservation: occurs on the load path before any writer
+                // for this id has run in this process.
+                existing = _files.Open(new SnapshotLocation(blobArenaId, 0, frontier), _reservationTag);
+                _reservations[blobArenaId] = existing;
+                _refCounts[blobArenaId] = 0;
             }
             _refCounts[blobArenaId] = _refCounts[blobArenaId] + 1;
+            reservation = existing;
         }
         reservation.AcquireLease();
         file = new BlobArenaFile(this, blobArenaId, reservation);
@@ -153,7 +157,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
     public void ReleaseBlobArena(ushort blobArenaId)
     {
         ArenaReservation? reservation;
-        bool removeFromCatalog;
         bool disposedSnapshot;
         lock (_lock)
         {
@@ -163,43 +166,65 @@ public sealed class BlobArenaManager : IBlobArenaManager
             if (newCount > 0)
             {
                 _refCounts[blobArenaId] = newCount;
-                removeFromCatalog = false;
+                reservation = null;
             }
             else
             {
                 _refCounts.Remove(blobArenaId);
                 _reservations.Remove(blobArenaId);
-                removeFromCatalog = true;
             }
         }
-        // Catalog removal must precede the reservation's Dispose — its CleanUp
-        // runs ArenaManager.MarkDead, which can delete the backing file. Skip
-        // the removal entirely during shutdown: the underlying ArenaManager has
-        // already been disposed (its MarkDead is a no-op), and the catalog
-        // entries must survive across restarts so the next session can rehydrate
-        // the reservation.
-        if (removeFromCatalog && !disposedSnapshot) _catalog.Remove(blobArenaId);
-        reservation.Dispose();
+        // Skip the dispose during shutdown so the on-disk file survives across restarts;
+        // CleanUp's MarkDead would otherwise delete it.
+        if (reservation is not null && !disposedSnapshot) reservation.Dispose();
     }
 
     /// <summary>
-    /// Called by <see cref="BlobArenaWriter.Complete"/> to register the
-    /// finalised reservation. The reservation arrives with its intrinsic
-    /// 1-lease (the writer's "creation" lease); this is matched by our
-    /// <see cref="_refCounts"/> starting at 1. Snapshots transfer ownership
-    /// by calling <see cref="TryLeaseFile"/>; the caller then drops
-    /// the writer-creation lease via <see cref="ReleaseBlobArena"/>.
+    /// Called by <see cref="BlobArenaWriter.Complete"/> to register the new frontier for
+    /// the file. On first registration creates the whole-file reservation; otherwise grows
+    /// the existing reservation's <see cref="ArenaReservation.Size"/>. Bumps
+    /// <see cref="_refCounts"/> by 1 for the writer's transient creation lease — the
+    /// caller (PersistedSnapshotRepository) transfers that lease to the new snapshot via
+    /// <see cref="TryLeaseFile"/> then drops it via <see cref="ReleaseBlobArena"/>.
     /// </summary>
-    internal void RegisterCompleted(ushort blobArenaId, ArenaReservation reservation)
+    internal void RegisterCompleted(ushort blobArenaId, long startOffset, long bytesWritten)
     {
+        long newFrontier = startOffset + bytesWritten;
+        ArenaReservation? newReservation = null;
         lock (_lock)
         {
-            _reservations[blobArenaId] = reservation;
+            if (_reservations.TryGetValue(blobArenaId, out ArenaReservation? existing))
+            {
+                existing.Size = newFrontier;
+                _refCounts[blobArenaId] = _refCounts[blobArenaId] + 1;
+                return;
+            }
+            newReservation = _files.Open(
+                new SnapshotLocation(blobArenaId, 0, newFrontier), _reservationTag);
+            _reservations[blobArenaId] = newReservation;
             _refCounts[blobArenaId] = 1;
         }
-        _catalog.Add(new BlobArenaCatalog.Entry(
-            blobArenaId,
-            new SnapshotLocation(reservation.ArenaId, reservation.Offset, reservation.Size)));
+    }
+
+    /// <summary>
+    /// Delete arena files that no snapshot referenced after a restart — recoverable
+    /// orphans from a mid-write crash where Complete never ran (or where the owning
+    /// snapshot was wiped before restart). Safe to call after every
+    /// <see cref="PersistedSnapshots.PersistedSnapshotRepository.LoadFromCatalog"/>.
+    /// </summary>
+    public void SweepUnreferenced()
+    {
+        List<int>? toDelete = null;
+        lock (_lock)
+        {
+            foreach (int id in _files.KnownArenaIds)
+            {
+                if (!_reservations.ContainsKey((ushort)id))
+                    (toDelete ??= []).Add(id);
+            }
+        }
+        if (toDelete is null) return;
+        foreach (int id in toDelete) _files.DeleteFile(id);
     }
 
     public void Dispose()

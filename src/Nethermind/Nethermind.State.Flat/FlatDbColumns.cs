@@ -14,6 +14,11 @@ public enum FlatDbColumns
     FallbackNodes,
     SmallPersistedSnapshotCatalog,
     LargePersistedSnapshotCatalog,
+    // Retained to preserve enum ordinals for existing RocksDB column families.
+    // BlobArenaId is now the underlying ArenaFile.Id (per-file, not per-slice),
+    // so no per-tier slice catalog exists. After a wipe-and-resync these columns
+    // are empty; for older directories the SnapshotCatalog v2→v3 mismatch trips
+    // the "wipe and resync" error before anything touches these columns.
     SmallBlobArenaCatalog,
     LargeBlobArenaCatalog,
 }

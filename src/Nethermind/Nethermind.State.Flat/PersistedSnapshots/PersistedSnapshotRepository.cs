@@ -22,7 +22,7 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///   (written by <c>PersistenceManager</c> at boundary blocks) as base inputs;
 ///   its compactor merges these into 2×, 4×, ... CompactSize spans.</item>
 /// </list>
-/// Each instance owns its <c>(ArenaManager, BlobArenaManager, BlobArenaCatalog,
+/// Each instance owns its <c>(ArenaManager, BlobArenaManager,
 /// SnapshotCatalog)</c> set plus a fixed pair of reservation tags
 /// (<paramref name="metaTag"/>/<paramref name="blobTag"/>) used for arena
 /// labeling. Blob arena ids are unique within a repo, not across repos;
@@ -32,7 +32,6 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 public sealed class PersistedSnapshotRepository(
     IArenaManager arenaManager,
     IBlobArenaManager blobArenaManager,
-    BlobArenaCatalog blobArenaCatalog,
     IDb catalogDb,
     IFlatDbConfig config,
     PersistedSnapshotBloomFilterManager bloomManager,
@@ -41,7 +40,6 @@ public sealed class PersistedSnapshotRepository(
 {
     private readonly IArenaManager _arena = arenaManager;
     private readonly IBlobArenaManager _blobs = blobArenaManager;
-    private readonly BlobArenaCatalog _blobArenaCatalog = blobArenaCatalog;
     private readonly SnapshotCatalog _catalog = new(catalogDb);
     private readonly int _compactSize = config.CompactSize;
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
@@ -76,11 +74,10 @@ public sealed class PersistedSnapshotRepository(
     {
         lock (_catalogLock)
         {
-            // Blob arena catalog first — rehydrates the BlobArenaManager so the
-            // PersistedSnapshot ctor's TryAcquireBlobArena calls (driven by each
-            // snapshot's ref_ids metadata) can resolve the ids.
-            _blobArenaCatalog.Load();
-            _blobs.Initialize(_blobArenaCatalog.Entries);
+            // Blob arena pool first — rehydrates file lengths so the PersistedSnapshot
+            // ctor's TryLeaseFile calls (driven by each snapshot's ref_ids metadata) can
+            // resolve the ids. Whole-file reservations are created lazily on first lease.
+            _blobs.Initialize();
 
             _catalog.Load();
             List<SnapshotCatalog.CatalogEntry> entries = [.. _catalog.Entries];
@@ -90,6 +87,10 @@ public sealed class PersistedSnapshotRepository(
                 LoadSnapshot(entry);
 
             _nextId = _catalog.NextId();
+
+            // Delete any blob arena file no loaded snapshot referenced — recoverable
+            // orphans from a mid-write crash.
+            _blobs.SweepUnreferenced();
         }
     }
 

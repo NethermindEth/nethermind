@@ -24,6 +24,8 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) { }
 
+    public void InitializeFromFileLengths() { }
+
     public ArenaWriter CreateWriter(long estimatedSize, string tag)
     {
         // Test-only: backed by byte[] so capped at int.MaxValue.
@@ -36,19 +38,23 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
 
     public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag)
     {
+        SnapshotLocation location = CompleteWriteSliceless(arenaId, startOffset, actualSize, tag);
+        ArenaReservation reservation = new(this, arenaFile: null, arenaId, startOffset, actualSize, tag);
+        return (location, reservation);
+    }
+
+    public SnapshotLocation CompleteWriteSliceless(int arenaId, long startOffset, long actualSize, string tag)
+    {
         // Test-only: byte[]-backed arenas are int-bounded.
         int actualSizeInt = checked((int)actualSize);
         if (_pendingStreams.Remove((arenaId, startOffset), out MemoryStream? stream))
         {
-            // Ensure arena has enough space
             EnsureCapacity(arenaId, checked((int)(startOffset + actualSize)));
             stream.GetBuffer().AsSpan(0, actualSizeInt).CopyTo(_arenas[arenaId].AsSpan(checked((int)startOffset)));
         }
 
         _frontiers[arenaId] = startOffset + actualSize;
-        SnapshotLocation location = new(arenaId, startOffset, actualSize);
-        ArenaReservation reservation = new(this, arenaFile: null, arenaId, startOffset, actualSize, tag);
-        return (location, reservation);
+        return new SnapshotLocation(arenaId, startOffset, actualSize);
     }
 
     public void CancelWrite(int arenaId, long startOffset) =>
@@ -140,6 +146,20 @@ public sealed class MemoryArenaManager(int arenaSize = 64 * 1024) : IArenaManage
             foreach (byte[] arena in _arenas.Values) sum += arena.Length;
             return sum;
         }
+    }
+
+    public IReadOnlyCollection<int> KnownArenaIds => [.. _arenas.Keys];
+
+    public bool TryGetFrontier(int arenaId, out long frontier) =>
+        _frontiers.TryGetValue(arenaId, out frontier);
+
+    public void DeleteFile(int arenaId)
+    {
+        _mutableArenas.Remove(arenaId);
+        _arenas.Remove(arenaId);
+        if (_arenaPins.Remove(arenaId, out GCHandle pin) && pin.IsAllocated) pin.Free();
+        _frontiers.Remove(arenaId);
+        _deadBytes.Remove(arenaId);
     }
 
     public void MarkDead(in SnapshotLocation location)

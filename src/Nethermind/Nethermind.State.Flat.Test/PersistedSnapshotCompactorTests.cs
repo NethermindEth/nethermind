@@ -53,9 +53,8 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
             // CompactSize=4, MinCompactSize=2. Use 8 blocks so compactSize = 8 & -8 = 8 > CompactSize=4, triggering compaction.
@@ -153,9 +152,8 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 256 * 1024);
-            using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 4 * 1024 * 1024, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
             // CompactSize=4 → minCompactSize for the large-tier compactor is 8. n is a power of 2
@@ -236,10 +234,9 @@ public class PersistedSnapshotCompactorTests
             // tracker materialises at the expected capacity regardless of system page size.
             long largeBudget = 1024L * Environment.SystemPageSize;
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), pageCacheBytes: largeBudget, maxArenaSize: 64 * 1024);
-            using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, ArenaReservationTags.BlobSmall);
             PageResidencyTracker largeTracker = smallArena.PageTracker;
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
             // Validation off so the post-compaction validate path doesn't itself populate the
@@ -294,9 +291,8 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };
@@ -577,9 +573,8 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
             // minCompactSize == maxCompactSize == 2 — only a size-2 compaction is attempted, so
@@ -650,9 +645,8 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
             // compactSize=1 keeps the loop running for sizes 2, 4, 8 (all > 1).
@@ -715,9 +709,8 @@ public class PersistedSnapshotCompactorTests
         try
         {
             using ArenaManager smallArena = new(Path.Combine(testDir, "arenas", "base"), 0, maxArenaSize: 64 * 1024);
-            using BlobArenaCatalog blobCatalog = new(new MemDb());
-            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, blobCatalog, ArenaReservationTags.BlobSmall);
-            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, blobCatalog, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
+            using BlobArenaManager smallBlobs = new(Path.Combine(testDir, "blobs", "small"), 1024 * 1024, ArenaReservationTags.BlobSmall);
+            using PersistedSnapshotRepository repo = new(smallArena, smallBlobs, new MemDb(), new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
             repo.LoadFromCatalog();
 
             IFlatDbConfig config = new FlatDbConfig { CompactSize = 4, MinCompactSize = 2 };

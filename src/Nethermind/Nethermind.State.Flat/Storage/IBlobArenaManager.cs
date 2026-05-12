@@ -7,8 +7,8 @@ namespace Nethermind.State.Flat.Storage;
 /// Stores trie-node RLP bytes back-to-back in its own files, separate from the
 /// metadata HSST arena files held by <see cref="IArenaManager"/>. A
 /// <see cref="NodeRef"/> embedded in a persisted snapshot's metadata points at
-/// <c>(BlobArenaId, byte offset)</c>; the manager resolves the id to the
-/// reservation that contains the byte.
+/// <c>(BlobArenaId, file-absolute offset)</c>; the manager resolves the id to the
+/// underlying arena file.
 ///
 /// <para>
 /// Wiring convention: each persisted-snapshot pool tier is a pair —
@@ -19,57 +19,57 @@ namespace Nethermind.State.Flat.Storage;
 /// </para>
 ///
 /// <para>
-/// Refcounting: each blob arena reservation has the usual
-/// <see cref="ArenaReservation"/> lease. Snapshots <see cref="AcquireBlobArena"/> on
-/// construction and <see cref="ReleaseBlobArena"/> on cleanup. When the last lease
-/// drops, the reservation's <c>CleanUp</c> calls <see cref="ArenaManager.MarkDead"/>,
-/// which deletes the underlying file once every reservation in it is dead.
-/// </para>
-///
-/// <para>
-/// Pass 1 of the BlobArena refactor introduces this type as scaffolding. The
-/// builder, catalog, and read paths continue to use the inline-RLP layout owned by
-/// <see cref="IArenaManager"/> until pass 2 wires the writer through.
+/// One id per file: a <c>BlobArenaId</c> is the underlying <c>ArenaFile.Id</c>.
+/// Many writers across many base snapshots append into the same file. The
+/// manager maintains one whole-file <see cref="ArenaReservation"/> per known
+/// id; snapshots lease the reservation, and the file is deleted when the last
+/// snapshot releases it.
 /// </para>
 /// </summary>
 public interface IBlobArenaManager : IDisposable
 {
     /// <summary>
-    /// Rehydrate the in-memory reservation map from the blob arena catalog
-    /// (entries for this manager's pool only). Must run before any
-    /// <c>PersistedSnapshot</c> is constructed.
+    /// Rehydrate the underlying file pool from on-disk file lengths. Whole-file
+    /// reservations are created lazily on first <see cref="TryLeaseFile"/>. Must
+    /// run before any <c>PersistedSnapshot</c> is constructed.
     /// </summary>
-    void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> allEntries);
+    void Initialize();
 
     /// <summary>
-    /// Open a writer that appends RLP items to a freshly-allocated reservation.
-    /// The returned writer exposes <see cref="BlobArenaWriter.WriteRlp"/>, which
-    /// returns the <see cref="NodeRef"/> to embed in the metadata HSST for the
-    /// just-written item.
+    /// Open a writer that appends RLP items into a blob arena file (either
+    /// an existing one with headroom, or a fresh one).
     /// </summary>
     BlobArenaWriter CreateWriter(long estimatedSize, string tag);
 
     /// <summary>
-    /// Random-access read into the reservation backing <paramref name="blobArenaId"/>.
-    /// Used by the <c>NodeRef</c> dereference path on the read side.
+    /// Random-access read at <paramref name="offset"/> (file-absolute) within the
+    /// file identified by <paramref name="blobArenaId"/>. Used by the <c>NodeRef</c>
+    /// dereference path on the read side.
     /// </summary>
     int RandomRead(ushort blobArenaId, long offset, Span<byte> destination);
 
     /// <summary>
-    /// Increment the refcount on the reservation backing <paramref name="blobArenaId"/>
-    /// and hand back a <see cref="BlobArenaFile"/> wrapping it. Returns false if
-    /// this manager doesn't know the id. Disposing the returned
-    /// <see cref="BlobArenaFile"/> calls back into <see cref="ReleaseBlobArena"/>.
+    /// Increment the refcount on the file's whole-file reservation and hand back
+    /// a <see cref="BlobArenaFile"/> wrapping it. Returns false if this manager
+    /// doesn't know the id. Disposing the returned <see cref="BlobArenaFile"/>
+    /// calls back into <see cref="ReleaseBlobArena"/>.
     /// </summary>
     bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file);
 
     /// <summary>
     /// Decrement the refcount. When the last referencing snapshot is released the
-    /// reservation's <c>CleanUp</c> runs <see cref="ArenaManager.MarkDead"/>, which
-    /// deletes the underlying file once every reservation in it is dead. Typically
-    /// invoked indirectly via <see cref="BlobArenaFile.Dispose"/>.
+    /// reservation's <c>CleanUp</c> runs <see cref="IArenaManager.MarkDead"/> over
+    /// the file's full span and deletes the file. Typically invoked indirectly via
+    /// <see cref="BlobArenaFile.Dispose"/>.
     /// </summary>
     void ReleaseBlobArena(ushort blobArenaId);
+
+    /// <summary>
+    /// After <see cref="Initialize"/> + snapshot rehydration, delete any arena file
+    /// not referenced by a loaded snapshot — recoverable orphans from a mid-write
+    /// crash where Complete never ran.
+    /// </summary>
+    void SweepUnreferenced();
 
     /// <summary>Number of blob arena files currently open. Telemetry only.</summary>
     int BlobArenaFileCount { get; }

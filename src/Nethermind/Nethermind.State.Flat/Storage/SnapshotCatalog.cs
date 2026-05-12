@@ -27,9 +27,12 @@ public sealed class SnapshotCatalog(IDb db)
     internal const int EntrySize = 104;
 
     // Catalog version: bumped when the on-disk binary layout changes incompatibly. Old
-    // directories will fail to load with a clear "wipe and resync" message. v2 is the
+    // directories will fail to load with a clear "wipe and resync" message. v2 was the
     // BlobArena-backed layout (no PersistedSnapshotType byte, ref_ids are blob arena ids).
-    internal const int CurrentVersion = 2;
+    // v3: blob arena ids are now per-file (was per-slice); NodeRef.RlpDataOffset is now
+    // file-absolute (was slice-relative). The on-disk SnapshotCatalog layout itself is
+    // unchanged, but reading v2 NodeRefs as v3 would land at the wrong file offsets.
+    internal const int CurrentVersion = 3;
 
     // Reserved id 0 holds (nextId:int32 LE, version:int32 LE). Entry ids start at 1.
     private static readonly byte[] MetadataKey = new byte[4];

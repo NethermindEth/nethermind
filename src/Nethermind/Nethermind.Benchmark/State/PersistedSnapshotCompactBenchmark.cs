@@ -34,7 +34,6 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
 
     private string _testDir = null!;
     private ArenaManager _arena = null!;
-    private BlobArenaCatalog _blobCatalog = null!;
     private BlobArenaManager _blobs = null!;
     private PersistedSnapshotRepository _repo = null!;
     private ResourcePool _pool = null!;
@@ -53,14 +52,12 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
             Path.Combine(_testDir, "arenas"),
             pageCacheBytes: 0,
             maxArenaSize: 16 * 1024 * 1024);
-        _blobCatalog = new BlobArenaCatalog(new MemDb());
         _blobs = new BlobArenaManager(
             Path.Combine(_testDir, "blobs"),
             maxFileSize: 16 * 1024 * 1024,
-            _blobCatalog,
             ArenaReservationTags.BlobSmall);
         _repo = new PersistedSnapshotRepository(
-            _arena, _blobs, _blobCatalog, new MemDb(),
+            _arena, _blobs, new MemDb(),
             new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());
         _repo.LoadFromCatalog();
         _pool = new ResourcePool(new FlatDbConfig());
@@ -116,7 +113,6 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         _snapshots?.Dispose();
         _repo?.Dispose();
         _blobs?.Dispose();
-        _blobCatalog?.Dispose();
         _arena?.Dispose();
         if (_testDir is not null && Directory.Exists(_testDir))
             Directory.Delete(_testDir, recursive: true);

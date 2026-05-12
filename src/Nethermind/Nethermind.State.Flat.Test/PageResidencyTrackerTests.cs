@@ -45,9 +45,14 @@ public class PageResidencyTrackerTests
         public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
         public int ArenaFileCount => 0;
         public long ArenaMappedBytes => 0;
+        public IReadOnlyCollection<int> KnownArenaIds => Array.Empty<int>();
+        public bool TryGetFrontier(int arenaId, out long frontier) { frontier = 0; return false; }
+        public void DeleteFile(int arenaId) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
+        public void InitializeFromFileLengths() => throw new NotSupportedException();
         public ArenaWriter CreateWriter(long estimatedSize, string tag) => throw new NotSupportedException();
         public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag) => throw new NotSupportedException();
+        public SnapshotLocation CompleteWriteSliceless(int arenaId, long startOffset, long actualSize, string tag) => throw new NotSupportedException();
         public void CancelWrite(int arenaId, long startOffset) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location, string tag) => throw new NotSupportedException();
         public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) => throw new NotSupportedException();

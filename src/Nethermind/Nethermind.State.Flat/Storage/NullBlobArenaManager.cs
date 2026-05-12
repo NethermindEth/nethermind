@@ -16,7 +16,7 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
 
     private NullBlobArenaManager() { }
 
-    public void Initialize(IReadOnlyList<BlobArenaCatalog.Entry> allEntries) { }
+    public void Initialize() { }
 
     public BlobArenaWriter CreateWriter(long estimatedSize, string tag) =>
         throw new InvalidOperationException("NullBlobArenaManager cannot create writers.");
@@ -28,6 +28,7 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
         return false;
     }
     public void ReleaseBlobArena(ushort blobArenaId) { }
+    public void SweepUnreferenced() { }
     public int BlobArenaFileCount => 0;
     public long BlobArenaMappedBytes => 0;
     public void Dispose() { }
