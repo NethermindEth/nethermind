@@ -88,20 +88,24 @@ internal static class BSearchIndexLayoutPlanner
             else if (len != secondLen) allSameLenExceptFirst = false;
         }
 
-        // Slot widening: when every input separator fits in 4 bytes (maxLen ≤ 4) AND every
-        // key has ≥ 4 bytes available, treat the inputs as 4-byte for lcp + layout
-        // selection. Works for both uniform-length and mixed-length inputs — after this
-        // step the planner proceeds as if all separators were uniform 4 bytes. The
-        // caller's AddKey must then provide 4 bytes per entry (read from the key's data
-        // section, not the natural sep length). This is the SIMD-eligible Uniform slot=4 /
-        // uint32 LE path. The strip-gate below may still pull lcp > 0 in, dropping slot
-        // to 1/2/3 for non-trivial crossEntryLcp.
-        if (firstLen > 0 && maxLen <= 4 && keyLength >= 4)
+        // Slot widening: pick the smallest SIMD-eligible Uniform slot width that fits
+        // every input separator, provided every key has that many bytes available. After
+        // widening the planner proceeds as if all separators were uniform `target` bytes;
+        // the caller's AddKey provides those bytes from the key's data section. Works for
+        // mixed-length inputs too. The strip-gate below may still pull lcp > 0, dropping
+        // the slot below `target` for non-trivial crossEntryLcp.
+        int target = 0;
+        if (firstLen > 0)
         {
-            firstLen = 4;
-            minLen = 4;
-            maxLen = 4;
-            if (secondLen >= 0) secondLen = 4;
+            if (maxLen <= 2 && keyLength >= 2) target = 2;
+            else if (maxLen <= 4 && keyLength >= 4) target = 4;
+        }
+        if (target > 0)
+        {
+            firstLen = target;
+            minLen = target;
+            maxLen = target;
+            if (secondLen >= 0) secondLen = target;
             allSameLen = true;
             allSameLenExceptFirst = count >= 2;
         }
