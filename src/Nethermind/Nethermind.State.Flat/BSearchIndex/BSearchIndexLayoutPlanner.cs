@@ -137,6 +137,15 @@ internal static class BSearchIndexLayoutPlanner
         {
             keyType = 1;
             keySlotSize = effFirstLen;
+            // Off-SIMD slot=3 → upgrade to SIMD slot=4 by dropping the prefix-strip.
+            // Safe because firstLen ≤ 4 (we only land here with firstLen ∈ {3, 4} when
+            // effFirstLen == 3) and keyLength ≥ 4 (post-widening guarantees it or the
+            // natural firstLen already implies it).
+            if (keySlotSize == 3 && firstLen <= 4 && keyLength >= 4)
+            {
+                lcp = 0;
+                keySlotSize = 4;
+            }
         }
         else if (effMaxLen <= 3)
         {
