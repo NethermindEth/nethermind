@@ -203,7 +203,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         try
         {
             HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-                ref _writer, reader, _entryPositions.AsSpan(), _options.MinSeparatorLength);
+                ref _writer, reader, _entryPositions.AsSpan());
 
             rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
         }

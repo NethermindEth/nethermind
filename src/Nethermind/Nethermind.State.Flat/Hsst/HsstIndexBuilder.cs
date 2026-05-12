@@ -34,19 +34,17 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private ref TWriter _writer;
     private TReader _reader;
     private readonly ReadOnlySpan<long> _entryPositions;
-    private readonly int _minSepLen;
-    // One byte per entry: separator length against the prior entry's key (under the active
-    // _minSepLen floor). Filled once by PrecomputeSeparatorLengths at Build() entry and read
-    // by ChooseLeafLayout / WriteLeafIndexNode instead of recomputing ComputeSeparatorLength
-    // twice per entry. Rented from ArrayPool; returned in Build's finally.
+    // One byte per entry: natural separator length against the prior entry's key. Filled
+    // once by PrecomputeSeparatorLengths at Build() entry and read by ChooseLeafLayout /
+    // WriteLeafIndexNode instead of recomputing ComputeSeparatorLength twice per entry.
+    // Rented from ArrayPool; returned in Build's finally.
     private byte[]? _sepLengthsArr;
 
-    public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int minSepLen)
+    public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions)
     {
         _writer = ref writer;
         _reader = reader;
         _entryPositions = entryPositions;
-        _minSepLen = minSepLen;
     }
 
     /// <summary>
@@ -623,7 +621,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int leftLen = ReadKey(children[i].LastEntry, leftKey);
             int rightLen = ReadKey(children[i + 1].FirstEntry, rightKey);
             sepOffsets[i] = tempOffset;
-            sepLengths[i] = WriteSeparatorBetween(sepScratch[tempOffset..], leftKey[..leftLen], rightKey[..rightLen], _minSepLen);
+            sepLengths[i] = WriteSeparatorBetween(sepScratch[tempOffset..], leftKey[..leftLen], rightKey[..rightLen]);
             tempOffset += sepLengths[i];
         }
 
@@ -673,7 +671,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// One-pass pre-computation of per-entry natural separator length against the prior
-    /// entry's key, with the active <c>_minSepLen</c> floor applied. Writes into
+    /// entry's key. Writes into
     /// <see cref="_sepLengthsArr"/> (one byte per entry — fits because
     /// <see cref="HsstSeparator.ComputeSeparatorLength"/> caps at currKey.Length ≤
     /// <see cref="MaxKeyLen"/> = 255). Both <see cref="ChooseLeafLayout"/> and
@@ -690,7 +688,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         {
             int currKeyLen = ReadKey(i, currKey);
             int sepLen = HsstSeparator.ComputeSeparatorLength(
-                prevKey[..prevKeyLen], currKey[..currKeyLen], default, _minSepLen);
+                prevKey[..prevKeyLen], currKey[..currKeyLen], default);
             _sepLengthsArr![i] = (byte)sepLen;
             currKey[..currKeyLen].CopyTo(prevKey);
             prevKeyLen = currKeyLen;
