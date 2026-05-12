@@ -145,6 +145,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 BlockchainIds.Chiado => ChiadoSpecProvider.Forks,
                 BlockchainIds.Sepolia => SepoliaSpecProvider.Forks,
                 BlockchainIds.Hoodi => HoodiSpecProvider.Forks,
+                BlockchainIds.Morden => MordenSpecProvider.Forks,
                 _ => MainnetSpecProvider.Forks,
             };
 
