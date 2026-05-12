@@ -39,9 +39,6 @@ public sealed class PersistedSnapshotBloom : RefCountingDisposable
     public bool TryAcquire() => TryAcquireLease();
 
     public long KeyBloomCount => KeyBloom.Count;
-    public long TrieBloomCount => TrieBloom.Count;
-    public long KeyBloomBytes => KeyBloom.DataBytes;
-    public long TrieBloomBytes => TrieBloom.DataBytes;
 
     protected override void CleanUp()
     {

@@ -195,15 +195,6 @@ public static class PersistedSnapshotReader
         return true;
     }
 
-    internal static bool CheckHasNodeRefsFlag<TReader, TPin>(scoped in TReader reader)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        using HsstReader<TReader, TPin> r = new(in reader);
-        return r.TrySeek(PersistedSnapshot.MetadataTag, out _)
-            && r.TrySeek("noderefs"u8, out _);
-    }
-
     internal static int[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct

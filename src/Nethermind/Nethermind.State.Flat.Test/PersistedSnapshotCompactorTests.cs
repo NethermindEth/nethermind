@@ -239,8 +239,6 @@ public class PersistedSnapshotCompactorTests
                 {
                     using WholeReadSession session = baseSnap!.BeginWholeReadSession();
                     WholeReadSessionReader reader = session.GetReader();
-                    Assert.That(PersistedSnapshotReader.CheckHasNodeRefsFlag<WholeReadSessionReader, NoOpPin>(in reader), Is.False,
-                        $"Base snapshot {i} must not carry the noderefs metadata flag");
                     int[]? ids = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
                     Assert.That(ids, Is.Not.Null.And.Length.EqualTo(1),
                         $"Base snapshot {i} must carry exactly one blob-arena ref_id");
@@ -255,8 +253,6 @@ public class PersistedSnapshotCompactorTests
             {
                 using WholeReadSession session = compacted!.BeginWholeReadSession();
                 WholeReadSessionReader reader = session.GetReader();
-                Assert.That(PersistedSnapshotReader.CheckHasNodeRefsFlag<WholeReadSessionReader, NoOpPin>(in reader), Is.True,
-                    "Compacted snapshot must carry the noderefs metadata flag");
                 int[]? mergedIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
                 Assert.That(mergedIds, Is.Not.Null);
                 Assert.That(new HashSet<int>(mergedIds!), Is.EquivalentTo(baseRefIds),

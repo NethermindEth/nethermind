@@ -11,12 +11,12 @@ namespace Nethermind.State.Flat.Storage;
 /// that locates the just-written item.
 ///
 /// <para>
-/// Page-aligned padding mirrors <c>PersistedSnapshotBuilder.WriteTrieNodeRlpPageAligned</c>:
-/// before writing an RLP that would otherwise cross a 4 KiB OS-page boundary, leading
-/// pad bytes push the value into the next page. Trie-node RLP is bounded well below
-/// 4 KiB (worst-case branch ≈ 532 bytes), so the simple "pad if it would cross" rule
-/// never has to split an oversize value. The pad bytes are inert because the HSST
-/// reader recovers value bounds from per-entry length metadata.
+/// Page-aligned padding: before writing an RLP that would otherwise cross a 4 KiB
+/// OS-page boundary, leading pad bytes push the value into the next page. Trie-node
+/// RLP is bounded well below 4 KiB (worst-case branch ≈ 532 bytes), so the simple
+/// "pad if it would cross" rule never has to split an oversize value. The pad bytes
+/// are inert because the HSST reader recovers value bounds from per-entry length
+/// metadata.
 /// </para>
 ///
 /// <para>

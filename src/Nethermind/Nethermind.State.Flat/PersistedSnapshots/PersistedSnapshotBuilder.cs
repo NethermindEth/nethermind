@@ -636,35 +636,6 @@ public static class PersistedSnapshotBuilder
     }
 
     /// <summary>
-    /// Write a trie-node RLP value through the supplied writer with leading padding so
-    /// the value never crosses a 4 KiB page boundary in the arena. Linked snapshots
-    /// reach back into the Full snapshot's arena via <see cref="NodeRef"/>; keeping each
-    /// RLP within a single page halves the page-fault / prefetch cost of those later
-    /// fetches. Caller is responsible for the surrounding <c>BeginValueWrite</c> /
-    /// <c>FinishValueWrite(key, value.Length)</c> pair on the HSST B-tree builder —
-    /// passing the builder itself here is not possible because callers hold it as a
-    /// <c>using</c> ref-struct local.
-    ///
-    /// Trie-node RLP is bounded well below 4 KiB (a worst-case branch is ~532 bytes),
-    /// so the simple "pad if it would cross" rule never has to split an oversize value.
-    /// Pad bytes sit between <c>BeginValueWrite</c> and the real value; the reader recovers
-    /// the value via <c>ValueStart = MetadataStart - ValueLength</c>, so they are inert.
-    /// </summary>
-    internal static void WriteTrieNodeRlpPageAligned<TWriter>(ref TWriter w, scoped ReadOnlySpan<byte> value)
-        where TWriter : IByteBufferWriter
-    {
-        long offsetInPage = (w.Written - w.FirstOffset) & 4095L;
-        if (value.Length <= 4096 && offsetInPage != 0 && offsetInPage + value.Length > 4096)
-        {
-            int pad = (int)(4096L - offsetInPage);
-            Span<byte> padSpan = w.GetSpan(pad);
-            padSpan[..pad].Clear();
-            w.Advance(pad);
-        }
-        IByteBufferWriter.Copy(ref w, value);
-    }
-
-    /// <summary>
     /// Convert a Full snapshot into a Linked snapshot where trie RLP values become
     /// NodeRefs. Metadata column (0x00) copied as-is. Flat state-trie columns (0x03,
     /// 0x05, 0x06) have values replaced with NodeRef(snapshotId, offset). Per-address
