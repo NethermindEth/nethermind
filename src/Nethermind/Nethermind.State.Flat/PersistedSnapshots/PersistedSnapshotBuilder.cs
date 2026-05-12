@@ -1444,10 +1444,10 @@ public static class PersistedSnapshotBuilder
 
     /// <summary>
     /// N-way merge of the account column (tag 0x01) across N snapshots.
-    /// Outer: 20-byte address keys (minSep=4). Matching addresses always flow through
-    /// <see cref="NWayMergePerAddressHsst"/>, including the single-source case — the
-    /// per-address HSST contains a slot subcolumn whose BTree alignment depends on the
-    /// destination writer position, so a verbatim byte-copy is not safe.
+    /// Outer: 20-byte address keys (minSep=4). Addresses with a single matching source
+    /// byte-copy the per-address HSST blob verbatim (every internal pointer is
+    /// HSST-relative, so a relocation stays readable); collisions go through
+    /// <see cref="NWayMergePerAddressHsst"/>.
     /// </summary>
     internal static void NWayMergeAccountColumn<TWriter, TReader, TPin>(
         PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -1516,23 +1516,46 @@ public static class PersistedSnapshotBuilder
                         matchingSources[matchCount++] = i;
                 }
 
-                // Always go through NWayMergePerAddressHsst, even when matchCount == 1:
-                // the per-address HSST contains a slot subcolumn whose BTree alignment
-                // (Uniform slot widening via BSearchIndexLayoutPlanner and the
-                // HsstIndexBuilder page padding) depends on the destination writer's
-                // absolute position, so a verbatim byte-copy bakes in the source's
-                // alignment shape and is not safe to relocate.
-                ref TWriter perAddrWriter = ref builder.BeginValueWrite();
-                ulong addrKey = 0;
-                if (bloom is not null)
+                if (matchCount == 1)
                 {
-                    addrKey = MemoryMarshal.Read<ulong>(minKey);
-                    bloom.Add(addrKey);
+                    // Single-source fast path: byte-copy the source's per-address HSST blob.
+                    // HSST internal pointers are HSST-relative (childOffset / dense-index ends
+                    // are stored as deltas from the blob start), so a verbatim relocation to
+                    // the destination writer position stays readable. The per-address sub-tags
+                    // (account 0x05, self-destruct 0x06, slots 0x04, storage 0x01/0x02/0x03)
+                    // ride along inside the copied blob — no per-sub-tag merge needed. Streamed
+                    // via the long-aware IByteBufferWriter.Copy so blobs over the 2 GiB single-
+                    // Span ceiling stay safe.
+                    int srcIdx = matchingSources[0];
+                    Bound vb = enums[srcIdx].CurrentValue;
+                    WholeReadSessionReader srcReader = Reader(views[srcIdx]);
+                    ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+                    IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref perAddrWriter, in srcReader, vb);
+                    builder.FinishValueWrite(minKey);
+                    if (bloom is not null)
+                    {
+                        ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
+                        bloom.Add(addrKey);
+                        HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in srcReader, vb);
+                        if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
+                            AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, bloom);
+                    }
                 }
-                NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-                    enums, matchingSources, matchCount, views,
-                    ref perAddrWriter, bloom, addrKey);
-                builder.FinishValueWrite(minKey);
+                else
+                {
+                    // M > 1 sources collide on this address: merge per-address HSSTs.
+                    ref TWriter perAddrWriter = ref builder.BeginValueWrite();
+                    ulong addrKey = 0;
+                    if (bloom is not null)
+                    {
+                        addrKey = MemoryMarshal.Read<ulong>(minKey);
+                        bloom.Add(addrKey);
+                    }
+                    NWayMergePerAddressHsst<TWriter, TReader, TPin>(
+                        enums, matchingSources, matchCount, views,
+                        ref perAddrWriter, bloom, addrKey);
+                    builder.FinishValueWrite(minKey);
+                }
 
                 for (int j = 0; j < matchCount; j++)
                 {
@@ -1659,12 +1682,25 @@ public static class PersistedSnapshotBuilder
                     }
                 }
 
-                if (slotSourceCount >= 1)
+                if (slotSourceCount == 1)
                 {
-                    // Always merge so the slot HSST is rebuilt against the destination writer
-                    // state. A verbatim byte-copy (even of a single source) is not safe: the
-                    // slot BTree's Uniform-slot widening and page-alignment padding both
-                    // depend on the destination's absolute write position.
+                    // Single-source fast path: byte-copy the source's slot HSST blob.
+                    // HSST internal pointers are HSST-relative, so the relocated blob stays
+                    // readable. Streamed via the long-aware IByteBufferWriter.Copy so a slot
+                    // HSST above the 2 GiB single-Span ceiling stays safe. Bloom adds are
+                    // walked separately since this path skips NWayInnerSlotMerge.
+                    WholeReadSessionReader slotReader = Reader(views[slotSources[0]]);
+                    Bound slotBlob = new(slotBounds[0].Offset, slotBounds[0].Length);
+                    ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
+                    IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref slotWriter, in slotReader, slotBlob);
+                    perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
+                    if (bloom is not null)
+                        AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in slotReader, slotBlob, addrBloomKey, bloom);
+                }
+                else if (slotSourceCount > 1)
+                {
+                    // M > 1 sources collide on this address's slots: streaming merge through
+                    // NWayNestedStreamingSlotMerge / NWayInnerSlotMerge folds bloom adds in.
                     using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
                     using ArrayPoolList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
                     using ArrayPoolList<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
@@ -2125,5 +2161,39 @@ public static class PersistedSnapshotBuilder
         {
             for (int j = 0; j < matchCount; j++) innerEnums[j].Dispose();
         }
+    }
+
+    /// <summary>
+    /// Walk the slot HSST at <paramref name="slotScope"/> (outer 30-byte prefix → inner 2-byte
+    /// suffix) and add every <c>(outer ⨁ inner)</c> slot key to <paramref name="bloom"/>. Used
+    /// by the matchCount==1 / slotSourceCount==1 byte-copy fast paths, which bypass the
+    /// streaming merge that would otherwise fold the same bloom adds inline (see
+    /// <see cref="NWayInnerSlotMerge"/>). Composition matches that inline path:
+    /// <c>addrKey ^ s0 ^ s1 ^ s2 ^ s3</c> over the 32-byte concatenation.
+    /// </summary>
+    private static void AddSlotKeysToBloom<TReader, TPin>(
+        scoped in TReader reader, Bound slotScope, ulong addrKey, BloomFilter bloom)
+        where TPin : struct, IBufferPin, allows ref struct
+        where TReader : IHsstByteReader<TPin>, allows ref struct
+    {
+        Span<byte> fullSlot = stackalloc byte[32];
+        HsstEnumerator<TReader, TPin> outerEnum = new(in reader, slotScope);
+        while (outerEnum.MoveNext(in reader))
+        {
+            outerEnum.CopyCurrentLogicalKey(in reader, fullSlot[..30]);
+            Bound ovb = outerEnum.CurrentValue;
+            HsstEnumerator<TReader, TPin> innerEnum = new(in reader, ovb);
+            while (innerEnum.MoveNext(in reader))
+            {
+                innerEnum.CopyCurrentLogicalKey(in reader, fullSlot[30..]);
+                ulong s0 = MemoryMarshal.Read<ulong>(fullSlot);
+                ulong s1 = MemoryMarshal.Read<ulong>(fullSlot[8..]);
+                ulong s2 = MemoryMarshal.Read<ulong>(fullSlot[16..]);
+                ulong s3 = MemoryMarshal.Read<ulong>(fullSlot[24..]);
+                bloom.Add(addrKey ^ s0 ^ s1 ^ s2 ^ s3);
+            }
+            innerEnum.Dispose();
+        }
+        outerEnum.Dispose();
     }
 }
