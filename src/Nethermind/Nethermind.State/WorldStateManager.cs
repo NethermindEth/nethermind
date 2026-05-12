@@ -54,8 +54,7 @@ public class WorldStateManager : IWorldStateManager
 
     private readonly long? _retentionWindowBlocks;
 
-    public long? GetOldestStateBlock(long headBlock) =>
-        _retentionWindowBlocks is { } window ? Math.Max(0L, headBlock - window) : null;
+    public long? RetentionWindowBlocks => _retentionWindowBlocks;
 
     public long? OldestStateBlock
     {

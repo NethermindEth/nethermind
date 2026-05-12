@@ -18,12 +18,11 @@ public interface IWorldStateManager
     IReadOnlyKeyValueStore? HashServer { get; }
 
     /// <summary>
-    /// Oldest block for which state is available given the chain head, considering only this
-    /// manager's rolling-window retention (e.g. trie memory pruning). Returns null when the
-    /// implementation has no rolling window (archive, full pruning, flat storage — the
-    /// absolute floor is reported separately via <see cref="OldestStateBlock"/>).
+    /// Configured rolling-window retention in blocks (e.g. trie memory pruning). Null when
+    /// there is no rolling window (archive, full pruning, flat storage); the absolute floor is
+    /// then reported via <see cref="OldestStateBlock"/>.
     /// </summary>
-    long? GetOldestStateBlock(long headBlock);
+    long? RetentionWindowBlocks { get; }
 
     /// <summary>
     /// Absolute lower bound of the persisted state window. Updated when fast/snap sync

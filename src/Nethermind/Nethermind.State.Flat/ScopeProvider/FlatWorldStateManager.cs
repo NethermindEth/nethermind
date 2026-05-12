@@ -52,7 +52,7 @@ public class FlatWorldStateManager(
 
     // No memory-pruning rolling window. State retention is driven by snapshot persistence and
     // is reported through the OldestStateBlock floor instead.
-    public long? GetOldestStateBlock(long headBlock) => null;
+    public long? RetentionWindowBlocks => null;
 
     public long? OldestStateBlock
     {

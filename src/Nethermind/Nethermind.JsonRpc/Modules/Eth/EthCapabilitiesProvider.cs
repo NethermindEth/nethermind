@@ -35,8 +35,9 @@ public sealed class EthCapabilitiesProvider(
         long bodiesBarrier = pivot == 0 ? 0 : Math.Min(pivot, syncConfig.AncientBodiesBarrier);
         long receiptsBarrier = pivot == 0 ? 0 : Math.Min(pivot, Math.Max(syncConfig.AncientBodiesBarrier, syncConfig.AncientReceiptsBarrier));
 
-        bool bodiesSynced = !fastSyncing || syncConfig.DownloadBodiesInFastSync;
-        bool receiptsSynced = bodiesSynced && (!fastSyncing || syncConfig.DownloadReceiptsInFastSync);
+        // Barriers are the eventual floor; before the descending pointer is set we have nothing.
+        bool bodiesDownloaded = IsDescendingResourceDownloaded(fastSyncing, pivot, syncConfig.DownloadBodiesInFastSync, syncPointers.LowestInsertedBodyNumber);
+        bool receiptsDownloaded = bodiesDownloaded && IsDescendingResourceDownloaded(fastSyncing, pivot, syncConfig.DownloadReceiptsInFastSync, syncPointers.LowestInsertedReceiptBlockNumber);
 
         long historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0;
         DeleteStrategy? historyWindow = BuildWindow(
@@ -54,24 +55,34 @@ public sealed class EthCapabilitiesProvider(
         return new EthCapabilities(
             Head: new ChainHead(head.Number, head.Hash!),
             State: state,
-            Receipts: BuildResource(receiptsSynced, Math.Max(lowestReceipt, historyFloor), historyWindow),
-            Blocks: BuildResource(blockTree.BestSuggestedHeader is not null && bodiesSynced, Math.Max(lowestBlock, historyFloor), historyWindow),
+            Receipts: BuildResource(receiptsDownloaded, Math.Max(lowestReceipt, historyFloor), historyWindow),
+            Blocks: BuildResource(blockTree.BestSuggestedHeader is not null && bodiesDownloaded, Math.Max(lowestBlock, historyFloor), historyWindow),
             Stateproofs: state);
     }
 
     private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
     {
-        // During fast sync, state isn't queryable until StateSyncRunner finalises and writes the
-        // pivot floor — disable the resource until then so callers don't see "available from genesis".
+        // During fast sync, state isn't queryable until StateSyncRunner writes the pivot floor.
         if (fastSyncing && worldStateManager.OldestStateBlock is null) return Disabled;
 
         long stateFloor = worldStateManager.OldestStateBlock ?? 0L;
-        long? windowOldest = worldStateManager.GetOldestStateBlock(head.Number);
+        long? retention = worldStateManager.RetentionWindowBlocks;
+        long? windowOldest = retention is { } r ? Math.Max(0L, head.Number - r) : (long?)null;
         long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
-        // Only emit the window descriptor when the rolling window is the binding constraint;
-        // when the static floor dominates, advertising "window:N" would mislead routers.
-        DeleteStrategy? window = windowOldest is { } w && w >= stateFloor ? BuildWindow(head.Number - w) : null;
+        // Emit the window only when it's the binding constraint, and report the configured
+        // retention so the value stays accurate before head reaches it.
+        DeleteStrategy? window = windowOldest is { } w && w >= stateFloor && retention is { } cfg
+            ? BuildWindow(cfg)
+            : null;
         return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
+    }
+
+    private static bool IsDescendingResourceDownloaded(bool fastSyncing, long pivot, bool downloadInFastSync, long? pointer)
+    {
+        if (!fastSyncing) return true;
+        if (!downloadInFastSync) return false;
+        if (pivot == 0) return true;
+        return pointer is not null;
     }
 
     private static ResourceAvailability BuildResource(bool enabled, long oldestBlock, DeleteStrategy? deleteStrategy) =>

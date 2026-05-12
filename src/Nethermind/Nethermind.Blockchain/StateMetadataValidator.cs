@@ -37,7 +37,8 @@ public static class StateMetadataValidator
     private static bool IsStateMissing(long blockNumber, IWorldStateManager worldStateManager, IBlockTree blockTree)
     {
         BlockHeader? header = blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        // Unknown header — can't verify, leave the marker alone (next writer will overwrite).
+        // No header: can't verify. Not a deadlock — FullPruner aborts its cycle on null header,
+        // and the next sync writer overwrites the marker.
         if (header is null) return false;
         return !worldStateManager.GlobalStateReader.HasStateForBlock(header);
     }

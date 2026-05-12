@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -43,8 +42,7 @@ public partial class EthRpcModuleTests
 
         IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
         wsm.OldestStateBlock.Returns(oldestStateBlock);
-        wsm.GetOldestStateBlock(Arg.Any<long>()).Returns(call =>
-            retentionWindow is { } w ? Math.Max(0L, (long)call[0] - w) : (long?)null);
+        wsm.RetentionWindowBlocks.Returns(retentionWindow);
 
         ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
         syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
@@ -100,9 +98,14 @@ public partial class EthRpcModuleTests
             Name: "fast_sync_default_barriers_reports_genesis_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Available, ExpectedBlocks: Available)
-        { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true } };
+        {
+            HeadNumber = 18_001_000,
+            OldestStateBlock = 0,
+            LowestInsertedBody = 0,
+            LowestInsertedReceipt = 0,
+            SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true },
+        };
 
-        // Fast-synced (state finalised) with AncientBodiesBarrier > 0: bodies (and therefore blocks/receipts) missing below the barrier.
         const long bodiesBarrier = 5_000_000;
         ResourceAvailability barrierBound = new(Disabled: false, OldestBlock: bodiesBarrier);
         yield return new CapabilitiesScenario(
@@ -112,6 +115,8 @@ public partial class EthRpcModuleTests
         {
             HeadNumber = 18_001_000,
             OldestStateBlock = 0,
+            LowestInsertedBody = bodiesBarrier,
+            LowestInsertedReceipt = bodiesBarrier,
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true, AncientBodiesBarrier = bodiesBarrier },
         };
 
@@ -121,7 +126,6 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Disabled, ExpectedBlocks: Disabled)
         { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadBodiesInFastSync = false } };
 
-        // Receipts barrier higher than bodies barrier — receipts floor must follow the larger of the two.
         const long bodiesBarrierLow = 3_000_000;
         const long receiptsBarrierHigh = 6_000_000;
         ResourceAvailability blocksAtBodiesBarrier = new(Disabled: false, OldestBlock: bodiesBarrierLow);
@@ -133,6 +137,8 @@ public partial class EthRpcModuleTests
         {
             HeadNumber = 18_001_000,
             OldestStateBlock = 0,
+            LowestInsertedBody = bodiesBarrierLow,
+            LowestInsertedReceipt = receiptsBarrierHigh,
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true, AncientBodiesBarrier = bodiesBarrierLow, AncientReceiptsBarrier = receiptsBarrierHigh },
         };
 
@@ -170,7 +176,19 @@ public partial class EthRpcModuleTests
             ExpectedReceipts: Available, ExpectedBlocks: Available)
         {
             HeadNumber = 18_001_000,
+            LowestInsertedBody = 0,
+            LowestInsertedReceipt = 0,
             SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true },
+        };
+
+        // Early fast sync: barriers configured but descending pointers null — must be Disabled.
+        yield return new CapabilitiesScenario(
+            Name: "fast_sync_before_first_batch_disables_blocks_and_receipts",
+            ExpectedState: Disabled, ExpectedStateproofs: Disabled,
+            ExpectedReceipts: Disabled, ExpectedBlocks: Disabled)
+        {
+            HeadNumber = 18_001_000,
+            SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true, AncientBodiesBarrier = 5_000_000 },
         };
 
         const long fastSyncFloor = 18_000_000;
@@ -220,7 +238,12 @@ public partial class EthRpcModuleTests
             Name: "fast_sync_no_receipts_disables_tx_logs_receipts",
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Disabled, ExpectedBlocks: Available)
-        { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = false } };
+        {
+            HeadNumber = 18_001_000,
+            OldestStateBlock = 0,
+            LowestInsertedBody = 0,
+            SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = false },
+        };
 
         yield return new CapabilitiesScenario(
             Name: "full_sync_with_irrelevant_receipts_flag_keeps_receipts",
@@ -279,7 +302,7 @@ public partial class EthRpcModuleTests
         Assert.That(caps.Blocks, Is.EqualTo(Disabled));
         Assert.That(caps.Tx, Is.EqualTo(Disabled));
         Assert.That(caps.Logs, Is.EqualTo(Disabled));
-        wsm.DidNotReceive().GetOldestStateBlock(Arg.Any<long>());
+        _ = wsm.DidNotReceive().RetentionWindowBlocks;
     }
 
     [TestCaseSource(nameof(CapabilitiesScenarios))]
