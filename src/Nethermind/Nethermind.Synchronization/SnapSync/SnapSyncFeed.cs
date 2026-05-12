@@ -142,11 +142,17 @@ namespace Nethermind.Synchronization.SnapSync
                 int allLastSuccess = 0;
                 int allLastFailures = 0;
                 int peerLastFailures = 0;
+                bool seenOtherPeer = false;
 
                 lock (_syncLock)
                 {
                     foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
                     {
+                        if (item.peer != peer)
+                        {
+                            seenOtherPeer = true;
+                        }
+
                         if (item.result == AddRangeResult.OK)
                         {
                             allLastSuccess++;
@@ -166,6 +172,18 @@ namespace Nethermind.Synchronization.SnapSync
 
                                 if (peerLastFailures > AllowedInvalidResponses)
                                 {
+                                    // With a single peer in the recent window and no successes, the
+                                    // failure stream is more likely a stale pivot than a misbehaving
+                                    // peer — punishing the only available peer would stall sync.
+                                    if (!seenOtherPeer && allLastSuccess == 0)
+                                    {
+                                        _snapProvider.UpdatePivot();
+
+                                        _resultLog.Clear();
+
+                                        break;
+                                    }
+
                                     if (allLastFailures == peerLastFailures)
                                     {
                                         _logger.Trace($"SNAP - peer to be punished:{peer}");
