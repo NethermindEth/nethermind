@@ -246,6 +246,36 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.CumulativeRegularGasUsed, expectedAuthorizationStateGas)));
     }
 
+    [TestCase(false, 410_365L, TestName = "Eip8037_nested_create_collision_refunds_state_gas_and_burns_regular_gas_CREATE")]
+    [TestCase(true, 410_365L, TestName = "Eip8037_nested_create_collision_refunds_state_gas_and_burns_regular_gas_CREATE2")]
+    public void Eip8037_nested_create_collision_refunds_state_gas_and_burns_regular_gas(bool create2, long expectedBlockGas)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] salt = [0x01];
+        Address collisionAddress = create2
+            ? ContractAddress.From(Recipient, salt.PadLeft(32), initCode)
+            : ContractAddress.From(Recipient, 0);
+        TestState.CreateAccount(collisionAddress, 0, 1);
+
+        Prepare codeBuilder = create2
+            ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
+            : Prepare.EvmCode.Create(initCode, UInt256.Zero);
+        byte[] code = codeBuilder
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        const long gasLimit = 600_000;
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedBlockGas));
+        Assert.That(TestState.AccountExists(collisionAddress), Is.True);
+    }
+
     [TestCase(false, TestName = "Eip8037_top_level_create_revert_must_refund_inner_create_state_gas")]
     [TestCase(true, TestName = "Eip8037_top_level_create_halt_must_refund_inner_create_state_gas")]
     public void Eip8037_top_level_create_failure_must_refund_inner_create_state_gas(bool exceptionalHalt)
