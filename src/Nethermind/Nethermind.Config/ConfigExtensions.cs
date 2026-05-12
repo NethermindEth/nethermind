@@ -9,7 +9,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config;
 
