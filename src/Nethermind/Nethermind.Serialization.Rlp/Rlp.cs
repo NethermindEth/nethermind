@@ -662,7 +662,7 @@ namespace Nethermind.Serialization.Rlp
 
             public readonly bool IsSequenceNext() => Data[Position] >= 192;
 
-            public int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
+            public readonly int PeekNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
                 => RlpHelpers.CountItems(Data, Position, beforePosition ?? Data.Length, maxSearch);
 
             public void SkipLength() => Position += PeekPrefixLength();
@@ -1382,7 +1382,8 @@ namespace Nethermind.Serialization.Rlp
                 }
 
                 int checkPosition = Position + length;
-                int itemsCount = PeekNumberOfItemsRemaining(checkPosition);
+                int itemsCountMax = (limit ?? RlpLimit.DefaultLimit).Limit + 1;
+                int itemsCount = PeekNumberOfItemsRemaining(checkPosition, itemsCountMax);
                 GuardLimit(itemsCount, limit);
                 byte[][] result = new byte[itemsCount][];
 

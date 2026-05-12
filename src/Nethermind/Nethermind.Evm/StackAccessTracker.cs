@@ -11,14 +11,17 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker() : IDisposable
+public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 {
+    public StackAccessTracker() : this(false) { }
+
     public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
     public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
+    private readonly bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
 
     private int _addressesSnapshots;
@@ -65,8 +68,13 @@ public struct StackAccessTracker() : IDisposable
 
     public readonly void Restore()
     {
-        _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
-        _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+        // When tracing access, don't restore the access sets on sub-frame revert.
+        // The generated list will pre-warm all touched addresses.
+        if (!_isTracingAccess)
+        {
+            _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
+            _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);
+        }
         _trackingState.DestroyList.Restore(_destroyListSnapshots);
         _trackingState.Logs.Restore(_logsSnapshots);
     }
