@@ -16,7 +16,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> CalculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         throw new NotSupportedException("Calculating block info by V1 epoch number is not supported because only XDC V2 is supported");
@@ -273,8 +273,93 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
     }
 
-    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, long begin, long end) =>
-        throw new NotImplementedException();
+    public ResultWrapper<AccountRewardResponse> GetRewardByAccount(Address account, long begin, long end)
+    {
+        BlockHeader? beginHeader = tree.FindHeader(begin);
+        if (beginHeader is null)
+        {
+            return ResultWrapper<AccountRewardResponse>.Fail($"illegal begin block number {begin}");
+        }
+
+        BlockHeader? endHeader = tree.FindHeader(end);
+        if (endHeader is null)
+        {
+            return ResultWrapper<AccountRewardResponse>.Fail($"illegal end block number {end}");
+        }
+
+        long diff = endHeader.Number - beginHeader.Number;
+        if (diff < 0)
+        {
+            return ResultWrapper<AccountRewardResponse>.Fail("illegal begin and end block number, begin > end");
+        }
+        if (diff > 50_000)
+        {
+            return ResultWrapper<AccountRewardResponse>.Fail("block range over limit of 50,000 blocks");
+        }
+
+        if (beginHeader is not XdcBlockHeader xdcBeginHeader || endHeader is not XdcBlockHeader xdcEndHeader)
+        {
+            return ResultWrapper<AccountRewardResponse>.Fail("Headers are not XDC block headers");
+        }
+
+        EpochSwitchInfo[] epochSwitchInfos = epochSwitchManager.GetEpochSwitchInfoBetween(xdcBeginHeader, xdcEndHeader);
+        if (epochSwitchInfos is null)
+        {
+            return ResultWrapper<AccountRewardResponse>.Fail("Failed to get epoch switch info");
+        }
+
+        if (epochSwitchInfos.Length != 0 && rewardsStore.TryGetRetainedRange(out ulong oldestRetainedEpochBlockNumber, out _))
+        {
+            ulong requestedOldestEpoch = (ulong)epochSwitchInfos[0].EpochSwitchBlockInfo.BlockNumber;
+            if (requestedOldestEpoch < oldestRetainedEpochBlockNumber)
+            {
+                return ResultWrapper<AccountRewardResponse>.Fail(
+                    $"Cannot return pruned historical reward data before epoch block {oldestRetainedEpochBlockNumber}.",
+                    ErrorCodes.PrunedHistoryUnavailable);
+            }
+        }
+
+        List<AccountEpochReward> epochRewards = new(epochSwitchInfos.Length);
+        UInt256 totalReward = UInt256.Zero;
+
+        // No epoch switches in the requested range means no rewards to aggregate.
+        foreach (EpochSwitchInfo epochSwitchInfo in epochSwitchInfos)
+        {
+            ulong epochBlockNumber = (ulong)epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
+            if (!rewardsStore.HasEpochRewards(epochBlockNumber))
+            {
+                return ResultWrapper<AccountRewardResponse>.Fail($"Reward data not available for epoch block {epochBlockNumber}");
+            }
+
+            if (!rewardsStore.TryGetAccountReward(account, epochBlockNumber, out UInt256 accountReward))
+            {
+                continue;
+            }
+
+            totalReward += accountReward;
+            epochRewards.Add(new AccountEpochReward
+            {
+                EpochBlockNum = epochBlockNumber,
+                Address = account,
+                AccountStatus = "owner",
+                AccountReward = accountReward,
+                DelegatedReward = new Dictionary<string, UInt256>()
+            });
+        }
+
+        return ResultWrapper<AccountRewardResponse>.Success(new AccountRewardResponse
+        {
+            EpochRewards = [.. epochRewards],
+            Total = new TotalRewards
+            {
+                Address = account,
+                StartBlockNum = (ulong)begin,
+                EndBlockNum = (ulong)end,
+                TotalAccountReward = totalReward,
+                TotalDelegatedReward = new Dictionary<string, UInt256>()
+            }
+        });
+    }
 
     public ResultWrapper<Address[]> GetSigners(BlockParameter blockParam)
     {

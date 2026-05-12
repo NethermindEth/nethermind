@@ -15,7 +15,8 @@ internal class XdcModuleFactory(
         IEpochSwitchManager epochSwitchManager,
         IVotesManager votesManager,
         ITimeoutCertificateManager timeoutCertificateManager,
-        ISyncInfoManager syncInfoManager) : ModuleFactoryBase<IXdcRpcModule>
+        ISyncInfoManager syncInfoManager,
+        IRewardsStore rewardsStore) : ModuleFactoryBase<IXdcRpcModule>
 {
     public override IXdcRpcModule Create() => new XdcRpcModule(
             blockTree,
@@ -25,5 +26,6 @@ internal class XdcModuleFactory(
             epochSwitchManager,
             votesManager,
             timeoutCertificateManager,
-            syncInfoManager);
+            syncInfoManager,
+            rewardsStore);
 }

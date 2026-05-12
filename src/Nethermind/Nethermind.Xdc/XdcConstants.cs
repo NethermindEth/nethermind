@@ -38,6 +38,7 @@ internal static class XdcConstants
 
     public const int PeriodicJobPeriod = 60;
     public const int PoolHygieneRound = 10;
+    public const ulong RewardHistoryEpochRetention = 20_000;
     public const int InMemorySignatures = 4096;
 
     public static readonly Hash256 UncleHash = Keccak.OfAnEmptySequenceRlp; // Always Keccak256(RLP([])) as uncles are meaningless outside of PoW
