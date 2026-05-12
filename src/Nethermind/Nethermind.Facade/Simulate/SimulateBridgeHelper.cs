@@ -11,7 +11,6 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using Nethermind.Int256;
 using Nethermind.State;
 using System;
 using System.Collections.Generic;

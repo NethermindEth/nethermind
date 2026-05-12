@@ -81,12 +81,12 @@ internal class XdcBlockAndHeaderStoreTests
 
         child.Should().BeOfType<XdcBlockHeader>();
         XdcBlockHeader xdcChild = (XdcBlockHeader)child;
-        xdcChild.ParentHash.Should().Be(parent.Hash);
+        xdcChild.ParentHash.Should().Be(parent.Hash!);
         xdcChild.Number.Should().Be(parent.Number + 1);
         xdcChild.Timestamp.Should().Be(parent.Timestamp + 12);
         xdcChild.ExtraData.Should().BeEmpty();
         xdcChild.MixHash.Should().Be(Hash256.Zero);
-        xdcChild.RequestsHash.Should().Be(parent.RequestsHash);
+        xdcChild.RequestsHash.Should().Be(parent.RequestsHash!);
         xdcChild.Validators.Should().BeNull();
         xdcChild.Validator.Should().BeNull();
         xdcChild.Penalties.Should().BeNull();
