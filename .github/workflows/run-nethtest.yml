@@ -61,7 +61,7 @@ jobs:
             eest_archive: fixtures_stable.tar.gz
             workers: '8'
           - test_setup: new_spec
-            runner: ubuntu-latest-16-cores
+            runner: ubuntu-chad
             eest_repository: ethereum/execution-specs
             eest_version: tests-bal@v7.0.0
             eest_archive: fixtures_bal.tar.gz
