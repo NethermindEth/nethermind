@@ -232,9 +232,34 @@ jobs:
             echo "Total: $TOTAL | Passed: $PASSED | Failed: $FAILED"
           }
 
-          trap write_summary EXIT
+          cleanup() {
+            if [ -n "${HEARTBEAT_PID:-}" ]; then
+              kill "$HEARTBEAT_PID" 2>/dev/null || true
+              wait "$HEARTBEAT_PID" 2>/dev/null || true
+            fi
+
+            write_summary
+          }
+
+          trap cleanup EXIT
 
           touch /tmp/nethtest-results.json /tmp/nethtest-stderr.log
+
+          heartbeat() {
+            while true; do
+              sleep 60 || exit 0
+              echo "nethtest still running at $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+              echo "Results file size: $(wc -c < /tmp/nethtest-results.json) bytes"
+              echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
+              if [ -s /tmp/nethtest-stderr.log ]; then
+                echo "--- recent nethtest status ---"
+                sed 's/\x1b\[[0-9;]*m//g' /tmp/nethtest-stderr.log | tail -10
+                echo "------------------------------"
+              fi
+            done
+          }
+          heartbeat &
+          HEARTBEAT_PID=$!
 
           # Named pipe to tee stderr to both console and log file
           STDERR_PIPE=$(mktemp -u)
