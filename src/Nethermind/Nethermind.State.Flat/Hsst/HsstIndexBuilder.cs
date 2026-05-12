@@ -272,21 +272,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             return new LeafLayout(0, 1);
         }
 
-        // Bytes of the first separator. The leaf-wide common prefix is always a
-        // prefix of these bytes, so we only need to track its length (commonLen).
-        Span<byte> firstSep = stackalloc byte[MaxKeyLen];
         // Sliding window keys.
         Span<byte> currKey = stackalloc byte[MaxKeyLen];
         Span<byte> nextKey = stackalloc byte[MaxKeyLen];
-        // Sep bytes of the entry at (entryIdx + count - 1) — needed for pair-level
-        // disambiguation when its sep length equals the next entry's sep length.
-        Span<byte> prevSep = stackalloc byte[MaxKeyLen];
 
         // Seed running state from the first entry alone.
         int currKeyLen = ReadKey(entryIdx, currKey);
         int firstSepLen = Math.Min(_commonPrefixArr![entryIdx] + 1, currKeyLen);
-        currKey[..firstSepLen].CopyTo(firstSep);
-        currKey[..firstSepLen].CopyTo(prevSep);
         int prevSepLen = firstSepLen;
 
         int maxSepLen = firstSepLen;
@@ -307,11 +299,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
             int la = prevSepLen;
             int lb = nextSepLen;
+            int adjLcp = _commonPrefixArr![entryIdx + count];
             int pairNeeded;
             if (la == lb)
             {
-                int common = CommonPrefixLength(prevSep[..la], nextKey[..lb]);
-                pairNeeded = common + 1;
+                // LCP(K_{j-1}[..la], K_j[..lb]) = min(la, LCP(K_{j-1}, K_j)) when la == lb.
+                pairNeeded = Math.Min(la, adjLcp) + 1;
                 if (pairNeeded > la) pairNeeded = la;
             }
             else
@@ -321,10 +314,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             int newNaturalMax = Math.Max(naturalMax, pairNeeded);
 
             int newMaxSepLen = Math.Max(maxSepLen, lb);
-            int boundary = Math.Min(commonLen, lb);
+            // Leaf-wide commonLen tracks min(firstSepLen, all lb's, LCP(K_0, K_j)).
+            // LCP(K_0, K_j) folds incrementally as min of adjacent-key LCPs.
             int newCommonLen = commonLen == 0
                 ? 0
-                : CommonPrefixLength(firstSep[..boundary], nextKey[..boundary]);
+                : Math.Min(Math.Min(commonLen, lb), adjLcp);
 
             long nextMd = _entryPositions[entryIdx + count];
             long newMinVal = Math.Min(minVal, nextMd);
@@ -359,10 +353,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             maxVal = newMaxVal;
             valueSlotSize = newValueSlotSize;
 
-            // Slide window: curr ← next; prevSep ← next's sep bytes.
+            // Slide window: curr ← next.
             nextKey[..nextKeyLen].CopyTo(currKey);
             currKeyLen = nextKeyLen;
-            nextKey[..lb].CopyTo(prevSep);
             prevSepLen = lb;
             count++;
         }
