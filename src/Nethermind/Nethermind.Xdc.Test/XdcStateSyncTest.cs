@@ -21,7 +21,7 @@ namespace Nethermind.Xdc.Test;
 /// Verifies that state sync downloads all gap block states before finalizing at the real pivot.
 /// </summary>
 [TestFixture]
-public class XdcStateSyncPivotIntegrationTests : StateSyncFeedTestsBase
+public class XdcStateSyncTest : StateSyncFeedTestsBase
 {
     [Test]
     public async Task RunStateSyncRounds_WithMultiTargetPivot_SyncsAllTargetsBeforeFinalizing()
@@ -84,7 +84,6 @@ public class XdcStateSyncPivotIntegrationTests : StateSyncFeedTestsBase
             });
         });
 
-        IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         SafeContext ctx = container.Resolve<SafeContext>();
 
         await ActivateAndWait(ctx);
