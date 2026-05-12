@@ -7,6 +7,10 @@ concurrency:
 on:
   push:
     branches: [feat/evm-enginetest]
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
   workflow_dispatch:
     inputs:
       branch:
@@ -46,8 +50,49 @@ defaults:
     shell: bash
 
 jobs:
+  pr-gate:
+    name: PR approval gate
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Check PR approval
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          PR_STATE: ${{ github.event.pull_request.state || '' }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login || '' }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$PR_STATE" != "open" ]; then
+            echo "PR is not open; skipping nethtest."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          APPROVALS="$(gh api "repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews?per_page=100" \
+            | jq --arg author "$PR_AUTHOR" --arg approved APPROVED '[.[] | select(.user.login != $author)] | group_by(.user.login) | map(max_by(.submitted_at)) | map(select(.state == $approved)) | length')"
+
+          echo "Latest approval count: $APPROVALS"
+          if [ "$APPROVALS" -gt 0 ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   nethtest:
     name: nethtest ${{ matrix.test_setup }} on ${{ matrix.runner }} --${{ inputs.test_type || 'engineTest' }}
+    needs: pr-gate
+    if: needs.pr-gate.outputs.should_run == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -61,7 +106,7 @@ jobs:
             eest_archive: fixtures_stable.tar.gz
             workers: '8'
           - test_setup: new_spec
-            runner: ubuntu-chad
+            runner: ubuntu-gigachad
             eest_repository: ethereum/execution-specs
             eest_version: tests-bal@v7.0.0
             eest_archive: fixtures_bal.tar.gz
