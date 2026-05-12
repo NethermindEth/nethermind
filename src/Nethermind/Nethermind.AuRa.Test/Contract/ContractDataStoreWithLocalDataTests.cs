@@ -26,7 +26,7 @@ namespace Nethermind.AuRa.Test.Contract
             localDataSource.Data.Returns((IEnumerable<Address>)null);
             TestCase<Address> testCase = BuildTestCase(localDataSource, false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
-            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EqualTo(Enumerable.Empty<Address>()));
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(Enumerable.Empty<Address>()));
         }
 
         [Test]
@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test.Contract
             localDataSource.Data.Returns(expected);
             TestCase<Address> testCase = BuildTestCase(localDataSource, false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
-            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EqualTo(expected.Cast<object>()));
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
         }
 
         [Test]
@@ -50,7 +50,7 @@ namespace Nethermind.AuRa.Test.Contract
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
             localDataSource.Data.Returns(expected);
             localDataSource.Changed += Raise.Event<EventHandler>();
-            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EqualTo(expected.Cast<object>()));
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
         }
 
         [Test]
@@ -62,7 +62,7 @@ namespace Nethermind.AuRa.Test.Contract
             TestCase<Address> testCase = BuildTestCase(localDataSource, false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
             localDataSource.Data.Returns(new[] { TestItem.AddressA, TestItem.AddressB });
-            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EqualTo(expected.Cast<object>()));
+            Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
         }
 
         [Test]

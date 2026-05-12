@@ -28,7 +28,15 @@ internal static class MergeTestAssertions
         }
 
         Assert.That(actual, Is.Not.Null);
-        Assert.That(actual!.Hash, Is.EqualTo(expected.Hash));
-        Assert.That(actual.Number, Is.EqualTo(expected.Number));
+        if (actual is null)
+        {
+            return;
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+            Assert.That(actual.Number, Is.EqualTo(expected.Number));
+        });
     }
 }

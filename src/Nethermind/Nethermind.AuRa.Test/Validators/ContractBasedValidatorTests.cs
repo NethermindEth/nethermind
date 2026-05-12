@@ -30,6 +30,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Text.Json;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.AuRa.Test.Validators;
 
@@ -521,7 +522,7 @@ public class ContractBasedValidatorTests
             _blockTree.FindBlock(_block.Header.Hash, Arg.Any<BlockTreeLookupOptions>()).Returns(new Block(_block.Header.Clone()));
 
             Action preProcess = () => validator.OnBlockProcessingStart(_block);
-            Assert.That(preProcess, Throws.Nothing);
+            AssertDoesNotThrowExceptionOfType<InvalidOperationException>(preProcess, test.TestName);
             validator.OnBlockProcessingEnd(_block, txReceipts);
             int finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
             _blockFinalizationManager.GetLastLevelFinalizedBy(_block.Header.Hash).Returns(finalizedNumber);

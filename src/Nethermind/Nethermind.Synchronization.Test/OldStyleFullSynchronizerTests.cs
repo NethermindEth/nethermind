@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -188,7 +188,7 @@ namespace Nethermind.Synchronization.Test
             SyncPeerPool.AddPeer(miner1);
 
             Assert.That(() => _blockTree.BestSuggestedHeader?.Number, Is.EqualTo(miner1Tree.BestSuggestedHeader!.Number).After((int)_standardTimeoutUnit.TotalMilliseconds, 100));
-            Assert.That(miner1Tree.BestSuggestedHeader, Is.EqualTo(_blockTree.BestSuggestedHeader), "client agrees with miner before split");
+            BlockTestAssertions.AssertBlockHeaderEquivalent(miner1Tree.BestSuggestedHeader, _blockTree.BestSuggestedHeader);
 
             Block splitBlock = Build.A.Block
                 .WithParent(miner1Tree.FindParent(miner1Tree.Head!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)!)
@@ -201,7 +201,7 @@ namespace Nethermind.Synchronization.Test
             miner1Tree.SuggestBlock(splitBlockChild);
             miner1Tree.UpdateMainChain(splitBlockChild);
 
-            Assert.That(splitBlockChild.Header, Is.EqualTo(miner1Tree.BestSuggestedHeader), "split as expected");
+            BlockTestAssertions.AssertBlockHeaderEquivalent(splitBlockChild.Header, miner1Tree.BestSuggestedHeader);
 
             SyncServer.AddNewBlock(splitBlockChild, miner1);
 

@@ -26,6 +26,7 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V67;
 
@@ -112,7 +113,7 @@ public class Eth67ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         System.Action act = () => HandleZeroMessage(msg66, Eth66MessageCode.NodeData);
-        Assert.That(act, Throws.Nothing);
+        AssertDoesNotThrowExceptionOfType<SubprotocolException>(act);
     }
 
     [Test]

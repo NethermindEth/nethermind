@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -48,13 +48,20 @@ namespace Nethermind.Abi.Test.Json
 
             if (actual is JArray actualArray && expected is JArray expectedArray)
             {
+                bool[] matched = new bool[actualArray.Count];
                 foreach (JToken expectedItem in expectedArray)
                 {
                     bool found = false;
-                    foreach (JToken actualItem in actualArray)
+                    for (int i = 0; i < actualArray.Count; i++)
                     {
-                        if (ContainsSubtree(actualItem, expectedItem))
+                        if (matched[i])
                         {
+                            continue;
+                        }
+
+                        if (ContainsSubtree(actualArray[i], expectedItem))
+                        {
+                            matched[i] = true;
                             found = true;
                             break;
                         }

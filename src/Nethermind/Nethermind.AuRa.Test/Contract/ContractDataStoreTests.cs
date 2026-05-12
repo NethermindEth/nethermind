@@ -30,7 +30,7 @@ public abstract class ContractDataStoreTests
         BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
         Address[] expected = { TestItem.AddressA };
         testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(expected);
-        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EqualTo(expected.Cast<object>()));
+        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader), Is.EquivalentTo(expected.Cast<object>()));
     }
 
     [Test]
@@ -43,7 +43,7 @@ public abstract class ContractDataStoreTests
 
         IEnumerable<object> firstResult = testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         IEnumerable<object> secondResult = testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-        Assert.That(secondResult, Is.EqualTo(firstResult));
+        Assert.That(secondResult, Is.EquivalentTo(firstResult));
         testCase.DataContract.Received(1).GetAllItemsFromBlock(blockHeader);
     }
 
@@ -58,7 +58,7 @@ public abstract class ContractDataStoreTests
         testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Returns(expected);
 
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader), Is.EqualTo(expected.Cast<object>()));
+        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader), Is.EquivalentTo(expected.Cast<object>()));
     }
 
     [Test]
@@ -72,7 +72,7 @@ public abstract class ContractDataStoreTests
         testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Throws(new AbiException(string.Empty));
 
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
-        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader), Is.EqualTo(expected.Cast<object>()));
+        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader), Is.EquivalentTo(expected.Cast<object>()));
     }
 
     [Test]
@@ -88,7 +88,7 @@ public abstract class ContractDataStoreTests
         testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
         testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(secondBlock));
 
-        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header), Is.EqualTo(expected.Cast<object>()));
+        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header), Is.EquivalentTo(expected.Cast<object>()));
     }
 
     [Test]
@@ -112,7 +112,7 @@ public abstract class ContractDataStoreTests
 
         Assert.That(
             () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-            Is.EqualTo(expected.Cast<object>()).After(200, 20)
+            Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
         );
     }
 
@@ -125,7 +125,7 @@ public abstract class ContractDataStoreTests
         Address[] expected = { TestItem.AddressB };
         testCase.DataContract.GetAllItemsFromBlock(block.Header).Returns(expected);
         testCase.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(block));
-        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(block.Header), Is.EqualTo(expected.Cast<object>()));
+        Assert.That(testCase.ContractDataStore.GetItemsFromContractAtBlock(block.Header), Is.EquivalentTo(expected.Cast<object>()));
     }
 
     [Test]
@@ -149,7 +149,7 @@ public abstract class ContractDataStoreTests
 
         Assert.That(
             () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-            Is.EqualTo(expected.Cast<object>()).After(200, 20)
+            Is.EquivalentTo(expected.Cast<object>()).After(200, 20)
         );
     }
 
@@ -172,7 +172,7 @@ public abstract class ContractDataStoreTests
 
         Assert.That(
             () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).ToList(),
-            Is.EqualTo(new ArrayList() { TestItem.AddressA, TestItem.AddressB }).After(200, 20)
+            Is.EquivalentTo(new ArrayList() { TestItem.AddressA, TestItem.AddressB }).After(200, 20)
             );
     }
 
@@ -195,7 +195,7 @@ public abstract class ContractDataStoreTests
 
         Assert.That(
             () => testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header),
-            Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressC }).After(200, 20)
+            Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressC }).After(200, 20)
         );
     }
 

@@ -106,7 +106,7 @@ internal class SubnetSnapshotManagerTests
         Assert.That(result, Is.TypeOf<SubnetSnapshot>());
         SubnetSnapshot subnetSnapshot = (SubnetSnapshot)result!;
         Assert.That(subnetSnapshot.HeaderHash, Is.EqualTo(header.Hash!));
-        Assert.That(subnetSnapshot.NextEpochPenalties, Is.EqualTo(penalties));
+        Assert.That(subnetSnapshot.NextEpochPenalties, Is.EquivalentTo(penalties));
     }
 
     private static void AssertSubnetSnapshot(SubnetSnapshot? actual, SubnetSnapshot expected)
@@ -116,8 +116,8 @@ internal class SubnetSnapshotManagerTests
         {
             Assert.That(actual!.BlockNumber, Is.EqualTo(expected.BlockNumber));
             Assert.That(actual.HeaderHash, Is.EqualTo(expected.HeaderHash));
-            Assert.That(actual.NextEpochCandidates, Is.EqualTo(expected.NextEpochCandidates));
-            Assert.That(actual.NextEpochPenalties, Is.EqualTo(expected.NextEpochPenalties));
+            Assert.That(actual.NextEpochCandidates, Is.EquivalentTo(expected.NextEpochCandidates));
+            Assert.That(actual.NextEpochPenalties, Is.EquivalentTo(expected.NextEpochPenalties));
         });
     }
 }

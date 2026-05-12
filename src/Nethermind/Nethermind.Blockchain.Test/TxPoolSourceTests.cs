@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Transactions;
@@ -10,6 +10,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Config;
@@ -147,6 +148,6 @@ public class TxPoolSourceTests
         Transaction[] result = txSource.GetTransactions(parent, long.MaxValue).ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
-        Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }));
+        result.EqualToTransactions([highPriorityBlobTx, lowerPriorityRegularTx]);
     }
 }

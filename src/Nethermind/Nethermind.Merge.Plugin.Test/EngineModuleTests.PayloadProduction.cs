@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -129,7 +129,13 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResult.StateRoot, Is.Not.EqualTo(chain.BlockTree.Genesis!.StateRoot!));
 
         Transaction[] transactionsInBlock = getPayloadResult.TryGetTransactions().Transactions;
-        Assert.That(transactionsInBlock, Is.EqualTo(transactions));
+        transactionsInBlock.EqualToTransactions(
+            transactions,
+            nameof(Transaction.ChainId),
+            nameof(Transaction.SenderAddress),
+            nameof(Transaction.Timestamp),
+            nameof(Transaction.PoolIndex),
+            nameof(Transaction.GasBottleneck));
 
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
         Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));

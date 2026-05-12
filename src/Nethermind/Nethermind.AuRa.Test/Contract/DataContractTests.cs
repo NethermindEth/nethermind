@@ -18,7 +18,7 @@ namespace Nethermind.AuRa.Test.Contract
             DataContract<int> dataContract = new(GetAll, GetFromReceipts);
             Assert.That(dataContract.IncrementalChanges, Is.True);
             Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
-            Assert.That(items, Is.EqualTo(new[] { 1, 5 }));
+            Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
         }
 
         [Test]
@@ -27,7 +27,7 @@ namespace Nethermind.AuRa.Test.Contract
             DataContract<int> dataContract = new(GetAll, TryGetFromReceiptsTrue);
             Assert.That(dataContract.IncrementalChanges, Is.False);
             Assert.That(dataContract.TryGetItemsChangedFromBlock(Build.A.BlockHeader.TestObject, [], out IEnumerable<int> items), Is.True);
-            Assert.That(items, Is.EqualTo(new[] { 1, 5 }));
+            Assert.That(items, Is.EquivalentTo(new[] { 1, 5 }));
         }
 
         [Test]

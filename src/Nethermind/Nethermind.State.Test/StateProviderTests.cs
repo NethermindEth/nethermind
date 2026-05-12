@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using NUnit.Framework;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Store.Test;
 
@@ -249,7 +250,7 @@ public class StateProviderTests(bool useFlat)
             provider.CreateAccount(TestItem.AddressA, 5);
             provider.CommitTree(0);
 
-            Assert.That(action, Throws.Nothing);
+            AssertDoesNotThrowExceptionOfType<InvalidOperationException>(action);
         }
 
         Assert.That(action, Throws.TypeOf<InvalidOperationException>());

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -170,8 +171,8 @@ public class DbBlocksLoaderTests
         await tree2.Accept(loader, tokenSource.Token);
 
         Assert.That(tree2.BestKnownNumber, Is.EqualTo(3L), "best known");
-        Assert.That(tree2.Head!.Header.Hash, Is.EqualTo(block3B.Header.Hash));
-        Assert.That(tree2.BestSuggestedHeader!.Hash, Is.EqualTo(block3B.Header.Hash));
+        BlockTestAssertions.AssertBlockHeaderEquivalent(tree2.Head!.Header, block3B.Header);
+        BlockTestAssertions.AssertBlockHeaderEquivalent(tree2.BestSuggestedHeader, block3B.Header);
 
         Assert.That(blockStore.Get(block1.Number, block1.Hash!), Is.Null, "block 1");
         Assert.That(blockStore.Get(block2.Number, block2.Hash!), Is.Null, "block 2");

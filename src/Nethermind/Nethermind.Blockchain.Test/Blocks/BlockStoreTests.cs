@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -28,7 +28,7 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        AssertBlocksEquivalent(retrieved, block);
+        BlockTestAssertions.AssertBlockEquivalent(retrieved, block);
 
         store.Delete(block.Number, block.Hash!);
 
@@ -59,7 +59,7 @@ public class BlockStoreTests
         db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        AssertBlocksEquivalent(retrieved, block);
+        BlockTestAssertions.AssertBlockEquivalent(retrieved, block);
     }
 
     [Test]
@@ -85,13 +85,13 @@ public class BlockStoreTests
         store.Insert(block);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
-        AssertBlocksEquivalent(retrieved, block);
+        BlockTestAssertions.AssertBlockEquivalent(retrieved, block);
 
         db.Clear();
 
         retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved!.EncodedSize = null;
-        AssertBlocksEquivalent(retrieved, block);
+        BlockTestAssertions.AssertBlockEquivalent(retrieved, block);
     }
 
     [Test]
@@ -108,7 +108,7 @@ public class BlockStoreTests
 
         ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
 
-        Assert.That(retrieved.Header.Hash, Is.EqualTo(block.Header.Hash));
+        BlockTestAssertions.AssertBlockHeaderEquivalent(retrieved.Header, block.Header);
         Assert.That(retrieved.TransactionCount, Is.EqualTo(block.Transactions.Length));
 
         for (int i = 0; i < retrieved.TransactionCount; i++)
@@ -142,7 +142,7 @@ public class BlockStoreTests
 
         // Populate cache
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, shouldCache: true);
-        AssertBlocksEquivalent(retrieved, block);
+        BlockTestAssertions.AssertBlockEquivalent(retrieved, block);
 
         // Clear the DB but block should still be in cache
         db.Clear();
@@ -155,27 +155,4 @@ public class BlockStoreTests
         Assert.That(retrieved, Is.Null);
     }
 
-    private static void AssertBlocksEquivalent(Block? actual, Block expected)
-    {
-        Assert.That(actual, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(actual!.Hash, Is.EqualTo(expected.Hash));
-            Assert.That(actual.Header.Hash, Is.EqualTo(expected.Header.Hash));
-            Assert.That(actual.Number, Is.EqualTo(expected.Number));
-            Assert.That(actual.Transactions, Has.Length.EqualTo(expected.Transactions.Length));
-            Assert.That(actual.Uncles, Has.Length.EqualTo(expected.Uncles.Length));
-            Assert.That(actual.Withdrawals, Is.EqualTo(expected.Withdrawals));
-        });
-
-        for (int i = 0; i < expected.Transactions.Length; i++)
-        {
-            actual!.Transactions[i].EqualToTransaction(expected.Transactions[i]);
-        }
-
-        for (int i = 0; i < expected.Uncles.Length; i++)
-        {
-            Assert.That(actual!.Uncles[i].Hash, Is.EqualTo(expected.Uncles[i].Hash));
-        }
-    }
 }

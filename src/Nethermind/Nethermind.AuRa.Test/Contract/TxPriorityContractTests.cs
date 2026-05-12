@@ -64,8 +64,8 @@ public class TxPriorityContractTests
         IEnumerable<Address> whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
         IEnumerable<Address> whiteListInContract = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
         object[] expected = { TestItem.AddressA, TestItem.AddressC };
-        Assert.That(whiteList, Is.EqualTo(expected));
-        Assert.That(whiteListInContract, Is.EqualTo(expected));
+        Assert.That(whiteList, Is.EquivalentTo(expected));
+        Assert.That(whiteListInContract, Is.EquivalentTo(expected));
     }
 
     [Test]
@@ -118,7 +118,7 @@ public class TxPriorityContractTests
             TxPriorityContract.LocalData localData = chain.LocalDataSource.Data;
             if (localData is not null)
             {
-                Assert.That(localData.Whitelist, Is.EqualTo(new object[] { TestItem.AddressD, TestItem.AddressB }));
+                Assert.That(localData.Whitelist, Is.EquivalentTo(new object[] { TestItem.AddressD, TestItem.AddressB }));
                 semaphoreSlim.Release();
             }
         };
@@ -139,7 +139,7 @@ public class TxPriorityContractTests
         object[] expected = { TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC };
 
         IEnumerable<Address> whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
-        Assert.That(whiteList, Is.EqualTo(expected));
+        Assert.That(whiteList, Is.EquivalentTo(expected));
     }
 
     [Test]

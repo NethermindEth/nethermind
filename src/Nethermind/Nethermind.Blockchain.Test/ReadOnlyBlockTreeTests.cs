@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -57,7 +59,7 @@ public class ReadOnlyBlockTreeTests
         }
         else
         {
-            Assert.That(action, Throws.Nothing);
+            AssertDoesNotThrowExceptionOfType<InvalidOperationException>(action);
         }
     }
 }

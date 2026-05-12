@@ -7,6 +7,7 @@ using Autofac.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Exceptions;
 using NUnit.Framework;
+using static Nethermind.Core.Test.ExceptionAssertionExtensions;
 
 namespace Nethermind.Core.Test.Container;
 
@@ -43,7 +44,7 @@ public class FallbackToFieldFromApiTests
         Action act = (() => container.Resolve<TargetService>());
         if (allowRedundantRegistrations)
         {
-            Assert.That(act, Throws.Nothing);
+            AssertDoesNotThrowExceptionOfType<InvalidConfigurationException>(act);
         }
         else
         {

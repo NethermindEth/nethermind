@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,6 +14,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -277,7 +278,7 @@ namespace Nethermind.AuRa.Test.Transactions
             const int DefaultGasLimit = 36_000_000;
 
             Transaction[] orderedTransactions = TxPoolTxSource.Order(txBySender, comparer, _ => true, DefaultGasLimit).ToArray();
-            Assert.That(orderedTransactions, Is.EqualTo(expectation));
+            orderedTransactions.EqualToTransactions(expectation);
         }
 
         private static void SetPriority(

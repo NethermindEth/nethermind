@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
@@ -79,6 +79,27 @@ internal static class XdcTestAssertions
         });
     }
 
+    public static void AssertVote(Vote? actual, Vote expected, bool compareSigner = false)
+    {
+        Assert.That(actual, Is.Not.Null);
+        if (actual is null)
+        {
+            return;
+        }
+
+        Assert.Multiple(() =>
+        {
+            AssertBlockRoundInfo(actual.ProposedBlockInfo, expected.ProposedBlockInfo);
+            Assert.That(actual.GapNumber, Is.EqualTo(expected.GapNumber));
+            Assert.That(actual.Signature, Is.EqualTo(expected.Signature));
+            Assert.That(actual.IsMyVote, Is.EqualTo(expected.IsMyVote));
+            if (compareSigner)
+            {
+                Assert.That(actual.Signer, Is.EqualTo(expected.Signer));
+            }
+        });
+    }
+
     public static void AssertBlockRoundInfo(BlockRoundInfo? actual, BlockRoundInfo expected)
     {
         Assert.That(actual, Is.Not.Null);
@@ -147,7 +168,7 @@ internal static class XdcTestAssertions
         Assert.That(actual.NextEpochPenalties, Is.EquivalentTo(expected.NextEpochPenalties));
     }
 
-    public static void AssertXdcHeader(XdcBlockHeader? actual, XdcBlockHeader expected)
+    public static void AssertXdcHeader(XdcBlockHeader? actual, XdcBlockHeader expected, bool compareHash = true)
     {
         Assert.That(actual, Is.Not.Null);
         if (actual is null)
@@ -157,7 +178,11 @@ internal static class XdcTestAssertions
 
         Assert.Multiple(() =>
         {
-            Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+            if (compareHash)
+            {
+                Assert.That(actual.Hash, Is.EqualTo(expected.Hash));
+            }
+
             Assert.That(actual.ParentHash, Is.EqualTo(expected.ParentHash));
             Assert.That(actual.UnclesHash, Is.EqualTo(expected.UnclesHash));
             Assert.That(actual.Beneficiary, Is.EqualTo(expected.Beneficiary));
@@ -167,9 +192,9 @@ internal static class XdcTestAssertions
             Assert.That(actual.GasUsed, Is.EqualTo(expected.GasUsed));
             Assert.That(actual.Timestamp, Is.EqualTo(expected.Timestamp));
             Assert.That(actual.ExtraData, Is.EqualTo(expected.ExtraData));
-            Assert.That(actual.Validators, Is.EqualTo(expected.Validators));
+            AssertBytesEquivalent(actual.Validators, expected.Validators);
             Assert.That(actual.Validator, Is.EqualTo(expected.Validator));
-            Assert.That(actual.Penalties, Is.EqualTo(expected.Penalties));
+            AssertBytesEquivalent(actual.Penalties, expected.Penalties);
             Assert.That(actual.TxRoot, Is.EqualTo(expected.TxRoot));
             Assert.That(actual.StateRoot, Is.EqualTo(expected.StateRoot));
             Assert.That(actual.ReceiptsRoot, Is.EqualTo(expected.ReceiptsRoot));
@@ -190,9 +215,14 @@ internal static class XdcTestAssertions
         Assert.Multiple(() =>
         {
             AssertXdcHeader((XdcBlockHeader)actual.Header, (XdcBlockHeader)expected.Header);
-            Assert.That(actual.Transactions.Select(static tx => tx.Hash), Is.EqualTo(expected.Transactions.Select(static tx => tx.Hash)));
-            Assert.That(actual.Uncles.Select(static header => header.Hash), Is.EqualTo(expected.Uncles.Select(static header => header.Hash)));
+            actual.Transactions.EqualToTransactions(expected.Transactions);
+            Assert.That(actual.Uncles, Has.Length.EqualTo(expected.Uncles.Length));
         });
+
+        for (int i = 0; i < expected.Uncles.Length; i++)
+        {
+            AssertXdcHeader((XdcBlockHeader)actual.Uncles[i], (XdcBlockHeader)expected.Uncles[i]);
+        }
     }
 
     private static void AssertSignatures(Signature[]? actual, Signature[]? expected)
@@ -205,5 +235,16 @@ internal static class XdcTestAssertions
         {
             Assert.That(actual, Is.EqualTo(expected));
         }
+    }
+
+    private static void AssertBytesEquivalent(byte[]? actual, byte[]? expected)
+    {
+        if (expected is null)
+        {
+            Assert.That(actual, Is.Null);
+            return;
+        }
+
+        Assert.That(actual, Is.EquivalentTo(expected));
     }
 }

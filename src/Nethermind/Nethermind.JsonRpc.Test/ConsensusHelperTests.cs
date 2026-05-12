@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -141,20 +141,16 @@ namespace Nethermind.JsonRpc.Test
 
             if (compareJson)
             {
-                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
-                Assert.That(data, Is.EqualTo(expectation));
-                Assert.That(data["error"], Is.Null, data["error"]!.ToString());
+                AssertJsonEquivalentWithoutError(await source1.GetJsonData(), await source2.GetJsonData());
             }
             else
             {
                 string dataJson = string.Empty, expectationJson = string.Empty;
                 try
                 {
-                    T data, expectation;
-                    (data, dataJson) = await source1.GetData();
-                    (expectation, expectationJson) = await source2.GetData();
-                    Assert.That(data, Is.EqualTo(expectation));
+                    (_, dataJson) = await source1.GetData();
+                    (_, expectationJson) = await source2.GetData();
+                    AssertNormalizedJsonEquivalent(dataJson, expectationJson);
                 }
                 finally
                 {
@@ -170,20 +166,16 @@ namespace Nethermind.JsonRpc.Test
 
             if (compareJson)
             {
-                JsonNode data = JsonHelper.ParseNormalize(await source1.GetJsonData());
-                JsonNode expectation = JsonHelper.ParseNormalize(await source2.GetJsonData());
-                Assert.That(data, Is.EqualTo(expectation));
-                Assert.That(data["error"], Is.Null, data["error"]!.ToString());
+                AssertJsonEquivalentWithoutError(await source1.GetJsonData(), await source2.GetJsonData());
             }
             else
             {
                 string dataJson = string.Empty, expectationJson = string.Empty;
                 try
                 {
-                    IEnumerable<T> data, expectation;
-                    (data, dataJson) = await source1.GetData();
-                    (expectation, expectationJson) = await source2.GetData();
-                    Assert.That(data, Is.EqualTo(expectation));
+                    (_, dataJson) = await source1.GetData();
+                    (_, expectationJson) = await source2.GetData();
+                    AssertNormalizedJsonEquivalent(dataJson, expectationJson);
                 }
                 finally
                 {
@@ -191,6 +183,22 @@ namespace Nethermind.JsonRpc.Test
                 }
 
             }
+        }
+
+        private static void AssertJsonEquivalentWithoutError(string dataJson, string expectationJson)
+        {
+            AssertNormalizedJsonEquivalent(dataJson, expectationJson);
+
+            JsonNode data = JsonHelper.ParseNormalize(dataJson);
+            JsonNode? error = data["error"];
+            Assert.That(error, Is.Null, error?.ToString());
+        }
+
+        private static void AssertNormalizedJsonEquivalent(string dataJson, string expectationJson)
+        {
+            JsonNode data = JsonHelper.ParseNormalize(dataJson);
+            JsonNode expectation = JsonHelper.ParseNormalize(expectationJson);
+            JsonTestAssertions.AssertEquivalent(data.ToJsonString(), expectation.ToJsonString());
         }
 
         private static async Task WriteOutJson(string dataJson, string expectationJson)

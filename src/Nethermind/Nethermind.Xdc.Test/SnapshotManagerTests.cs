@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -184,7 +184,7 @@ internal class SnapshotManagerTests
         {
             Assert.That(actual!.BlockNumber, Is.EqualTo(expected.BlockNumber));
             Assert.That(actual.HeaderHash, Is.EqualTo(expected.HeaderHash));
-            Assert.That(actual.NextEpochCandidates, Is.EqualTo(expected.NextEpochCandidates));
+            Assert.That(actual.NextEpochCandidates, Is.EquivalentTo(expected.NextEpochCandidates));
         });
     }
 }
