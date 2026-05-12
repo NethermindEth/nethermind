@@ -35,18 +35,23 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private ref TWriter _writer;
     private TReader _reader;
     private readonly ReadOnlySpan<long> _entryPositions;
+    // Fixed key length for every entry (HsstBTreeBuilder enforces uniformity). Used directly
+    // wherever we previously called ReadKeyLength / tracked minKeyLen — those collapse to
+    // this single scalar.
+    private readonly int _keyLength;
     // One byte per entry: LCP(prev_i, curr_i) — the common prefix length of each entry's
     // key against the prior entry's key. Filled once by PrecomputeCommonPrefixLengths at
     // Build() entry; ChooseLeafLayout / WriteLeafIndexNode derive the natural separator
-    // length on demand as min(commonPrefix + 1, currKeyLen). Rented from ArrayPool;
+    // length on demand as min(commonPrefix + 1, _keyLength). Rented from ArrayPool;
     // returned in Build's finally.
     private byte[]? _commonPrefixArr;
 
-    public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions)
+    public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int keyLength)
     {
         _writer = ref writer;
         _reader = reader;
         _entryPositions = entryPositions;
+        _keyLength = keyLength;
     }
 
     /// <summary>
@@ -142,7 +147,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
                 WriteLeafIndexNode(
-                    entryIdx, count, layout.NaturalMax, layout.MinKeyLen,
+                    entryIdx, count, layout.NaturalMax,
                     valueScratchArr);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
                 lastNodeLen = nodeLen;
@@ -172,8 +177,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                         minIntermediateChildren, minIntermediateBytes,
                         _writer.Written, firstOffset,
                         out int maxSepLen,
-                        out int crossEntryLcp,
-                        out int minRightKeyLen);
+                        out int crossEntryLcp);
                     ReadOnlySpan<NodeInfo> children = currentLevel.Slice(childIdx, childCount);
 
                     // Always non-first here (at least one leaf already written).
@@ -181,7 +185,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
                     long nodeStart = _writer.Written;
                     long relativeStart = nodeStart - startWritten;
-                    WriteInternalIndexNode(children, maxSepLen, crossEntryLcp, minRightKeyLen, valueScratchArr);
+                    WriteInternalIndexNode(children, maxSepLen, crossEntryLcp, valueScratchArr);
                     int nodeLen = checked((int)(_writer.Written - nodeStart));
                     lastNodeLen = nodeLen;
 
@@ -219,14 +223,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// to include and the natural max separator length used by the retry-truncate
     /// step inside <see cref="WriteLeafIndexNode"/>.
     /// </summary>
-    private readonly struct LeafLayout(int count, int naturalMax, int minKeyLen)
+    private readonly struct LeafLayout(int count, int naturalMax)
     {
         public readonly int Count = count;
         public readonly int NaturalMax = naturalMax;
-        // Smallest source-key length across the leaf's entries. WriteLeafIndexNode uses
-        // this with NaturalMax to decide whether the leaf qualifies for the Uniform
-        // slot=4 widening (minKeyLen >= 4 && naturalMax <= 4).
-        public readonly int MinKeyLen = minKeyLen;
     }
 
     /// <summary>
@@ -245,23 +245,16 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     {
         int remaining = _entryPositions.Length - entryIdx;
         int hardMax = Math.Min(maxLeafEntries, remaining);
-        if (hardMax <= 0) return new LeafLayout(0, 1, MaxKeyLen);
+        if (hardMax <= 0) return new LeafLayout(0, 1);
 
-        // Sliding window keys.
-        Span<byte> currKey = stackalloc byte[MaxKeyLen];
-        Span<byte> nextKey = stackalloc byte[MaxKeyLen];
-
-        // Seed running state from the first entry alone.
-        int currKeyLen = ReadKey(entryIdx, currKey);
-        int firstSepLen = Math.Min(_commonPrefixArr![entryIdx] + 1, currKeyLen);
+        // Seed running state from the first entry alone. Keys have a fixed length
+        // (HsstBTreeBuilder enforces it) — no per-entry length reads needed.
+        int firstSepLen = Math.Min(_commonPrefixArr![entryIdx] + 1, _keyLength);
         int prevSepLen = firstSepLen;
 
         int maxSepLen = firstSepLen;
         int naturalMax = 1;
         int commonLen = firstSepLen;
-        // Smallest source-key length seen so far. Surfaced via LeafLayout so
-        // WriteLeafIndexNode can decide whether to widen the slot to 4.
-        int minKeyLen = currKeyLen;
 
         // Mirror WriteLeafIndexNode's per-leaf metadata-offset width selection so we
         // stop before the next entry pushes every value slot up to a wider encoding.
@@ -272,8 +265,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int count = 1;
         while (count < hardMax)
         {
-            int nextKeyLen = ReadKey(entryIdx + count, nextKey);
-            int nextSepLen = Math.Min(_commonPrefixArr![entryIdx + count] + 1, nextKeyLen);
+            int nextSepLen = Math.Min(_commonPrefixArr![entryIdx + count] + 1, _keyLength);
 
             int la = prevSepLen;
             int lb = nextSepLen;
@@ -330,16 +322,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             minVal = newMinVal;
             maxVal = newMaxVal;
             valueSlotSize = newValueSlotSize;
-            if (nextKeyLen < minKeyLen) minKeyLen = nextKeyLen;
-
-            // Slide window: curr ← next.
-            nextKey[..nextKeyLen].CopyTo(currKey);
-            currKeyLen = nextKeyLen;
             prevSepLen = lb;
             count++;
         }
 
-        return new LeafLayout(count, naturalMax, minKeyLen);
+        return new LeafLayout(count, naturalMax);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -370,27 +357,25 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     }
 
     private void WriteLeafIndexNode(
-        int globalStartIndex, int count, int naturalMax, int minKeyLen,
+        int globalStartIndex, int count, int naturalMax,
         scoped Span<byte> valueScratch)
     {
-        // Widen the slot target to 4 when every source key has ≥4 bytes available AND the
-        // pair-needed disambig fits in 4 bytes — gives the planner a uniform-4 input so it
-        // picks Uniform slot=4 (SIMD via uint32 LE compare) instead of an off-SIMD slot
-        // like 1/3. Otherwise fall back to naturalMax (Phase 2 behaviour).
-        int target = (naturalMax > 0 && naturalMax <= 4 && minKeyLen >= 4) ? 4 : naturalMax;
-
-        // Pass 1: per-entry writeLen via length-only reads (no key-byte scan). Also
-        // gather metadataStart range for value-slot sizing.
+        // Widen the slot target to 4 when every key has ≥4 bytes AND the pair-needed
+        // disambig fits in 4 bytes — gives the planner a uniform-4 input so it picks
+        // Uniform slot=4 (SIMD via uint32 LE compare) instead of an off-SIMD slot like
+        // 1/3. Otherwise fall back to naturalMax (Phase 2 behaviour). All keys share
+        // _keyLength, so a single scalar drives every entry's writeLen.
+        int target = (naturalMax > 0 && naturalMax <= 4 && _keyLength >= 4) ? 4 : naturalMax;
+        int writeLen = Math.Min(target, _keyLength);
         Span<int> sepLengths = stackalloc int[count];
+        sepLengths.Fill(writeLen);
+
+        // Pass 1 (metadata-start range only — key lengths are uniform so no per-entry reads):
         Span<long> metadataStarts = stackalloc long[count];
         long minVal = long.MaxValue, maxVal = 0;
         for (int i = 0; i < count; i++)
         {
-            int globalIdx = globalStartIndex + i;
-            int keyLen = ReadKeyLength(globalIdx);
-            sepLengths[i] = Math.Min(target, keyLen);
-
-            long md = _entryPositions[globalIdx];
+            long md = _entryPositions[globalStartIndex + i];
             metadataStarts[i] = md;
             if (md < minVal) minVal = md;
             if (md > maxVal) maxVal = md;
@@ -454,8 +439,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int minChildren, int minBytes,
         long nodeStart, long firstOffset,
         out int maxSepLen,
-        out int crossEntryLcp,
-        out int minRightKeyLen)
+        out int crossEntryLcp)
     {
         // Max separator length seen so far. Surfaced to WriteInternalIndexNode so it can
         // pad each separator to this width, giving the layout planner a uniform-length
@@ -466,9 +450,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // planner can derive the leaf-wide common prefix without scanning sep bytes.
         // Upper-bound init: planner caps via min(minLen, crossEntryLcp).
         crossEntryLcp = MaxKeyLen;
-        // Min right-child first-key length seen so far. Surfaced so WriteInternalIndexNode
-        // can decide whether to widen the slot to 4.
-        minRightKeyLen = MaxKeyLen;
         int remaining = level.Length - childIdx;
         int hardMax = Math.Min(maxChildren, remaining);
         if (hardMax <= 1) return hardMax;
@@ -566,7 +547,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             maxOff = newMaxOff;
             committedValueSlot = valueSlotSize;
             maxSepLen = newMaxSepLen;
-            if (rightLen < minRightKeyLen) minRightKeyLen = rightLen;
             if (commonLen < 0)
             {
                 sepBuf[..sepLen].CopyTo(firstSep);
@@ -580,7 +560,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         scoped ReadOnlySpan<NodeInfo> children,
         int maxSepLen,
         int crossEntryLcp,
-        int minRightKeyLen,
         scoped Span<byte> valueScratch)
     {
         int childCount = children.Length;
@@ -593,17 +572,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // BaseOffset.
         int entryCount = childCount > 0 ? childCount - 1 : 0;
 
-        // Widen the slot target to 4 when every right-key has ≥4 bytes AND the natural max
-        // sep fits in 4 bytes — same rationale as WriteLeafIndexNode.
-        int target = (maxSepLen > 0 && maxSepLen <= 4 && minRightKeyLen >= 4) ? 4 : maxSepLen;
-
-        // Pass 1: per-sep writeLen via length-only reads of right-children's first keys.
+        // Widen the slot target to 4 when keys are ≥4 bytes AND the natural max sep fits
+        // in 4 bytes — same rationale as WriteLeafIndexNode. Keys share _keyLength, so a
+        // single scalar drives every sep's writeLen.
+        int target = (maxSepLen > 0 && maxSepLen <= 4 && _keyLength >= 4) ? 4 : maxSepLen;
+        int writeLen = Math.Min(target, _keyLength);
         Span<int> sepLengths = stackalloc int[entryCount];
-        for (int i = 0; i < entryCount; i++)
-        {
-            int rightLen = ReadKeyLength(children[i + 1].FirstEntry);
-            sepLengths[i] = Math.Min(target, rightLen);
-        }
+        sepLengths.Fill(writeLen);
 
         BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp,
             out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
@@ -715,28 +690,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             if (!_reader.TryRead(offset, dest[..keyLen])) ThrowReadFailed();
         }
         return keyLen;
-    }
-
-    /// <summary>
-    /// Read only the key length for entry index <paramref name="idx"/> — same LEB128 +
-    /// KeyLength byte walk as <see cref="ReadKey"/>, but skips the key bytes themselves.
-    /// Used by the planner-input pre-pass in WriteLeafIndexNode / WriteInternalIndexNode
-    /// to size separators without scanning bytes.
-    /// </summary>
-    private int ReadKeyLength(int idx)
-    {
-        long pos = _entryPositions[idx];
-        Span<byte> oneByte = stackalloc byte[1];
-
-        long offset = pos;
-        do
-        {
-            if (!_reader.TryRead(offset, oneByte)) ThrowReadFailed();
-            offset++;
-        } while ((oneByte[0] & 0x80) != 0);
-
-        if (!_reader.TryRead(offset, oneByte)) ThrowReadFailed();
-        return oneByte[0];
     }
 
     /// <summary>
