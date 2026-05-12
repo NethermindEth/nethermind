@@ -390,8 +390,8 @@ public partial class EngineModuleTests
         improvementContextFactory.CreatedContexts.Should().OnlyContain(static i => i.Disposed);
     }
 
-    [Test, Retry(3)]
     [Parallelizable(ParallelScope.None)] // Timing sensitive
+    [Test, Retry(3)]
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
