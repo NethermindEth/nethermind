@@ -13,10 +13,10 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
 {
     public override void Write(Utf8JsonWriter writer, NativeCallTracerCallFrame value, JsonSerializerOptions options)
     {
-        NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
+        NumberConversion previousValue = ForcedNumberConversion.Value;
         try
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            ForcedNumberConversion.Value = NumberConversion.Hex;
 
             Stack<(NativeCallTracerCallFrame Frame, int NextChild)> work = new();
             work.Push((value, -1));
@@ -57,7 +57,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         }
         finally
         {
-            ForcedNumberConversion.ForcedConversion.Value = previousValue;
+            ForcedNumberConversion.Value = previousValue;
         }
     }
 

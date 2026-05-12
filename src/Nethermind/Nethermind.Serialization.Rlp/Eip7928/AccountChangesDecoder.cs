@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
@@ -11,8 +13,15 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 
 public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStreamEncoder<AccountChanges>
 {
-    private static AccountChangesDecoder? _instance = null;
-    public static AccountChangesDecoder Instance => _instance ??= new();
+    public static readonly AccountChangesDecoder Instance = new();
+
+    internal readonly record struct EncodingLengths(
+        int ContentLength,
+        int StorageChangesContentLength,
+        int StorageReadsContentLength,
+        int BalanceContentLength,
+        int NonceContentLength,
+        int CodeContentLength);
 
     private static readonly RlpLimit _slotsLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
     private static readonly RlpLimit _storageLimit = new(Eip7928Constants.MaxSlots, "", ReadOnlyMemory<char>.Empty);
@@ -27,50 +36,55 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         UInt256? lastSlot = null;
-        SortedList<UInt256, SlotChanges> slotChangesList = new(slotChanges.Length, GenericComparer.GetOptimized<UInt256>());
         foreach (SlotChanges slotChange in slotChanges)
         {
+            if (slotChange is null)
+            {
+                ThrowEmptySlotChanges();
+            }
+
             UInt256 slot = slotChange.Key;
             if (lastSlot is not null && slot <= lastSlot)
             {
-                throw new RlpException("Storage changes were in incorrect order.");
+                ThrowStorageChangesOutOfOrder();
             }
             lastSlot = slot;
-            slotChangesList.Add(slot, slotChange);
         }
 
         UInt256[] storageReads = ctx.DecodeArray(UInt256Decoder.Instance, true, default, _storageLimit);
-        SortedSet<UInt256> storageReadsList = new(GenericComparer.GetOptimized<UInt256>());
-        UInt256? lastRead = null;
+        HashSet<UInt256> storageReadsList = new(storageReads.Length, GenericEqualityComparer.GetOptimized<UInt256>());
+        UInt256 lastRead = default;
+        bool hasLastRead = false;
         foreach (UInt256 storageRead in storageReads)
         {
-            if (lastRead is not null && storageRead.CompareTo(lastRead.Value) <= 0)
+            if (hasLastRead && storageRead.CompareTo(lastRead) <= 0)
             {
-                throw new RlpException("Storage reads were in incorrect order.");
+                ThrowStorageReadsOutOfOrder();
             }
-            if (slotChangesList.ContainsKey(storageRead))
+            if (ContainsStorageChange(slotChanges, storageRead))
             {
-                throw new RlpException("Invalid storage read, already in storage changes.");
+                ThrowInvalidStorageRead();
             }
             storageReadsList.Add(storageRead);
             lastRead = storageRead;
+            hasLastRead = true;
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
+        IndexedChanges<BalanceChange> balanceChangesList = ToIndexedChanges(balanceChanges, "Balance");
 
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
+        IndexedChanges<NonceChange> nonceChangesList = ToIndexedChanges(nonceChanges, "Nonce");
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<int, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
+        IndexedChanges<CodeChange> codeChangesList = ToIndexedChanges(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
             ctx.Check(check);
         }
 
-        return new(address, slotChangesList, storageReadsList, balanceChangesList, nonceChangesList, codeChangesList);
+        return new(address, slotChanges, storageReadsList, storageReads, balanceChangesList, nonceChangesList, codeChangesList);
     }
 
     public int GetLength(AccountChanges item, RlpBehaviors rlpBehaviors)
@@ -78,47 +92,187 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
 
     public void Encode(RlpStream stream, AccountChanges item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.Address);
-        stream.EncodeArray([.. item.StorageChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.StorageReads], rlpBehaviors);
-        stream.EncodeArray([.. item.BalanceChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.NonceChanges], rlpBehaviors);
-        stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
+        EncodingLengths lengths = PrepareEncodingLengths(item, rlpBehaviors);
+        EncodePrepared(stream, item, in lengths, rlpBehaviors);
     }
 
-    public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfAddressRlp
-            + SequenceLength(item.StorageChanges, SlotChangesDecoder.Instance, rlpBehaviors)
-            + SequenceLength(item.StorageReads, UInt256Decoder.Instance, rlpBehaviors)
-            + SequenceLength(item.BalanceChanges, BalanceChangeDecoder.Instance, rlpBehaviors)
-            + SequenceLength(item.NonceChanges, NonceChangeDecoder.Instance, rlpBehaviors)
-            + SequenceLength(item.CodeChanges, CodeChangeDecoder.Instance, rlpBehaviors);
+    internal void EncodePrepared(
+        RlpStream stream,
+        AccountChanges item,
+        in EncodingLengths lengths,
+        RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        stream.StartSequence(lengths.ContentLength);
+        stream.Encode(item.Address);
+        EncodeSequence(stream, item.StorageChanges, lengths.StorageChangesContentLength, SlotChangesDecoder.Instance, rlpBehaviors);
+        EncodeStorageReads(stream, item.SortedStorageReads, lengths.StorageReadsContentLength, rlpBehaviors);
+        EncodeIndexedChanges(stream, item.BalanceChangeSet, lengths.BalanceContentLength, BalanceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexedChanges(stream, item.NonceChangeSet, lengths.NonceContentLength, NonceChangeDecoder.Instance, rlpBehaviors);
+        EncodeIndexedChanges(stream, item.CodeChangeSet, lengths.CodeContentLength, CodeChangeDecoder.Instance, rlpBehaviors);
+    }
 
-    private static int SequenceLength<T>(IEnumerable<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+    public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors) =>
+        PrepareEncodingLengths(item, rlpBehaviors).ContentLength;
+
+    internal static EncodingLengths PrepareEncodingLengths(AccountChanges item, RlpBehaviors rlpBehaviors)
+    {
+        int storageChangesContentLength = StorageChangesContentLength(item, rlpBehaviors);
+        int storageReadsContentLength = StorageReadsContentLength(item.SortedStorageReads, rlpBehaviors);
+        int balanceContentLength = IndexedSequenceContentLength(item.BalanceChangeSet, BalanceChangeDecoder.Instance, rlpBehaviors);
+        int nonceContentLength = IndexedSequenceContentLength(item.NonceChangeSet, NonceChangeDecoder.Instance, rlpBehaviors);
+        int codeContentLength = IndexedSequenceContentLength(item.CodeChangeSet, CodeChangeDecoder.Instance, rlpBehaviors);
+
+        int contentLength = Rlp.LengthOfAddressRlp
+            + Rlp.LengthOfSequence(storageChangesContentLength)
+            + Rlp.LengthOfSequence(storageReadsContentLength)
+            + Rlp.LengthOfSequence(balanceContentLength)
+            + Rlp.LengthOfSequence(nonceContentLength)
+            + Rlp.LengthOfSequence(codeContentLength);
+
+        return new EncodingLengths(
+            contentLength,
+            storageChangesContentLength,
+            storageReadsContentLength,
+            balanceContentLength,
+            nonceContentLength,
+            codeContentLength);
+    }
+
+    private static void EncodeSequence<T>(RlpStream stream, IList<T> items, int contentLength, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+    {
+        stream.StartSequence(contentLength);
+        for (int i = 0; i < items.Count; i++)
+        {
+            encoder.Encode(stream, items[i], rlpBehaviors);
+        }
+    }
+
+    private static int StorageChangesContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
     {
         int length = 0;
-        foreach (T item in items)
+        SlotChangesDecoder decoder = SlotChangesDecoder.Instance;
+        foreach (SlotChanges slotChanges in item.UnorderedStorageChanges)
         {
-            length += encoder.GetLength(item, rlpBehaviors);
+            length += decoder.GetLength(slotChanges, rlpBehaviors);
         }
-        return Rlp.LengthOfSequence(length);
+
+        return length;
     }
 
-    private static SortedList<int, T> ToSortedByIndex<T>(T[] items, string changeName)
+    private static void EncodeStorageReads(RlpStream stream, ReadOnlySpan<UInt256> items, int contentLength, RlpBehaviors rlpBehaviors)
+    {
+        stream.StartSequence(contentLength);
+        for (int i = 0; i < items.Length; i++)
+        {
+            UInt256Decoder.Instance.Encode(stream, items[i], rlpBehaviors);
+        }
+    }
+
+    private static int StorageReadsContentLength(ReadOnlySpan<UInt256> items, RlpBehaviors rlpBehaviors)
+    {
+        int length = 0;
+        for (int i = 0; i < items.Length; i++)
+        {
+            length += UInt256Decoder.Instance.GetLength(items[i], rlpBehaviors);
+        }
+        return length;
+    }
+
+    private static void EncodeIndexedChanges<T>(RlpStream stream, IndexedChanges<T> items, int contentLength, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
         where T : struct, IIndexedChange
     {
-        int? lastIndex = null;
-        SortedList<int, T> sorted = new(items.Length, GenericComparer.GetOptimized<int>());
+        stream.StartSequence(contentLength);
+        if (items.HasPrestate)
+        {
+            encoder.Encode(stream, items.Prestate, rlpBehaviors);
+        }
+
+        ReadOnlySpan<T> blockAccessChanges = items.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
+        {
+            encoder.Encode(stream, blockAccessChanges[i], rlpBehaviors);
+        }
+    }
+
+    private static int IndexedSequenceContentLength<T>(IndexedChanges<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
+        where T : struct, IIndexedChange
+    {
+        int length = 0;
+        if (items.HasPrestate)
+        {
+            length += encoder.GetLength(items.Prestate, rlpBehaviors);
+        }
+
+        ReadOnlySpan<T> blockAccessChanges = items.BlockAccessChanges;
+        for (int i = 0; i < blockAccessChanges.Length; i++)
+        {
+            length += encoder.GetLength(blockAccessChanges[i], rlpBehaviors);
+        }
+
+        return length;
+    }
+
+    private static IndexedChanges<T> ToIndexedChanges<T>(T[] items, string changeName)
+        where T : struct, IIndexedChange
+    {
+        uint? lastIndex = null;
+        IndexedChanges<T> indexed = new(items.Length);
         foreach (T item in items)
         {
-            int index = item.Index;
+            uint index = item.Index;
             if (lastIndex is not null && index <= lastIndex)
             {
-                throw new RlpException($"{changeName} changes were in incorrect order.");
+                ThrowIndexedChangesOutOfOrder(changeName);
             }
             lastIndex = index;
-            sorted.Add(index, item);
+            indexed.Add(item);
         }
-        return sorted;
+        return indexed;
     }
+
+    private static bool ContainsStorageChange(SlotChanges[] sortedSlotChanges, UInt256 key)
+    {
+        int low = 0;
+        int high = sortedSlotChanges.Length - 1;
+        while (low <= high)
+        {
+            int mid = low + ((high - low) >> 1);
+            int compare = sortedSlotChanges[mid].Key.CompareTo(key);
+            if (compare == 0)
+            {
+                return true;
+            }
+
+            if (compare < 0)
+            {
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return false;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptySlotChanges() =>
+        throw new RlpException("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageChangesOutOfOrder() =>
+        throw new RlpException("Storage changes were in incorrect order.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowStorageReadsOutOfOrder() =>
+        throw new RlpException("Storage reads were in incorrect order.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidStorageRead() =>
+        throw new RlpException("Invalid storage read, already in storage changes.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowIndexedChangesOutOfOrder(string changeName) =>
+        throw new RlpException($"{changeName} changes were in incorrect order.");
 }

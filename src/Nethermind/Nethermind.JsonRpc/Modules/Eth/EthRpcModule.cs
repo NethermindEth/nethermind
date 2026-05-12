@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -56,6 +57,7 @@ public partial class EthRpcModule(
     IJsonRpcConfig rpcConfig,
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
+    IBlockTree blockTree,
     IReceiptFinder receiptFinder,
     IStateReader stateReader,
     ITxPool txPool,
@@ -69,7 +71,8 @@ public partial class EthRpcModule(
     IProtocolsManager protocolsManager,
     IForkInfo forkInfo,
     ILogIndexConfig? logIndexConfig,
-    ulong? secondsPerSlot) : IEthRpcModule
+    ulong? secondsPerSlot,
+    HeadBlockSignal headBlockSignal) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
@@ -77,6 +80,7 @@ public partial class EthRpcModule(
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
     protected readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
     protected readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
     protected readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
     protected readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -89,6 +93,7 @@ public partial class EthRpcModule(
     protected readonly IFeeHistoryOracle _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
     protected readonly IProtocolsManager _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
     protected readonly ulong _secondsPerSlot = secondsPerSlot ?? throw new ArgumentNullException(nameof(secondsPerSlot));
+    private readonly HeadBlockSignal _headBlockSignal = headBlockSignal ?? throw new ArgumentNullException(nameof(headBlockSignal));
     readonly JsonSerializerOptions UnchangedDictionaryKeyOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -355,6 +360,58 @@ public partial class EthRpcModule(
         }
     }
 
+    public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
+    {
+        int waitMs = ResolveSyncTimeoutMs(timeoutMs);
+        using CancellationTokenSource cts = new(waitMs);
+
+        // Submit via the virtual eth_sendRawTransaction so subclass overrides
+        // propagate without needing a separate sync override.
+        ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
+        if (sendResult.Result.ResultType != ResultType.Success)
+        {
+            return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode);
+        }
+        Hash256 hash = sendResult.Data;
+
+        while (true)
+        {
+            // Snapshot the next-head Task BEFORE the receipt check: if a head arrives between
+            // the check and the await, the snapshot is already completed and the loop re-checks
+            // immediately. Snapshotting after the check would miss that signal.
+            Task nextHead = _headBlockSignal.NextHeadTask;
+
+            ResultWrapper<ReceiptForRpc?> receiptResult = eth_getTransactionReceipt(hash);
+            if (receiptResult.Data is not null)
+            {
+                return receiptResult;
+            }
+
+            try
+            {
+                await nextHead.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return ResultWrapper<ReceiptForRpc?>.Fail(
+                    $"Transaction {hash} was added to the pool but not included within {waitMs}ms.",
+                    ErrorCodes.Timeout);
+            }
+        }
+    }
+
+    private int ResolveSyncTimeoutMs(ulong? requestedMs)
+    {
+        // Clamp >0 so a negative max can't wrap to a huge ulong and overflow back to a negative delay.
+        int max = Math.Max(1, _rpcConfig.RpcTxSyncMaxTimeoutMs);
+        if (requestedMs is { } req && req > 0)
+        {
+            return (int)Math.Min(req, (ulong)max);
+        }
+        int @default = _rpcConfig.RpcTxSyncDefaultTimeoutMs;
+        return @default > 0 ? Math.Min(@default, max) : max;
+    }
+
     private async Task<ResultWrapper<Hash256>> SendTx(Transaction tx,
         TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
     {
@@ -429,6 +486,32 @@ public partial class EthRpcModule(
         return ResultWrapper<BlockForRpc?>.Success(blockForRpc);
     }
 
+    public ResultWrapper<BlockHeaderForRpc?> eth_getHeaderByHash(Hash256 blockHash)
+        => GetHeader(new BlockParameter(blockHash));
+
+    public ResultWrapper<BlockHeaderForRpc?> eth_getHeaderByNumber(BlockParameter blockParameter)
+        => GetHeader(blockParameter);
+
+    private ResultWrapper<BlockHeaderForRpc?> GetHeader(BlockParameter blockParameter)
+    {
+        // SearchForHeader avoids loading the block body — header endpoints don't need transactions/uncles.
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<BlockHeaderForRpc?>.Success(null);
+        }
+
+        BlockHeaderForRpc result = new(searchResult.Object!, _specProvider);
+        if (blockParameter.Type == BlockParameterType.Pending)
+        {
+            result.Hash = null;
+            result.Nonce = null;
+            result.Miner = null;
+        }
+
+        return ResultWrapper<BlockHeaderForRpc?>.Success(result);
+    }
+
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
     {
         if (!_blockchainBridge.TryGetTransaction(transactionHash, out TransactionLookupResult? transactionResult, checkTxnPool: true))
@@ -490,6 +573,40 @@ public partial class EthRpcModule(
         return result;
     }
 
+    public ResultWrapper<string?> eth_getRawTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
+    {
+        ResultWrapper<string?> result = GetRawTransactionByBlockAndIndex(new BlockParameter(blockHash), positionIndex);
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockHashAndIndex request {blockHash}, index: {positionIndex}, result length: {result.Data?.Length ?? 0}");
+        return result;
+    }
+
+    public ResultWrapper<string?> eth_getRawTransactionByBlockNumberAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+    {
+        ResultWrapper<string?> result = GetRawTransactionByBlockAndIndex(blockParameter, positionIndex);
+        if (_logger.IsTrace && result.Result.ResultType == ResultType.Success) _logger.Trace($"eth_getRawTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result length: {result.Data?.Length ?? 0}");
+        return result;
+    }
+
+    private ResultWrapper<string?> GetRawTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<string?>.Success(null);
+        }
+
+        Block block = searchResult.Object!;
+        if (positionIndex >= block.Transactions.Length)
+        {
+            return ResultWrapper<string?>.Success(null);
+        }
+
+        Transaction transaction = block.Transactions[(int)positionIndex];
+        // Block-stored txs never carry a sidecar (blob commitments live separately), so consensus form only.
+        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(transaction, RlpBehaviors.SkipTypedWrapping);
+        return ResultWrapper<string?>.Success(stream.AsSpan().ToHexString(true));
+    }
+
     protected virtual ResultWrapper<TransactionForRpc?> GetTransactionByBlockAndIndex(BlockParameter blockParameter, UInt256 positionIndex)
     {
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
@@ -499,7 +616,7 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+        if (positionIndex >= block.Transactions.Length)
         {
             return ResultWrapper<TransactionForRpc?>.Success(null);
         }
@@ -533,7 +650,7 @@ public partial class EthRpcModule(
         }
 
         Block block = searchResult.Object!;
-        if (positionIndex < 0 || positionIndex > block.Uncles.Length - 1)
+        if (positionIndex >= block.Uncles.Length)
         {
             return ResultWrapper<BlockForRpc?>.Success(null);
         }

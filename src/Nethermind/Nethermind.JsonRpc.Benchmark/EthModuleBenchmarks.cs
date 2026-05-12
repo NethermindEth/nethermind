@@ -34,6 +34,7 @@ namespace Nethermind.JsonRpc.Benchmark
     {
         private EthRpcModule _ethModule;
         private IContainer _container;
+        private HeadBlockSignal _headBlockSignal;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -65,9 +66,11 @@ namespace Nethermind.JsonRpc.Benchmark
             ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
 
+            _headBlockSignal = new HeadBlockSignal(blockTree);
             _ethModule = new EthRpcModule(
                 _container.Resolve<IJsonRpcConfig>(),
                 bridge,
+                blockTree,
                 blockTree,
                 _container.Resolve<IReceiptFinder>(),
                 _container.Resolve<IStateReader>(),
@@ -82,11 +85,16 @@ namespace Nethermind.JsonRpc.Benchmark
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
                 new LogIndexConfig(),
-                new BlocksConfig().SecondsPerSlot);
+                new BlocksConfig().SecondsPerSlot,
+                _headBlockSignal);
         }
 
         [GlobalCleanup]
-        public void TearDown() => _container.Dispose();
+        public void TearDown()
+        {
+            _headBlockSignal.Dispose();
+            _container.Dispose();
+        }
 
         [Benchmark]
         public void Current()
