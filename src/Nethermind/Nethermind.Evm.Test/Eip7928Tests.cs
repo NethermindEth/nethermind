@@ -101,6 +101,87 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         Assert.That(accountChanges.CodeChanges, Is.Empty);
     }
 
+    private Transaction BuildSetCodeCallTx(Address to, params AuthorizationTuple[] authorizationList)
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+
+        return Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .To(to)
+            .WithGasLimit(1_000_000)
+            .WithMaxFeePerGas(1)
+            .WithMaxPriorityFeePerGas(1)
+            .WithValue(UInt256.Zero)
+            .WithAuthorizationCode(authorizationList)
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
+            .TestObject;
+    }
+
+    private void AddAccountToState(Address address, UInt256 nonce = default, byte[]? code = null)
+    {
+        TestState.CreateAccount(address, 0, nonce);
+        if (code is not null)
+        {
+            TestState.InsertCode(address, ValueKeccak.Compute(code), code, SpecProvider.GenesisSpec);
+        }
+
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+    }
+
+    private static void AssertStorageChange(BlockAccessList bal, Address address, UInt256 key, UInt256 value)
+    {
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+
+        SlotChanges? slotChanges = null;
+        foreach (SlotChanges current in accountChanges!.StorageChanges)
+        {
+            if (current.Key == key)
+            {
+                slotChanges = current;
+                break;
+            }
+        }
+
+        Assert.That(slotChanges, Is.Not.Null);
+        Assert.That(slotChanges!.Changes.Values, Has.Count.EqualTo(1));
+        Assert.That(slotChanges.Changes.Values[0].Value, Is.EqualTo(value.ToBigEndianWord()));
+    }
+
+    private static void AssertNonceChange(BlockAccessList bal, Address address, ulong value)
+    {
+        AccountChanges? accountChanges = bal.GetAccountChanges(address);
+        Assert.That(accountChanges, Is.Not.Null);
+        Assert.That(accountChanges!.NonceChanges, Has.Count.EqualTo(1));
+        Assert.That(accountChanges.NonceChanges[0].Index, Is.EqualTo(0u));
+        Assert.That(accountChanges.NonceChanges[0].Value, Is.EqualTo(value));
+    }
+
+    private static byte[] BuildStorageWriteCode(UInt256 key, UInt256 value) =>
+        Prepare.EvmCode
+            .PushData(value)
+            .PushData(key)
+            .Op(Instruction.SSTORE)
+            .Done;
+
+    private BlockAccessList ExecuteSetCodeCall(params AuthorizationTuple[] authorizationList)
+    {
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(120_000_000)
+            .WithBaseFee(1)
+            .TestObject;
+        Transaction tx = BuildSetCodeCallTx(_callTargetAddress, authorizationList);
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+
+        Assert.That(res.TransactionExecuted, Is.True, res.ToString());
+        return tracedState.GetGeneratingBlockAccessList();
+    }
+
     [TestCaseSource(nameof(CodeTestSource))]
     public async Task Constructs_BAL_when_processing_code(
         IEnumerable<AccountChanges> expected,
@@ -327,6 +408,92 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted, Is.True);
             Assert.That(precompileChanges, Is.Not.Null,
                 "Top-level transaction recipient that is a precompile must be recorded in BAL");
+        }
+    }
+
+    [TestCase(0ul, TestName = "EIP7702_authorization_max_nonce_keeps_authority_out_of_BAL_account_nonce_zero")]
+    [TestCase(ulong.MaxValue, TestName = "EIP7702_authorization_max_nonce_keeps_authority_out_of_BAL_account_nonce_max")]
+    public void Eip7702_authorization_max_nonce_rejection_does_not_record_authority_or_target(ulong authorityNonce)
+    {
+        byte[] entryCode = BuildStorageWriteCode(UInt256.Zero, UInt256.One);
+        Address authority = TestItem.AddressB;
+
+        InitWorldState(TestState, entryCode);
+        AddAccountToState(authority, authorityNonce);
+
+        AuthorizationTuple authorization = new(
+            SpecProvider.ChainId,
+            _delegationTargetAddress,
+            ulong.MaxValue,
+            0,
+            UInt256.One,
+            UInt256.One,
+            authority);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, TestItem.AddressA, 1);
+            AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
+            Assert.That(bal.GetAccountChanges(authority), Is.Null);
+            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Eip7702_authorization_high_s_rejection_does_not_record_authority_or_target()
+    {
+        byte[] entryCode = BuildStorageWriteCode(UInt256.Zero, UInt256.One);
+        Address authority = TestItem.AddressB;
+
+        InitWorldState(TestState, entryCode);
+        AddAccountToState(authority);
+
+        AuthorizationTuple authorization = new(
+            SpecProvider.ChainId,
+            _delegationTargetAddress,
+            0,
+            0,
+            UInt256.One,
+            SecP256k1Curve.HalfNPlusOne,
+            authority);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertNonceChange(bal, TestItem.AddressA, 1);
+            AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
+            Assert.That(bal.GetAccountChanges(authority), Is.Null);
+            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
+        }
+    }
+
+    [Test]
+    public void Eip7702_authorization_existing_code_rejection_records_authority_only()
+    {
+        byte[] entryCode = BuildStorageWriteCode(UInt256.Zero, UInt256.One);
+        byte[] authorityCode = [(byte)Instruction.STOP];
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Address authority = TestItem.AddressB;
+
+        InitWorldState(TestState, entryCode);
+        AddAccountToState(authority, code: authorityCode);
+
+        AuthorizationTuple authorization = ecdsa.Sign(
+            TestItem.PrivateKeyB,
+            SpecProvider.ChainId,
+            _delegationTargetAddress,
+            0);
+
+        BlockAccessList bal = ExecuteSetCodeCall(authorization);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
+            AssertPureAccountRead(bal.GetAccountChanges(authority));
+            Assert.That(bal.GetAccountChanges(_delegationTargetAddress), Is.Null);
         }
     }
 
