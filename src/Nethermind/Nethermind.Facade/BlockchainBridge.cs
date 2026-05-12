@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain;
@@ -244,9 +246,13 @@ namespace Nethermind.Facade
         {
             // Loop-invariant: the addresses to filter from the discovered AL depend only on header
             // and tx, neither of which change between iterations. Compute once and reuse.
-            Address[] addressesToOptimize = BuildAddressesToOptimize(header, tx, optimize);
+            FrozenSet<AddressAsKey> precompiles = specProvider.GetSpec(header).Precompiles;
+            int bufferSize = (optimize ? 3 : 1) + precompiles.Count;
+            Address[] addressBuffer = new Address[bufferSize];
+            FillAddressesToOptimize(addressBuffer, header, tx, optimize, precompiles);
+
             AccessList? previousAccessList = tx.AccessList;
-            AccessTxTracer accessTracer = new(addressesToOptimize);
+            AccessTxTracer accessTracer = new(addressBuffer);
             CallOutputTracer outputTracer = new();
             CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer).WithCancellation(cancellationToken);
             TransactionResult result;
@@ -273,16 +279,27 @@ namespace Nethermind.Facade
             };
         }
 
-        private Address[] BuildAddressesToOptimize(BlockHeader header, Transaction tx, bool optimize)
+        private void FillAddressesToOptimize(Span<Address> buffer, BlockHeader header, Transaction tx, bool optimize, FrozenSet<AddressAsKey> precompiles)
         {
+            int idx;
             if (!optimize)
-                return [header.GasBeneficiary];
+            {
+                buffer[0] = header.GasBeneficiary;
+                idx = 1;
+            }
+            else
+            {
+                // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
+                // so excluding them keeps the returned access list minimal.
+                UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
+                buffer[0] = tx.SenderAddress;
+                buffer[1] = tx.GetRecipient(senderNonce);
+                buffer[2] = header.GasBeneficiary;
+                idx = 3;
+            }
 
-            // EIP-2930: sender, recipient and gas beneficiary are implicitly accessed,
-            // so excluding them keeps the returned access list minimal.
-            UInt256 senderNonce = tx.IsContractCreation ? stateReader.GetNonce(header, tx.SenderAddress) : UInt256.Zero;
-            Address recipient = tx.GetRecipient(senderNonce);
-            return [tx.SenderAddress, recipient, header.GasBeneficiary];
+            foreach (AddressAsKey p in precompiles)
+                buffer[idx++] = p.Value;
         }
 
         private static bool HasConverged(AccessList? previous, AccessList? discovered)
@@ -467,6 +484,9 @@ namespace Nethermind.Facade
 
         public BlockAccessList? GetBlockAccessList(Hash256 blockHash)
             => balStore.Get(blockHash);
+
+        public MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash)
+            => balStore.GetRlp(blockHash);
 
         // for testing
         public void DeleteBlockAccessList(Hash256 blockHash)

@@ -2065,7 +2065,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", Hash256.Zero);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Cannot return block access list, block not found.\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
     }
 
     [Test]
@@ -2074,7 +2074,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create(); // Amsterdam disabled
         Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4445,\"message\":\"Cannot return block access list for block from before Amsterdam fork.\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
     }
 
     [Test]
@@ -2084,7 +2084,7 @@ public partial class EthRpcModuleTests
         Hash256 blockHash = ctx.Test.BlockTree.Head!.Hash!;
         ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByHash", blockHash);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }
 
     [Test]
@@ -2092,7 +2092,6 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
-        Console.WriteLine(serialized);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountChanges\":[{\"address\":\"0x00000961ef480eb55e80d19ad83579a64c007002\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000bbddc7ce488642fb579f8b00f3a590007251\",\"storageChanges\":[],\"storageReads\":[\"0x0\",\"0x1\",\"0x2\",\"0x3\"],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x0000f90827f1c53a10cb7a02335b175320002935\",\"storageChanges\":[{\"key\":\"0x2\",\"changes\":{\"0\":{\"index\":0,\"value\":\"0xe111c9ffdfa4f0c91d25a057c6187276049d8b621c0b5452384cdcc69e823c3d\"}}}],\"storageReads\":[],\"balanceChanges\":[],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x475674cb523a0a2736b7f7534390288fce16982c\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0xa410\"},{\"index\":2,\"value\":\"0xf618\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0x3635c9adc5dea00002\"},{\"index\":2,\"value\":\"0x3635c9adc5dea00003\"}],\"nonceChanges\":[],\"codeChanges\":[]},{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"storageChanges\":[],\"storageReads\":[],\"balanceChanges\":[{\"index\":1,\"value\":\"0x3635c9adc5de9f5bee\"},{\"index\":2,\"value\":\"0x3635c9adc5de9f09e5\"}],\"nonceChanges\":[{\"index\":1,\"value\":\"0x2\"},{\"index\":2,\"value\":\"0x3\"}],\"codeChanges\":[]}]},\"id\":67}"));
     }
 
@@ -2101,7 +2100,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 100);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Cannot return block access list, block not found.\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
     }
 
     [Test]
@@ -2109,7 +2108,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(); // Amsterdam disabled
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", 3);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4445,\"message\":\"Cannot return block access list for block from before Amsterdam fork.\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"Resource not found\"},\"id\":67}"));
     }
 
     [Test]
@@ -2120,7 +2119,7 @@ public partial class EthRpcModuleTests
         Hash256 blockHash = ctx.Test.BlockTree.FindLevel(number)!.BlockInfos[0].BlockHash;
         ctx.Test.Bridge.DeleteBlockAccessList(blockHash);
         string serialized = await ctx.Test.TestEthRpc("eth_getBlockAccessListByNumber", number);
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Cannot return pruned historical block access list.\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":4444,\"message\":\"Pruned history unavailable\"},\"id\":67}"));
     }
 
     public class AllowNullAuthorizationTuple : AuthorizationTuple

@@ -103,6 +103,7 @@ namespace Nethermind.Serialization.Json
                     new PublicKeyConverter(),
                     new ValueHash256Converter(strictHexFormat),
                     new Hash256Converter(strictHexFormat),
+                    new IPAddressConverter(),
                 }
             };
 
