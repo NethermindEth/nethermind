@@ -156,6 +156,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ExampleValue = "[\"0xf86380843b9aca0082520894b943b13292086848d8180d75c73361107920bb1a80802ea0385656b91b8f1f5139e9ba3449b946a446c9cfe7adb91b180ddc22c33b17ac4da01fe821879d386b140fd8080dcaaa98b8c709c5025c8c4dea1334609ebac41b6c\"]")] byte[] transaction);
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Signs the transaction using the unlocked sender account and returns the RLP-encoded signed transaction together with the parsed object.",
+            IsSharable = true,
+            ExampleResponse = "{\"raw\":\"0x02f86c0182520894b943b13292086848d8180d75c73361107920bb1a80...\",\"tx\":{\"type\":\"0x2\",\"nonce\":\"0x0\",\"gas\":\"0x5208\",\"to\":\"0x...\"}}")]
+        ResultWrapper<SignTransactionResult> eth_signTransaction(
+            [JsonRpcParameter(ExampleValue = "[{\"from\":\"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\",\"to\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\",\"value\":\"0x9184e72a\",\"gas\":\"0x76c0\",\"gasPrice\":\"0x9184e72a000\",\"nonce\":\"0x0\"}]")] TransactionForRpc rpcTx);
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Submits a raw transaction and waits for inclusion in a block, returning the receipt or a timeout error.",
             IsSharable = false)]
         Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(
