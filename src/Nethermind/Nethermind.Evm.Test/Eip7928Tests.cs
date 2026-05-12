@@ -11,6 +11,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Precompiles;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -53,6 +54,18 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         .PushData(_delegationSlot)
         .Op(Instruction.SLOAD)
         .Done;
+
+    private static IEnumerable<TestCaseData> SelfdestructSendToSenderTestSource()
+    {
+        yield return new TestCaseData(Shanghai.Instance, 0)
+            .SetName("EIP7928_pre_EIP6780_selfdestruct_to_sender_zero_balance");
+        yield return new TestCaseData(Shanghai.Instance, 100)
+            .SetName("EIP7928_pre_EIP6780_selfdestruct_to_sender_nonzero_balance");
+        yield return new TestCaseData(Amsterdam.Instance, 0)
+            .SetName("EIP7928_EIP6780_selfdestruct_to_sender_zero_balance");
+        yield return new TestCaseData(Amsterdam.Instance, 100)
+            .SetName("EIP7928_EIP6780_selfdestruct_to_sender_nonzero_balance");
+    }
 
     /// <summary>
     /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
@@ -911,6 +924,64 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             {
                 Assert.That(beneficiaryChanges!.BalanceChanges, Has.Count.EqualTo(1));
                 Assert.That(beneficiaryChanges.BalanceChanges[0], Is.EqualTo(new BalanceChange(0, (UInt256)firstCreateBalance)));
+            }
+        }
+    }
+
+    [TestCaseSource(nameof(SelfdestructSendToSenderTestSource))]
+    public void Eip7928_selfdestruct_to_sender_coalesces_sender_changes(IReleaseSpec spec, int victimBalance)
+    {
+        byte[] selfdestructCode = Prepare.EvmCode
+            .SELFDESTRUCT(TestItem.AddressA)
+            .Done;
+
+        InitWorldState(TestState, selfdestructCode, callTargetBalance: (UInt256)victimBalance);
+
+        (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(120_000_000)
+            .WithBaseFee(1)
+            .TestObject;
+        Transaction tx = BuildCallTx(_callTargetAddress);
+
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+        CallOutputTracer tracer = new();
+        TransactionResult res = processor.Execute(tx, tracer);
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
+        UInt256 gasUsed = new((ulong)tracer.GasSpent);
+        AccountChanges? senderChanges = bal.GetAccountChanges(TestItem.AddressA);
+        AccountChanges? victimChanges = bal.GetAccountChanges(_callTargetAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(res.TransactionExecuted, Is.True, res.ToString());
+            Assert.That(senderChanges, Is.Not.Null);
+            Assert.That(senderChanges!.NonceChanges, Has.Count.EqualTo(1));
+            Assert.That(senderChanges.NonceChanges[0], Is.EqualTo(new NonceChange(0, 1)));
+            Assert.That(senderChanges.BalanceChanges, Has.Count.EqualTo(1));
+            Assert.That(senderChanges.BalanceChanges[0], Is.EqualTo(new BalanceChange(0, _accountBalance - gasUsed + (UInt256)victimBalance)));
+            Assert.That(victimChanges, Is.Not.Null);
+            Assert.That(victimChanges!.NonceChanges, Is.Empty);
+            Assert.That(victimChanges.CodeChanges, Is.Empty);
+            if (victimBalance == 0)
+            {
+                Assert.That(victimChanges.BalanceChanges, Is.Empty);
+            }
+            else
+            {
+                Assert.That(victimChanges.BalanceChanges, Has.Count.EqualTo(1));
+                Assert.That(victimChanges.BalanceChanges[0], Is.EqualTo(new BalanceChange(0, UInt256.Zero)));
+            }
+
+            if (spec.SelfdestructOnlyOnSameTransaction)
+            {
+                Assert.That(TestState.AccountExists(_callTargetAddress), Is.True);
+                Assert.That(TestState.GetBalance(_callTargetAddress), Is.EqualTo(UInt256.Zero));
+                Assert.That(TestState.GetCode(_callTargetAddress), Is.EqualTo(selfdestructCode));
+            }
+            else
+            {
+                Assert.That(TestState.AccountExists(_callTargetAddress), Is.False);
             }
         }
     }
