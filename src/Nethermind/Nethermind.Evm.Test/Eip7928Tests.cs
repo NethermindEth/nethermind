@@ -218,18 +218,111 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         .Op(Instruction.STOP)
         .Done;
 
+    private static byte[] BuildCreate2ThenSetFlagCode(byte[] initCode)
+    {
+        byte[] returnFlagCode = Prepare.EvmCode
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+        int createJumpDestination = 5 + returnFlagCode.Length;
+        byte[] prefix = Prepare.EvmCode
+            .Op(Instruction.CALLDATASIZE)
+            .Op(Instruction.ISZERO)
+            .PushData(createJumpDestination)
+            .Op(Instruction.JUMPI)
+            .Done;
+        byte[] loadFlagCode = Prepare.EvmCode
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .Done;
+        byte[] createAndSetFlagCode = Prepare.EvmCode
+            .ForCreate2Of(initCode)
+            .Op(Instruction.POP)
+            .PushData(0)
+            .Op(Instruction.SLOAD)
+            .Op(Instruction.POP)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+        int createOnlyJumpDestination =
+            createJumpDestination + 1 + loadFlagCode.Length + 3 + createAndSetFlagCode.Length;
+        byte[] branchCode = Prepare.EvmCode
+            .PushData(createOnlyJumpDestination)
+            .Op(Instruction.JUMPI)
+            .Done;
+        byte[] createOnlyCode = Prepare.EvmCode
+            .ForCreate2Of(initCode)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        return
+        [
+            .. prefix,
+            .. returnFlagCode,
+            (byte)Instruction.JUMPDEST,
+            .. loadFlagCode,
+            .. branchCode,
+            .. createAndSetFlagCode,
+            (byte)Instruction.JUMPDEST,
+            .. createOnlyCode
+        ];
+    }
+
+    private static byte[] BuildFlagConditionalSelfdestructInitCode(Address beneficiary, byte[] runtimeCode)
+    {
+        byte[] loadFlagCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .PushData(32)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.CALLER)
+            .PushData(50_000)
+            .Op(Instruction.CALL)
+            .Op(Instruction.POP)
+            .PushData(0)
+            .Op(Instruction.MLOAD)
+            .Done;
+        byte[] selfdestructCode = Prepare.EvmCode
+            .PushData(beneficiary)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+        int returnJumpDestination = loadFlagCode.Length + 3 + selfdestructCode.Length;
+        byte[] jumpCode = Prepare.EvmCode
+            .PushData(returnJumpDestination)
+            .Op(Instruction.JUMPI)
+            .Done;
+        byte[] returnCode = Prepare.EvmCode
+            .ForInitOf(runtimeCode)
+            .Done;
+
+        return [.. loadFlagCode, .. jumpCode, .. selfdestructCode, (byte)Instruction.JUMPDEST, .. returnCode];
+    }
+
     private AuthorizationTuple SignAuthorization(PrivateKey signer, Address codeAddress, ulong nonce = 0)
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         return ecdsa.Sign(signer, SpecProvider.ChainId, codeAddress, nonce);
     }
 
-    private static Transaction BuildCallTx(Address to) =>
+    private static Transaction BuildCallTx(Address to, UInt256 value = default, UInt256 nonce = default) =>
         Build.A.Transaction
             .To(to)
+            .WithNonce(nonce)
             .WithGasLimit(1_000_000)
             .WithGasPrice(1)
-            .WithValue(UInt256.Zero)
+            .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
@@ -253,19 +346,29 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         return tracedState.GetGeneratingBlockAccessList();
     }
 
-    private BlockAccessList ExecuteCallTx(Address to)
+    private BlockAccessList ExecuteCallTx(Address to) =>
+        ExecuteCallTxs(BuildCallTx(to));
+
+    private BlockAccessList ExecuteCallTxs(params Transaction[] transactions)
     {
         (TracedAccessWorldState tracedState, TransactionProcessor<EthereumGasPolicy> processor) = CreateTracedProcessor();
         BlockHeader header = Build.A.BlockHeader
             .WithGasLimit(120_000_000)
             .WithBaseFee(1)
             .TestObject;
-        Transaction tx = BuildCallTx(to);
 
         processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
-        TransactionResult res = processor.Execute(tx, NullTxTracer.Instance);
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            TransactionResult res = processor.Execute(transactions[i], NullTxTracer.Instance);
+            Assert.That(res.TransactionExecuted, Is.True, res.ToString());
 
-        Assert.That(res.TransactionExecuted, Is.True, res.ToString());
+            if (i != transactions.Length - 1)
+            {
+                tracedState.IncrementIndex();
+            }
+        }
+
         return tracedState.GetGeneratingBlockAccessList();
     }
 
@@ -769,6 +872,46 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(beneficiaryChanges, Is.Not.Null);
             Assert.That(beneficiaryChanges!.BalanceChanges, Has.Count.EqualTo(1));
             Assert.That(beneficiaryChanges.BalanceChanges[0].Value, Is.EqualTo(createdBalance));
+        }
+    }
+
+    [TestCase(0, TestName = "EIP7928_create2_selfdestruct_then_recreate_same_block_zero_balance")]
+    [TestCase(100, TestName = "EIP7928_create2_selfdestruct_then_recreate_same_block_nonzero_balance")]
+    public void Eip7928_create2_selfdestruct_then_recreate_same_block_records_fresh_changes(int firstCreateBalance)
+    {
+        Address beneficiary = TestItem.AddressB;
+        byte[] runtimeCode = [(byte)Instruction.STOP];
+        byte[] childInitCode = BuildFlagConditionalSelfdestructInitCode(beneficiary, runtimeCode);
+        byte[] factoryCode = BuildCreate2ThenSetFlagCode(childInitCode);
+        Address createdAddress = ContractAddress.From(_callTargetAddress, new byte[32], childInitCode);
+
+        InitWorldState(TestState, factoryCode);
+
+        Transaction firstTx = BuildCallTx(_callTargetAddress, value: (UInt256)firstCreateBalance);
+        Transaction secondTx = BuildCallTx(_callTargetAddress, nonce: UInt256.One);
+
+        BlockAccessList bal = ExecuteCallTxs(firstTx, secondTx);
+        AccountChanges? createdChanges = bal.GetAccountChanges(createdAddress);
+        AccountChanges? beneficiaryChanges = bal.GetAccountChanges(beneficiary);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdChanges, Is.Not.Null);
+            Assert.That(createdChanges!.NonceChanges, Has.Count.EqualTo(1));
+            Assert.That(createdChanges.NonceChanges[0], Is.EqualTo(new NonceChange(1, 1)));
+            Assert.That(createdChanges.CodeChanges, Has.Count.EqualTo(1));
+            Assert.That(createdChanges.CodeChanges[0].Index, Is.EqualTo(1u));
+            Assert.That(createdChanges.CodeChanges[0].Code, Is.EqualTo(runtimeCode));
+            Assert.That(beneficiaryChanges, Is.Not.Null);
+            if (firstCreateBalance == 0)
+            {
+                Assert.That(beneficiaryChanges!.BalanceChanges, Is.Empty);
+            }
+            else
+            {
+                Assert.That(beneficiaryChanges!.BalanceChanges, Has.Count.EqualTo(1));
+                Assert.That(beneficiaryChanges.BalanceChanges[0], Is.EqualTo(new BalanceChange(0, (UInt256)firstCreateBalance)));
+            }
         }
     }
 
