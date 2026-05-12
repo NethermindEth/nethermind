@@ -1,7 +1,7 @@
 name: Run nethtest (EEST engine tests)
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.test_setup || 'all' }}-${{ inputs.test_type || 'engineTest' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.test_type || 'engineTest' }}
   cancel-in-progress: true
 
 on:
@@ -23,20 +23,6 @@ on:
           - engineTest
           - blockTest
           - stateTest
-      test_setup:
-        description: EEST fixture setup
-        required: true
-        default: all
-        type: choice
-        options:
-          - all
-          - current_spec
-          - new_spec
-      workers:
-        description: Parallel workers
-        required: false
-        default: '2'
-        type: string
       filter:
         description: Regex filter for test names (optional)
         required: false
@@ -52,7 +38,7 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
-  WORKERS: ${{ inputs.workers || '2' }}
+  WORKERS: '8'
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
 
@@ -68,7 +54,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((inputs.test_setup || 'all') == 'current_spec' && '[{"test_setup":"current_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"ubuntu-arm64-4-core","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"windows-latest","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || (inputs.test_setup || 'all') == 'new_spec' && '[{"test_setup":"new_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"}]' || ('ethereum/execution-spec-tests' == 'ethereum/execution-specs' && 'v5.4.0' == 'tests-bal@v7.0.0' && 'fixtures_stable.tar.gz' == 'fixtures_bal.tar.gz' && '[{"test_setup":"current_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"ubuntu-arm64-4-core","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"windows-latest","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || '[{"test_setup":"current_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"new_spec","runner":"ubuntu-lowchad","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"},{"test_setup":"current_spec","runner":"ubuntu-arm64-4-core","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"current_spec","runner":"windows-latest","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]')) }}
+        include:
+          - test_setup: current_spec
+            runner: ubuntu-lowchad
+            eest_repository: ethereum/execution-spec-tests
+            eest_version: v5.4.0
+            eest_archive: fixtures_stable.tar.gz
+          - test_setup: new_spec
+            runner: ubuntu-gigachad
+            eest_repository: ethereum/execution-specs
+            eest_version: tests-bal@v7.0.0
+            eest_archive: fixtures_bal.tar.gz
     env:
       TEST_SETUP: ${{ matrix.test_setup }}
       EEST_REPOSITORY: ${{ matrix.eest_repository }}
