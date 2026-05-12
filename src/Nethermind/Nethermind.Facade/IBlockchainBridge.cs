@@ -1,9 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
@@ -12,12 +18,7 @@ using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 using Block = Nethermind.Core.Block;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.Facade
 {
@@ -58,6 +59,7 @@ namespace Nethermind.Facade
         Witness GenerateExecutionWitness(BlockHeader header, Transaction tx);
 
         ReadOnlyBlockAccessList? GetBlockAccessList(Hash256 blockHash);
+        MemoryManager<byte>? GetBlockAccessListRlp(Hash256 blockHash);
         void DeleteBlockAccessList(Hash256 blockHash);
     }
 }

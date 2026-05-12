@@ -22,7 +22,7 @@ public class XdcStateSyncSnapshotManager(
     IBlockTree blockTree,
     ISnapshotManager snapshotManager,
     IMasternodeVotingContract masternodeVotingContract
-    )
+    ) : IXdcStateSyncSnapshotManager
 {
     private readonly ISpecProvider _specProvider = specProvider;
     private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
@@ -82,13 +82,5 @@ public class XdcStateSyncSnapshotManager(
         Address[] candidates = _masternodeVotingContract.GetCandidatesByStake(gapBlockHeader);
         Snapshot snapshot = new(gapBlockHeader.Number, gapBlockHeader.Hash, candidates);
         _snapshotManager.StoreSnapshot(snapshot);
-    }
-
-    public void StoreSnapshots(XdcBlockHeader pivotHeader)
-    {
-        foreach (XdcBlockHeader gapBlockHeader in GetGapBlocks(pivotHeader))
-        {
-            StoreSnapshot(gapBlockHeader);
-        }
     }
 }

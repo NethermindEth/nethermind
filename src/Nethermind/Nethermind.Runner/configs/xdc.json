@@ -5,6 +5,13 @@
     "BaseDbPath": "nethermind_db/xdc",
     "LogFileName": "xdc.log"
   },
+  "Network": {
+    "FilterDiscoveryNodesByRecentIp": false,
+    "EnableEnrDiscovery": false
+  },
+  "Discovery": {
+    "DiscoveryVersion": "V4"
+  },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
