@@ -842,9 +842,9 @@ public class BSearchIndexTests
     /// LayoutPlanner auto-enables the LE flag for Uniform 2/4/8 and UniformWithLen slotSize=4
     /// only; non-eligible widths must opt out.
     /// </summary>
-    [TestCase(2, 1, true,  TestName = "Plan_LE_Uniform2")]
-    [TestCase(4, 1, true,  TestName = "Plan_LE_Uniform4")]
-    [TestCase(8, 1, true,  TestName = "Plan_LE_Uniform8")]
+    [TestCase(2, 1, true, TestName = "Plan_LE_Uniform2")]
+    [TestCase(4, 1, true, TestName = "Plan_LE_Uniform4")]
+    [TestCase(8, 1, true, TestName = "Plan_LE_Uniform8")]
     [TestCase(3, 1, false, TestName = "Plan_LE_Uniform3_NotEligible")]
     [TestCase(16, 1, false, TestName = "Plan_LE_Uniform16_NotEligible")]
     public void LayoutPlanner_AutoEnablesLeFlag_OnlyForEligibleShapes(int keyLen, int expectedKeyType, bool expectedLe)
@@ -872,7 +872,7 @@ public class BSearchIndexTests
     /// <c>BSearchIndexLayoutPlanner.cs:98-105</c>). The LE flag must auto-enable iff the
     /// resulting slot size is exactly 4.
     /// </summary>
-    [TestCase(3, 4, true,  TestName = "Plan_LE_UniformWithLen_Slot4")]
+    [TestCase(3, 4, true, TestName = "Plan_LE_UniformWithLen_Slot4")]
     [TestCase(2, 3, false, TestName = "Plan_LE_UniformWithLen_Slot3_NotEligible")]
     [TestCase(4, 5, false, TestName = "Plan_LE_UniformWithLen_Slot5_NotEligible")]
     public void LayoutPlanner_AutoEnablesLeFlag_UniformWithLen(int otherLen, int expectedSlotSize, bool expectedLe)
