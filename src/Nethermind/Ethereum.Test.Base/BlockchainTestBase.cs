@@ -53,13 +53,11 @@ public abstract class BlockchainTestBase
     /// </summary>
     protected virtual bool? ParallelExecutionOverride => null;
 
-    /// Override to force BAL batch-read prewarming on or off in tests.
-    /// Null means use the default config value.
-    /// </summary>
     /// <summary>
     /// Override to force BAL batch-read prewarming on or off in tests.
     /// Null means use the default config value.
     /// </summary>
+    protected virtual bool? ParallelExecutionBatchReadOverride => null;
     protected virtual bool? ParallelExecutionBatchReadOverride => null;
 
     /// <summary>
