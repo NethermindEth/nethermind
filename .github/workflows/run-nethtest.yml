@@ -1,7 +1,7 @@
 name: Run nethtest (EEST engine tests)
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.test_setup || 'current_spec' }}-${{ inputs.test_type || 'engineTest' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.test_setup || 'all' }}-${{ inputs.test_type || 'engineTest' }}
   cancel-in-progress: true
 
 on:
@@ -26,9 +26,10 @@ on:
       test_setup:
         description: EEST fixture setup
         required: true
-        default: current_spec
+        default: all
         type: choice
         options:
+          - all
           - current_spec
           - new_spec
       workers:
@@ -46,10 +47,6 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
-  TEST_SETUP: ${{ inputs.test_setup || 'current_spec' }}
-  EEST_REPOSITORY: ${{ inputs.test_setup == 'new_spec' && 'ethereum/execution-specs' || 'ethereum/execution-spec-tests' }}
-  EEST_VERSION: ${{ inputs.test_setup == 'new_spec' && 'tests-bal@v7.0.0' || 'v5.4.0' }}
-  EEST_ARCHIVE: ${{ inputs.test_setup == 'new_spec' && 'fixtures_bal.tar.gz' || 'fixtures_stable.tar.gz' }}
   WORKERS: ${{ inputs.workers || '4' }}
   FILTER: ${{ inputs.filter || '' }}
 
@@ -59,9 +56,18 @@ defaults:
 
 jobs:
   nethtest:
-    name: nethtest ${{ inputs.test_setup || 'current_spec' }} --${{ inputs.test_type || 'engineTest' }}
+    name: nethtest ${{ matrix.test_setup }} --${{ inputs.test_type || 'engineTest' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON((inputs.test_setup || 'all') == 'current_spec' && '[{"test_setup":"current_spec","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || (inputs.test_setup || 'all') == 'new_spec' && '[{"test_setup":"new_spec","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"}]' || ('ethereum/execution-spec-tests' == 'ethereum/execution-specs' && 'v5.4.0' == 'tests-bal@v7.0.0' && 'fixtures_stable.tar.gz' == 'fixtures_bal.tar.gz' && '[{"test_setup":"current_spec","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"}]' || '[{"test_setup":"current_spec","eest_repository":"ethereum/execution-spec-tests","eest_version":"v5.4.0","eest_archive":"fixtures_stable.tar.gz"},{"test_setup":"new_spec","eest_repository":"ethereum/execution-specs","eest_version":"tests-bal@v7.0.0","eest_archive":"fixtures_bal.tar.gz"}]')) }}
+    env:
+      TEST_SETUP: ${{ matrix.test_setup }}
+      EEST_REPOSITORY: ${{ matrix.eest_repository }}
+      EEST_VERSION: ${{ matrix.eest_version }}
+      EEST_ARCHIVE: ${{ matrix.eest_archive }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -86,7 +92,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: /tmp/eest-fixtures
-          key: eest-${{ env.EEST_REPOSITORY }}-${{ env.EEST_VERSION }}-${{ env.EEST_ARCHIVE }}
+          key: eest-${{ matrix.eest_repository }}-${{ matrix.eest_version }}-${{ matrix.eest_archive }}
 
       - name: Download EEST fixtures
         run: |
@@ -266,7 +272,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: nethtest-results-${{ env.TEST_SETUP }}-${{ env.TEST_TYPE }}
+          name: nethtest-results-${{ matrix.test_setup }}-${{ env.TEST_TYPE }}
           path: |
             /tmp/nethtest-results.json
             /tmp/nethtest-stderr.log
