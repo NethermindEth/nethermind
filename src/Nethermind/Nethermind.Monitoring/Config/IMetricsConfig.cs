@@ -20,7 +20,7 @@ public interface IMetricsConfig : IConfig
     [ConfigItem(Description = "Whether to publish metrics using .NET diagnostics that can be collected with dotnet-counters.", DefaultValue = "false")]
     bool CountersEnabled { get; }
 
-    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.")]
+    [ConfigItem(Description = "The Prometheus Pushgateway instance URL.", IsSensitive = true)]
     string PushGatewayUrl { get; }
 
     [ConfigItem(DefaultValue = "5", Description = "The frequency of pushing metrics to Prometheus, in seconds.")]
