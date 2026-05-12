@@ -222,10 +222,15 @@ namespace Nethermind.Evm.TransactionProcessing
             // substate.Logs contains a reference to accessTracker.Logs so we can't Dispose until end of the method
             using StackAccessTracker accessTracker = new(tracer.IsTracingAccess);
 
-            int delegationRefunds = !spec.IsEip7702Enabled || !tx.HasAuthorizationList ? 0 : ProcessDelegations(tx, spec, accessTracker);
+            int delegationRefunds = 0;
+            int delegationAuthBaseRefunds = 0;
+            if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
+            {
+                delegationRefunds = ProcessDelegations(tx, spec, accessTracker, out delegationAuthBaseRefunds);
+            }
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
-            Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds);
+            Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds, ref delegationAuthBaseRefunds);
 
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
@@ -346,23 +351,34 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private static void Apply8037DelegationRefunds(IReleaseSpec spec, in IntrinsicGas<TGasPolicy> intrinsicGas, ref TGasPolicy gasAvailable, ref int delegationRefunds)
+        private static void Apply8037DelegationRefunds(
+            IReleaseSpec spec,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            ref TGasPolicy gasAvailable,
+            ref int delegationRefunds,
+            ref int delegationAuthBaseRefunds)
         {
-            if (spec.IsEip8037Enabled && delegationRefunds > 0)
+            if (spec.IsEip8037Enabled && (delegationRefunds > 0 || delegationAuthBaseRefunds > 0))
             {
                 TGasPolicy intrinsicGasStandard = intrinsicGas.Standard;
                 long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
-                TGasPolicy.ApplyCodeInsertRefunds(ref gasAvailable, delegationRefunds, spec, stateGasFloor);
+                long stateGasRefund = checked(
+                    TGasPolicy.GetNewAccountStateCost(in gasAvailable) * delegationRefunds
+                    + TGasPolicy.GetPerAuthBaseStateCost(in gasAvailable) * delegationAuthBaseRefunds);
+                long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
+                TGasPolicy.RefundStateGas(ref gasAvailable, stateGasRefund, refundFloor, trackSpillRefund: false);
                 delegationRefunds = 0;
+                delegationAuthBaseRefunds = 0;
             }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker)
+        private int ProcessDelegations(Transaction tx, IReleaseSpec spec, in StackAccessTracker accessTracker, out int authBaseRefunds)
         {
             Debug.Assert(spec.IsEip7702Enabled && tx.HasAuthorizationList);
 
             int refunds = 0;
+            authBaseRefunds = 0;
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
@@ -374,7 +390,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    if (!WorldState.AccountExists(authority))
+                    bool accountExists = WorldState.AccountExists(authority);
+                    bool hasDelegation = accountExists && WorldState.HasCode(authority) && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
+
+                    if (!accountExists)
                     {
                         WorldState.CreateAccount(authority, 0, 1);
                     }
@@ -382,6 +401,11 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         refunds++;
                         WorldState.IncrementNonce(authority);
+                    }
+
+                    if (hasDelegation)
+                    {
+                        authBaseRefunds++;
                     }
 
                     _codeInfoRepository.SetDelegation(authTuple.CodeAddress, authority, spec);
