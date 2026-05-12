@@ -834,6 +834,92 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(TestState.GetBalance(beneficiary).IsZero, Is.EqualTo(!fundContract));
     }
 
+    [TestCase(false, TestName = "Eip8037_selfdestruct_to_new_beneficiary_charges_state_gas_when_cold")]
+    [TestCase(true, TestName = "Eip8037_selfdestruct_to_new_beneficiary_charges_state_gas_when_warm")]
+    public void Eip8037_selfdestruct_to_new_beneficiary_state_gas_does_not_depend_on_warmth(bool warmBeneficiary)
+    {
+        Address beneficiary = TestItem.AddressC;
+        Prepare codeBuilder = Prepare.EvmCode;
+        if (warmBeneficiary)
+        {
+            codeBuilder
+                .PushData(beneficiary)
+                .Op(Instruction.BALANCE)
+                .Op(Instruction.POP);
+        }
+
+        byte[] code = codeBuilder
+            .SELFDESTRUCT(beneficiary)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 500_000, code, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.NewAccountState));
+        Assert.That(TestState.GetBalance(beneficiary), Is.EqualTo(100.Ether + UInt256.One));
+    }
+
+    [TestCase(false, 0, 0L, TestName = "Eip8037_same_tx_created_selfdestruct_to_new_beneficiary_with_zero_balance_CREATE")]
+    [TestCase(false, 100, GasCostOf.NewAccountState, TestName = "Eip8037_same_tx_created_selfdestruct_to_new_beneficiary_with_balance_CREATE")]
+    [TestCase(true, 0, 0L, TestName = "Eip8037_same_tx_created_selfdestruct_to_new_beneficiary_with_zero_balance_CREATE2")]
+    [TestCase(true, 100, GasCostOf.NewAccountState, TestName = "Eip8037_same_tx_created_selfdestruct_to_new_beneficiary_with_balance_CREATE2")]
+    public void Eip8037_same_tx_created_selfdestruct_to_new_beneficiary_charges_balance_transfer_only(
+        bool create2,
+        int createdBalance,
+        long expectedStateGas)
+    {
+        Address beneficiary = TestItem.AddressC;
+        byte[] childInitCode = Prepare.EvmCode
+            .SELFDESTRUCT(beneficiary)
+            .Done;
+        byte[] salt = [0x01];
+
+        Prepare factoryCodeBuilder = create2
+            ? Prepare.EvmCode.Create2(childInitCode, salt, (UInt256)createdBalance)
+            : Prepare.EvmCode.Create(childInitCode, (UInt256)createdBalance);
+        byte[] factoryCode = factoryCodeBuilder
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 800_000, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
+        Assert.That(TestState.GetBalance(beneficiary), Is.EqualTo((UInt256)createdBalance));
+    }
+
+    [Test]
+    public void Eip8037_selfdestruct_to_same_tx_created_beneficiary_must_not_charge_new_account_state_again()
+    {
+        byte[] beneficiaryRuntime = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] beneficiaryInitCode = Prepare.EvmCode
+            .ForInitOf(beneficiaryRuntime)
+            .Done;
+        Address beneficiary = ContractAddress.From(Recipient, 0);
+        byte[] victimInitCode = Prepare.EvmCode
+            .SELFDESTRUCT(beneficiary)
+            .Done;
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create(beneficiaryInitCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Create(victimInitCode, (UInt256)100)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 1_000_000, factoryCode, blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        long expectedStateGas = GasCostOf.CreateState + GasCostOf.CodeDepositState;
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedStateGas));
+        Assert.That(TestState.GetBalance(beneficiary), Is.EqualTo((UInt256)100));
+    }
+
     [TestCase(false, TestName = "Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas_CREATE")]
     [TestCase(true, TestName = "Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas_CREATE2")]
     public void Eip8037_same_tx_selfdestruct_must_refund_created_storage_state_gas(bool create2)
