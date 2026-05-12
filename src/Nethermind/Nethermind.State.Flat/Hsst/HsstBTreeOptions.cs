@@ -22,13 +22,13 @@ public sealed record HsstBTreeOptions
     /// <summary>Hard upper bound on children per intermediate node — sanity cap
     /// only; the byte threshold (<see cref="MaxIntermediateBytes"/>) is the
     /// normal binding constraint.</summary>
-    public const int DefaultMaxIntermediateEntries = 4096;
+    public const int DefaultMaxIntermediateEntries = 2048;
 
     /// <summary>Byte budget per intermediate node — accumulation stops when the
     /// next child would push the estimated node size over this threshold. Higher
     /// values flatten the tree (fewer levels = fewer cache misses per lookup) at
     /// the cost of a larger per-node binary search.</summary>
-    public const int DefaultMaxIntermediateBytes = 4096;
+    public const int DefaultMaxIntermediateBytes = 2048;
 
     /// <summary>Default minimum children per intermediate node — once reached,
     /// the builder may split early if the next child would worsen the per-node
