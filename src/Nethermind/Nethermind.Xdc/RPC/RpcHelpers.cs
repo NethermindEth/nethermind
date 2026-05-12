@@ -65,12 +65,12 @@ internal static class RpcHelpers
                 for (ulong i = parentRound + 1; i < currRound; i++)
                 {
                     ulong leaderIndex = i % (ulong)spec.EpochLength % (ulong)masternodes.Length;
-                    Address whosTurn = masternodes[leaderIndex];
+                    Address whoseTurn = masternodes[leaderIndex];
 
                     missedRounds.Add(new MissedRoundInfo
                     {
                         Round = i,
-                        Miner = whosTurn,
+                        Miner = whoseTurn,
                         CurrentBlockHash = nextHeader.Hash,
                         CurrentBlockNum = (UInt256)nextHeader.Number,
                         ParentBlockHash = parentHeader.Hash,
