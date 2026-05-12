@@ -40,9 +40,10 @@ public partial class EthRpcModuleTests
         IReadOnlyBlockTree blockTree = Substitute.For<IReadOnlyBlockTree>();
         blockTree.Head.Returns(head);
         blockTree.BestSuggestedHeader.Returns(head.Header);
-        blockTree.OldestStateBlock.Returns(oldestStateBlock);
 
         IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
+        wsm.OldestStateBlock.Returns(oldestStateBlock);
+        wsm.SupportsTrieProofs.Returns(true);
         wsm.GetOldestStateBlock(Arg.Any<long>()).Returns(call =>
             retentionWindow is { } w ? Math.Max(0L, (long)call[0] - w) : (long?)null);
 
@@ -61,6 +62,7 @@ public partial class EthRpcModuleTests
     {
         IHistoryPruner pruner = Substitute.For<IHistoryPruner>();
         pruner.OldestBlockHeader.Returns(Build.A.BlockHeader.WithNumber(oldestBlockNumber).TestObject);
+        pruner.GetRetentionBlocks(Arg.Any<long>()).Returns(call => (long)call[0] * 32);
         return pruner;
     }
 
@@ -117,6 +119,21 @@ public partial class EthRpcModuleTests
             ExpectedState: Available, ExpectedStateproofs: Available,
             ExpectedReceipts: Disabled, ExpectedBlocks: Disabled)
         { HeadNumber = 18_001_000, OldestStateBlock = 0, SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadBodiesInFastSync = false } };
+
+        // Receipts barrier higher than bodies barrier — receipts floor must follow the larger of the two.
+        const long bodiesBarrierLow = 3_000_000;
+        const long receiptsBarrierHigh = 6_000_000;
+        ResourceAvailability blocksAtBodiesBarrier = new(Disabled: false, OldestBlock: bodiesBarrierLow);
+        ResourceAvailability receiptsAtReceiptsBarrier = new(Disabled: false, OldestBlock: receiptsBarrierHigh);
+        yield return new CapabilitiesScenario(
+            Name: "fast_sync_receipts_barrier_above_bodies_barrier",
+            ExpectedState: Available, ExpectedStateproofs: Available,
+            ExpectedReceipts: receiptsAtReceiptsBarrier, ExpectedBlocks: blocksAtBodiesBarrier)
+        {
+            HeadNumber = 18_001_000,
+            OldestStateBlock = 0,
+            SyncConfig = new SyncConfig { FastSync = true, PivotNumber = 18_000_000, DownloadReceiptsInFastSync = true, AncientBodiesBarrier = bodiesBarrierLow, AncientReceiptsBarrier = receiptsBarrierHigh },
+        };
 
         yield return new CapabilitiesScenario(
             Name: "full_sync_with_irrelevant_bodies_flag_keeps_blocks_and_receipts",

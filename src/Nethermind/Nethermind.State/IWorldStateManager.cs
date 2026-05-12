@@ -10,6 +10,17 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
+/// <summary>
+/// Narrow interface for read/write of the absolute oldest state block floor. Implemented
+/// by <c>BlockTree</c> (which persists it in the metadata DB). Exposed via
+/// <see cref="IWorldStateManager.OldestStateBlock"/> for consumers outside the blockchain
+/// layer that need to know the state retention floor.
+/// </summary>
+public interface IOldestStateBlockStore
+{
+    long? OldestStateBlock { get; set; }
+}
+
 public interface IWorldStateManager
 {
     IWorldStateScopeProvider GlobalWorldState { get; }
@@ -21,9 +32,24 @@ public interface IWorldStateManager
     /// Oldest block for which state is available given the chain head, considering only this
     /// manager's rolling-window retention (e.g. trie memory pruning). Returns null when the
     /// implementation has no rolling window (archive, full pruning, flat storage — the
-    /// absolute floor is reported separately via <c>IBlockTree.OldestStateBlock</c>).
+    /// absolute floor is reported separately via <see cref="OldestStateBlock"/>).
     /// </summary>
     long? GetOldestStateBlock(long headBlock);
+
+    /// <summary>
+    /// Absolute lower bound of the persisted state window. Updated when fast/snap sync
+    /// completes (= pivot) and after a full pruning run completes (= copied state's block).
+    /// Null if never set (archive node syncing from genesis).
+    /// </summary>
+    long? OldestStateBlock { get; set; }
+
+    /// <summary>
+    /// Whether this manager can serve trie-based state proofs (e.g. for <c>eth_getProof</c>)
+    /// with the same retention guarantees as state queries. Trie-backed implementations return
+    /// true; flat-storage implementations return false because proof reconstruction is either
+    /// limited to retained flat snapshots or requires walking the full state.
+    /// </summary>
+    bool SupportsTrieProofs { get; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.

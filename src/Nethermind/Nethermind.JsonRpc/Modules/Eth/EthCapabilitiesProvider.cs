@@ -40,29 +40,33 @@ public sealed class EthCapabilitiesProvider(
 
         long historyFloor = historyPruner.OldestBlockHeader?.Number ?? 0;
         DeleteStrategy? historyWindow = BuildWindow(
-            historyConfig.Pruning == PruningModes.Rolling ? historyConfig.RetentionEpochs * HistoryPruner.SlotsPerEpoch : 0);
+            historyConfig.Pruning == PruningModes.Rolling ? historyPruner.GetRetentionBlocks(historyConfig.RetentionEpochs) : 0);
 
         long lowestReceipt = Math.Max(syncPointers.LowestInsertedReceiptBlockNumber ?? 0L, receiptsBarrier);
         long lowestBody = Math.Max(syncPointers.LowestInsertedBodyNumber ?? 0L, bodiesBarrier);
         long lowestBlock = Math.Max(blockTree.LowestInsertedHeader?.Number ?? 0L, lowestBody);
 
         ResourceAvailability state = BuildState(head, fastSyncing);
+        // Flat-storage nodes can technically reconstruct proofs from flat data, but that path is
+        // either limited to retained flat snapshots or O(state-size). Routers should not send
+        // proof requests there expecting trie-backed performance, so we gate stateproofs separately.
+        ResourceAvailability stateproofs = worldStateManager.SupportsTrieProofs ? state : Disabled;
 
         return new EthCapabilities(
             Head: new ChainHead(head.Number, head.Hash!),
             State: state,
             Receipts: BuildResource(receiptsSynced, Math.Max(lowestReceipt, historyFloor), historyWindow),
             Blocks: BuildResource(blockTree.BestSuggestedHeader is not null && bodiesSynced, Math.Max(lowestBlock, historyFloor), historyWindow),
-            Stateproofs: state);
+            Stateproofs: stateproofs);
     }
 
     private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
     {
         // During fast sync, state isn't queryable until StateSyncRunner finalises and writes the
         // pivot floor — disable the resource until then so callers don't see "available from genesis".
-        if (fastSyncing && blockTree.OldestStateBlock is null) return Disabled;
+        if (fastSyncing && worldStateManager.OldestStateBlock is null) return Disabled;
 
-        long stateFloor = blockTree.OldestStateBlock ?? 0L;
+        long stateFloor = worldStateManager.OldestStateBlock ?? 0L;
         long? windowOldest = worldStateManager.GetOldestStateBlock(head.Number);
         long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
         // Only emit the window descriptor when the rolling window is the binding constraint;

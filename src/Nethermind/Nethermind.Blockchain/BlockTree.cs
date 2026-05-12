@@ -30,7 +30,7 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain
 {
-    public partial class BlockTree : IBlockTree
+    public partial class BlockTree : IBlockTree, Nethermind.State.IOldestStateBlockStore
     {
         // there is not much logic in the addressing here
         private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];

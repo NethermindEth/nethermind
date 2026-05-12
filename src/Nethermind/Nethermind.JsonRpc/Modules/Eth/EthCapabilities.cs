@@ -9,8 +9,17 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 
 /// <summary>
 /// Response for eth_capabilities — describes the head block and the historical data availability of each resource type.
-/// Follows ethereum/execution-apis#755. Tx/Logs alias Receipts because Nethermind prunes them together;
-/// JsonPropertyOrder preserves the spec's canonical key ordering on the wire.
+/// Follows ethereum/execution-apis#755.
+/// <para>
+/// Tx and Logs alias Receipts: tx-by-hash lookup goes through IReceiptStorage, and the log index
+/// (when enabled) is built from receipts so its coverage equals receipt coverage. If a node enables
+/// LogIndex only from a later block, the index won't serve logs below that block; eth_getLogs falls
+/// back to the receipt scanner, so the receipts floor remains the correct lower bound for routing.
+/// </para>
+/// <para>
+/// <c>JsonPropertyOrder</c> matches the spec's example-payload key order for visual parity in the
+/// generated docs — JSON object key order is not part of the wire contract.
+/// </para>
 /// </summary>
 /// <param name="Head">The current chain head.</param>
 /// <param name="State">Historical account and storage state availability.</param>

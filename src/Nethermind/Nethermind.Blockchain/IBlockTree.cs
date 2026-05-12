@@ -200,6 +200,14 @@ namespace Nethermind.Blockchain
         /// </summary>
         (long BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
 
+        /// <summary>
+        /// Lower bound of the historical state window — the oldest block for which the node
+        /// retains state. Updated when fast/snap sync completes (= pivot) and after a full
+        /// pruning run completes (= copied state's block). Null if never set (archive from genesis).
+        /// Exposed to external consumers through <see cref="Nethermind.State.IWorldStateManager.OldestStateBlock"/>.
+        /// </summary>
+        long? OldestStateBlock { get; set; }
+
         public readonly struct ForkChoiceUpdateEventArgs(Block? head, long safe, long finalized)
         {
             public Block? Head => head;

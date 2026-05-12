@@ -76,6 +76,6 @@ public static class TestWorldStateFactory
         finalizedStateProvider.TrieStore = trieStore;
         TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, logManager);
 
-        return new WorldStateManager(worldState, trieStore, dbProvider, logManager, pruningConfig);
+        return new WorldStateManager(worldState, trieStore, dbProvider, NSubstitute.Substitute.For<Nethermind.State.IOldestStateBlockStore>(), logManager, pruningConfig);
     }
 }

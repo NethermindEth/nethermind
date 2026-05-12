@@ -71,6 +71,7 @@ public class PruningTrieStateFactory(
             scopeProvider,
             trieStore,
             dbProvider,
+            (Nethermind.State.IOldestStateBlockStore)blockTree,
             logManager,
             pruningConfig,
             new LastNStateRootTracker(blockTree, syncConfig.SnapServingMaxDepth));

@@ -20,6 +20,7 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
+    private readonly IOldestStateBlockStore _oldestStateBlockStore;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
@@ -27,6 +28,7 @@ public class WorldStateManager : IWorldStateManager
         IWorldStateScopeProvider worldState,
         IPruningTrieStore trieStore,
         IDbProvider dbProvider,
+        IOldestStateBlockStore oldestStateBlockStore,
         ILogManager logManager,
         IPruningConfig pruningConfig,
         ILastNStateRootTracker lastNStateRootTracker = null
@@ -37,6 +39,7 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
+        _oldestStateBlockStore = oldestStateBlockStore;
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
@@ -54,6 +57,14 @@ public class WorldStateManager : IWorldStateManager
 
     public long? GetOldestStateBlock(long headBlock) =>
         _retentionWindowBlocks is { } window ? Math.Max(0L, headBlock - window) : null;
+
+    public long? OldestStateBlock
+    {
+        get => _oldestStateBlockStore.OldestStateBlock;
+        set => _oldestStateBlockStore.OldestStateBlock = value;
+    }
+
+    public bool SupportsTrieProofs => true;
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 
