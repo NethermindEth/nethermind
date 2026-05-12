@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO;
+using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
@@ -632,6 +635,92 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
     }
 
+
+    [Test]
+    public void Test_CallTrace_DeepNesting_DoesNotThrow()
+    {
+        using NativeCallTracerCallFrame root = BuildLinearCallChain(VirtualMachineStatics.MaxCallDepth);
+        GethLikeCustomTrace customTrace = new() { Value = root };
+
+        Assert.That(
+            () => JsonSerializer.Serialize(customTrace, EthereumJsonSerializer.JsonOptions),
+            Throws.Nothing);
+    }
+
+    [Test]
+    public void Test_CallTrace_DeepNesting_StreamedJsonIsComplete()
+    {
+        int depth = VirtualMachineStatics.MaxCallDepth;
+        using NativeCallTracerCallFrame root = BuildLinearCallChain(depth);
+        GethLikeCustomTrace customTrace = new() { Value = root };
+
+        using MemoryStream stream = new();
+        using (Utf8JsonWriter writer = new(stream, new JsonWriterOptions { SkipValidation = true, MaxDepth = EthereumJsonSerializer.DefaultMaxDepth }))
+        {
+            JsonSerializer.Serialize(writer, customTrace, EthereumJsonSerializer.JsonOptions);
+        }
+
+        string output = Encoding.UTF8.GetString(stream.ToArray());
+
+        using JsonDocument document = JsonDocument.Parse(output, new JsonDocumentOptions { MaxDepth = EthereumJsonSerializer.DefaultMaxDepth });
+        JsonElement element = document.RootElement;
+        int observed = 1;
+        while (element.TryGetProperty("calls", out JsonElement calls))
+        {
+            Assert.That(calls.GetArrayLength(), Is.EqualTo(1), $"frame at depth {observed} should have one child");
+            element = calls[0];
+            observed++;
+        }
+        Assert.That(observed, Is.EqualTo(depth), "deserialized frame chain depth should match the constructed depth");
+    }
+
+    [Test]
+    public void Test_CallTrace_DeepNesting_FailsBeyondMaxDepth()
+    {
+        int boundary = EthereumJsonSerializer.DefaultMaxDepth / 2;
+
+        using NativeCallTracerCallFrame atBoundary = BuildLinearCallChain(boundary);
+        Assert.That(
+            () => JsonSerializer.Serialize(new GethLikeCustomTrace { Value = atBoundary }, EthereumJsonSerializer.JsonOptions),
+            Throws.Nothing,
+            $"chain of {boundary} frames must serialize");
+
+        using NativeCallTracerCallFrame justOver = BuildLinearCallChain(boundary + 1);
+        Assert.That(
+            () => JsonSerializer.Serialize(new GethLikeCustomTrace { Value = justOver }, EthereumJsonSerializer.JsonOptions),
+            Throws.TypeOf<JsonException>()
+                .With.InnerException.TypeOf<InvalidOperationException>()
+                .And.InnerException.Message.EqualTo(
+                    $"CurrentDepth ({EthereumJsonSerializer.DefaultMaxDepth}) is equal to or larger than the maximum allowed depth of {EthereumJsonSerializer.DefaultMaxDepth}. Cannot write the next JSON object or array."),
+            $"chain of {boundary + 1} frames must throw the writer's depth-too-large error");
+    }
+
+    private static NativeCallTracerCallFrame BuildLinearCallChain(int depth)
+    {
+        NativeCallTracerCallFrame root = new()
+        {
+            Type = Instruction.CALL,
+            From = TestItem.AddressA,
+            To = TestItem.AddressB,
+            Gas = 100_000,
+            GasUsed = 50_000,
+        };
+        NativeCallTracerCallFrame current = root;
+        for (int i = 1; i < depth; i++)
+        {
+            NativeCallTracerCallFrame child = new()
+            {
+                Type = Instruction.CALL,
+                From = TestItem.AddressA,
+                To = TestItem.AddressB,
+                Gas = 100_000,
+                GasUsed = 50_000,
+            };
+            current.Calls.Add(child);
+            current = child;
+        }
+        return root;
+    }
 
     private byte[] CreateNestedCallsCode(bool revertParentCall = false, bool revertCreateCall = false)
     {
