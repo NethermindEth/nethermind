@@ -84,4 +84,31 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
 
     public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
+
+    /// <summary>
+    /// Validates the blob sidecar fields and attaches a <see cref="ShardBlobNetworkWrapper"/>
+    /// to the given <see cref="Transaction"/>. Returns an error string on failure, or
+    /// <c>null</c> on success.
+    /// </summary>
+    public string? TryAttachSidecar(Transaction tx, ProofVersion version)
+    {
+        string? fieldError = this switch
+        {
+            { Blobs: null or { Length: 0 } } => "blob transaction requires non-empty blobs",
+            { Commitments: null } => "commitments must be provided alongside blobs",
+            { Proofs: null } => "proofs must be provided alongside blobs",
+            _ => null
+        };
+        if (fieldError is not null) return fieldError;
+
+        ShardBlobNetworkWrapper wrapper = new(Blobs!, Commitments!, Proofs!, version);
+        IBlobProofsManager manager = IBlobProofsManager.For(version);
+        if (!manager.ValidateLengths(wrapper))
+            return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
+        if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
+            return "blob commitments do not match the supplied blobVersionedHashes";
+
+        tx.NetworkWrapper = wrapper;
+        return null;
+    }
 }

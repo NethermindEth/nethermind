@@ -38,6 +38,7 @@ using Nethermind.Wallet;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Security;
 using System.Security.Cryptography;
@@ -367,25 +368,11 @@ public partial class EthRpcModule(
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
 
-        if (rpcTx.Gas is null)
-            return ResultWrapper<SignTransactionResult>.Fail("gas not specified", ErrorCodes.InvalidInput);
-
-        if (!HasFeeFields(rpcTx))
-            return ResultWrapper<SignTransactionResult>.Fail("missing gasPrice or maxFeePerGas/maxPriorityFeePerGas", ErrorCodes.InvalidInput);
-
-        // All concrete tx subtypes (AccessList, EIP1559, Blob, SetCode) derive from LegacyTransactionForRpc,
-        // so this cast is total and Nonce/From are accessed via the base class properties.
-        LegacyTransactionForRpc? legacy = rpcTx as LegacyTransactionForRpc;
-        if (legacy?.Nonce is null)
-            return ResultWrapper<SignTransactionResult>.Fail("nonce not specified", ErrorCodes.InvalidInput);
-
-        Address from = legacy.From ?? Address.Zero;
+        Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
         if (!_wallet.IsUnlocked(from))
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
 
-        rpcTx = rpcTx.PromoteToEip1559IfTypeDefaulted();
-
-        Result<Transaction> txResult = rpcTx.ToTransaction(validateUserInput: true);
+        Result<Transaction> txResult = rpcTx.ToSignableTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
             return ResultWrapper<SignTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
 
@@ -399,8 +386,10 @@ public partial class EthRpcModule(
         // Sidecar must be attached before encode; signing only sets tx.Signature so the wrapper survives.
         if (rpcTx is BlobTransactionForRpc blobTx)
         {
-            string? attachError = TryAttachBlobSidecar(tx, blobTx);
-            if (attachError is not null)
+            ProofVersion version = _blockFinder.Head?.Header is { } head
+                ? _specProvider.GetSpec(head).BlobProofVersion
+                : ProofVersion.V0;
+            if (blobTx.TryAttachSidecar(tx, version) is { } attachError)
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
@@ -408,10 +397,6 @@ public partial class EthRpcModule(
         {
             _wallet.Sign(tx, chainId);
         }
-        // Each wallet implementation signals "could not sign" with its own exception type:
-        // SecurityException for keystore wallets when the account is locked, InvalidOperationException
-        // for ClefWallet on remote-signer rejection, CryptographicException via the default
-        // Sign(Transaction, ulong) when Sign(Hash256, Address) returns null (e.g. NullWallet).
         catch (Exception ex) when (ex is SecurityException or InvalidOperationException or CryptographicException)
         {
             return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
@@ -430,10 +415,6 @@ public partial class EthRpcModule(
         });
     }
 
-    private static bool HasFeeFields(TransactionForRpc rpcTx) =>
-        rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: not null, MaxPriorityFeePerGas: not null }
-            or LegacyTransactionForRpc { GasPrice: not null };
-
     private ResultWrapper<SignTransactionResult>? CheckTxFeeCap(Transaction tx)
     {
         ulong cap = _rpcConfig.RpcTxFeeCap;
@@ -448,44 +429,13 @@ public partial class EthRpcModule(
         // fee values silently slip through.
         bool overflow = UInt256.MultiplyOverflow(perGas, (UInt256)tx.GasLimit, out UInt256 totalFee);
         if (!overflow && totalFee <= capWei) return null;
-        string feeStr = overflow ? "overflow" : FormatWeiAsEther(totalFee);
-        return ResultWrapper<SignTransactionResult>.Fail(
-            $"tx fee ({feeStr} ether) exceeds the configured cap ({FormatWeiAsEther(capWei)} ether)",
-            ErrorCodes.InvalidInput);
 
+        decimal capEth = capWei.ToDecimal(null) / (decimal)Unit.Ether;
+        string message = overflow
+            ? string.Create(CultureInfo.InvariantCulture, $"tx fee (overflow ether) exceeds the configured cap ({capEth:F2} ether)")
+            : string.Create(CultureInfo.InvariantCulture, $"tx fee ({totalFee.ToDecimal(null) / (decimal)Unit.Ether:F2} ether) exceeds the configured cap ({capEth:F2} ether)");
+        return ResultWrapper<SignTransactionResult>.Fail(message, ErrorCodes.InvalidInput);
     }
-
-    private static string FormatWeiAsEther(UInt256 wei) =>
-        (wei.ToDecimal(null) / (decimal)Unit.Ether).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-
-    private string? TryAttachBlobSidecar(Transaction tx, BlobTransactionForRpc blobTx)
-    {
-        if (ValidateBlobSidecarFields(blobTx) is { } error)
-            return error;
-
-        ProofVersion version = _blockFinder.Head?.Header is { } head
-            ? _specProvider.GetSpec(head).BlobProofVersion
-            : ProofVersion.V0;
-
-        ShardBlobNetworkWrapper wrapper = new(blobTx.Blobs!, blobTx.Commitments!, blobTx.Proofs!, version);
-        IBlobProofsManager manager = IBlobProofsManager.For(version);
-        if (!manager.ValidateLengths(wrapper))
-            return "blob sidecar lengths invalid (blobs/commitments/proofs counts or individual byte sizes)";
-        if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
-            return "blob commitments do not match the supplied blobVersionedHashes";
-
-        tx.NetworkWrapper = wrapper;
-        return null;
-    }
-
-    private static string? ValidateBlobSidecarFields(BlobTransactionForRpc blobTx) =>
-        blobTx switch
-        {
-            { Blobs: null or { Length: 0 } } => "blob transaction requires non-empty blobs",
-            { Commitments: null } => "commitments must be provided alongside blobs",
-            { Proofs: null } => "proofs must be provided alongside blobs",
-            _ => null
-        };
 
     public async Task<ResultWrapper<ReceiptForRpc?>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null)
     {
