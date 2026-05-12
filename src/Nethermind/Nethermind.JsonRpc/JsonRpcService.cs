@@ -277,8 +277,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             InvalidBlockException or { InnerException: InvalidBlockException } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, ex.Message, null, request.Id, returnAction),
 
-            MissingTrieNodeException or TargetInvocationException { InnerException: MissingTrieNodeException } when (ex as MissingTrieNodeException ?? (ex as TargetInvocationException)?.InnerException as MissingTrieNodeException) is { Message: var message } =>
-                GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, message, ex.ToString(), request.Id, returnAction),
+            MissingTrieNodeException e or TargetInvocationException { InnerException: MissingTrieNodeException e } =>
+                HandleMissingTrieNode(e, methodName, request, returnAction),
 
             _ => HandleException(ex, methodName, request, returnAction)
         };
@@ -287,6 +287,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
+        }
+
+        JsonRpcErrorResponse HandleMissingTrieNode(MissingTrieNodeException ex, string methodName, JsonRpcRequest request, Action? returnAction)
+        {
+            // HasStateForBlock only checks the state root; subtree nodes can still be pruned out
+            // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
+            // can investigate whether it's a legitimate pruning gap or a deeper issue.
+            if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
+            return GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, ex.ToString(), request.Id, returnAction);
         }
     }
 
