@@ -19,8 +19,12 @@ public class IPAddressConverter : JsonConverter<IPAddress>
             return null;
         }
 
-        string? value = reader.GetString();
-        return value is null ? null : IPAddress.Parse(value);
+        if (!IPAddress.TryParse(reader.GetString(), out IPAddress? address))
+        {
+            throw new JsonException("Invalid IP address format.");
+        }
+
+        return address;
     }
 
     public override void Write(Utf8JsonWriter writer, IPAddress value, JsonSerializerOptions options)

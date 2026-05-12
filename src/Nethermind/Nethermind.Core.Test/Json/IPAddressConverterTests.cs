@@ -12,21 +12,34 @@ public class IPAddressConverterTests
 {
     [TestCase("127.0.0.1")]
     [TestCase("::1")]
+    [TestCase("2001:db8::1")]
     public void Can_roundtrip_ip_address(string address)
     {
         IPAddress ipAddress = IPAddress.Parse(address);
-        JsonSerializerOptions options = new()
-        {
-            Converters =
-            {
-                new IPAddressConverter()
-            }
-        };
 
-        string json = JsonSerializer.Serialize(ipAddress, options);
-        IPAddress? result = JsonSerializer.Deserialize<IPAddress>(json, options);
+        string json = JsonSerializer.Serialize(ipAddress, Options);
+        IPAddress? result = JsonSerializer.Deserialize<IPAddress>(json, Options);
 
         Assert.That(result, Is.EqualTo(ipAddress));
+    }
+
+    [Test]
+    public void Can_roundtrip_null_ip_address()
+    {
+        string json = JsonSerializer.Serialize<IPAddress?>(null, Options);
+        IPAddress? result = JsonSerializer.Deserialize<IPAddress?>(json, Options);
+
+        Assert.That(json, Is.EqualTo("null"));
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public void Throws_json_exception_for_invalid_ip_address()
+    {
+        JsonException? exception = Assert.Throws<JsonException>(
+            static () => JsonSerializer.Deserialize<IPAddress>("\"not-an-ip\"", Options));
+
+        Assert.That(exception?.Message, Does.Contain("Invalid IP address format."));
     }
 
     [Test]
@@ -43,4 +56,12 @@ public class IPAddressConverterTests
     {
         public IPAddress Ip { get; } = ip;
     }
+
+    private static JsonSerializerOptions Options { get; } = new()
+    {
+        Converters =
+        {
+            new IPAddressConverter()
+        }
+    };
 }
