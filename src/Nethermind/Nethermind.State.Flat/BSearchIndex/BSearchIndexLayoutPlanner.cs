@@ -88,19 +88,22 @@ internal static class BSearchIndexLayoutPlanner
             else if (len != secondLen) allSameLenExceptFirst = false;
         }
 
-        // Slot widening: when every input separator is the same length and ≤ 4 bytes, AND
-        // every key has ≥ 4 bytes available, treat the inputs as 4-byte for lcp + layout
-        // selection. The caller's AddKey must then provide 4 bytes per entry (read from
-        // the key's data section, not the natural sep length). This is the SIMD-eligible
-        // Uniform slot=4 / uint32 LE path. The strip-gate below may still pull lcp > 0 in,
-        // dropping slot to 1/2/3 for non-trivial crossEntryLcp — unchanged from when this
-        // policy lived in the caller as sepLengths.Fill(4).
-        if (allSameLen && firstLen > 0 && firstLen <= 4 && keyLength >= 4)
+        // Slot widening: when every input separator fits in 4 bytes (maxLen ≤ 4) AND every
+        // key has ≥ 4 bytes available, treat the inputs as 4-byte for lcp + layout
+        // selection. Works for both uniform-length and mixed-length inputs — after this
+        // step the planner proceeds as if all separators were uniform 4 bytes. The
+        // caller's AddKey must then provide 4 bytes per entry (read from the key's data
+        // section, not the natural sep length). This is the SIMD-eligible Uniform slot=4 /
+        // uint32 LE path. The strip-gate below may still pull lcp > 0 in, dropping slot
+        // to 1/2/3 for non-trivial crossEntryLcp.
+        if (firstLen > 0 && maxLen <= 4 && keyLength >= 4)
         {
             firstLen = 4;
             minLen = 4;
             maxLen = 4;
             if (secondLen >= 0) secondLen = 4;
+            allSameLen = true;
+            allSameLenExceptFirst = count >= 2;
         }
 
         int lcp = Math.Min(minLen, crossEntryLcp);
