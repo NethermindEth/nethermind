@@ -25,6 +25,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
     private readonly bool traceNoStack;
     private readonly bool jsonOutput;
     private readonly bool suppressOutput;
+    private readonly Func<string>? progressPrefixFactory;
 
     public BlockchainTestsRunner(
         ITestSourceLoader testsSource,
@@ -34,7 +35,8 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         bool traceMemory = false,
         bool traceNoStack = false,
         bool jsonOutput = false,
-        bool suppressOutput = false)
+        bool suppressOutput = false,
+        Func<string>? progressPrefixFactory = null)
     {
         _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
@@ -44,6 +46,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         this.traceNoStack = traceNoStack;
         this.jsonOutput = jsonOutput;
         this.suppressOutput = suppressOutput;
+        this.progressPrefixFactory = progressPrefixFactory;
     }
 
     /// <summary>
@@ -56,7 +59,8 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         bool traceMemory = false,
         bool traceNoStack = false,
         bool jsonOutput = false,
-        bool suppressOutput = false)
+        bool suppressOutput = false,
+        Func<string>? progressPrefixFactory = null)
     {
         _testsSource = null;
         _filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
@@ -66,6 +70,7 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         this.traceNoStack = traceNoStack;
         this.jsonOutput = jsonOutput;
         this.suppressOutput = suppressOutput;
+        this.progressPrefixFactory = progressPrefixFactory;
     }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
@@ -158,10 +163,12 @@ public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
         Console.ForegroundColor = _defaultColor;
     }
 
-    private static void WriteStatus(string prefix, string message, bool pass)
+    private void WriteStatus(string prefix, string message, bool pass)
     {
         string color = pass ? "\x1b[32m" : "\x1b[31m";
-        Console.Error.WriteLine($"{color}{prefix}\x1b[0m {message}");
+        string? progressPrefix = progressPrefixFactory?.Invoke();
+        string progress = string.IsNullOrEmpty(progressPrefix) ? "" : $"{progressPrefix} ";
+        Console.Error.WriteLine($"{color}{prefix}\x1b[0m {progress}{message}");
         Console.Error.Flush();
     }
 }

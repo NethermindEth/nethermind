@@ -179,6 +179,9 @@ internal class Program
         bool jsonOutput, int workers)
     {
         await KzgPolynomialCommitments.InitializeAsync();
+        int completedFiles = 0;
+        int totalFiles = files.Count;
+        string GetProgressPrefix() => $"[{Interlocked.Increment(ref completedFiles)}/{totalFiles}]";
 
         if (workers <= 1)
         {
@@ -188,7 +191,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: jsonOutput, suppressOutput: true);
+                    BlockchainTestsRunner runner = new(source, filter, chainId, trace, traceMemory, excludeStack, jsonOutput: jsonOutput, suppressOutput: true, progressPrefixFactory: GetProgressPrefix);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     allResults.AddRange(results);
                 }
@@ -210,7 +213,7 @@ internal class Program
                 try
                 {
                     TestsSourceLoader source = new(new LoadBlockchainTestFileStrategy(), item.file);
-                    BlockchainTestsRunner runner = new(source, filter, chainId, trace: false, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true);
+                    BlockchainTestsRunner runner = new(source, filter, chainId, trace: false, traceMemory, excludeStack, jsonOutput: true, suppressOutput: true, progressPrefixFactory: GetProgressPrefix);
                     IEnumerable<EthereumTestResult> results = await runner.RunTestsAsync();
                     bag.Add((item.index, results));
                 }
