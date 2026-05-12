@@ -82,6 +82,8 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
             .Map<IWorldStateManager, PruningTrieStateFactoryOutput>((o) => o.WorldStateManager)
+            .OnActivate<IWorldStateManager>((wsm, ctx) =>
+                StateMetadataValidator.DiscardStaleFloors(wsm, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>()))
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
 
             // Some admin rpc to trigger verify trie and pruning

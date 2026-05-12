@@ -40,7 +40,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IWorldStateManager, FlatWorldStateManager>()
             .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
             {
-                new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                ILogManager logManager = ctx.Resolve<ILogManager>();
+                new TrieStoreBoundaryWatcher(worldStateManager, blockTree, logManager);
+                StateMetadataValidator.DiscardStaleFloors(worldStateManager, blockTree, logManager);
             })
             .AddSingleton<IStateReader, FlatStateReader>()
             .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer)
