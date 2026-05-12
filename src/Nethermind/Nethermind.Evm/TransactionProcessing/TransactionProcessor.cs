@@ -75,6 +75,8 @@ namespace Nethermind.Evm.TransactionProcessing
         private readonly ILogManager _logManager;
         private readonly bool _parallel;
         private long _blockCumulativeReceiptGas;
+        private long _blockCumulativeRegularGas;
+        private long _blockCumulativeStateGas;
 
         protected TransactionProcessorBase(
             ITransactionProcessor.IBlobBaseFeeCalculator? blobBaseFeeCalculator,
@@ -107,6 +109,8 @@ namespace Nethermind.Evm.TransactionProcessing
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
             _blockCumulativeReceiptGas = 0;
+            _blockCumulativeRegularGas = 0;
+            _blockCumulativeStateGas = 0;
             VirtualMachine.SetBlockExecutionContext(in blockExecutionContext);
         }
 
@@ -952,7 +956,16 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
             {
-                header.GasUsed += gasConsumed.EffectiveBlockGas;
+                if (spec.IsEip8037Enabled)
+                {
+                    _blockCumulativeRegularGas += gasConsumed.EffectiveBlockGas;
+                    _blockCumulativeStateGas += gasConsumed.BlockStateGas;
+                    header.GasUsed = Math.Max(_blockCumulativeRegularGas, _blockCumulativeStateGas);
+                }
+                else
+                {
+                    header.GasUsed += gasConsumed.EffectiveBlockGas;
+                }
             }
 
             return statusCode;
