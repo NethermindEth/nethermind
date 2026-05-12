@@ -20,11 +20,14 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Network;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 using NSubstitute;
 
@@ -65,10 +68,11 @@ public class MergePluginTests
         _consensusPlugin = new(_chainSpec);
     }
 
-    private IContainer BuildContainer(IConfigProvider? configProvider = null) =>
+    private IContainer BuildContainer(IConfigProvider? configProvider = null, Action<ContainerBuilder>? configure = null)
+    {
         // HealthCheckPluginModule first: mirrors PluginConfig.PluginOrder (HealthChecks < Merge).
         // BaseMergePluginModule must not override the real ClHealthRequestsTracker binding.
-        new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new HealthCheckPluginModule())
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
@@ -85,8 +89,12 @@ public class MergePluginTests
                 Build.MockOutNethermindApi((NethermindApi)api);
 
                 api.BlockProcessingQueue.IsEmpty.Returns(true);
-            })
-            .Build();
+            });
+
+        configure?.Invoke(builder);
+
+        return builder.Build();
+    }
 
     [Test]
     public void EngineRequestsTracker_resolves_to_ClHealthRequestsTracker_when_HealthChecks_loaded_first()
@@ -146,6 +154,48 @@ public class MergePluginTests
         Assert.That(api.GossipPolicy.CanGossipBlocks, Is.True);
         _plugin.InitBlockProducer(_consensusPlugin!);
         Assert.That(api.BlockProducer, Is.InstanceOf<MergeBlockProducer>());
+    }
+
+    [Test]
+    public async Task InitNetworkProtocol_adds_post_merge_eth_capabilities_when_transition_finished()
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(true);
+
+        await using IContainer container = BuildContainer(configure: builder => builder
+            .RegisterInstance(poSSwitcher)
+            .As<IPoSSwitcher>());
+        INethermindApi api = container.Resolve<INethermindApi>();
+        await _consensusPlugin!.Init(api);
+        await _plugin.Init(api);
+
+        api.ProtocolsManager!.ClearReceivedCalls();
+        await _plugin.InitNetworkProtocol();
+
+        AssertPostMergeEthCapabilitiesAdded(api);
+    }
+
+    [Test]
+    public async Task InitNetworkProtocol_delays_post_merge_eth_capabilities_until_terminal_block()
+    {
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.TransitionFinished.Returns(false);
+
+        await using IContainer container = BuildContainer(configure: builder => builder
+            .RegisterInstance(poSSwitcher)
+            .As<IPoSSwitcher>());
+        INethermindApi api = container.Resolve<INethermindApi>();
+        await _consensusPlugin!.Init(api);
+        await _plugin.Init(api);
+
+        api.ProtocolsManager!.ClearReceivedCalls();
+        await _plugin.InitNetworkProtocol();
+
+        api.ProtocolsManager!.DidNotReceive().AddSupportedCapability(Arg.Any<Capability>());
+
+        poSSwitcher.TerminalBlockReached += Raise.Event();
+
+        AssertPostMergeEthCapabilitiesAdded(api);
     }
 
     [Test]
@@ -235,5 +285,14 @@ public class MergePluginTests
         {
             await invocation.Should().ThrowAsync<InvalidConfigurationException>();
         }
+    }
+
+    private static void AssertPostMergeEthCapabilitiesAdded(INethermindApi api)
+    {
+        IProtocolsManager protocolsManager = api.ProtocolsManager!;
+
+        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 69));
+        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 70));
+        protocolsManager.Received(1).AddSupportedCapability(new Capability(Protocol.Eth, 71));
     }
 }
