@@ -134,7 +134,7 @@ public class GethStyleTracer(
         Block block = blockTree.FindBlock(blockHash)
                       ?? badBlockStore.GetAll().FirstOrDefault(b => b.Hash == blockHash)
                       ?? throw new InvalidOperationException($"Cannot find block {blockHash}");
-        if (block.IsGenesis) throw new InvalidOperationException("genesis is not traceable");
+        if (block.IsGenesis) throw new GenesisNotTraceableException();
 
         BlockHeader? parent = FindParent(block);
 
