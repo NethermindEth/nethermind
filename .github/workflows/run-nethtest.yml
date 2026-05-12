@@ -35,7 +35,7 @@ on:
       workers:
         description: Parallel workers
         required: false
-        default: '2'
+        default: '1'
         type: string
       filter:
         description: Regex filter for test names (optional)
@@ -52,7 +52,7 @@ env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
   TEST_TYPE: ${{ inputs.test_type || 'engineTest' }}
-  WORKERS: ${{ inputs.workers || '2' }}
+  WORKERS: ${{ inputs.workers || '1' }}
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
 
@@ -164,7 +164,7 @@ jobs:
 
             HEADER="nethtest results"
             if [ "$HAS_JSON" = false ] && [ "$TOTAL" -gt 0 ]; then
-              HEADER="nethtest results (process crashed — partial results from stderr)"
+              HEADER="nethtest results (process crashed - partial results from stderr)"
             elif [ "$TOTAL" -eq 0 ]; then
               HEADER="nethtest results (process crashed before producing output)"
             fi
@@ -193,9 +193,9 @@ jobs:
                 jq -r '[.[] | select(.pass == false)] | group_by(.error) | sort_by(-length) | .[] | "| \(length) | \(.[0].error[:120] // "no error") |"' /tmp/nethtest-results.json \
                   | awk 'NR <= 30' | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
               else
-                # Group by error: extract text after " — " separator
+                # Group by error: extract text after the status separator
                 grep -E "^(FAIL|EXCEPTION) " /tmp/nethtest-clean.log 2>/dev/null \
-                  | sed 's/.*— //' | sort | uniq -c | sort -rn \
+                  | sed -E 's/.*( - |— )//' | sort | uniq -c | sort -rn \
                   | awk 'NR <= 30 {printf "| %s | %s |\n", $1, substr($0, index($0,$2))}' \
                   | { echo "| Count | Error |"; echo "|-------|-------|"; cat; } >> "$GITHUB_STEP_SUMMARY"
               fi
@@ -256,6 +256,7 @@ jobs:
           trap cleanup EXIT
 
           touch /tmp/nethtest-results.json /tmp/nethtest-stderr.log
+          rm -f /tmp/nethtest-watchdog-timeout /tmp/nethtest-low-memory
 
           print_diagnostics() {
             echo ""
@@ -268,6 +269,10 @@ jobs:
             if [ -f /sys/fs/cgroup/memory.current ]; then
               echo "cgroup memory.current=$(cat /sys/fs/cgroup/memory.current)"
               echo "cgroup memory.max=$(cat /sys/fs/cgroup/memory.max)"
+              if [ -f /sys/fs/cgroup/memory.events ]; then
+                echo "--- cgroup memory.events ---"
+                cat /sys/fs/cgroup/memory.events
+              fi
             fi
             echo ""
             echo "--- largest processes by RSS ---"
@@ -277,6 +282,35 @@ jobs:
             tail -30 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g' || true
             echo "================================"
           }
+
+          terminate_nethtest() {
+            kill -QUIT "$NETHTEST_PID" 2>/dev/null || true
+            sleep 10
+            kill -TERM "$NETHTEST_PID" 2>/dev/null || true
+            sleep 10
+            kill -KILL "$NETHTEST_PID" 2>/dev/null || true
+          }
+
+          check_memory_pressure() {
+            local available_mb
+            available_mb=$(awk '/MemAvailable:/ {print int($2 / 1024)}' /proc/meminfo 2>/dev/null || echo 0)
+            if [ "$available_mb" -gt 0 ] && [ "$available_mb" -lt 1024 ]; then
+              echo "::error::MemAvailable is ${available_mb}MiB; terminating nethtest before the runner OOMs"
+              touch /tmp/nethtest-low-memory
+              print_diagnostics
+              terminate_nethtest
+              return 1
+            fi
+
+            return 0
+          }
+
+          on_termination() {
+            echo "::warning::Run step received a termination signal"
+            print_diagnostics
+            exit 143
+          }
+          trap on_termination TERM INT
 
           heartbeat() {
             while true; do
@@ -291,7 +325,9 @@ jobs:
           watchdog() {
             local idle_timeout_seconds=$((IDLE_TIMEOUT_MINUTES * 60))
             while kill -0 "$NETHTEST_PID" 2>/dev/null; do
-              sleep 30 || exit 0
+              sleep 10 || exit 0
+
+              check_memory_pressure || exit 0
 
               local last_progress
               last_progress=$(stat -c %Y /tmp/nethtest-stderr.log 2>/dev/null || echo 0)
@@ -301,14 +337,10 @@ jobs:
 
               if [ "$idle_seconds" -ge "$idle_timeout_seconds" ]; then
                 echo "::error::nethtest produced no stderr progress for ${idle_seconds}s; terminating it"
+                touch /tmp/nethtest-watchdog-timeout
                 print_diagnostics
-
-                kill -QUIT "$NETHTEST_PID" 2>/dev/null || true
-                sleep 20
-                kill -TERM "$NETHTEST_PID" 2>/dev/null || true
-                sleep 20
-                kill -KILL "$NETHTEST_PID" 2>/dev/null || true
-                exit 124
+                terminate_nethtest
+                exit 0
               fi
             done
           }
@@ -335,10 +367,19 @@ jobs:
           echo "Results file size: $(wc -c < /tmp/nethtest-results.json) bytes"
           echo "Stderr lines: $(wc -l < /tmp/nethtest-stderr.log)"
 
+          if [ -f /tmp/nethtest-low-memory ]; then
+            echo "::error::nethtest was terminated because runner memory was nearly exhausted"
+            rc=137
+          elif [ -f /tmp/nethtest-watchdog-timeout ]; then
+            echo "::error::nethtest was terminated by the idle watchdog"
+            rc=124
+          fi
+
           if [ $rc -ne 0 ]; then
             echo "::warning::nethtest exited with code $rc"
             echo "--- stderr (last 50 lines) ---"
             tail -50 /tmp/nethtest-stderr.log | sed 's/\x1b\[[0-9;]*m//g'
+            exit $rc
           fi
 
       - name: Upload results
