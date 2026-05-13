@@ -41,10 +41,18 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private readonly int _keyLength;
     // One byte per entry: LCP(prev_i, curr_i) — the common prefix length of each entry's
     // key against the prior entry's key. Filled once by PrecomputeCommonPrefixLengths at
-    // Build() entry; ChooseLeafLayout / WriteLeafIndexNode derive the natural separator
+    // Build() entry; PlanLeafBoundaries / WriteLeafIndexNode derive the natural separator
     // length on demand as min(commonPrefix + 1, _keyLength). Rented from ArrayPool;
     // returned in Build's finally.
     private byte[]? _commonPrefixArr;
+
+    // Iterative min-segment tree over _commonPrefixArr. Leaves live at [base..base+n-1];
+    // internal nodes at [1..base-1]. Sentinel byte.MaxValue fills the tail past entry n.
+    // Used by the top-down leaf splitter to query the minimum LCP across an entry range
+    // in O(log n) — far cheaper than scanning when the same range is queried at multiple
+    // recursion depths. Rented from ArrayPool; returned in Build's finally.
+    private byte[]? _segTree;
+    private int _segTreeBase;
 
     public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int keyLength)
     {
@@ -84,26 +92,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         if (minIntermediateBytes < 0) minIntermediateBytes = 0;
         if (minIntermediateBytes > maxIntermediateBytes) minIntermediateBytes = maxIntermediateBytes;
 
-        // Build leaf nodes. minLeafEntries=maxLeafEntries reduces ChooseLeafCount to a fixed cap.
-        // maxNodes is sized for the worst case: every leaf at minimum size.
-        int maxNodes = (_entryPositions.Length + minLeafEntries - 1) / minLeafEntries;
-        const int StackThreshold = 1024;
-        NativeMemoryListRef<NodeInfo> currentNative = default;
-        NativeMemoryListRef<NodeInfo> nextNative = default;
-        scoped Span<NodeInfo> currentLevel;
-        scoped Span<NodeInfo> nextLevel;
-        if (maxNodes <= StackThreshold)
-        {
-            currentLevel = stackalloc NodeInfo[maxNodes];
-            nextLevel = stackalloc NodeInfo[maxNodes];
-        }
-        else
-        {
-            currentNative = new NativeMemoryListRef<NodeInfo>(maxNodes, maxNodes);
-            nextNative = new NativeMemoryListRef<NodeInfo>(maxNodes, maxNodes);
-            currentLevel = currentNative.AsSpan();
-            nextLevel = nextNative.AsSpan();
-        }
+        int n = _entryPositions.Length;
 
         // Reusable per-node value scratch. Each entry's value slot is at most 8 bytes
         // (Uniform offset width) plus a 2-byte u16 length prefix in the writer's buffer.
@@ -111,7 +100,27 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int valueScratchEntries = Math.Max(maxLeafEntries, maxIntermediateEntries);
         byte[] valueScratchArr = ArrayPool<byte>.Shared.Rent(Math.Max(64, valueScratchEntries * (2 + 8)));
 
-        _commonPrefixArr = ArrayPool<byte>.Shared.Rent(_entryPositions.Length);
+        _commonPrefixArr = ArrayPool<byte>.Shared.Rent(n);
+
+        // Segment-tree base: smallest power-of-two ≥ n.
+        int segBase = 1;
+        while (segBase < n) segBase <<= 1;
+        _segTreeBase = segBase;
+        _segTree = ArrayPool<byte>.Shared.Rent(segBase * 2);
+
+        // Planning scratch: leafCounts records one count per emitted leaf in sorted
+        // order; rangeStack drives the iterative DFS. Worst case both are bounded by
+        // n / 2*n respectively (every entry its own leaf under uniform-LCP forced
+        // splits). The stack stores (lo, hi) pairs so peak depth × branching is
+        // bounded by 2n.
+        int[] leafCountsArr = ArrayPool<int>.Shared.Rent(Math.Max(1, n));
+        int[] rangeStackArr = ArrayPool<int>.Shared.Rent(Math.Max(4, 2 * n));
+
+        const int StackThreshold = 1024;
+        NativeMemoryListRef<NodeInfo> currentNative = default;
+        NativeMemoryListRef<NodeInfo> nextNative = default;
+        scoped Span<NodeInfo> currentLevel = default;
+        scoped Span<NodeInfo> nextLevel = default;
 
         // lastNodeLen tracks the byte length of the most recently written node; the
         // returned value is the root node's size (the last node emitted).
@@ -120,6 +129,26 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         try
         {
             PrecomputeCommonPrefixLengths();
+            BuildLcpSegTree();
+
+            // Plan all leaf boundaries up-front with a top-down splitter so leaf
+            // sizing reflects the global LCP picture, not a left-to-right greedy
+            // accumulation. The planner returns the exact leaf count, which sizes
+            // the level buffers tightly below.
+            int leafCount = PlanLeafBoundaries(leafCountsArr, rangeStackArr, minLeafEntries, maxLeafEntries);
+
+            if (leafCount <= StackThreshold)
+            {
+                currentLevel = stackalloc NodeInfo[leafCount];
+                nextLevel = stackalloc NodeInfo[leafCount];
+            }
+            else
+            {
+                currentNative = new NativeMemoryListRef<NodeInfo>(leafCount, leafCount);
+                nextNative = new NativeMemoryListRef<NodeInfo>(leafCount, leafCount);
+                currentLevel = currentNative.AsSpan();
+                nextLevel = nextNative.AsSpan();
+            }
 
             int currentLevelCount = 0;
             int entryIdx = 0;
@@ -129,12 +158,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             // the trailer formula assumes [...root...][trailer] with no gap.
             bool firstNode = true;
 
-            while (entryIdx < _entryPositions.Length)
+            for (int li = 0; li < leafCount; li++)
             {
-                // Phase 1: pick leaf size.
-                int count = ChooseLeafLayout(
-                    entryIdx, minLeafEntries, maxLeafEntries,
-                    _writer.Written, firstOffset);
+                int count = leafCountsArr[li];
 
                 // Pad to a fresh page if we're within PageAlignPadThreshold of
                 // the boundary. Skipped on the first node — there's nothing to
@@ -142,7 +168,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 if (!firstNode) MaybePadToNextPage();
                 firstNode = false;
 
-                // Phase 2: emit leaf node bytes.
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
                 WriteLeafIndexNode(
@@ -211,87 +236,188 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             ArrayPool<byte>.Shared.Return(valueScratchArr);
             ArrayPool<byte>.Shared.Return(_commonPrefixArr);
             _commonPrefixArr = null;
+            ArrayPool<byte>.Shared.Return(_segTree);
+            _segTree = null;
+            ArrayPool<int>.Shared.Return(leafCountsArr);
+            ArrayPool<int>.Shared.Return(rangeStackArr);
         }
 
         return lastNodeLen;
     }
 
     /// <summary>
-    /// Pick the number of entries to pack into the next leaf, using the cached LCPs
-    /// to drive a split-when-encoding-widens heuristic. Per-entry natural separator
-    /// lengths are derived directly from <see cref="_commonPrefixArr"/> by both this
-    /// method and <see cref="WriteLeafIndexNode"/> — there's no shared "natural max"
-    /// to thread through.
+    /// One-time fill of <see cref="_segTree"/> as an iterative min-segment tree over
+    /// <see cref="_commonPrefixArr"/>. Leaves live at <c>[segBase, segBase+n)</c>; the
+    /// tail <c>[segBase+n, 2*segBase)</c> is padded with <see cref="byte.MaxValue"/> so
+    /// queries past the last entry don't pull the min down. Built bottom-up so the run
+    /// is a single contiguous sweep over the rented buffer.
     /// </summary>
-    private int ChooseLeafLayout(
-        int entryIdx, int minLeafEntries, int maxLeafEntries,
-        long nodeStart, long firstOffset)
+    private void BuildLcpSegTree()
     {
-        int remaining = _entryPositions.Length - entryIdx;
-        int hardMax = Math.Min(maxLeafEntries, remaining);
-        if (hardMax <= 0) return 0;
-
-        // Seed running state from the first entry alone. Keys have a fixed length
-        // (HsstBTreeBuilder enforces it) — no per-entry length reads needed.
-        int firstSepLen = Math.Min(_commonPrefixArr![entryIdx] + 1, _keyLength);
-
-        int maxSepLen = firstSepLen;
-        int commonLen = firstSepLen;
-
-        // Mirror WriteLeafIndexNode's per-leaf metadata-offset width selection so we
-        // stop before the next entry pushes every value slot up to a wider encoding.
-        long minVal = _entryPositions[entryIdx];
-        long maxVal = minVal;
-        int valueSlotSize = MinBytesFor(0);
-
-        int count = 1;
-        while (count < hardMax)
+        int n = _entryPositions.Length;
+        int b = _segTreeBase;
+        byte[] tree = _segTree!;
+        byte[] src = _commonPrefixArr!;
+        for (int i = 0; i < n; i++) tree[b + i] = src[i];
+        for (int i = b + n; i < b * 2; i++) tree[i] = byte.MaxValue;
+        for (int i = b - 1; i >= 1; i--)
         {
-            int adjLcp = _commonPrefixArr![entryIdx + count];
-            int lb = Math.Min(adjLcp + 1, _keyLength);
+            byte a = tree[i * 2];
+            byte c = tree[i * 2 + 1];
+            tree[i] = a < c ? a : c;
+        }
+    }
 
-            int newMaxSepLen = Math.Max(maxSepLen, lb);
-            // Leaf-wide commonLen tracks min(firstSepLen, all lb's, LCP(K_0, K_j)).
-            // LCP(K_0, K_j) folds incrementally as min of adjacent-key LCPs.
-            int newCommonLen = commonLen == 0
-                ? 0
-                : Math.Min(Math.Min(commonLen, lb), adjLcp);
+    /// <summary>
+    /// Min over <see cref="_commonPrefixArr"/> in the inclusive range <c>[l, r]</c>,
+    /// answered via <see cref="_segTree"/> in O(log n). Iterative bottom-up walk: at each
+    /// level absorb the left fringe when <c>l</c> is a right child, absorb the right
+    /// fringe when <c>r</c> is a left child, then ascend. Caller is responsible for
+    /// ensuring <c>l ≤ r</c>; an out-of-range query returns <see cref="byte.MaxValue"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int RangeMinLcp(int l, int r)
+    {
+        byte[] tree = _segTree!;
+        int b = _segTreeBase;
+        l += b;
+        r += b;
+        int res = byte.MaxValue;
+        while (l <= r)
+        {
+            if ((l & 1) == 1) { int v = tree[l]; if (v < res) res = v; l++; }
+            if ((r & 1) == 0) { int v = tree[r]; if (v < res) res = v; r--; }
+            l >>= 1;
+            r >>= 1;
+        }
+        return res;
+    }
 
-            long nextMd = _entryPositions[entryIdx + count];
-            long newMinVal = Math.Min(minVal, nextMd);
-            long newMaxVal = Math.Max(maxVal, nextMd);
-            long newBase = (newMinVal > 0 && newMinVal < newMaxVal) ? newMinVal : 0;
-            int newValueSlotSize = MinBytesFor(newMaxVal - newBase);
+    /// <summary>
+    /// Top-down leaf splitter. Recursively (via an iterative DFS stack) partitions the
+    /// entry range <c>[0, n-1]</c> with a single pivot per level — the rightmost position
+    /// in the first half whose adjacent-key LCP equals the range minimum (the
+    /// "highest-positioned minimum-pivot before halfpoint"), with a leftmost-in-second-half
+    /// fallback. Writes resulting leaf sizes into <paramref name="leafCounts"/> in sorted
+    /// order and returns the count.
+    ///
+    /// Per-range decision:
+    /// <list type="bullet">
+    /// <item><description><c>count ≤ minLeafEntries</c> — base case, emit as a single
+    /// leaf.</description></item>
+    /// <item><description><c>count &gt; maxLeafEntries</c> — forced split (hard cap on
+    /// leaf entry count).</description></item>
+    /// <item><description>Otherwise — encoding-quality gate. The range emits as a single
+    /// leaf only when the BSearchIndex layout will be cheap to evaluate. Three gates
+    /// force a split:
+    ///   <list type="bullet">
+    ///   <item><description><c>maxLcp − minLcp &gt; 4</c> — post-strip separator slot
+    ///   exceeds the 4-byte SIMD ceiling, forcing the planner to Variable
+    ///   encoding.</description></item>
+    ///   <item><description><c>maxLcp − minLcp == 3</c> — slot width 3 is the only ≤4
+    ///   width that isn't power-of-two-friendly on the SIMD paths.</description></item>
+    ///   <item><description><c>maxVal − minVal &gt; 2²⁴</c> — value slot widens past 3
+    ///   bytes; splitting almost always recovers a 3-byte slot because entries inside a
+    ///   leaf land in a tight stretch of the data section.</description></item>
+    ///   </list>
+    /// </description></item>
+    /// </list>
+    ///
+    /// A single pass over <c>[lo, hi]</c> computes <c>maxLcp</c>, the pivot positions, and
+    /// the value range. <c>minLcp</c> comes from <see cref="RangeMinLcp"/> up front. The
+    /// right half is pushed before the left so the DFS pops them left-to-right.
+    /// </summary>
+    private int PlanLeafBoundaries(int[] leafCounts, int[] rangeStack, int minLeafEntries, int maxLeafEntries)
+    {
+        int n = _entryPositions.Length;
+        int leafCount = 0;
+        int sp = 0;
+        rangeStack[sp++] = 0;
+        rangeStack[sp++] = n - 1;
 
-            // Conservative upper-bound size estimate for the candidate node (count+1
-            // entries). Treats per-entry common-prefix strip as 0 (unknown until plan
-            // time) and uses newMaxSepLen for every key — overestimates slightly,
-            // but guarantees we never plan a node that crosses a 4 KiB page.
-            int candidateCount = count + 1;
-            int candidateSize = NodeSizeUpperBound(candidateCount, newMaxSepLen, newValueSlotSize);
-            int committedSize = NodeSizeUpperBound(count, maxSepLen, valueSlotSize);
+        byte[] lcp = _commonPrefixArr!;
+        ReadOnlySpan<long> entryPos = _entryPositions;
+        const long ValueRangeLimit = 1L << 24;
 
-            // Encoding degrades only when the post-strip slot width grows past 4 — within
-            // ≤ 4 B the planner stays on the SIMD-friendly Uniform ≤ 4 / UniformWithLen ≤ 4
-            // paths, so any combination of (maxSepLen growth, commonLen shrink) that keeps
-            // effMax = maxSepLen − commonLen ≤ 4 is safe. Only force-split on sep/prefix
-            // signals when they push the effective slot above 4.
-            int effMax = newMaxSepLen - newCommonLen;
-            bool encodingForcesSplit = effMax > 4;
-            if (count >= minLeafEntries &&
-                (encodingForcesSplit || newValueSlotSize > valueSlotSize ||
-                 WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
-                break;
+        while (sp > 0)
+        {
+            int hi = rangeStack[--sp];
+            int lo = rangeStack[--sp];
+            int count = hi - lo + 1;
 
-            maxSepLen = newMaxSepLen;
-            commonLen = newCommonLen;
-            minVal = newMinVal;
-            maxVal = newMaxVal;
-            valueSlotSize = newValueSlotSize;
-            count++;
+            if (count <= minLeafEntries)
+            {
+                leafCounts[leafCount++] = count;
+                continue;
+            }
+
+            int minLcp = RangeMinLcp(lo + 1, hi);
+
+            // Halfpoint is the last LCP index in the "first half". Splitting at k creates
+            // [lo, k-1] (size k - lo) and [k, hi] (size hi - k + 1); a pivot at k = lo + count/2
+            // yields halves of size count/2 and ⌈count/2⌉.
+            int half = lo + (count >> 1);
+
+            int pivotFirst = -1;
+            int pivotSecond = -1;
+
+            if (count <= maxLeafEntries)
+            {
+                // Quality-gate path. Single pass over [lo, hi] tracks max LCP, the two
+                // pivot candidates (rightmost min in [lo+1, half], leftmost min in
+                // (half, hi]), and min / max of _entryPositions for the value-range gate.
+                // Position lo only feeds the value-range trackers — its LCP is the
+                // "no previous key" sentinel.
+                int maxLcp = 0;
+                long minVal = entryPos[lo];
+                long maxVal = minVal;
+                for (int k = lo + 1; k <= hi; k++)
+                {
+                    int v = lcp[k];
+                    if (v > maxLcp) maxLcp = v;
+                    if (v == minLcp)
+                    {
+                        if (k <= half) pivotFirst = k;
+                        else if (pivotSecond < 0) pivotSecond = k;
+                    }
+                    long ep = entryPos[k];
+                    if (ep < minVal) minVal = ep;
+                    if (ep > maxVal) maxVal = ep;
+                }
+
+                int gap = maxLcp - minLcp;
+                bool splitNeeded = gap > 4 || gap == 3 || (maxVal - minVal) > ValueRangeLimit;
+                if (!splitNeeded)
+                {
+                    leafCounts[leafCount++] = count;
+                    continue;
+                }
+            }
+            else
+            {
+                // Forced split — the quality gate result is unused; skip the maxLcp /
+                // value-range tracking and scan only for the pivot. This is the hot path
+                // for ranges above maxLeafEntries; doing the full pass would be wasteful.
+                for (int k = lo + 1; k <= hi; k++)
+                {
+                    if (lcp[k] == minLcp)
+                    {
+                        if (k <= half) pivotFirst = k;
+                        else if (pivotSecond < 0) { pivotSecond = k; break; }
+                    }
+                }
+            }
+
+            int split = pivotFirst >= 0 ? pivotFirst : pivotSecond;
+
+            // Push right half first, left half second, so the DFS processes left first.
+            rangeStack[sp++] = split;
+            rangeStack[sp++] = hi;
+            rangeStack[sp++] = lo;
+            rangeStack[sp++] = split - 1;
         }
 
-        return count;
+        return leafCount;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -694,13 +820,6 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     // (Flags + KeyCount u16 + KeySize u16 + ValueSize u8 + BaseOffset 6) + 1
     // optional CommonPrefixLen byte + a small slack.
     private const int NodeHeaderUpperBound = 16;
-
-    // Conservative upper bound on a leaf node's serialised size given a candidate
-    // entry count, max separator length, and value slot size. Treats common prefix
-    // as 0 (unknown until plan-time) and uses Uniform layouts (no offset table).
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int NodeSizeUpperBound(int count, int maxSepLen, int valueSlotSize)
-        => NodeHeaderUpperBound + count * (maxSepLen + valueSlotSize);
 
     // Conservative upper bound on an intermediate node's serialised size. The
     // phantom leftmost slot is dropped, so a node holding <paramref name="count"/>
