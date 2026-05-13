@@ -53,6 +53,14 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     private string Path { get; }
     public long MappedSize { get; private set; }
 
+    /// <summary>
+    /// Next-write offset within this arena (in bytes). Set by <see cref="ArenaWriter.Complete"/>
+    /// directly so the manager doesn't have to keep a parallel dict; read by
+    /// <see cref="ArenaManager.MarkDead"/> to detect "all bytes dead" and by writer-allocation
+    /// to choose the next write offset for shared (non-dedicated) arenas.
+    /// </summary>
+    internal long Frontier { get; set; }
+
     public ArenaFile(int id, string path, long mappedSize)
     {
         Id = id;

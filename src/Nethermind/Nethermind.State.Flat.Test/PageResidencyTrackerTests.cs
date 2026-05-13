@@ -62,8 +62,6 @@ public class PageResidencyTrackerTests
         public PageResidencyTracker PageTracker => tracker;
         public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
         public ArenaWriter CreateWriter(long estimatedSize, string tag) => throw new NotSupportedException();
-        public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag) => throw new NotSupportedException();
-        public void CancelWrite(int arenaId, long startOffset) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location, string tag) => throw new NotSupportedException();
         public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size) => throw new NotSupportedException();

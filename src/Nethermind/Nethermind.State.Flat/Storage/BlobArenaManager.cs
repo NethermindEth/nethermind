@@ -181,34 +181,26 @@ public sealed class BlobArenaManager : IBlobArenaManager
     }
 
     /// <summary>
-    /// Called by <see cref="BlobArenaWriter.Complete"/> to register the new frontier for
-    /// the file. Updates the file's <see cref="BlobArenaFile.Frontier"/> and bumps the
-    /// bytes gauge by the new data via <see cref="BlobArenaFile.OnFrontierGrew"/>.
+    /// Called by <see cref="BlobArenaWriter.Complete"/> after the writer has set the file's
+    /// new frontier directly. The manager just learns whether the id should be a packing
+    /// candidate for the next writer — no file lookup.
     /// </summary>
-    internal void RegisterCompleted(ushort blobArenaId, long startOffset, long bytesWritten)
+    internal void OnWriteCompleted(ushort blobArenaId, bool hasHeadroom)
     {
-        long newFrontier = startOffset + bytesWritten;
         lock (_lock)
         {
-            BlobArenaFile file = _files[blobArenaId]
-                ?? throw new InvalidOperationException(
-                    $"Blob arena {blobArenaId} is not registered; cannot register completion.");
-            file.Frontier = newFrontier;
-            // Un-reserve: return the file to the mutable pool iff it still has room.
-            if (newFrontier < file.MaxSize) _mutableFiles.Add(blobArenaId);
+            if (hasHeadroom) _mutableFiles.Add(blobArenaId);
         }
     }
 
-    internal void CancelWrite(ushort blobArenaId)
+    /// <summary>
+    /// Called by <see cref="BlobArenaWriter.Dispose"/> on the cancel path. The writer's
+    /// frontier didn't advance, so the file still has room by construction — re-add the
+    /// id to the mutable pool. No file touch.
+    /// </summary>
+    internal void OnWriteCancelled(ushort blobArenaId)
     {
-        lock (_lock)
-        {
-            // Un-reserve: the writer gave up, so its file goes back to the mutable pool
-            // (its frontier didn't advance, so by construction it still has headroom).
-            BlobArenaFile? file = _files[blobArenaId];
-            if (file is not null && file.Frontier < file.MaxSize)
-                _mutableFiles.Add(blobArenaId);
-        }
+        lock (_lock) _mutableFiles.Add(blobArenaId);
     }
 
     /// <summary>

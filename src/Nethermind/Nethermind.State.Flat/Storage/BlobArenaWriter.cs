@@ -131,7 +131,10 @@ public sealed class BlobArenaWriter : IDisposable
         _stream.Flush();
         _stream.Dispose();
         _completed = true;
-        _manager.RegisterCompleted(_blobArenaId, _startOffset, _written - _startOffset);
+        // Writer mutates the file directly. Manager just learns whether the id is still
+        // a candidate for the next writer's packing scan.
+        _file.Frontier = _written;
+        _manager.OnWriteCompleted(_blobArenaId, hasHeadroom: _file.Frontier < _file.MaxSize);
     }
 
     public void Dispose()
@@ -141,7 +144,9 @@ public sealed class BlobArenaWriter : IDisposable
         if (!_completed)
         {
             _stream.Dispose();
-            _manager.CancelWrite(_blobArenaId);
+            // Cancelled mid-write — frontier didn't advance, so the file still has room.
+            // Manager re-adds the id to the mutable pool without touching the file.
+            _manager.OnWriteCancelled(_blobArenaId);
         }
         byte[] buffer = _buffer;
         _buffer = null!;

@@ -31,11 +31,6 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public ArenaWriter CreateWriter(long estimatedSize, string tag) => _inner.CreateWriter(estimatedSize, tag);
 
-    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag) =>
-        _inner.CompleteWrite(arenaId, startOffset, actualSize, tag);
-
-    public void CancelWrite(int arenaId, long startOffset) => _inner.CancelWrite(arenaId, startOffset);
-
     public ArenaReservation Open(in SnapshotLocation location, string tag) => _inner.Open(location, tag);
 
     public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size) =>

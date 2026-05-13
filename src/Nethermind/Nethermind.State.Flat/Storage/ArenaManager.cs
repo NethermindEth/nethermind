@@ -26,7 +26,6 @@ public sealed class ArenaManager : IArenaManager
     private readonly PersistedSnapshotTier _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
-    private readonly Dictionary<int, long> _frontiers = [];
     private readonly Dictionary<int, long> _deadBytes = [];
     private readonly HashSet<int> _reservedArenas = [];
     private readonly HashSet<int> _standaloneFiles = [];
@@ -108,7 +107,6 @@ public sealed class ArenaManager : IArenaManager
 
                 ArenaFile arena = new(arenaId, file, mappedSize);
                 _arenas[arenaId] = arena;
-                _frontiers[arenaId] = 0;
                 _deadBytes[arenaId] = 0;
                 _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
                 OnArenaAdded(mappedSize);
@@ -117,105 +115,92 @@ public sealed class ArenaManager : IArenaManager
                     _standaloneFiles.Add(arenaId);
             }
 
-            // Compute frontiers and live sizes from catalog
+            // Compute frontiers (max end-offset of any slice referencing the arena) and live
+            // sizes from the catalog. Entries pointing at arena ids we didn't load on disk
+            // are dropped silently — the catalog is the slower-moving authority but the
+            // on-disk file set is what we can actually serve.
             Dictionary<int, long> liveSizes = [];
             foreach (SnapshotCatalog.CatalogEntry entry in entries)
             {
                 int aid = entry.Location.ArenaId;
+                if (!_arenas.TryGetValue(aid, out ArenaFile? arena)) continue;
                 long end = entry.Location.Offset + entry.Location.Size;
-
-                if (!_frontiers.TryGetValue(aid, out long frontier) || end > frontier)
-                    _frontiers[aid] = end;
+                if (end > arena.Frontier) arena.Frontier = end;
 
                 liveSizes.TryGetValue(aid, out long live);
                 liveSizes[aid] = live + entry.Location.Size;
             }
 
             // Dead bytes = frontier - live sizes
-            foreach (KeyValuePair<int, long> kv in _frontiers)
+            foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
             {
                 liveSizes.TryGetValue(kv.Key, out long live);
-                _deadBytes[kv.Key] = kv.Value - live;
+                _deadBytes[kv.Key] = kv.Value.Frontier - live;
             }
         }
     }
 
     /// <summary>
-    /// Create an <see cref="ArenaWriter"/> for buffered writes.
-    /// The arena is marked as reserved until <see cref="CompleteWrite"/> or <see cref="CancelWrite"/>.
+    /// Create an <see cref="ArenaWriter"/> for buffered writes. The arena is marked as
+    /// reserved until the writer's <see cref="ArenaWriter.Complete"/> or
+    /// <see cref="ArenaWriter.Dispose"/> fires. The writer owns the file ref for the
+    /// duration of the write and signals back via <see cref="OnWriteCompleted"/> /
+    /// <see cref="OnWriteCancelledShared"/> / <see cref="OnWriteCancelledDedicated"/>.
     /// </summary>
     public ArenaWriter CreateWriter(long estimatedSize, string tag)
     {
         lock (_lock)
         {
-            ArenaFile file = estimatedSize >= _dedicatedArenaThreshold
+            bool dedicated = estimatedSize >= _dedicatedArenaThreshold;
+            ArenaFile file = dedicated
                 ? CreateArenaFile(estimatedSize, dedicated: true)
                 : GetOrCreateArena(estimatedSize);
-            long offset = _frontiers[file.Id];
+            long offset = file.Frontier;
             _reservedArenas.Add(file.Id);
             FileStream stream = file.CreateWriteStream(offset);
-            return new ArenaWriter(this, file.Id, offset, stream, tag);
+            return new ArenaWriter(this, file, dedicated, offset, stream, tag);
         }
     }
 
     /// <summary>
-    /// Complete a buffered write. Updates frontier and returns location + reservation.
-    /// Dedicated arenas are pre-sized to the writer's estimate; trim the file down
-    /// to the actual frontier so the on-disk length and mmap footprint match what
-    /// was written (the estimate is an upper bound and is often an overcount).
+    /// Bookkeeping after <see cref="ArenaWriter.Complete"/>: clears the reservation marker
+    /// and applies the byte-metric delta for any dedicated trim. The writer has already
+    /// set <see cref="ArenaFile.Frontier"/> and (if dedicated) called <see cref="ArenaFile.Truncate"/>;
+    /// the manager does NOT touch the file here.
     /// </summary>
-    public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag)
+    internal void OnWriteCompleted(int arenaId, long resizeDelta)
     {
         lock (_lock)
         {
-            long newFrontier = startOffset + actualSize;
-            _frontiers[arenaId] = newFrontier;
             _reservedArenas.Remove(arenaId);
-
-            if (newFrontier > 0
-                && _standaloneFiles.Contains(arenaId)
-                && _arenas.TryGetValue(arenaId, out ArenaFile? oldFile)
-                && newFrontier < oldFile.MappedSize)
-            {
-                long oldMappedSize = oldFile.MappedSize;
-                // Truncate in place so the refcount survives: dedicated files reach this
-                // path before any reservation is constructed against them, so it's safe to
-                // shrink the mapping under the manager's lock.
-                oldFile.Truncate(newFrontier);
-                OnArenaResized(newFrontier - oldMappedSize);
-            }
-
-            SnapshotLocation location = new(arenaId, startOffset, actualSize);
-            ArenaFile arenaFile = _arenas[arenaId];
-            ArenaReservation reservation = new(this, arenaFile, arenaId, startOffset, actualSize, tag);
-            return (location, reservation);
+            if (resizeDelta != 0) OnArenaResized(resizeDelta);
         }
     }
 
     /// <summary>
-    /// Cancel a buffered write. Unmarks arena as reserved.
-    /// For dedicated arenas, deletes the file; for shared arenas, data past frontier is ignored.
+    /// Bookkeeping after a cancelled write on a shared (non-dedicated) arena: just clear
+    /// the reservation marker. The file stays in <c>_arenas</c> for the next writer.
     /// </summary>
-    public void CancelWrite(int arenaId, long startOffset)
+    internal void OnWriteCancelledShared(int arenaId)
+    {
+        lock (_lock) _reservedArenas.Remove(arenaId);
+    }
+
+    /// <summary>
+    /// Bookkeeping after a cancelled write on a dedicated arena. The writer has already
+    /// dropped the file's manager-ref (triggering <see cref="ArenaFile.CleanUp"/> →
+    /// close + delete on disk); the manager just clears its dict / state and updates
+    /// the byte metric.
+    /// </summary>
+    internal void OnWriteCancelledDedicated(int arenaId, long mappedSize)
     {
         lock (_lock)
         {
             _reservedArenas.Remove(arenaId);
-
-            if (_standaloneFiles.Contains(arenaId))
-            {
-                _standaloneFiles.Remove(arenaId);
-                if (_arenas.TryRemove(arenaId, out ArenaFile? file))
-                {
-                    OnArenaRemoved(file.MappedSize);
-                    // Drop manager's dict ref. The file's CleanUp closes the handle + deletes
-                    // the on-disk file. No reservation exists yet for a cancelled writer, so
-                    // the refcount goes straight to zero.
-                    file.Dispose();
-                }
-                _frontiers.Remove(arenaId);
-                _deadBytes.Remove(arenaId);
-            }
+            _standaloneFiles.Remove(arenaId);
+            _arenas.TryRemove(arenaId, out _);
+            _deadBytes.Remove(arenaId);
+            OnArenaRemoved(mappedSize);
         }
     }
 
@@ -261,14 +246,14 @@ public sealed class ArenaManager : IArenaManager
             // dead-byte accounting and file deletion entirely. Also tolerate unknown arenaIds
             // (e.g. synthesised test reservations whose id was never registered): the tracker
             // forget below still runs, but there is no file to advise or accounting to update.
-            if (_disposed || !_frontiers.TryGetValue(location.ArenaId, out long frontier))
+            if (_disposed || !_arenas.TryGetValue(location.ArenaId, out ArenaFile? arena))
                 goto ForgetTracker;
 
             _deadBytes.TryGetValue(location.ArenaId, out long dead);
             long totalDead = dead + location.Size;
             _deadBytes[location.ArenaId] = totalDead;
 
-            if (totalDead >= frontier)
+            if (totalDead >= arena.Frontier)
             {
                 // All data is dead: drop the manager's dict ref. The file self-cleans
                 // (closes handle, deletes on-disk) as soon as the last reservation also
@@ -276,15 +261,14 @@ public sealed class ArenaManager : IArenaManager
                 // slice has been marked dead, is typically right now.
                 _standaloneFiles.Remove(location.ArenaId);
                 _mutableArenas.Remove(location.ArenaId);
-                if (_arenas.TryRemove(location.ArenaId, out ArenaFile? file))
+                if (_arenas.TryRemove(location.ArenaId, out _))
                 {
-                    OnArenaRemoved(file.MappedSize);
-                    file.Dispose();
+                    OnArenaRemoved(arena.MappedSize);
+                    arena.Dispose();
                 }
-                _frontiers.Remove(location.ArenaId);
                 _deadBytes.Remove(location.ArenaId);
             }
-            else if (_arenas.TryGetValue(location.ArenaId, out ArenaFile? arena))
+            else
             {
                 arena.AdviseDontNeed(location.Offset, location.Size);
                 if (_fadviseOnEviction)
@@ -397,10 +381,10 @@ public sealed class ArenaManager : IArenaManager
         foreach (int id in _mutableArenas)
         {
             if (_reservedArenas.Contains(id)) continue;
-            long frontier = _frontiers.GetValueOrDefault(id);
-            if (frontier + requiredSize <= _arenas[id].MappedSize)
+            ArenaFile candidate = _arenas[id];
+            if (candidate.Frontier + requiredSize <= candidate.MappedSize)
             {
-                result = _arenas[id];
+                result = candidate;
                 break;
             }
 
@@ -424,7 +408,6 @@ public sealed class ArenaManager : IArenaManager
         string path = Path.Combine(_basePath, $"{prefix}{id:D4}{ArenaFileExtension}");
         ArenaFile arena = new(id, path, mappedSize);
         _arenas[id] = arena;
-        _frontiers[id] = 0;
         _deadBytes[id] = 0;
         if (dedicated) _standaloneFiles.Add(id);
         else _mutableArenas.Add(id);
