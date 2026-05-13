@@ -739,8 +739,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 /// runs (the quality-gate maxLcp/value-range tracking would be unused).</description></item>
 /// <item><description>Otherwise — full pass computes <c>maxLcp</c>, the two pivot
 /// candidates, and entry-position min/max. Emit unless any of these encoding-quality
-/// gates fires: <c>maxLcp − minLcp &gt; 4</c>, <c>maxLcp − minLcp == 3</c>, or
-/// <c>maxVal − minVal &gt; 2²⁴</c>.</description></item>
+/// gates fires: <c>maxLcp − minLcp &gt; 4</c>, <c>maxLcp − minLcp == 3</c>,
+/// <c>maxVal − minVal &gt; 2²⁴</c>, or the estimated node size (header +
+/// <c>count · (keySlot + valueSlot)</c>) exceeds <see cref="MaxLeafBytes"/>.</description></item>
 /// </list>
 ///
 /// Pivot rule: rightmost position in <c>[lo+1, lo + count/2]</c> with <c>LCP == minLcp</c>,
@@ -765,6 +766,17 @@ file ref struct LeafBoundaryEnumerator
     /// HSST) and the bounds check in <see cref="MoveNext"/> turns overflow into a clear
     /// exception rather than memory corruption.</summary>
     private const int StackCapacityInts = 4096;
+
+    /// <summary>Estimated leaf-node bytes above which the splitter forces a further split,
+    /// independent of separator/value gates. Matches
+    /// <see cref="HsstBTreeOptions.DefaultMaxIntermediateBytes"/> so leaves and intermediate
+    /// nodes share the same byte budget.</summary>
+    private const int MaxLeafBytes = 2048;
+
+    /// <summary>Header bytes assumed when estimating the serialized size of a leaf node —
+    /// matches <c>HsstIndexBuilder.NodeHeaderUpperBound</c>: 12 base fields + 1 optional
+    /// CommonPrefixLen byte + small slack.</summary>
+    private const int LeafNodeHeaderOverheadBytes = 16;
 
     public int Current { get; private set; }
 
@@ -864,8 +876,21 @@ file ref struct LeafBoundaryEnumerator
                     if (ep > maxVal) maxVal = ep;
                 }
 
+                // Node-size estimate. Post-strip Uniform key slot ≈ gap + 1 (the widest
+                // entry's natural sep len minus the leaf-wide common prefix); value slot is
+                // MinBytesFor(valueRange) inlined. With the gap and value-range gates
+                // bounding both factors, count · (keySlot + valueSlot) + header is a tight
+                // upper bound on the actual leaf bytes — bigger than 2 KiB and we split.
                 int gap = maxLcp - minLcp;
-                bool splitNeeded = gap > 4 || gap == 3 || (maxVal - minVal) > ValueRangeLimit;
+                long vr = maxVal - minVal;
+                int valueSlot = vr == 0 ? 1 : (BitOperations.Log2((ulong)vr) >> 3) + 1;
+                int estimatedSize = LeafNodeHeaderOverheadBytes + count * (gap + 1 + valueSlot);
+
+                bool splitNeeded =
+                    gap > 4 ||
+                    gap == 3 ||
+                    vr > ValueRangeLimit ||
+                    estimatedSize > MaxLeafBytes;
                 if (!splitNeeded)
                 {
                     Current = count;
