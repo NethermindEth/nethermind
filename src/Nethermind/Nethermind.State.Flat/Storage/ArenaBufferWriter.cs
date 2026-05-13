@@ -9,7 +9,7 @@ namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
 /// Arena-backed <see cref="IByteBufferWriter"/> with a 1 MiB write-buffer plus
-/// flush-and-mmap read-back via <see cref="IArenaManager.OpenPendingView"/>.
+/// flush-and-mmap read-back via the <see cref="OpenViewDelegate"/> handed in by the writer.
 ///
 /// Writes are buffered into a pooled byte array and flushed to the underlying
 /// <see cref="Stream"/> in 1 MiB chunks. <see cref="OpenReader"/> flushes the
@@ -55,7 +55,7 @@ public unsafe struct ArenaBufferWriter(Stream stream, long firstOffset, ArenaBuf
 
     /// <summary>
     /// Flush pending bytes to the stream and mmap the trailing <paramref name="pastSize"/>
-    /// bytes via <see cref="IArenaManager.OpenPendingView"/>. The returned reader's
+    /// bytes via the supplied <see cref="OpenViewDelegate"/>. The returned reader's
     /// offset 0 corresponds to byte (Written − pastSize) of this writer's data.
     ///
     /// The view is owned by this writer and released on <see cref="Dispose"/>.

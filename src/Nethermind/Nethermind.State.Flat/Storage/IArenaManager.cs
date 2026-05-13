@@ -11,17 +11,27 @@ public unsafe interface IArenaManager : IDisposable
     ArenaReservation Open(in SnapshotLocation location, string tag);
 
     /// <summary>
-    /// Open a read-only view of bytes that have been written to <paramref name="arenaId"/>
-    /// at the absolute range <c>[absoluteOffset, absoluteOffset + size)</c> through a still-open
-    /// <see cref="ArenaWriter"/> (i.e. before the writer completes). The caller is responsible
-    /// for flushing the writer's buffer first; for file-backed managers the returned view is a
-    /// fresh mmap. Used by <see cref="ArenaBufferWriter.OpenReader"/> to let an HSST index
-    /// builder read back the data section it just emitted.
+    /// Drop <paramref name="deadSize"/> bytes of <paramref name="file"/> as dead. The caller
+    /// (typically <see cref="ArenaReservation.CleanUp"/>) handles file-side <c>madvise</c> /
+    /// optional <c>posix_fadvise</c> and tracker-forget itself, so this method only does the
+    /// atomic set/dict/metric bookkeeping that needs the manager's lock.
     /// </summary>
-    IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size);
+    void MarkDead(ArenaFile file, long deadSize);
 
-    void MarkDead(in SnapshotLocation location);
-    void AdviseDontNeed(ArenaReservation reservation);
+    /// <summary>
+    /// Drop tracker entries for every fully-covered OS page in
+    /// <c>[byteOffset, byteOffset + byteSize)</c> of <paramref name="arenaId"/>. The page-
+    /// rounding mirrors <see cref="ArenaFile.AdviseDontNeed"/> (offset rounded up, end rounded
+    /// down) so the tracker drops the same pages the kernel was just told to forget. No-op for
+    /// implementations that disable the tracker.
+    /// </summary>
+    void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize);
+
+    /// <summary>
+    /// Whether <see cref="ArenaReservation.CleanUp"/> should also issue a
+    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> after the <c>madvise(MADV_DONTNEED)</c>.
+    /// </summary>
+    bool FadviseOnEviction { get; }
 
     /// <summary>
     /// Enqueue a page eviction for asynchronous dispatch. The implementation pushes

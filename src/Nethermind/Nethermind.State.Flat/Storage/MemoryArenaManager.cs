@@ -33,14 +33,14 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public ArenaReservation Open(in SnapshotLocation location, string tag) => _inner.Open(location, tag);
 
-    public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size) =>
-        _inner.OpenPendingView(arenaId, absoluteOffset, size);
-
-    public void AdviseDontNeed(ArenaReservation reservation) => _inner.AdviseDontNeed(reservation);
-
     public void QueueEviction(int arenaId, int pageIdx) => _inner.QueueEviction(arenaId, pageIdx);
 
-    public void MarkDead(in SnapshotLocation location) => _inner.MarkDead(location);
+    public void MarkDead(ArenaFile file, long deadSize) => _inner.MarkDead(file, deadSize);
+
+    public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize) =>
+        _inner.ForgetTrackerRange(arenaId, byteOffset, byteSize);
+
+    public bool FadviseOnEviction => _inner.FadviseOnEviction;
 
     public void Dispose()
     {

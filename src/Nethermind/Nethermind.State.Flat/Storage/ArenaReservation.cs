@@ -89,7 +89,11 @@ public sealed class ArenaReservation : RefCountingDisposable
     public unsafe ArenaByteReader CreateReader() =>
         new(_arenaFile.BasePtr + Offset, Size, this);
 
-    public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
+    public void AdviseDontNeed()
+    {
+        _arenaFile.AdviseDontNeed(Offset, Size);
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
+    }
 
     /// <summary>
     /// Forward a shutdown-preserve request to the underlying <see cref="ArenaFile"/>. Called
@@ -100,13 +104,16 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     protected override void CleanUp()
     {
-        AdviseDontNeed();
-        _arenaManager.MarkDead(new SnapshotLocation(ArenaId, Offset, Size));
+        // File-side ops on the ref we already hold — no manager dict lookup. The manager's
+        // MarkDead just does the atomic set/dict/metric bookkeeping, then we drop our lease
+        // and let the file's own CleanUp delete the on-disk file when its refcount hits zero.
+        _arenaFile.AdviseDontNeed(Offset, Size);
+        if (_arenaManager.FadviseOnEviction)
+            _arenaFile.FadviseDontNeed(Offset, Size);
+        _arenaManager.MarkDead(_arenaFile, Size);
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
         Metrics.ArenaReservationCountByTag.AddOrUpdate(Tag, 0L, static (_, c) => Math.Max(0, c - 1));
         Metrics.ArenaReservationBytesByTag.AddOrUpdate(Tag, static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), _initialSize);
-        // Release the lease taken at construction. If this was the last lease (manager has
-        // already dropped its dict ref via MarkDead's "all dead" branch), the file's CleanUp
-        // runs and the on-disk file is deleted.
         _arenaFile.Dispose();
     }
 }

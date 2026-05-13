@@ -210,8 +210,8 @@ public sealed class ArenaManager : IArenaManager
     /// <summary>
     /// Open an existing snapshot location as an <see cref="ArenaReservation"/> for zero-copy reads.
     /// Lookup + lease acquisition happens under the manager's lock so a concurrent
-    /// <see cref="MarkDead"/> can't tear the file down mid-construction. If the file has
-    /// already started its CleanUp the reservation's ctor surfaces an
+    /// <see cref="MarkDead(ArenaFile, long)"/> can't tear the file down mid-construction. If the
+    /// file has already started its CleanUp the reservation's ctor surfaces an
     /// <see cref="InvalidOperationException"/> from its <see cref="ArenaFile.TryAcquireLease"/>.
     /// </summary>
     public ArenaReservation Open(in SnapshotLocation location, string tag)
@@ -225,74 +225,43 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
-    /// Mmap a fresh read view over the just-written range. The arena file is opened
-    /// <see cref="FileShare.ReadWrite"/> with a parallel mmap (<see cref="ArenaFile"/>),
-    /// so the bytes are visible to the read view as soon as the writer's stream has
-    /// been flushed (caller's responsibility).
+    /// Mark <paramref name="deadSize"/> bytes of <paramref name="file"/> as dead and, if the
+    /// file's dead-byte total has caught up with its frontier, drop the manager's dict ref so
+    /// the file self-cleans once its last reservation releases its lease. The caller (typically
+    /// <see cref="ArenaReservation.CleanUp"/>) already holds the file ref and handles file-side
+    /// ops (<c>madvise</c> / optional <c>posix_fadvise</c>) and tracker-forget itself — this
+    /// method's sole job is the atomic set/dict/metric mutation that needs the manager lock.
     /// </summary>
-    public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size)
-    {
-        lock (_lock)
-        {
-            return _arenas[arenaId].OpenWholeView(absoluteOffset, size);
-        }
-    }
-
-    /// <summary>
-    /// Mark space as dead for compaction tracking.
-    /// </summary>
-    public void MarkDead(in SnapshotLocation location)
+    public void MarkDead(ArenaFile file, long deadSize)
     {
         lock (_lock)
         {
             // After Dispose, on-disk files must be preserved for the next session — skip
-            // dead-byte accounting and file deletion entirely. Also tolerate unknown arenaIds
-            // (e.g. synthesised test reservations whose id was never registered): the tracker
-            // forget below still runs, but there is no file to advise or accounting to update.
-            if (_disposed || !_arenas.TryGetValue(location.ArenaId, out ArenaFile? arena))
-                goto ForgetTracker;
-
-            arena.DeadBytes += location.Size;
-
-            if (arena.DeadBytes >= arena.Frontier)
+            // dead-byte accounting and file deletion entirely.
+            if (_disposed) return;
+            file.DeadBytes += deadSize;
+            if (file.DeadBytes < file.Frontier) return;
+            _standaloneFiles.Remove(file.Id);
+            _mutableArenas.Remove(file.Id);
+            if (_arenas.TryRemove(file.Id, out _))
             {
-                // All data is dead: drop the manager's dict ref. The file self-cleans
-                // (closes handle, deletes on-disk) as soon as the last reservation also
-                // releases its lease — which, since this branch only fires once every
-                // slice has been marked dead, is typically right now.
-                _standaloneFiles.Remove(location.ArenaId);
-                _mutableArenas.Remove(location.ArenaId);
-                if (_arenas.TryRemove(location.ArenaId, out _))
-                {
-                    OnArenaRemoved(arena.MappedSize);
-                    arena.Dispose();
-                }
+                OnArenaRemoved(file.MappedSize);
+                file.Dispose();
             }
-            else
-            {
-                arena.AdviseDontNeed(location.Offset, location.Size);
-                if (_fadviseOnEviction)
-                    arena.FadviseDontNeed(location.Offset, location.Size);
-            }
-            ForgetTracker:;
         }
-        ForgetTrackerRange(location.ArenaId, location.Offset, location.Size);
     }
 
-    public void AdviseDontNeed(ArenaReservation reservation)
-    {
-        lock (_lock)
-        {
-            if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
-                arena.AdviseDontNeed(reservation.Offset, reservation.Size);
-        }
-        ForgetTrackerRange(reservation.ArenaId, reservation.Offset, reservation.Size);
-    }
+    /// <summary>
+    /// Whether <see cref="ArenaReservation.CleanUp"/> should also issue a
+    /// <c>posix_fadvise(POSIX_FADV_DONTNEED)</c> after the <c>madvise(MADV_DONTNEED)</c>.
+    /// Mirrors the <c>fadviseOnEviction</c> ctor argument.
+    /// </summary>
+    public bool FadviseOnEviction => _fadviseOnEviction;
 
     // Drop tracker entries for every fully-covered OS page in [byteOffset, byteOffset+byteSize).
     // Mirrors ArenaFile.AdviseDontNeed's page-rounding (offset rounded up, end rounded down).
     // Runs outside the manager lock — the tracker is independent of arena lifecycle.
-    private void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize)
+    public void ForgetTrackerRange(int arenaId, long byteOffset, long byteSize)
     {
         if (_pageTracker.MaxCapacity == 0 || byteSize <= 0) return;
         int pageSize = Environment.SystemPageSize;
