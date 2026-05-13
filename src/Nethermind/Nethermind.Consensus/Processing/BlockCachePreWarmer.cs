@@ -69,6 +69,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
+        // Do not count pre-warming as part of block processing for metrics.
+        ProcessingThread.IsBlockProcessingThread = false;
+
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
