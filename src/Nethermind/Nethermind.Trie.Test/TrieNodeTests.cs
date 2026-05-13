@@ -767,7 +767,9 @@ public class TrieNodeTests
 
         trieNode.PrunePersistedRecursively(1);
         TreePath emptyPath = TreePath.Empty;
-        trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0).Should().BeOfType<TrieNode>();
+        // After step 4 made TrieNode abstract, no instance can be exactly the base type;
+        // the test's intent is that the child slot is non-null after prune.
+        trieNode.GetChild(NullTrieStore.Instance, ref emptyPath, 0).Should().NotBeNull();
     }
 
     [Test]
