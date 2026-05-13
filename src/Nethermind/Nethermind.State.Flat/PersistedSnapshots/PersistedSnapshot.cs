@@ -64,15 +64,12 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] MetadataToHashKey = "to_hash\0\0\0"u8.ToArray();
     internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
 
-    private const int AddressBoundCacheSets = 8;
-
     private readonly ArenaReservation _reservation;
     // Per-snapshot blob arena handles, one per referenced id. Built and leased by the
     // repository at construction time. Reads dispatch directly into BlobArenaFile.RandomRead
     // (no manager lock, no central lookup). Disposal of each entry calls back into the
     // owning BlobArenaManager for refcount + catalog removal.
     private readonly Dictionary<ushort, BlobArenaFile> _blobFiles;
-    private readonly SeqlockValueCache<ValueHash256, Bound> _addressBoundCache = new(AddressBoundCacheSets);
 
     public StateId From { get; }
     public StateId To { get; }
@@ -130,20 +127,8 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return ReadBlobArenaRlp(nodeRef.BlobArenaId, nodeRef.RlpDataOffset);
     }
 
-    /// <summary>
-    /// Resolve the per-address inner-HSST bound, hitting the address-hash LRU first so
-    /// repeat lookups for the same address-hash skip the outer column-tag + 20-byte
-    /// address-hash seeks.
-    /// </summary>
-    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound)
-    {
-        if (_addressBoundCache.TryGetValue(in addressHash, out addressBound))
-            return true;
-        if (!PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound))
-            return false;
-        _addressBoundCache.Set(in addressHash, addressBound);
-        return true;
-    }
+    private bool TryGetAddressBound(in ArenaByteReader reader, in ValueHash256 addressHash, out Bound addressBound) =>
+        PersistedSnapshotReader.TryGetAddressHsstBound<ArenaByteReader, NoOpPin>(in reader, in addressHash, out addressBound);
 
     public bool TryGetAccount(in ValueHash256 addressHash, out Account? account)
     {
