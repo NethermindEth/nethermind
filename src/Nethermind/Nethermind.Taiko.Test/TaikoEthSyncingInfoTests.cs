@@ -36,7 +36,6 @@ public class TaikoEthSyncingInfoTests
         Assert.That(result, Is.EqualTo(SyncingResult.NotSyncing));
     }
 
-    /// <summary>Mid bulk-sync: beacon header ahead of Head → isSyncing=true with HighestBlock from beacon.</summary>
     [Test]
     public void GetFullInfo_BeaconPivot_HeadBehind_Syncing()
     {
@@ -56,7 +55,6 @@ public class TaikoEthSyncingInfoTests
         Assert.That(result.SyncMode, Is.EqualTo(SyncMode.FastSync));
     }
 
-    /// <summary>Genesis: nothing seen yet → isSyncing=true with zero pointers.</summary>
     [Test]
     public void GetFullInfo_Genesis_Syncing()
     {
@@ -72,7 +70,6 @@ public class TaikoEthSyncingInfoTests
         Assert.That(result.HighestBlock, Is.Zero);
     }
 
-    /// <summary>Engine-API path advanced BestSuggestedHeader past beacon: max picks suggested.</summary>
     [Test]
     public void GetFullInfo_TakesMaxOfBothPointers()
     {
