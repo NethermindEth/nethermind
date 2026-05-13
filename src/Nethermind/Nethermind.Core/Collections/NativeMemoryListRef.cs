@@ -8,13 +8,17 @@ using System.Runtime.InteropServices;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// Ref-struct list backed by <see cref="NativeMemory"/>. Mirrors <see cref="ArrayPoolListRef{T}"/>
-/// but allocates off the managed heap. Constrained to <see langword="unmanaged"/> element types.
-/// Native buffers expose only <see cref="Span{T}"/> — no <see cref="Memory{T}"/> projection.
+/// Ref-struct list backed by <see cref="NativeMemory"/> for large buffers and
+/// <see cref="System.Buffers.ArrayPool{T}"/> (pinned) for small ones — the switch is decided by
+/// byte size at allocation time. Mirrors <see cref="ArrayPoolListRef{T}"/> in shape.
+/// Constrained to <see langword="unmanaged"/> element types. Buffers expose only
+/// <see cref="Span{T}"/> — no <see cref="Memory{T}"/> projection.
 /// </summary>
 public unsafe ref struct NativeMemoryListRef<T> where T : unmanaged
 {
     private T* _ptr;
+    private T[]? _pooledArray;
+    private GCHandle _pinHandle;
     private int _capacity;
     private int _count;
 
@@ -24,25 +28,17 @@ public unsafe ref struct NativeMemoryListRef<T> where T : unmanaged
 
     public NativeMemoryListRef(int capacity, int startingCount = 0)
     {
-        if (capacity != 0)
-        {
-            _ptr = (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
-            new Span<T>(_ptr, startingCount).Clear();
-        }
-        else
-        {
-            _ptr = null;
-        }
-        _capacity = capacity;
+        _ptr = NativeMemoryListCore<T>.AllocateBuffer(capacity, out _pooledArray, out _pinHandle, out _capacity);
+        if (startingCount > 0) new Span<T>(_ptr, startingCount).Clear();
         _count = startingCount;
     }
 
     public readonly int Count => _count;
     public readonly int Capacity => _capacity;
 
-    public void Add(T item) => NativeMemoryListCore<T>.Add(ref _ptr, ref _capacity, ref _count, item);
+    public void Add(T item) => NativeMemoryListCore<T>.Add(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, item);
     public void AddRange(params T[] items) => AddRange(items.AsSpan());
-    public void AddRange(params ReadOnlySpan<T> items) => NativeMemoryListCore<T>.AddRange(ref _ptr, ref _capacity, ref _count, items);
+    public void AddRange(params ReadOnlySpan<T> items) => NativeMemoryListCore<T>.AddRange(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, items);
 
     public void AddRange(params IEnumerable<T> items)
     {
@@ -64,16 +60,16 @@ public unsafe ref struct NativeMemoryListRef<T> where T : unmanaged
     {
         if (capacity > _capacity)
         {
-            NativeMemoryListCore<T>.GuardResize(ref _ptr, ref _capacity, _count, capacity - _count);
+            NativeMemoryListCore<T>.GuardResize(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, _count, capacity - _count);
         }
     }
 
-    public void Insert(int index, T item) => NativeMemoryListCore<T>.Insert(ref _ptr, ref _capacity, ref _count, index, item);
+    public void Insert(int index, T item) => NativeMemoryListCore<T>.Insert(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, index, item);
     public bool Remove(T item) => NativeMemoryListCore<T>.Remove(_ptr, ref _count, item);
     public T? RemoveLast() => NativeMemoryListCore<T>.RemoveLast(_ptr, ref _count);
     public void RemoveAt(int index) => NativeMemoryListCore<T>.RemoveAt(_ptr, ref _count, index, shouldThrow: true);
     public void Clear() => NativeMemoryListCore<T>.Clear(ref _count);
-    public void ReduceCount(int newCount) => NativeMemoryListCore<T>.ReduceCount(ref _ptr, ref _capacity, ref _count, newCount);
+    public void ReduceCount(int newCount) => NativeMemoryListCore<T>.ReduceCount(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, newCount);
     public void Truncate(int newLength) => NativeMemoryListCore<T>.Truncate(newLength, ref _count);
     public readonly void Sort(Comparison<T> comparison) => NativeMemoryListCore<T>.Sort(_ptr, _count, comparison);
     public readonly void Sort<TComparer>(TComparer comparer) where TComparer : IComparer<T> => NativeMemoryListCore<T>.Sort(_ptr, _count, comparer);
@@ -87,7 +83,7 @@ public unsafe ref struct NativeMemoryListRef<T> where T : unmanaged
         set => NativeMemoryListCore<T>.Set(_ptr, index, _count, value);
     }
 
-    public void Dispose() => NativeMemoryListCore<T>.Dispose(ref _ptr, ref _count, ref _capacity);
+    public void Dispose() => NativeMemoryListCore<T>.Dispose(ref _ptr, ref _pooledArray, ref _pinHandle, ref _count, ref _capacity);
 
     public readonly bool Contains(T item) => NativeMemoryListCore<T>.Contains(_ptr, _count, item);
     public readonly int IndexOf(T item) => NativeMemoryListCore<T>.IndexOf(_ptr, _count, item);

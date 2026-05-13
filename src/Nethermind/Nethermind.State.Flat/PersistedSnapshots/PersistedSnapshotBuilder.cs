@@ -693,15 +693,15 @@ public static class PersistedSnapshotBuilder
     {
         int n = snapshots.Count;
         using ArrayPoolList<HsstEnumerator> enums = new(n, n);
-        using ArrayPoolList<bool> hasMore = new(n, n);
+        using NativeMemoryList<bool> hasMore = new(n, n);
         using ArrayPoolList<WholeReadSession> sessions = new(n, n);
-        using ArrayPoolList<(IntPtr Ptr, long Len)> views = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> views = new(n, n);
         // Cache each source's current logical key once per MoveNext so the O(N) find-min
         // and match-detection scans don't redo CopyCurrentLogicalKey 2-3x per output key.
         // Slot i occupies keyBuf[i*keySize .. (i+1)*keySize].
         int keyStride = Math.Max(1, keySize);
-        using ArrayPoolList<byte> keyBufList = new(n * keyStride, n * keyStride);
-        byte[] keyBuf = keyBufList.UnsafeGetInternalArray();
+        using NativeMemoryList<byte> keyBufList = new(n * keyStride, n * keyStride);
+        Span<byte> keyBuf = keyBufList.AsSpan();
 
         try
         {
@@ -715,7 +715,7 @@ public static class PersistedSnapshotBuilder
                 enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
                 hasMore[i] = enums[i].MoveNext(in r);
                 if (hasMore[i])
-                    enums[i].CopyCurrentLogicalKey(in r, keyBuf.AsSpan(i * keyStride, keyStride));
+                    enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * keyStride, keyStride));
             }
 
             using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
@@ -733,8 +733,8 @@ public static class PersistedSnapshotBuilder
                         minIdx = i;
                         continue;
                     }
-                    ReadOnlySpan<byte> kI = keyBuf.AsSpan(i * keyStride, keyStride);
-                    ReadOnlySpan<byte> kM = keyBuf.AsSpan(minIdx * keyStride, keyStride);
+                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * keyStride, keyStride);
+                    ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * keyStride, keyStride);
                     int cmp = kI.SequenceCompareTo(kM);
                     if (cmp < 0) minIdx = i;
                     else if (cmp == 0) minIdx = i; // newer (higher index) wins
@@ -742,7 +742,7 @@ public static class PersistedSnapshotBuilder
 
                 if (minIdx < 0) break;
 
-                ReadOnlySpan<byte> minKey = keyBuf.AsSpan(minIdx * keyStride, keyStride);
+                ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * keyStride, keyStride);
                 Bound valBound = enums[minIdx].CurrentValue;
                 WholeReadSessionReader minIdxReader = Reader(views[minIdx]);
                 using NoOpPin valPin = minIdxReader.PinBuffer(valBound.Offset, valBound.Length);
@@ -751,20 +751,20 @@ public static class PersistedSnapshotBuilder
                 for (int i = 0; i < n; i++)
                 {
                     if (i == minIdx || !hasMore[i]) continue;
-                    ReadOnlySpan<byte> kI = keyBuf.AsSpan(i * keyStride, keyStride);
+                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * keyStride, keyStride);
                     if (kI.SequenceCompareTo(minKey) == 0)
                     {
                         WholeReadSessionReader rI = Reader(views[i]);
                         hasMore[i] = enums[i].MoveNext(in rI);
                         if (hasMore[i])
-                            enums[i].CopyCurrentLogicalKey(in rI, keyBuf.AsSpan(i * keyStride, keyStride));
+                            enums[i].CopyCurrentLogicalKey(in rI, keyBuf.Slice(i * keyStride, keyStride));
                     }
                 }
                 {
                     WholeReadSessionReader r = Reader(views[minIdx]);
                     hasMore[minIdx] = enums[minIdx].MoveNext(in r);
                     if (hasMore[minIdx])
-                        enums[minIdx].CopyCurrentLogicalKey(in r, keyBuf.AsSpan(minIdx * keyStride, keyStride));
+                        enums[minIdx].CopyCurrentLogicalKey(in r, keyBuf.Slice(minIdx * keyStride, keyStride));
                 }
             }
 
@@ -783,8 +783,8 @@ public static class PersistedSnapshotBuilder
     /// Single-source keys are copied as-is.
     /// </summary>
     internal static void NWayNestedStreamingMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] enums, bool[] hasMore, int n,
-        (IntPtr Ptr, long Len)[] views,
+        HsstEnumerator[] enums, Span<bool> hasMore, int n,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         int outerKeyLength, int innerKeyLength,
         int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -792,8 +792,8 @@ public static class PersistedSnapshotBuilder
         using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
 
         // Temp list for collecting matching source indices
-        using ArrayPoolList<int> matchingSourcesList = new(n, n);
-        int[] matchingSources = matchingSourcesList.UnsafeGetInternalArray();
+        using NativeMemoryList<int> matchingSourcesList = new(n, n);
+        Span<int> matchingSources = matchingSourcesList.AsSpan();
 
         // Cache each source's current outer key once per MoveNext. 64 covers every key
         // size that ends up in this merge: storage-hash address prefixes (≤32) and storage
@@ -876,14 +876,14 @@ public static class PersistedSnapshotBuilder
     /// Creates M inner MergeEnumerators and performs N-way merge with newest-wins.
     /// </summary>
     private static void NWayInnerMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        (IntPtr Ptr, long Len)[] views,
+        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         int innerKeyLength,
         int minSeparatorLength = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         using ArrayPoolList<HsstEnumerator> innerEnums = new(matchCount, matchCount);
-        using ArrayPoolList<bool> innerHasMore = new(matchCount, matchCount);
+        using NativeMemoryList<bool> innerHasMore = new(matchCount, matchCount);
         // Cache each inner enumerator's current key once per MoveNext. innerKeyLength ≤ 33
         // for any caller; 64 stride covers comfortably with room for future growth.
         const int KeyStride = 64;
@@ -962,13 +962,13 @@ public static class PersistedSnapshotBuilder
     {
         int n = snapshots.Count;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
-        using ArrayPoolList<bool> hasMoreList = new(n, n);
+        using NativeMemoryList<bool> hasMoreList = new(n, n);
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using ArrayPoolList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
-        bool[] hasMore = hasMoreList.UnsafeGetInternalArray();
+        Span<bool> hasMore = hasMoreList.AsSpan();
         WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
-        (IntPtr Ptr, long Len)[] views = viewsList.UnsafeGetInternalArray();
+        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
 
         try
         {
@@ -1004,15 +1004,15 @@ public static class PersistedSnapshotBuilder
     {
         int n = snapshots.Count;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
-        using ArrayPoolList<bool> hasMoreList = new(n, n);
+        using NativeMemoryList<bool> hasMoreList = new(n, n);
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using ArrayPoolList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
-        using ArrayPoolList<int> matchingSourcesList = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        using NativeMemoryList<int> matchingSourcesList = new(n, n);
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
-        bool[] hasMore = hasMoreList.UnsafeGetInternalArray();
+        Span<bool> hasMore = hasMoreList.AsSpan();
         WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
-        (IntPtr Ptr, long Len)[] views = viewsList.UnsafeGetInternalArray();
-        int[] matchingSources = matchingSourcesList.UnsafeGetInternalArray();
+        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        Span<int> matchingSources = matchingSourcesList.AsSpan();
 
         // Cache each source's current outer key once per MoveNext (outer keys ≤ 32 bytes).
         const int KeyStride = 64;
@@ -1100,13 +1100,13 @@ public static class PersistedSnapshotBuilder
     /// (TreePath -> NodeRef, fixed-size both sides) into a single PackedArray.
     /// </summary>
     private static void NWayInnerMergeTrie<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        (IntPtr Ptr, long Len)[] views,
+        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         int keySize) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         using ArrayPoolList<HsstEnumerator> innerEnums = new(matchCount, matchCount);
-        using ArrayPoolList<bool> innerHasMore = new(matchCount, matchCount);
+        using NativeMemoryList<bool> innerHasMore = new(matchCount, matchCount);
         // Cache each inner enumerator's current key (trie path, keySize ≤ 33).
         const int KeyStride = 64;
         Span<byte> keyBuf = stackalloc byte[matchCount * KeyStride];
@@ -1187,15 +1187,15 @@ public static class PersistedSnapshotBuilder
     {
         int n = snapshots.Count;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
-        using ArrayPoolList<bool> hasMoreList = new(n, n);
+        using NativeMemoryList<bool> hasMoreList = new(n, n);
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using ArrayPoolList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
-        using ArrayPoolList<int> matchingSourcesList = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        using NativeMemoryList<int> matchingSourcesList = new(n, n);
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
-        bool[] hasMore = hasMoreList.UnsafeGetInternalArray();
+        Span<bool> hasMore = hasMoreList.AsSpan();
         WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
-        (IntPtr Ptr, long Len)[] views = viewsList.UnsafeGetInternalArray();
-        int[] matchingSources = matchingSourcesList.UnsafeGetInternalArray();
+        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        Span<int> matchingSources = matchingSourcesList.AsSpan();
 
         // Cache each source's current 20-byte address-hash key (stride 32 with room).
         const int KeyStride = 32;
@@ -1325,13 +1325,13 @@ public static class PersistedSnapshotBuilder
     private const int PerAddrSubTagCount = 7;
 
     private static void NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        (IntPtr Ptr, long Len)[] views,
+        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer, BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source.
-        using ArrayPoolList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
-        (long Offset, long Length)[] perAddrBounds = perAddrBoundsList.UnsafeGetInternalArray();
+        using NativeMemoryList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
+        Span<(long Offset, long Length)> perAddrBounds = perAddrBoundsList.AsSpan();
         for (int j = 0; j < matchCount; j++)
         {
             int srcIdx = matchingSources[j];
@@ -1345,15 +1345,15 @@ public static class PersistedSnapshotBuilder
         // each source's DenseByteIndex. Replaces 6+ per-source TrySeek calls (each of which
         // re-read the trailer and re-pinned the ends array). Indexed as
         // subTagBounds[j * PerAddrSubTagCount + tag] for source j, sub-tag value `tag`.
-        using ArrayPoolList<Bound> subTagBoundsList = new(matchCount * PerAddrSubTagCount, matchCount * PerAddrSubTagCount);
-        Bound[] subTagBounds = subTagBoundsList.UnsafeGetInternalArray();
+        using NativeMemoryList<Bound> subTagBoundsList = new(matchCount * PerAddrSubTagCount, matchCount * PerAddrSubTagCount);
+        Span<Bound> subTagBounds = subTagBoundsList.AsSpan();
         for (int j = 0; j < matchCount; j++)
         {
             WholeReadSessionReader r = Reader(views[matchingSources[j]]);
             HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
                 in r,
                 new Bound(perAddrBounds[j].Offset, perAddrBounds[j].Length),
-                subTagBounds.AsSpan(j * PerAddrSubTagCount, PerAddrSubTagCount));
+                subTagBounds.Slice(j * PerAddrSubTagCount, PerAddrSubTagCount));
         }
 
         // perAddrBuilder is passed to several helpers by ref, so it can't be a `using`
@@ -1400,10 +1400,10 @@ public static class PersistedSnapshotBuilder
             {
                 int slotSourceCount = 0;
                 int slotCapacity = matchCount - slotStart;
-                using ArrayPoolList<int> slotSourcesList = new(slotCapacity, slotCapacity);
-                using ArrayPoolList<(long Offset, long Length)> slotBoundsList = new(slotCapacity, slotCapacity);
-                int[] slotSources = slotSourcesList.UnsafeGetInternalArray();
-                (long Offset, long Length)[] slotBounds = slotBoundsList.UnsafeGetInternalArray();
+                using NativeMemoryList<int> slotSourcesList = new(slotCapacity, slotCapacity);
+                using NativeMemoryList<(long Offset, long Length)> slotBoundsList = new(slotCapacity, slotCapacity);
+                Span<int> slotSources = slotSourcesList.AsSpan();
+                Span<(long Offset, long Length)> slotBounds = slotBoundsList.AsSpan();
                 for (int j = slotStart; j < matchCount; j++)
                 {
                     Bound slotBound = subTagBounds[j * PerAddrSubTagCount + slotTag];
@@ -1435,11 +1435,11 @@ public static class PersistedSnapshotBuilder
                     // M > 1 sources collide on this address's slots: streaming merge through
                     // NWayNestedStreamingSlotMerge / NWayInnerSlotMerge folds bloom adds in.
                     using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
-                    using ArrayPoolList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
-                    using ArrayPoolList<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
+                    using NativeMemoryList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
+                    using NativeMemoryList<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
                     HsstEnumerator[] slotEnums = slotEnumsList.UnsafeGetInternalArray();
-                    bool[] slotHasMore = slotHasMoreList.UnsafeGetInternalArray();
-                    (IntPtr Ptr, long Len)[] slotViews = slotViewsList.UnsafeGetInternalArray();
+                    Span<bool> slotHasMore = slotHasMoreList.AsSpan();
+                    Span<(IntPtr Ptr, long Len)> slotViews = slotViewsList.AsSpan();
                     try
                     {
                         for (int j = 0; j < slotSourceCount; j++)
@@ -1539,18 +1539,18 @@ public static class PersistedSnapshotBuilder
     /// are content-addressable so duplicate keys carry identical NodeRefs in practice.
     /// </summary>
     private static void MergeStorageTrieSubTag<TWriter, TReader, TPin>(
-        int[] matchingSources, int matchCount,
-        (IntPtr Ptr, long Len)[] views,
-        Bound[] subTagBounds,
+        ReadOnlySpan<int> matchingSources, int matchCount,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
+        ReadOnlySpan<Bound> subTagBounds,
         ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
         byte[] subTag,
         int subTagIdx,
         int innerKeySize) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        using ArrayPoolList<int> srcsList = new(matchCount, matchCount);
-        using ArrayPoolList<(long Offset, long Length)> boundsList = new(matchCount, matchCount);
-        int[] srcs = srcsList.UnsafeGetInternalArray();
-        (long Offset, long Length)[] subBounds = boundsList.UnsafeGetInternalArray();
+        using NativeMemoryList<int> srcsList = new(matchCount, matchCount);
+        using NativeMemoryList<(long Offset, long Length)> boundsList = new(matchCount, matchCount);
+        Span<int> srcs = srcsList.AsSpan();
+        Span<(long Offset, long Length)> subBounds = boundsList.AsSpan();
 
         int active = 0;
         for (int j = 0; j < matchCount; j++)
@@ -1580,9 +1580,9 @@ public static class PersistedSnapshotBuilder
         // CopyCurrentLogicalKey, which returns lex/BE bytes regardless of the source
         // PackedArray's storage layout (BE-stored or auto-LE-stored at innerKeySize ∈ {2,4,8}).
         using ArrayPoolList<HsstEnumerator> innerEnumsList = new(active, active);
-        using ArrayPoolList<bool> innerHasMoreList = new(active, active);
+        using NativeMemoryList<bool> innerHasMoreList = new(active, active);
         HsstEnumerator[] innerEnums = innerEnumsList.UnsafeGetInternalArray();
-        bool[] innerHasMore = innerHasMoreList.UnsafeGetInternalArray();
+        Span<bool> innerHasMore = innerHasMoreList.AsSpan();
         Span<byte> keyBuf = stackalloc byte[active * innerKeySize];
 
         try
@@ -1729,16 +1729,16 @@ public static class PersistedSnapshotBuilder
     /// after dedup — harmless (false-positive rate is the same or strictly better).
     /// </summary>
     private static void NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, bool[] outerHasMore, int n,
-        (IntPtr Ptr, long Len)[] views,
+        HsstEnumerator[] outerEnums, Span<bool> outerHasMore, int n,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         BloomFilter? bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int OuterKeyLen = 30;
         using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
-        using ArrayPoolList<int> matchingSourcesList = new(n, n);
-        int[] matchingSources = matchingSourcesList.UnsafeGetInternalArray();
+        using NativeMemoryList<int> matchingSourcesList = new(n, n);
+        Span<int> matchingSources = matchingSourcesList.AsSpan();
 
         // Cache outer 30-byte keys (stride 32 for alignment).
         const int OuterStride = 32;
@@ -1811,15 +1811,15 @@ public static class PersistedSnapshotBuilder
     /// already filled).
     /// </summary>
     private static void NWayInnerSlotMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, int[] matchingSources, int matchCount,
-        (IntPtr Ptr, long Len)[] views,
+        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         BloomFilter? bloom, ulong addrBloomKey,
         Span<byte> fullSlot) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int InnerKeyLen = 2;
         using ArrayPoolList<HsstEnumerator> innerEnums = new(matchCount, matchCount);
-        using ArrayPoolList<bool> innerHasMore = new(matchCount, matchCount);
+        using NativeMemoryList<bool> innerHasMore = new(matchCount, matchCount);
         Span<byte> keyBuf = stackalloc byte[matchCount * InnerKeyLen];
 
         try

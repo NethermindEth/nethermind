@@ -12,35 +12,32 @@ using System.Runtime.InteropServices;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// List backed by <see cref="NativeMemory"/>. Mirrors <see cref="ArrayPoolList{T}"/> but allocates
-/// off the managed heap. Constrained to <see langword="unmanaged"/> element types. Native buffers
-/// expose only <see cref="Span{T}"/> — no <see cref="Memory{T}"/> projection.
+/// List backed by <see cref="NativeMemory"/> for large buffers and <see cref="System.Buffers.ArrayPool{T}"/>
+/// (pinned) for small ones — the switch is decided by byte size at allocation time. Mirrors
+/// <see cref="ArrayPoolList{T}"/> in shape but keeps storage off the managed heap whenever the
+/// requested capacity is large enough to be worth a native alloc. Constrained to
+/// <see langword="unmanaged"/> element types. Buffers expose only <see cref="Span{T}"/> —
+/// no <see cref="Memory{T}"/> projection.
 /// </summary>
 public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnlyList<T> where T : unmanaged
 {
     private T* _ptr;
+    private T[]? _pooledArray;
+    private GCHandle _pinHandle;
     private int _capacity;
     private int _count;
     private bool _disposed;
 
     public NativeMemoryList(int capacity)
     {
-        if (capacity != 0)
-        {
-            _ptr = (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
-        }
-        _capacity = capacity;
+        _ptr = NativeMemoryListCore<T>.AllocateBuffer(capacity, out _pooledArray, out _pinHandle, out _capacity);
         _count = 0;
     }
 
     public NativeMemoryList(int capacity, int count)
     {
-        if (capacity != 0)
-        {
-            _ptr = (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
-            new Span<T>(_ptr, count).Clear();
-        }
-        _capacity = capacity;
+        _ptr = NativeMemoryListCore<T>.AllocateBuffer(capacity, out _pooledArray, out _pinHandle, out _capacity);
+        if (count > 0) new Span<T>(_ptr, count).Clear();
         _count = count;
     }
 
@@ -84,7 +81,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
     public void Add(T item)
     {
         GuardDispose();
-        NativeMemoryListCore<T>.Add(ref _ptr, ref _capacity, ref _count, item);
+        NativeMemoryListCore<T>.Add(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, item);
     }
 
     int IList.Add(object? value)
@@ -97,7 +94,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
     public void AddRange(params ReadOnlySpan<T> items)
     {
         GuardDispose();
-        NativeMemoryListCore<T>.AddRange(ref _ptr, ref _capacity, ref _count, items);
+        NativeMemoryListCore<T>.AddRange(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, items);
     }
 
     public void EnsureCapacity(int capacity)
@@ -105,7 +102,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
         GuardDispose();
         if (capacity > _capacity)
         {
-            NativeMemoryListCore<T>.GuardResize(ref _ptr, ref _capacity, _count, capacity - _count);
+            NativeMemoryListCore<T>.GuardResize(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, _count, capacity - _count);
         }
     }
 
@@ -147,7 +144,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
     public void ReduceCount(int count)
     {
         GuardDispose();
-        NativeMemoryListCore<T>.ReduceCount(ref _ptr, ref _capacity, ref _count, count);
+        NativeMemoryListCore<T>.ReduceCount(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, count);
     }
 
     public void Sort(Comparison<T> comparison)
@@ -185,7 +182,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
     public void Insert(int index, T item)
     {
         GuardDispose();
-        NativeMemoryListCore<T>.Insert(ref _ptr, ref _capacity, ref _count, index, item);
+        NativeMemoryListCore<T>.Insert(ref _ptr, ref _capacity, ref _pooledArray, ref _pinHandle, ref _count, index, item);
     }
 
     void IList.Insert(int index, object? value)
@@ -253,7 +250,7 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
 
     public void Dispose()
     {
-        NativeMemoryListCore<T>.Dispose(ref _ptr, ref _count, ref _capacity, ref _disposed);
+        NativeMemoryListCore<T>.Dispose(ref _ptr, ref _pooledArray, ref _pinHandle, ref _count, ref _capacity, ref _disposed);
         GC.SuppressFinalize(this);
     }
 
@@ -268,8 +265,9 @@ public sealed unsafe class NativeMemoryList<T> : IList<T>, IList, IOwnedReadOnly
 #if DEBUG
             Console.Error.WriteLine($"Warning: {nameof(NativeMemoryList<T>)} was not disposed. Created at: {_creationStackTrace}");
 #endif
-            // Always free unmanaged memory in the finalizer to avoid process-lifetime native leaks.
-            NativeMemoryListCore<T>.Dispose(ref _ptr, ref _count, ref _capacity, ref _disposed);
+            // Always free unmanaged memory / return pooled array in the finalizer to avoid
+            // process-lifetime native leaks or starvation of the ArrayPool.
+            NativeMemoryListCore<T>.Dispose(ref _ptr, ref _pooledArray, ref _pinHandle, ref _count, ref _capacity, ref _disposed);
         }
     }
 

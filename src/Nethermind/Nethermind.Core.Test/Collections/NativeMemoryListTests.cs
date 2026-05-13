@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Collections;
@@ -221,5 +222,64 @@ public class NativeMemoryListTests
         using NativeMemoryList<int> empty = NativeMemoryList<int>.Empty();
         empty.Count.Should().Be(0);
         empty.Capacity.Should().Be(0);
+    }
+
+    // Capacity*sizeof(T) is well under the 1024-byte pool threshold here, so the underlying
+    // buffer is rented from ArrayPool<T>.Shared (pinned) rather than NativeMemory.Alloc.
+    // The list must behave identically regardless of which strategy was used; verify all
+    // mutating + read paths with a single end-to-end exercise.
+    [TestCase(8)]
+    [TestCase(32)]
+    [TestCase(64)]
+    public void Sub_threshold_capacity_round_trips(int capacity)
+    {
+        using NativeMemoryList<byte> list = new(capacity);
+        list.Count.Should().Be(0);
+        list.Capacity.Should().BeGreaterThanOrEqualTo(capacity);
+
+        list.AddRange(Bytes.FromHexString("deadbeef"));
+        list.Count.Should().Be(4);
+        list[0].Should().Be(0xde);
+        list[3].Should().Be(0xef);
+
+        list.Insert(0, 0x01);
+        list[0].Should().Be(0x01);
+        list[4].Should().Be(0xef);
+
+        list.RemoveAt(0);
+        list.AsSpan().ToArray().Should().BeEquivalentTo(Bytes.FromHexString("deadbeef"), o => o.WithStrictOrdering());
+
+        list.Reverse();
+        list[0].Should().Be(0xef);
+    }
+
+    // Cross the pool/native boundary inside one list lifetime: start in the pool (16 bytes),
+    // grow past 1 KiB so subsequent reallocations route to NativeMemory.Alloc, and confirm
+    // the data survives the strategy switch and that Dispose frees both code paths cleanly.
+    [Test]
+    public void Growth_across_pool_native_threshold_preserves_data()
+    {
+        using NativeMemoryList<byte> list = new(16);
+        byte[] payload = new byte[4096];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
+        list.AddRange(payload);
+
+        list.Count.Should().Be(payload.Length);
+        list.Capacity.Should().BeGreaterThanOrEqualTo(payload.Length);
+        list.AsSpan().ToArray().Should().BeEquivalentTo(payload, o => o.WithStrictOrdering());
+    }
+
+    // ReduceCount shrinks below the byte threshold; the internal reallocation must route to
+    // ArrayPool and the data must remain readable.
+    [Test]
+    public void ReduceCount_downgrades_native_to_pool_when_under_threshold()
+    {
+        using NativeMemoryList<long> list = new(256);  // 256 * 8 = 2 KiB → native
+        for (int i = 0; i < 256; i++) list.Add(i);
+
+        list.ReduceCount(8);  // 8 * 8 = 64 bytes → pool
+        list.Count.Should().Be(8);
+        list[0].Should().Be(0L);
+        list[7].Should().Be(7L);
     }
 }

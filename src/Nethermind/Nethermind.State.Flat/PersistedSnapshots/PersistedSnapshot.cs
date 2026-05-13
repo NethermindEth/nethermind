@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -240,21 +239,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     {
         if (!_blobFiles.TryGetValue(blobArenaId, out BlobArenaFile? file))
             throw new InvalidOperationException($"Blob arena {blobArenaId} not in snapshot {From}→{To}'s referenced set");
-        byte[] rented = ArrayPool<byte>.Shared.Rent(MaxTrieNodeRlpBytes);
-        try
-        {
-            Span<byte> buf = rented.AsSpan(0, MaxTrieNodeRlpBytes);
-            int bytesRead = file.RandomRead(offset, buf);
-            Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
-            int totalLength = ctx.PeekNextRlpLength();
-            byte[] result = new byte[totalLength];
-            buf[..totalLength].CopyTo(result);
-            return result;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(rented);
-        }
+        using NativeMemoryList<byte> rented = new(MaxTrieNodeRlpBytes, MaxTrieNodeRlpBytes);
+        Span<byte> buf = rented.AsSpan();
+        int bytesRead = file.RandomRead(offset, buf);
+        Rlp.ValueDecoderContext ctx = new(buf[..bytesRead]);
+        int totalLength = ctx.PeekNextRlpLength();
+        byte[] result = new byte[totalLength];
+        buf[..totalLength].CopyTo(result);
+        return result;
     }
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();

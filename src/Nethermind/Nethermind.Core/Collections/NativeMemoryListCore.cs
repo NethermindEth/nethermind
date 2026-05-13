@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -12,10 +13,59 @@ namespace Nethermind.Core.Collections;
 
 internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
 {
+    // Buffers requested below this byte size route through ArrayPool<T>.Shared (pinned)
+    // instead of NativeMemory.Alloc, to avoid per-allocation malloc round-trips on hot,
+    // short-lived collections. The decision is made on the requested capacity; the pool
+    // may overshoot, but we stay on pool until a resize would push us above the threshold.
+    internal const int PoolThresholdBytes = 1024;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T* AllocateBuffer(int capacity, out T[]? pooledArray, out GCHandle pinHandle, out int actualCapacity)
+    {
+        if (capacity == 0)
+        {
+            pooledArray = null;
+            pinHandle = default;
+            actualCapacity = 0;
+            return null;
+        }
+
+        if ((long)capacity * sizeof(T) < PoolThresholdBytes)
+        {
+            T[] arr = ArrayPool<T>.Shared.Rent(capacity);
+            GCHandle handle = GCHandle.Alloc(arr, GCHandleType.Pinned);
+            pooledArray = arr;
+            pinHandle = handle;
+            actualCapacity = arr.Length;
+            return (T*)handle.AddrOfPinnedObject();
+        }
+
+        pooledArray = null;
+        pinHandle = default;
+        actualCapacity = capacity;
+        return (T*)NativeMemory.Alloc((nuint)capacity, (nuint)sizeof(T));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void FreeBuffer(T* ptr, T[]? pooledArray, GCHandle pinHandle)
+    {
+        if (pooledArray is not null)
+        {
+            if (pinHandle.IsAllocated) pinHandle.Free();
+            ArrayPool<T>.Shared.Return(pooledArray);
+        }
+        else if (ptr is not null)
+        {
+            NativeMemory.Free(ptr);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void GuardResize(
         ref T* ptr,
         ref int capacity,
+        ref T[]? pooledArray,
+        ref GCHandle pinHandle,
         int count,
         int itemsToAdd = 1)
     {
@@ -36,28 +86,30 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
         if (newCapacityLong > int.MaxValue) newCapacityLong = int.MaxValue;
         int newCapacity = (int)newCapacityLong;
 
-        T* newPtr = (T*)NativeMemory.Alloc((nuint)newCapacity, (nuint)sizeof(T));
+        T* newPtr = AllocateBuffer(newCapacity, out T[]? newPooled, out GCHandle newPin, out int newActual);
         if (count > 0)
         {
-            Buffer.MemoryCopy(ptr, newPtr, (long)newCapacity * sizeof(T), (long)count * sizeof(T));
+            Buffer.MemoryCopy(ptr, newPtr, (long)newActual * sizeof(T), (long)count * sizeof(T));
         }
-        if (ptr is not null) NativeMemory.Free(ptr);
+        FreeBuffer(ptr, pooledArray, pinHandle);
         ptr = newPtr;
-        capacity = newCapacity;
+        pooledArray = newPooled;
+        pinHandle = newPin;
+        capacity = newActual;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Add(ref T* ptr, ref int capacity, ref int count, T item)
+    public static void Add(ref T* ptr, ref int capacity, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, T item)
     {
-        GuardResize(ref ptr, ref capacity, count);
+        GuardResize(ref ptr, ref capacity, ref pooledArray, ref pinHandle, count);
         ptr[count++] = item;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void AddRange(ref T* ptr, ref int capacity, ref int count, ReadOnlySpan<T> items)
+    public static void AddRange(ref T* ptr, ref int capacity, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, ReadOnlySpan<T> items)
     {
         if (items.IsEmpty) return;
-        GuardResize(ref ptr, ref capacity, count, items.Length);
+        GuardResize(ref ptr, ref capacity, ref pooledArray, ref pinHandle, count, items.Length);
         items.CopyTo(new Span<T>(ptr + count, items.Length));
         count += items.Length;
     }
@@ -66,7 +118,7 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     public static void Clear(ref int count) => count = 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ReduceCount(ref T* ptr, ref int capacity, ref int count, int newCount)
+    public static void ReduceCount(ref T* ptr, ref int capacity, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, int newCount)
     {
         if (newCount == count) return;
         if (newCount > count) ThrowOnlyReduce(newCount, count);
@@ -75,11 +127,13 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
 
         if (newCount < capacity / 2 && newCount > 0)
         {
-            T* newPtr = (T*)NativeMemory.Alloc((nuint)newCount, (nuint)sizeof(T));
-            Buffer.MemoryCopy(ptr, newPtr, (long)newCount * sizeof(T), (long)newCount * sizeof(T));
-            NativeMemory.Free(ptr);
+            T* newPtr = AllocateBuffer(newCount, out T[]? newPooled, out GCHandle newPin, out int newActual);
+            Buffer.MemoryCopy(ptr, newPtr, (long)newActual * sizeof(T), (long)newCount * sizeof(T));
+            FreeBuffer(ptr, pooledArray, pinHandle);
             ptr = newPtr;
-            capacity = newCount;
+            pooledArray = newPooled;
+            pinHandle = newPin;
+            capacity = newActual;
         }
 
         [DoesNotReturn]
@@ -164,10 +218,10 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Insert(ref T* ptr, ref int capacity, ref int count, int index, T item)
+    public static void Insert(ref T* ptr, ref int capacity, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, int index, T item)
     {
         GuardIndex(index, count, shouldThrow: true, allowEqualToCount: true);
-        GuardResize(ref ptr, ref capacity, count);
+        GuardResize(ref ptr, ref capacity, ref pooledArray, ref pinHandle, count);
         if (index < count)
         {
             new Span<T>(ptr + index, count - index).CopyTo(new Span<T>(ptr + index + 1, count - index));
@@ -205,22 +259,26 @@ internal static unsafe class NativeMemoryListCore<T> where T : unmanaged
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Dispose(ref T* ptr, ref int count, ref int capacity)
+    public static void Dispose(ref T* ptr, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, ref int capacity)
     {
-        T* local = ptr;
+        T* localPtr = ptr;
+        T[]? localPool = pooledArray;
+        GCHandle localPin = pinHandle;
         ptr = null;
-        if (local is not null) NativeMemory.Free(local);
+        pooledArray = null;
+        pinHandle = default;
+        FreeBuffer(localPtr, localPool, localPin);
         count = 0;
         capacity = 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Dispose(ref T* ptr, ref int count, ref int capacity, ref bool disposed)
+    public static void Dispose(ref T* ptr, ref T[]? pooledArray, ref GCHandle pinHandle, ref int count, ref int capacity, ref bool disposed)
     {
         if (!disposed)
         {
             disposed = true;
-            Dispose(ref ptr, ref count, ref capacity);
+            Dispose(ref ptr, ref pooledArray, ref pinHandle, ref count, ref capacity);
         }
     }
 }
