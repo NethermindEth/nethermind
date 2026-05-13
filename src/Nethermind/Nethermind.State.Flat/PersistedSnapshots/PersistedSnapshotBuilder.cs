@@ -335,6 +335,15 @@ public static class PersistedSnapshotBuilder
         Span<byte> compactPathKey = stackalloc byte[8];
         Span<byte> fallbackPathKey = stackalloc byte[33];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
+        // Reusable work buffers for the slot prefix (30-byte) and slot suffix (2-byte)
+        // HSST builders. The prefix builder is constructed once per address; the suffix
+        // builder once per prefix group per address. Sharing the buffer struct across
+        // every iteration of the address loop avoids the rent/return churn that would
+        // otherwise hit ArrayPool / NativeMemory once per slot subtree.
+        // Declared as plain locals (not `using`) so they can be passed by ref into the
+        // builder constructors — the compiler forbids `ref` on `using` variables.
+        HsstBTreeBuilderBuffers slotPrefixBuffers = new();
+        HsstBTreeBuilderBuffers slotSuffixBuffers = new();
         int storageIdx = 0;
         int storTopIdx = 0;
         int storCompactIdx = 0;
@@ -477,7 +486,7 @@ public static class PersistedSnapshotBuilder
             if (hasStorage)
             {
                 ref TWriter slotWriter = ref perAddr.BeginValueWrite();
-                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, slotPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
+                using HsstBTreeBuilder<TWriter, TReader, TPin> prefixLevel = new(ref slotWriter, ref slotPrefixBuffers, slotPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
                 while (storageIdx < sortedStorages.Count &&
                     sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash))
@@ -487,7 +496,7 @@ public static class PersistedSnapshotBuilder
                     ReadOnlySpan<byte> currentPrefix = currentPrefixBuf;
 
                     ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
-                    using HsstBTreeBuilder<TWriter, TReader, TPin> suffixLevel = new(ref suffixWriter, keyLength: slotSuffixLength,
+                    using HsstBTreeBuilder<TWriter, TReader, TPin> suffixLevel = new(ref suffixWriter, ref slotSuffixBuffers, keyLength: slotSuffixLength,
                         new HsstBTreeOptions { MinSeparatorLength = slotSuffixLength });
 
                     while (storageIdx < sortedStorages.Count &&
@@ -559,6 +568,8 @@ public static class PersistedSnapshotBuilder
         addressLevel.Build();
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
         ArrayPool<byte>.Shared.Return(rlpBuffer);
+        slotSuffixBuffers.Dispose();
+        slotPrefixBuffers.Dispose();
     }
 
     private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -1235,6 +1246,15 @@ public static class PersistedSnapshotBuilder
         const int AddrKeyLen = StorageHashPrefixLength;
         Span<byte> keyBuf = stackalloc byte[n * KeyStride];
 
+        // Reusable work buffers for the per-address slot prefix/suffix HSST builders.
+        // Declared at column scope so the rentals stay alive across every merged
+        // address — the prefix builder is created once per address and the suffix
+        // builder once per prefix group per address, so churn dominates otherwise.
+        // Plain locals (not `using`) so they can be passed by ref through the call
+        // chain into the builder constructors.
+        HsstBTreeBuilderBuffers slotPrefixBuffers = new();
+        HsstBTreeBuilderBuffers slotSuffixBuffers = new();
+
         try
         {
             for (int i = 0; i < n; i++)
@@ -1317,7 +1337,8 @@ public static class PersistedSnapshotBuilder
                     }
                     NWayMergePerAddressHsst<TWriter, TReader, TPin>(
                         enums, matchingSources, matchCount, views,
-                        ref perAddrWriter, bloom, addrKey);
+                        ref perAddrWriter, ref slotPrefixBuffers, ref slotSuffixBuffers,
+                        bloom, addrKey);
                     builder.FinishValueWrite(minKey);
                 }
 
@@ -1336,6 +1357,8 @@ public static class PersistedSnapshotBuilder
         finally
         {
             for (int i = 0; i < n; i++) enums[i].Dispose();
+            slotSuffixBuffers.Dispose();
+            slotPrefixBuffers.Dispose();
         }
     }
 
@@ -1357,7 +1380,10 @@ public static class PersistedSnapshotBuilder
     private static void NWayMergePerAddressHsst<TWriter, TReader, TPin>(
         HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-        ref TWriter writer, BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        ref TWriter writer,
+        scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
+        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers,
+        BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source.
         using NativeMemoryList<(long Offset, long Length)> perAddrBoundsList = new(matchCount, matchCount);
@@ -1483,7 +1509,9 @@ public static class PersistedSnapshotBuilder
                         ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                         NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
                             slotEnums, slotHasMore, slotSourceCount, slotViews,
-                            ref slotWriter, bloom, addrBloomKey);
+                            ref slotWriter,
+                            ref slotPrefixBuffers, ref slotSuffixBuffers,
+                            bloom, addrBloomKey);
                         perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
                     }
                     finally
@@ -1760,10 +1788,12 @@ public static class PersistedSnapshotBuilder
         HsstEnumerator[] outerEnums, Span<bool> outerHasMore, int n,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
+        scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
+        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers,
         BloomFilter? bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int OuterKeyLen = 30;
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 });
+        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
         using NativeMemoryList<int> matchingSourcesList = new(n, n);
         Span<int> matchingSources = matchingSourcesList.AsSpan();
@@ -1815,7 +1845,7 @@ public static class PersistedSnapshotBuilder
             ref TWriter innerWriter = ref builder.BeginValueWrite();
             NWayInnerSlotMerge<TWriter, TReader, TPin>(
                 outerEnums, matchingSources, matchCount, views,
-                ref innerWriter, bloom, addrBloomKey, fullSlot);
+                ref innerWriter, ref slotSuffixBuffers, bloom, addrBloomKey, fullSlot);
             builder.FinishValueWrite(minKey);
 
             // Advance matching, refilling cached outer keys.
@@ -1842,8 +1872,9 @@ public static class PersistedSnapshotBuilder
         HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
+        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers,
         BloomFilter? bloom, ulong addrBloomKey,
-        Span<byte> fullSlot) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        scoped Span<byte> fullSlot) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int InnerKeyLen = 2;
         using ArrayPoolList<HsstEnumerator> innerEnums = new(matchCount, matchCount);
@@ -1863,7 +1894,7 @@ public static class PersistedSnapshotBuilder
                     innerEnums[j].CopyCurrentLogicalKey(in r, keyBuf.Slice(j * InnerKeyLen, InnerKeyLen));
             }
 
-            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, InnerKeyLen, new HsstBTreeOptions { MinSeparatorLength = 2 });
+            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref slotSuffixBuffers, InnerKeyLen, new HsstBTreeOptions { MinSeparatorLength = 2 });
             while (true)
             {
                 int minIdx = -1;

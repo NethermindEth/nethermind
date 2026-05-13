@@ -42,25 +42,25 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     // wherever we previously called ReadKeyLength / tracked minKeyLen — those collapse to
     // this single scalar.
     private readonly int _keyLength;
-    // One byte per entry: LCP(prev_i, curr_i) — the common prefix length of each entry's
-    // key against the prior entry's key. Filled once by PrecomputeCommonPrefixLengths at
-    // Build() entry; the leaf-boundary enumerator builds a min-segment tree over this,
-    // and WriteLeafIndexNode / WriteInternalIndexNode / ChooseIntermediateChildCount
-    // read it directly. Rented from ArrayPool; returned in Build's finally.
-    private byte[]? _commonPrefixArr;
-    // Per-leaf first-key buffer; flat numLeaves * _keyLength bytes. Filled in
-    // WriteLeafIndexNode after the entry-0 ReadKey, consumed by
-    // WriteInternalIndexNode / ChooseIntermediateChildCount as RAM-only
-    // substitute for ReadKey(node.FirstEntry, ...). Each leaf at index L lives at
-    // _leafFirstKeys.AsSpan().Slice(L * _keyLength, _keyLength).
-    private NativeMemoryListRef<byte> _leafFirstKeys;
+    // Pointer to the caller-supplied buffers struct holding the work arrays/lists
+    // (CommonPrefixArr, LeafFirstKeys, CurrentLevel, NextLevel, ValueScratch, SegTree,
+    // DfsStack). Stored as void* because HsstBTreeBuilderBuffers is a ref struct and
+    // therefore not eligible for ordinary T* / managed-pointer fields.
+    private readonly unsafe void* _buffersPtr;
 
-    public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int keyLength)
+    public unsafe HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int keyLength, scoped ref HsstBTreeBuilderBuffers buffers)
     {
         _writer = ref writer;
         _reader = reader;
         _entryPositions = entryPositions;
         _keyLength = keyLength;
+        _buffersPtr = Unsafe.AsPointer(ref buffers);
+    }
+
+    private unsafe ref HsstBTreeBuilderBuffers Buffers
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(_buffersPtr);
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// Returns the byte length of the root node — the caller writes a u16 trailer with that
     /// value so readers can locate the root from the HSST end.
     /// </summary>
-    public int Build(long absoluteIndexStart,
+    public unsafe int Build(long absoluteIndexStart,
         int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries,
         int maxIntermediateEntries = HsstBTreeOptions.DefaultMaxIntermediateEntries,
         int minLeafEntries = HsstBTreeOptions.DefaultMinLeafEntries,
@@ -95,132 +95,123 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         int n = _entryPositions.Length;
 
+        ref HsstBTreeBuilderBuffers bufs = ref Buffers;
+
         // Reusable per-node value scratch. Each entry's value slot is at most 8 bytes
         // (Uniform offset width) plus a 2-byte u16 length prefix in the writer's buffer.
         // Sized for the larger of leaf/intermediate fan-out.
         int valueScratchEntries = Math.Max(maxLeafEntries, maxIntermediateEntries);
-        byte[] valueScratchArr = ArrayPool<byte>.Shared.Rent(Math.Max(64, valueScratchEntries * (2 + 8)));
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.ValueScratch, Math.Max(64, valueScratchEntries * (2 + 8)));
+        byte[] valueScratchArr = bufs.ValueScratch!;
 
-        _commonPrefixArr = ArrayPool<byte>.Shared.Rent(n);
+        HsstBTreeBuilderBuffers.EnsureSize(ref bufs.CommonPrefixArr, n);
+        byte[] commonPrefixArr = bufs.CommonPrefixArr!;
 
-        // Leaf-level / intermediate-level node lists. Sizing is data-dependent (the
-        // top-down splitter can produce anywhere from ~n/MaxLeafEntries up to n leaves),
-        // so we use growing native lists rather than try to bound up front. Initial
-        // capacity is small; doublings amortise to O(1) per Add.
-        NativeMemoryListRef<NodeInfo> currentNative = new(capacity: 64);
-        NativeMemoryListRef<NodeInfo> nextNative = new(capacity: 64);
-        // Sized to a small leaf count up front; grows on demand as leaves emit.
-        _leafFirstKeys = new NativeMemoryListRef<byte>(capacity: Math.Max(64, _keyLength * 64));
+        // Leaf-level / intermediate-level node lists live on the buffers struct and are
+        // cleared on each new builder construction by ResetForBuild; capacity persists
+        // across builds. Swap roles via ref locals to avoid copying the structs.
+        ref NativeMemoryListRef<HsstIndexNodeInfo> currentNative = ref bufs.CurrentLevel;
+        ref NativeMemoryListRef<HsstIndexNodeInfo> nextNative = ref bufs.NextLevel;
 
         // lastNodeLen tracks the byte length of the most recently written node; the
         // returned value is the root node's size (the last node emitted).
         int lastNodeLen = 0;
 
-        try
+        PrecomputeCommonPrefixLengths(commonPrefixArr);
+
+        // The enumerator borrows the LCP segment tree and DFS stack from the buffers
+        // struct (sized on demand in its constructor). Leaf sizes stream out via
+        // MoveNext / Current, one at a time, directly into the emission loop.
+        using LeafBoundaryEnumerator iter = new(
+            commonPrefixArr, _entryPositions, n, minLeafEntries, maxLeafEntries, ref bufs);
+
+        int entryIdx = 0;
+        int leafIdx = 0;
+
+        // True until the first node of the index region has been written.
+        // Used to gate MaybePadToNextPage so we never pad after the root —
+        // the trailer formula assumes [...root...][trailer] with no gap.
+        bool firstNode = true;
+
+        while (iter.MoveNext())
         {
-            PrecomputeCommonPrefixLengths();
+            int count = iter.Current;
 
-            // The enumerator owns the LCP segment tree and DFS stack — both rented in
-            // its constructor and returned on Dispose. Leaf sizes stream out via
-            // MoveNext / Current, one at a time, directly into the emission loop.
-            using LeafBoundaryEnumerator iter = new(
-                _commonPrefixArr, _entryPositions, n, minLeafEntries, maxLeafEntries);
+            // Pad to a fresh page if we're within PageAlignPadThreshold of
+            // the boundary. Skipped on the first node — there's nothing to
+            // pad away from yet.
+            if (!firstNode) MaybePadToNextPage();
+            firstNode = false;
 
-            int entryIdx = 0;
-            int leafIdx = 0;
+            long nodeStart = _writer.Written;
+            long relativeStart = nodeStart - startWritten;
+            WriteLeafIndexNode(
+                entryIdx, count,
+                valueScratchArr, commonPrefixArr, ref bufs.LeafFirstKeys);
+            int nodeLen = checked((int)(_writer.Written - nodeStart));
+            lastNodeLen = nodeLen;
 
-            // True until the first node of the index region has been written.
-            // Used to gate MaybePadToNextPage so we never pad after the root —
-            // the trailer formula assumes [...root...][trailer] with no gap.
-            bool firstNode = true;
+            // childOffset = absolute first byte position of this node.
+            long childOffset = absoluteIndexStart + relativeStart;
 
-            while (iter.MoveNext())
+            currentNative.Add(new HsstIndexNodeInfo(
+                childOffset,
+                entryIdx,
+                entryIdx + count - 1,
+                leafIdx));
+
+            entryIdx += count;
+            leafIdx++;
+        }
+
+        // Build internal levels until single root. Each iteration consumes
+        // currentNative as a read-only span and accumulates the next level into
+        // nextNative; swap the two ref locals at end of iteration.
+        while (currentNative.Count > 1)
+        {
+            nextNative.Clear();
+            ReadOnlySpan<HsstIndexNodeInfo> current = currentNative.AsSpan();
+            int childIdx = 0;
+
+            while (childIdx < current.Length)
             {
-                int count = iter.Current;
+                int childCount = ChooseIntermediateChildCount(
+                    current, childIdx,
+                    maxIntermediateEntries, maxIntermediateBytes,
+                    minIntermediateChildren, minIntermediateBytes,
+                    _writer.Written, firstOffset,
+                    commonPrefixArr, ref bufs.LeafFirstKeys,
+                    out int crossEntryLcp);
+                ReadOnlySpan<HsstIndexNodeInfo> children = current.Slice(childIdx, childCount);
 
-                // Pad to a fresh page if we're within PageAlignPadThreshold of
-                // the boundary. Skipped on the first node — there's nothing to
-                // pad away from yet.
-                if (!firstNode) MaybePadToNextPage();
-                firstNode = false;
+                // Always non-first here (at least one leaf already written).
+                MaybePadToNextPage();
 
                 long nodeStart = _writer.Written;
                 long relativeStart = nodeStart - startWritten;
-                WriteLeafIndexNode(
-                    entryIdx, count,
-                    valueScratchArr);
+                WriteInternalIndexNode(children, crossEntryLcp, valueScratchArr,
+                    commonPrefixArr, ref bufs.LeafFirstKeys);
                 int nodeLen = checked((int)(_writer.Written - nodeStart));
                 lastNodeLen = nodeLen;
 
-                // childOffset = absolute first byte position of this node.
+                HsstIndexNodeInfo first = children[0];
+                HsstIndexNodeInfo last = children[childCount - 1];
+
                 long childOffset = absoluteIndexStart + relativeStart;
 
-                currentNative.Add(new NodeInfo(
+                nextNative.Add(new HsstIndexNodeInfo(
                     childOffset,
-                    entryIdx,
-                    entryIdx + count - 1,
-                    leafIdx));
+                    first.FirstEntry,
+                    last.LastEntry,
+                    first.FirstLeafIdx));
 
-                entryIdx += count;
-                leafIdx++;
+                childIdx += childCount;
             }
 
-            // Build internal levels until single root. Each iteration consumes
-            // currentNative as a read-only span and accumulates the next level into
-            // nextNative; swap the two locals at end of iteration.
-            while (currentNative.Count > 1)
-            {
-                nextNative.Clear();
-                ReadOnlySpan<NodeInfo> current = currentNative.AsSpan();
-                int childIdx = 0;
-
-                while (childIdx < current.Length)
-                {
-                    int childCount = ChooseIntermediateChildCount(
-                        current, childIdx,
-                        maxIntermediateEntries, maxIntermediateBytes,
-                        minIntermediateChildren, minIntermediateBytes,
-                        _writer.Written, firstOffset,
-                        out int crossEntryLcp);
-                    ReadOnlySpan<NodeInfo> children = current.Slice(childIdx, childCount);
-
-                    // Always non-first here (at least one leaf already written).
-                    MaybePadToNextPage();
-
-                    long nodeStart = _writer.Written;
-                    long relativeStart = nodeStart - startWritten;
-                    WriteInternalIndexNode(children, crossEntryLcp, valueScratchArr);
-                    int nodeLen = checked((int)(_writer.Written - nodeStart));
-                    lastNodeLen = nodeLen;
-
-                    NodeInfo first = children[0];
-                    NodeInfo last = children[childCount - 1];
-
-                    long childOffset = absoluteIndexStart + relativeStart;
-
-                    nextNative.Add(new NodeInfo(
-                        childOffset,
-                        first.FirstEntry,
-                        last.LastEntry,
-                        first.FirstLeafIdx));
-
-                    childIdx += childCount;
-                }
-
-                // Swap roles for the next level (both are ref-struct locals).
-                NativeMemoryListRef<NodeInfo> tmp = currentNative;
-                currentNative = nextNative;
-                nextNative = tmp;
-            }
-        }
-        finally
-        {
-            currentNative.Dispose();
-            nextNative.Dispose();
-            _leafFirstKeys.Dispose();
-            ArrayPool<byte>.Shared.Return(valueScratchArr);
-            ArrayPool<byte>.Shared.Return(_commonPrefixArr);
-            _commonPrefixArr = null;
+            // Swap roles for the next level — ref reassignment, no struct copy.
+            ref NativeMemoryListRef<HsstIndexNodeInfo> tmp = ref currentNative;
+            currentNative = ref nextNative;
+            nextNative = ref tmp;
         }
 
         return lastNodeLen;
@@ -256,13 +247,15 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
     private void WriteLeafIndexNode(
         int globalStartIndex, int count,
-        scoped Span<byte> valueScratch)
+        scoped Span<byte> valueScratch,
+        byte[] commonPrefixArr,
+        scoped ref NativeMemoryListRef<byte> leafFirstKeys)
     {
         // Per-entry natural separator length, capped at _keyLength: min(LCP(prev,curr)+1, key).
         // Widening to slot=4 (when applicable) is the planner's call now.
         Span<int> sepLengths = stackalloc int[count];
         for (int i = 0; i < count; i++)
-            sepLengths[i] = Math.Min(_commonPrefixArr![globalStartIndex + i] + 1, _keyLength);
+            sepLengths[i] = Math.Min(commonPrefixArr[globalStartIndex + i] + 1, _keyLength);
 
         // Metadata-start range for value-slot sizing — key lengths are uniform, no per-entry reads.
         Span<long> metadataStarts = stackalloc long[count];
@@ -279,7 +272,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         if (count > 1 && minVal > 0 && minVal < maxVal) baseOffset = minVal;
         int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
-        int crossEntryLcp = ComputeCrossEntryLcpLeaf(globalStartIndex, count);
+        int crossEntryLcp = ComputeCrossEntryLcpLeaf(globalStartIndex, count, commonPrefixArr);
         BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
             out int prefixLen, out int keyType, out int keySlotSize, out bool keyLittleEndian);
 
@@ -300,9 +293,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         ReadKey(globalStartIndex, currKey);
         currKey[..prefixLen].CopyTo(commonPrefixBuf);
         // Persist this leaf's first key for intermediate-node construction. Keys are
-        // uniform length, so the slot at leafIdx is _leafFirstKeys[leafIdx*_keyLength..].
+        // uniform length, so the slot at leafIdx is leafFirstKeys[leafIdx*_keyLength..].
         // Appending in leaf-emission order keeps that invariant without an explicit index.
-        _leafFirstKeys.AddRange(currKey[.._keyLength]);
+        leafFirstKeys.AddRange(currKey[.._keyLength]);
 
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
@@ -348,10 +341,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <paramref name="maxChildren"/>; always includes at least one child).
     /// </summary>
     private int ChooseIntermediateChildCount(
-        scoped ReadOnlySpan<NodeInfo> level, int childIdx,
+        scoped ReadOnlySpan<HsstIndexNodeInfo> level, int childIdx,
         int maxChildren, int byteThreshold,
         int minChildren, int minBytes,
         long nodeStart, long firstOffset,
+        byte[] commonPrefixArr,
+        scoped ref NativeMemoryListRef<byte> leafFirstKeys,
         out int crossEntryLcp)
     {
         // Running chain-min over _commonPrefixArr covering the range between the first
@@ -382,17 +377,17 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         Span<byte> firstSep = stackalloc byte[MaxKeyLen];
 
         Span<byte> sepBuf = stackalloc byte[MaxKeyLen];
-        ReadOnlySpan<byte> leafKeys = _leafFirstKeys.AsSpan();
+        ReadOnlySpan<byte> leafKeys = leafFirstKeys.AsSpan();
 
         while (childCount < hardMax)
         {
-            NodeInfo curr = level[childIdx + childCount];
+            HsstIndexNodeInfo curr = level[childIdx + childCount];
             // Adjacency invariant: prev.LastEntry == curr.FirstEntry - 1, so
-            // _commonPrefixArr[curr.FirstEntry] is exactly LCP(leftKey, rightKey).
+            // commonPrefixArr[curr.FirstEntry] is exactly LCP(leftKey, rightKey).
             // Separator length is min(LCP + 1, _keyLength); separator bytes are
             // rightKey[..sepLen] — leftKey is never observed downstream.
             ReadOnlySpan<byte> rightKey = leafKeys.Slice(curr.FirstLeafIdx * _keyLength, _keyLength);
-            int sepLen = Math.Min(_commonPrefixArr![curr.FirstEntry] + 1, _keyLength);
+            int sepLen = Math.Min(commonPrefixArr[curr.FirstEntry] + 1, _keyLength);
             rightKey[..sepLen].CopyTo(sepBuf);
 
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
@@ -442,7 +437,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                  WouldCrossNewPage(nodeStart, firstOffset, committedSize, candidateSize)))
                 break;
 
-            // Absorb _commonPrefixArr range [prevRight+1, currRight] into crossEntryLcp once
+            // Absorb commonPrefixArr range [prevRight+1, currRight] into crossEntryLcp once
             // we have at least two committed seps to compare. childCount here is the count
             // BEFORE this child commits — so childCount >= 2 means a prior sep exists.
             if (childCount >= 2)
@@ -451,7 +446,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 int currRight = curr.FirstEntry;
                 for (int j = prevRight + 1; j <= currRight; j++)
                 {
-                    byte v = _commonPrefixArr![j];
+                    byte v = commonPrefixArr[j];
                     if (v < crossEntryLcp) crossEntryLcp = v;
                 }
             }
@@ -471,9 +466,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     }
 
     private void WriteInternalIndexNode(
-        scoped ReadOnlySpan<NodeInfo> children,
+        scoped ReadOnlySpan<HsstIndexNodeInfo> children,
         int crossEntryLcp,
-        scoped Span<byte> valueScratch)
+        scoped Span<byte> valueScratch,
+        byte[] commonPrefixArr,
+        scoped ref NativeMemoryListRef<byte> leafFirstKeys)
     {
         int childCount = children.Length;
         // Phantom slot 0 dropped: for N children, the keys array carries the
@@ -492,7 +489,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         for (int i = 0; i < entryCount; i++)
         {
             int rightIdx = children[i + 1].FirstEntry;
-            sepLengths[i] = Math.Min(_commonPrefixArr![rightIdx] + 1, _keyLength);
+            sepLengths[i] = Math.Min(commonPrefixArr[rightIdx] + 1, _keyLength);
         }
 
         BSearchIndexLayoutPlanner.Plan(sepLengths, crossEntryLcp, _keyLength,
@@ -510,11 +507,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }
         int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
-        // Pass 2: rightKey sourced from _leafFirstKeys (no data-section IO) + AddKey.
+        // Pass 2: rightKey sourced from leafFirstKeys (no data-section IO) + AddKey.
         // Sep 0's rightKey also feeds commonPrefix. The planner's keySlotSize
         // (post-widen, post-strip) drives slice width.
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
-        ReadOnlySpan<byte> leafKeys = _leafFirstKeys.AsSpan();
+        ReadOnlySpan<byte> leafKeys = leafFirstKeys.AsSpan();
 
         // keyBuf must fit the widest per-entry payload across layouts (see WriteLeafIndexNode).
         int perEntryKeyBytes = entryCount > 0 ? Math.Max(keySlotSize, _keyLength - prefixLen) : 0;
@@ -560,11 +557,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// One-pass pre-computation of per-entry <c>LCP(prev, curr)</c> — the common prefix
     /// length of each entry's key against the prior entry's key. Writes into
-    /// <see cref="_commonPrefixArr"/> (one byte per entry — fits because LCP is bounded
+    /// <paramref name="commonPrefixArr"/> (one byte per entry — fits because LCP is bounded
     /// by min(prev.Length, curr.Length) ≤ <see cref="MaxKeyLen"/> = 255). Consumers
     /// derive the natural separator length as <c>min(cp + 1, currKeyLen)</c>.
     /// </summary>
-    private void PrecomputeCommonPrefixLengths()
+    private void PrecomputeCommonPrefixLengths(byte[] commonPrefixArr)
     {
         int n = _entryPositions.Length;
         Span<byte> prevKey = stackalloc byte[MaxKeyLen];
@@ -574,7 +571,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         {
             int currKeyLen = ReadKey(i, currKey);
             int cp = CommonPrefixLength(prevKey[..prevKeyLen], currKey[..currKeyLen]);
-            _commonPrefixArr![i] = (byte)cp;
+            commonPrefixArr[i] = (byte)cp;
             currKey[..currKeyLen].CopyTo(prevKey);
             prevKeyLen = currKeyLen;
         }
@@ -616,13 +613,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// starting at <paramref name="globalStartIndex"/>. Returns <see cref="MaxKeyLen"/> when
     /// fewer than 2 entries (no cross-entry comparison applies; planner short-circuits via minLen).
     /// </summary>
-    private int ComputeCrossEntryLcpLeaf(int globalStartIndex, int count)
+    private int ComputeCrossEntryLcpLeaf(int globalStartIndex, int count, byte[] commonPrefixArr)
     {
         if (count <= 1) return MaxKeyLen;
-        int chainLcp = _commonPrefixArr![globalStartIndex + 1];
+        int chainLcp = commonPrefixArr[globalStartIndex + 1];
         for (int j = globalStartIndex + 2; j < globalStartIndex + count; j++)
         {
-            byte v = _commonPrefixArr![j];
+            byte v = commonPrefixArr[j];
             if (v < chainLcp) chainLcp = v;
         }
         return chainLcp;
@@ -736,25 +733,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         return len;
     }
 
-    internal readonly struct NodeInfo(long childOffset, int firstEntry, int lastEntry, int firstLeafIdx)
-    {
-        /// <summary>Absolute first-byte position of this node in _data (= absoluteIndexStart + relativeStart).</summary>
-        public readonly long ChildOffset = childOffset;
-        /// <summary>Index (into <c>_entryPositions</c>) of the first leaf entry under this subtree.</summary>
-        public readonly int FirstEntry = firstEntry;
-        /// <summary>Index (into <c>_entryPositions</c>) of the last leaf entry under this subtree.</summary>
-        public readonly int LastEntry = lastEntry;
-        /// <summary>Index of the leftmost leaf under this subtree — keys into <c>_leafFirstKeys</c>
-        /// for the first-key of that leaf. At leaf level it is the leaf's own index; at higher
-        /// levels it is inherited from the leftmost child.</summary>
-        public readonly int FirstLeafIdx = firstLeafIdx;
-    }
 }
 
 /// <summary>
-/// Streaming top-down leaf-boundary splitter for HSST index builds. Owns the LCP
-/// min-segment tree and the DFS work stack — both rented from <see cref="ArrayPool{T}.Shared"/>
-/// in the constructor and returned in <see cref="Dispose"/>. Caller pattern is
+/// Streaming top-down leaf-boundary splitter for HSST index builds. Borrows the LCP
+/// min-segment tree and the DFS work stack from the caller's
+/// <see cref="HsstBTreeBuilderBuffers"/> — the arrays are sized on demand in the
+/// constructor and stay rented across builds for reuse. Caller pattern is
 /// <c>using LeafBoundaryEnumerator iter = new(...)</c> then <c>while (iter.MoveNext()) ...</c>;
 /// each <see cref="MoveNext"/> call runs the DFS loop body until a leaf size would
 /// emit, captures it in <see cref="Current"/>, and returns <c>true</c>.
@@ -784,8 +769,11 @@ file ref struct LeafBoundaryEnumerator
     private readonly int _maxLeafEntries;
     private readonly int _segTreeBase;
 
-    private byte[]? _segTree;
-    private int[]? _stack;
+    // SegTree / DfsStack live on the buffers struct; these locals are aliases set in
+    // the constructor for the duration of the enumeration. Returned-to-pool only when
+    // the caller disposes the buffers struct itself.
+    private readonly byte[] _segTree;
+    private readonly int[] _stack;
     private int _sp;
 
     /// <summary>Number of <c>(lo, hi)</c> pairs of pending pending depth × branching that
@@ -813,7 +801,8 @@ file ref struct LeafBoundaryEnumerator
         ReadOnlySpan<long> entryPositions,
         int n,
         int minLeafEntries,
-        int maxLeafEntries)
+        int maxLeafEntries,
+        scoped ref HsstBTreeBuilderBuffers buffers)
     {
         _lcp = commonPrefixArr;
         _entryPositions = entryPositions;
@@ -826,7 +815,8 @@ file ref struct LeafBoundaryEnumerator
         int b = 1;
         while (b < n) b <<= 1;
         _segTreeBase = b;
-        byte[] tree = ArrayPool<byte>.Shared.Rent(Math.Max(2, b * 2));
+        HsstBTreeBuilderBuffers.EnsureSize(ref buffers.SegTree, Math.Max(2, b * 2));
+        byte[] tree = buffers.SegTree!;
         _segTree = tree;
         for (int i = 0; i < n; i++) tree[b + i] = commonPrefixArr[i];
         for (int i = b + n; i < b * 2; i++) tree[i] = byte.MaxValue;
@@ -837,8 +827,10 @@ file ref struct LeafBoundaryEnumerator
             tree[i] = a < c ? a : c;
         }
 
-        // DFS stack, seeded with the full range.
-        int[] stack = ArrayPool<int>.Shared.Rent(StackCapacityInts);
+        // DFS stack, seeded with the full range. Stack length is fixed (StackCapacityInts);
+        // after the first build the existing rental is reused without reallocation.
+        HsstBTreeBuilderBuffers.EnsureSize(ref buffers.DfsStack, StackCapacityInts);
+        int[] stack = buffers.DfsStack!;
         _stack = stack;
         _sp = 0;
         if (n > 0)
@@ -853,7 +845,7 @@ file ref struct LeafBoundaryEnumerator
         const long ValueRangeLimit = 1L << 24;
 
         byte[] lcp = _lcp;
-        int[] stack = _stack!;
+        int[] stack = _stack;
         ReadOnlySpan<long> entryPos = _entryPositions;
         int minLeafEntries = _minLeafEntries;
         int maxLeafEntries = _maxLeafEntries;
@@ -963,7 +955,7 @@ file ref struct LeafBoundaryEnumerator
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int RangeMinLcp(int l, int r)
     {
-        byte[] tree = _segTree!;
+        byte[] tree = _segTree;
         int b = _segTreeBase;
         l += b;
         r += b;
@@ -980,15 +972,7 @@ file ref struct LeafBoundaryEnumerator
 
     public void Dispose()
     {
-        if (_segTree != null)
-        {
-            ArrayPool<byte>.Shared.Return(_segTree);
-            _segTree = null;
-        }
-        if (_stack != null)
-        {
-            ArrayPool<int>.Shared.Return(_stack);
-            _stack = null;
-        }
+        // SegTree and DfsStack are owned by the caller's HsstBTreeBuilderBuffers — they
+        // stay rented until that struct itself is disposed.
     }
 }

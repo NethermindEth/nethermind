@@ -3,6 +3,8 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
 
@@ -50,10 +52,17 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     private readonly HsstBTreeOptions _options;
     private int _keyLength;
 
-    // Per-key metadata position relative to the data section start. Replaces the
-    // (separator buffer, HsstEntry triple, prev key buffer) state held by the
-    // pre-OpenReader builder.
-    private NativeMemoryListRef<long> _entryPositions;
+    // Per-key metadata-position list owned by this builder in the auto-owned constructor.
+    // In the buffer-borrowing constructor the equivalent list lives on the caller's
+    // HsstBTreeBuilderBuffers (accessed via _externalBuffers) and _ownedEntryPositions
+    // stays default.
+    private NativeMemoryListRef<long> _ownedEntryPositions;
+
+    // Pointer to the caller's HsstBTreeBuilderBuffers when constructed via the borrowed
+    // overload; default(void*) for the auto-owned path. Stored as void* because
+    // HsstBTreeBuilderBuffers is a ref struct and not eligible for T* / managed fields.
+    private readonly unsafe void* _externalBuffers;
+    private readonly bool _useExternalBuffers;
 
     /// <summary>
     /// Create builder writing via the given writer.
@@ -80,13 +89,54 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         _options = opts;
         _keyLength = keyLength;
 
-        _entryPositions = new NativeMemoryListRef<long>(expectedKeyCount);
+        _ownedEntryPositions = new NativeMemoryListRef<long>(expectedKeyCount);
+        _useExternalBuffers = false;
     }
 
     /// <summary>
-    /// Free working NativeMemory buffer.
+    /// Create a builder that shares an externally-owned <see cref="HsstBTreeBuilderBuffers"/>
+    /// across multiple builds. Use this overload when the same builder pattern fires
+    /// repeatedly in a loop (per slot-prefix group, per merged address) so the work
+    /// buffers — entry positions, common-prefix array, leaf-first-keys, level lists,
+    /// value scratch, segment tree, DFS stack — stay rented across invocations.
+    /// <paramref name="buffers"/> is reset for this build via
+    /// <see cref="HsstBTreeBuilderBuffers.ResetForBuild"/>; it remains the caller's
+    /// responsibility to dispose.
     /// </summary>
-    public void Dispose() => _entryPositions.Dispose();
+    public unsafe HsstBTreeBuilder(ref TWriter writer, scoped ref HsstBTreeBuilderBuffers buffers, int keyLength, HsstBTreeOptions? options = null, int expectedKeyCount = 16)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(keyLength, -1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(keyLength, 255);
+
+        HsstBTreeOptions opts = options ?? HsstBTreeOptions.Default;
+
+        _writer = ref writer;
+        _baseOffset = _writer.Written;
+        _options = opts;
+        _keyLength = keyLength;
+
+        buffers.ResetForBuild(expectedKeyCount);
+        _externalBuffers = Unsafe.AsPointer(ref buffers);
+        _useExternalBuffers = true;
+    }
+
+    /// <summary>
+    /// Free the working buffer when this builder owns it. In the borrowed-buffers
+    /// constructor path the caller's struct owns and disposes those buffers; this is a no-op.
+    /// </summary>
+    public void Dispose()
+    {
+        if (!_useExternalBuffers) _ownedEntryPositions.Dispose();
+    }
+
+    [UnscopedRef]
+    private unsafe ref NativeMemoryListRef<long> EntryPositions
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => ref _useExternalBuffers
+            ? ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(_externalBuffers).EntryPositions
+            : ref _ownedEntryPositions;
+    }
 
     /// <summary>
     /// Begin writing a value. Returns ref to the shared writer and snapshots Written.
@@ -162,7 +212,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
             IByteBufferWriter.Copy(ref _writer, key);
         }
 
-        _entryPositions.Add(metadataPos);
+        EntryPositions.Add(metadataPos);
     }
 
     /// <summary>
@@ -187,7 +237,7 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     /// Reader locates the root via (HSST end - 3 - RootSize). A node is capped at 64 KiB
     /// so RootSize fits in u16.
     /// </summary>
-    public void Build()
+    public unsafe void Build()
     {
         int maxLeafEntries = _options.MaxLeafEntries;
         int minLeafEntries = Math.Min(_options.MinLeafEntries, maxLeafEntries);
@@ -202,10 +252,29 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         TReader reader = _writer.OpenReader(dataSectionSize);
         try
         {
-            HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
-                ref _writer, reader, _entryPositions.AsSpan(), _keyLength);
-
-            rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+            if (_useExternalBuffers)
+            {
+                ref HsstBTreeBuilderBuffers bufs = ref Unsafe.AsRef<HsstBTreeBuilderBuffers>(_externalBuffers);
+                HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
+                    ref _writer, reader, bufs.EntryPositions.AsSpan(), _keyLength, ref bufs);
+                rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+            }
+            else
+            {
+                // Auto-owned path: allocate a per-Build buffers struct on the stack with
+                // identical semantics to the pre-refactor inline rentals.
+                HsstBTreeBuilderBuffers localBufs = new();
+                try
+                {
+                    HsstIndexBuilder<TWriter, TReader, TPin> indexBuilder = new(
+                        ref _writer, reader, _ownedEntryPositions.AsSpan(), _keyLength, ref localBufs);
+                    rootSize = indexBuilder.Build(absoluteIndexStart, maxLeafEntries, maxIntermediateEntries, minLeafEntries, maxIntermediateBytes, minIntermediateChildren, minIntermediateBytes);
+                }
+                finally
+                {
+                    localBufs.Dispose();
+                }
+            }
         }
         finally
         {
