@@ -324,7 +324,7 @@ namespace Nethermind.Trie
             TaskCreationOptions.None,
             TaskScheduler.Default);
 
-        public void UpdateRootHash(bool canBeParallel = true)
+        public void UpdateRootHash(bool canBeParallel = false)
         {
             TreePath path = TreePath.Empty;
             RootRef?.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel);
