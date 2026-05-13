@@ -407,23 +407,27 @@ public partial class EthRpcModule(
 
         if (_logger.IsInfo) _logger.Info($"eth_signTransaction signed tx {tx.Hash} from {tx.SenderAddress}");
 
+        return BuildSignedResult(tx);
+    }
+
+    private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
+    {
         const RlpBehaviors encodeBehaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm;
-        int encodedLength = TxDecoder.Instance.GetLength(tx, encodeBehaviors);
-        byte[] rented = ArrayPool<byte>.Shared.Rent(encodedLength);
-        OwnedByteMemory raw = new(rented, encodedLength, ArrayPool<byte>.Shared);
+        int length = TxDecoder.Instance.GetLength(tx, encodeBehaviors);
+        ArrayPoolList<byte> buffer = new(length, length);
         try
         {
-            RlpStream stream = new(new CappedArray<byte>(rented, encodedLength));
+            RlpStream stream = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
             TxDecoder.Instance.Encode(stream, tx, encodeBehaviors);
             return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
             {
-                Raw = raw,
+                Raw = buffer,
                 Tx = TransactionForRpc.FromTransaction(tx)
             });
         }
         catch
         {
-            raw.Dispose();
+            buffer.Dispose();
             throw;
         }
     }

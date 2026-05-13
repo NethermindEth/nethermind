@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -173,8 +174,8 @@ public partial class EthRpcModuleTests
     public void SignTransactionResult_Dispose_ReturnsRentedBufferToPool()
     {
         TrackingPool pool = new();
-        byte[] rented = pool.Rent(32);
-        OwnedByteMemory raw = new(rented, 16, pool);
+        ArrayPoolList<byte> raw = new(pool, capacity: 32, startingCount: 16);
+        byte[] rented = raw.UnsafeGetInternalArray();
         SignTransactionResult result = new()
         {
             Raw = raw,

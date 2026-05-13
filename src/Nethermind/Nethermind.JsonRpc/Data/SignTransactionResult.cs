@@ -3,14 +3,17 @@
 
 using System;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data;
 
 public class SignTransactionResult : IDisposable
 {
     [JsonPropertyName("raw")]
-    public required OwnedByteMemory Raw { get; init; }
+    [JsonConverter(typeof(ArrayPoolListByteHexConverter))]
+    public required ArrayPoolList<byte> Raw { get; init; }
 
     [JsonPropertyName("tx")]
     public required TransactionForRpc Tx { get; init; }
