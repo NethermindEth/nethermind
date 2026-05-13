@@ -458,12 +458,22 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(header.Number);
 
+        if (header.Number < spec.SwitchBlock)
+        {
+            return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
+        }
+
+        if (header is not XdcBlockHeader xdcHeader)
+        {
+            return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
+        }
+
         Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
         if (snapshot is null)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot((XdcBlockHeader)header));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
     }
 
     public ResultWrapper<PublicApiSnapshot> GetSnapshotAtHash(BlockParameter blockParam)
@@ -492,12 +502,17 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
             return ResultWrapper<PublicApiSnapshot>.Fail("Unsupported block version : V1");
         }
 
+        if (header is not XdcBlockHeader xdcHeader)
+        {
+            return ResultWrapper<PublicApiSnapshot>.Fail("Header is not an XDC block header");
+        }
+
         Snapshot? snapshot = snapshotManager.GetSnapshotByBlockNumber(header.Number, spec);
         if (snapshot is null)
         {
             return ResultWrapper<PublicApiSnapshot>.Fail($"Snapshot not found for block {header.Number}");
         }
-        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot((XdcBlockHeader)header));
+        return ResultWrapper<PublicApiSnapshot>.Success(snapshot.BuildRpcSnapshot(xdcHeader));
     }
 
     public ResultWrapper<V2BlockInfo> GetV2BlockByHash(BlockParameter blockParam)
@@ -518,17 +533,20 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         return header is null ?
              ResultWrapper<V2BlockInfo>.Fail("Unknown block") :
-            GetV2BlockByHeader(header, uncle: false);
+            BuildV2BlockInfo(header);
     }
 
-    public ResultWrapper<V2BlockInfo> GetV2BlockByHeader(BlockHeader header, bool uncle)
+    private ResultWrapper<V2BlockInfo> BuildV2BlockInfo(BlockHeader header)
     {
         if (header is null)
         {
             return ResultWrapper<V2BlockInfo>.Fail("Header cannot be null");
         }
 
-        XdcBlockHeader xdcHeader = (XdcBlockHeader)header;
+        if (header is not XdcBlockHeader xdcHeader)
+        {
+            return ResultWrapper<V2BlockInfo>.Fail("Header is not an XDC block header");
+        }
 
         bool committed = false;
         BlockRoundInfo latestCommittedBlock = quorumCertificateManager.HighestKnownCertificate?.ProposedBlockInfo;
@@ -544,7 +562,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
         if (header.Number <= latestCommittedBlock.BlockNumber)
         {
-            committed = !uncle;
+            committed = true;
         }
 
         // Get round number from extra consensus data
@@ -602,7 +620,7 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
         return (header is null) ?
             ResultWrapper<V2BlockInfo>.Fail("Unknown block") :
-            GetV2BlockByHeader(header, uncle: false);
+            BuildV2BlockInfo(header);
     }
 
     public ResultWrapper<NetworkInformation> NetworkInformation()

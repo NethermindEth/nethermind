@@ -49,12 +49,6 @@ public interface IXdcRpcModule : IRpcModule
     ResultWrapper<PoolStatus> GetLatestPoolStatus();
 
     /// <summary>
-    /// Gets V2 block information by header
-    /// </summary>
-    [JsonRpcMethod(Description = "Gets V2 block information by header")]
-    ResultWrapper<V2BlockInfo> GetV2BlockByHeader(BlockHeader header, bool uncle);
-
-    /// <summary>
     /// Gets V2 block information by block number
     /// </summary>
     [JsonRpcMethod(Description = "Gets V2 block information by block number")]
