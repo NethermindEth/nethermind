@@ -42,10 +42,15 @@ on:
         required: false
         default: false
         type: boolean
-      dotmemory_timer_seconds:
-        description: dotMemory periodic snapshot interval in seconds
+      dotmemory_mem_increment_gb:
+        description: Capture dotMemory snapshot each time memory grows by this many GB
         required: false
-        default: '120'
+        default: '5'
+        type: string
+      dotmemory_mem_limit_gb:
+        description: Stop profiled nethtest after process RSS reaches this many GB
+        required: false
+        default: '35'
         type: string
       runner_label:
         description: Override runner label for workflow_dispatch smoke runs
@@ -65,7 +70,8 @@ env:
   FILTER: ${{ inputs.filter || '' }}
   IDLE_TIMEOUT_MINUTES: ${{ inputs.idle_timeout_minutes || '10' }}
   DOTMEMORY: ${{ inputs.dotmemory || 'false' }}
-  DOTMEMORY_TIMER_SECONDS: ${{ inputs.dotmemory_timer_seconds || '120' }}
+  DOTMEMORY_MEM_INCREMENT_GB: ${{ inputs.dotmemory_mem_increment_gb || '5' }}
+  DOTMEMORY_MEM_LIMIT_GB: ${{ inputs.dotmemory_mem_limit_gb || '35' }}
 
 defaults:
   run:
@@ -277,6 +283,7 @@ jobs:
           DOTMEMORY_OUTPUT_DIR="$RUNNER_TMP/dotmemory"
           LOW_MEMORY_FILE="$RUNNER_TMP/nethtest-low-memory"
           WATCHDOG_TIMEOUT_FILE="$RUNNER_TMP/nethtest-watchdog-timeout"
+          DOTMEMORY_LIMIT_FILE="$RUNNER_TMP/nethtest-dotmemory-limit-reached"
 
           # Write summary even if the process crashes
           write_summary() {
@@ -401,6 +408,11 @@ jobs:
               wait "$WATCHDOG_PID" 2>/dev/null || true
             fi
 
+            if [ -n "${DOTMEMORY_MONITOR_PID:-}" ]; then
+              kill "$DOTMEMORY_MONITOR_PID" 2>/dev/null || true
+              wait "$DOTMEMORY_MONITOR_PID" 2>/dev/null || true
+            fi
+
             write_summary
           }
 
@@ -408,7 +420,7 @@ jobs:
 
           touch "$RESULTS_FILE" "$STDOUT_FILE" "$STDERR_FILE"
           mkdir -p "$DOTMEMORY_OUTPUT_DIR"
-          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE"
+          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE" "$DOTMEMORY_LIMIT_FILE"
 
           print_diagnostics() {
             echo ""
@@ -442,6 +454,55 @@ jobs:
             kill -TERM "$NETHTEST_PID" 2>/dev/null || true
             sleep 10
             kill -KILL "$NETHTEST_PID" 2>/dev/null || true
+          }
+
+          find_profiled_pid() {
+            pgrep -f "$RUNNER_DLL" | head -1 || true
+          }
+
+          terminate_profiled_nethtest() {
+            local pid
+            pid="$(find_profiled_pid)"
+            if [ -n "$pid" ]; then
+              echo "::warning::Stopping profiled nethtest process $pid so dotMemory can close the workspace"
+              kill -TERM "$pid" 2>/dev/null || true
+              for _ in $(seq 1 60); do
+                if ! kill -0 "$pid" 2>/dev/null; then
+                  return 0
+                fi
+                sleep 1
+              done
+
+              echo "::warning::Profiled nethtest process did not stop after 60s; killing it"
+              kill -KILL "$pid" 2>/dev/null || true
+              return 0
+            fi
+
+            terminate_nethtest
+          }
+
+          monitor_dotmemory_limit() {
+            local limit_mb=$((DOTMEMORY_MEM_LIMIT_GB * 1024))
+            while kill -0 "$NETHTEST_PID" 2>/dev/null; do
+              sleep 5 || exit 0
+
+              local pid
+              pid="$(find_profiled_pid)"
+              if [ -z "$pid" ]; then
+                continue
+              fi
+
+              local rss_kb
+              rss_kb="$(ps -o rss= -p "$pid" 2>/dev/null | awk '{ print $1 + 0 }')"
+              local rss_mb=$((rss_kb / 1024))
+              if [ "$rss_mb" -ge "$limit_mb" ]; then
+                echo "::warning::Profiled nethtest RSS reached ${rss_mb}MiB; requested dotMemory limit is ${DOTMEMORY_MEM_LIMIT_GB}GiB"
+                touch "$DOTMEMORY_LIMIT_FILE"
+                print_diagnostics
+                terminate_profiled_nethtest
+                exit 0
+              fi
+            done
           }
 
           check_memory_pressure() {
@@ -515,10 +576,12 @@ jobs:
 
           if [ "$DOTMEMORY" = "true" ]; then
             echo "Running nethtest under dotMemory. Snapshots: $DOTMEMORY_OUTPUT_DIR"
+            echo "dotMemory snapshots: activation, every ${DOTMEMORY_MEM_INCREMENT_GB}GiB increase, and ${DOTMEMORY_MEM_LIMIT_GB}GiB limit"
             "$DOTMEMORY_CMD" start \
               --save-to-dir="$DOTMEMORY_OUTPUT_DIR" \
               --trigger-on-activation \
-              --trigger-timer="${DOTMEMORY_TIMER_SECONDS}s" \
+              --trigger-mem-inc="${DOTMEMORY_MEM_INCREMENT_GB}gb" \
+              --trigger-mem-limit="${DOTMEMORY_MEM_LIMIT_GB}gb" \
               "$DOTNET_EXE" -- "$RUNNER_DLL" "${NETHTEST_ARGS[@]}" \
               > "$STDOUT_FILE" \
               2> >(tee "$STDERR_FILE" >&2) &
@@ -528,6 +591,11 @@ jobs:
               2> >(tee "$STDERR_FILE" >&2) &
           fi
           NETHTEST_PID=$!
+          if [ "$DOTMEMORY" = "true" ]; then
+            monitor_dotmemory_limit &
+            DOTMEMORY_MONITOR_PID=$!
+          fi
+
           watchdog &
           WATCHDOG_PID=$!
           wait "$NETHTEST_PID"
@@ -545,6 +613,9 @@ jobs:
           elif [ -f "$WATCHDOG_TIMEOUT_FILE" ]; then
             echo "::error::nethtest was terminated by the idle watchdog"
             rc=124
+          elif [ -f "$DOTMEMORY_LIMIT_FILE" ]; then
+            echo "::warning::nethtest was stopped after dotMemory memory limit capture"
+            rc=0
           fi
 
           if [ $rc -eq 0 ]; then
@@ -605,5 +676,5 @@ jobs:
             ${{ runner.temp }}/dotmemory
             ${{ runner.temp }}/nethtest-stdout.log
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 9
           retention-days: 7
