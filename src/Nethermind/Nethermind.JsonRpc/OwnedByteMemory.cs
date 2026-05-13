@@ -32,7 +32,8 @@ public sealed class OwnedByteMemory : IDisposable
     {
         ArgumentNullException.ThrowIfNull(pooledBuffer);
         ArgumentNullException.ThrowIfNull(pool);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)length, (uint)pooledBuffer.Length, nameof(length));
+        ArgumentOutOfRangeException.ThrowIfNegative(length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(length, pooledBuffer.Length, nameof(length));
 
         _pooledArray = pooledBuffer;
         _memory = pooledBuffer.AsMemory(0, length);

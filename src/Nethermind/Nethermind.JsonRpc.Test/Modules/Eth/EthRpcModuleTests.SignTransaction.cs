@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -167,6 +169,30 @@ public partial class EthRpcModuleTests
         return response.Result!;
     }
 
+    [Test]
+    public void SignTransactionResult_Dispose_ReturnsRentedBufferToPool()
+    {
+        TrackingPool pool = new();
+        byte[] rented = pool.Rent(32);
+        OwnedByteMemory raw = new(rented, 16, pool);
+        SignTransactionResult result = new()
+        {
+            Raw = raw,
+            Tx = BuildTx(TxType.EIP1559)
+        };
+
+        // Drive the same disposal path the JSON-RPC pipeline uses for a successful response —
+        // a regression test for the pool-rental leak that occurs when SignTransactionResult
+        // is not IDisposable: TryDispose(object?) skips non-IDisposable values, so Raw never
+        // gets disposed and the rented buffer is lost to GC instead of returning to the pool.
+        JsonRpcSuccessResponse response = new() { Result = result };
+        response.Dispose();
+
+        pool.Returned.Should().ContainSingle().Which.Should().BeSameAs(rented,
+            "the rented buffer must come back to the pool — otherwise pooling is strictly " +
+            "worse than direct allocation");
+    }
+
     private sealed class ParsedSignTransactionResult
     {
         [System.Text.Json.Serialization.JsonPropertyName("raw")]
@@ -174,6 +200,13 @@ public partial class EthRpcModuleTests
 
         [System.Text.Json.Serialization.JsonPropertyName("tx")]
         public required TransactionForRpc Tx { get; init; }
+    }
+
+    private sealed class TrackingPool : ArrayPool<byte>
+    {
+        public List<byte[]> Returned { get; } = [];
+        public override byte[] Rent(int minimumLength) => new byte[minimumLength];
+        public override void Return(byte[] array, bool clearArray = false) => Returned.Add(array);
     }
 
     private static TransactionForRpc BuildTx(TxType type, string? omitField = null, string? fromOverride = null)
