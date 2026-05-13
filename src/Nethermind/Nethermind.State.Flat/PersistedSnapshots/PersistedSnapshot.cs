@@ -235,6 +235,14 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public void AdviseDontNeed() => _reservation.AdviseDontNeed();
 
+    /// <summary>
+    /// Drop this snapshot's pages from the arena's <see cref="PageResidencyTracker"/> without
+    /// re-issuing <c>madvise(MADV_DONTNEED)</c>. Use after a code path that has already
+    /// advised the same range (e.g. a freshly-closed <see cref="WholeReadSession"/>) and
+    /// only needs the tracker bookkeeping cleared.
+    /// </summary>
+    public void ForgetTracker() => _reservation.ForgetTracker();
+
     public bool TryAcquire() => TryAcquireLease();
 
     /// <summary>

@@ -96,6 +96,15 @@ public sealed class ArenaReservation : RefCountingDisposable
     }
 
     /// <summary>
+    /// Forget every PageResidencyTracker entry that points into this reservation. Skips the
+    /// <c>madvise(MADV_DONTNEED)</c> step that <see cref="AdviseDontNeed"/> does; use this
+    /// when the page-cache side has already been advised away (e.g. by a freshly-closed
+    /// <see cref="WholeReadSession"/> over the same range) and only the tracker needs cleaning.
+    /// </summary>
+    public void ForgetTracker() =>
+        _arenaManager.ForgetTrackerRange(ArenaId, Offset, Size);
+
+    /// <summary>
     /// Forward a shutdown-preserve request to the underlying <see cref="ArenaFile"/>. Called
     /// by <see cref="PersistedSnapshots.PersistedSnapshot.PersistOnShutdown"/> as the snapshot
     /// is being marked for survival across the next session.
