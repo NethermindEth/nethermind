@@ -1,6 +1,6 @@
 ---
 name: gas-benchmark
-description: Build a diag Docker image, run gas-benchmarks repricing workflow, and analyze results including dotTrace XML reports. Use when asked to "run benchmarks", "trigger gas benchmarks", "benchmark this branch", or "profile block processing".
+description: Build a diag Docker image, run gas-benchmarks repricing workflow, and analyze results including dotTrace XML reports. Use when asked to "run benchmarks", "trigger gas benchmarks", "benchmark this branch", "profile block processing", or "analyze benchmark run". Supports analyze-only mode for CI integration.
 allowed-tools:
   - Bash(gh run *)
   - Bash(gh workflow run *)
@@ -15,14 +15,22 @@ allowed-tools:
   - Bash(find *)
   - Bash(unzip *)
   - Bash(cat *)
+  - Bash(tar *)
   - Bash(wc *)
   - Bash(sleep *)
   - Bash(until *)
   - Bash(date *)
+  - Bash(bash *)
+  - Bash(sed *)
+  - Bash(grep *)
+  - Bash(awk *)
+  - Bash(sort *)
+  - Bash(head *)
+  - Bash(tail *)
   - Read
   - Grep
   - Glob
-argument-hint: "[--branch NAME] [--image NAME] [--filter PATTERN] [--network NETWORK] [--fork FORK] [--dottrace]"
+argument-hint: "[--branch NAME] [--image NAME] [--filter PATTERN] [--network NETWORK] [--fork FORK] [--dottrace] [--analyze-run RUN_ID] [--compare RUN_ID]"
 ---
 
 # Gas Benchmark Pipeline
@@ -44,13 +52,38 @@ When called without arguments (`/gas-benchmark`), do NOT proceed with defaults. 
 
 3. **Ask for the network**: "Which network? (`perf-devnet-3`, `jochemnet`, `mainnet`)"
 
-4. **Ask for filter**: "Any test filter? (e.g., `bloated`, or leave empty for all tests)"
+4. **Ask for filter** — help the user discover available tests first:
+   a. After the release and network are known, list available test categories:
+      ```
+      gh release download <tag> --repo NethermindEth/gas-benchmarks \
+        --pattern "generated-tests-stateful-<network>.tar.gz" -D /tmp/gb-tests --clobber
+      tar tzf /tmp/gb-tests/generated-tests-stateful-<network>.tar.gz \
+        | sed 's|.*/||' | sed 's/\.txt$//' | sed 's/\[.*//' | sort -u | grep -v "^$\|funding\|gas-bump"
+      ```
+   b. Show the user a categorized list of available tests. Example output:
+      ```
+      Available test categories for perf-devnet-3:
+        - test_account_access     (CALL, STATICCALL, BALANCE, EXTCODE... variants)
+        - test_sload_bloated      (large-state SLOAD scenarios)
+        - test_sstore_bloated     (large-state SSTORE scenarios)
+        - test_storage_sload_same_key_benchmark
+      ```
+   c. Ask: "Which tests do you want to run? You can:
+      - Pick a category name (e.g., `sstore_bloated`)
+      - Describe what you're interested in (e.g., 'storage write scenarios with existing slots')
+      - Leave empty to run all tests"
+   d. If the user gives a natural-language description, map it to the right filter pattern by inspecting the test parameter names in the archive (e.g., `existing_slots_True`, `write_new_value_False`, `CacheStrategy.NO_CACHE`).
+   e. To show the user the full parameter space for a category:
+      ```
+      tar tzf /tmp/gb-tests/generated-tests-stateful-<network>.tar.gz \
+        | grep "setup/.*<category>" | sed 's|.*/setup/||; s/\.txt$//' | head -20
+      ```
 
 5. **Ask about dotTrace**: "Do you want dotTrace profiling? (requires building a diag image, adds ~2min to build)"
 
 Then proceed with the resolved values.
 
-When called WITH arguments, parse them and proceed directly — only ask if something essential is missing or ambiguous.
+When called WITH arguments, parse them and proceed directly — only ask if something essential is missing or ambiguous. If `--filter` contains a natural-language description (not a test name pattern), resolve it using the test discovery steps above.
 
 ## Argument parsing
 
@@ -66,6 +99,23 @@ Parse `$ARGUMENTS` for these flags:
 | `--dottrace` | (ask user) | Enable dotTrace profiling — builds diag image, passes diagnostics flags |
 | `--release` | (discovered) | Override release tag — skips interactive selection |
 | `--gas-benchmarks-ref` | (discovered) | Override gas-benchmarks branch — skips discovery |
+| `--analyze-run` | (none) | Skip Phases 0-3; go straight to Phase 4 analysis on an existing run. Value is a run ID or URL (e.g., `--analyze-run 25725558942` or `--analyze-run https://github.com/NethermindEth/gas-benchmarks/actions/runs/25725558942`) |
+| `--compare` | (none) | Compare two runs. Value is a second run ID or URL. Requires `--analyze-run` for the first run. Downloads dotTrace XMLs from both and runs `compare`. |
+
+## Analyze-only mode (`--analyze-run`)
+
+When `--analyze-run <RUN_ID>` is provided, skip Phases 0–3 entirely and jump to Phase 4 analysis. This is the primary mode for CI integration — a CI pipeline triggers the workflow itself and then invokes `/gas-benchmark --analyze-run <RUN_ID>` to get the analysis.
+
+1. Extract run ID from the value (strip URL prefix if given).
+2. Fetch run metadata: `gh run view <run-id> --repo NethermindEth/gas-benchmarks --json status,conclusion,jobs`
+3. If the run is still in progress, poll until complete (same as Phase 3).
+4. Proceed to Phase 4 with the run ID.
+
+When `--compare <RUN_ID_B>` is also provided:
+1. Analyze both runs independently (Phase 4a–4c for each).
+2. Download dotTrace XMLs from both runs.
+3. Run `bash scripts/dottrace-report.sh compare <a.xml> <b.xml> 20` for hotspot comparison.
+4. In the final report, show side-by-side timing tables and delta percentages.
 
 ## Phase 0 — Discover gas-benchmarks branch and release
 
@@ -237,16 +287,57 @@ Note: do NOT exclude `dotnet` — real Nethermind exceptions contain .NET runtim
 
 **Confirm shutdown:** grep for `Nethermind is shut down` — if absent, the node crashed or was killed.
 
-### 4b. Timing analysis
+### 4b. Timing analysis — block phase classification
 
-Extract test block timings:
-```
-grep "Processed" <logs> | grep "Gas gwei"
-```
-For each match, report block number, processing time (ms), slot time (ms).
-Match each block to its test scenario using the preceding `[TESTING]` log line.
+Blocks in the log belong to three phases, identifiable by the `Extra Data:` field in the `Received New Block:` log lines:
 
-Sort by processing time descending. Report top 10 heaviest blocks.
+| Phase | Extra Data pattern | Meaning |
+|-------|-------------------|---------|
+| **Gas bump** | `Nethermind v...` | Empty blocks that ramp the gas limit. **Ignore for timing.** |
+| **Setup** | `setup:...` | Pre-state preparation (deploying contracts, filling storage). **Ignore for timing.** |
+| **Testing** | `testing:...` | Actual benchmark execution. **Only these matter.** |
+
+**Step 1 — Identify phase boundaries:**
+```
+# Find block number ranges for each phase
+grep "Received New Block" <logs> | grep "Extra Data" | \
+  awk '/Nethermind v/{type="gasbump"} /setup:/{type="setup"} /testing:/{type="testing"} {
+    match($0, /Block: *([0-9]+)/, m); print type, m[1]
+  }' | sort -k1,1 -k2,2n | awk '{
+    if($1!=prev) { if(prev) printf "%s: %s-%s (%d blocks)\n", prev, first, last, count; first=$2; count=0 }
+    last=$2; count++; prev=$1
+  } END { printf "%s: %s-%s (%d blocks)\n", prev, first, last, count }'
+```
+
+**Step 2 — CRITICAL: Check for zero testing blocks:**
+```
+grep "Received New Block" <logs> | grep "Extra Data.*testing:" | wc -l
+```
+If this returns 0, **the release has no testing payloads for the selected filter**. Report this prominently:
+> ⚠️ **No testing blocks found.** The release `<tag>` does not contain testing payloads for filter `<filter>` on network `<network>`. All blocks were gas-bump or setup blocks. The timing data below reflects only setup overhead, NOT actual test execution. The release may be incomplete or the filter may be too restrictive.
+
+**Step 3 — Extract test block timings (testing phase only):**
+Correlate `Received New Block` lines (to identify phase) with `Processed` lines (to get timing) by block number. Only report timings for blocks in the testing phase.
+
+```
+# Get testing block numbers
+grep "Received New Block" <logs> | grep "testing:" | \
+  sed 's/.*Block: *//' | awk '{gsub(/[^0-9]/, "", $1); print $1}' | sort -un > /tmp/testing-blocks.txt
+
+# Extract Processed timings only for testing blocks
+grep "Processed" <logs> | grep "ms" | while read line; do
+  block=$(echo "$line" | sed 's/.*Processed *//' | awk '{gsub(/[^0-9.]/, "", $1); print $1}')
+  if grep -q "^${block}$" /tmp/testing-blocks.txt; then
+    echo "$line"
+  fi
+done
+```
+
+**Step 4 — Compute percentiles for testing blocks only:**
+Report: COUNT, MIN, MEDIAN, AVG, P90, P95, P99, MAX.
+
+**Step 5 — Sort by processing time descending. Report top 10 heaviest test blocks.**
+Match each block to its test scenario using the preceding `[INFO] [SETUP]` or scenario name log lines.
 
 ### 4c. Block stats
 
@@ -314,6 +405,21 @@ If present:
 
 ## Phase 5 — Report
 
+Always include the block phase breakdown first:
+
+```
+### Block Phases
+| Phase | Block Range | Count | Description |
+|-------|------------|-------|-------------|
+| Gas bump | 24358001–24363001 | 5001 | Empty gas-limit ramp blocks |
+| Setup | 24363002–24363003 | 180 | Pre-state preparation |
+| Testing | 24363004–24363183 | 180 | Actual benchmark execution |
+```
+
+If testing block count is 0, display prominently:
+> ⚠️ **RELEASE DATA ISSUE:** No testing blocks found for filter `<filter>`. The release `<tag>` may not contain testing payloads for this filter/network combination. All timings below are setup overhead only — not meaningful for benchmarking.
+
+Then the summary table (timings ONLY from testing blocks):
 ```
 | Metric | Value |
 |--------|-------|
@@ -323,22 +429,81 @@ If present:
 | Release | ... |
 | Run URL | ... |
 | Status | success/failure |
-| Test block | #N |
-| Processing time | X ms |
-| sstore count | N |
-| sload count | N |
 | Exceptions | none / list |
+| Testing blocks | N |
+| AVG processing | X ms |
+| MEDIAN | X ms |
+| P95 | X ms |
+| P99 | X ms |
+| MAX | X ms |
 ```
 
-If comparing against a baseline, include both timings and the speedup ratio.
+Then the top 10 heaviest test blocks table with scenario names.
 
-## Common filter formats
+If comparing against a baseline, include both timings and the delta/speedup percentage.
 
-To discover the exact filter format, check a previous run's logs:
+## CI integration
+
+The workflow `.github/workflows/gas-benchmark-analysis.yml` runs the full gas-benchmark pipeline in CI via Claude Code. It executes ALL phases (build → trigger → wait → analyze) and posts results as a PR comment.
+
+**Authorization:** Only members of the `NethermindEth/core` GitHub team can trigger via PR comments (verified via API team membership check).
+
+### Trigger 1: PR comment (full run)
+Comment on a PR to run the complete pipeline on the PR branch:
 ```
-gh run view <run-id> --repo NethermindEth/gas-benchmarks --log 2>/dev/null | grep "EFFECTIVE_FILTER"
+@claude-bench                                  # full run, all tests, dotTrace enabled
+@claude-bench --filter sstore_bloated          # full run with test filter
+@claude-bench --no-dottrace                    # full run without dotTrace
+@claude-bench --image nethermindeth/nethermind:my-tag  # skip build, use existing image
 ```
-Or check the test fixtures in the release archive. Examples:
-- `test_sstore_bloated[10GB-fork_Amsterdam-benchmark_test-cache_strategy_CacheStrategy.NO_CACHE-existing_slots_True-write_new_value_False-benchmark_300M`
-- `bloated` (matches all bloated tests)
-- (empty = run all tests)
+
+### Trigger 1b: PR comment (analyze-only)
+To analyze an already-completed run instead of starting a new one:
+```
+@claude-bench --analyze-run 25725558942
+@claude-bench --analyze-run 25725558942 --compare 25700000000
+```
+
+### Trigger 2: Manual dispatch
+```
+gh workflow run gas-benchmark-analysis.yml \
+  -f branch=my-feature-branch \
+  -f filter=sstore_bloated \
+  -f dottrace=true \
+  -f pr_number=12345
+```
+
+### Trigger 3: Repository dispatch (from gas-benchmarks repo)
+```
+gh api repos/NethermindEth/nethermind/dispatches \
+  -f event_type=gas-benchmark-analysis \
+  -f 'client_payload={"branch":"my-branch","filter":"bloated","pr_number":"12345"}'
+```
+
+All modes run this skill with the appropriate flags and post results as a PR comment (if a PR number is available) or to the workflow step summary.
+
+## Filter reference
+
+### How to discover available tests
+List test categories from a release archive:
+```
+gh release download <tag> --repo NethermindEth/gas-benchmarks \
+  --pattern "generated-tests-stateful-<network>.tar.gz" -D /tmp/gb-tests --clobber
+tar tzf /tmp/gb-tests/generated-tests-stateful-<network>.tar.gz \
+  | sed 's|.*/||' | sed 's/\.txt$//' | sed 's/\[.*//' | sort -u | grep -v "^$\|funding\|gas-bump"
+```
+
+### How to explore parameters for a test category
+```
+tar tzf /tmp/gb-tests/generated-tests-stateful-<network>.tar.gz \
+  | grep "setup/.*<category>" | sed 's|.*/setup/||; s/\.txt$//' | head -20
+```
+
+### Filter patterns
+The `filter` input is a substring match against the test fixture filenames. Examples:
+- `sstore_bloated` — all sstore_bloated variants
+- `sload_bloated` — all sload_bloated variants
+- `account_access` — all account access tests
+- `existing_slots_True` — only tests with pre-existing storage slots
+- `NO_CACHE` — only tests with no caching strategy
+- (empty) — run all tests
