@@ -565,14 +565,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
          * TKS: Observed 500MB/s compared to ~100MB/s between multithreaded and single thread compactions on my machine (processor count is returning 12 for 6 cores with hyperthreading)
          * TKS: CPU goes to insane 30% usage on idle - compacting only app
          */
-        options.SetMaxBackgroundCompactions(2);
+        options.SetMaxBackgroundCompactions(1);
         options.SetMaxBackgroundFlushes(1);
 
         // This one set the threadpool env, so its actually different from the above two
-        options.IncreaseParallelism(2);
+        options.IncreaseParallelism(1);
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
-        _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, 2);
+        _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, 1);
 
         #endregion
 
