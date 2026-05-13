@@ -7,7 +7,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
@@ -23,10 +22,8 @@ public class WorldStateModule : Module
 
             .Map<IStateReader, IWorldStateManager>((m) => m.GlobalStateReader)
 
-            .OnActivate<IWorldStateManager>((worldStateManager, ctx) =>
-            {
-                new PersistedStateWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
-            })
+            .AddSingleton<PersistedStateWatcher>()
+            .ResolveOnServiceActivation<PersistedStateWatcher, IWorldStateManager>()
 
             // Prevent multiple concurrent verify trie.
             .AddSingleton<IVerifyTrieStarter, VerifyTrieStarter>()
