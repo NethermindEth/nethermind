@@ -20,7 +20,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     internal int ArenaId { get; }
     internal long Offset { get; }
     public long Size { get; internal set; }
-    public string Tag { get; }
+    private string Tag { get; }
 
     public ArenaReservation(IArenaManager arenaManager, ArenaFile arenaFile,
                             int arenaId, long offset, long size, string tag)
@@ -97,15 +97,6 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// is being marked for survival across the next session.
     /// </summary>
     public void PersistOnShutdown() => _arenaFile.PersistOnShutdown();
-
-    public void Touch(long subOffset, long size) => _arenaFile.Touch(Offset + subOffset, size);
-
-    /// <summary>
-    /// Read bytes from this reservation via a non-mmap file primitive (<c>pread</c>).
-    /// See <see cref="IArenaManager.RandomRead"/>.
-    /// </summary>
-    public int RandomRead(long subOffset, Span<byte> destination) =>
-        _arenaFile.RandomRead(Offset + subOffset, destination);
 
     protected override void CleanUp()
     {

@@ -51,7 +51,7 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     public byte* BasePtr => _basePtr;
 
     public int Id { get; }
-    public string Path { get; }
+    private string Path { get; }
     public long MappedSize { get; private set; }
 
     public ArenaFile(int id, string path, long mappedSize)
@@ -80,9 +80,6 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         // >2 GiB region. Use OpenWholeView for chunk-aware whole-reservation access
         // once that path is widened to long.
         new(_basePtr + offset, checked((int)size));
-
-    public byte[] Read(long offset, int size) =>
-        GetSpan(offset, size).ToArray();
 
     /// <summary>
     /// Create a write stream backed by a <see cref="FileStream"/> seeked to <paramref name="startOffset"/>.

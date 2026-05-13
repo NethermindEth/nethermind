@@ -48,8 +48,8 @@ public class StorageLayerTests
             fs.Flush();
         }
 
-        Assert.That(arena.Read(0, data1.Length), Is.EqualTo(data1));
-        Assert.That(arena.Read(data1.Length, data2.Length), Is.EqualTo(data2));
+        Assert.That(arena.GetSpan(0, data1.Length).ToArray(), Is.EqualTo(data1));
+        Assert.That(arena.GetSpan(data1.Length, data2.Length).ToArray(), Is.EqualTo(data2));
         Assert.That(arena.MappedSize, Is.EqualTo(1024 * 1024));
     }
 

@@ -40,13 +40,13 @@ public sealed class BlobArenaFile : RefCountingDisposable
     public ushort BlobArenaId { get; }
 
     /// <summary>On-disk path. Deleted by <see cref="CleanUp"/> unless <see cref="PersistOnShutdown"/> opted in.</summary>
-    public string Path { get; }
+    private string Path { get; }
 
     /// <summary>Pre-extended file length (sparse on Linux). Writers append within this cap.</summary>
     public long MaxSize { get; }
 
-    /// <summary>Underlying read/write file handle. Borrowed by leases for direct <c>pread</c>.</summary>
-    internal SafeFileHandle Handle { get; }
+    /// <summary>Underlying read/write file handle. Used internally by <see cref="RandomRead"/> and <see cref="OpenWriteStream"/>.</summary>
+    private SafeFileHandle Handle { get; }
 
     /// <summary>Next-write offset. Mutated under the manager's lock during writer registration.</summary>
     internal long Frontier { get; set; }
