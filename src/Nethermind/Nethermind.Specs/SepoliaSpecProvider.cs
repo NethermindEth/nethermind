@@ -33,7 +33,8 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
         [OsakaTimestamp] = Osaka.Instance,
         [BPO1Timestamp] = BPO1.Instance,
         [BPO2Timestamp] = BPO2.Instance,
-    }) { }
+    })
+    { }
 
     private SepoliaSpecProvider(ForkSchedule schedule) : base(schedule,
         terminalTotalDifficulty: 17000000000000000) =>

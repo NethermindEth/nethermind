@@ -31,7 +31,8 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
         [OsakaTimestamp] = Osaka.Instance,
         [BPO1Timestamp] = BPO1.Instance,
         [BPO2Timestamp] = BPO2.Instance,
-    }) { }
+    })
+    { }
 
     private HoodiSpecProvider(ForkSchedule schedule) : base(schedule,
         terminalTotalDifficulty: 0,

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -70,7 +69,8 @@ public class ForkScheduleSpecProviderTests
                 MainnetSpecProvider.BPO1Activation,
                 MainnetSpecProvider.BPO2Activation,
                 MainnetSpecProvider.AmsterdamActivation,
-            ]) { TestName = "Mainnet" };
+            ])
+            { TestName = "Mainnet" };
 
             yield return new TestCaseData(ChiadoSpecProvider.Instance, (ForkActivation[])
             [
@@ -78,7 +78,8 @@ public class ForkScheduleSpecProviderTests
                 (0, ChiadoSpecProvider.CancunTimestamp),
                 (0, ChiadoSpecProvider.PragueTimestamp),
                 (0, ChiadoSpecProvider.OsakaTimestamp),
-            ]) { TestName = "Chiado" };
+            ])
+            { TestName = "Chiado" };
 
             yield return new TestCaseData(HoodiSpecProvider.Instance, (ForkActivation[])
             [
@@ -88,7 +89,8 @@ public class ForkScheduleSpecProviderTests
                 (4, HoodiSpecProvider.OsakaTimestamp),
                 (5, HoodiSpecProvider.BPO1Timestamp),
                 (6, HoodiSpecProvider.BPO2Timestamp),
-            ]) { TestName = "Hoodi" };
+            ])
+            { TestName = "Hoodi" };
 
             yield return new TestCaseData(SepoliaSpecProvider.Instance, (ForkActivation[])
             [
@@ -99,13 +101,15 @@ public class ForkScheduleSpecProviderTests
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.OsakaTimestamp),
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.BPO1Timestamp),
                 (SepoliaSpecProvider.MergeForkIdBlockNumber, SepoliaSpecProvider.BPO2Timestamp),
-            ]) { TestName = "Sepolia" };
+            ])
+            { TestName = "Sepolia" };
 
             yield return new TestCaseData(MordenSpecProvider.Instance, (ForkActivation[])
             [
                 (ForkActivation)MordenSpecProvider.HomesteadBlockNumber,
                 (ForkActivation)MordenSpecProvider.SpuriousDragonBlockNumber,
-            ]) { TestName = "Morden" };
+            ])
+            { TestName = "Morden" };
         }
     }
 

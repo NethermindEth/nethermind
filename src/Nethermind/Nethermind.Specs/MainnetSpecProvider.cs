@@ -72,7 +72,8 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
         [BPO4BlockTimestamp] = BPO4.Instance,
         [BPO5BlockTimestamp] = BPO5.Instance,
         [AmsterdamBlockTimestamp] = Amsterdam.Instance,
-    }) { }
+    })
+    { }
 
     private MainnetSpecProvider(ForkSchedule schedule) : base(schedule,
         terminalTotalDifficulty: new UInt256(15566869308787654656ul, 3184ul)) =>

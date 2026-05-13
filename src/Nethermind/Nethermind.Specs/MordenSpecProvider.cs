@@ -17,7 +17,8 @@ public class MordenSpecProvider : ForkScheduleSpecProvider
         [GenesisBlock] = Frontier.Instance,
         [HomesteadBlockNumber] = Homestead.Instance,
         [SpuriousDragonBlockNumber] = SpuriousDragon.Instance,
-    }) { }
+    })
+    { }
 
     private MordenSpecProvider(ForkSchedule schedule) : base(schedule) =>
         TransitionActivations = schedule.ToTransitionActivations();

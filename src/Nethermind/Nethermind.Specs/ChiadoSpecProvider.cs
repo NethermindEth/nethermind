@@ -25,7 +25,8 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
         [CancunTimestamp] = CancunGnosis.Instance,
         [PragueTimestamp] = PragueGnosis.Instance,
         [OsakaTimestamp] = OsakaGnosis.Instance,
-    }) { }
+    })
+    { }
 
     private ChiadoSpecProvider(ForkSchedule schedule) : base(schedule,
         // 231707791542740786049188744689299064356246512
