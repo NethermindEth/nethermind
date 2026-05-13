@@ -39,11 +39,13 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     [DllImport("libc", EntryPoint = "posix_fadvise", SetLastError = true)]
     private static extern int PosixFadvise(int fd, long offset, long len, int advice);
 
-    private readonly IArenaManager? _owner;
     private readonly SafeFileHandle _handle;
     private MemoryMappedFile _mmf;
     private MemoryMappedViewAccessor _accessor;
     private byte* _basePtr;
+    // Treated as bool; 0 = delete on CleanUp, 1 = keep the on-disk file. Set by
+    // PersistOnShutdown via Interlocked.Exchange so it is safe to call from any path.
+    private int _preserveOnDispose;
 
     /// <summary>Raw pointer to the first byte of the arena's mmap. Long-offset arithmetic OK across the full <see cref="MappedSize"/>.</summary>
     public byte* BasePtr => _basePtr;
@@ -52,15 +54,8 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     public string Path { get; }
     public long MappedSize { get; private set; }
 
-    /// <summary>
-    /// Construct an arena file. <paramref name="owner"/> may be null for standalone usage
-    /// (e.g. unit tests) — in that case <see cref="CleanUp"/> always deletes the on-disk
-    /// file. Production callers always pass the owning <see cref="ArenaManager"/> so
-    /// shutdown-preservation works.
-    /// </summary>
-    public ArenaFile(IArenaManager? owner, int id, string path, long mappedSize)
+    public ArenaFile(int id, string path, long mappedSize)
     {
-        _owner = owner;
         Id = id;
         Path = path;
         MappedSize = mappedSize;
@@ -273,13 +268,20 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         }
     }
 
+    /// <summary>
+    /// Mark this file as "preserve on disk when its refcount hits zero". Set by
+    /// <see cref="ArenaReservation.PersistOnShutdown"/> via the snapshot's shutdown path
+    /// so this session's persisted snapshots survive across restarts. Idempotent.
+    /// </summary>
+    public void PersistOnShutdown() => Interlocked.Exchange(ref _preserveOnDispose, 1);
+
     protected override void CleanUp()
     {
         CloseMmap();
         _handle.Dispose();
-        // On shutdown the manager preserves files for the next session — skip the delete.
-        // Null owner (standalone construction) always deletes on cleanup.
-        if (_owner is null || !_owner.IsDisposed)
+        // Preserve the on-disk file iff someone explicitly opted in via PersistOnShutdown;
+        // otherwise delete it (the normal post-prune cleanup path).
+        if (Volatile.Read(ref _preserveOnDispose) == 0)
         {
             try { File.Delete(Path); } catch { /* best-effort */ }
         }

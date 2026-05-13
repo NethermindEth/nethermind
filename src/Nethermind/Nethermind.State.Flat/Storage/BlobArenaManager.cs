@@ -56,10 +56,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
     private int _nextFileId;
     private bool _disposed;
 
-    // Consulted by BlobArenaFile.CleanUp to decide whether to delete the on-disk file.
-    // During shutdown the file is preserved so the next session can rehydrate it.
-    internal bool IsDisposed => _disposed;
-
     /// <summary>
     /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
     /// size cap of <paramref name="maxFileSize"/>. <paramref name="reservationTag"/> tags
@@ -91,7 +87,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 if (id < 0 || id > ushort.MaxValue) continue;
                 long len = new FileInfo(path).Length;
                 long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
-                BlobArenaFile file = new(this, (ushort)id, path, maxSize, frontier: len);
+                BlobArenaFile file = new((ushort)id, path, maxSize, frontier: len);
                 _files[(ushort)id] = file;
                 _nextFileId = Math.Max(_nextFileId, id + 1);
                 if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
@@ -143,7 +139,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
                         $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
                 fileId = (ushort)_nextFileId++;
                 string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
-                file = new BlobArenaFile(this, fileId, path, _maxFileSize, frontier: 0);
+                file = new BlobArenaFile(fileId, path, _maxFileSize, frontier: 0);
                 _files[fileId] = file;
                 _mutableFiles.Add(fileId);
                 startOffset = 0;

@@ -238,6 +238,20 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     public bool TryAcquire() => TryAcquireLease();
 
+    /// <summary>
+    /// Mark every file this snapshot references (its metadata <see cref="ArenaReservation"/>'s
+    /// <see cref="ArenaFile"/> and every leased <see cref="BlobArenaFile"/>) for
+    /// shutdown-preservation. Called by <see cref="PersistedSnapshotRepository.Dispose"/>
+    /// before tearing down loaded snapshots so their on-disk data survives into the next
+    /// session. Idempotent and safe to call from any thread.
+    /// </summary>
+    public void PersistOnShutdown()
+    {
+        _reservation.PersistOnShutdown();
+        foreach (BlobArenaFile file in _blobFiles.Values)
+            file.PersistOnShutdown();
+    }
+
     protected override void CleanUp()
     {
         _reservation.Dispose();

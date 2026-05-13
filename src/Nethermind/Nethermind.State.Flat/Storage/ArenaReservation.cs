@@ -91,6 +91,13 @@ public sealed class ArenaReservation : RefCountingDisposable
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 
+    /// <summary>
+    /// Forward a shutdown-preserve request to the underlying <see cref="ArenaFile"/>. Called
+    /// by <see cref="PersistedSnapshots.PersistedSnapshot.PersistOnShutdown"/> as the snapshot
+    /// is being marked for survival across the next session.
+    /// </summary>
+    public void PersistOnShutdown() => _arenaFile.PersistOnShutdown();
+
     public void Touch(long subOffset, long size) => _arenaFile.Touch(Offset + subOffset, size);
 
     /// <summary>

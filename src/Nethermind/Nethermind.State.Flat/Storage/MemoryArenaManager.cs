@@ -26,7 +26,6 @@ public sealed class MemoryArenaManager : IArenaManager
     }
 
     public PageResidencyTracker PageTracker => _inner.PageTracker;
-    public bool IsDisposed => _inner.IsDisposed;
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => _inner.Initialize(entries);
 

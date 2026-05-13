@@ -461,18 +461,27 @@ public sealed class PersistedSnapshotRepository(
     {
         lock (_catalogLock)
         {
-            // Dispose arena managers first so their _disposed flag is set before any
-            // snapshot dispose runs MarkDead — otherwise a clean shutdown would treat
-            // every still-leased snapshot as fully dead and delete the on-disk arena
-            // files, wiping the catalog's data before the next session can reload it.
-            _arena.Dispose();
-            _blobs.Dispose();
+            // Mark every loaded snapshot's files as shutdown-preserved before any teardown
+            // runs. Snapshots already pruned during this session aren't in these dicts, so
+            // their files won't get the flag and will be deleted by the managers' final
+            // Dispose below.
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
+                kv.Value.PersistOnShutdown();
+            foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
+                kv.Value.PersistOnShutdown();
+            // Dispose snapshots: drops their reservation + blob leases. Files self-clean
+            // as their refcount hits zero; the preserve flag set above keeps the on-disk
+            // file in place for any snapshot that opted in.
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _baseSnapshots)
                 kv.Value.Dispose();
             foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _compactedSnapshots)
                 kv.Value.Dispose();
             _baseSnapshots.Clear();
             _compactedSnapshots.Clear();
+            // Drop the managers' dictionary refs; any file still alive cleans up here.
+            // Orphans / unreferenced files (no PersistOnShutdown caller) get deleted.
+            _arena.Dispose();
+            _blobs.Dispose();
             // _bloomManager is shared across tiers; owned and disposed by the DI container.
         }
     }

@@ -40,8 +40,8 @@ public class ArenaManagerForgetOnAdviseTests
     // Throwaway file backing — the manager's `_arenas` dict still doesn't know about the
     // synthesised reservation's id, so AdviseDontNeed's file-level madvise path no-ops as
     // before. The reservation just needs a non-null ArenaFile to satisfy the constructor.
-    private ArenaFile NewSyntheticFile(ArenaManager manager, int id, long size) =>
-        new(manager, id, Path.Combine(_testDir, $"synthetic_{id}.bin"), size);
+    private ArenaFile NewSyntheticFile(int id, long size) =>
+        new(id, Path.Combine(_testDir, $"synthetic_{id}.bin"), size);
 
     [Test]
     public void AdviseDontNeed_OnReservation_ClearsTrackerEntries_ForFullyCoveredPages()
@@ -59,7 +59,7 @@ public class ArenaManagerForgetOnAdviseTests
         // Reservation covering [0, 10*pageSize) — 10 fully-covered pages. The manager's
         // arena dictionary has no entry for arenaId=7; AdviseDontNeed gracefully no-ops the
         // madvise but still runs ForgetTrackerRange (which is the behavior under test).
-        using ArenaFile syntheticFile = NewSyntheticFile(manager, arenaId, 10L * pageSize);
+        using ArenaFile syntheticFile = NewSyntheticFile(arenaId, 10L * pageSize);
         using ArenaReservation reservation = new(manager, syntheticFile, arenaId,
             offset: 0, size: 10L * pageSize, tag: "test");
 
@@ -83,7 +83,7 @@ public class ArenaManagerForgetOnAdviseTests
         // Reservation [pageSize/2, pageSize/2 + 3*pageSize). Page-aligned start = page 1,
         // page-aligned end = page 3 (exclusive). So pages 1, 2 are fully covered; pages 0 and 3
         // straddle the boundary and must remain.
-        using ArenaFile syntheticFile = NewSyntheticFile(manager, arenaId, 5L * pageSize);
+        using ArenaFile syntheticFile = NewSyntheticFile(arenaId, 5L * pageSize);
         using ArenaReservation reservation = new(manager, syntheticFile, arenaId,
             offset: pageSize / 2, size: 3L * pageSize, tag: "test");
 

@@ -12,8 +12,8 @@ namespace Nethermind.State.Flat.Storage;
 /// the initial lease, each leased <see cref="PersistedSnapshots.PersistedSnapshot"/> holds
 /// an additional one. The manager drops its lease via <see cref="RefCountingDisposable.Dispose"/>;
 /// the on-disk file is deleted by <see cref="CleanUp"/> when the last lease is released,
-/// unless the manager is in shutdown — in which case the file is preserved for the next
-/// session.
+/// unless <see cref="PersistOnShutdown"/> was called first — in which case the file is
+/// preserved for the next session.
 ///
 /// <para>
 /// Reads use <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/> directly:
@@ -22,12 +22,14 @@ namespace Nethermind.State.Flat.Storage;
 /// </summary>
 public sealed class BlobArenaFile : RefCountingDisposable
 {
-    private readonly BlobArenaManager _manager;
+    // Treated as bool; 0 = delete on CleanUp, 1 = keep the on-disk file. Set by
+    // PersistOnShutdown via Interlocked.Exchange so it is safe to call from any path.
+    private int _preserveOnDispose;
 
     /// <summary>Stable file id, narrowed from int to ushort. Embedded in every <see cref="NodeRef"/>.</summary>
     public ushort BlobArenaId { get; }
 
-    /// <summary>On-disk path. Deleted by <see cref="CleanUp"/> unless the manager is in shutdown.</summary>
+    /// <summary>On-disk path. Deleted by <see cref="CleanUp"/> unless <see cref="PersistOnShutdown"/> opted in.</summary>
     public string Path { get; }
 
     /// <summary>Pre-extended file length (sparse on Linux). Writers append within this cap.</summary>
@@ -39,9 +41,8 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// <summary>Next-write offset. Mutated under the manager's lock during writer registration.</summary>
     internal long Frontier { get; set; }
 
-    internal BlobArenaFile(BlobArenaManager manager, ushort id, string path, long maxSize, long frontier)
+    internal BlobArenaFile(ushort id, string path, long maxSize, long frontier)
     {
-        _manager = manager;
         BlobArenaId = id;
         Path = path;
         MaxSize = maxSize;
@@ -52,6 +53,15 @@ public sealed class BlobArenaFile : RefCountingDisposable
             RandomAccess.SetLength(Handle, maxSize);
         Frontier = frontier;
     }
+
+    /// <summary>
+    /// Mark this file as "preserve on disk when its refcount hits zero". Set by
+    /// <see cref="PersistedSnapshots.PersistedSnapshot.PersistOnShutdown"/> for every blob
+    /// arena that a still-loaded snapshot references, so the file survives manager
+    /// teardown and is rehydrated by the next session's <see cref="BlobArenaManager.Initialize"/>.
+    /// Idempotent.
+    /// </summary>
+    public void PersistOnShutdown() => Interlocked.Exchange(ref _preserveOnDispose, 1);
 
     /// <summary>
     /// Defensive lease acquisition; returns false when the file has already entered
@@ -93,8 +103,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
     protected override void CleanUp()
     {
         Handle.Dispose();
-        // Shutdown preserves files for the next session — skip the on-disk delete.
-        if (!_manager.IsDisposed)
+        // Preserve the on-disk file iff someone explicitly opted in via PersistOnShutdown;
+        // otherwise delete it (the normal post-prune cleanup path).
+        if (Volatile.Read(ref _preserveOnDispose) == 0)
         {
             try { File.Delete(Path); } catch { /* best-effort */ }
         }

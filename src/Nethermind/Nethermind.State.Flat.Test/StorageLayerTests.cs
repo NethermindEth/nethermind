@@ -38,7 +38,7 @@ public class StorageLayerTests
         byte[] data2 = new byte[1000];
         Random.Shared.NextBytes(data2);
 
-        using ArenaFile arena = new(owner: null, 0, path, 1024 * 1024);
+        using ArenaFile arena = new(0, path, 1024 * 1024);
 
         // Write via FileStream, read via mmap
         using (FileStream fs = new(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.ReadWrite))

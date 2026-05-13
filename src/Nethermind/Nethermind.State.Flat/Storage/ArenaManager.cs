@@ -57,10 +57,6 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
-    // Consulted by ArenaFile.CleanUp to decide whether to delete the on-disk file. During
-    // shutdown the file is preserved so the next session can rehydrate it.
-    public bool IsDisposed => _disposed;
-
     public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, string tier = "default")
     {
         _basePath = basePath;
@@ -108,7 +104,7 @@ public sealed class ArenaManager : IArenaManager
                 long fileLength = new FileInfo(file).Length;
                 long mappedSize = fileLength > 0 ? fileLength : _maxArenaSize;
 
-                ArenaFile arena = new(this, arenaId, file, mappedSize);
+                ArenaFile arena = new(arenaId, file, mappedSize);
                 _arenas[arenaId] = arena;
                 _frontiers[arenaId] = 0;
                 _deadBytes[arenaId] = 0;
@@ -460,7 +456,7 @@ public sealed class ArenaManager : IArenaManager
         int id = _nextArenaId++;
         string prefix = dedicated ? DedicatedArenaFilePrefix : ArenaFilePrefix;
         string path = Path.Combine(_basePath, $"{prefix}{id:D4}{ArenaFileExtension}");
-        ArenaFile arena = new(this, id, path, mappedSize);
+        ArenaFile arena = new(id, path, mappedSize);
         _arenas[id] = arena;
         _frontiers[id] = 0;
         _deadBytes[id] = 0;
