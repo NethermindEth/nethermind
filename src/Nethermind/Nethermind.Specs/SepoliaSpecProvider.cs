@@ -26,7 +26,7 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
 
     private SepoliaSpecProvider() : this(new ForkSchedule
     {
-        [GenesisBlock] = London.Instance,
+        [GenesisBlockNumber] = London.Instance,
         [ShanghaiTimestamp] = Shanghai.Instance,
         [CancunTimestamp] = Cancun.Instance,
         [PragueTimestamp] = Prague,

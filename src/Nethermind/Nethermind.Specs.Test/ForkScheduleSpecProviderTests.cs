@@ -51,7 +51,7 @@ public class ForkScheduleSpecProviderTests
             yield return new TestCaseData(MainnetSpecProvider.Instance, (ForkActivation[])
             [
                 (ForkActivation)MainnetSpecProvider.HomesteadBlockNumber,
-                (ForkActivation)MainnetSpecProvider.DaoBlockNumberConst,
+                (ForkActivation)MainnetSpecProvider.DaoForkBlockNumber,
                 (ForkActivation)MainnetSpecProvider.TangerineWhistleBlockNumber,
                 (ForkActivation)MainnetSpecProvider.SpuriousDragonBlockNumber,
                 (ForkActivation)MainnetSpecProvider.ByzantiumBlockNumber,

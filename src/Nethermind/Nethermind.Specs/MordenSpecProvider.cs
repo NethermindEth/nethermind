@@ -14,7 +14,7 @@ public class MordenSpecProvider : ForkScheduleSpecProvider
 
     private MordenSpecProvider() : this(new ForkSchedule
     {
-        [GenesisBlock] = Frontier.Instance,
+        [GenesisBlockNumber] = Frontier.Instance,
         [HomesteadBlockNumber] = Homestead.Instance,
         [SpuriousDragonBlockNumber] = SpuriousDragon.Instance,
     })

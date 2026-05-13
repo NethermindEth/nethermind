@@ -24,7 +24,7 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
 
     private HoodiSpecProvider() : this(new ForkSchedule
     {
-        [GenesisBlock] = London.Instance,
+        [GenesisBlockNumber] = London.Instance,
         [ShanghaiTimestamp] = Shanghai.Instance,
         [CancunTimestamp] = Cancun.Instance,
         [PragueTimestamp] = Prague,
@@ -36,9 +36,9 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
 
     private HoodiSpecProvider(ForkSchedule schedule) : base(schedule,
         terminalTotalDifficulty: 0,
-        mergeBlockNumber: (GenesisBlock, GenesisTimestamp)) =>
+        mergeBlockNumber: (GenesisBlockNumber, GenesisTimestamp)) =>
         TransitionActivations = schedule.ToTransitionActivations(
-            postMergeBlock: GenesisBlock + 1);
+            postMergeBlock: GenesisBlockNumber + 1);
 
     public override ulong TimestampFork => ShanghaiTimestamp;
     public override ulong NetworkId => BlockchainIds.Hoodi;

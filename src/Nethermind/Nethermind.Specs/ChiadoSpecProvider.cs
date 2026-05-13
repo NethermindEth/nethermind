@@ -20,7 +20,7 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
 
     private ChiadoSpecProvider() : this(new ForkSchedule
     {
-        [GenesisBlock] = London.Instance,
+        [GenesisBlockNumber] = London.Instance,
         [ShanghaiTimestamp] = ShanghaiGnosis.Instance,
         [CancunTimestamp] = CancunGnosis.Instance,
         [PragueTimestamp] = PragueGnosis.Instance,
@@ -32,7 +32,7 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
         // 231707791542740786049188744689299064356246512
         terminalTotalDifficulty: new UInt256(18446744073375486960ul, 18446744073709551615ul, 680927ul)) =>
         TransitionActivations = schedule.ToTransitionActivations(
-            postMergeBlock: GenesisBlock,
+            postMergeBlock: GenesisBlockNumber,
             incrementBlockPerTimestampFork: false);
 
     public override ulong TimestampFork => ShanghaiTimestamp;

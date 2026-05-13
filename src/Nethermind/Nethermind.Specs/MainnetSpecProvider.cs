@@ -10,7 +10,7 @@ namespace Nethermind.Specs;
 public class MainnetSpecProvider : ForkScheduleSpecProvider
 {
     public const long HomesteadBlockNumber = 1_150_000;
-    public const long DaoBlockNumberConst = 1_920_000;
+    public const long DaoForkBlockNumber = 1_920_000;
     public const long TangerineWhistleBlockNumber = 2_463_000;
     public const long SpuriousDragonBlockNumber = 2_675_000;
     public const long ByzantiumBlockNumber = 4_370_000;
@@ -48,9 +48,9 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
 
     public MainnetSpecProvider() : this(new ForkSchedule
     {
-        [GenesisBlock] = Frontier.Instance,
+        [GenesisBlockNumber] = Frontier.Instance,
         [HomesteadBlockNumber] = Homestead.Instance,
-        [DaoBlockNumberConst] = Dao.Instance,
+        [DaoForkBlockNumber] = Dao.Instance,
         [TangerineWhistleBlockNumber] = TangerineWhistle.Instance,
         [SpuriousDragonBlockNumber] = SpuriousDragon.Instance,
         [ByzantiumBlockNumber] = Byzantium.Instance,
@@ -84,7 +84,7 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
             excludeTimestamps: [BPO3BlockTimestamp, BPO4BlockTimestamp, BPO5BlockTimestamp]);
 
     public override ulong NetworkId => Core.BlockchainIds.Mainnet;
-    public override long? DaoBlockNumber => DaoBlockNumberConst;
+    public override long? DaoBlockNumber => DaoForkBlockNumber;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
     public override ulong TimestampFork => ShanghaiBlockTimestamp;
 

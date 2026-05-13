@@ -12,7 +12,7 @@ namespace Nethermind.Specs;
 
 public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
 {
-    public const long GenesisBlock = 0L;
+    public const long GenesisBlockNumber = 0L;
     public const ulong GenesisTimestamp = 0UL;
 
     private readonly Lazy<ForkSpec[]> _schedule;

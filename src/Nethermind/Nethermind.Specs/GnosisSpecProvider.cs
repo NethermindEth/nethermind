@@ -31,7 +31,7 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider
     private GnosisSpecProvider() : base(
         static () => new ForkSchedule
         {
-            [GenesisBlock] = Byzantium.Instance,
+            [GenesisBlockNumber] = Byzantium.Instance,
             [ConstantinopleBlockNumber] = Constantinople.Instance,
             [ConstantinopleFixBlockNumber] = ConstantinopleFix.Instance,
             [IstanbulBlockNumber] = Istanbul.Instance,
