@@ -21,40 +21,49 @@ namespace Nethermind.Consensus.Processing;
 /// <summary>
 /// Coordinates all BAL-aware processing for a block: spinning up the right tx-processor pool
 /// (parallel vs sequential), publishing the cumulative <see cref="GeneratedBlockAccessList"/>,
-/// and orchestrating prestate load → tx execution → incremental validation → state apply.
+/// and orchestrating tx execution → incremental validation → state apply.
 /// Implementation is split across partial files by concern:
 ///   * BlockAccessListManager.cs                       — lifecycle, per-tx hot path, fields
 ///   * BlockAccessListManager.Validation.cs            — incremental + per-tx 2D inclusion check
-///   * BlockAccessListManager.PrestateAndStateChanges.cs — prestate load, ApplyStateChanges, SetBlockAccessList
+///   * BlockAccessListManager.StateChanges.cs          — ApplyStateChanges, SetBlockAccessList
 ///   * BlockAccessListManager.SystemContracts.cs       — beacon root, blockhash, AuRa, withdrawals, requests
 ///   * BlockAccessListManager.TxProcessorPool.cs       — nested pool / processor / world-state types
 /// </summary>
+/// <remarks>
+/// Parent-state reads (for values the suggested BAL doesn't carry at the current index) flow
+/// through a pooled <see cref="IReadOnlyTxProcessingEnvFactory"/>. Each parallel worker rents
+/// its own snapshot scope of the parent state, scoped against the state root captured at
+/// <see cref="PrepareForProcessing"/>. The factory is supplied via DI; passing <c>null</c>
+/// disables parent-reader-based parallel execution.
+/// </remarks>
 public partial class BlockAccessListManager(
     IWorldState stateProvider,
     ISpecProvider specProvider,
     IBlockhashProvider blockHashProvider,
     ILogManager logManager,
     IBlocksConfig blocksConfig,
-    IWithdrawalProcessorFactory withdrawalProcessorFactory)
-    : IBlockAccessListManager
+    IWithdrawalProcessorFactory withdrawalProcessorFactory,
+    PrewarmerEnvFactory? prewarmerEnvFactory = null,
+    PreBlockCaches? preBlockCaches = null,
+    IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null)
+    : IBlockAccessListManager, IDisposable
 {
     private BlockExecutionContext? _blockExecutionContext;
     private ITxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private readonly Lazy<ParallelTxProcessorWithWorldStateManager> _parallelTxProcessorWithWorldStateManager =
-        new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
+        new(() => new(blockHashProvider, specProvider, stateProvider, logManager, prewarmerEnvFactory, preBlockCaches, readOnlyTxProcessingEnvFactory));
     private readonly Lazy<SequentialTxProcessorWithWorldStateManager> _sequentialTxProcessorWithWorldStateManager =
         new(() => new(blockHashProvider, specProvider, stateProvider, logManager));
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
-    // Cache key guarding LoadPreStateToSuggestedBlockAccessList against double-mutation of the
-    // suggested block's BAL: that method appends prestate entries in place, so calling it
-    // twice for the same Block instance corrupts the BAL. PrepareForProcessing can be invoked
-    // more than once per block within the same DI scope (the manager is scoped to the main
-    // processing context, not per block) — e.g. on retry — so we skip the load when the hash
-    // matches the most recently loaded one.
-    private Hash256 _lastLoadedBal = Hash256.Zero;
+
+    // State root captured at PrepareForProcessing — the snapshot point against which each
+    // parallel worker's parent-reader scope is opened. Captured only when ParallelExecutionEnabled
+    // (which itself requires stateProvider.IsInScope). Null on the sequential path so attempts
+    // to build a parent-reader scope without an active state scope fail fast.
+    private Hash256? _parentStateRoot;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
     // suggested index is built once at PrepareForProcessing; the generated index mirrors its
@@ -89,30 +98,21 @@ public partial class BlockAccessListManager(
         Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
-        // Parallel execution requires the BAL body to be present on the block.
-        // Blocks from p2p/RLP fixtures only have the header hash, not the decoded BAL body.
+        // Parallel execution requires:
+        //  * the BAL body to be present on the block (RLP-only fixtures only carry the hash);
+        //  * the state provider to be scoped, so we can capture the parent state root for the
+        //    per-worker snapshot reader.
         ParallelExecutionEnabled = Enabled
             && blocksConfig.ParallelExecution
             && !_isBuilding
-            && suggestedBlock.BlockAccessList is not null;
+            && suggestedBlock.BlockAccessList is not null
+            && stateProvider.IsInScope;
 
         if (Enabled)
         {
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
-
-            // See _lastLoadedBal field comment — skip when the same block is re-prepared.
-            // Prestate loading itself is now deferred to slot 0 of the parallel For loop so
-            // worker threads can start executing transactions while the loader proceeds. Here
-            // we only flip the per-account gates so any worker that races ahead of the loader
-            // blocks until prestate for its account has been loaded.
-            if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
-            {
-                foreach (ReadOnlyAccountChanges accountChanges in suggestedBlock.BlockAccessList.AccountChanges)
-                {
-                    accountChanges.EnablePrestateGate();
-                }
-            }
+            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
 
             // Build the column-oriented validation index used by ValidateBlockAccessList's
             // fast path. Runs once per block; subsequent per-tx ChangesEqual calls become
@@ -145,7 +145,7 @@ public partial class BlockAccessListManager(
         {
             _txProcessorWithWorldStateManager = ParallelExecutionEnabled ? _parallelTxProcessorWithWorldStateManager.Value : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot);
         }
     }
 
@@ -195,6 +195,14 @@ public partial class BlockAccessListManager(
         }
     }
 
+    public void Dispose()
+    {
+        if (_parallelTxProcessorWithWorldStateManager.IsValueCreated)
+        {
+            _parallelTxProcessorWithWorldStateManager.Value.Dispose();
+        }
+    }
+
     private void CheckInitialized()
     {
         if (_txProcessorWithWorldStateManager is null) ThrowNotInitialized(nameof(_txProcessorWithWorldStateManager));
@@ -207,6 +215,7 @@ public partial class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
+        _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
         _suggestedValidationIndex = null;
         _generatedValidationIndex = null;

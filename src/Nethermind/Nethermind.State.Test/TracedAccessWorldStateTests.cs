@@ -150,17 +150,16 @@ public class TracedAccessWorldStateTests(bool parallel)
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
         ReadOnlyAccountChanges accountChanges = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
-            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
-            .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []))
             .TestObject;
-        accountChanges.SetExistedBeforeBlock(true);
         ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList.WithAccountChanges(accountChanges).TestObject;
 
         BlockAccessListBasedWorldState balWorldState = new(inner, LimboLogs.Instance);
         balWorldState.SetBlockAccessIndex(0);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
         balWorldState.Setup(block);
+        // Reads not covered by the BAL fall through to the parent reader; in this fixture the
+        // inner state itself (scoped against genesis) is the parent.
+        balWorldState.SetParentReader(inner);
 
         TracedAccessWorldState tws = new(balWorldState, parallel: true);
         tws.SetGeneratingBlockAccessList(new());
@@ -534,21 +533,4 @@ public class TracedAccessWorldStateTests(bool parallel)
         Assert.That(nonce, Is.Null, "GetNonce should return null when no nonce changes exist, not UInt256.MaxValue");
     }
 
-    [Test]
-    public void AccountChanges_GetBalance_ReturnsPreBlockValue_WhenOnlyPreStateExists()
-    {
-        ReadOnlyAccountChanges ac = new(TestItem.AddressA);
-        ac.LoadPreStateBalance(500);
-        UInt256? balance = ac.GetBalance(0);
-        Assert.That(balance, Is.EqualTo((UInt256)500));
-    }
-
-    [Test]
-    public void AccountChanges_GetNonce_ReturnsPreBlockValue_WhenOnlyPreStateExists()
-    {
-        ReadOnlyAccountChanges ac = new(TestItem.AddressA);
-        ac.LoadPreStateNonce(3);
-        UInt256? nonce = ac.GetNonce(0);
-        Assert.That(nonce, Is.EqualTo((UInt256)3));
-    }
 }

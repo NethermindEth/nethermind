@@ -14,14 +14,14 @@ namespace Nethermind.Core.BlockAccessLists;
 /// <summary>
 /// Per-slot changes from a decoded BAL. Backed by a <see cref="StorageChange"/> array sorted by
 /// <see cref="StorageChange.Index"/> (the decoder validates ordering on the way in), so
-/// <see cref="Get(int)"/> can binary-search via <see cref="System.MemoryExtensions"/>.
+/// <see cref="Get(uint, Span{byte})"/> can binary-search via <see cref="System.MemoryExtensions"/>.
 /// </summary>
 public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquatable<ReadOnlySlotChanges>
 {
     public UInt256 Key { get; } = key;
 
     [JsonConverter(typeof(StorageChangesByIndexConverter))]
-    public StorageChange[] Changes { get; private set; } = changes;
+    public StorageChange[] Changes { get; } = changes;
 
     public bool Equals(ReadOnlySlotChanges? other)
         => other is not null && Key.Equals(other.Key) && Changes.SequenceEqual(other.Changes);
@@ -45,13 +45,23 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
     /// <see cref="Nethermind.State.BlockAccessListBasedWorldState"/>.
     /// </remarks>
     public ReadOnlySpan<byte> Get(uint blockAccessIndex, Span<byte> buffer)
+        => TryGetLastBefore(blockAccessIndex, buffer, out ReadOnlySpan<byte> result) ? result : ReadOnlySpan<byte>.Empty;
+
+    /// <summary>Like <see cref="Get(uint, Span{byte})"/> but distinguishes "no entry before the
+    /// index" (returns <c>false</c>; caller can fall through to a parent-state reader) from
+    /// "entry present whose value happens to be zero" (returns <c>true</c> with an empty span).</summary>
+    public bool TryGetLastBefore(uint blockAccessIndex, Span<byte> buffer, out ReadOnlySpan<byte> result)
     {
         ReadOnlySpan<StorageChange> span = Changes;
         int idx = span.BinarySearch(new IndexKey<StorageChange>(blockAccessIndex));
         // Whether found exactly or not, idx (or ~idx) is the position of the first entry with
         // Index >= blockAccessIndex. The last strictly-before entry is one step earlier.
         int lastBefore = (idx >= 0 ? idx : ~idx) - 1;
-        if (lastBefore < 0) return ReadOnlySpan<byte>.Empty;
+        if (lastBefore < 0)
+        {
+            result = ReadOnlySpan<byte>.Empty;
+            return false;
+        }
 
         // StorageChange.Value is already in big-endian wire form (see ctor); reinterpret the
         // 32-byte EvmWord vector as a byte span and copy into the caller's buffer.
@@ -59,12 +69,7 @@ public class ReadOnlySlotChanges(UInt256 key, StorageChange[] changes) : IEquata
         ReadOnlySpan<byte> valueBytes = MemoryMarshal.CreateReadOnlySpan(
             ref Unsafe.As<EvmWord, byte>(ref value), 32);
         valueBytes.CopyTo(buffer);
-        return buffer[..32].WithoutLeadingZeros();
+        result = buffer[..32].WithoutLeadingZeros();
+        return true;
     }
-
-    /// <summary>Adds a prestate change at <see cref="Eip7928Constants.PrestateIndex"/> — only used
-    /// during prestate loading. Prepended (one realloc); sort order is preserved because the
-    /// prestate-aware comparer (see <see cref="PrestateAwareIndexComparer"/>) places the
-    /// sentinel ahead of every real index.</summary>
-    public void LoadPreStateChange(StorageChange storageChange) => Changes = [storageChange, .. Changes];
 }

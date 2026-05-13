@@ -20,8 +20,11 @@ using NUnit.Framework;
 namespace Nethermind.Store.Test;
 
 /// <summary>
-/// Tests for <see cref="BlockAccessListBasedWorldState"/> — verifies that state reads
-/// are served from the suggested <see cref="ReadOnlyBlockAccessList"/> and that missing entries throw.
+/// Tests for <see cref="BlockAccessListBasedWorldState"/>. Reads first try the suggested
+/// <see cref="ReadOnlyBlockAccessList"/>; when the BAL doesn't carry an entry at the current
+/// block-access index, they fall through to the attached parent-state reader. Reads for an
+/// account that isn't declared in the BAL at all throw
+/// <see cref="BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException"/>.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
@@ -51,17 +54,19 @@ public class BlockAccessListBasedWorldStateTests
         bws.SetBlockAccessIndex(blockAccessIndex);
         Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
         bws.Setup(block);
-        IDisposable scope = bws.BeginScope(baseBlock);
+        IDisposable scope = inner.BeginScope(baseBlock);
+        // The inner world state, scoped against the genesis root, is itself a valid parent reader
+        // — reads against it answer pre-block state directly from the trie.
+        bws.SetParentReader(inner);
         return (bws, scope);
     }
 
     [Test]
-    public void GetBalance_ReturnsValueFromSuggestedBal()
+    public void GetBalance_FallsThroughToParentReader_WhenBalHasNoEntry()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 100))
                 .TestObject)
             .TestObject;
 
@@ -81,7 +86,7 @@ public class BlockAccessListBasedWorldStateTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 100), new BalanceChange(0, 200))
+                .WithBalanceChanges(new BalanceChange(0, 200))
                 .TestObject)
             .TestObject;
 
@@ -101,7 +106,7 @@ public class BlockAccessListBasedWorldStateTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0), new NonceChange(0, 3))
+                .WithNonceChanges(new NonceChange(0, 3))
                 .TestObject)
             .TestObject;
 
@@ -144,15 +149,14 @@ public class BlockAccessListBasedWorldStateTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(Build.An.AccountChanges
                 .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
-                .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
-                .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []), new CodeChange(0, priorTxCode))
+                .WithCodeChanges(new CodeChange(0, priorTxCode))
                 .TestObject)
             .TestObject;
 
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
             blockAccessIndex: 1,
-            suggestedBal: bal);
+            suggestedBal: bal,
+            genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
         using (scope)
         {
             bool exists = bws.TryGetAccount(TestItem.AddressA, out AccountStruct account);
@@ -167,14 +171,16 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
-    public void AccountExists_WithOnlyPrestateSentinelAndCurrentTxChanges_ReturnsFalseBeforeCurrentTx()
+    public void AccountExists_AccountCreatedByCurrentTxOnly_ReturnsFalseBeforeCurrentTx()
     {
+        // Account is first touched at tx index 23. Before that index, the BAL has no entry
+        // *and* the parent state has no account (genesisSetup not invoked), so AccountExists
+        // must be false.
         byte[] currentTxCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
-            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0), new NonceChange(23, 1))
-            .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []), new CodeChange(23, currentTxCode))
+            .WithNonceChanges(new NonceChange(23, 1))
+            .WithCodeChanges(new CodeChange(23, currentTxCode))
             .TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
 
@@ -194,9 +200,8 @@ public class BlockAccessListBasedWorldStateTests
         byte[] priorTxCode = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0))
-            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0), new NonceChange(23, 1))
-            .WithCodeChanges(new CodeChange(Eip7928Constants.PrestateIndex, []), new CodeChange(23, priorTxCode))
+            .WithNonceChanges(new NonceChange(23, 1))
+            .WithCodeChanges(new CodeChange(23, priorTxCode))
             .TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
 
@@ -233,14 +238,40 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
-    public void AccountExists_ExistedBeforeBlock_ReturnsTrue()
+    public void GetStorage_DeclaredRead_FallsThroughToParentReader()
     {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageReads(cell.Index)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 1,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.Set(cell, [0x42]);
+                ws.Commit(Spec);
+            });
+        using (scope)
+        {
+            ReadOnlySpan<byte> retrieved = bws.Get(cell);
+            Assert.That(retrieved.ToArray(), Is.EqualTo(new byte[] { 0x42 }));
+        }
+    }
+
+    [Test]
+    public void AccountExists_ExistedInParentState_ReturnsTrue()
+    {
+        // Account is declared in BAL but has no entries at index 0; existence comes from
+        // the parent reader (set up via genesisSetup).
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
-            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 1))
             .TestObject;
-        ac.SetExistedBeforeBlock(true);
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
 
         (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
@@ -257,13 +288,12 @@ public class BlockAccessListBasedWorldStateTests
     public void AccountExists_CreatedAtLaterTx_ReturnsFalseForEarlierIndex()
     {
         // Account is first touched at tx 2 (balance change at index 2). For tx 1's world state,
-        // calling AccountExists(1) must return false even though prestate is loaded at PrestateIndex.
+        // calling AccountExists must return false: no entry in BAL strictly before index 1, and
+        // the account doesn't exist in parent state.
         ReadOnlyAccountChanges ac = Build.An.AccountChanges
             .WithAddress(TestItem.AddressA)
-            .WithBalanceChanges(new BalanceChange(Eip7928Constants.PrestateIndex, 0), new BalanceChange(2, 100))
-            .WithNonceChanges(new NonceChange(Eip7928Constants.PrestateIndex, 0))
+            .WithBalanceChanges(new BalanceChange(2, 100))
             .TestObject;
-        // ExistedBeforeBlock = false (default) — account did not exist at start of block.
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(ac).TestObject;
 
         (BlockAccessListBasedWorldState bwsAtIndex1, IDisposable scope1) = CreateBlockAccessListState(

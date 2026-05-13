@@ -41,16 +41,6 @@ public interface IBlockAccessListManager
     void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token);
     void SetBlockAccessList(Block block);
 
-    /// <summary>
-    /// Loads prestate (pre-block account/storage values from <c>stateProvider</c>) into the
-    /// suggested BAL and signals each account's prestate gate so parallel transaction workers
-    /// blocked on <c>ReadOnlyAccountChanges.WaitForPrestate</c> can proceed. Intended to run
-    /// in the same parallel-loop slot as <see cref="BlockAccessListManager.ApplyStateChanges"/>
-    /// (i.e. slot 0), immediately before it: workers in slots 1..N can start executing while
-    /// the loader fans out account-by-account.
-    /// </summary>
-    void LoadPreStateToSuggestedBlockAccessList(Block suggestedBlock);
-
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);

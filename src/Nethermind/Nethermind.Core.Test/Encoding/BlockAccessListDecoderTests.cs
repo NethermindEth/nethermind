@@ -161,23 +161,6 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Decoded_slot_changes_accepts_prestate_graft_first()
-    {
-        // Wire path: SlotChangesDecoder produces a sorted StorageChange[] with real indices.
-        // LoadPreStateChange prepends a PrestateIndex entry afterwards (one realloc), so the
-        // sentinel must end up at index [0] of the resulting array.
-        StorageChange change = new(0, 0xCC);
-        ReadOnlySlotChanges seed = new(7u, [change]);
-        byte[] rlp = Rlp.Encode(seed).Bytes;
-
-        Rlp.ValueDecoderContext ctx = new(rlp);
-        ReadOnlySlotChanges decoded = SlotChangesDecoder.Instance.Decode(ref ctx, RlpBehaviors.None);
-
-        decoded.LoadPreStateChange(new StorageChange(Eip7928Constants.PrestateIndex, 0xAA));
-        Assert.That(decoded.Changes[0].Index, Is.EqualTo(Eip7928Constants.PrestateIndex));
-    }
-
-    [Test]
     public void Can_decode_then_encode_balance_change()
     {
         const string rlp = "0xc801861319718811c8";

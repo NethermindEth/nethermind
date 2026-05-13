@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Cpu;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
@@ -29,6 +31,8 @@ public partial class BlockProcessor
         : IBlockProcessor.IBlockTransactionsExecutor
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
+        private int[] _txExecutionOrder = [];
+        private TxExecutionSortKey[] _txExecutionSortKeys = [];
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
@@ -117,13 +121,15 @@ public partial class BlockProcessor
                 gasResults[i] = new GasValidationResultSlot();
             }
 
+            EnsureSchedulingBuffers(len);
+            BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
+
             // Pre-execution (the system-contract calls StoreBeaconRoot + ApplyBlockhashStateChanges)
-            // runs as iteration 1 of the parallel For — alongside slot 0's loader+ApplyStateChanges
-            // and the tx iterations. Its writes go through BlockAccessListBasedWorldState which is
+            // runs as iteration 1 of the parallel For — alongside slot 0's ApplyStateChanges and
+            // the tx iterations. Its writes go through BlockAccessListBasedWorldState which is
             // a no-op for writes (the post-block state lands in stateProvider via ApplyStateChanges
-            // in slot 0), and its reads block per-account on the prestate gate that slot 0's loader
-            // signals — so pre-execution and tx workers all proceed as soon as their accounts are
-            // loaded, without waiting for the full load.
+            // in slot 0). Reads against the suggested BAL fall through to the per-worker parent
+            // reader for any value the BAL doesn't carry at index 0.
             //
             // The validator (IncrementalValidation) needs to merge balIndex=0's BAL after this
             // iteration completes. preExecutionDoneTcs is the synchronization point: iteration 1
@@ -136,12 +142,13 @@ public partial class BlockProcessor
 
             try
             {
-                // Iterations: 0 = loader+ApplyStateChanges, 1 = pre-execution, 2..len+1 = tx (txIndex = i-2).
+                // Iterations: 0 = ApplyStateChanges, 1 = pre-execution, 2..len+1 = tx (scheduled
+                // order = _txExecutionOrder[i-2]; balIndex = scheduledTxIndex+1).
                 ParallelUnbalancedWork.For(
                     0,
                     len + 2,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, spec, preExecutionDoneTcs, txs: block.Transactions, isBlockProcessingThread),
+                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, spec, preExecutionDoneTcs, txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread),
                     static (i, state) =>
                     {
                         // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -153,18 +160,6 @@ public partial class BlockProcessor
                         {
                             if (i == 0)
                             {
-                                // Prestate loading was deferred from PrepareForProcessing to here so
-                                // tx workers and the pre-execution iteration can start running while
-                                // we fan out the load account-by-account. Each account's prestate
-                                // gate is signaled as soon as its load completes, freeing any consumer
-                                // blocked on it (see ReadOnlyAccountChanges.WaitForPrestate).
-                                //
-                                // Invariant: this loader iteration must NEVER call WaitForPrestate
-                                // — it would deadlock on the gate it is fulfilling. ParallelUnbalancedWork
-                                // schedules slot 0 ahead of the tx-worker queue so a fully-busy pool
-                                // cannot starve the loader.
-                                state.balManager.LoadPreStateToSuggestedBlockAccessList(state.block);
-
                                 // ApplyStateChanges mutates the shared stateProvider so runs inside
                                 // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
                                 // workers and the pre-execution iteration read from BAL-backed world
@@ -191,7 +186,7 @@ public partial class BlockProcessor
                                 return state;
                             }
 
-                            int txIndex = i - 2;
+                            int txIndex = state.txExecutionOrder[i - 2];
                             Transaction tx = state.txs[txIndex];
                             // Pre-compute intrinsic gas on the worker thread; carry it through the
                             // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
@@ -205,8 +200,8 @@ public partial class BlockProcessor
                                 // and recycles the pool slot via Dispose BEFORE we signal the gas
                                 // result, so the validator finds _perTxBal[balIndex] populated when
                                 // it awaits gasResults[txIndex] — even if ProcessTransaction throws.
-                                // balIndex = txIndex + 1 = i - 1 (balIndex 0 is pre-execution).
-                                using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(i - 1)))
+                                // balIndex = txIndex + 1 (balIndex 0 is pre-execution).
+                                using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(txIndex + 1)))
                                 {
                                     ProcessTransaction(
                                         lease.Adapter,
@@ -249,6 +244,8 @@ public partial class BlockProcessor
             }
             catch
             {
+                CancelIncompleteGasResults(gasResults, len);
+
                 // Observe the validator before propagating, so its exception isn't lost as an
                 // unobserved task exception. Worker TrySetCanceled and pre-execution
                 // TrySetException above guarantee IncrementalValidation will unblock.
@@ -285,6 +282,65 @@ public partial class BlockProcessor
                 // BlockTraceDumper's invalid-block dump on failure, and keeps tracer state
                 // consistent on success.
                 HarvestPerTxReceiptsIntoOuter(receiptsTracers, outerReceiptsTracer);
+            }
+        }
+
+        private void EnsureSchedulingBuffers(int length)
+        {
+            if (_txExecutionOrder.Length >= length) return;
+            int newLength = Math.Max(length, _txExecutionOrder.Length == 0 ? 4 : _txExecutionOrder.Length * 2);
+            Array.Resize(ref _txExecutionOrder, newLength);
+            Array.Resize(ref _txExecutionSortKeys, newLength);
+        }
+
+        /// <summary>Canonical tx-execution lead: the prefix of the schedule that always runs in
+        /// natural block order. Chosen so single- and small-tx blocks don't pay the sort cost;
+        /// larger blocks reorder the tail to surface the heaviest gas-limit txs first, which
+        /// reduces tail-latency stragglers in <see cref="ParallelUnbalancedWork.For"/>.</summary>
+        internal static int GetCanonicalExecutionLead(int txCount)
+        {
+            int lead = Math.Max(8, RuntimeInformation.ProcessorCount * 2);
+            return Math.Min(txCount, lead);
+        }
+
+        internal static void BuildTxExecutionOrder(Transaction[] txs, int[] txExecutionOrder, int canonicalLead)
+        {
+            TxExecutionSortKey[] sortKeys = new TxExecutionSortKey[txs.Length];
+            BuildTxExecutionOrder(txs, txExecutionOrder, sortKeys, canonicalLead);
+        }
+
+        private static void BuildTxExecutionOrder(
+            Transaction[] txs,
+            int[] txExecutionOrder,
+            TxExecutionSortKey[] sortKeys,
+            int canonicalLead)
+        {
+            int len = txs.Length;
+            for (int i = 0; i < len; i++)
+            {
+                txExecutionOrder[i] = i;
+            }
+
+            int lead = Math.Clamp(canonicalLead, 0, len);
+            int sortCount = len - lead;
+            if (sortCount <= 1)
+            {
+                return;
+            }
+
+            for (int i = lead; i < len; i++)
+            {
+                sortKeys[i] = new(txs[i], i);
+            }
+
+            Array.Sort(sortKeys, txExecutionOrder, lead, sortCount);
+        }
+
+        internal static void CancelIncompleteGasResults(GasValidationResultSlot[] gasResults, int length)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                gasResults[i].TrySetCanceled();
             }
         }
 
@@ -360,6 +416,46 @@ public partial class BlockProcessor
         {
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+        }
+
+        /// <summary>Stable, allocation-free sort key for the tx-tail schedule. Sorts heaviest
+        /// estimated-work transactions first; ties resolved by ascending tx index so the
+        /// schedule is deterministic.</summary>
+        private readonly struct TxExecutionSortKey(Transaction tx, int index) : IComparable<TxExecutionSortKey>
+        {
+            private readonly long _gasLimit = tx.GasLimit;
+            private readonly int _dataLength = tx.DataLength;
+            private readonly int _authorizationCount = tx.AuthorizationList?.Length ?? 0;
+            private readonly int _accessListItems = GetAccessListItemCount(tx.AccessList);
+            private readonly int _contractCreation = tx.IsContractCreation ? 1 : 0;
+            private readonly int _index = index;
+
+            public int CompareTo(TxExecutionSortKey other)
+            {
+                int comparison = other._gasLimit.CompareTo(_gasLimit);
+                if (comparison != 0) return comparison;
+
+                comparison = other._dataLength.CompareTo(_dataLength);
+                if (comparison != 0) return comparison;
+
+                comparison = other._authorizationCount.CompareTo(_authorizationCount);
+                if (comparison != 0) return comparison;
+
+                comparison = other._accessListItems.CompareTo(_accessListItems);
+                if (comparison != 0) return comparison;
+
+                comparison = other._contractCreation.CompareTo(_contractCreation);
+                if (comparison != 0) return comparison;
+
+                return _index.CompareTo(other._index);
+            }
+
+            private static int GetAccessListItemCount(AccessList? accessList)
+            {
+                if (accessList is null) return 0;
+                (int addressesCount, int storageKeysCount) = accessList.Count;
+                return addressesCount + storageKeysCount;
+            }
         }
     }
 }

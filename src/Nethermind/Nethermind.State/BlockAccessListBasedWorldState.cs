@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -18,11 +20,26 @@ using Nethermind.Logging;
 
 namespace Nethermind.State;
 
+/// <summary>
+/// A read-side world-state shim used by parallel-validation workers. Each EVM read goes
+/// through the suggested BAL first; if the BAL doesn't carry an entry for that
+/// (address, slot) at the current block-access index, we fall through to a per-worker
+/// <see cref="_parentReader"/> snapshot of the pre-block state. Writes are no-ops — the
+/// generated BAL journal owned by <see cref="TracedAccessWorldState"/> records every change.
+/// </summary>
+/// <remarks>
+/// BAL completeness is still enforced: if an account is not declared in the suggested BAL
+/// at all, reads throw <see cref="InvalidBlockLevelAccessListException"/>. This mirrors what
+/// the sequential path's <c>ValidateBlockAccessList</c> would surface after the tx executed,
+/// so both paths produce the same <see cref="InvalidBlockException"/> for an under-specified
+/// BAL.
+/// </remarks>
 public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogManager logManager) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
+    private IWorldState? _parentReader;
     private uint _blockAccessIndex = 0;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
     private UInt256 _scratchBalance;
@@ -44,6 +61,27 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
         _transientStorageProvider.Reset();
+    }
+
+    /// <summary>Attaches a per-worker snapshot of the pre-block state. The reader is read-only
+    /// and is the fall-through source for any (address, slot) the BAL doesn't cover at the
+    /// current block-access index. Must be cleared via <see cref="ClearParentReader"/> when the
+    /// processor is returned to the pool, so the snapshot scope is disposed promptly.</summary>
+    public void SetParentReader(IWorldState parentReader)
+    {
+        if (_parentReader is not null && !ReferenceEquals(_parentReader, parentReader))
+        {
+            ThrowParentReaderAlreadyAttached();
+        }
+
+        _parentReader = parentReader;
+    }
+
+    public void ClearParentReader()
+    {
+        _parentReader = null;
+        _suggestedBlockAccessList = null;
+        _suggestedBlockHeader = null;
     }
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
@@ -78,20 +116,24 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     private ReadOnlySpan<byte> GetAtCurrentIndex(in StorageCell storageCell)
     {
-        CheckInitialized();
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
-
-        if (accountChanges is not null)
+        ReadOnlyAccountChanges accountChanges = ResolveAccountChanges(storageCell.Address);
+        if (accountChanges.TryGetSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges))
         {
-            accountChanges.TryGetSlotChanges(storageCell.Index, out ReadOnlySlotChanges? slotChanges);
-
-            if (slotChanges is not null)
+            if (slotChanges.TryGetLastBefore(_blockAccessIndex, _scratchStorage, out ReadOnlySpan<byte> span))
             {
-                return slotChanges.Get(_blockAccessIndex, _scratchStorage);
+                return span;
             }
+
+            return GetParentReader().Get(in storageCell);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+        if (accountChanges.IsStorageRead(storageCell.Index))
+        {
+            return GetParentReader().Get(in storageCell);
+        }
+
+        ThrowMissingStorage(storageCell);
+        return default;
     }
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce) => oldNonce = GetNonce(address);
@@ -105,64 +147,35 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public ref readonly UInt256 GetBalance(Address address)
     {
-        CheckInitialized();
-
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-        if (accountChanges is not null)
-        {
-            _scratchBalance = accountChanges.GetBalance(_blockAccessIndex)
-                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader,
-                    $"Suggested block-level access list missing balance for {address} at index {_blockAccessIndex}.");
-            return ref _scratchBalance;
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        ReadOnlyAccountChanges accountChanges = ResolveAccountChanges(address);
+        _scratchBalance = accountChanges.GetBalance(_blockAccessIndex) ?? GetParentReader().GetBalance(address);
+        return ref _scratchBalance;
     }
 
     public UInt256 GetNonce(Address address)
     {
-        CheckInitialized();
-
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-        if (accountChanges is not null)
-        {
-            return accountChanges.GetNonce(_blockAccessIndex)
-                ?? throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader,
-                    $"Suggested block-level access list missing nonce for {address} at index {_blockAccessIndex}.");
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        ReadOnlyAccountChanges accountChanges = ResolveAccountChanges(address);
+        return accountChanges.GetNonce(_blockAccessIndex) ?? GetParentReader().GetNonce(address);
     }
 
     public ref readonly ValueHash256 GetCodeHash(Address address)
     {
-        CheckInitialized();
-
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-        if (accountChanges is not null)
+        ReadOnlyAccountChanges accountChanges = ResolveAccountChanges(address);
+        if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
         {
-            _scratchCodeHash = accountChanges.GetCodeHash(_blockAccessIndex);
+            _scratchCodeHash = codeChange.CodeHash;
             return ref _scratchCodeHash;
         }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        _scratchCodeHash = GetParentReader().GetCodeHash(address);
+        return ref _scratchCodeHash;
     }
 
     public byte[]? GetCode(Address address)
     {
-        CheckInitialized();
-
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-        if (accountChanges is not null)
-        {
-            return accountChanges.GetCode(_blockAccessIndex);
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        ReadOnlyAccountChanges accountChanges = ResolveAccountChanges(address);
+        return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
+            ? codeChange.Code
+            : GetParentReader().GetCode(address);
     }
 
     public byte[]? GetCode(in ValueHash256 _)
@@ -178,18 +191,42 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
-        if (AccountExists(address))
+        ReadOnlyAccountChanges accountChanges = ResolveAccountChanges(address);
+        IWorldState parentReader = GetParentReader();
+
+        bool exists = parentReader.TryGetAccount(address, out account);
+        UInt256 nonce = exists ? account.Nonce : UInt256.Zero;
+        UInt256 balance = exists ? account.Balance : UInt256.Zero;
+        ValueHash256 storageRoot = exists ? account.StorageRoot : Keccak.EmptyTreeHash.ValueHash256;
+        ValueHash256 codeHash = exists ? account.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
+
+        bool hasPriorChange = false;
+        if (accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out NonceChange nonceChange))
         {
-            account = new(
-                GetNonce(address),
-                GetBalance(address),
-                Keccak.EmptyTreeHash, // never used
-                GetCodeHash(address));
-            return true;
+            nonce = nonceChange.Value;
+            hasPriorChange = true;
         }
 
-        account = AccountStruct.TotallyEmpty;
-        return false;
+        if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out BalanceChange balanceChange))
+        {
+            balance = balanceChange.Value;
+            hasPriorChange = true;
+        }
+
+        if (accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange))
+        {
+            codeHash = codeChange.CodeHash;
+            hasPriorChange |= codeChange.Code.Length != 0;
+        }
+
+        if (!exists && !hasPriorChange)
+        {
+            account = AccountStruct.TotallyEmpty;
+            return false;
+        }
+
+        account = new(nonce, balance, storageRoot, codeHash);
+        return true;
     }
 
     // BAL-backed account/storage mutations are restored by the generated BAL journal;
@@ -205,16 +242,27 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public bool AccountExists(Address address)
     {
-        CheckInitialized();
+        ReadOnlyAccountChanges accountChanges = ResolveAccountChanges(address);
 
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null)
+        if (GetParentReader().AccountExists(address))
         {
-            // check if existed before current tx
-            return accountChanges.AccountExists(_blockAccessIndex);
+            return true;
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        if (accountChanges.TryGetLastNonceChangeBefore(_blockAccessIndex, out _))
+        {
+            return true;
+        }
+
+        if (accountChanges.TryGetLastBalanceChangeBefore(_blockAccessIndex, out _))
+        {
+            return true;
+        }
+
+        // EIP-7702 / EIP-7928: a code-only modification (e.g. SetCode) at a prior tx also
+        // implies existence at this index, but only when the resulting code is non-empty.
+        return accountChanges.TryGetLastCodeChangeBefore(_blockAccessIndex, out CodeChange codeChange)
+            && codeChange.Code.Length != 0;
     }
 
     public bool IsContract(Address address)
@@ -222,21 +270,11 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
 
     public bool IsStorageEmpty(Address address)
     {
-        CheckInitialized();
-
-        // see https://eips.ethereum.org/EIPS/eip-7610
-        // storage could only be non-empty for 28 old accounts
-        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null)
-        {
-            // EmptyBeforeBlock is set by the prestate loader (see ReadOnlyAccountChanges'
-            // gate) — wait so a parallel tx worker doesn't observe the default `false`
-            // before the loader has updated it.
-            accountChanges.WaitForPrestate();
-            return accountChanges.EmptyBeforeBlock;
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader, $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+        // Storage emptiness is a property of the pre-block state; the BAL only carries
+        // changes within the block, never a "before" sentinel. Delegate straight to the
+        // parent reader, which reads from the actual state trie.
+        _ = ResolveAccountChanges(address);
+        return GetParentReader().IsStorageEmpty(address);
     }
 
     public bool IsDeadAccount(Address address)
@@ -265,10 +303,7 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
         ArrayPoolList<AddressAsKey> result = new(_suggestedBlockAccessList.AccountChanges.Count);
         foreach (ReadOnlyAccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
         {
-            // AccountChanged is set by the prestate loader (RecordWasChanged) — wait so we
-            // don't observe a stale value while the load is still in flight on slot 0.
-            accountChanges.WaitForPrestate();
-            if (accountChanges.AccountChanged)
+            if (accountChanges.HasStateChanges)
             {
                 result.Add(new AddressAsKey(accountChanges.Address));
             }
@@ -288,12 +323,42 @@ public class BlockAccessListBasedWorldState(IWorldState innerWorldState, ILogMan
     public void CreateEmptyAccountIfDeleted(Address address)
         => _innerWorldState.CreateEmptyAccountIfDeleted(address);
 
+    [MemberNotNull(nameof(_suggestedBlockAccessList), nameof(_suggestedBlockHeader))]
     private void CheckInitialized()
     {
-        if (_suggestedBlockAccessList is null)
-            throw new InvalidOperationException($"{nameof(_suggestedBlockAccessList)} was not initialized.");
-
-        if (_suggestedBlockHeader is null)
-            throw new InvalidOperationException($"{nameof(_suggestedBlockHeader)} was not initialized.");
+        if (_suggestedBlockAccessList is null) ThrowNotInitialized(nameof(_suggestedBlockAccessList));
+        if (_suggestedBlockHeader is null) ThrowNotInitialized(nameof(_suggestedBlockHeader));
     }
+
+    private IWorldState GetParentReader()
+    {
+        if (_parentReader is null) ThrowNotInitialized(nameof(_parentReader));
+        return _parentReader;
+    }
+
+    private ReadOnlyAccountChanges ResolveAccountChanges(Address address)
+    {
+        CheckInitialized();
+        ReadOnlyAccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        if (accountChanges is null) ThrowMissingAccount(address);
+        return accountChanges;
+    }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowNotInitialized(string fieldName)
+        => throw new InvalidOperationException($"{fieldName} was not initialized.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowParentReaderAlreadyAttached()
+        => throw new InvalidOperationException($"{nameof(_parentReader)} is already attached.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private void ThrowMissingAccount(Address address)
+        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!,
+            $"Suggested block-level access list missing account changes for {address} at index {_blockAccessIndex}.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private void ThrowMissingStorage(in StorageCell storageCell)
+        => throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader!,
+            $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
 }
