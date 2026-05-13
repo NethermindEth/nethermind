@@ -37,6 +37,12 @@ public class ArenaManagerForgetOnAdviseTests
     private ArenaManager NewManager() =>
         new(Path.Combine(_testDir, "arenas"), pageCacheBytes: 1024L * Environment.SystemPageSize, maxArenaSize: 1L << 20);
 
+    // Throwaway file backing — the manager's `_arenas` dict still doesn't know about the
+    // synthesised reservation's id, so AdviseDontNeed's file-level madvise path no-ops as
+    // before. The reservation just needs a non-null ArenaFile to satisfy the constructor.
+    private ArenaFile NewSyntheticFile(int id, long size) =>
+        new(id, Path.Combine(_testDir, $"synthetic_{id}.bin"), size);
+
     [Test]
     public void AdviseDontNeed_OnReservation_ClearsTrackerEntries_ForFullyCoveredPages()
     {
@@ -50,10 +56,11 @@ public class ArenaManagerForgetOnAdviseTests
         for (int p = 0; p < 10; p++)
             manager.PageTracker.ContainsPage(arenaId, p).Should().BeTrue();
 
-        // Reservation covering [0, 10*pageSize) — 10 fully-covered pages. The arena dictionary
-        // has no entry for arenaId=7; AdviseDontNeed gracefully no-ops the madvise but still
-        // runs ForgetTrackerRange (which is the behavior under test).
-        ArenaReservation reservation = new(manager, arenaFile: null, arenaId,
+        // Reservation covering [0, 10*pageSize) — 10 fully-covered pages. The manager's
+        // arena dictionary has no entry for arenaId=7; AdviseDontNeed gracefully no-ops the
+        // madvise but still runs ForgetTrackerRange (which is the behavior under test).
+        using ArenaFile syntheticFile = NewSyntheticFile(arenaId, 10L * pageSize);
+        ArenaReservation reservation = new(manager, syntheticFile, arenaId,
             offset: 0, size: 10L * pageSize, tag: "test");
 
         manager.AdviseDontNeed(reservation);
@@ -76,7 +83,8 @@ public class ArenaManagerForgetOnAdviseTests
         // Reservation [pageSize/2, pageSize/2 + 3*pageSize). Page-aligned start = page 1,
         // page-aligned end = page 3 (exclusive). So pages 1, 2 are fully covered; pages 0 and 3
         // straddle the boundary and must remain.
-        ArenaReservation reservation = new(manager, arenaFile: null, arenaId,
+        using ArenaFile syntheticFile = NewSyntheticFile(arenaId, 5L * pageSize);
+        ArenaReservation reservation = new(manager, syntheticFile, arenaId,
             offset: pageSize / 2, size: 3L * pageSize, tag: "test");
 
         manager.AdviseDontNeed(reservation);

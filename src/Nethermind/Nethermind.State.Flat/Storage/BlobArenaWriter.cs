@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.State.Flat.Hsst;
+using System.Buffers;
 
 namespace Nethermind.State.Flat.Storage;
 
@@ -33,11 +33,14 @@ namespace Nethermind.State.Flat.Storage;
 public sealed class BlobArenaWriter : IDisposable
 {
     private const int PageSize = 4096;
+    private const int BufferSize = 1024 * 1024;
 
     private readonly BlobArenaManager _manager;
-    private readonly ArenaWriter _inner;
     private readonly ushort _blobArenaId;
     private readonly long _startOffset;
+    private readonly FileStream _stream;
+    private byte[] _buffer;
+    private int _buffered;
     // File-absolute offset of the next byte to write. Starts at _startOffset (the file's
     // frontier when this writer was opened) and advances with each write and any inserted
     // pad bytes. The 2 GiB cap is per file: a writer that starts at frontier F can only
@@ -46,18 +49,19 @@ public sealed class BlobArenaWriter : IDisposable
     private bool _completed;
     private bool _disposed;
 
-    internal BlobArenaWriter(BlobArenaManager manager, ushort blobArenaId, long startOffset, ArenaWriter inner)
+    internal BlobArenaWriter(BlobArenaManager manager, ushort blobArenaId, long startOffset, FileStream stream)
     {
         _manager = manager;
         _blobArenaId = blobArenaId;
         _startOffset = startOffset;
         _written = startOffset;
-        _inner = inner;
+        _stream = stream;
+        _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
     }
 
     /// <summary>
     /// The blob arena file id that <see cref="WriteRlp"/> embeds in returned
-    /// <see cref="NodeRef"/>s. Equals the underlying <c>ArenaFile.Id</c>.
+    /// <see cref="NodeRef"/>s. Equals the underlying <see cref="ArenaFile.Id"/>.
     /// </summary>
     public ushort BlobArenaId => _blobArenaId;
 
@@ -76,14 +80,12 @@ public sealed class BlobArenaWriter : IDisposable
         if (_completed || _disposed)
             throw new InvalidOperationException("BlobArenaWriter is closed.");
 
-        ref ArenaBufferWriter bw = ref _inner.GetWriter();
         long offsetInPage = _written & (PageSize - 1);
         if (rlp.Length <= PageSize && offsetInPage != 0 && offsetInPage + rlp.Length > PageSize)
         {
             int pad = (int)(PageSize - offsetInPage);
-            Span<byte> padSpan = bw.GetSpan(pad);
-            padSpan[..pad].Clear();
-            bw.Advance(pad);
+            EnsureBufferSpace(pad)[..pad].Clear();
+            _buffered += pad;
             _written += pad;
         }
 
@@ -92,23 +94,32 @@ public sealed class BlobArenaWriter : IDisposable
                 $"BlobArenaWriter for blob arena {_blobArenaId} would exceed the 2 GiB per-file NodeRef offset ceiling.");
 
         int offset = (int)_written;
-        IByteBufferWriter.Copy(ref bw, rlp);
+        ReadOnlySpan<byte> remaining = rlp;
+        while (remaining.Length > 0)
+        {
+            Span<byte> dst = EnsureBufferSpace(remaining.Length);
+            int chunk = Math.Min(remaining.Length, dst.Length);
+            remaining[..chunk].CopyTo(dst);
+            _buffered += chunk;
+            remaining = remaining[chunk..];
+        }
         _written += rlp.Length;
         return new NodeRef(_blobArenaId, offset);
     }
 
     /// <summary>
-    /// Finalise the underlying arena write and register the new frontier with the manager.
-    /// On first registration of a given file id the manager opens a single whole-file
-    /// <see cref="ArenaReservation"/>; subsequent writers for the same file grow that
-    /// reservation's <c>Size</c>. The writer's transient creation lease is dropped via
-    /// <see cref="BlobArenaManager.ReleaseBlobArena"/> after the owning snapshot has
-    /// acquired its own lease.
+    /// Finalise the write: flush the in-memory buffer to the file, register the new
+    /// frontier with the manager. The manager bumps the refcount by 1 for the writer's
+    /// transient creation lease; <see cref="PersistedSnapshots.PersistedSnapshotRepository"/>
+    /// transfers that lease to the new snapshot via <see cref="BlobArenaManager.TryLeaseFile"/>
+    /// then drops it via <see cref="BlobArenaManager.ReleaseBlobArena"/>.
     /// </summary>
     public void Complete()
     {
         if (_completed) throw new InvalidOperationException("BlobArenaWriter already completed.");
-        _inner.CompleteSliceless();
+        FlushBuffer();
+        _stream.Flush();
+        _stream.Dispose();
         _completed = true;
         _manager.RegisterCompleted(_blobArenaId, _startOffset, _written - _startOffset);
     }
@@ -117,10 +128,26 @@ public sealed class BlobArenaWriter : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        // If Complete() was never called, ArenaWriter.Dispose cancels the underlying
-        // write (deletes dedicated files; clears the reservation flag on shared files).
-        // No catalog/refcount touch needed — RegisterCompleted is what introduces a
-        // file-level lease in the first place.
-        _inner.Dispose();
+        if (!_completed)
+        {
+            _stream.Dispose();
+            _manager.CancelWrite(_blobArenaId);
+        }
+        byte[] buffer = _buffer;
+        _buffer = null!;
+        if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
+    }
+
+    private Span<byte> EnsureBufferSpace(int sizeHint)
+    {
+        if (sizeHint > _buffer.Length - _buffered) FlushBuffer();
+        return _buffer.AsSpan(_buffered);
+    }
+
+    private void FlushBuffer()
+    {
+        if (_buffered == 0) return;
+        _stream.Write(_buffer, 0, _buffered);
+        _buffered = 0;
     }
 }

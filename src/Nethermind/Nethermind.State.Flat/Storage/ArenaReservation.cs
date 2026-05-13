@@ -12,9 +12,9 @@ namespace Nethermind.State.Flat.Storage;
 public sealed class ArenaReservation : RefCountingDisposable
 {
     private readonly IArenaManager _arenaManager;
-    // Captured at construction so per-page touches and same-arena evictions skip the
-    // manager's id → ArenaFile lookup. Null for in-memory test arenas with no per-page mapping.
-    private readonly ArenaFile? _arenaFile;
+    // The owning file. Held directly so read-path operations skip the manager's id →
+    // ArenaFile dictionary lookup.
+    private readonly ArenaFile _arenaFile;
     private readonly long _initialSize;
 
     internal int ArenaId { get; }
@@ -22,7 +22,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     public long Size { get; internal set; }
     public string Tag { get; }
 
-    public ArenaReservation(IArenaManager arenaManager, ArenaFile? arenaFile,
+    public ArenaReservation(IArenaManager arenaManager, ArenaFile arenaFile,
                             int arenaId, long offset, long size, string tag)
         : base(1)
     {
@@ -52,7 +52,7 @@ public sealed class ArenaReservation : RefCountingDisposable
         if (outcome == TouchOutcome.Hit) return;
 
         // Pre-fault the freshly tracked local page so the next read does not block on a fault.
-        _arenaFile?.PopulateRead((long)pageIdx * Environment.SystemPageSize, Environment.SystemPageSize);
+        _arenaFile.PopulateRead((long)pageIdx * Environment.SystemPageSize, Environment.SystemPageSize);
 
         if (outcome == TouchOutcome.Evicted)
             _arenaManager.QueueEviction(evictedArenaId, evictedPageIdx);
@@ -63,7 +63,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// path. External consumers go through <see cref="BeginWholeReadSession"/> so that the
     /// span's lifetime is bounded by an explicit Begin/End scope.
     /// </summary>
-    internal ReadOnlySpan<byte> GetSpanInternal() => _arenaManager.GetSpan(this);
+    internal ReadOnlySpan<byte> GetSpanInternal() => _arenaFile.GetSpan(Offset, Size);
 
     /// <summary>
     /// Begin a scoped whole-buffer read. The returned session holds a lease on this
@@ -71,7 +71,7 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// </summary>
     public WholeReadSession BeginWholeReadSession() => new(this);
 
-    internal IArenaWholeView OpenWholeView() => _arenaManager.OpenWholeView(this);
+    internal IArenaWholeView OpenWholeView() => _arenaFile.OpenWholeView(Offset, Size);
 
     /// <summary>
     /// Construct an <see cref="ArenaByteReader"/> over this reservation's bytes. The reader
@@ -79,22 +79,19 @@ public sealed class ArenaReservation : RefCountingDisposable
     /// OS pages can be advised <c>MADV_DONTNEED</c> on eviction. Pointer-backed so &gt;2 GiB
     /// reservations are addressable.
     /// </summary>
-    public unsafe ArenaByteReader CreateReader()
-    {
-        _arenaManager.GetReservationPointer(this, out byte* dataPtr, out long size);
-        return new ArenaByteReader(dataPtr, size, this);
-    }
+    public unsafe ArenaByteReader CreateReader() =>
+        new(_arenaFile.BasePtr + Offset, Size, this);
 
     public void AdviseDontNeed() => _arenaManager.AdviseDontNeed(this);
 
-    public void Touch(long subOffset, long size) => _arenaManager.Touch(this, subOffset, size);
+    public void Touch(long subOffset, long size) => _arenaFile.Touch(Offset + subOffset, size);
 
     /// <summary>
     /// Read bytes from this reservation via a non-mmap file primitive (<c>pread</c>).
     /// See <see cref="IArenaManager.RandomRead"/>.
     /// </summary>
     public int RandomRead(long subOffset, Span<byte> destination) =>
-        _arenaManager.RandomRead(this, subOffset, destination);
+        _arenaFile.RandomRead(Offset + subOffset, destination);
 
     protected override void CleanUp()
     {

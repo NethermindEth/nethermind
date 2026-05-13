@@ -36,21 +36,6 @@ public sealed class ArenaWriter : IDisposable
         return _manager.CompleteWrite(_arenaId, _startOffset, actualSize, _tag);
     }
 
-    /// <summary>
-    /// Complete the write without constructing a slice <see cref="ArenaReservation"/>. Used by
-    /// the blob-arena path where a single whole-file reservation (offset 0, current frontier)
-    /// is shared by all writers and snapshots referencing the file — a per-write slice
-    /// reservation here would later <c>MarkDead</c> the slice and corrupt the underlying
-    /// manager's dead-byte accounting before the file is actually unreferenced.
-    /// </summary>
-    internal SnapshotLocation CompleteSliceless()
-    {
-        _writer.Flush();
-        _completed = true;
-        long actualSize = _writer.Written;
-        return _manager.CompleteWriteSliceless(_arenaId, _startOffset, actualSize, _tag);
-    }
-
     public void Dispose()
     {
         _writer.Dispose();

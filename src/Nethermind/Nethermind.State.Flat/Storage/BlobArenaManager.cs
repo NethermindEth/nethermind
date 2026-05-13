@@ -1,209 +1,272 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using Microsoft.Win32.SafeHandles;
+
 namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
-/// File pool for trie-node RLP bytes. Standalone — owns its own
-/// <see cref="ArenaManager"/> (page tracker disabled). Each pool tier
-/// instantiates one <see cref="BlobArenaManager"/> alongside its metadata
-/// <see cref="ArenaManager"/>; the pair <c>(ArenaManager metadata,
-/// BlobArenaManager blobs)</c> together backs one tier (Small or Large).
+/// File pool for trie-node RLP bytes. Standalone — owns its own file pool, with no
+/// dependency on <see cref="ArenaManager"/>, <see cref="IArenaManager"/>, or
+/// <see cref="ArenaFile"/>. Each known blob file is represented internally as a
+/// <see cref="BlobFileEntry"/> that owns a single read/write <see cref="SafeFileHandle"/>;
+/// the manager hands its handle (borrowed, not transferred) to every leased
+/// <see cref="BlobArenaFile"/> so reads dispatch straight into
+/// <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>.
 ///
 /// <para>
-/// <b>One id per file.</b> A <c>BlobArenaId</c> is the underlying
-/// <c>ArenaFile.Id</c> (narrowed to ushort) — many writers across many base
-/// snapshots append into the same file over its lifetime, claiming the file
-/// for write via the inner <see cref="ArenaManager"/>'s <c>_reservedArenas</c>
-/// mutual-exclusion and releasing on Complete. A new id is only minted when no
-/// existing file has headroom; with a typical 1 GiB max file size, the count
-/// stays well below 65535.
+/// <b>One id per file.</b> A <c>BlobArenaId</c> is the file's stable numeric id
+/// (narrowed to <see cref="ushort"/>) — many writers across many base snapshots append
+/// into the same file over its lifetime, claiming the file for write via the
+/// <c>_reservedFiles</c> mutual-exclusion set and releasing on Complete. A new id is
+/// only minted when no existing file has headroom; with a typical 1 GiB max file size,
+/// the count stays well below 65535.
 /// </para>
 ///
 /// <para>
-/// <b>One whole-file <see cref="ArenaReservation"/> per known file id.</b>
-/// Created lazily on first <see cref="RegisterCompleted"/> or first
-/// <see cref="TryLeaseFile"/> (whichever comes first), covering
-/// <c>[0, frontier)</c>. Subsequent writers for the same file grow the
-/// reservation's <c>Size</c> rather than allocating a new one. Snapshots
-/// <see cref="TryLeaseFile"/> the reservation; the per-id <c>_refCounts</c>
-/// counts snapshot leases (plus the transient writer-creation lease that
-/// <see cref="PersistedSnapshots.PersistedSnapshotRepository.ConvertSnapshotToPersistedSnapshot"/>
-/// drops once the new snapshot takes its own lease). When the count reaches
-/// zero the reservation is disposed; <c>CleanUp</c> runs
-/// <see cref="IArenaManager.MarkDead"/> over the file's full span, which
-/// deletes the file.
-/// </para>
-///
-/// <para>
-/// Read offsets are file-absolute: callers pass <c>RandomRead(id, fileOffset,
-/// dest)</c>. The reservation's <c>Offset</c> is 0, so the underlying
-/// manager's <c>reservation.Offset + subOffset</c> degenerates to
-/// <c>subOffset</c>.
-/// </para>
-///
-/// <para>
-/// Assumption: a snapshot never releases a file while another writer is
-/// mid-write into the same file. In practice persistence writes then leases —
-/// the producer (PersistenceManager.AddToPersistence) never prunes what it
-/// just wrote — so the writer's transient lease always covers the gap.
+/// <b>Per-id refcount.</b> <c>_refCounts</c> mirrors the snapshot leases + at most one
+/// transient writer-creation lease per in-flight <see cref="BlobArenaWriter.Complete"/>.
+/// When the count reaches zero outside of shutdown the file is closed and deleted; during
+/// shutdown the file is preserved so the next session can rehydrate it via
+/// <see cref="Initialize"/>.
 /// </para>
 /// </summary>
 public sealed class BlobArenaManager : IBlobArenaManager
 {
-    private readonly IArenaManager _files;
+    private const string BlobFilePrefix = "blob_";
+    private const string BlobFileExtension = ".bin";
+
+    private readonly string _basePath;
+    private readonly long _maxFileSize;
     private readonly string _reservationTag;
-    private readonly bool _ownsFiles;
     private readonly Lock _lock = new();
-    // One reservation per known file id, covering [0, current frontier). Size grows as
-    // subsequent writers append. Created lazily on first registration or first lease.
-    private readonly Dictionary<ushort, ArenaReservation> _reservations = [];
-    // Per-file refcount: snapshot leases + at most one transient writer-creation lease
-    // per in-flight Complete. Mirrors the underlying reservation's lease count.
+    // All known files, keyed by id. ConcurrentDictionary so RandomRead-equivalent paths
+    // can resolve a handle without taking _lock.
+    private readonly ConcurrentDictionary<ushort, BlobFileEntry> _files = new();
+    // Snapshot lease + transient writer-creation lease counts per file. Protected by _lock.
     private readonly Dictionary<ushort, int> _refCounts = [];
+    // Frontier captured the first time a file is exposed as a leasable handle — used to
+    // keep the per-tag bytes metric stable across subsequent appends.
+    private readonly Dictionary<ushort, long> _initialFrontiers = [];
+    // Files currently held by a writer. Protected by _lock.
+    private readonly HashSet<ushort> _reservedFiles = [];
+    // Files that still have headroom for further packing. Protected by _lock.
+    private readonly HashSet<ushort> _mutableFiles = [];
+    private int _nextFileId;
     private bool _disposed;
 
     /// <summary>
-    /// Production constructor: BlobArenaManager owns its own file pool. The
-    /// internal arena manager is disposed when this manager is disposed.
-    /// <paramref name="reservationTag"/> is the <see cref="ArenaReservation.Tag"/>
-    /// applied to every reservation this manager opens (e.g.
-    /// <see cref="ArenaReservationTags.BlobSmall"/> or
+    /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
+    /// size cap of <paramref name="maxFileSize"/>. <paramref name="reservationTag"/> tags
+    /// metric updates (typically <see cref="ArenaReservationTags.BlobSmall"/> or
     /// <see cref="ArenaReservationTags.BlobLarge"/>).
     /// </summary>
     public BlobArenaManager(string basePath, long maxFileSize, string reservationTag)
     {
-        _files = new ArenaManager(basePath, pageCacheBytes: 0, maxArenaSize: maxFileSize);
+        _basePath = basePath;
+        _maxFileSize = maxFileSize;
         _reservationTag = reservationTag;
-        _ownsFiles = true;
+        Directory.CreateDirectory(basePath);
     }
 
-    /// <summary>
-    /// Test convenience constructor: lets a test supply its own
-    /// <see cref="IArenaManager"/> (typically <see cref="MemoryArenaManager"/>)
-    /// so blob arenas don't touch disk. The caller owns disposal of the
-    /// supplied manager.
-    /// </summary>
-    public BlobArenaManager(IArenaManager files, string reservationTag)
+    public int BlobArenaFileCount => _files.Count;
+
+    public long BlobArenaMappedBytes
     {
-        _files = files;
-        _reservationTag = reservationTag;
-        _ownsFiles = false;
+        get
+        {
+            long sum = 0;
+            foreach (KeyValuePair<ushort, BlobFileEntry> kv in _files) sum += kv.Value.MaxSize;
+            return sum;
+        }
     }
 
-    public int BlobArenaFileCount => _files.ArenaFileCount;
-    public long BlobArenaMappedBytes => _files.ArenaMappedBytes;
-
     /// <summary>
-    /// Rehydrate the underlying file pool from on-disk file lengths. Must be called
-    /// before any <see cref="PersistedSnapshots.PersistedSnapshot"/> is constructed so
+    /// Rehydrate the file pool from on-disk file lengths. Must be called before any
+    /// <see cref="PersistedSnapshots.PersistedSnapshot"/> is constructed so
     /// <see cref="TryLeaseFile"/> can resolve ids stored in their <c>ref_ids</c> metadata.
-    /// Whole-file reservations are created lazily on first lease.
     /// </summary>
-    public void Initialize() => _files.InitializeFromFileLengths();
+    public void Initialize()
+    {
+        lock (_lock)
+        {
+            foreach (string path in Directory.GetFiles(_basePath, $"*{BlobFileExtension}"))
+            {
+                string name = Path.GetFileName(path);
+                if (!name.StartsWith(BlobFilePrefix, StringComparison.Ordinal)) continue;
+                int id = ParseId(name);
+                if (id < 0 || id > ushort.MaxValue) continue;
+                long len = new FileInfo(path).Length;
+                long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
+                BlobFileEntry entry = new(path, maxSize, frontier: len);
+                _files[(ushort)id] = entry;
+                _nextFileId = Math.Max(_nextFileId, id + 1);
+                if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
+            }
+        }
+    }
 
     /// <summary>
-    /// Open a writer that appends into an existing arena file with headroom (or a
-    /// fresh one if none qualifies). The writer's <see cref="BlobArenaWriter.BlobArenaId"/>
-    /// is the underlying <c>ArenaFile.Id</c>.
+    /// Open a writer that appends into an existing arena file with headroom (or a fresh
+    /// one if none qualifies). The writer's <see cref="BlobArenaWriter.BlobArenaId"/> is
+    /// the underlying file id.
     /// </summary>
     public BlobArenaWriter CreateWriter(long estimatedSize, string tag)
     {
-        ArenaWriter inner = _files.CreateWriter(estimatedSize, tag);
-        int arenaId = inner.ArenaId;
-        if ((uint)arenaId > ushort.MaxValue)
-            throw new InvalidOperationException(
-                $"Blob arena file id {arenaId} exceeds ushort range — packing degraded?");
-        return new BlobArenaWriter(this, (ushort)arenaId, inner.StartOffset, inner);
+        lock (_lock)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(BlobArenaManager));
+
+            ushort? chosen = null;
+            List<ushort>? toRemove = null;
+            foreach (ushort id in _mutableFiles)
+            {
+                if (_reservedFiles.Contains(id)) continue;
+                BlobFileEntry candidate = _files[id];
+                if (candidate.Frontier + estimatedSize <= candidate.MaxSize)
+                {
+                    chosen = id;
+                    break;
+                }
+                (toRemove ??= []).Add(id);
+            }
+            if (toRemove is not null)
+                foreach (ushort id in toRemove) _mutableFiles.Remove(id);
+
+            ushort fileId;
+            BlobFileEntry entry;
+            long startOffset;
+            if (chosen is ushort existing)
+            {
+                fileId = existing;
+                entry = _files[fileId];
+                startOffset = entry.Frontier;
+            }
+            else
+            {
+                if (_nextFileId > ushort.MaxValue)
+                    throw new InvalidOperationException(
+                        $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
+                fileId = (ushort)_nextFileId++;
+                string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
+                entry = new BlobFileEntry(path, _maxFileSize, frontier: 0);
+                _files[fileId] = entry;
+                _mutableFiles.Add(fileId);
+                startOffset = 0;
+            }
+
+            _reservedFiles.Add(fileId);
+            FileStream stream = entry.OpenWriteStream(startOffset);
+            return new BlobArenaWriter(this, fileId, startOffset, stream);
+        }
     }
 
     public int RandomRead(ushort blobArenaId, long offset, Span<byte> destination)
     {
-        ArenaReservation? reservation;
-        lock (_lock)
+        if (!_files.TryGetValue(blobArenaId, out BlobFileEntry? entry)) return 0;
+        SafeFileHandle handle = entry.Handle;
+        int total = 0;
+        while (total < destination.Length)
         {
-            if (!_reservations.TryGetValue(blobArenaId, out reservation))
-                return 0;
+            int read = RandomAccess.Read(handle, destination[total..], offset + total);
+            if (read <= 0) break;
+            total += read;
         }
-        return _files.RandomRead(reservation, offset, destination);
+        return total;
     }
 
-    public bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
+    public bool TryLeaseFile(ushort blobArenaId, [NotNullWhen(true)] out BlobArenaFile? file)
     {
-        ArenaReservation reservation;
         lock (_lock)
         {
-            if (!_reservations.TryGetValue(blobArenaId, out ArenaReservation? existing))
+            if (!_files.TryGetValue(blobArenaId, out BlobFileEntry? entry))
             {
-                if (!_files.TryGetFrontier(blobArenaId, out long frontier))
-                {
-                    file = null;
-                    return false;
-                }
-                // Lazy whole-file reservation: occurs on the load path before any writer
-                // for this id has run in this process.
-                existing = _files.Open(new SnapshotLocation(blobArenaId, 0, frontier), _reservationTag);
-                _reservations[blobArenaId] = existing;
-                _refCounts[blobArenaId] = 0;
+                file = null;
+                return false;
             }
-            _refCounts[blobArenaId] = _refCounts[blobArenaId] + 1;
-            reservation = existing;
+            if (_refCounts.TryGetValue(blobArenaId, out int existing))
+            {
+                _refCounts[blobArenaId] = existing + 1;
+            }
+            else
+            {
+                _refCounts[blobArenaId] = 1;
+                RegisterMetric(blobArenaId, entry.Frontier);
+            }
+            file = new BlobArenaFile(this, blobArenaId, entry.Handle);
+            return true;
         }
-        reservation.AcquireLease();
-        file = new BlobArenaFile(this, blobArenaId, reservation);
-        return true;
     }
 
     public void ReleaseBlobArena(ushort blobArenaId)
     {
-        ArenaReservation? reservation;
-        bool disposedSnapshot;
+        BlobFileEntry? toDispose = null;
+        long initialFrontier = 0;
+        bool emitMetric = false;
         lock (_lock)
         {
-            disposedSnapshot = _disposed;
-            if (!_reservations.TryGetValue(blobArenaId, out reservation)) return;
-            int newCount = _refCounts[blobArenaId] - 1;
+            if (!_refCounts.TryGetValue(blobArenaId, out int existing)) return;
+            int newCount = existing - 1;
             if (newCount > 0)
             {
                 _refCounts[blobArenaId] = newCount;
-                reservation = null;
+                return;
             }
-            else
+            _refCounts.Remove(blobArenaId);
+            if (_initialFrontiers.Remove(blobArenaId, out initialFrontier))
+                emitMetric = true;
+            // During shutdown, preserve on-disk file for the next session — close handles
+            // only (done by Dispose). Do NOT delete here.
+            if (_disposed) return;
+            if (_files.TryRemove(blobArenaId, out BlobFileEntry? entry))
             {
-                _refCounts.Remove(blobArenaId);
-                _reservations.Remove(blobArenaId);
+                _mutableFiles.Remove(blobArenaId);
+                toDispose = entry;
             }
         }
-        // Skip the dispose during shutdown so the on-disk file survives across restarts;
-        // CleanUp's MarkDead would otherwise delete it.
-        if (reservation is not null && !disposedSnapshot) reservation.Dispose();
+        if (emitMetric) UnregisterMetric(initialFrontier);
+        if (toDispose is not null)
+        {
+            string path = toDispose.Path;
+            toDispose.Dispose();
+            try { File.Delete(path); } catch { /* best-effort */ }
+        }
     }
 
     /// <summary>
     /// Called by <see cref="BlobArenaWriter.Complete"/> to register the new frontier for
-    /// the file. On first registration creates the whole-file reservation; otherwise grows
-    /// the existing reservation's <see cref="ArenaReservation.Size"/>. Bumps
-    /// <see cref="_refCounts"/> by 1 for the writer's transient creation lease — the
+    /// the file. Bumps the refcount by 1 for the writer's transient creation lease — the
     /// caller (PersistedSnapshotRepository) transfers that lease to the new snapshot via
     /// <see cref="TryLeaseFile"/> then drops it via <see cref="ReleaseBlobArena"/>.
     /// </summary>
     internal void RegisterCompleted(ushort blobArenaId, long startOffset, long bytesWritten)
     {
         long newFrontier = startOffset + bytesWritten;
-        ArenaReservation? newReservation = null;
         lock (_lock)
         {
-            if (_reservations.TryGetValue(blobArenaId, out ArenaReservation? existing))
+            BlobFileEntry entry = _files[blobArenaId];
+            entry.Frontier = newFrontier;
+            _reservedFiles.Remove(blobArenaId);
+            if (newFrontier >= entry.MaxSize) _mutableFiles.Remove(blobArenaId);
+            if (_refCounts.TryGetValue(blobArenaId, out int existing))
             {
-                existing.Size = newFrontier;
-                _refCounts[blobArenaId] = _refCounts[blobArenaId] + 1;
-                return;
+                _refCounts[blobArenaId] = existing + 1;
             }
-            newReservation = _files.Open(
-                new SnapshotLocation(blobArenaId, 0, newFrontier), _reservationTag);
-            _reservations[blobArenaId] = newReservation;
-            _refCounts[blobArenaId] = 1;
+            else
+            {
+                _refCounts[blobArenaId] = 1;
+                RegisterMetric(blobArenaId, newFrontier);
+            }
         }
+    }
+
+    internal void CancelWrite(ushort blobArenaId)
+    {
+        lock (_lock) _reservedFiles.Remove(blobArenaId);
     }
 
     /// <summary>
@@ -214,17 +277,35 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// </summary>
     public void SweepUnreferenced()
     {
-        List<int>? toDelete = null;
+        List<ushort>? toDelete = null;
         lock (_lock)
         {
-            foreach (int id in _files.KnownArenaIds)
+            foreach (KeyValuePair<ushort, BlobFileEntry> kv in _files)
             {
-                if (!_reservations.ContainsKey((ushort)id))
-                    (toDelete ??= []).Add(id);
+                if (!_refCounts.ContainsKey(kv.Key))
+                    (toDelete ??= []).Add(kv.Key);
             }
         }
         if (toDelete is null) return;
-        foreach (int id in toDelete) _files.DeleteFile(id);
+        foreach (ushort id in toDelete)
+        {
+            BlobFileEntry? toDispose = null;
+            lock (_lock)
+            {
+                if (_disposed) return;
+                if (_files.TryRemove(id, out BlobFileEntry? entry))
+                {
+                    _mutableFiles.Remove(id);
+                    toDispose = entry;
+                }
+            }
+            if (toDispose is not null)
+            {
+                string path = toDispose.Path;
+                toDispose.Dispose();
+                try { File.Delete(path); } catch { /* best-effort */ }
+            }
+        }
     }
 
     public void Dispose()
@@ -233,7 +314,65 @@ public sealed class BlobArenaManager : IBlobArenaManager
         {
             if (_disposed) return;
             _disposed = true;
+            foreach (KeyValuePair<ushort, BlobFileEntry> kv in _files) kv.Value.Dispose();
+            _files.Clear();
         }
-        if (_ownsFiles) _files.Dispose();
+    }
+
+    private void RegisterMetric(ushort blobArenaId, long frontier)
+    {
+        _initialFrontiers[blobArenaId] = frontier;
+        Metrics.ArenaReservationCountByTag.AddOrUpdate(_reservationTag, 1L, static (_, c) => c + 1);
+        Metrics.ArenaReservationBytesByTag.AddOrUpdate(_reservationTag, static (_, s) => s, static (_, b, s) => b + s, frontier);
+    }
+
+    private void UnregisterMetric(long frontier)
+    {
+        Metrics.ArenaReservationCountByTag.AddOrUpdate(_reservationTag, 0L, static (_, c) => Math.Max(0, c - 1));
+        Metrics.ArenaReservationBytesByTag.AddOrUpdate(_reservationTag, static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), frontier);
+    }
+
+    private static int ParseId(string fileName)
+    {
+        string noExt = Path.GetFileNameWithoutExtension(fileName);
+        if (!noExt.StartsWith(BlobFilePrefix, StringComparison.Ordinal)) return -1;
+        return int.TryParse(noExt.AsSpan(BlobFilePrefix.Length), NumberStyles.None,
+            CultureInfo.InvariantCulture, out int id) ? id : -1;
+    }
+
+    /// <summary>
+    /// Per-file state owned by <see cref="BlobArenaManager"/>. Holds the single shared
+    /// read/write <see cref="SafeFileHandle"/> plus the path, frontier, and max size.
+    /// Multiple <see cref="BlobArenaFile"/> leases borrow <see cref="Handle"/>; the
+    /// entry's <see cref="Dispose"/> closes the handle on file deletion or manager
+    /// teardown.
+    /// </summary>
+    private sealed class BlobFileEntry : IDisposable
+    {
+        public string Path { get; }
+        public long MaxSize { get; }
+        public SafeFileHandle Handle { get; }
+        public long Frontier { get; set; }
+
+        public BlobFileEntry(string path, long maxSize, long frontier)
+        {
+            Path = path;
+            MaxSize = maxSize;
+            Handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+            // Extend file to maxSize if smaller (sparse on Linux via ftruncate) so subsequent
+            // appends never have to grow it.
+            if (RandomAccess.GetLength(Handle) < maxSize)
+                RandomAccess.SetLength(Handle, maxSize);
+            Frontier = frontier;
+        }
+
+        public FileStream OpenWriteStream(long startOffset)
+        {
+            FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
+            fs.Seek(startOffset, SeekOrigin.Begin);
+            return fs;
+        }
+
+        public void Dispose() => Handle.Dispose();
     }
 }

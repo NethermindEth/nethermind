@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
@@ -19,13 +20,20 @@ internal static class PersistedSnapshotBuilderTestExtensions
     {
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
-        using MemoryArenaManager blobArena = new();
-        using BlobArenaManager blobs = new(blobArena, ArenaReservationTags.BlobSmall);
-        using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize, "TestBlob");
-        PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-            snapshot, ref pooled.GetWriter(), blobWriter);
-        blobWriter.Complete();
-        return pooled.WrittenSpan.ToArray();
+        string tempDir = Path.Combine(Path.GetTempPath(), "nm-blobtest-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using BlobArenaManager blobs = new(tempDir, 4L * 1024 * 1024, ArenaReservationTags.BlobSmall);
+            using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize, "TestBlob");
+            PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+                snapshot, ref pooled.GetWriter(), blobWriter);
+            blobWriter.Complete();
+            return pooled.WrittenSpan.ToArray();
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { /* best-effort */ }
+        }
     }
 
     public static byte[] MergeSnapshots(PersistedSnapshotList snapshots) =>

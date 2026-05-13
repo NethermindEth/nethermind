@@ -7,24 +7,8 @@ public unsafe interface IArenaManager : IDisposable
 {
     void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries);
 
-    /// <summary>
-    /// Like <see cref="Initialize"/>, but rehydrates frontiers from each arena file's on-disk
-    /// length rather than from a catalog of slices, and re-opens non-dedicated files as
-    /// mutable so subsequent writers can pack into them. Used by the blob-arena path where
-    /// the manager owns no per-slice catalog — the file's length IS the high-water mark of
-    /// all completed writes.
-    /// </summary>
-    void InitializeFromFileLengths();
-
     ArenaWriter CreateWriter(long estimatedSize, string tag);
     (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag);
-
-    /// <summary>
-    /// Companion to <see cref="CompleteWrite"/> that updates the frontier and trims a
-    /// dedicated file but does NOT construct an <see cref="ArenaReservation"/>. Used by the
-    /// blob-arena path; see <see cref="ArenaWriter.CompleteSliceless"/>.
-    /// </summary>
-    SnapshotLocation CompleteWriteSliceless(int arenaId, long startOffset, long actualSize, string tag);
 
     void CancelWrite(int arenaId, long startOffset);
     ArenaReservation Open(in SnapshotLocation location, string tag);
@@ -94,25 +78,4 @@ public unsafe interface IArenaManager : IDisposable
     /// Sum of mmap sizes across all arena files in this manager (bytes).
     /// </summary>
     long ArenaMappedBytes { get; }
-
-    /// <summary>
-    /// Snapshot of every arena file id currently held. Used by the blob-arena sweep to
-    /// detect files unreferenced by any loaded snapshot (recoverable orphans from a
-    /// mid-write crash).
-    /// </summary>
-    IReadOnlyCollection<int> KnownArenaIds { get; }
-
-    /// <summary>
-    /// Read the current frontier (end-of-data) for <paramref name="arenaId"/>. Returns
-    /// <c>false</c> when the manager has no such file. Used by the blob-arena path to
-    /// construct a whole-file <see cref="ArenaReservation"/> lazily on first lease.
-    /// </summary>
-    bool TryGetFrontier(int arenaId, out long frontier);
-
-    /// <summary>
-    /// Unconditionally remove and delete the arena file with id <paramref name="arenaId"/>.
-    /// Equivalent to the file-delete branch of <see cref="MarkDead"/> when all bytes are
-    /// dead. Used by the blob-arena sweep to drop orphan files.
-    /// </summary>
-    void DeleteFile(int arenaId);
 }

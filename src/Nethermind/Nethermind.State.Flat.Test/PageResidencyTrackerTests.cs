@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using FluentAssertions;
 using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Storage;
@@ -17,6 +18,21 @@ public class PageResidencyTrackerTests
     // clock order is fully determined.
     private const int Ways = 8;
     private const int OneSetCapacity = Ways;
+
+    private string _tempDir = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _tempDir = Path.Combine(Path.GetTempPath(), "nm-tracker-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_tempDir);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort */ }
+    }
 
     private sealed class RecordingHandler : IPageEvictionHandler
     {
@@ -35,25 +51,22 @@ public class PageResidencyTrackerTests
     /// exposes the supplied tracker via <see cref="PageTracker"/> so an
     /// <see cref="ArenaReservation"/> can call into it directly, and forwards
     /// <see cref="IArenaManager.QueueEviction"/> into <paramref name="handler"/> so test
-    /// assertions on cross-arena evictions still work. Same-arena evictions skip this stub
-    /// entirely (the reservation handles them directly off its captured ArenaFile, which is
-    /// null in tests so they no-op silently).
+    /// assertions on cross-arena evictions still work. Lazily backs each arenaId with a
+    /// small file-backed <see cref="ArenaFile"/> in <paramref name="tempDir"/> so the
+    /// non-nullable contract on <see cref="ArenaReservation"/> is satisfied.
     /// </summary>
-    private sealed unsafe class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler) : IArenaManager
+    private sealed unsafe class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
     {
+        private readonly Dictionary<int, ArenaFile> _files = [];
+
         public PageResidencyTracker PageTracker => tracker;
         public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
-        public int ArenaFileCount => 0;
+        public int ArenaFileCount => _files.Count;
         public long ArenaMappedBytes => 0;
-        public IReadOnlyCollection<int> KnownArenaIds => Array.Empty<int>();
-        public bool TryGetFrontier(int arenaId, out long frontier) { frontier = 0; return false; }
-        public void DeleteFile(int arenaId) => throw new NotSupportedException();
-        public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
-        public void InitializeFromFileLengths() => throw new NotSupportedException();
         public ArenaWriter CreateWriter(long estimatedSize, string tag) => throw new NotSupportedException();
         public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag) => throw new NotSupportedException();
-        public SnapshotLocation CompleteWriteSliceless(int arenaId, long startOffset, long actualSize, string tag) => throw new NotSupportedException();
         public void CancelWrite(int arenaId, long startOffset) => throw new NotSupportedException();
+        public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location, string tag) => throw new NotSupportedException();
         public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) => throw new NotSupportedException();
         public IArenaWholeView OpenWholeView(ArenaReservation reservation) => throw new NotSupportedException();
@@ -64,7 +77,23 @@ public class PageResidencyTrackerTests
         public void AdviseDontNeed(ArenaReservation reservation) { }
         public void Touch(ArenaReservation reservation, long subOffset, long size) { }
         public int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination) => throw new NotSupportedException();
-        public void Dispose() { }
+
+        public ArenaFile GetOrCreateFile(int arenaId)
+        {
+            if (_files.TryGetValue(arenaId, out ArenaFile? existing)) return existing;
+            string path = Path.Combine(tempDir, $"stub_{arenaId:D4}.bin");
+            // Size to comfortably cover the widest test reservation (~16 pages); reads past
+            // file length via RandomAccess.Read just return 0 bytes, so this is a safety margin.
+            ArenaFile file = new(arenaId, path, Environment.SystemPageSize * 16);
+            _files[arenaId] = file;
+            return file;
+        }
+
+        public void Dispose()
+        {
+            foreach (ArenaFile f in _files.Values) f.Dispose();
+            _files.Clear();
+        }
     }
 
     /// <summary>
@@ -284,8 +313,8 @@ public class PageResidencyTrackerTests
         tracker.Dispose();
     }
 
-    private static ArenaReservation MakeReservation(IArenaManager manager, int arenaId, long offset, long size, string tag = "test") =>
-        new(manager, arenaFile: null, arenaId, offset, size, tag);
+    private static ArenaReservation MakeReservation(StubArenaManager manager, int arenaId, long offset, long size, string tag = "test") =>
+        new(manager, manager.GetOrCreateFile(arenaId), arenaId, offset, size, tag);
 
     [Test]
     public unsafe void ArenaByteReader_TryRead_TouchesAllSpannedPages()
@@ -296,8 +325,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 2];
         fixed (byte* dataPtr = data)
         {
+            using StubArenaManager manager = new(tracker, NoopHandler.Instance, _tempDir);
             using ArenaReservation reservation = MakeReservation(
-                new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 9, offset: baseOffset, size: data.Length);
+                manager, arenaId: 9, offset: baseOffset, size: data.Length);
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             Span<byte> sink = stackalloc byte[16];
@@ -319,8 +349,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 3];
         fixed (byte* dataPtr = data)
         {
+            using StubArenaManager manager = new(tracker, NoopHandler.Instance, _tempDir);
             using ArenaReservation reservation = MakeReservation(
-                new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 1, offset: 0, size: data.Length);
+                manager, arenaId: 1, offset: 0, size: data.Length);
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             using NoOpPin pin = reader.PinBuffer(0, pageSize * 2 + 1);
@@ -340,7 +371,7 @@ public class PageResidencyTrackerTests
         // which is null in tests and silently skipped).
         RecordingHandler handler = new();
         PageResidencyTracker tracker = new(maxCapacity: OneSetCapacity);
-        StubArenaManager manager = new(tracker, handler);
+        using StubArenaManager manager = new(tracker, handler, _tempDir);
         int pageSize = Environment.SystemPageSize;
         byte[] data = new byte[pageSize * (Ways + 1)];
         fixed (byte* dataPtr = data)
@@ -372,8 +403,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[pageSize * 2];
         fixed (byte* dataPtr = data)
         {
+            using StubArenaManager manager = new(tracker, NoopHandler.Instance, _tempDir);
             using ArenaReservation reservation = MakeReservation(
-                new StubArenaManager(tracker, NoopHandler.Instance), arenaId: 0, offset: 0, size: data.Length);
+                manager, arenaId: 0, offset: 0, size: data.Length);
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
 
             Span<byte> b = stackalloc byte[1];
@@ -406,8 +438,9 @@ public class PageResidencyTrackerTests
         byte[] data = new byte[64];
         fixed (byte* dataPtr = data)
         {
+            using StubArenaManager manager = new(disabled, NoopHandler.Instance, _tempDir);
             using ArenaReservation reservation = MakeReservation(
-                new StubArenaManager(disabled, NoopHandler.Instance), arenaId: 0, offset: 0, size: data.Length);
+                manager, arenaId: 0, offset: 0, size: data.Length);
             ArenaByteReader reader = new(dataPtr, data.Length, reservation);
             Span<byte> sink = stackalloc byte[8];
             reader.TryRead(4, sink).Should().BeTrue();
