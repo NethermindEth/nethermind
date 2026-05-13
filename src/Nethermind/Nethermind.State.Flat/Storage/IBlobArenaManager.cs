@@ -49,6 +49,16 @@ public interface IBlobArenaManager : IDisposable
     bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file);
 
     /// <summary>
+    /// Return the blob arena file currently registered under <paramref name="blobArenaId"/>,
+    /// or throw if no slot is populated. Lock-free O(1) array read — the caller MUST already
+    /// hold a lease on the file (typically acquired via <see cref="TryLeaseFile"/> at snapshot
+    /// load time). Does NOT bump the refcount; used by the hot read path in
+    /// <see cref="PersistedSnapshots.PersistedSnapshot"/> and by the snapshot's teardown to
+    /// resolve ids it leased earlier without re-paying the lease-acquisition lock.
+    /// </summary>
+    BlobArenaFile GetFile(ushort blobArenaId);
+
+    /// <summary>
     /// After <see cref="Initialize"/> + snapshot rehydration, delete any arena file
     /// not referenced by a loaded snapshot — recoverable orphans from a mid-write
     /// crash where Complete never ran.

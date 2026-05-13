@@ -180,6 +180,11 @@ public sealed class BlobArenaManager : IBlobArenaManager
         }
     }
 
+    public BlobArenaFile GetFile(ushort blobArenaId) =>
+        _files[blobArenaId]
+            ?? throw new InvalidOperationException(
+                $"Blob arena {blobArenaId} not registered with this manager.");
+
     /// <summary>
     /// Called by <see cref="BlobArenaWriter.Complete"/> after the writer has set the file's
     /// new frontier directly. The manager just learns whether the id should be a packing

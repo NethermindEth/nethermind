@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,8 @@ public class SnapshotRepositoryTests
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
     private MemoryArenaManager _memArena = null!;
+    private BlobArenaManager _blobs = null!;
+    private string _blobsDir = null!;
 
     [SetUp]
     public void SetUp()
@@ -31,10 +34,17 @@ public class SnapshotRepositoryTests
         _resourcePool = new ResourcePool(_config);
         _repository = new SnapshotRepository(new PersistedSnapshotRepositories(NullPersistedSnapshotRepository.Instance, NullPersistedSnapshotRepository.Instance), LimboLogs.Instance);
         _memArena = new MemoryArenaManager();
+        _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-sreptest-blobs-{Guid.NewGuid():N}");
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
     }
 
     [TearDown]
-    public void TearDown() => _memArena.Dispose();
+    public void TearDown()
+    {
+        _blobs.Dispose();
+        _memArena.Dispose();
+        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
+    }
 
     private StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {
@@ -316,14 +326,15 @@ public class SnapshotRepositoryTests
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to)
     {
         Snapshot snap = CreateSnapshot(from, to);
-        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap);
+        byte[] data = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
         snap.Dispose();
         using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
+        return new PersistedSnapshot(from, to, reservation, _blobs);
     }
 
     private static void SetupSnapshotTo(IPersistedSnapshotRepository mockRepo, StateId toState, PersistedSnapshot snapshot) =>

@@ -16,24 +16,22 @@ namespace Nethermind.State.Flat.Test;
 /// </summary>
 internal static class PersistedSnapshotBuilderTestExtensions
 {
-    public static byte[] Build(Snapshot snapshot)
+    /// <summary>
+    /// Build a snapshot's HSST bytes, writing trie-node RLPs into <paramref name="blobs"/>.
+    /// The caller owns <paramref name="blobs"/> across the test fixture so the
+    /// <see cref="PersistedSnapshot"/> constructed from the returned bytes can lease the
+    /// resulting blob file via the same manager — matching how production wires
+    /// <c>BlobArenaManager</c> as a long-lived shared component.
+    /// </summary>
+    public static byte[] Build(Snapshot snapshot, BlobArenaManager blobs)
     {
         int estimatedSize = checked((int)PersistedSnapshotBuilder.EstimateSize(snapshot));
         using PooledByteBufferWriter pooled = new(estimatedSize);
-        string tempDir = Path.Combine(Path.GetTempPath(), "nm-blobtest-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            using BlobArenaManager blobs = new(tempDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
-            using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
-            PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-                snapshot, ref pooled.GetWriter(), blobWriter);
-            blobWriter.Complete();
-            return pooled.WrittenSpan.ToArray();
-        }
-        finally
-        {
-            try { Directory.Delete(tempDir, recursive: true); } catch { /* best-effort */ }
-        }
+        using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
+        PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
+            snapshot, ref pooled.GetWriter(), blobWriter);
+        blobWriter.Complete();
+        return pooled.WrittenSpan.ToArray();
     }
 
     public static byte[] MergeSnapshots(PersistedSnapshotList snapshots) =>
@@ -51,7 +49,9 @@ internal static class PersistedSnapshotBuilderTestExtensions
         HashSet<ushort> referencedIds = new();
         for (int i = 0; i < snapshots.Count; i++)
         {
-            foreach (ushort id in snapshots[i].ReferencedBlobArenaIds)
+            ushort[]? ids = snapshots[i].ReadReferencedBlobArenaIds();
+            if (ids is null) continue;
+            foreach (ushort id in ids)
                 referencedIds.Add(id);
         }
 

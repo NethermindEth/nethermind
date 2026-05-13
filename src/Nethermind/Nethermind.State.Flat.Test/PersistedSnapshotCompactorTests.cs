@@ -42,7 +42,7 @@ public class PersistedSnapshotCompactorTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        return new PersistedSnapshot(from, to, reservation, NullBlobArenaManager.Instance);
     }
 
     [Test]

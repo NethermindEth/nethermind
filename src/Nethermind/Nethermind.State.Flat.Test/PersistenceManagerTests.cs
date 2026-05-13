@@ -223,7 +223,7 @@ public class PersistenceManagerTests
         StateId target = CreateStateId(16);
         using ArenaWriter emptyWriter = _memArena.CreateWriter(0, ArenaReservationTags.Test);
         (_, ArenaReservation emptyRes) = emptyWriter.Complete();
-        PersistedSnapshot persisted = new(Block0, target, emptyRes, new System.Collections.Generic.Dictionary<ushort, BlobArenaFile>());
+        PersistedSnapshot persisted = new(Block0, target, emptyRes, NullBlobArenaManager.Instance);
         _persistedSnapshotRepository.TryLeaseSnapshotTo(target, out Arg.Any<PersistedSnapshot?>())
             .Returns(x => { x[1] = persisted; return true; });
 

@@ -65,21 +65,15 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal static readonly byte[] MetadataVersionKey = "version\0\0\0"u8.ToArray();
 
     private readonly ArenaReservation _reservation;
-    // Per-snapshot blob arena handles, one per referenced id. Built and leased by the
-    // repository at construction time. Reads dispatch directly into BlobArenaFile.RandomRead
-    // (no manager lock, no central lookup). Disposal of each entry calls back into the
-    // owning BlobArenaManager for refcount + catalog removal.
-    private readonly Dictionary<ushort, BlobArenaFile> _blobFiles;
+    // Manager that owns the per-id blob arena slots. The repository acquires one lease per
+    // referenced id before this ctor runs and releases them in CleanUp / PersistOnShutdown,
+    // resolving each id via _blobManager.GetFile(id) (lock-free O(1) array read). The
+    // canonical list of leased ids lives on disk inside this snapshot's metadata HSST under
+    // the "ref_ids" key — no in-memory dict.
+    private readonly IBlobArenaManager _blobManager;
 
     public StateId From { get; }
     public StateId To { get; }
-
-    /// <summary>
-    /// Blob arena ids this snapshot references via <see cref="NodeRef"/>s in its
-    /// metadata HSST. Materialised from <see cref="_blobFiles"/>; allocates a fresh
-    /// array each call — cache locally for hot loops.
-    /// </summary>
-    public ushort[] ReferencedBlobArenaIds => [.. _blobFiles.Keys];
 
     public long Size => _reservation.Size;
 
@@ -96,21 +90,34 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     internal ArenaByteReader CreateReader() => _reservation.CreateReader();
 
     /// <summary>
-    /// Construct a snapshot over a pre-leased metadata reservation and a pre-leased
-    /// dictionary of <see cref="BlobArenaFile"/>s, one per referenced blob arena id.
-    /// The caller (typically <see cref="PersistedSnapshotRepository"/>) is responsible
-    /// for building <paramref name="blobFiles"/> with leases already acquired and for
-    /// rolling those leases back on construction failure. This ctor just bumps the
-    /// metadata reservation lease.
+    /// Construct a snapshot over a pre-leased metadata reservation. The caller (typically
+    /// <see cref="PersistedSnapshotRepository"/>) MUST have already acquired one lease per
+    /// blob arena id referenced by the snapshot's <c>ref_ids</c> metadata via
+    /// <see cref="IBlobArenaManager.TryLeaseFile"/>, and is responsible for rolling those
+    /// leases back on construction failure. This ctor just bumps the metadata reservation
+    /// lease and stashes the manager ref for later id → file resolution.
     /// </summary>
     public PersistedSnapshot(StateId from, StateId to, ArenaReservation reservation,
-        Dictionary<ushort, BlobArenaFile> blobFiles)
+        IBlobArenaManager blobManager)
     {
         From = from;
         To = to;
         _reservation = reservation;
-        _blobFiles = blobFiles;
+        _blobManager = blobManager;
         _reservation.AcquireLease();
+    }
+
+    /// <summary>
+    /// Read the snapshot's referenced blob arena ids from its on-disk metadata HSST. Allocates
+    /// a fresh array per call — cache locally for hot loops. Returns null if the snapshot has
+    /// no <c>ref_ids</c> entry (synthetic test snapshots whose metadata HSST was hand-rolled
+    /// without the standard builder).
+    /// </summary>
+    public ushort[]? ReadReferencedBlobArenaIds()
+    {
+        using WholeReadSession session = _reservation.BeginWholeReadSession();
+        WholeReadSessionReader reader = session.GetReader();
+        return PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
     }
 
     /// <summary>
@@ -222,8 +229,7 @@ public sealed class PersistedSnapshot : RefCountingDisposable
 
     private byte[] ReadBlobArenaRlp(ushort blobArenaId, int offset)
     {
-        if (!_blobFiles.TryGetValue(blobArenaId, out BlobArenaFile? file))
-            throw new InvalidOperationException($"Blob arena {blobArenaId} not in snapshot {From}→{To}'s referenced set");
+        BlobArenaFile file = _blobManager.GetFile(blobArenaId);
         using NativeMemoryList<byte> rented = new(MaxTrieNodeRlpBytes, MaxTrieNodeRlpBytes);
         Span<byte> buf = rented.AsSpan();
         int bytesRead = file.RandomRead(offset, buf);
@@ -243,19 +249,28 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     /// <see cref="ArenaFile"/> and every leased <see cref="BlobArenaFile"/>) for
     /// shutdown-preservation. Called by <see cref="PersistedSnapshotRepository.Dispose"/>
     /// before tearing down loaded snapshots so their on-disk data survives into the next
-    /// session. Idempotent and safe to call from any thread.
+    /// session. Reads the leased id list from the metadata HSST on each call; idempotent
+    /// and safe to call from any thread.
     /// </summary>
     public void PersistOnShutdown()
     {
         _reservation.PersistOnShutdown();
-        foreach (BlobArenaFile file in _blobFiles.Values)
-            file.PersistOnShutdown();
+        ushort[]? refIds = ReadReferencedBlobArenaIds();
+        if (refIds is null) return;
+        foreach (ushort id in refIds)
+            _blobManager.GetFile(id).PersistOnShutdown();
     }
 
     protected override void CleanUp()
     {
+        // Read the leased id list before disposing the reservation — once the reservation's
+        // last lease drops we can't open a whole-read session against its mmap.
+        ushort[]? refIds = ReadReferencedBlobArenaIds();
         _reservation.Dispose();
-        foreach (BlobArenaFile file in _blobFiles.Values)
-            file.Dispose();
+        if (refIds is null) return;
+        foreach (ushort id in refIds)
+            // Drop this snapshot's lease on each blob file. GetFile is a lock-free array read
+            // — the lease we acquired at construction kept the slot alive.
+            _blobManager.GetFile(id).Dispose();
     }
 }

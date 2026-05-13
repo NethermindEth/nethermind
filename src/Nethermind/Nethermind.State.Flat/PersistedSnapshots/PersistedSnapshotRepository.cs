@@ -99,15 +99,15 @@ public sealed class PersistedSnapshotRepository(
             refIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
         }
 
-        Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles(refIds);
+        LeaseBlobFilesForSnapshot(refIds);
         PersistedSnapshot snapshot;
         try
         {
-            snapshot = new(entry.From, entry.To, reservation, blobFiles);
+            snapshot = new(entry.From, entry.To, reservation, _blobs);
         }
         catch
         {
-            foreach (BlobArenaFile f in blobFiles.Values) f.Dispose();
+            ReleaseBlobFileLeases(refIds);
             throw;
         }
         RegisterBlooms(snapshot);
@@ -119,29 +119,40 @@ public sealed class PersistedSnapshotRepository(
     }
 
     /// <summary>
-    /// Lease one <see cref="BlobArenaFile"/> per id in <paramref name="ids"/>. If any
-    /// lease fails the helper releases what was acquired and throws — callers can
-    /// trust the returned dict is fully leased or no leases are dangling.
+    /// Acquire one lease per id in <paramref name="ids"/> on this tier's blob arena manager.
+    /// Each lease keeps the corresponding <see cref="BlobArenaFile"/>'s manager-array slot
+    /// alive for the lifetime of the snapshot under construction. On partial failure the
+    /// helper releases the leases it already took and rethrows so callers can roll back
+    /// without dangling refs.
     /// </summary>
-    private Dictionary<ushort, BlobArenaFile> LeaseBlobFiles(IEnumerable<ushort>? ids)
+    private void LeaseBlobFilesForSnapshot(IReadOnlyList<ushort>? ids)
     {
-        Dictionary<ushort, BlobArenaFile> result = [];
-        if (ids is null) return result;
+        if (ids is null) return;
+        int acquired = 0;
         try
         {
-            foreach (ushort id in ids)
+            for (; acquired < ids.Count; acquired++)
             {
-                if (!_blobs.TryLeaseFile(id, out BlobArenaFile? file))
-                    throw new InvalidOperationException($"Blob arena {id} not registered in this tier");
-                result[id] = file;
+                if (!_blobs.TryLeaseFile(ids[acquired], out _))
+                    throw new InvalidOperationException($"Blob arena {ids[acquired]} not registered in this tier");
             }
-            return result;
         }
         catch
         {
-            foreach (BlobArenaFile f in result.Values) f.Dispose();
+            for (int i = 0; i < acquired; i++)
+                _blobs.GetFile(ids[i]).Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// Release one lease per id, used to unwind a partially-built snapshot whose ctor threw
+    /// after <see cref="LeaseBlobFilesForSnapshot"/> succeeded.
+    /// </summary>
+    private void ReleaseBlobFileLeases(IReadOnlyList<ushort>? ids)
+    {
+        if (ids is null) return;
+        foreach (ushort id in ids) _blobs.GetFile(id).Dispose();
     }
 
     private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "type");
@@ -187,7 +198,8 @@ public sealed class PersistedSnapshotRepository(
         blobWriter.Complete();
         blobArenaId = blobWriter.BlobArenaId;
 
-        Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles([blobArenaId]);
+        ushort[] refIds = [blobArenaId];
+        LeaseBlobFilesForSnapshot(refIds);
         lock (_catalogLock)
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location));
@@ -196,11 +208,11 @@ public sealed class PersistedSnapshotRepository(
             PersistedSnapshot persisted;
             try
             {
-                persisted = new(snapshot.From, snapshot.To, reservation, blobFiles);
+                persisted = new(snapshot.From, snapshot.To, reservation, _blobs);
             }
             catch
             {
-                foreach (BlobArenaFile f in blobFiles.Values) f.Dispose();
+                ReleaseBlobFileLeases(refIds);
                 throw;
             }
             RegisterBlooms(persisted, bloom, trieBloom);
@@ -226,7 +238,8 @@ public sealed class PersistedSnapshotRepository(
     /// </summary>
     public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null)
     {
-        Dictionary<ushort, BlobArenaFile> blobFiles = LeaseBlobFiles(referencedBlobArenaIds);
+        ushort[] refIds = [.. referencedBlobArenaIds];
+        LeaseBlobFilesForSnapshot(refIds);
         lock (_catalogLock)
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location));
@@ -235,11 +248,11 @@ public sealed class PersistedSnapshotRepository(
             PersistedSnapshot snapshot;
             try
             {
-                snapshot = new(from, to, reservation, blobFiles);
+                snapshot = new(from, to, reservation, _blobs);
             }
             catch
             {
-                foreach (BlobArenaFile f in blobFiles.Values) f.Dispose();
+                ReleaseBlobFileLeases(refIds);
                 throw;
             }
             RegisterBlooms(snapshot, bloom, trieBloom: null);

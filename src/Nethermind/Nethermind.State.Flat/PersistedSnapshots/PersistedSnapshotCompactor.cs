@@ -93,11 +93,14 @@ public class PersistedSnapshotCompactor(
         StateId to = snapshots[^1].To;
 
         // Union of blob arena ids the inputs already reference. The merged snapshot
-        // does not write any new RLP bytes; it just inherits these.
+        // does not write any new RLP bytes; it just inherits these. Each input's id list
+        // is materialised once from its on-disk metadata HSST (no in-memory cache).
         HashSet<ushort> referencedBlobArenaIds = [];
         for (int i = 0; i < snapshots.Count; i++)
         {
-            foreach (ushort id in snapshots[i].ReferencedBlobArenaIds)
+            ushort[]? ids = snapshots[i].ReadReferencedBlobArenaIds();
+            if (ids is null) continue;
+            foreach (ushort id in ids)
                 referencedBlobArenaIds.Add(id);
         }
 

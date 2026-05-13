@@ -32,6 +32,7 @@ public class LongFinalityIntegrationTests
     private CancellationTokenSource _cts = null!;
     private IFlatDbConfig _config = null!;
     private MemoryArenaManager _memArena = null!;
+    private BlobArenaManager _helperBlobs = null!;
 
     [SetUp]
     public void SetUp()
@@ -44,6 +45,7 @@ public class LongFinalityIntegrationTests
         _processExitSource.Token.Returns(_cts.Token);
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
         _memArena = new MemoryArenaManager();
+        _helperBlobs = new BlobArenaManager(Path.Combine(_testDir, "helper-blobs"), 4L * 1024 * 1024, PersistedSnapshotTier.Small);
     }
 
     [TearDown]
@@ -51,6 +53,7 @@ public class LongFinalityIntegrationTests
     {
         _cts.Cancel();
         _cts.Dispose();
+        _helperBlobs.Dispose();
         _memArena.Dispose();
         if (Directory.Exists(_testDir))
             Directory.Delete(_testDir, recursive: true);
@@ -71,7 +74,8 @@ public class LongFinalityIntegrationTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _helperBlobs);
+        return new PersistedSnapshot(from, to, reservation, _helperBlobs);
     }
 
     [Test]
@@ -194,8 +198,8 @@ public class LongFinalityIntegrationTests
             c.StateNodes[statePath] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]); // Override
         });
 
-        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1);
-        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2);
+        byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _helperBlobs);
+        byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _helperBlobs);
         PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, data1);
         PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, PersistedSnapshotType.Full, data2);
         PersistedSnapshotList toMerge = new(2);

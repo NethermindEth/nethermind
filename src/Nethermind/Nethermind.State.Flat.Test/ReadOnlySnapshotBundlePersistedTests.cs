@@ -3,10 +3,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.State.Flat.Hsst;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Storage;
@@ -21,16 +23,25 @@ public class ReadOnlySnapshotBundlePersistedTests
 {
     private ResourcePool _pool = null!;
     private MemoryArenaManager _memArena = null!;
+    private BlobArenaManager _blobs = null!;
+    private string _blobsDir = null!;
 
     [SetUp]
     public void SetUp()
     {
         _pool = new ResourcePool(new FlatDbConfig());
         _memArena = new MemoryArenaManager();
+        _blobsDir = Path.Combine(Path.GetTempPath(), $"nm-robtest-blobs-{Guid.NewGuid():N}");
+        _blobs = new BlobArenaManager(_blobsDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
     }
 
     [TearDown]
-    public void TearDown() => _memArena.Dispose();
+    public void TearDown()
+    {
+        _blobs.Dispose();
+        _memArena.Dispose();
+        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
+    }
 
     [Test]
     [Ignore("Pre-blob-arena synthetic-bytes test; needs redesign — see blob-arena-pass-3.md")]
@@ -46,7 +57,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StateNodes[path] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
+        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
@@ -85,7 +96,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StorageNodes[(address, path)] = new TrieNode(NodeType.Branch, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
+        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
@@ -123,7 +134,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         SnapshotContent content = new();
         content.StateNodes[storedPath] = new TrieNode(NodeType.Leaf, nodeRlp);
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
-        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap);
+        byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
         PersistedSnapshotList list = new(1);
@@ -178,6 +189,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         data.CopyTo(span);
         writer.GetWriter().Advance(data.Length);
         (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(from, to, reservation, new Dictionary<ushort, BlobArenaFile>());
+        TestFixtureHelpers.LeaseBlobIdsFromHsst(reservation, _blobs);
+        return new PersistedSnapshot(from, to, reservation, _blobs);
     }
 }
