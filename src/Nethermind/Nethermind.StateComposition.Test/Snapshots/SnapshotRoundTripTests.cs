@@ -82,23 +82,15 @@ public class SnapshotRoundTripTests
     }
 
     [Test]
-    public void RoundTrip_PreservesAllFields()
+    public void RoundTrip_PreservesScalarsAndHistogram()
     {
         ImmutableArray<long> hist = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
         CumulativeTrieStats stats = BuildStats(codeBytes: 987_654, slotHist: hist);
 
         ValueHash256 addr1 = Keccak.Compute("addr1").ValueHash256;
-        ValueHash256 addr2 = Keccak.Compute("addr2").ValueHash256;
-        Dictionary<ValueHash256, long> slotCounts = new()
-        {
-            [addr1] = 42,
-            [addr2] = 1_000_000,
-        };
-
-        ValueHash256 codeA = Keccak.Compute("codeA").ValueHash256;
-        ValueHash256 codeB = Keccak.Compute("codeB").ValueHash256;
-        Dictionary<ValueHash256, int> refcounts = new() { [codeA] = 3, [codeB] = 1 };
-        Dictionary<ValueHash256, int> sizes = new() { [codeA] = 1024, [codeB] = 2048 };
+        Dictionary<ValueHash256, long> slotCounts = new() { [addr1] = 42 };
+        Dictionary<ValueHash256, int> refcounts = new() { [addr1] = 3 };
+        Dictionary<ValueHash256, int> sizes = new() { [addr1] = 1024 };
 
         StateCompositionSnapshot original = BuildSnapshot(stats,
             blockNumber: 1_000_000, stateRoot: Keccak.Compute("root"),
@@ -109,6 +101,9 @@ public class SnapshotRoundTripTests
 
         StateCompositionSnapshot decoded = RoundTrip(original);
 
+        // Tracker maps are persisted by the store as chunked side-records, not the
+        // decoder, so a raw decoder round-trip materialises them as empty.
+        // StateCompositionSnapshotStoreTests covers their end-to-end persistence.
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.Stats.CodeBytesTotal, Is.EqualTo(987_654));
@@ -117,14 +112,9 @@ public class SnapshotRoundTripTests
             Assert.That(decoded.DiffsSinceBaseline, Is.EqualTo(42));
             Assert.That(decoded.ScanBlockNumber, Is.EqualTo(999_000));
 
-            Assert.That(decoded.SlotCountByAddress, Has.Count.EqualTo(2));
-            Assert.That(decoded.SlotCountByAddress[addr1], Is.EqualTo(42));
-            Assert.That(decoded.SlotCountByAddress[addr2], Is.EqualTo(1_000_000));
-
-            Assert.That(decoded.CodeHashRefcounts[codeA], Is.EqualTo(3));
-            Assert.That(decoded.CodeHashRefcounts[codeB], Is.EqualTo(1));
-            Assert.That(decoded.CodeHashSizes[codeA], Is.EqualTo(1024));
-            Assert.That(decoded.CodeHashSizes[codeB], Is.EqualTo(2048));
+            Assert.That(decoded.SlotCountByAddress, Is.Empty);
+            Assert.That(decoded.CodeHashRefcounts, Is.Empty);
+            Assert.That(decoded.CodeHashSizes, Is.Empty);
         }
     }
 
