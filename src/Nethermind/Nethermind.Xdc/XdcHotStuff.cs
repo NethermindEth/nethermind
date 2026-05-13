@@ -228,8 +228,8 @@ namespace Nethermind.Xdc
 
             if (_writeRoundInfo && _logger.IsInfo)
             {
-                string roundDuration = _lastRoundDuration.HasValue ? $" completed in {_lastRoundDuration.Value.TotalSeconds:F2}s" : "";
-                _logger.Info($"Round {currentRound}{roundDuration}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
+                string roundDuration = _lastRoundDuration.HasValue ? $" after {_lastRoundDuration.Value.TotalSeconds:F2}s" : "";
+                _logger.Info($"Started round {currentRound}{roundDuration}: Leader={GetLeaderAddress(roundParent, currentRound, spec)}, MyTurn={isMyTurn}, Committee={epochInfo.Masternodes.Length} nodes");
                 _writeRoundInfo = false;
             }
 
