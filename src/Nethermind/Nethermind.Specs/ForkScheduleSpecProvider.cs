@@ -44,7 +44,12 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
         Index idx = _index.Value;
-        return forkActivation.Timestamp is ulong ts && idx.LookupTimestamp(ts) is { } tsSpec
+        // Timestamp-keyed forks apply only when the block is at or past the last block-keyed
+        // fork: a pre-merge block carries a pre-merge spec regardless of what its real-world
+        // timestamp would land in.
+        return forkActivation.Timestamp is ulong ts
+            && forkActivation.BlockNumber >= idx.LastBlockKey
+            && idx.LookupTimestamp(ts) is { } tsSpec
             ? tsSpec
             : idx.LookupBlock(forkActivation.BlockNumber);
     }
@@ -68,6 +73,8 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
             _timestampKeys = timestampKeys;
             _timestampSpecs = timestampSpecs;
         }
+
+        public long LastBlockKey => _blockKeys[^1];
 
         public static Index Build(ForkSpec[] schedule)
         {
