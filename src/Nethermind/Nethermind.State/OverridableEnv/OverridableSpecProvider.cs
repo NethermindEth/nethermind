@@ -12,7 +12,9 @@ namespace Nethermind.State.OverridableEnv;
 /// </summary>
 public class OverridableSpecProvider(ISpecProvider inner) : ISpecProvider
 {
-    private IReleaseSpec? _override;
+    // Volatile so cross-thread reads observe SetOverride/ResetOverride writes without
+    // relying solely on the architectural "one request at a time" invariant.
+    private volatile IReleaseSpec? _override;
 
     public ISpecProvider SpecProvider => inner;
 

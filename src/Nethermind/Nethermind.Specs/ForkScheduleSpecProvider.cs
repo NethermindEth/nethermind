@@ -18,6 +18,7 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     private readonly Lazy<ForkSpec[]> _schedule;
     private readonly Lazy<FrozenDictionary<string, IReleaseSpec>> _forks;
     private readonly Lazy<string[]> _availableForks;
+    private readonly Lazy<Index> _index;
 
     protected internal ForkSpec[] ForkSchedule => _schedule.Value;
     public FrozenDictionary<string, IReleaseSpec> Forks => _forks.Value;
@@ -35,31 +36,88 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
         _schedule = schedule;
         _forks = new(() => ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase));
         _availableForks = new(() => [.. ForkSchedule.Select(static x => x.Spec.Name)]);
+        _index = new(() => Index.Build(ForkSchedule));
         TerminalTotalDifficulty = terminalTotalDifficulty;
         MergeBlockNumber = mergeBlockNumber;
     }
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
-        IReleaseSpec result = ForkSchedule[0].Spec;
+        Index idx = _index.Value;
+        IReleaseSpec result = idx.LookupBlock(forkActivation.BlockNumber);
+        if (forkActivation.Timestamp is ulong ts && idx.LookupTimestamp(ts) is { } tsSpec)
+            result = tsSpec;
+        return result;
+    }
 
-        for (int i = 0; i < ForkSchedule.Length; i++)
+    /// <remarks>
+    /// Parallel sorted arrays keyed by block number and timestamp let <see cref="GetSpec"/>
+    /// do two <c>O(log n)</c> binary searches instead of scanning the whole schedule on
+    /// every consensus-path call.
+    /// </remarks>
+    private readonly struct Index
+    {
+        private readonly long[] _blockKeys;
+        private readonly IReleaseSpec[] _blockSpecs;
+        private readonly ulong[] _timestampKeys;
+        private readonly IReleaseSpec[] _timestampSpecs;
+
+        private Index(long[] blockKeys, IReleaseSpec[] blockSpecs, ulong[] timestampKeys, IReleaseSpec[] timestampSpecs)
         {
-            ForkSpec fork = ForkSchedule[i];
-            if (fork.Block is long block)
-            {
-                if (forkActivation.BlockNumber >= block)
-                    result = fork.Spec;
-                else
-                    break;
-            }
-            else if (fork.Timestamp is ulong forkTs && forkActivation.Timestamp is ulong ts && ts >= forkTs)
-            {
-                result = fork.Spec;
-            }
+            _blockKeys = blockKeys;
+            _blockSpecs = blockSpecs;
+            _timestampKeys = timestampKeys;
+            _timestampSpecs = timestampSpecs;
         }
 
-        return result;
+        public static Index Build(ForkSpec[] schedule)
+        {
+            int blockCount = 0;
+            int timestampCount = 0;
+            foreach (ForkSpec fork in schedule)
+            {
+                if (fork.Block.HasValue) blockCount++;
+                else if (fork.Timestamp.HasValue) timestampCount++;
+            }
+
+            long[] blockKeys = new long[blockCount];
+            IReleaseSpec[] blockSpecs = new IReleaseSpec[blockCount];
+            ulong[] timestampKeys = new ulong[timestampCount];
+            IReleaseSpec[] timestampSpecs = new IReleaseSpec[timestampCount];
+
+            int bi = 0;
+            int ti = 0;
+            foreach (ForkSpec fork in schedule)
+            {
+                if (fork.Block is long b) { blockKeys[bi] = b; blockSpecs[bi] = fork.Spec; bi++; }
+                else if (fork.Timestamp is ulong t) { timestampKeys[ti] = t; timestampSpecs[ti] = fork.Spec; ti++; }
+            }
+
+            return new Index(blockKeys, blockSpecs, timestampKeys, timestampSpecs);
+        }
+
+        // Schedule always has a genesis (block 0) entry, so idx >= 0 for any non-negative block number.
+        public IReleaseSpec LookupBlock(long blockNumber) =>
+            _blockSpecs[FindLastAtMost(_blockKeys, blockNumber)];
+
+        public IReleaseSpec? LookupTimestamp(ulong timestamp)
+        {
+            if (_timestampKeys.Length == 0) return null;
+            int idx = FindLastAtMost(_timestampKeys, timestamp);
+            return idx < 0 ? null : _timestampSpecs[idx];
+        }
+
+        // Largest index i such that keys[i] <= value, or -1 if all keys are larger.
+        // When duplicates of value exist, returns the rightmost matching index — so the
+        // last-declared activation wins (matters for Hoodi where Shanghai and Cancun
+        // share timestamp 0).
+        private static int FindLastAtMost<T>(ReadOnlySpan<T> sortedKeys, T value) where T : IComparable<T>
+        {
+            int idx = sortedKeys.BinarySearch(value);
+            if (idx < 0) return ~idx - 1;
+            while (idx + 1 < sortedKeys.Length && sortedKeys[idx + 1].CompareTo(value) == 0) idx++;
+            return idx;
+        }
     }
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

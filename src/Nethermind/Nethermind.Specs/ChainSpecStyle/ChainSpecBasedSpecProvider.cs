@@ -18,7 +18,7 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProvider : SpecProviderBase, IForkAwareSpecProvider
     {
         private readonly ChainSpec _chainSpec;
-        private IForkAwareSpecProvider _forkAware = null!;
+        private IForkAwareSpecProvider? _forkAware;
 
         public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager? logManager = null)
             : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
@@ -165,8 +165,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             _knownProvidersByChainId = null;
         }
 
-        private static IForkAwareSpecProvider ForkAwareForChain(ulong chainId) =>
-            KnownProvidersByChainId.GetValueOrDefault(chainId, MainnetSpecProvider.Instance);
+        private static IForkAwareSpecProvider? ForkAwareForChain(ulong chainId) =>
+            KnownProvidersByChainId.GetValueOrDefault(chainId);
 
         private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
@@ -421,7 +421,13 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong NetworkId => _chainSpec.NetworkId;
         public ulong ChainId => _chainSpec.ChainId;
         public string SealEngine => _chainSpec.SealEngineType;
-        public IEnumerable<string> AvailableForks => _forkAware.AvailableForks;
-        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => _forkAware.TryGetForkSpec(forkName, out spec);
+        public IEnumerable<string> AvailableForks => _forkAware?.AvailableForks ?? [];
+
+        public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec)
+        {
+            if (_forkAware is not null) return _forkAware.TryGetForkSpec(forkName, out spec);
+            spec = null;
+            return false;
+        }
     }
 }

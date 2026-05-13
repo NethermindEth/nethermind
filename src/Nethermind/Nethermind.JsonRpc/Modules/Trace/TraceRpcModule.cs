@@ -383,6 +383,21 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return tracer.BuildResult();
         }
 
+        /// <summary>
+        /// Adjusts a block header to the minimum needed for execution under a different spec:
+        /// fills in <see cref="BlockHeader.BaseFeePerGas"/> when activating EIP-1559 and
+        /// <see cref="BlockHeader.ExcessBlobGas"/> when activating EIP-4844.
+        /// </summary>
+        /// <remarks>
+        /// Known limitation: <c>WithdrawalsRoot</c> (EIP-4895), <c>ParentBeaconBlockRoot</c>
+        /// (EIP-4788), and <c>RequestsHash</c> (EIP-7685) are not synthesized. When a block is
+        /// re-executed under a spec that activates those features for the first time, system
+        /// calls (e.g. the beacon-root contract update) will see <c>null</c>/zero inputs and
+        /// produce side-effects that don't match a real chain — acceptable for tracing
+        /// (NoValidation path) but trace consumers should be aware. The intended use is
+        /// pre-merge fork comparison (e.g. Istanbul ↔ Berlin precompile gas), where these
+        /// fields are inherently absent.
+        /// </remarks>
         private static BlockHeader AdjustHeaderForSpec(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
         {
             BlockHeader adjusted = header.Clone();
