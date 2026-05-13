@@ -15,5 +15,5 @@ public class SignTransactionResult : IDisposable
     [JsonPropertyName("tx")]
     public required TransactionForRpc Tx { get; init; }
 
-    public void Dispose() => Raw?.Dispose();
+    public void Dispose() => Raw.Dispose();
 }

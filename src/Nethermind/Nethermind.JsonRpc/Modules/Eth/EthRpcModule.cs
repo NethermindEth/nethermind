@@ -410,24 +410,22 @@ public partial class EthRpcModule(
         const RlpBehaviors encodeBehaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm;
         int encodedLength = TxDecoder.Instance.GetLength(tx, encodeBehaviors);
         byte[] rented = ArrayPool<byte>.Shared.Rent(encodedLength);
+        OwnedByteMemory raw = new(rented, encodedLength, ArrayPool<byte>.Shared);
         try
         {
             RlpStream stream = new(new CappedArray<byte>(rented, encodedLength));
             TxDecoder.Instance.Encode(stream, tx, encodeBehaviors);
+            return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
+            {
+                Raw = raw,
+                Tx = TransactionForRpc.FromTransaction(tx)
+            });
         }
         catch
         {
-            ArrayPool<byte>.Shared.Return(rented);
+            raw.Dispose();
             throw;
         }
-
-        OwnedByteMemory raw = new(rented, encodedLength, ArrayPool<byte>.Shared);
-
-        return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
-        {
-            Raw = raw,
-            Tx = TransactionForRpc.FromTransaction(tx)
-        });
     }
 
     private ResultWrapper<SignTransactionResult>? CheckTxFeeCap(Transaction tx)
