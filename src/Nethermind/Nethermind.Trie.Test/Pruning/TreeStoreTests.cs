@@ -1991,7 +1991,7 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         private static TrieNode CreateNode(bool isPersisted) =>
-            new(NodeType.Unknown, TestItem.KeccakA) { IsPersisted = isPersisted };
+            new TrieNodePlaceholder(TestItem.KeccakA) { IsPersisted = isPersisted };
 
         private static TrieStoreDirtyNodesCache.NodeRecord CreateRecord(TrieNode node, long lastCommit) => new(node, lastCommit);
     }

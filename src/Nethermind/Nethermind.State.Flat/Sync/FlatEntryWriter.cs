@@ -147,7 +147,7 @@ internal static class FlatEntryWriter
         {
             get
             {
-                TrieNode node = new(NodeType.Unknown, _currentRlp.ToArray());
+                TrieNode node = new TrieNodePlaceholder(_currentRlp.ToArray());
                 TrieNode.ResolveNode(ref node, NullTrieNodeResolver.Instance, in _path);
                 return node;
             }

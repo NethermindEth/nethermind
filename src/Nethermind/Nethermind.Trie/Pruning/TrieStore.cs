@@ -602,7 +602,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private TrieNode GetSharedCachedOrPlaceholder(in TrieStoreDirtyNodesCache.Key key) =>
         DirtyNodesTryGetValue(key, out TrieNode? cached)
             ? ShareOrCloneForReadOnly(key, cached)
-            : new TrieNode(NodeType.Unknown, key.Keccak);
+            : new TrieNodePlaceholder(key.Keccak);
 
     private sealed class ScopedResolver(TrieStore inner, Hash256? address) : ITrieNodeResolver
     {
@@ -632,7 +632,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (!cached.HasRlp)
         {
             IncrementFallbackNotShareableCount();
-            return new TrieNode(NodeType.Unknown, key.Keccak);
+            return new TrieNodePlaceholder(key.Keccak);
         }
 
         if (cached.IsSealed)
@@ -1883,7 +1883,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 return _trieStore.ShareOrCloneForReadOnly(key, nodeRecord.Node);
             }
 
-            return new TrieNode(NodeType.Unknown, in key.Keccak);
+            return new TrieNodePlaceholder(in key.Keccak);
         }
 
         private bool CanImportFromMainCache(TrieStoreDirtyNodesCache.NodeRecord nodeRecord) =>
@@ -1921,7 +1921,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             // // this happens in SyncProgressResolver
             // throw new InvalidAsynchronousStateException("Read only trie store is trying to read a transient node.");
-            return new TrieNode(NodeType.Unknown, in key.Keccak);
+            return new TrieNodePlaceholder(in key.Keccak);
         }
 
         // AsSpan forces an owned copy via the ReadOnlySpan ctor overload: node.FullRlp may be

@@ -39,6 +39,47 @@ namespace Nethermind.Trie
     {
         internal TrieNodeNullSentinel() { }
         public override NodeType NodeType => NodeType.Unknown;
+        internal override TrieNode CloneTyped() => this;
+    }
+
+    /// <summary>
+    /// Concrete sealed placeholder for an as-yet-unresolved by-hash trie node. Carries
+    /// only an optional <see cref="ValueHash256"/> identity and / or RLP payload; the
+    /// shape (branch / leaf / extension) is determined later by <see cref="TrieNode.ResolveNode"/>,
+    /// which decodes the RLP into a typed derived class and rebinds the caller's reference.
+    /// Exists so the abstract <see cref="TrieNode"/> base does not need a public
+    /// constructor for the unknown case while resolver / cache / sync layers that still
+    /// publish unresolved node identities have a concrete type to allocate.
+    /// </summary>
+    public sealed class TrieNodePlaceholder : TrieNode
+    {
+        public TrieNodePlaceholder() { }
+
+        public TrieNodePlaceholder(in ValueHash256 keccak) : base(in keccak) => IsPersisted = true;
+
+        public TrieNodePlaceholder(Hash256 keccak) : base(in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
+
+        public TrieNodePlaceholder(CappedArray<byte> rlp, bool isDirty = false) : base(rlp, isDirty) { }
+
+        public TrieNodePlaceholder(byte[]? rlp, bool isDirty = false)
+            : base(new CappedArray<byte>(rlp), isDirty) { }
+
+        public TrieNodePlaceholder(Hash256 keccak, ReadOnlySpan<byte> rlp)
+            : base(new CappedArray<byte>(rlp.ToArray()), in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
+
+        public TrieNodePlaceholder(Hash256 keccak, CappedArray<byte> rlp)
+            : base(rlp, in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
+
+        public TrieNodePlaceholder(in ValueHash256 keccak, CappedArray<byte> rlp)
+            : base(rlp, in keccak) => IsPersisted = true;
+
+        // Copy ctor for CloneTyped: preserves the unknown shape; the caller is expected
+        // to ResolveNode the clone before treating it as a typed node.
+        private TrieNodePlaceholder(TrieNodePlaceholder source) : base(source) { }
+
+        internal override TrieNode CloneTyped() => new TrieNodePlaceholder(this);
+
+        public override NodeType NodeType => NodeType.Unknown;
     }
 
     internal sealed class TrieNodeBranch : TrieNode

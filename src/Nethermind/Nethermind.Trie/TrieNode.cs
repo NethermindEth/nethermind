@@ -24,7 +24,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie
 {
     [StructLayout(LayoutKind.Sequential)]
-    public partial class TrieNode
+    public abstract partial class TrieNode
     {
         internal const int BranchesCount = 16;
 #if DEBUG
@@ -588,68 +588,9 @@ namespace Nethermind.Trie
             InitRlp(rlp);
         }
 
-        // Public legacy constructors that produced bare TrieNode instances with a
-        // NodeType discriminator. After B4 only NodeType.Unknown remains valid for the
-        // base type; passing Branch / Leaf / Extension here is a contract violation and
-        // throws so callers are directed to TrieNode.CreateXxxTyped. The legacy
-        // FindCachedOrUnknown placeholder contract in TrieStore / SnapshotBundle /
-        // CommitSetQueue still uses the Unknown shape, which is why TrieNode is not
-        // sealed nor abstract: it is the run-time identity of an as-yet-unresolved
-        // by-hash reference.
-        public TrieNode(NodeType nodeType)
-        {
-            EnsureUnknown(nodeType);
-            _blockAndFlags = _dirtyMask;
-        }
-
-        public TrieNode(NodeType nodeType, Hash256 keccak)
-        {
-            EnsureUnknown(nodeType);
-            ArgumentNullException.ThrowIfNull(keccak);
-            SetKeccak(in keccak.ValueHash256);
-            IsPersisted = true;
-        }
-
-        public TrieNode(NodeType nodeType, in ValueHash256 keccak)
-        {
-            EnsureUnknown(nodeType);
-            SetKeccak(in keccak);
-            IsPersisted = true;
-        }
-
-        public TrieNode(NodeType nodeType, CappedArray<byte> rlp, bool isDirty = false)
-        {
-            EnsureUnknown(nodeType);
-            if (isDirty)
-            {
-                _blockAndFlags |= _dirtyMask;
-            }
-            InitRlp(rlp);
-        }
-
-        public TrieNode(NodeType nodeType, byte[]? rlp, bool isDirty = false)
-            : this(nodeType, new CappedArray<byte>(rlp), isDirty) { }
-
-        public TrieNode(NodeType nodeType, Hash256 keccak, ReadOnlySpan<byte> rlp)
-            : this(nodeType, keccak, new CappedArray<byte>(rlp.ToArray())) { }
-
-        public TrieNode(NodeType nodeType, Hash256 keccak, CappedArray<byte> rlp)
-            : this(nodeType, rlp)
-        {
-            Keccak = keccak;
-            IsPersisted = true;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void EnsureUnknown(NodeType nodeType)
-        {
-            if (nodeType != NodeType.Unknown) ThrowUseTypedFactory(nodeType);
-
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowUseTypedFactory(NodeType nodeType) =>
-                throw new InvalidOperationException(
-                    $"Cannot construct a base TrieNode for {nodeType}. Use TrieNode.Create{nodeType}Typed instead.");
-        }
+        // The public legacy NodeType-taking constructors are gone. TrieNode is abstract;
+        // unresolved by-hash placeholders allocate TrieNodePlaceholder; resolved nodes
+        // are TrieNodeBranch / TrieNodeLeaf / TrieNodeExtension produced by DecodeNode.
 
         /// <summary>
         /// Build a fully decoded inline child node from a parent RLP slice. Inline nodes
@@ -730,7 +671,7 @@ namespace Nethermind.Trie
         /// <summary>Type-preserving shallow clone of the shape data plus the dirty flag.
         /// Each subclass returns its own runtime type so `this is TrieNodeX` checks
         /// remain stable after mutation.</summary>
-        internal virtual TrieNode CloneTyped() => new(this);
+        internal abstract TrieNode CloneTyped();
 
         public override string ToString() =>
 #if DEBUG

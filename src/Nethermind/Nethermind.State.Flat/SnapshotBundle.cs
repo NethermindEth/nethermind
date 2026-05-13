@@ -160,7 +160,7 @@ public sealed class SnapshotBundle : IDisposable
         }
         else
         {
-            node = new TrieNode(NodeType.Unknown, hash);
+            node = new TrieNodePlaceholder(hash);
         }
 
         return node;
@@ -180,7 +180,7 @@ public sealed class SnapshotBundle : IDisposable
             node = _transientResource.GetOrAddStateNode(path,
                 DoFindStateNodeExternal(path, hash, out node)
                     ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+                    : new TrieNodePlaceholder(hash));
         }
 
         return node;
@@ -226,7 +226,7 @@ public sealed class SnapshotBundle : IDisposable
         }
         else
         {
-            node = new TrieNode(NodeType.Unknown, hash);
+            node = new TrieNodePlaceholder(hash);
         }
 
         return node;
@@ -246,7 +246,7 @@ public sealed class SnapshotBundle : IDisposable
             node = _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
                 DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
                     ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+                    : new TrieNodePlaceholder(hash));
         }
 
         return node;

@@ -59,7 +59,7 @@ public class TrieNodeTests
     [Test]
     public void Throws_trie_exception_on_missing_node()
     {
-        TrieNode trieNode = new(NodeType.Unknown);
+        TrieNode trieNode = new TrieNodePlaceholder();
         TreePath emptyPath = TreePath.Empty;
         Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
@@ -69,7 +69,7 @@ public class TrieNodeTests
     {
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
         resolver.LoadRlp(TreePath.Empty, TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
-        TrieNode trieNode = new(NodeType.Unknown, TestItem.KeccakA);
+        TrieNode trieNode = new TrieNodePlaceholder(TestItem.KeccakA);
         TreePath emptyPath = TreePath.Empty;
         try
         {
@@ -84,7 +84,7 @@ public class TrieNodeTests
     [Test]
     public void Throws_trie_exception_on_unexpected_format()
     {
-        TrieNode trieNode = new(NodeType.Unknown, new byte[42]);
+        TrieNode trieNode = new TrieNodePlaceholder(new byte[42]);
         TreePath emptyPath = TreePath.Empty;
         Assert.Throws<TrieNodeException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
@@ -92,7 +92,7 @@ public class TrieNodeTests
     [Test]
     public void When_resolving_an_unknown_node_without_keccak_and_rlp_trie_exception_should_be_thrown()
     {
-        TrieNode trieNode = new(NodeType.Unknown);
+        TrieNode trieNode = new TrieNodePlaceholder();
         TreePath emptyPath = TreePath.Empty;
         Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
@@ -100,7 +100,7 @@ public class TrieNodeTests
     [Test]
     public void When_resolving_an_unknown_node_without_rlp_trie_exception_should_be_thrown()
     {
-        TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode trieNode = new TrieNodePlaceholder(Keccak.Zero);
         TreePath emptyPath = TreePath.Empty;
         Assert.Throws<TrieException>(() => TrieNode.ResolveNode(ref trieNode, NullTrieNodeResolver.Instance, in emptyPath));
     }
@@ -117,7 +117,7 @@ public class TrieNodeTests
     [Test]
     public void Throws_trie_exception_when_resolving_key_on_missing_rlp()
     {
-        TrieNode trieNode = new(NodeType.Unknown);
+        TrieNode trieNode = new TrieNodePlaceholder();
         TreePath emptyPath = TreePath.Empty;
         Assert.Throws<TrieException>(() => trieNode.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath));
     }
@@ -194,7 +194,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
-        TrieNode decoded = new(NodeType.Unknown, rlp);
+        TrieNode decoded = new TrieNodePlaceholder(rlp);
         TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
         TrieNode decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 11);
         TrieNode.ResolveNode(ref decodedTiniest, NullTrieNodeResolver.Instance, in emptyPath);
@@ -214,7 +214,7 @@ public class TrieNodeTests
         ctx.HeavyLeaf.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
-        TrieNode decoded = new(NodeType.Unknown, rlp);
+        TrieNode decoded = new TrieNodePlaceholder(rlp);
         TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
 
         // The heavy leaf is stored by hash in slot 11 of the encoded branch. Verify that
@@ -235,7 +235,7 @@ public class TrieNodeTests
         TreePath emptyPath = TreePath.Empty;
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
-        TrieNode decoded = new(NodeType.Unknown, rlp);
+        TrieNode decoded = new TrieNodePlaceholder(rlp);
         TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
         TrieNode? decodedTiniest = decoded.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, 0);
         if (decodedTiniest is not null)
@@ -260,7 +260,7 @@ public class TrieNodeTests
         ctx.HeavyLeaf.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
         CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
 
-        TrieNode decoded = new(NodeType.Unknown, rlp);
+        TrieNode decoded = new TrieNodePlaceholder(rlp);
         TrieNode.ResolveNode(ref decoded, NullTrieNodeResolver.Instance, in emptyPath);
 
         // The heavy leaf is stored by hash in the extension's child slot. Verify the slot
@@ -385,7 +385,7 @@ public class TrieNodeTests
     {
         ITreeVisitor<EmptyContext> visitor = Substitute.For<ITreeVisitor<EmptyContext>>();
         TrieVisitContext context = new();
-        TrieNode node = new(NodeType.Unknown);
+        TrieNode node = new TrieNodePlaceholder();
 
         TreePath emptyPath = TreePath.Empty;
         node.Accept(visitor, new EmptyContext(), NullTrieNodeResolver.Instance, ref emptyPath, context);
@@ -642,14 +642,14 @@ public class TrieNodeTests
     [Test]
     public void Size_of_an_unknown_empty_node_is_correct()
     {
-        TrieNode trieNode = new(NodeType.Unknown);
+        TrieNode trieNode = new TrieNodePlaceholder();
         trieNode.GetMemorySize(false).Should().Be(72);
     }
 
     [Test]
     public void Size_of_an_unknown_node_with_keccak_is_correct()
     {
-        TrieNode trieNode = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode trieNode = new TrieNodePlaceholder(Keccak.Zero);
         trieNode.GetMemorySize(false).Should().Be(72);
     }
 
@@ -680,7 +680,7 @@ public class TrieNodeTests
     [Test]
     public void Size_of_an_unknown_node_with_full_rlp_is_correct()
     {
-        TrieNode trieNode = new(NodeType.Unknown, new byte[7]);
+        TrieNode trieNode = new TrieNodePlaceholder(new byte[7]);
         trieNode.GetMemorySize(false).Should().Be(104);
     }
 
@@ -748,7 +748,7 @@ public class TrieNodeTests
     [Test]
     public void Pruning_regression()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
 
@@ -761,7 +761,7 @@ public class TrieNodeTests
     [Test]
     public void Extension_child_as_keccak()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
 
@@ -773,7 +773,7 @@ public class TrieNodeTests
     [Test]
     public void Extension_child_as_keccak_memory_size()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
 
@@ -787,7 +787,7 @@ public class TrieNodeTests
     [Test]
     public void Extension_child_as_keccak_clone()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
 
@@ -800,7 +800,7 @@ public class TrieNodeTests
     [Test]
     public void Unresolve_of_persisted()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
         trieNode.Key = Bytes.FromHexString("abcd");
@@ -839,7 +839,7 @@ public class TrieNodeTests
     [Test]
     public void Extension_child_as_keccak_not_dirty()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
 
@@ -851,7 +851,7 @@ public class TrieNodeTests
     [TestCase(false)]
     public void Extension_child_as_keccak_call_recursively(bool skipPersisted)
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
 
@@ -867,7 +867,7 @@ public class TrieNodeTests
     [Test]
     public void Branch_child_as_keccak_encode()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateBranchTyped();
         trieNode.SetChild(0, child);
         trieNode.SetChild(4, child);
@@ -880,7 +880,7 @@ public class TrieNodeTests
     [Test]
     public void Branch_child_as_keccak_resolved()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateBranchTyped();
         trieNode.SetChild(0, child);
         trieNode.SetChild(4, child);
@@ -897,7 +897,7 @@ public class TrieNodeTests
     [Test]
     public void Child_as_keccak_cached()
     {
-        TrieNode child = new(NodeType.Unknown, Keccak.Zero);
+        TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
         TrieNode trieNode = TrieNode.CreateExtensionTyped();
         trieNode.SetChild(0, child);
 
@@ -1075,11 +1075,11 @@ public class TrieNodeTests
         private TrieNode GetOrAddNode(in TreePath path, TrieNode node) => _nodes.GetOrAdd(path, node);
 
         public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
-            _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, in hash));
+            _nodes.GetOrAdd(path, new TrieNodePlaceholder(in hash));
 
         public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode node, ReadFlags flags = ReadFlags.None)
         {
-            node = _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, in hash));
+            node = _nodes.GetOrAdd(path, new TrieNodePlaceholder(in hash));
             return true;
         }
 

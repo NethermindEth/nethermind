@@ -108,7 +108,7 @@ internal class TrieStoreDirtyNodesCache
         }
         else
         {
-            trieNode = new TrieNode(NodeType.Unknown, in key.Keccak);
+            trieNode = new TrieNodePlaceholder(in key.Keccak);
         }
 
         if (_logger.IsTrace) Trace(trieNode);
@@ -167,13 +167,13 @@ internal class TrieStoreDirtyNodesCache
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
         ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
         {
-            TrieNode trieNode = new(NodeType.Unknown, in keccak);
+            TrieNode trieNode = new TrieNodePlaceholder(in keccak);
             cache.IncrementMemory(trieNode);
             return new NodeRecord(trieNode, -1);
         }, cache)
         : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
         {
-            TrieNode trieNode = new(NodeType.Unknown, in key.Keccak);
+            TrieNode trieNode = new TrieNodePlaceholder(in key.Keccak);
             cache.IncrementMemory(trieNode);
             return new NodeRecord(trieNode, -1);
         }, cache);

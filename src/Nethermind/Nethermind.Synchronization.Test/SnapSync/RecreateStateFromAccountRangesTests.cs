@@ -71,7 +71,7 @@ public class RecreateStateFromAccountRangesTests
         for (int i = 0; i < (firstProof!).Length; i++)
         {
             byte[] nodeBytes = (firstProof!)[i];
-            TrieNode node = new(NodeType.Unknown, nodeBytes);
+            TrieNode node = new TrieNodePlaceholder(nodeBytes);
             node.ResolveKey(store, ref emptyPath);
 
             nodes.Add(node);
@@ -86,7 +86,7 @@ public class RecreateStateFromAccountRangesTests
         for (int i = 0; i < (lastProof!).Length; i++)
         {
             byte[] nodeBytes = (lastProof!)[i];
-            TrieNode node = new(NodeType.Unknown, nodeBytes);
+            TrieNode node = new TrieNodePlaceholder(nodeBytes);
             node.ResolveKey(store, ref emptyPath);
 
             nodes.Add(node);
