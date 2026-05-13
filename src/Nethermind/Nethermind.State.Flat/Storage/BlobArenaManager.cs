@@ -42,13 +42,13 @@ public sealed class BlobArenaManager : IBlobArenaManager
     private readonly long _maxFileSize;
     private readonly string _reservationTag;
     private readonly Lock _lock = new();
-    // Indexed by blob arena id. Null slot = no file. Reads (RandomRead, TryLeaseFile dict
-    // lookup) are unlocked — reference-slot reads are atomic in the CLR memory model.
-    // Slot mutations (insert / null) happen under _lock alongside _mutableFiles / _reservedFiles.
+    // Indexed by blob arena id. Null slot = no file. Reads (TryLeaseFile lookup) are
+    // unlocked — reference-slot reads are atomic in the CLR memory model. Slot mutations
+    // (insert / null) happen under _lock alongside _mutableFiles.
     private readonly BlobArenaFile?[] _files = new BlobArenaFile?[ushort.MaxValue + 1];
-    // Files currently held by a writer. Protected by _lock.
-    private readonly HashSet<ushort> _reservedFiles = [];
-    // Files that still have headroom for further packing. Protected by _lock.
+    // Files that still have headroom for further packing AND are not currently held by
+    // a writer. A writer reserves a file by removing it from this set; Complete / Cancel
+    // re-add it (if room remains). Protected by _lock.
     private readonly HashSet<ushort> _mutableFiles = [];
     private int _nextFileId;
     private bool _disposed;
@@ -111,7 +111,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
             List<ushort>? toRemove = null;
             foreach (ushort id in _mutableFiles)
             {
-                if (_reservedFiles.Contains(id)) continue;
                 BlobArenaFile candidate = _files[id]!;
                 if (candidate.Frontier + estimatedSize <= candidate.MaxSize)
                 {
@@ -131,6 +130,9 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 fileId = existing;
                 file = _files[fileId]!;
                 startOffset = file.Frontier;
+                // Reserve: remove from the mutable set so no concurrent CreateWriter picks it.
+                // RegisterCompleted / CancelWrite re-add it if it still has headroom.
+                _mutableFiles.Remove(fileId);
             }
             else
             {
@@ -141,7 +143,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
                 file = new BlobArenaFile(_reservationTag, fileId, path, _maxFileSize, frontier: 0);
                 _files[fileId] = file;
-                _mutableFiles.Add(fileId);
+                // Fresh file isn't added to _mutableFiles yet — Complete/Cancel adds it.
                 startOffset = 0;
             }
 
@@ -152,7 +154,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 throw new InvalidOperationException(
                     $"Blob arena {fileId} is mid-cleanup; cannot open writer.");
 
-            _reservedFiles.Add(fileId);
             FileStream stream = file.OpenWriteStream(startOffset);
             return new BlobArenaWriter(this, file, startOffset, stream);
         }
@@ -194,14 +195,21 @@ public sealed class BlobArenaManager : IBlobArenaManager
                     $"Blob arena {blobArenaId} is not registered; cannot register completion.");
             file.OnFrontierGrew(bytesWritten);
             file.Frontier = newFrontier;
-            _reservedFiles.Remove(blobArenaId);
-            if (newFrontier >= file.MaxSize) _mutableFiles.Remove(blobArenaId);
+            // Un-reserve: return the file to the mutable pool iff it still has room.
+            if (newFrontier < file.MaxSize) _mutableFiles.Add(blobArenaId);
         }
     }
 
     internal void CancelWrite(ushort blobArenaId)
     {
-        lock (_lock) _reservedFiles.Remove(blobArenaId);
+        lock (_lock)
+        {
+            // Un-reserve: the writer gave up, so its file goes back to the mutable pool
+            // (its frontier didn't advance, so by construction it still has headroom).
+            BlobArenaFile? file = _files[blobArenaId];
+            if (file is not null && file.Frontier < file.MaxSize)
+                _mutableFiles.Add(blobArenaId);
+        }
     }
 
     /// <summary>
