@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
@@ -127,44 +126,6 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
         _accessor.Dispose();
         _mmf.Dispose();
         _basePtr = null;
-    }
-
-    /// <summary>
-    /// Read <paramref name="destination"/>.Length bytes from absolute file offset
-    /// <paramref name="offset"/> using <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>.
-    /// Loops over short reads until either the destination is full or a 0-byte read
-    /// is observed. Bypasses the mmap so the bytes are not faulted into our resident
-    /// set; the kernel still serves them from the page cache.
-    /// Returns the total bytes copied into <paramref name="destination"/>.
-    /// </summary>
-    public int RandomRead(long offset, Span<byte> destination)
-    {
-        int total = 0;
-        while (total < destination.Length)
-        {
-            int read = RandomAccess.Read(_handle, destination[total..], offset + total);
-            if (read <= 0) break;
-            total += read;
-        }
-        return total;
-    }
-
-    public void Touch(long offset, long size)
-    {
-        if (size <= 0) return;
-        byte[] buf = ArrayPool<byte>.Shared.Rent(64 * 1024);
-        try
-        {
-            long end = offset + size;
-            while (offset < end)
-            {
-                int chunk = (int)Math.Min(buf.Length, end - offset);
-                int read = RandomAccess.Read(_handle, buf.AsSpan(0, chunk), offset);
-                if (read <= 0) break;
-                offset += read;
-            }
-        }
-        finally { ArrayPool<byte>.Shared.Return(buf); }
     }
 
     public void AdviseDontNeed(long offset, long size)
