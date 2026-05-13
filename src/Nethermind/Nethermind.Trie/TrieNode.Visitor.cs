@@ -184,7 +184,7 @@ namespace Nethermind.Trie
 
         private long VisitAllSingleThread(TrieNode currentNode, ref TreePath path, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, bool isStorage, long subtreeSizeHint)
         {
-            RefList16<TrieNode?> output = new(TrieNode.BranchesCount);
+            RefList16<TrieNode.ChildHash> output = new(TrieNode.BranchesCount);
             int childCount = currentNode.ResolveAllChildBranch(nodeResolver, ref path, output.AsSpan());
             subtreeSizeHint /= childCount;
             long actualSubtreeSize = 0;
@@ -192,17 +192,26 @@ namespace Nethermind.Trie
             path.AppendMut(0);
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
-                if (output[i] is null) continue;
-                TrieNode child = output[i];
+                TrieNode.ChildHash slot = output[i];
+                if (slot.IsEmpty) continue;
                 path.SetLast(i);
-                child.ResolveKey(nodeResolver, ref path);
+                if (!slot.TryGetHash(out ValueHash256 childHash)) continue;
                 TNodeContext childContext = nodeContext.Add((byte)i);
-                if (visitor.ShouldVisit(childContext, child.Keccak!))
+                if (!visitor.ShouldVisit(childContext, in childHash)) continue;
+
+                TrieNode? child = slot.Node;
+                if (child is null)
                 {
-                    // Note: Changing the subtreeSizeHint mid iteration is deliberate
-                    subtreeSizeHint = Accept(child, childContext, nodeResolver, ref path, isStorage, subtreeSizeHint);
-                    actualSubtreeSize += subtreeSizeHint;
+                    if (!nodeResolver.TryGetOrLoadNode(in path, in childHash, out child))
+                    {
+                        visitor.VisitMissingNode(childContext, new Hash256(in childHash));
+                        actualSubtreeSize++;
+                        continue;
+                    }
                 }
+                // Note: Changing the subtreeSizeHint mid iteration is deliberate
+                subtreeSizeHint = Accept(child, childContext, nodeResolver, ref path, isStorage, subtreeSizeHint);
+                actualSubtreeSize += subtreeSizeHint;
             }
             path.TruncateOne();
 
@@ -214,7 +223,7 @@ namespace Nethermind.Trie
             RefList16<Task<long>> tasks = new(0);
 
             // we need to preallocate children
-            RefList16<TrieNode?> output = new(TrieNode.BranchesCount);
+            RefList16<TrieNode.ChildHash> output = new(TrieNode.BranchesCount);
             int childCount = node.ResolveAllChildBranch(trieNodeResolver, ref path, output.AsSpan());
 
             subtreeSizeHint /= childCount;
@@ -225,27 +234,36 @@ namespace Nethermind.Trie
             path.AppendMut(0);
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
-                if (output[i] is null) continue;
+                TrieNode.ChildHash slot = output[i];
+                if (slot.IsEmpty) continue;
                 handledChild++;
-                TrieNode child = output[i];
                 path.SetLast(i);
-                child.ResolveKey(trieNodeResolver, ref path);
+                if (!slot.TryGetHash(out ValueHash256 childHash)) continue;
                 TNodeContext childContext = nodeContext.Add((byte)i);
-                if (visitor.ShouldVisit(childContext, child.Keccak!))
+                if (!visitor.ShouldVisit(childContext, in childHash)) continue;
+
+                TrieNode? child = slot.Node;
+                if (child is null)
                 {
-                    if (
-                        handledChild < childCount // Not the last node
-                        && subtreeSizeHint > SubtreeSizeThreshold
-                        && _threadLimiter.TryTakeSlot(out ConcurrencyController.Slot returner))
+                    if (!trieNodeResolver.TryGetOrLoadNode(in path, in childHash, out child))
                     {
-                        tasks.Add(SpawnChildVisit(path, child, childContext, trieNodeResolver, returner, isStorage, subtreeSizeHint));
+                        visitor.VisitMissingNode(childContext, new Hash256(in childHash));
+                        actualSubtreeSize++;
+                        continue;
                     }
-                    else
-                    {
-                        // Note: Changing the subtreeSizeHint mid iteration is deliberate
-                        subtreeSizeHint = Accept(child, childContext, trieNodeResolver, ref path, isStorage, subtreeSizeHint);
-                        actualSubtreeSize += subtreeSizeHint;
-                    }
+                }
+                if (
+                    handledChild < childCount // Not the last node
+                    && subtreeSizeHint > SubtreeSizeThreshold
+                    && _threadLimiter.TryTakeSlot(out ConcurrencyController.Slot returner))
+                {
+                    tasks.Add(SpawnChildVisit(path, child, childContext, trieNodeResolver, returner, isStorage, subtreeSizeHint));
+                }
+                else
+                {
+                    // Note: Changing the subtreeSizeHint mid iteration is deliberate
+                    subtreeSizeHint = Accept(child, childContext, trieNodeResolver, ref path, isStorage, subtreeSizeHint);
+                    actualSubtreeSize += subtreeSizeHint;
                 }
             }
             path.TruncateOne();

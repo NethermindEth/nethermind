@@ -2075,25 +2075,37 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
-        /// Fast path for trie visitor which visit ranges. Assume node is persisted and has RLP. Does not check for
-        /// data[i] and does not modify it as it assume its not in the cache most of the time.
+        /// Visitor fast path for branch nodes. Decodes child references directly from
+        /// the parent RLP without touching <see cref="GetSlotRef(int)"/> slots: empty
+        /// entries land as <c>null</c>, inline children decode to a typed inline node,
+        /// by-hash references publish a hash-only carrier (<see cref="ChildHash"/>)
+        /// so the visitor can issue <see cref="ITreeVisitor{T}.ShouldVisit"/> against
+        /// the keccak without paying for a load it may end up skipping. Visitors that
+        /// decide to recurse call <see cref="ITrieNodeResolver.GetOrLoadNode"/> with
+        /// the child's hash.
         /// </summary>
-        /// <param name="tree"></param>
-        /// <param name="path"></param>
-        /// <param name="output"></param>
-        internal int ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, Span<TrieNode?> output)
+        internal int ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, Span<ChildHash> output)
         {
             int chCount = 0;
             CappedArray<byte> rlp = ReadRlp();
             if (rlp.IsNull)
             {
+                // No parent RLP: child slots are the canonical state. For each non-empty
+                // slot publish a fully resolved typed child via the slot itself.
                 path.AppendMut(0);
                 for (int i = 0; i < 16; i++)
                 {
                     path.SetLast(i);
-                    TrieNode n = GetChildWithChildPath(tree, ref path, i);
-                    if (n is not null) chCount++;
-                    output[i] = n;
+                    TrieNode? n = GetChildWithChildPath(tree, ref path, i);
+                    if (n is not null)
+                    {
+                        chCount++;
+                        output[i] = new ChildHash(n);
+                    }
+                    else
+                    {
+                        output[i] = default;
+                    }
                 }
 
                 path.TruncateOne();
@@ -2115,23 +2127,15 @@ namespace Nethermind.Trie
                     case 128:
                         {
                             rlpStream.Position++;
-                            output[i] = null;
+                            output[i] = default;
                             break;
                         }
                     case 160:
                         {
                             path.SetLast(i);
                             rlpStream.DecodeValueKeccak(out ValueHash256 childHash);
-                            // By-hash child: resolve fully through the resolver. Visitors used
-                            // to consume an unresolved placeholder, call ShouldVisit on the
-                            // hash, and only then load. With placeholders gone they consume
-                            // the typed resolved node instead - on the cache-hit path this is
-                            // free, on the miss path it pulls the same RLP they would have
-                            // loaded one step later.
-                            TrieNode child = tree.GetOrLoadNode(in path, in childHash);
                             chCount++;
-                            output[i] = child;
-
+                            output[i] = new ChildHash(in childHash);
                             break;
                         }
                     default:
@@ -2142,7 +2146,7 @@ namespace Nethermind.Trie
                             TrieNode child = CreateInlineChild(in path, rlp, offset, length);
                             rlpStream.SkipBytes(length);
                             chCount++;
-                            output[i] = child;
+                            output[i] = new ChildHash(child);
                             break;
                         }
                 }
@@ -2151,6 +2155,46 @@ namespace Nethermind.Trie
             path.TruncateOne();
 
             return chCount;
+        }
+
+        /// <summary>
+        /// Lightweight carrier returned by <see cref="ResolveAllChildBranch"/>. Holds
+        /// either a fully resolved <see cref="TrieNode"/> (inline child or non-RLP
+        /// branch) or just a <see cref="ValueHash256"/> for by-hash references that
+        /// the visitor may yet decide to skip. <see cref="IsEmpty"/> distinguishes
+        /// unset slots from non-empty children.
+        /// </summary>
+        public readonly struct ChildHash
+        {
+            private readonly TrieNode? _node;
+            private readonly ValueHash256 _hash;
+            private readonly bool _hasHash;
+
+            public ChildHash(TrieNode node)
+            {
+                _node = node;
+                _hash = default;
+                _hasHash = false;
+            }
+
+            public ChildHash(in ValueHash256 hash)
+            {
+                _node = null;
+                _hash = hash;
+                _hasHash = true;
+            }
+
+            public bool IsEmpty => _node is null && !_hasHash;
+
+            public TrieNode? Node => _node;
+
+            public bool TryGetHash(out ValueHash256 hash)
+            {
+                if (_hasHash) { hash = _hash; return true; }
+                if (_node is not null && _node.TryGetKeccak(out hash)) return true;
+                hash = default;
+                return false;
+            }
         }
 
         internal void UnresolveChild(int i)

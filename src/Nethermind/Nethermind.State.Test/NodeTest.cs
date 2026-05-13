@@ -48,7 +48,12 @@ namespace Nethermind.Store.Test
         {
             (ITrieNodeResolver tree, TrieNode decoded) = CreateBranchAndDecode();
             TreePath emptyPath = TreePath.Empty;
-            _ = decoded.GetChild(tree, ref emptyPath, 0);
+            // The branch was committed but the by-hash leaf children were not.
+            // GetChild lazy-resolves through the resolver, which surfaces the
+            // missing child as MissingTrieNodeException. The branch itself can
+            // still be re-encoded (encoder reads the by-hash bytes from the
+            // retained parent RLP without forcing a child load).
+            Assert.Throws<MissingTrieNodeException>(() => decoded.GetChild(tree, ref emptyPath, 0));
             decoded.RlpEncode(tree, ref emptyPath);
         }
 

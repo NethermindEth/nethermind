@@ -56,7 +56,53 @@ namespace Nethermind.Trie
 
         private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
-        public TrieNode? RootRef { get; set; }
+        private TrieNode? _rootRef;
+        private bool _rootRefResolved;
+        private readonly Lock _rootRefLock = new();
+
+        /// <summary>
+        /// The in-memory root of this trie. Returns <c>null</c> when
+        /// <see cref="_rootHash"/> == <see cref="Keccak.EmptyTreeHash"/>; otherwise
+        /// lazy-resolves the root through the read resolver on first access. A miss
+        /// surfaces as <see cref="MissingTrieNodeException"/> via the underlying
+        /// store's <see cref="ITrieNodeResolver.LoadRlp"/>. Snap-sync stitching
+        /// (where the root is not in the store yet) must publish the root via the
+        /// setter before the first read.
+        /// </summary>
+        public TrieNode? RootRef
+        {
+            get
+            {
+                if (Volatile.Read(ref _rootRefResolved))
+                {
+                    return _rootRef;
+                }
+
+                lock (_rootRefLock)
+                {
+                    if (_rootRefResolved)
+                    {
+                        return _rootRef;
+                    }
+
+                    if (_rootHash != Keccak.EmptyTreeHash)
+                    {
+                        _rootRef = _readResolver.GetOrLoadNode(TreePath.Empty, _rootHash.ValueHash256);
+                    }
+
+                    Volatile.Write(ref _rootRefResolved, true);
+                    return _rootRef;
+                }
+            }
+            set
+            {
+                lock (_rootRefLock)
+                {
+                    _rootRef = value;
+                    Volatile.Write(ref _rootRefResolved, true);
+                }
+            }
+        }
 
         // Used to estimate if parallelization is needed during commit
         private long _writeBeforeCommit = 0;
@@ -346,13 +392,13 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                // TODO: removing the NodeType.Unknown placeholder here requires either eager
-                // resolution (which breaks skip-root commits and snap-sync tracking - the root
-                // is not in the store yet) or a lazy RootRef getter (which leaks null into
-                // downstream readers that today treat null as 'empty trie'). The legacy
-                // FindCachedOrUnknown path stays until those readers are migrated alongside
-                // step 3 (removing FindCachedOrUnknown from the resolver interface).
-                RootRef = _readResolver.FindCachedOrUnknown(TreePath.Empty, _rootHash);
+                // Drop any cached root reference; the next RootRef read lazily
+                // resolves the new root hash through _readResolver.TryGetOrLoadNode.
+                lock (_rootRefLock)
+                {
+                    _rootRef = null;
+                    Volatile.Write(ref _rootRefResolved, false);
+                }
             }
         }
 
