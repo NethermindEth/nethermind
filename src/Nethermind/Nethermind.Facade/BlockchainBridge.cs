@@ -638,8 +638,9 @@ namespace Nethermind.Facade
         {
             public Scope<BlockchainBridge.BlockProcessingComponents> BuildAndOverride(
                 BlockHeader? header,
-                Dictionary<Address, AccountOverride>? stateOverride = null) =>
-                inner.BuildAndOverride(header, stateOverride);
+                Dictionary<Address, AccountOverride>? stateOverride = null,
+                IReleaseSpec? specOverride = null) =>
+                inner.BuildAndOverride(header, stateOverride, specOverride);
 
             public void Dispose() => scope.Dispose();
         }

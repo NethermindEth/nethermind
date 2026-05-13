@@ -425,9 +425,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec)
         {
-            if (_forkAware is not null) return _forkAware.TryGetForkSpec(forkName, out spec);
             spec = null;
-            return false;
+            return _forkAware?.TryGetForkSpec(forkName, out spec) ?? false;
         }
     }
 }

@@ -44,10 +44,9 @@ public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
     public IReleaseSpec GetSpec(ForkActivation forkActivation)
     {
         Index idx = _index.Value;
-        IReleaseSpec result = idx.LookupBlock(forkActivation.BlockNumber);
-        if (forkActivation.Timestamp is ulong ts && idx.LookupTimestamp(ts) is { } tsSpec)
-            result = tsSpec;
-        return result;
+        return forkActivation.Timestamp is ulong ts && idx.LookupTimestamp(ts) is { } tsSpec
+            ? tsSpec
+            : idx.LookupBlock(forkActivation.BlockNumber);
     }
 
     /// <remarks>
