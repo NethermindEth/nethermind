@@ -137,7 +137,8 @@ public class ReadOnlyAccountChanges : IEquatable<ReadOnlyAccountChanges>
 
     /// <summary>True iff this account has any tx-level mutation declared in the BAL. Used by
     /// <c>BlockAccessListBasedWorldState.GetAccountChanges</c> to enumerate the addresses that
-    /// will be visibly modified by the block.</summary>
+    /// will be visibly modified by the block. Computed; not serialised.</summary>
+    [JsonIgnore]
     public bool HasStateChanges
         => BalanceChanges.Length > 0
             || NonceChanges.Length > 0
