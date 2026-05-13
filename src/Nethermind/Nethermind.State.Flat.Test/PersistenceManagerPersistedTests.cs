@@ -47,7 +47,7 @@ public class PersistenceManagerPersistedTests
             repo, smallArena, config, LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2,
-            tierLabel: "small",
+            tier: PersistedSnapshotTier.Small,
             reservationTag: ArenaReservationTags.BlobBackedSmall);
 
         StateId s0 = new(0, Keccak.EmptyTreeHash);
@@ -77,7 +77,7 @@ public class PersistenceManagerPersistedTests
             repo, smallArena, config, LimboLogs.Instance, new PersistedSnapshotBloomFilterManager(),
             minCompactSize: config.MinCompactSize,
             maxCompactSize: config.CompactSize / 2,
-            tierLabel: "small",
+            tier: PersistedSnapshotTier.Small,
             reservationTag: ArenaReservationTags.BlobBackedSmall);
 
         // Persist snapshots at various block heights

@@ -29,7 +29,7 @@ public class PersistedSnapshotCompactor(
     PersistedSnapshotBloomFilterManager bloomManager,
     int minCompactSize,
     int maxCompactSize,
-    string tierLabel,
+    PersistedSnapshotTier tier,
     string reservationTag) : IPersistedSnapshotCompactor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PersistedSnapshotCompactor>();
@@ -39,7 +39,7 @@ public class PersistedSnapshotCompactor(
     private readonly bool _validatePersistedSnapshot = config.ValidatePersistedSnapshot;
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly long _maxCompactedSourceBytes = config.PersistedSnapshotMaxCompactedSourceBytes;
-    private readonly string _tierLabel = tierLabel;
+    private readonly PersistedSnapshotTier _tier = tier;
     private readonly string _reservationTag = reservationTag;
 
     /// <summary>
@@ -87,7 +87,7 @@ public class PersistedSnapshotCompactor(
             return false;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, tier {_tierLabel}");
+        if (_logger.IsDebug) _logger.Debug($"Compacting {snapshots.Count} persisted snapshots at block {snapshotTo.BlockNumber}, compact size {compactSize}, tier {_tier}");
 
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
@@ -137,8 +137,8 @@ public class PersistedSnapshotCompactor(
             }
 
             long len = arenaWriter.GetWriter().Written;
-            _persistedSnapshotSize.WithLabels(_tierLabel, $"size{compactSize}").Observe(len);
-            _persistedSnapshotCompactTime.WithLabels(_tierLabel, $"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
+            _persistedSnapshotSize.WithLabels(_tier.Name, $"size{compactSize}").Observe(len);
+            _persistedSnapshotCompactTime.WithLabels(_tier.Name, $"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
 
             (location, reservation) = arenaWriter.Complete();
         }

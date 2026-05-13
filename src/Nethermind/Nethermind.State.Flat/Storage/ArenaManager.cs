@@ -23,7 +23,7 @@ public sealed class ArenaManager : IArenaManager
     private readonly long _maxArenaSize;
     private readonly long _dedicatedArenaThreshold;
     private readonly bool _fadviseOnEviction;
-    private readonly string _tier;
+    private readonly PersistedSnapshotTier _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
     private readonly Dictionary<int, long> _frontiers = [];
@@ -57,13 +57,15 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
-    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, string tier = "default")
+    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, PersistedSnapshotTier? tier = null)
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
         _dedicatedArenaThreshold = dedicatedArenaThreshold;
         _fadviseOnEviction = fadviseOnEviction;
-        _tier = tier;
+        // Default to Small for tests/benchmarks that don't care; FlatWorldStateModule
+        // passes the actual tier explicitly.
+        _tier = tier ?? PersistedSnapshotTier.Small;
         Directory.CreateDirectory(basePath);
         _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
 

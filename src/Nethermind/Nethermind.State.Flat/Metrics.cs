@@ -142,15 +142,16 @@ public static class Metrics
     public static long PersistedSnapshotPrunes { get; set; }
 
     // Push-style gauges: ArenaManager increments/decrements these on every file add, remove,
-    // and resize. Labelled by tier (e.g. "small" / "large") so the small and large arena
-    // pools surface separately in Prometheus rather than being summed into a single number.
+    // and resize. Keyed by the typed PersistedSnapshotTier singleton so the small and large
+    // arena pools surface separately in Prometheus; the metrics controller dispatches on
+    // IMetricLabels to produce the wire-format "small"/"large" label.
     [Description("Number of arena files backing persisted snapshots, by tier")]
     [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<string, long> ArenaFileCountByTier { get; } = new();
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaFileCountByTier { get; } = new();
 
     [Description("Total mmap size of arena files backing persisted snapshots in bytes, by tier")]
     [KeyIsLabel("tier")]
-    public static ConcurrentDictionary<string, long> ArenaMappedBytesByTier { get; } = new();
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaMappedBytesByTier { get; } = new();
 
     [DetailedMetric]
     [Description("Live arena reservations by tag")]

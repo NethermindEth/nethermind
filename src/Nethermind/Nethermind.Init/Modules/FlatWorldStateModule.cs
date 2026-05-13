@@ -91,7 +91,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 // tier, producing silent false negatives on bundle reads (see FlatDbManager.GatherSnapshots).
                 PersistedSnapshotBloomFilterManager bloomManager = ctx.Resolve<PersistedSnapshotBloomFilterManager>();
 
-                ArenaManager smallArena = new(Path.Combine(basePath, "small", "arena"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction, tier: "small");
+                ArenaManager smallArena = new(Path.Combine(basePath, "small", "arena"), cfg.PersistedSnapshotSmallArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction, tier: PersistedSnapshotTier.Small);
                 BlobArenaManager smallBlobs = new(Path.Combine(basePath, "small", "blob"), cfg.ArenaFileSizeBytes, ArenaReservationTags.BlobSmall);
                 IDb smallCatalogDb = columns.GetColumnDb(FlatDbColumns.SmallPersistedSnapshotCatalog);
                 PersistedSnapshotRepository smallRepo = new(smallArena, smallBlobs, smallCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedSmall, ArenaReservationTags.BlobSmall);
@@ -99,10 +99,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     smallRepo, smallArena, cfg, logManager, bloomManager,
                     minCompactSize: cfg.MinCompactSize,
                     maxCompactSize: cfg.CompactSize / 2,
-                    tierLabel: "small",
+                    tier: PersistedSnapshotTier.Small,
                     reservationTag: ArenaReservationTags.BlobBackedSmall);
 
-                ArenaManager largeArena = new(Path.Combine(basePath, "large", "arena"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction, tier: "large");
+                ArenaManager largeArena = new(Path.Combine(basePath, "large", "arena"), cfg.PersistedSnapshotLargeArenaPageCacheBytes, cfg.ArenaFileSizeBytes, cfg.PersistedSnapshotFadviseOnPageEviction, tier: PersistedSnapshotTier.Large);
                 BlobArenaManager largeBlobs = new(Path.Combine(basePath, "large", "blob"), cfg.ArenaFileSizeBytes, ArenaReservationTags.BlobLarge);
                 IDb largeCatalogDb = columns.GetColumnDb(FlatDbColumns.LargePersistedSnapshotCatalog);
                 PersistedSnapshotRepository largeRepo = new(largeArena, largeBlobs, largeCatalogDb, cfg, bloomManager, ArenaReservationTags.BlobBackedLarge, ArenaReservationTags.BlobLarge);
@@ -110,7 +110,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     largeRepo, largeArena, cfg, logManager, bloomManager,
                     minCompactSize: cfg.CompactSize * 2,
                     maxCompactSize: cfg.PersistedSnapshotMaxCompactSize,
-                    tierLabel: "large",
+                    tier: PersistedSnapshotTier.Large,
                     reservationTag: ArenaReservationTags.BlobBackedLarge);
 
                 smallRepo.LoadFromCatalog();
