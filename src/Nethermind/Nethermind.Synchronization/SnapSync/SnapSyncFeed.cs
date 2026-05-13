@@ -146,13 +146,20 @@ namespace Nethermind.Synchronization.SnapSync
 
                 lock (_syncLock)
                 {
-                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
+                    // Scan the whole window first so the single-peer guard cannot fire
+                    // prematurely when a healthy peer's entries sit further back in the log
+                    // than the analyzed peer's recent failures.
+                    foreach ((PeerInfo p, AddRangeResult _) probe in _resultLog)
                     {
-                        if (item.peer != peer)
+                        if (probe.p != peer)
                         {
                             seenOtherPeer = true;
+                            break;
                         }
+                    }
 
+                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
+                    {
                         if (item.result == AddRangeResult.OK)
                         {
                             allLastSuccess++;
@@ -172,7 +179,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                                 if (peerLastFailures > AllowedInvalidResponses)
                                 {
-                                    // With a single peer in the recent window and no successes, the
+                                    // With a single peer in the entire window and no successes, the
                                     // failure stream is more likely a stale pivot than a misbehaving
                                     // peer — punishing the only available peer would stall sync.
                                     if (!seenOtherPeer && allLastSuccess == 0)

@@ -163,6 +163,35 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             snapProvider.DidNotReceive().UpdatePivot();
         }
 
+        // Regression: a freshly added peer that fails its first AllowedInvalidResponses
+        // requests must still be punished when the log contains entries from other,
+        // healthy peers — even if those entries sit further back than the newcomer's
+        // recent failures.
+        [Test]
+        public void New_peer_failing_burst_is_punished_when_log_holds_other_healthy_peers()
+        {
+            PeerInfo healthyPeer = new(null!);
+            PeerInfo newPeer = new(null!);
+
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            for (int i = 0; i < AllowedInvalidResponses; i++)
+            {
+                feed.AnalyzeResponsePerPeer(AddRangeResult.OK, healthyPeer);
+            }
+
+            SyncResponseHandlingResult? lastResult = null;
+            for (int i = 0; i <= AllowedInvalidResponses; i++)
+            {
+                lastResult = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, newPeer);
+            }
+
+            Assert.That(lastResult, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            snapProvider.DidNotReceive().UpdatePivot();
+        }
+
         private const int AllowedInvalidResponses = 5;
     }
 }
