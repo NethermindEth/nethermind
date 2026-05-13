@@ -222,13 +222,16 @@ namespace Nethermind.Evm.TransactionProcessing
 
             int delegationRefunds = 0;
             int delegationAuthBaseRefunds = 0;
+            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+
+            if (!(result = Validate8037DelegationRefundBounds(tx, spec, in gasAvailable))) return result;
+
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
             {
                 delegationRefunds = ProcessDelegations(tx, spec, accessTracker, out delegationAuthBaseRefunds);
             }
 
-            if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
-            Apply8037DelegationRefunds(spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds, ref delegationAuthBaseRefunds);
+            if (!(result = Apply8037DelegationRefunds(tx, spec, in intrinsicGas, ref gasAvailable, ref delegationRefunds, ref delegationAuthBaseRefunds))) return result;
 
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
@@ -349,7 +352,8 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        private static void Apply8037DelegationRefunds(
+        private TransactionResult Apply8037DelegationRefunds(
+            Transaction tx,
             IReleaseSpec spec,
             in IntrinsicGas<TGasPolicy> intrinsicGas,
             ref TGasPolicy gasAvailable,
@@ -362,17 +366,83 @@ namespace Nethermind.Evm.TransactionProcessing
                 long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
                 long newAccountStateCost = TGasPolicy.GetNewAccountStateCost(in gasAvailable);
                 long perAuthBaseStateCost = TGasPolicy.GetPerAuthBaseStateCost(in gasAvailable);
-                long newAccountStateRefund = checked(newAccountStateCost * delegationRefunds);
-                long authBaseStateRefund = checked(perAuthBaseStateCost * delegationAuthBaseRefunds);
-                Debug.Assert(
-                    newAccountStateRefund <= long.MaxValue - authBaseStateRefund,
-                    "Authorization refunds are bounded by intrinsic gas validation.");
-                long stateGasRefund = checked(newAccountStateRefund + authBaseStateRefund);
+                bool refundWithinBounds = TryCalculate8037DelegationRefund(
+                    newAccountStateCost,
+                    perAuthBaseStateCost,
+                    delegationRefunds,
+                    delegationAuthBaseRefunds,
+                    out long stateGasRefund);
+                Debug.Assert(refundWithinBounds, "Authorization refunds are bounded before delegation processing.");
+                if (!refundWithinBounds)
+                {
+                    TraceLogInvalidTx(tx, "AUTHORIZATION_REFUND_OVERFLOW");
+                    return TransactionResult.ErrorType.MalformedTransaction.WithDetail("authorization refund gas overflow");
+                }
+
                 long refundFloor = Math.Max(0, stateGasFloor - stateGasRefund);
                 TGasPolicy.RefundStateGas(ref gasAvailable, stateGasRefund, refundFloor, trackSpillRefund: false);
                 delegationRefunds = 0;
                 delegationAuthBaseRefunds = 0;
             }
+
+            return TransactionResult.Ok;
+        }
+
+        private TransactionResult Validate8037DelegationRefundBounds(Transaction tx, IReleaseSpec spec, in TGasPolicy gasAvailable)
+        {
+            if (!spec.IsEip8037Enabled || !tx.HasAuthorizationList)
+            {
+                return TransactionResult.Ok;
+            }
+
+            long newAccountStateCost = TGasPolicy.GetNewAccountStateCost(in gasAvailable);
+            long perAuthBaseStateCost = TGasPolicy.GetPerAuthBaseStateCost(in gasAvailable);
+            int maxRefunds = tx.AuthorizationList.Length;
+            if (!TryCalculate8037DelegationRefund(
+                    newAccountStateCost,
+                    perAuthBaseStateCost,
+                    maxRefunds,
+                    maxRefunds,
+                    out _))
+            {
+                TraceLogInvalidTx(tx, "AUTHORIZATION_REFUND_OVERFLOW");
+                return TransactionResult.ErrorType.MalformedTransaction.WithDetail("authorization refund gas overflow");
+            }
+
+            return TransactionResult.Ok;
+        }
+
+        private static bool TryCalculate8037DelegationRefund(
+            long newAccountStateCost,
+            long perAuthBaseStateCost,
+            int delegationRefunds,
+            int delegationAuthBaseRefunds,
+            out long stateGasRefund)
+        {
+            stateGasRefund = 0;
+            if (newAccountStateCost < 0 ||
+                perAuthBaseStateCost < 0 ||
+                delegationRefunds < 0 ||
+                delegationAuthBaseRefunds < 0)
+            {
+                return false;
+            }
+
+            if ((delegationRefunds != 0 && newAccountStateCost > long.MaxValue / delegationRefunds) ||
+                (delegationAuthBaseRefunds != 0 && perAuthBaseStateCost > long.MaxValue / delegationAuthBaseRefunds))
+            {
+                return false;
+            }
+
+            long newAccountStateRefund = newAccountStateCost * delegationRefunds;
+            long authBaseStateRefund = perAuthBaseStateCost * delegationAuthBaseRefunds;
+            if (newAccountStateRefund > long.MaxValue - authBaseStateRefund)
+            {
+                return false;
+            }
+
+            stateGasRefund = newAccountStateRefund + authBaseStateRefund;
+            return true;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

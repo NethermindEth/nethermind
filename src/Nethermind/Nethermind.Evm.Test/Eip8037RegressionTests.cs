@@ -25,7 +25,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     {
         Self,
         Existing,
-        Empty
+        Nonexistent
     }
 
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
@@ -1020,7 +1020,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     [TestCase(0UL, SelfDestructBeneficiaryKind.Self, GasCostOf.CreateState, TestName = "Eip8037_create_tx_selfdestruct_to_self_keeps_create_state_gas")]
     [TestCase(100UL, SelfDestructBeneficiaryKind.Self, GasCostOf.CreateState, TestName = "Eip8037_create_tx_selfdestruct_to_self_with_value_keeps_create_state_gas")]
     [TestCase(100UL, SelfDestructBeneficiaryKind.Existing, GasCostOf.CreateState, TestName = "Eip8037_create_tx_selfdestruct_to_existing_with_value_keeps_create_state_gas")]
-    [TestCase(100UL, SelfDestructBeneficiaryKind.Empty, GasCostOf.CreateState + GasCostOf.NewAccountState, TestName = "Eip8037_create_tx_selfdestruct_to_empty_with_value_keeps_create_and_beneficiary_state_gas")]
+    [TestCase(100UL, SelfDestructBeneficiaryKind.Nonexistent, GasCostOf.CreateState + GasCostOf.NewAccountState, TestName = "Eip8037_create_tx_selfdestruct_to_nonexistent_with_value_keeps_create_and_beneficiary_state_gas")]
     public void Eip8037_create_tx_selfdestruct_initcode_keeps_create_state_gas(
         ulong txValue,
         SelfDestructBeneficiaryKind beneficiaryKind,
@@ -1031,7 +1031,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         {
             SelfDestructBeneficiaryKind.Self => contractAddress,
             SelfDestructBeneficiaryKind.Existing => TestItem.AddressC,
-            SelfDestructBeneficiaryKind.Empty => TestItem.AddressC,
+            SelfDestructBeneficiaryKind.Nonexistent => TestItem.AddressD,
             _ => throw new ArgumentOutOfRangeException(nameof(beneficiaryKind))
         };
 
