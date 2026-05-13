@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -131,8 +132,16 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        bool noGcActive = false;
+        try { noGcActive = GC.TryStartNoGCRegion(256 * 1024 * 1024, disallowFullBlockingGC: true); } catch { }
+
         TxReceipt[] receipts;
         receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        if (noGcActive && System.Runtime.GCSettings.LatencyMode == System.Runtime.GCLatencyMode.NoGCRegion)
+        {
+            try { GC.EndNoGCRegion(); } catch { }
+        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
