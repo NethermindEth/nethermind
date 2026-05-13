@@ -25,13 +25,6 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
 
     public void Dispose() => _baseStore.Dispose();
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash)
-    {
-        TrieNode node = _baseStore.FindCachedOrUnknown(address, in path, in hash);
-        CaptureNode(node);
-        return node;
-    }
-
     public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         TryLoadRlp(address, in path, in hash, flags)
         ?? throw new MissingTrieNodeException("Missing RLP node", address, path, new Hash256(in hash));
@@ -84,11 +77,18 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
         Hash256? address,
         ITrieNodeResolver inner) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
+        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            TrieNode node = inner.FindCachedOrUnknown(path, in hash);
+            TrieNode node = inner.GetOrLoadNode(in path, in hash, flags);
             fullTrieStore.CaptureNode(node);
             return node;
+        }
+
+        public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+        {
+            if (!inner.TryGetOrLoadNode(in path, in hash, out node, flags)) return false;
+            fullTrieStore.CaptureNode(node);
+            return true;
         }
 
         protected override ITrieNodeResolver WithAddress(Hash256? address1) =>

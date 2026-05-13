@@ -11,30 +11,11 @@ namespace Nethermind.Trie.Pruning
     public interface ITrieNodeResolver
     {
         /// <summary>
-        /// Returns a cached and resolved <see cref="TrieNode"/> or a <see cref="TrieNode"/> with Unknown type
-        /// but the hash set. The latter case allows to resolve the node later. Resolving the node means loading
-        /// its RLP data from the state database.
-        /// </summary>
-        /// <remarks>
-        /// Phase B prefers <see cref="GetOrLoadNode"/>, <see cref="TryGetOrLoadNode"/>, and
-        /// <see cref="TryGetCachedNode"/>. <see cref="FindCachedOrUnknown"/> is retained as a
-        /// transitional wrapper for callers that intentionally publish an unresolved placeholder
-        /// (e.g. child slots, snap stitching, storage-root inline binding) without immediately
-        /// loading RLP. It will be removed once those sites are migrated.
-        /// </remarks>
-        /// <param name="hash">Keccak hash of the RLP of the node.</param>
-        TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash);
-
-        /// <summary>
         /// Returns a fully resolved <see cref="TrieNode"/>: cache hit if the node is cached
         /// with RLP, otherwise loads RLP from storage and decodes it before returning.
+        /// Throws <see cref="MissingTrieNodeException"/> when the node is absent; use
+        /// <see cref="TryGetOrLoadNode"/> for best-effort lookups.
         /// </summary>
-        /// <remarks>
-        /// Default implementation prefers <see cref="TryGetCachedNode"/> when a resolver
-        /// exposes its cache. Otherwise falls back to the legacy
-        /// <see cref="FindCachedOrUnknown"/> + <see cref="TrieNode.ResolveNode"/> pair so
-        /// resolvers that have not yet been migrated keep working.
-        /// </remarks>
         TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
             if (TryGetCachedNode(in path, in hash, out TrieNode? cached))
@@ -42,9 +23,10 @@ namespace Nethermind.Trie.Pruning
                 return cached;
             }
 
-            TrieNode node = FindCachedOrUnknown(in path, in hash);
-            TrieNode.ResolveNode(ref node, this, in path, flags);
-            return node;
+            byte[]? rlp = LoadRlp(in path, in hash, flags)
+                ?? throw new MissingTrieNodeException("Node missing", null, path, new Hash256(in hash));
+
+            return TrieNode.DecodeNode(in path, in hash, rlp);
         }
 
         /// <summary>
@@ -58,15 +40,23 @@ namespace Nethermind.Trie.Pruning
                 return true;
             }
 
-            TrieNode candidate = FindCachedOrUnknown(in path, in hash);
-            TreePath pathCopy = path;
-            if (!TrieNode.TryResolveNode(ref candidate, this, ref pathCopy, flags))
+            byte[]? rlp = TryLoadRlp(in path, in hash, flags);
+            if (rlp is null)
             {
                 node = null;
                 return false;
             }
-            node = candidate;
-            return true;
+
+            try
+            {
+                node = TrieNode.DecodeNode(in path, in hash, rlp);
+                return true;
+            }
+            catch (TrieException)
+            {
+                node = null;
+                return false;
+            }
         }
 
         /// <summary>

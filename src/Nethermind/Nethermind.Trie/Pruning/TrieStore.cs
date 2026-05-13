@@ -546,31 +546,83 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return false;
     }
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) =>
-        FindCachedOrUnknown(address, path, in hash, false);
+    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        GetOrLoadNode(address, in path, in hash, isReadOnly: false, flags);
 
-    internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash, bool isReadOnly)
+    internal TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, bool isReadOnly, ReadFlags flags = ReadFlags.None)
+    {
+        TrieNode node = GetCachedOrPlaceholder(address, in path, in hash, isReadOnly);
+        if (node.NodeType == NodeType.Unknown)
+        {
+            TreePath pathLocal = path;
+            ScopedResolver resolver = new(this, address);
+            TrieNode.ResolveNode(ref node, resolver, in pathLocal, flags);
+        }
+        return node;
+    }
+
+    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        TrieNode candidate = GetCachedOrPlaceholder(address, in path, in hash, isReadOnly: false);
+        if (candidate.NodeType != NodeType.Unknown)
+        {
+            node = candidate;
+            return true;
+        }
+
+        TreePath pathLocal = path;
+        ScopedResolver resolver = new(this, address);
+        if (!TrieNode.TryResolveNode(ref candidate, resolver, ref pathLocal, flags))
+        {
+            node = null;
+            return false;
+        }
+        node = candidate;
+        return true;
+    }
+
+    internal TrieNode GetCachedOrPlaceholder(Hash256? address, in TreePath path, in ValueHash256 hash, bool isReadOnly)
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
         return _commitBuffer is { } commitBuffer
             ? commitBuffer.FindCachedOrUnknown(key, isReadOnly)
-            : FindCachedOrUnknown(key, isReadOnly);
+            : GetCachedOrPlaceholder(key, isReadOnly);
     }
 
-    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
+    private TrieNode GetCachedOrPlaceholder(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
 
-    internal TrieNode FindCachedOrUnknownShared(Hash256? address, in TreePath path, in ValueHash256 hash)
+    internal TrieNode GetSharedCachedOrPlaceholder(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
         return Volatile.Read(ref _commitBuffer) is { } commitBuffer
             ? commitBuffer.FindCachedOrUnknownShared(key)
-            : FindCachedOrUnknownShared(key);
+            : GetSharedCachedOrPlaceholder(key);
     }
 
-    private TrieNode FindCachedOrUnknownShared(in TrieStoreDirtyNodesCache.Key key) =>
+    private TrieNode GetSharedCachedOrPlaceholder(in TrieStoreDirtyNodesCache.Key key) =>
         DirtyNodesTryGetValue(key, out TrieNode? cached)
             ? ShareOrCloneForReadOnly(key, cached)
             : new TrieNode(NodeType.Unknown, key.Keccak);
+
+    private sealed class ScopedResolver(TrieStore inner, Hash256? address) : ITrieNodeResolver
+    {
+        public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.GetOrLoadNode(address, in path, in hash, isReadOnly: false, flags);
+
+        public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+            inner.TryGetOrLoadNode(address, in path, in hash, out node, flags);
+
+        public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.LoadRlp(address, in path, in hash, flags);
+
+        public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.TryLoadRlp(address, in path, in hash, flags);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? storageAddress) =>
+            new ScopedResolver(inner, storageAddress);
+
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
+    }
 
     private TrieNode ShareOrCloneForReadOnly(in TrieStoreDirtyNodesCache.Key key, TrieNode cached)
     {
@@ -1885,10 +1937,40 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// <param name="baseTrieStore"></param>
     private class InPruningTrieStore(TrieStore baseTrieStore) : IScopableTrieStore
     {
-        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash)
+        public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
+            // Bypass commit buffer: pruning iterates the main dirty cache directly.
             TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
-            return baseTrieStore.FindCachedOrUnknown(key, false);
+            TrieNode node = baseTrieStore.DirtyNodesFindCachedOrUnknown(key);
+            if (node.NodeType == NodeType.Unknown)
+            {
+                TreePath pathLocal = path;
+                TrieStore.ScopedResolver resolver = new(baseTrieStore, address);
+                TrieNode.ResolveNode(ref node, resolver, in pathLocal, flags);
+            }
+            return node;
+        }
+
+        public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+        {
+            // Bypass commit buffer: pruning iterates the main dirty cache directly.
+            TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
+            TrieNode candidate = baseTrieStore.DirtyNodesFindCachedOrUnknown(key);
+            if (candidate.NodeType != NodeType.Unknown)
+            {
+                node = candidate;
+                return true;
+            }
+
+            TreePath pathLocal = path;
+            TrieStore.ScopedResolver resolver = new(baseTrieStore, address);
+            if (!TrieNode.TryResolveNode(ref candidate, resolver, ref pathLocal, flags))
+            {
+                node = null;
+                return false;
+            }
+            node = candidate;
+            return true;
         }
 
         public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;

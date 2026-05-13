@@ -2162,7 +2162,9 @@ namespace Nethermind.Trie
         /// either a fully resolved <see cref="TrieNode"/> (inline child or non-RLP
         /// branch) or just a <see cref="ValueHash256"/> for by-hash references that
         /// the visitor may yet decide to skip. <see cref="IsEmpty"/> distinguishes
-        /// unset slots from non-empty children.
+        /// unset slots from non-empty children. Inline children carry no separate
+        /// keccak; in that case <see cref="TryGetHash"/> returns <c>false</c> but
+        /// <see cref="Node"/> still produces the typed inline node directly.
         /// </summary>
         public readonly struct ChildHash
         {

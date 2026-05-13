@@ -162,16 +162,9 @@ public class WorldStateManagerTests
         using IDisposable scope = readOnlyTrieStore.BeginScope(parentHeader);
 
         IScopedTrieStore scopedStore = readOnlyTrieStore.GetTrieStore(null);
-        TrieNode rootNode = scopedStore.FindCachedOrUnknown(TreePath.Empty, stateRoot);
-
-        if (rootNode.NodeType == NodeType.Unknown)
-        {
-            byte[] rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
-            rlp.Should().NotBeNull("state root trie node should be resolvable from read-only trie store");
-        }
-        else
-        {
-            rootNode.NodeType.Should().NotBe(NodeType.Unknown, "state root should be resolvable");
-        }
+        bool resolved = scopedStore.TryGetOrLoadNode(TreePath.Empty, stateRoot.ValueHash256, out TrieNode rootNode);
+        resolved.Should().BeTrue("state root trie node should be resolvable from read-only trie store");
+        rootNode.Should().NotBeNull();
+        rootNode.NodeType.Should().NotBe(NodeType.Unknown, "state root should be a typed node");
     }
 }

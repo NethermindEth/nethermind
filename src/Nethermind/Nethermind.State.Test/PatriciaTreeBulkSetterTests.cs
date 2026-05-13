@@ -744,9 +744,9 @@ public class PatriciaTreeBulkSetterTests
 
     public class StrictRawScopedTrieStore(IScopedTrieStore baseTrieStore) : IScopedTrieStore
     {
-        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash)
+        public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            TrieNode node = baseTrieStore.FindCachedOrUnknown(in path, in hash);
+            TrieNode node = baseTrieStore.GetOrLoadNode(in path, in hash, flags);
             if (hash != Keccak.EmptyTreeHash.ValueHash256)
             {
                 byte[] rlp = LoadRlp(path, in hash);
@@ -754,6 +754,9 @@ public class PatriciaTreeBulkSetterTests
             }
             return node;
         }
+
+        public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode node, ReadFlags flags = ReadFlags.None) =>
+            baseTrieStore.TryGetOrLoadNode(in path, in hash, out node, flags);
 
         public byte[] LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, in hash, flags);
 

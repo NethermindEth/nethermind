@@ -854,7 +854,11 @@ public class FlatTrieVerifier
 
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => inner.FindCachedOrUnknown(path, in hash);
+        public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.GetOrLoadNode(in path, in hash, flags);
+
+        public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+            inner.TryGetOrLoadNode(in path, in hash, out node, flags);
 
         public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {

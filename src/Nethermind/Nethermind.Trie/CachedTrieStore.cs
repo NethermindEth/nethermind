@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -19,8 +20,16 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNo
 {
     private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode = new();
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-        _cachedNode.GetOrAdd((path, hash), (key) => @base.FindCachedOrUnknown(key.path, key.hash));
+    public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _cachedNode.GetOrAdd((path, hash), (key, state) => state.@base.GetOrLoadNode(key.path, key.hash, state.flags), (@base, flags));
+
+    public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        if (_cachedNode.TryGetValue((path, hash), out node)) return true;
+        if (!@base.TryGetOrLoadNode(in path, in hash, out node, flags)) return false;
+        node = _cachedNode.GetOrAdd((path, hash), node);
+        return true;
+    }
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         @base.LoadRlp(in path, in hash, flags);
@@ -46,8 +55,16 @@ public class CachedTrieStore(IScopedTrieStore @base) : IScopedTrieStore, ITrieNo
     {
         private readonly NonBlocking.ConcurrentDictionary<(TreePath path, ValueHash256 hash), TrieNode> _cachedNode = new();
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-            _cachedNode.GetOrAdd((path, hash), key => inner.FindCachedOrUnknown(key.path, key.hash));
+        public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            _cachedNode.GetOrAdd((path, hash), (key, state) => state.inner.GetOrLoadNode(key.path, key.hash, state.flags), (inner, flags));
+
+        public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+        {
+            if (_cachedNode.TryGetValue((path, hash), out node)) return true;
+            if (!inner.TryGetOrLoadNode(in path, in hash, out node, flags)) return false;
+            node = _cachedNode.GetOrAdd((path, hash), node);
+            return true;
+        }
 
         public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             inner.LoadRlp(in path, in hash, flags);

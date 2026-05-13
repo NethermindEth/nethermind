@@ -12,7 +12,11 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
     private readonly ITrieNodeResolver _baseResolver = baseResolver;
     private readonly ReadFlags _defaultFlags = defaultFlags;
 
-    public TrieNode FindCachedOrUnknown(in TreePath treePath, in ValueHash256 hash) => _baseResolver.FindCachedOrUnknown(treePath, in hash);
+    public TrieNode GetOrLoadNode(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _baseResolver.GetOrLoadNode(in treePath, in hash, flags == ReadFlags.None ? _defaultFlags : (flags | _defaultFlags));
+
+    public bool TryGetOrLoadNode(in TreePath treePath, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        _baseResolver.TryGetOrLoadNode(in treePath, in hash, out node, flags == ReadFlags.None ? _defaultFlags : (flags | _defaultFlags));
 
     public byte[]? TryLoadRlp(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
     {

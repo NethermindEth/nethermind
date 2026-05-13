@@ -15,8 +15,8 @@ namespace Nethermind.Trie.Pruning
         private readonly TrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         public INodeStorage.KeyScheme Scheme => _trieStore.Scheme;
 
-        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath treePath, in ValueHash256 hash) =>
-            _trieStore.FindCachedOrUnknown(address, treePath, in hash, true);
+        public TrieNode GetOrLoadNode(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            _trieStore.GetOrLoadNode(address, in treePath, in hash, isReadOnly: true, flags);
 
         public byte[] LoadRlp(Hash256? address, in TreePath treePath, in ValueHash256 hash, ReadFlags flags) =>
             _trieStore.LoadRlp(address, treePath, in hash, flags);
@@ -43,8 +43,44 @@ namespace Nethermind.Trie.Pruning
         private sealed class SharedReadOnlyTraversalResolver(ReadOnlyTrieStore fullTrieStore, Hash256? address)
             : ReadOnlyTraversalResolverBase(fullTrieStore, address)
         {
-            public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-                fullTrieStore._trieStore.FindCachedOrUnknownShared(Address, path, in hash);
+            public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+            {
+                // Cache hit on the shared dirty cache returns the shared / cloned node directly;
+                // miss falls through to LoadRlp + decode.
+                TrieNode candidate = fullTrieStore._trieStore.GetSharedCachedOrPlaceholder(Address, in path, in hash);
+                if (candidate.NodeType != NodeType.Unknown) return candidate;
+
+                byte[]? rlp = fullTrieStore._trieStore.TryLoadRlp(Address, in path, in hash, flags)
+                    ?? throw new MissingTrieNodeException("Node missing", Address, path, new Hash256(in hash));
+                return TrieNode.DecodeNode(in path, in hash, rlp);
+            }
+
+            public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+            {
+                TrieNode candidate = fullTrieStore._trieStore.GetSharedCachedOrPlaceholder(Address, in path, in hash);
+                if (candidate.NodeType != NodeType.Unknown)
+                {
+                    node = candidate;
+                    return true;
+                }
+
+                byte[]? rlp = fullTrieStore._trieStore.TryLoadRlp(Address, in path, in hash, flags);
+                if (rlp is null)
+                {
+                    node = null;
+                    return false;
+                }
+                try
+                {
+                    node = TrieNode.DecodeNode(in path, in hash, rlp);
+                    return true;
+                }
+                catch (TrieException)
+                {
+                    node = null;
+                    return false;
+                }
+            }
 
             protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
                 new SharedReadOnlyTraversalResolver(fullTrieStore, address1);

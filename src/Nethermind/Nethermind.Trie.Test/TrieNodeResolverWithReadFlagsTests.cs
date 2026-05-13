@@ -76,8 +76,6 @@ public class TrieNodeResolverWithReadFlagsTests
     {
         public readonly TestReadOnlyResolver ReadOnlyResolver = new();
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => new(NodeType.Unknown, in hash);
-
         public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => [];
 
         public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => [];
@@ -92,8 +90,6 @@ public class TrieNodeResolverWithReadFlagsTests
     private sealed class TestReadOnlyResolver : ITrieNodeResolver
     {
         public ReadFlags LastFlags { get; private set; }
-
-        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => new(NodeType.Unknown, in hash);
 
         public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
         {

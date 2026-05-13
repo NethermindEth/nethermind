@@ -167,9 +167,9 @@ namespace Nethermind.Trie.Test.Pruning
         public void Pruning_off_cache_should_find_cached_or_unknown()
         {
             using TrieStore trieStore = CreateTrieStore();
-            TrieNode returnedNode = trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
-            TrieNode returnedNode2 = trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
-            TrieNode returnedNode3 = trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakC);
+            TrieNode returnedNode = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
+            TrieNode returnedNode2 = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
+            TrieNode returnedNode3 = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
             Assert.That(returnedNode.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
@@ -183,17 +183,17 @@ namespace Nethermind.Trie.Test.Pruning
         {
             using TrieStore trieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             long startSize = trieStore.MemoryUsedByDirtyCache;
-            trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA);
+            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
             TrieNode trieNode = TrieNode.CreateLeafTyped(Keccak.Zero);
             long oneKeccakSize = trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize - MemorySizes.SmallObjectOverhead;
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
-            trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
+            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
-            trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakB);
+            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
-            trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakC);
+            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
-            trieStore.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakD, true);
+            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakD, isReadOnly: true);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
         }
 
@@ -803,7 +803,7 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     try
                     {
-                        trieStore.FindCachedOrUnknown(TreePath.Empty, trieNode.Keccak).GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
+                        trieStore.GetOrLoadNode(TreePath.Empty, trieNode.Keccak.ValueHash256).GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
                     }
                     catch (Exception exception)
                     {
@@ -851,10 +851,10 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, node);
             }
 
-            TrieNode originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
+            TrieNode originalNode = trieStore.GetOrLoadNode(TreePath.Empty, node.Keccak.ValueHash256);
 
             IReadOnlyTrieStore readOnlyTrieStore = fullTrieStore.AsReadOnly();
-            TrieNode readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(null, TreePath.Empty, node.Keccak);
+            TrieNode readOnlyNode = readOnlyTrieStore.GetOrLoadNode(null, TreePath.Empty, node.Keccak.ValueHash256);
 
             readOnlyNode.Should().NotBe(originalNode);
             readOnlyNode.Should().BeEquivalentTo(originalNode,
@@ -991,15 +991,15 @@ namespace Nethermind.Trie.Test.Pruning
         {
             using TrieStore fullTrieStore = CreateTrieStore();
             TreePath emptyPath = TreePath.Empty;
-            fullTrieStore.FindCachedOrUnknown(null, emptyPath, TestItem.KeccakA);
+            // Seed the dirty-cache with a hash-only entry. The shared-traversal
+            // resolver path (snap-sync, range visitor) reuses that entry without
+            // cloning when the cached node has no RLP yet.
+            fullTrieStore.GetCachedOrPlaceholder(null, emptyPath, TestItem.KeccakA, isReadOnly: false);
 
             long fallbacksBefore = fullTrieStore.FallbackNotShareableCount;
             long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
 
-            IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
-            ITrieNodeResolver sharedResolver = ((ITrieNodeResolverSource)readOnlyScopedTrieStore).GetReadOnlyTraversalResolver()!;
-
-            TrieNode node = sharedResolver.FindCachedOrUnknown(emptyPath, TestItem.KeccakA);
+            TrieNode node = fullTrieStore.GetSharedCachedOrPlaceholder(null, emptyPath, TestItem.KeccakA);
 
             node.NodeType.Should().Be(NodeType.Unknown);
             node.Keccak.Should().Be(TestItem.KeccakA);
@@ -1342,8 +1342,7 @@ namespace Nethermind.Trie.Test.Pruning
                 LimboLogs.Instance);
 
             // Simulate some kind of cache access which causes unresolved node to remain.
-            IScopedTrieStore storageTrieStore = fullTrieStore.GetTrieStore(address);
-            storageTrieStore.FindCachedOrUnknown(TreePath.Empty, storageRoot.ToCommitment());
+            fullTrieStore.GetCachedOrPlaceholder(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot.ToCommitment().ValueHash256, isReadOnly: false);
 
             using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).TestObject))
             {

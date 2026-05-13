@@ -43,8 +43,6 @@ public sealed class PreCachedTrieStore : ITrieStore, IScopedReadOnlyTraversalPro
 
     public IScopedTrieStore GetTrieStore(Hash256? address) => new ScopedTrieStore(this, address);
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) => _inner.FindCachedOrUnknown(address, in path, in hash);
-
     public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         _preBlockCache.GetOrAdd(new(address, in path, in hash),
             flags == ReadFlags.None ? _loadRlp :
@@ -68,8 +66,11 @@ public sealed class PreCachedTrieStore : ITrieStore, IScopedReadOnlyTraversalPro
         Hash256? address,
         ITrieNodeResolver inner) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-            inner.FindCachedOrUnknown(path, in hash);
+        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            inner.GetOrLoadNode(in path, in hash, flags);
+
+        public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+            inner.TryGetOrLoadNode(in path, in hash, out node, flags);
 
         protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
             new PreCachedReadOnlyTraversalResolver(fullTrieStore, address1, inner.GetStorageTrieNodeResolver(address1));

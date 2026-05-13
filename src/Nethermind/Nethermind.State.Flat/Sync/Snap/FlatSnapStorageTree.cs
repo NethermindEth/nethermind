@@ -96,8 +96,6 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         Hash256 addressHash,
         bool enableDoubleWriteCheck) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => new(NodeType.Unknown, in hash);
-
         public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStorageRlp(addressHash, path, flags);
 

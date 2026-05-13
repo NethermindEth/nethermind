@@ -12,8 +12,6 @@ namespace Nethermind.Trie.Pruning
 
         public static NullTrieStore Instance { get; } = new();
 
-        public TrieNode FindCachedOrUnknown(in TreePath treePath, in ValueHash256 hash) => new(NodeType.Unknown, new Hash256(in hash));
-
         public byte[] LoadRlp(in TreePath treePath, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => [];
 
         public byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => [];

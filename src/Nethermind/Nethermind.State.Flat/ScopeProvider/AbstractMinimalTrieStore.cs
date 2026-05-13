@@ -11,9 +11,18 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 {
-    public abstract TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash);
-
     public abstract byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None);
+
+    /// <summary>
+    /// Cache-only lookup: derived adapters can plumb in their snapshot-bundle node cache so
+    /// <see cref="ITrieNodeResolver.GetOrLoadNode"/> returns the cached typed node before
+    /// touching <see cref="TryLoadRlp"/>. Default returns no cached node.
+    /// </summary>
+    public virtual bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
+    {
+        node = null;
+        return false;
+    }
 
     public virtual ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         throw new NotSupportedException("Commit not supported");

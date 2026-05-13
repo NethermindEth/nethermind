@@ -18,7 +18,11 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
 {
     public ValueHash256 UpperBound = ValueKeccak.MaxValue;
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => baseTrieStore.FindCachedOrUnknown(in path, in hash);
+    public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        baseTrieStore.GetOrLoadNode(in path, in hash, flags);
+
+    public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        baseTrieStore.TryGetOrLoadNode(in path, in hash, out node, flags);
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, in hash, flags);
 

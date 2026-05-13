@@ -195,22 +195,27 @@ namespace Nethermind.Trie
                 TrieNode.ChildHash slot = output[i];
                 if (slot.IsEmpty) continue;
                 path.SetLast(i);
-                if (!slot.TryGetHash(out ValueHash256 childHash)) continue;
                 TNodeContext childContext = nodeContext.Add((byte)i);
-                if (!visitor.ShouldVisit(childContext, in childHash)) continue;
 
                 TrieNode? child = slot.Node;
-                if (child is null)
+                if (slot.TryGetHash(out ValueHash256 childHash))
                 {
-                    if (!nodeResolver.TryGetOrLoadNode(in path, in childHash, out child))
+                    if (!visitor.ShouldVisit(childContext, in childHash)) continue;
+                    if (child is null && !nodeResolver.TryGetOrLoadNode(in path, in childHash, out child))
                     {
                         visitor.VisitMissingNode(childContext, new Hash256(in childHash));
                         actualSubtreeSize++;
                         continue;
                     }
                 }
+                else if (child is null)
+                {
+                    // Inline child decoded but no separate keccak; nothing to visit.
+                    continue;
+                }
+
                 // Note: Changing the subtreeSizeHint mid iteration is deliberate
-                subtreeSizeHint = Accept(child, childContext, nodeResolver, ref path, isStorage, subtreeSizeHint);
+                subtreeSizeHint = Accept(child!, childContext, nodeResolver, ref path, isStorage, subtreeSizeHint);
                 actualSubtreeSize += subtreeSizeHint;
             }
             path.TruncateOne();
@@ -238,19 +243,22 @@ namespace Nethermind.Trie
                 if (slot.IsEmpty) continue;
                 handledChild++;
                 path.SetLast(i);
-                if (!slot.TryGetHash(out ValueHash256 childHash)) continue;
                 TNodeContext childContext = nodeContext.Add((byte)i);
-                if (!visitor.ShouldVisit(childContext, in childHash)) continue;
 
                 TrieNode? child = slot.Node;
-                if (child is null)
+                if (slot.TryGetHash(out ValueHash256 childHash))
                 {
-                    if (!trieNodeResolver.TryGetOrLoadNode(in path, in childHash, out child))
+                    if (!visitor.ShouldVisit(childContext, in childHash)) continue;
+                    if (child is null && !trieNodeResolver.TryGetOrLoadNode(in path, in childHash, out child))
                     {
                         visitor.VisitMissingNode(childContext, new Hash256(in childHash));
                         actualSubtreeSize++;
                         continue;
                     }
+                }
+                else if (child is null)
+                {
+                    continue;
                 }
                 if (
                     handledChild < childCount // Not the last node

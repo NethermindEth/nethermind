@@ -887,7 +887,7 @@ public class TrieNodeTests
 
         trieNode.PrunePersistedRecursively(1);
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(child);
+        trieStore.GetOrLoadNode(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
         trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
         trieNode.GetChild(trieStore, ref emptyPath, 1).Should().BeNull();
@@ -903,7 +903,7 @@ public class TrieNodeTests
 
         trieNode.PrunePersistedRecursively(1);
         ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(child);
+        trieStore.GetOrLoadNode(Arg.Any<TreePath>(), Arg.Any<ValueHash256>(), Arg.Any<ReadFlags>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
         trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
     }
@@ -1050,7 +1050,7 @@ public class TrieNodeTests
         tree.Commit();
 
         TreePath path = TreePath.FromHexString("00000000000000000");
-        TrieNode parentExtension = inMemoryScopedTrieStore.FindCachedOrUnknown(path, Keccak.EmptyTreeHash);
+        TrieNode parentExtension = inMemoryScopedTrieStore.GetOrLoadNode(path, Keccak.EmptyTreeHash.ValueHash256);
         parentExtension.IsPersisted = true;
 
         // Mark child as persisted
@@ -1074,7 +1074,14 @@ public class TrieNodeTests
 
         private TrieNode GetOrAddNode(in TreePath path, TrieNode node) => _nodes.GetOrAdd(path, node);
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) => _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, in hash));
+        public TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+            _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, in hash));
+
+        public bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode node, ReadFlags flags = ReadFlags.None)
+        {
+            node = _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, in hash));
+            return true;
+        }
 
         public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => null;
 

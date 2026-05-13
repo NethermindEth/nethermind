@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -16,7 +17,11 @@ public abstract class ReadOnlyTraversalResolverBase(IScopableTrieStore fullTrieS
 {
     protected Hash256? Address => address;
 
-    public abstract TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash);
+    public virtual TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        fullTrieStore.GetOrLoadNode(address, in path, in hash, flags);
+
+    public virtual bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        fullTrieStore.TryGetOrLoadNode(address, in path, in hash, out node, flags);
 
     public byte[]? LoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.LoadRlp(address, path, in hash, flags);

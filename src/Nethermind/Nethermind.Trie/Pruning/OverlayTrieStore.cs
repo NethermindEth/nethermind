@@ -21,10 +21,6 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 
     public void Dispose() => _baseStore.Dispose();
 
-    public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, in ValueHash256 hash) =>
-        // We always return Unknown even if baseStore return unknown, like archive node.
-        _baseStore.FindCachedOrUnknown(address, in path, in hash);
-
     public byte[]? LoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
         TryLoadRlp(address, in path, in hash, flags)
         ?? throw new MissingTrieNodeException("Missing RLP node", address, path, new Hash256(in hash));
@@ -55,8 +51,26 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
         Hash256? address,
         ITrieNodeResolver baseReadResolver) : ReadOnlyTraversalResolverBase(fullTrieStore, address)
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-            baseReadResolver.FindCachedOrUnknown(path, in hash);
+        public override TrieNode GetOrLoadNode(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            // Read-from-overlay first; fall back to the base read resolver only when the
+            // overlay does not have the node (typical archive-style behavior).
+            byte[]? rlp = fullTrieStore._nodeStorage.Get(Address, in path, hash, flags);
+            return rlp is not null
+                ? TrieNode.DecodeNode(in path, in hash, rlp)
+                : baseReadResolver.GetOrLoadNode(in path, in hash, flags);
+        }
+
+        public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? rlp = fullTrieStore._nodeStorage.Get(Address, in path, hash, flags);
+            if (rlp is not null)
+            {
+                node = TrieNode.DecodeNode(in path, in hash, rlp);
+                return true;
+            }
+            return baseReadResolver.TryGetOrLoadNode(in path, in hash, out node, flags);
+        }
 
         protected override ITrieNodeResolver WithAddress(Hash256? address1) =>
             new SharedOverlayTraversalResolver(

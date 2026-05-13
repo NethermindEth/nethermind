@@ -89,7 +89,7 @@ public class HealingTreeTests
         where T : PatriciaTree
     {
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
-        trieStore.FindCachedOrUnknown(address, TreePath.Empty, _key).Returns(
+        trieStore.GetOrLoadNode(address, TreePath.Empty, _key).Returns(
             k => throw new MissingTrieNodeException("", null, path, _key),
             k =>
             {

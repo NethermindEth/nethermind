@@ -92,9 +92,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     /// </summary>
     private class ReadOnlyTrieStore(IPersistence.IPersistenceReader reader) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-            new(NodeType.Unknown, in hash);
-
         public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStateRlp(path, flags);
 
@@ -107,9 +104,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     /// </summary>
     private class ReadOnlyStorageTrieStore(IPersistence.IPersistenceReader reader, Hash256 address) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-            new(NodeType.Unknown, in hash);
-
         public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStorageRlp(address, path, flags);
     }
@@ -121,9 +115,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         IPersistence.IPersistenceReader reader,
         IPersistence.IWriteBatch writeBatch) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-            new(NodeType.Unknown, in hash);
-
         public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStateRlp(path, flags);
 
@@ -156,9 +147,6 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         IPersistence.IWriteBatch writeBatch,
         Hash256 address) : AbstractMinimalTrieStore
     {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, in ValueHash256 hash) =>
-            new(NodeType.Unknown, in hash);
-
         public override byte[]? TryLoadRlp(in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
             reader.TryLoadStorageRlp(address, path, flags);
 
