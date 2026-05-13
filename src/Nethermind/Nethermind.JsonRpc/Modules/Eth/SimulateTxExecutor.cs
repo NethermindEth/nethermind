@@ -54,7 +54,7 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
                         IReleaseSpec spec = specProvider.GetSpec(header);
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, spec: spec);
+                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, gasCap: _rpcConfig.GasCap, spec: spec);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
@@ -255,11 +255,11 @@ public class SimulateTxExecutor<TTrace>(
                 TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
                     or TransactionResult.ErrorType.MinerPremiumNegative => ErrorCodes.FeeCapBelowBaseFee,
                 TransactionResult.ErrorType.NonceOverflow => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.InvalidParams,
+                TransactionResult.ErrorType.SenderHasDeployedCode => ErrorCodes.SenderIsNotEoa,
                 TransactionResult.ErrorType.SenderNotSpecified => ErrorCodes.InternalError,
                 TransactionResult.ErrorType.TransactionSizeOverMaxInitCodeSize => ErrorCodes.MaxInitCodeSizeExceeded,
-                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.InternalError,
-                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.InternalError,
+                TransactionResult.ErrorType.TransactionNonceTooHigh => ErrorCodes.NonceTooHigh,
+                TransactionResult.ErrorType.TransactionNonceTooLow => ErrorCodes.NonceTooLow,
                 _ => ErrorCodes.InternalError
             };
         }
@@ -274,6 +274,8 @@ public class SimulateTxExecutor<TTrace>(
     private static string? MapSimulateErrorMessage(TransactionResult txResult) =>
         txResult.Error switch
         {
+            TransactionResult.ErrorType.GasLimitBelowIntrinsicGas
+                => SimulateErrorMessages.IntrinsicGas,
             TransactionResult.ErrorType.MaxFeePerGasBelowBaseFee
                 or TransactionResult.ErrorType.MinerPremiumNegative
                 => SimulateErrorMessages.FeeCapBelowBaseFee,
@@ -295,6 +297,12 @@ public class SimulateTxExecutor<TTrace>(
 /// </summary>
 internal static class SimulateErrorMessages
 {
+    /// <summary>
+    /// Returned when the transaction gas limit is below the intrinsic gas cost
+    /// (error code <see cref="ErrorCodes.IntrinsicGas"/>).
+    /// </summary>
+    public const string IntrinsicGas = "Not enough gas provided to pay for intrinsic gas for a transaction";
+
     /// <summary>
     /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
     /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).

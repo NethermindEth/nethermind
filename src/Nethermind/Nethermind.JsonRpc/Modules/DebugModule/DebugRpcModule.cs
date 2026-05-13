@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -90,9 +91,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        call.EnsureDefaults(jsonRpcConfig.GasCap);
-
-        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, spec: specProvider.GetSpec(header!));
+        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -233,7 +232,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (RlpException)
         {
@@ -265,7 +264,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (ArgumentNullException)
         {
@@ -292,7 +291,7 @@ public class DebugRpcModule(
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
 
-            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(blockTrace);
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(new GethLikeTxTraceStreamingResult(blockTrace));
         }
         catch (ArgumentNullException)
         {
@@ -371,6 +370,21 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter) =>
         GetBlockRlpOrFail(blockParameter);
+
+    public ResultWrapper<OwnedByteMemory> debug_getRawBlockAccessList(BlockParameter blockParameter)
+    {
+        Block? block = debugBridge.GetBlock(blockParameter);
+        if (block is null || block.BlockAccessListHash is null)
+        {
+            return ResultWrapper<OwnedByteMemory>.Fail("Resource not found", ErrorCodes.BlockAccessListResourceNotFound);
+        }
+
+        MemoryManager<byte>? balRlp = blockchainBridge.GetBlockAccessListRlp(block.Hash);
+
+        return balRlp is null
+            ? ResultWrapper<OwnedByteMemory>.Fail("Pruned history unavailable", ErrorCodes.PrunedHistoryUnavailable)
+            : ResultWrapper<OwnedByteMemory>.Success(new OwnedByteMemory(balRlp));
+    }
 
     public ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter)
     {
@@ -463,26 +477,61 @@ public class DebugRpcModule(
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
     {
-        PrepareTransactions(bundles, header);
-
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-
-        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
-            .GetBundleTraces(bundles, blockParameter, cancellationToken, options);
-
-        if (_logger.IsTrace)
+        CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+        try
         {
-            int totalTransactions = bundles.Sum(b => b.Transactions?.Length ?? 0);
-            _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
-        }
+            IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces = debugBridge
+                .GetBundleTraces(bundles, blockParameter, jsonRpcConfig.GasCap, timeout.Token, options);
 
-        return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
+            if (_logger.IsTrace)
+            {
+                int totalTransactions = bundles.Sum(b => b.Transactions?.Length ?? 0);
+                _logger.Trace($"{nameof(debug_traceCallMany)} completed: {bundles.Length} bundles, {totalTransactions} transactions via simple path");
+            }
+
+            return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(StreamBundleTraces(bundleTraces, timeout));
+        }
+        catch
+        {
+            timeout.Dispose();
+            throw;
+        }
+    }
+
+    // Bind the timeout CTS lifetime to enumerator disposal so the lazy bundle pipeline
+    // can keep using the cancellation token after this method returns (JSON-RPC serializes
+    // the result lazily). Disposing the CTS earlier breaks downstream token consumers
+    // (e.g. WaitHandle access throws ObjectDisposedException).
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundleTraces(
+        IEnumerable<IEnumerable<GethLikeTxTrace>> bundleTraces,
+        CancellationTokenSource cancellationTokenSource)
+    {
+        using (cancellationTokenSource)
+        {
+            foreach (IEnumerable<GethLikeTxTrace> traces in bundleTraces)
+            {
+                yield return traces;
+            }
+        }
     }
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
-        PrepareTransactions(bundles, header);
+        // debug_traceCallMany defaults missing gas to gasCap (not block gas limit). The simulate engine
+        // decides "explicit vs default" from the request's Gas field, so we set it here to opt out of the
+        // engine's BlockGasLeft fallback. eth_simulateV1 deliberately does not do this.
+        // When gasCap is unset/0 ("no cap"), we leave Gas null so the engine's normal fallback applies.
+        if (jsonRpcConfig.GasCap is not null and not 0)
+        {
+            foreach (TransactionBundle bundle in bundles)
+            {
+                foreach (TransactionForRpc call in bundle.Transactions)
+                {
+                    call.Gas ??= jsonRpcConfig.GasCap;
+                }
+            }
+        }
+
         SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
@@ -531,17 +580,6 @@ public class DebugRpcModule(
             .Select(blockResult => blockResult.Traces);
 
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
-    }
-
-    private void PrepareTransactions(TransactionBundle[] bundles, BlockHeader header)
-    {
-        foreach (TransactionBundle bundle in bundles)
-        {
-            foreach (TransactionForRpc call in bundle.Transactions)
-            {
-                call.EnsureDefaults(jsonRpcConfig.GasCap);
-            }
-        }
     }
 
     private ResultWrapper<byte[]> GetBlockRlpOrFail(BlockParameter blockParameter)
@@ -684,8 +722,13 @@ public class DebugRpcModule(
 
         tx.SenderAddress ??= Address.Zero;
 
+        // Clone header (avoid mutating caller's) and zero GasUsed so the budget check
+        // (block.GasUsed + tx.GasLimit <= block.GasLimit) doesn't reject default-gas calls.
+        BlockHeader callHeader = header.Clone();
+        callHeader.GasUsed = 0;
+
         if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
 
-        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(header, tx));
+        return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitness(callHeader, tx));
     }
 }

@@ -39,7 +39,7 @@ public class ProcessingStatsTests
     {
         stats.Start();
         stats.CaptureStartStats();
-        stats.UpdateStats(block, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: processingMicros);
+        stats.UpdateStats(new[] { block }, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: processingMicros);
 
         // Report is queued to ThreadPool — poll until it arrives (up to 5s)
         int waited = 0;

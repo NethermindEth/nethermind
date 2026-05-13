@@ -33,8 +33,10 @@ namespace Nethermind.Blockchain.Synchronization
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
+        public bool DownloadBlockAccessListsInFastSync { get; set; } = true;
         public long AncientBodiesBarrier { get; set; }
         public long AncientReceiptsBarrier { get; set; }
+        public long AncientBlockAccessListsBarrier { get; set; }
         public string PivotTotalDifficulty { get; set; }
         private long _pivotNumber = 0;
         public long PivotNumber
@@ -69,6 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
         public int SnapServingMaxDepth { get; set; } = 128;
         public int SnapServingMaxPathsPerGroup { get; set; } = 1024;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
+        public int AllocationSlots { get; set; } = 2;
         public int SyncDispatcherEmptyRequestDelayMs { get; set; } = 10;
         public int SyncDispatcherAllocateTimeoutMs { get; set; } = 1000;
         public bool NeedToWaitForHeader { get; set; }

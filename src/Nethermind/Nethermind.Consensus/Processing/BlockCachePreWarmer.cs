@@ -101,13 +101,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     // Pre-warming runs in two distinct modes:
     //  - Speculative tx execution (default): runs txs against a snapshot to seed caches.
-    //    Skipped when parallel execution is on, because parallel execution keeps its results
-    //    rather than throwing them away after warmup.
+    //    Skipped when parallel execution will actually run, because parallel execution keeps
+    //    its results rather than throwing them away after warmup. Parallel execution requires
+    //    BAL, so when BAL isn't active for this spec we still need speculative prewarming.
     //  - BAL-based read warming: when parallel execution is on AND batch read is enabled,
     //    we still warm — but only by reading state/storage referenced by the block's
     //    access list (no tx execution).
     private bool ShouldPreWarm(IReleaseSpec spec)
-        => !_parallelExecutionEnabled || IsBalReadWarmingEnabled(spec);
+        => !_parallelExecutionEnabled
+        || !spec.BlockLevelAccessListsEnabled
+        || IsBalReadWarmingEnabled(spec);
 
     public bool IsBalReadWarmingEnabled(IReleaseSpec spec)
         => _parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled;
@@ -448,30 +451,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 Address address = ac.Address;
                 worldState.WarmUp(address);
 
-                // Merge two sorted sequences (ChangedSlots, StorageReads) into one
+                // Merge two sorted sequences (ChangedSlots, SortedStorageReads) into one
                 // ascending pass for better trie path locality
-                IList<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> changed = ac.ChangedSlots;
+                ReadOnlySpan<UInt256> reads = ac.SortedStorageReads;
                 int slotIndex = 0;
-                using SortedSet<UInt256>.Enumerator readEnumerator = ac.StorageReads.GetEnumerator();
-                bool hasRead = readEnumerator.MoveNext();
+                int readIndex = 0;
 
-                while (slotIndex < changed.Count || hasRead)
+                while (slotIndex < changed.Length || readIndex < reads.Length)
                 {
                     UInt256 slot;
-                    if (!hasRead)
+                    if (readIndex >= reads.Length)
                     {
                         slot = changed[slotIndex++];
                     }
                     else
                     {
-                        slot = readEnumerator.Current;
-                        if (slotIndex < changed.Count && changed[slotIndex].CompareTo(in slot) <= 0)
+                        slot = reads[readIndex];
+                        if (slotIndex < changed.Length && changed[slotIndex].CompareTo(in slot) <= 0)
                         {
                             slot = changed[slotIndex++];
                         }
                         else
                         {
-                            hasRead = readEnumerator.MoveNext();
+                            readIndex++;
                         }
                     }
                     worldState.Get(new StorageCell(address, slot));

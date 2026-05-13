@@ -23,7 +23,7 @@ public interface ICodeInfoRepository
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {
-            address = new Address(code[Eip7702Constants.DelegationHeader.Length..].ToArray());
+            address = new Address(code[Eip7702Constants.DelegationHeader.Length..]);
             return true;
         }
 
@@ -39,4 +39,10 @@ public static class CodeInfoRepositoryExtensions
         => codeInfoRepository.GetCachedCodeInfo(codeSource, vmSpec, out _);
     public static CodeInfo GetCachedCodeInfo(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec, out Address? delegationAddress)
         => codeInfoRepository.GetCachedCodeInfo(codeSource, true, vmSpec, out delegationAddress);
+
+    /// <summary>
+    /// Returns the <see cref="CodeInfo"/> at <paramref name="codeSource"/> without resolving any EIP-7702 delegation.
+    /// </summary>
+    public static CodeInfo GetCachedCodeInfoNoDelegation(this ICodeInfoRepository codeInfoRepository, Address codeSource, IReleaseSpec vmSpec)
+        => codeInfoRepository.GetCachedCodeInfo(codeSource, false, vmSpec, out _);
 }

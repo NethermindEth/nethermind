@@ -77,7 +77,7 @@ public static class ShutterCrypto
 
         ReadOnlySpan<byte> c3 = bytes[(1 + 96 + 32)..];
 
-        if (c3.Length % 32 != 0)
+        if (c3.Length == 0 || c3.Length % 32 != 0)
         {
             throw new ShutterCryptoException("Encrypted Shutter message had invalid c3");
         }

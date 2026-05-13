@@ -119,19 +119,7 @@ public class DisposableScopeOverridableEnvTests
     {
         public IWorldState WorldState => worldState;
 
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer) =>
-            throw new NotImplementedException();
-
-        public TransactionResult CallAndRestore(Transaction transaction, ITxTracer txTracer) =>
-            throw new NotImplementedException();
-
-        public TransactionResult BuildUp(Transaction transaction, ITxTracer txTracer) =>
-            throw new NotImplementedException();
-
-        public TransactionResult Trace(Transaction transaction, ITxTracer txTracer) =>
-            throw new NotImplementedException();
-
-        public TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options) =>
             throw new NotImplementedException();
 
         public void SetBlockExecutionContext(BlockHeader blockHeader) =>

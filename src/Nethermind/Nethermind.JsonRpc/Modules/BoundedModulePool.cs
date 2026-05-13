@@ -8,34 +8,60 @@ using Nethermind.JsonRpc.Exceptions;
 
 namespace Nethermind.JsonRpc.Modules
 {
+    // Two independent counters:
+    //   _queuedCalls: SlowPath waiters, bounded by RequestQueueLimit.
+    //   _sharedCalls: SharedPath in-flight, bounded by MaxConcurrentSharedRequests — caps memory
+    //                 for heavy sharable methods (eth_call / eth_estimateGas / eth_createAccessList).
     public static class RpcLimits
     {
-        public static void Init(int limit) => Limit = limit;
-
-        private static int Limit { get; set; }
-        private static bool Enabled => Limit > 0;
-        private static int _queuedCalls = 0;
-
-        public static void IncrementQueuedCalls()
+        public static void Init(int queuedLimit, int sharedLimit)
         {
-            if (Enabled)
-                Interlocked.Increment(ref _queuedCalls);
+            QueuedLimit = queuedLimit;
+            SharedLimit = sharedLimit;
+        }
+
+        private static int QueuedLimit { get; set; }
+        private static int SharedLimit { get; set; }
+        private static bool QueuedLimitEnabled => QueuedLimit > 0;
+        private static bool SharedLimitEnabled => SharedLimit > 0;
+        private static int _queuedCalls;
+        private static int _sharedCalls;
+
+        public static void AcquireQueuedSlot()
+        {
+            if (!QueuedLimitEnabled) return;
+            int after = Interlocked.Increment(ref _queuedCalls);
+            if (after > QueuedLimit)
+            {
+                Interlocked.Decrement(ref _queuedCalls);
+                throw new LimitExceededException($"Unable to start new queued requests. Too many queued requests. Queued calls {after - 1}.");
+            }
         }
 
         public static void DecrementQueuedCalls()
         {
-            if (Enabled)
+            if (QueuedLimitEnabled)
                 Interlocked.Decrement(ref _queuedCalls);
         }
 
-        public static void EnsureLimits()
+        public static void AcquireSharedSlot()
         {
-            if (Enabled && _queuedCalls > Limit)
+            if (!SharedLimitEnabled) return;
+            int after = Interlocked.Increment(ref _sharedCalls);
+            if (after > SharedLimit)
             {
-                throw new LimitExceededException($"Unable to start new queued requests. Too many queued requests. Queued calls {_queuedCalls}.");
+                Interlocked.Decrement(ref _sharedCalls);
+                throw new LimitExceededException($"Unable to start new shared requests. Too many in-flight shared calls. In-flight: {after - 1}.");
             }
         }
+
+        public static void DecrementSharedCalls()
+        {
+            if (SharedLimitEnabled)
+                Interlocked.Decrement(ref _sharedCalls);
+        }
     }
+
     public class BoundedModulePool<T> : IRpcModulePool<T> where T : IRpcModule
     {
         private readonly int _timeout;
@@ -59,12 +85,17 @@ namespace Nethermind.JsonRpc.Modules
             _sharedAsTask = Task.FromResult(_shared);
         }
 
-        public Task<T> GetModule(bool canBeShared) => canBeShared ? _sharedAsTask : SlowPath();
+        public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : SlowPath();
+
+        private Task<T> SharedPath()
+        {
+            RpcLimits.AcquireSharedSlot();
+            return _sharedAsTask;
+        }
 
         private async Task<T> SlowPath()
         {
-            RpcLimits.EnsureLimits();
-            RpcLimits.IncrementQueuedCalls();
+            RpcLimits.AcquireQueuedSlot();
 
             if (!await _semaphore.WaitAsync(_timeout))
             {
@@ -81,6 +112,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (ReferenceEquals(module, _shared))
             {
+                RpcLimits.DecrementSharedCalls();
                 return;
             }
 

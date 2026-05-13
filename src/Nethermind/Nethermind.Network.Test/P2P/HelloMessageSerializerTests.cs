@@ -128,6 +128,41 @@ public class HelloMessageSerializerTests
         }
     }
 
+    private static IEnumerable<TestCaseData> ProtocolCodeLimitCases()
+    {
+        yield return new TestCaseData(1, false).SetName("1 char protocol code - accepted");
+        yield return new TestCaseData(8, false).SetName("Max protocol code length - accepted");
+        yield return new TestCaseData(9, true).SetName("Max+1 protocol code length - rejected");
+    }
+
+    [TestCaseSource(nameof(ProtocolCodeLimitCases))]
+    public void Validates_protocol_code_length(int codeLength, bool shouldThrow)
+    {
+        byte[] serialized = SerializeWithProtocolCode(new string('a', codeLength));
+
+        if (shouldThrow)
+        {
+            Assert.Throws<RlpLimitException>(() => _serializer.Deserialize(serialized));
+        }
+        else
+        {
+            Assert.DoesNotThrow(() => _serializer.Deserialize(serialized));
+        }
+    }
+
+    private byte[] SerializeWithProtocolCode(string protocolCode)
+    {
+        using HelloMessage message = new()
+        {
+            P2PVersion = 5,
+            ClientId = "test",
+            ListenPort = 30303,
+            NodeId = NetTestVectors.StaticKeyA.PublicKey,
+            Capabilities = new ArrayPoolList<Capability>(1) { new(protocolCode, 1) },
+        };
+        return _serializer.Serialize(message);
+    }
+
     [Test]
     public void Deserialize_allows_client_id_at_current_limit()
     {

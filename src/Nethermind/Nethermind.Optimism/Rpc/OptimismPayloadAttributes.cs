@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -49,7 +49,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         {
             try
             {
-                return Rlp.Decode<Transaction>(t, RlpBehaviors.SkipTypedWrapping);
+                return TxDecoder.Instance.DecodeCompleteNotNull(t, RlpBehaviors.SkipTypedWrapping);
             }
             catch (RlpException e)
             {

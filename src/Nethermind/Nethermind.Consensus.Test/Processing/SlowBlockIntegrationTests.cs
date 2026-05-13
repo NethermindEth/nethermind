@@ -85,7 +85,7 @@ public class SlowBlockIntegrationTests
         _stats.Start();
         _stats.CaptureStartStats();
         _txProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), Evm.Tracing.NullTxTracer.Instance);
-        _stats.UpdateStats(block, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: 100_000);
+        _stats.UpdateStats(new[] { block }, Build.A.BlockHeader.TestObject, blockProcessingTimeInMicros: 100_000);
 
         // Report is queued to ThreadPool — poll until it arrives (up to 5s)
         int waited = 0;
@@ -211,7 +211,7 @@ public class SlowBlockIntegrationTests
         // Pre-set delegation on signer
         byte[] existingDelegation = new byte[23];
         Eip7702Constants.DelegationHeader.CopyTo(existingDelegation);
-        codeSource.Bytes.CopyTo(existingDelegation, 3);
+        codeSource.Bytes.CopyTo(existingDelegation.AsSpan(3));
         _worldState.CreateAccount(signer.Address, 0);
         _worldState.InsertCode(signer.Address, existingDelegation, Prague.Instance);
         _worldState.IncrementNonce(signer.Address);

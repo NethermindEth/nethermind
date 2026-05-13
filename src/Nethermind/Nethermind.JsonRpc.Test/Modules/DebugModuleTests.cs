@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -52,6 +53,43 @@ public class DebugModuleTests
             new BlocksConfig(),
             _blockFinder
         );
+
+    [Test]
+    public void Debug_traceCallMany_streams_under_live_cancellation_token()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.Head.Returns(Build.A.Block.WithHeader(header).TestObject);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).ReturnsForAnyArgs(header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _debugBridge
+            .GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<long?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(static c => StreamBundles(c.ArgAt<CancellationToken>(3)));
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        TransactionBundle bundle = new() { Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressC }] };
+
+        ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> result =
+            rpcModule.debug_traceCallMany([bundle, bundle], BlockParameter.Latest);
+
+        // The first inner sequence touches WaitHandle (throws ObjectDisposedException if the
+        // timeout CTS has been disposed). The second bundle throws unconditionally, so the
+        // call only succeeds if the result is a deferred sequence and we stop after the first.
+        using IEnumerator<IEnumerable<GethLikeTxTrace>> outer = result.Data.GetEnumerator();
+        outer.MoveNext().Should().BeTrue();
+        outer.Current.Count().Should().Be(1);
+    }
+
+    private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)
+    {
+        yield return YieldTrace(token);
+        throw new InvalidOperationException("second bundle should not be enumerated — streaming was lost");
+    }
+
+    private static IEnumerable<GethLikeTxTrace> YieldTrace(CancellationToken token)
+    {
+        _ = token.WaitHandle;
+        yield return new GethLikeTxTrace();
+    }
 
     [Test]
     public async Task Get_from_db()
@@ -168,6 +206,55 @@ public class DebugModuleTests
         using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero) as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+    }
+
+    [Test]
+    public async Task Get_raw_block_access_list()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
+        byte[] rawBal = [0xc0];
+        _debugBridge.GetBlock(BlockParameter.Latest).Returns(block);
+        _blockchainBridge.GetBlockAccessListRlp(block.Hash!).Returns(ArrayMemoryManager.From(rawBal));
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        string serialized = await RpcTest.TestSerializedRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest");
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0xc0\",\"id\":67}"));
+    }
+
+    private static IEnumerable<TestCaseData> GetRawBlockAccessListErrorCases()
+    {
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) => debug.GetBlock(BlockParameter.Latest).ReturnsNull()),
+            ErrorCodes.BlockAccessListResourceNotFound)
+        { TestName = "Get_raw_block_access_list_when_missing_block" };
+
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, _) =>
+                debug.GetBlock(BlockParameter.Latest).Returns(Build.A.Block.WithNumber(1).TestObject)),
+            ErrorCodes.BlockAccessListResourceNotFound)
+        { TestName = "Get_raw_block_access_list_when_unavailable_before_fork" };
+
+        yield return new TestCaseData(
+            (Action<IDebugBridge, IBlockchainBridge>)((debug, chain) =>
+            {
+                Block block = Build.A.Block.WithNumber(1).WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp).TestObject;
+                debug.GetBlock(BlockParameter.Latest).Returns(block);
+                chain.GetBlockAccessListRlp(block.Hash!).ReturnsNull();
+            }),
+            ErrorCodes.PrunedHistoryUnavailable)
+        { TestName = "Get_raw_block_access_list_when_pruned" };
+    }
+
+    [TestCaseSource(nameof(GetRawBlockAccessListErrorCases))]
+    public async Task Get_raw_block_access_list_error_cases(Action<IDebugBridge, IBlockchainBridge> setup, int expectedErrorCode)
+    {
+        setup(_debugBridge, _blockchainBridge);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlockAccessList", "latest") as JsonRpcErrorResponse;
+
+        Assert.That(response?.Error?.Code, Is.EqualTo(expectedErrorCode));
     }
 
     private BlockTree BuildBlockTree(Func<BlockTreeBuilder, BlockTreeBuilder>? builderOptions = null)

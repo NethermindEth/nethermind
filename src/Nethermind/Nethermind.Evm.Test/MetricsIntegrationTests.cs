@@ -173,7 +173,7 @@ public class MetricsIntegrationTests
 
         byte[] existingDelegation = new byte[23];
         Eip7702Constants.DelegationHeader.CopyTo(existingDelegation);
-        TestItem.AddressC.Bytes.CopyTo(existingDelegation, 3);
+        TestItem.AddressC.Bytes.CopyTo(existingDelegation.AsSpan(3));
         _worldState.CreateAccount(signer.Address, 0);
         _worldState.InsertCode(signer.Address, existingDelegation, Prague.Instance);
         _worldState.IncrementNonce(signer.Address);
