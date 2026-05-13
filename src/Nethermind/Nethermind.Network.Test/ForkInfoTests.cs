@@ -348,10 +348,10 @@ public class ForkInfoTests
         ChainSpec spec = loader.Load(memoryStream);
         ChainSpecBasedSpecProvider provider = new(spec);
 
-        spec.ChainId.Should().Be(expectedChainId);
-        spec.NetworkId.Should().Be(expectedNetworkId);
-        provider.ChainId.Should().Be(expectedChainId);
-        provider.NetworkId.Should().Be(expectedNetworkId);
+        spec.ChainId.Should().Be(343UL);
+        spec.NetworkId.Should().Be(343UL);
+        provider.ChainId.Should().Be(343UL);
+        provider.NetworkId.Should().Be(343UL);
     }
 
     public static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")

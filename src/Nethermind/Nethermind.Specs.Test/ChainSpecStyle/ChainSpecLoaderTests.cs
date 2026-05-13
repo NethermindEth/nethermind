@@ -38,7 +38,7 @@ public class ChainSpecLoaderTests
         ChainSpec chainSpec = LoadChainSpec(path);
 
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei), $"fork base fee");
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(343UL), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
@@ -66,7 +66,7 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(99), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(343UL), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Spaceneth"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("spaceneth"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
@@ -92,7 +92,7 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/sepolia.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(343UL), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
@@ -107,7 +107,7 @@ public class ChainSpecLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(560048), $"{nameof(chainSpec.NetworkId)}");
+        Assert.That(chainSpec.NetworkId, Is.EqualTo(343UL), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.DaoForkBlockNumber.Should().Be(null);

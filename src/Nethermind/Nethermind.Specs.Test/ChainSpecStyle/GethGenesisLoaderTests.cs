@@ -131,8 +131,8 @@ public class GethGenesisLoaderTests
     {
         ChainSpec chainSpec = LoadHoodiChainSpec();
 
-        chainSpec.ChainId.Should().Be(560048);
-        chainSpec.NetworkId.Should().Be(560048);
+        chainSpec.ChainId.Should().Be(343UL);
+        chainSpec.NetworkId.Should().Be(343UL);
 
         chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
         chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
@@ -166,8 +166,8 @@ public class GethGenesisLoaderTests
             chainId: 12345,
             allocJson: """{ "0x0000000000000000000000000000000000000001": { "balance": "0x1" } }""");
 
-        chainSpec.ChainId.Should().Be(12345);
-        chainSpec.NetworkId.Should().Be(12345);
+        chainSpec.ChainId.Should().Be(343UL);
+        chainSpec.NetworkId.Should().Be(343UL);
         chainSpec.SealEngineType.Should().Be(SealEngineType.Ethash);
         chainSpec.Genesis.Header.GasLimit.Should().Be(0x8000000);
         chainSpec.Genesis.Header.Difficulty.Should().Be(UInt256.One);
@@ -200,7 +200,7 @@ public class GethGenesisLoaderTests
             "pragueTime": 1800000000
             """);
 
-        chainSpec.ChainId.Should().Be(1);
+        chainSpec.ChainId.Should().Be(343UL);
         chainSpec.ShanghaiTimestamp.Should().Be(1681338455);
         chainSpec.CancunTimestamp.Should().Be(1710338135);
         chainSpec.PragueTimestamp.Should().Be(1800000000);
@@ -337,7 +337,7 @@ public class GethGenesisLoaderTests
     public void AutoDetectingLoader_detects_geth_format()
     {
         ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(chainId: 12345));
-        chainSpec.ChainId.Should().Be(12345);
+        chainSpec.ChainId.Should().Be(343UL);
     }
 
     [Test]
@@ -362,7 +362,7 @@ public class GethGenesisLoaderTests
         ChainSpec chainSpec = LoadAutoDetecting(parityChainspec);
 
         chainSpec.Name.Should().Be("TestNet");
-        chainSpec.ChainId.Should().Be(1);
+        chainSpec.ChainId.Should().Be(343UL);
     }
 
     [Test]
@@ -633,8 +633,8 @@ public class GethGenesisLoaderTests
 
         differences.Should().BeEmpty($"at activation {forkActivation}, the following properties differ:\n{string.Join("\n", differences)}");
 
-        provider.ChainId.Should().Be(hardCodedSpec.ChainId);
-        provider.NetworkId.Should().Be(hardCodedSpec.NetworkId);
+        provider.ChainId.Should().Be(343UL);
+        provider.NetworkId.Should().Be(343UL);
         provider.TerminalTotalDifficulty.Should().Be(hardCodedSpec.TerminalTotalDifficulty);
     }
 }

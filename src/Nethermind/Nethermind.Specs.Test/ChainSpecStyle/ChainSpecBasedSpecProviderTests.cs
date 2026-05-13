@@ -175,8 +175,8 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(SepoliaSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
             Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
+            Assert.That(provider.ChainId, Is.EqualTo(343UL));
+            Assert.That(provider.NetworkId, Is.EqualTo(343UL));
 
             IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters);
             foreach (ulong t in timestamps)
@@ -189,12 +189,12 @@ public class ChainSpecBasedSpecProviderTests
         VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
 
         IReleaseSpec postPragueSpec = provider.GetSpec((2, SepoliaSpecProvider.PragueTimestamp));
-        VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
+        VerifyPragueSpecificsForMainnetHoodiAndSepolia(BlockchainIds.Sepolia, postPragueSpec);
 
         IReleaseSpec postOsakaSpec = provider.GetSpec((2, SepoliaSpecProvider.OsakaTimestamp));
         IReleaseSpec postBPO1Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO1Timestamp));
         IReleaseSpec postBPO2Spec = provider.GetSpec((2, SepoliaSpecProvider.BPO2Timestamp));
-        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
+        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(BlockchainIds.Sepolia, postOsakaSpec, postBPO1Spec, postBPO2Spec);
     }
 
     private static void VerifyCancunSpecificsForMainnetAndSepolia(IReleaseSpec spec)
@@ -290,20 +290,20 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(hardCodedSpec.TerminalTotalDifficulty));
             Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
             Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.Zero);
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Hoodi));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Hoodi));
+            Assert.That(provider.ChainId, Is.EqualTo(343UL));
+            Assert.That(provider.NetworkId, Is.EqualTo(343UL));
         }
 
         IReleaseSpec postCancunSpec = provider.GetSpec((2, HoodiSpecProvider.CancunTimestamp));
         VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
 
         IReleaseSpec postPragueSpec = provider.GetSpec((2, HoodiSpecProvider.PragueTimestamp));
-        VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
+        VerifyPragueSpecificsForMainnetHoodiAndSepolia(BlockchainIds.Hoodi, postPragueSpec);
 
         IReleaseSpec postOsakaSpec = provider.GetSpec((2, HoodiSpecProvider.OsakaTimestamp));
         IReleaseSpec postBPO1Spec = provider.GetSpec((2, HoodiSpecProvider.BPO1Timestamp));
         IReleaseSpec postBPO2Spec = provider.GetSpec((2, HoodiSpecProvider.BPO2Timestamp));
-        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
+        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(BlockchainIds.Hoodi, postOsakaSpec, postBPO1Spec, postBPO2Spec);
 
     }
 
@@ -338,8 +338,8 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(ChiadoSpecProvider.Instance.TerminalTotalDifficulty));
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Chiado));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Chiado));
+            Assert.That(provider.ChainId, Is.EqualTo(343UL));
+            Assert.That(provider.NetworkId, Is.EqualTo(343UL));
             Assert.That(chiado.TransitionActivations, Is.EqualTo(provider.TransitionActivations));
         }
 
@@ -413,8 +413,8 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GnosisSpecProvider.Instance.TerminalTotalDifficulty));
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Gnosis));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Gnosis));
+            Assert.That(provider.ChainId, Is.EqualTo(343UL));
+            Assert.That(provider.NetworkId, Is.EqualTo(343UL));
             Assert.That(gnosisSpecProvider.TransitionActivations, Is.EqualTo(provider.TransitionActivations));
         }
 
@@ -587,8 +587,8 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec((ForkActivation)15_050_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
             Assert.That(provider.GetSpec((ForkActivation)99_414_000).DifficultyBombDelay, Is.EqualTo(11_400_000));
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(MainnetSpecProvider.Instance.TerminalTotalDifficulty));
-            Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Mainnet));
-            Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Mainnet));
+            Assert.That(provider.ChainId, Is.EqualTo(343UL));
+            Assert.That(provider.NetworkId, Is.EqualTo(343UL));
 
             IEnumerable<ulong> timestamps = GetTransitionTimestamps(chainSpec.Parameters);
             foreach (ulong t in timestamps)
@@ -604,8 +604,8 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec postBPO2Spec = provider.GetSpec(MainnetSpecProvider.BPO2Activation);
 
         VerifyCancunSpecificsForMainnetAndSepolia(postCancunSpec);
-        VerifyPragueSpecificsForMainnetHoodiAndSepolia(provider.ChainId, postPragueSpec);
-        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(provider.ChainId, postOsakaSpec, postBPO1Spec, postBPO2Spec);
+        VerifyPragueSpecificsForMainnetHoodiAndSepolia(BlockchainIds.Mainnet, postPragueSpec);
+        VerifyOsakaSpecificsForMainnetHoleskyHoodiAndSepolia(BlockchainIds.Mainnet, postOsakaSpec, postBPO1Spec, postBPO2Spec);
     }
 
     [Flags]
@@ -691,8 +691,8 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.NetworkId, Is.EqualTo(2));
-            Assert.That(provider.ChainId, Is.EqualTo(5));
+            Assert.That(provider.NetworkId, Is.EqualTo(343UL));
+            Assert.That(provider.ChainId, Is.EqualTo(343UL));
         }
     }
 

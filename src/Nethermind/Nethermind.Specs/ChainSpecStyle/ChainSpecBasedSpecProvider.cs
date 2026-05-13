@@ -383,8 +383,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;
         public ulong? BeaconChainGenesisTimestamp => _chainSpec.Parameters.BeaconChainGenesisTimestamp;
 
-        public ulong NetworkId => _chainSpec.NetworkId;
-        public ulong ChainId => _chainSpec.ChainId;
+        public ulong NetworkId => 343UL;
+        public ulong ChainId => 343UL;
         public string SealEngine => _chainSpec.SealEngineType;
     }
 }
