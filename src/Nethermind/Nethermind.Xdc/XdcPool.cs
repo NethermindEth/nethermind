@@ -48,7 +48,7 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
-    public IReadOnlyCollection<T> GetItems(T item)
+    public IReadOnlyCollection<T> GetItemsByKey(T item)
     {
         using McsLock.Disposable lockRelease = _lock.Acquire();
         {
@@ -75,7 +75,19 @@ public class XdcPool<T> where T : IXdcPoolItem
         }
     }
 
-    public Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> Items => _items;
+    public IDictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> GetItems()
+    {
+        using McsLock.Disposable lockRelease = _lock.Acquire();
+        {
+            Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> snapshot = new(_items.Count);
+            foreach (KeyValuePair<(ulong Round, Hash256 Hash), Dictionary<Address, T>> pair in _items)
+            {
+                snapshot[pair.Key] = new Dictionary<Address, T>(pair.Value);
+            }
+
+            return snapshot;
+        }
+    }
 
     // Forensics needs same-round votes across different pool keys to detect signer equivocation.
     public IReadOnlyCollection<T> GetItemsFromRoundExcludingKey(T item)
