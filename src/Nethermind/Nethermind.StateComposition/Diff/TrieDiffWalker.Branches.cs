@@ -11,7 +11,7 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
+    private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ResolverPair resolvers, bool isStorage, int depth)
     {
         RecordNode(NodeType.Branch, oldBranch.FullRlp.Length, isStorage, added: false);
         RecordNode(NodeType.Branch, newBranch.FullRlp.Length, isStorage, added: true);
@@ -42,81 +42,82 @@ internal sealed partial class TrieDiffWalker
             int prevLen = path.Length;
             path.AppendMut(i);
             DiffBranchChild(oldBranch, newBranch, i, oldChildHash, newChildHash,
-                oldIsNull, newIsNull, ref path, resolver, isStorage, childDepth);
+                oldIsNull, newIsNull, ref path, resolvers, isStorage, childDepth);
             path.TruncateMut(prevLen);
         }
     }
 
     private void DiffBranchChild(TrieNode oldBranch, TrieNode newBranch, int i,
         Hash256? oldChildHash, Hash256? newChildHash, bool oldIsNull, bool newIsNull,
-        ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int childDepth)
+        ref TreePath path, ResolverPair resolvers, bool isStorage, int childDepth)
     {
         if (oldChildHash is not null && newChildHash is not null)
         {
-            DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage, childDepth);
+            DiffSubtree(oldChildHash, newChildHash, ref path, resolvers, isStorage, childDepth);
             return;
         }
 
         if (oldIsNull)
         {
-            CollectBranchSlotSide(newBranch, i, newChildHash, ref path, resolver, isStorage, added: true, childDepth);
+            CollectBranchSlotSide(newBranch, i, newChildHash, ref path, resolvers, isStorage, added: true, childDepth);
             return;
         }
 
         if (newIsNull)
         {
-            CollectBranchSlotSide(oldBranch, i, oldChildHash, ref path, resolver, isStorage, added: false, childDepth);
+            CollectBranchSlotSide(oldBranch, i, oldChildHash, ref path, resolvers, isStorage, added: false, childDepth);
             return;
         }
 
-        TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolver, ref path, i);
-        TrieNode? newChild = newBranch.GetChildWithChildPath(resolver, ref path, i);
+        TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolvers.Old, ref path, i);
+        TrieNode? newChild = newBranch.GetChildWithChildPath(resolvers.New, ref path, i);
 
         if (oldChild is not null && newChild is not null)
         {
-            oldChild.ResolveNode(resolver, in path);
-            newChild.ResolveNode(resolver, in path);
-            DiffNodes(oldChild, newChild, ref path, resolver, isStorage, childDepth);
+            oldChild.ResolveNode(resolvers.Old, in path);
+            newChild.ResolveNode(resolvers.New, in path);
+            DiffNodes(oldChild, newChild, ref path, resolvers, isStorage, childDepth);
         }
         else if (oldChild is not null)
         {
-            oldChild.ResolveNode(resolver, in path);
-            CollectSubtree(oldChild, ref path, resolver, isStorage, added: false, childDepth);
+            oldChild.ResolveNode(resolvers.Old, in path);
+            CollectSubtree(oldChild, ref path, resolvers, isStorage, added: false, childDepth);
         }
         else if (newChild is not null)
         {
-            newChild.ResolveNode(resolver, in path);
-            CollectSubtree(newChild, ref path, resolver, isStorage, added: true, childDepth);
+            newChild.ResolveNode(resolvers.New, in path);
+            CollectSubtree(newChild, ref path, resolvers, isStorage, added: true, childDepth);
         }
     }
 
     private void CollectBranchSlotSide(TrieNode branch, int i, Hash256? childHash,
-        ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added, int childDepth)
+        ref TreePath path, ResolverPair resolvers, bool isStorage, bool added, int childDepth)
     {
+        ITrieNodeResolver side = resolvers.Pick(added);
         if (childHash is not null)
         {
-            TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-            child.ResolveNode(resolver, in path);
-            CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
+            TrieNode child = side.FindCachedOrUnknown(in path, childHash);
+            child.ResolveNode(side, in path);
+            CollectSubtree(child, ref path, resolvers, isStorage, added, childDepth);
             return;
         }
 
-        TrieNode? inlineChild = branch.GetChildWithChildPath(resolver, ref path, i);
+        TrieNode? inlineChild = branch.GetChildWithChildPath(side, ref path, i);
         if (inlineChild is not null)
         {
-            inlineChild.ResolveNode(resolver, in path);
-            CollectSubtree(inlineChild, ref path, resolver, isStorage, added, childDepth);
+            inlineChild.ResolveNode(side, in path);
+            CollectSubtree(inlineChild, ref path, resolvers, isStorage, added, childDepth);
         }
     }
 
     private void DiffMismatchedNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path,
-        ITrieNodeResolver resolver, bool isStorage, int depth)
+        ResolverPair resolvers, bool isStorage, int depth)
     {
         Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> oldLeaves = [];
         Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> newLeaves = [];
 
-        CollectSubtreeForDiff(oldNode, ref path, resolver, isStorage, added: false, oldLeaves, depth);
-        CollectSubtreeForDiff(newNode, ref path, resolver, isStorage, added: true, newLeaves, depth);
+        CollectSubtreeForDiff(oldNode, ref path, resolvers, isStorage, added: false, oldLeaves, depth);
+        CollectSubtreeForDiff(newNode, ref path, resolvers, isStorage, added: true, newLeaves, depth);
 
         foreach (KeyValuePair<ValueHash256, (TrieNode Leaf, TreePath Path)> kvp in newLeaves)
         {
@@ -128,13 +129,13 @@ internal sealed partial class TrieDiffWalker
                 if (!isStorage)
                 {
                     TreePath leafPath = oldEntry.Path;
-                    DecodeAndDiffAccountLeaves(oldEntry.Leaf, newLeaf, ref leafPath);
+                    DecodeAndDiffAccountLeaves(oldEntry.Leaf, newLeaf, ref leafPath, resolvers);
                 }
             }
             else
             {
                 TreePath leafPath = newLeafPath;
-                CollectLeaf(newLeaf, ref leafPath, added: true, isStorage);
+                CollectLeaf(newLeaf, ref leafPath, added: true, isStorage, resolvers);
             }
         }
 
@@ -142,7 +143,7 @@ internal sealed partial class TrieDiffWalker
         {
             (TrieNode oldLeaf, TreePath oldLeafPath) = kvp.Value;
             TreePath leafPath = oldLeafPath;
-            CollectLeaf(oldLeaf, ref leafPath, added: false, isStorage);
+            CollectLeaf(oldLeaf, ref leafPath, added: false, isStorage, resolvers);
         }
     }
 }

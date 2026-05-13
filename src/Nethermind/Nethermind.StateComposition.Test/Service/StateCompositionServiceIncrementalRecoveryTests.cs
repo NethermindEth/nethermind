@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -81,6 +82,8 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
         blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>())
+            .Returns(Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject);
 
         // Simulate pruned baseline: opening a read-only store for the diff throws
         // the exact exception TrieNode.ResolveNode raises when the root is gone.
@@ -138,6 +141,8 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
         blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>())
+            .Returns(Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject);
 
         worldStateManager.CreateReadOnlyTrieStore()
             .Returns(_ => throw new InvalidOperationException("boom"));
@@ -197,24 +202,22 @@ public class StateCompositionServiceIncrementalRecoveryTests
     }
 
     [Test]
-    public void RunIncrementalDiff_OpensScopeOnHeadBeforeAcquiringResolver()
+    public void RunIncrementalDiff_OpensScopeOnBothPrevAndHeadBeforeAcquiringResolver()
     {
         long diffErrorsBefore = Metrics.StateCompDiffErrors;
 
-        bool scopeOpened = false;
-        BlockHeader? scopedHeader = null;
+        List<BlockHeader?> scopedHeaders = [];
         IReadOnlyTrieStore readOnlyStore = Substitute.For<IReadOnlyTrieStore>();
         readOnlyStore.BeginScope(Arg.Any<BlockHeader?>())
             .Returns(call =>
             {
-                scopeOpened = true;
-                scopedHeader = (BlockHeader?)call[0];
+                scopedHeaders.Add((BlockHeader?)call[0]);
                 return Substitute.For<IDisposable>();
             });
         readOnlyStore.GetTrieStore(Arg.Any<Hash256?>())
             .Returns(_ =>
             {
-                if (!scopeOpened)
+                if (scopedHeaders.Count == 0)
                     throw new InvalidOperationException("BeginScope has not been called");
                 throw new BeginScopeSentinel();
             });
@@ -227,7 +230,9 @@ public class StateCompositionServiceIncrementalRecoveryTests
         SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
 
         Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
+        BlockHeader prevHeader = Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject;
         blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>()).Returns(prevHeader);
 
         using StateCompositionService service = new(
             stateReader, worldStateManager, blockTree, stateHolder,
@@ -237,12 +242,45 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scopeOpened, Is.True,
-                "BeginScope must run before GetTrieStore — this is the FlatDb prerequisite.");
-            Assert.That(scopedHeader, Is.SameAs(headBlock.Header),
-                "BeginScope must be invoked with the head block header so the snapshot bundle covers the right state.");
+            Assert.That(scopedHeaders, Has.Count.EqualTo(2),
+                "Both prev and head must be scoped before any node resolution.");
+            Assert.That(scopedHeaders[0], Is.SameAs(prevHeader),
+                "Prev header must be scoped first so old-side reads land in the prev bundle.");
+            Assert.That(scopedHeaders[1], Is.SameAs(headBlock.Header),
+                "Head header must be scoped before the new-side resolver is acquired.");
             Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore + 1),
                 "BeginScopeSentinel propagates as a generic diff error — confirms the call site executed end-to-end.");
+        }
+    }
+
+    [Test]
+    public void RunIncrementalDiff_PrevHeaderMissing_InvalidatesBaselineAndRescans()
+    {
+        long invalidationsBefore = Metrics.StateCompBaselineInvalidations;
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+
+        Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>()).Returns((BlockHeader?)null);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompBaselineInvalidations, Is.EqualTo(invalidationsBefore + 1),
+                "Missing prev header must invalidate the baseline.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore),
+                "Missing prev header is a recoverable condition; it must NOT count as a diff error.");
         }
     }
 
