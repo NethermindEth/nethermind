@@ -254,6 +254,44 @@ public class StateCompositionServiceIncrementalRecoveryTests
     }
 
     [Test]
+    public void RunIncrementalDiff_BeginScopeThrowsInvalidOperation_InvalidatesBaseline()
+    {
+        long invalidationsBefore = Metrics.StateCompBaselineInvalidations;
+        long diffErrorsBefore = Metrics.StateCompDiffErrors;
+
+        IReadOnlyTrieStore readOnlyStore = Substitute.For<IReadOnlyTrieStore>();
+        readOnlyStore.BeginScope(Arg.Any<BlockHeader?>())
+            .Returns(_ => throw new InvalidOperationException(
+                "Unable to gather snapshots for state StateId { BlockNumber = 100, StateRoot = 0x... }."));
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.CreateReadOnlyTrieStore().Returns(readOnlyStore);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        StateCompositionStateHolder stateHolder = new();
+
+        SeedBaseline(stateHolder, blockNumber: 100, stateRoot: PrevRoot);
+        Block headBlock = Build.A.Block.WithNumber(101).WithStateRoot(NewRoot).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindHeader(100, Arg.Any<BlockTreeLookupOptions>())
+            .Returns(Build.A.BlockHeader.WithNumber(100).WithStateRoot(PrevRoot).TestObject);
+
+        using StateCompositionService service = new(
+            stateReader, worldStateManager, blockTree, stateHolder,
+            CreateSnapshotStore(), CreateConfig(), LimboLogs.Instance);
+
+        service.RunIncrementalDiff();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompBaselineInvalidations, Is.EqualTo(invalidationsBefore + 1),
+                "BeginScope's InvalidOperationException must route through the baseline-invalidation recovery path.");
+            Assert.That(Metrics.StateCompDiffErrors, Is.EqualTo(diffErrorsBefore),
+                "Recoverable bundle-gather failures must NOT count toward diff_errors.");
+        }
+    }
+
+    [Test]
     public void RunIncrementalDiff_PrevHeaderMissing_InvalidatesBaselineAndRescans()
     {
         long invalidationsBefore = Metrics.StateCompBaselineInvalidations;

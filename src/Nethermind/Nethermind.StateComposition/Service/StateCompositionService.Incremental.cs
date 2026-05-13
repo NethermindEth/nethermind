@@ -74,9 +74,9 @@ internal sealed partial class StateCompositionService
             // side's nodes look Unknown and silently zeroes the diff.
 
             using IReadOnlyTrieStore oldStore = _worldStateManager.CreateReadOnlyTrieStore();
-            using IDisposable oldScope = oldStore.BeginScope(prevHeader);
+            using IDisposable oldScope = BeginScopeOrThrowMissing(oldStore, prevHeader, prevRoot);
             using IReadOnlyTrieStore newStore = _worldStateManager.CreateReadOnlyTrieStore();
-            using IDisposable newScope = newStore.BeginScope(head.Header);
+            using IDisposable newScope = BeginScopeOrThrowMissing(newStore, head.Header, head.Header.StateRoot);
             IScopedTrieStore oldResolver = oldStore.GetTrieStore(null);
             IScopedTrieStore newResolver = newStore.GetTrieStore(null);
 
@@ -101,8 +101,6 @@ internal sealed partial class StateCompositionService
         }
         catch (MissingTrieNodeException ex)
         {
-            // prevRoot is no longer in the trie DB (pruning window exceeded).
-            // Invalidate so OnNewHeadBlock stops dispatching diffs, then rescan.
             Metrics.StateCompBaselineInvalidations++;
             _stateHolder.InvalidateBaseline();
             if (_logger.IsWarn)
@@ -136,6 +134,24 @@ internal sealed partial class StateCompositionService
     }
 
     /// <summary>
+    /// Translate FlatDb's <see cref="InvalidOperationException"/> on a stale bundle
+    /// into <see cref="MissingTrieNodeException"/> so the outer catch handles both backends.
+    /// </summary>
+    private static IDisposable BeginScopeOrThrowMissing(IReadOnlyTrieStore store, BlockHeader header, Hash256 root)
+    {
+        try
+        {
+            return store.BeginScope(header);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new MissingTrieNodeException(
+                $"BeginScope failed for block {header.Number}: {ex.Message}",
+                address: null, TreePath.Empty, root, innerException: ex);
+        }
+    }
+
+    /// <summary>
     /// Fire-and-forget a full rescan after a stale-baseline detection. Runs
     /// outside <c>_diffLock</c> because the scan is long-running. <c>AnalyzeAsync</c>
     /// already serialises via <c>_scanLock</c> with fail-fast semantics, so
@@ -143,8 +159,7 @@ internal sealed partial class StateCompositionService
     /// </summary>
     private void ScheduleBaselineRescan(Block? head)
     {
-        BlockHeader? header = head?.Header ?? _blockTree.Head?.Header;
-        if (header is null) return;
+        if (head?.Header is not BlockHeader header) return;
 
         FireAndForget.Run(
             async () =>
