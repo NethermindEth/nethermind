@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -38,7 +37,7 @@ public interface IBlockAccessListManager
     TxProcessorLease RentTxProcessor(uint balIndex)
         => new(GetTxProcessor(balIndex), this, balIndex);
 
-    void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token);
+    void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token);
     void SetBlockAccessList(Block block);
 
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);

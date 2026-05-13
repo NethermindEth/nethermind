@@ -655,7 +655,7 @@ public class BlockProcessorTests
             (21_000, 0, null));
 
         InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
-            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
 
         Assert.That(exception!.Message, Does.Contain("EIP-8037 inclusion check"));
         Assert.That(exception.Message, Does.Contain("RegularDimensionExceeded"));
@@ -688,7 +688,7 @@ public class BlockProcessorTests
             (21_000, 0, null));
 
         InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
-            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
 
         Assert.That(exception!.Message, Does.Contain("Block gas limit exceeded"));
     }
@@ -727,7 +727,7 @@ public class BlockProcessorTests
             (50_000, GasCostOf.CreateState, null));
 
         Assert.DoesNotThrow(() =>
-            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
         Assert.That(block.Header.GasUsed, Is.EqualTo(60_000 + GasCostOf.CreateState));
     }
 
@@ -759,7 +759,7 @@ public class BlockProcessorTests
         GasValidationResultSlot[] gasResults = BuildGasResults(block, (0, 0, workerException));
 
         BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
-            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[1], null, CancellationToken.None));
 
         Assert.That(thrown!.InnerException, Is.SameAs(workerException));
     }
@@ -804,7 +804,7 @@ public class BlockProcessorTests
             (50_000, 0, workerException));
 
         BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
-            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+            balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, CancellationToken.None));
 
         Assert.That(thrown!.InnerException, Is.SameAs(workerException));
     }
@@ -1243,7 +1243,7 @@ public class BlockProcessorTests
         {
         }
 
-        public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token)
+        public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
         {
         }
 

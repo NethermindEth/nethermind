@@ -95,13 +95,13 @@ public class Eip8037BlockGasIntegrationTests
         if (accepts)
         {
             Assert.DoesNotThrow(() =>
-                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
+                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
             Assert.That(block.Header.GasUsed, Is.EqualTo(200_000));
         }
         else
         {
             InvalidBlockException? ex = Assert.Throws<InvalidBlockException>(() =>
-                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
+                mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
             Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
         }
     }
@@ -129,7 +129,7 @@ public class Eip8037BlockGasIntegrationTests
         results[1].TrySetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
 
         Assert.DoesNotThrow(() =>
-            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
+            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None));
     }
 
     /// <summary>
@@ -156,7 +156,7 @@ public class Eip8037BlockGasIntegrationTests
         results[0].TrySetResult(GasResult(block, 0, 21_000, 0));
 
         Assert.Throws<InvalidBlockException>(() =>
-            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None),
+            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None),
             "EIP-8037 requires rejection at inclusion when tx.gas - intrinsic.regular > block_gas_limit");
     }
 
@@ -182,7 +182,7 @@ public class Eip8037BlockGasIntegrationTests
         results[1].TrySetResult(GasResult(block, 1, 53_000, IntrinsicNewAccountState));
 
         Assert.Throws<InvalidBlockException>(() =>
-            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None),
+            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[2], null, CancellationToken.None),
             "EIP-8037 requires rejection on state dimension at inclusion");
     }
 
@@ -203,7 +203,7 @@ public class Eip8037BlockGasIntegrationTests
         results[0].TrySetResult(GasResult(block, 0, 50_000, 0));
 
         Assert.DoesNotThrow(() =>
-            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
+            mgr.IncrementalValidation(block, results, new BlockReceiptsTracer[1], null, CancellationToken.None));
     }
 
     [Test]

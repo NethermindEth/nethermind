@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -25,15 +24,14 @@ namespace Nethermind.Consensus.Processing;
 /// </summary>
 public partial class BlockAccessListManager
 {
-    public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, Task preExecutionTask, CancellationToken token)
+    public void IncrementalValidation(Block block, GasValidationResultSlot[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         CheckInitialized();
 
         int len = block.Transactions.Length;
 
-        // Pre is held by main-thread system contract handlers — never went through Return,
-        // so MergeAndReturnBal will detach it before merging.
-        preExecutionTask.GetAwaiter().GetResult();
+        // balIndex 0 (pre-execution) is held by main-thread system contract handlers — never
+        // went through Return, so MergeAndReturnBal will detach it before merging.
         _txProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList, RegisterGeneratedSlice);
         ValidateBlockAccessList(block, 0u);
 

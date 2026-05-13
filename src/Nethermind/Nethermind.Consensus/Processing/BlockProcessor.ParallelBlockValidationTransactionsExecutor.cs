@@ -124,31 +124,20 @@ public partial class BlockProcessor
             EnsureSchedulingBuffers(len);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
-            // Pre-execution (the system-contract calls StoreBeaconRoot + ApplyBlockhashStateChanges)
-            // runs as iteration 1 of the parallel For — alongside slot 0's ApplyStateChanges and
-            // the tx iterations. Its writes go through BlockAccessListBasedWorldState which is
-            // a no-op for writes (the post-block state lands in stateProvider via ApplyStateChanges
-            // in slot 0). Reads against the suggested BAL fall through to the per-worker parent
-            // reader for any value the BAL doesn't carry at index 0.
-            //
-            // The validator (IncrementalValidation) needs to merge balIndex=0's BAL after this
-            // iteration completes. preExecutionDoneTcs is the synchronization point: iteration 1
-            // signals it on completion (or fault), and the validator awaits it before the index-0
-            // merge. Counterpart of the gasResults[txIndex] dance for txs.
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            TaskCompletionSource preExecutionDoneTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, preExecutionDoneTcs.Task, token), token);
+            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, transactionProcessedEventHandler, token), token);
 
             try
             {
-                // Iterations: 0 = ApplyStateChanges, 1 = pre-execution, 2..len+1 = tx (scheduled
-                // order = _txExecutionOrder[i-2]; balIndex = scheduledTxIndex+1).
+                // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
+                // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
+                // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
+                // BlockProcessor.ProcessBlock before this method was called.
                 ParallelUnbalancedWork.For(
                     0,
-                    len + 2,
+                    len + 1,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, spec, preExecutionDoneTcs, txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread),
+                    (block, processingOptions, stateProvider, balManager, receiptsTracers, gasResults, specProvider, spec, txs: block.Transactions, txExecutionOrder: _txExecutionOrder, isBlockProcessingThread),
                     static (i, state) =>
                     {
                         // Propagate the parent thread's IsBlockProcessingThread flag onto the
@@ -162,31 +151,13 @@ public partial class BlockProcessor
                             {
                                 // ApplyStateChanges mutates the shared stateProvider so runs inside
                                 // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
-                                // workers and the pre-execution iteration read from BAL-backed world
-                                // states, not stateProvider, so neither races with this write.
+                                // workers read from BAL-backed world states, not stateProvider, so
+                                // neither races with this write.
                                 BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.spec, !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                                 return state;
                             }
 
-                            if (i == 1)
-                            {
-                                try
-                                {
-                                    state.balManager.StoreBeaconRoot(state.block, state.spec);
-                                    state.balManager.ApplyBlockhashStateChanges(state.block.Header, state.spec);
-                                    state.preExecutionDoneTcs.SetResult();
-                                }
-                                catch (Exception ex)
-                                {
-                                    // Forward the fault through the gate so the validator's await
-                                    // surfaces it instead of hanging forever.
-                                    state.preExecutionDoneTcs.TrySetException(ex);
-                                    throw;
-                                }
-                                return state;
-                            }
-
-                            int txIndex = state.txExecutionOrder[i - 2];
+                            int txIndex = state.txExecutionOrder[i - 1];
                             Transaction tx = state.txs[txIndex];
                             // Pre-compute intrinsic gas on the worker thread; carry it through the
                             // gas-results tuple so IncrementalValidation's per-tx EIP-8037 inclusion
@@ -200,7 +171,7 @@ public partial class BlockProcessor
                                 // and recycles the pool slot via Dispose BEFORE we signal the gas
                                 // result, so the validator finds _perTxBal[balIndex] populated when
                                 // it awaits gasResults[txIndex] — even if ProcessTransaction throws.
-                                // balIndex = txIndex + 1 (balIndex 0 is pre-execution).
+                                // balIndex = txIndex + 1 (balIndex 0 is the pre-execution slice).
                                 using (TxProcessorLease lease = state.balManager.RentTxProcessor((uint)(txIndex + 1)))
                                 {
                                     ProcessTransaction(
@@ -247,19 +218,15 @@ public partial class BlockProcessor
                 CancelIncompleteGasResults(gasResults, len);
 
                 // Observe the validator before propagating, so its exception isn't lost as an
-                // unobserved task exception. Worker TrySetCanceled and pre-execution
-                // TrySetException above guarantee IncrementalValidation will unblock.
-                // A fault that escapes iteration 1 before SetResult/TrySetException (e.g. between
-                // StoreBeaconRoot and the catch) leaves the gate uncompleted, so cancel here as a
-                // last-resort safety to avoid hanging the validator on an unsignaled gate.
-                preExecutionDoneTcs.TrySetCanceled();
+                // unobserved task exception. The worker TrySetCanceled above guarantees
+                // IncrementalValidation will unblock.
                 try
                 {
                     incrementalValidationTask.GetAwaiter().GetResult();
                 }
-                catch (TaskCanceledException)
+                catch (OperationCanceledException ex) when (ex is TaskCanceledException || token.IsCancellationRequested)
                 {
-                    // Expected: induced by our own TrySetCanceled.
+                    // Expected: induced by our own TrySetCanceled in the worker catch.
                 }
                 catch (Exception ex)
                 {
