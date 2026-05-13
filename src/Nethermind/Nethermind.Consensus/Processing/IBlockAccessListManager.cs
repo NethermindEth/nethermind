@@ -17,6 +17,7 @@ public interface IBlockAccessListManager
     BlockAccessList GeneratedBlockAccessList { get; set; }
     bool Enabled { get; }
     bool ParallelExecutionEnabled { get; }
+    bool BatchReadEnabled { get; }
 
     void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options);
     void Setup(Block block);

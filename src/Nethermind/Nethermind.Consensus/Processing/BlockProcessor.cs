@@ -75,7 +75,7 @@ public partial class BlockProcessor(
 
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler.Value : _standardSystemContractHandler.Value;
 
-        if (suggestedBlock.BlockAccessList is not null)
+        if (_balManager.BatchReadEnabled && suggestedBlock.BlockAccessList is not null)
             _ = _stateProvider.HintBal(suggestedBlock.BlockAccessList);
 
         ApplyDaoTransition(suggestedBlock);

@@ -21,6 +21,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled => false;
     public bool ParallelExecutionEnabled => false;
+    public bool BatchReadEnabled => false;
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options) { }
     public void Setup(Block block) { }

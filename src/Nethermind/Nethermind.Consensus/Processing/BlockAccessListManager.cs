@@ -78,6 +78,7 @@ public class BlockAccessListManager(
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
     public bool ParallelExecutionEnabled { get; private set; }
+    public bool BatchReadEnabled { get; private set; }
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
@@ -92,6 +93,10 @@ public class BlockAccessListManager(
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope;
+
+        // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
+        // HintBal honours the same opt-in config as the prewarmer path.
+        BatchReadEnabled = Enabled && blocksConfig.ParallelExecutionBatchRead;
 
         if (Enabled)
         {
