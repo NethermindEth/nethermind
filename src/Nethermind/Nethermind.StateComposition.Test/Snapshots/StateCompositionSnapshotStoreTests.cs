@@ -3,6 +3,7 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -129,37 +130,36 @@ public class StateCompositionSnapshotStoreTests
         {
             Assert.That(loaded.BlockNumber, Is.EqualTo(11));
             Assert.That(loaded.SlotCountByAddress, Has.Count.EqualTo(50));
-            // Block 10's main key + chunk keys must all be gone.
-            Assert.That(store.ReadSnapshot(10), Is.Null);
+            // First write committed to gen 1; the second write rotates to gen 0
+            // and must delete gen 1's main blob + chunks.
+            Assert.That(store.ReadSnapshot(1), Is.Null);
             Assert.That(db.GetAllKeys().Count(), Is.LessThan(keysAfterFirst));
         }
     }
 
     [Test]
-    public void PurgeOldEntries_KeepsLatestMainAndChunks()
+    public void PurgeOldEntries_RemovesOrphanGenerationFromCrashMidWrite()
     {
+        // Generation rotation: when a crash leaves orphan keys in the
+        // non-current generation, PurgeOldEntries (called at boot) must remove
+        // them so disk usage stays bounded to one generation.
         MemDb db = new();
         StateCompositionSnapshotStore store = new(db, LimboLogs.Instance, entriesPerChunk: 100);
 
-        Dictionary<ValueHash256, long> staleSlots = [];
+        Dictionary<ValueHash256, long> slots = [];
         for (int i = 0; i < 250; i++)
-            staleSlots[Keccak.Compute($"stale-{i}").ValueHash256] = i;
-        store.WriteSnapshot(BuildSnapshot(blockNumber: 7, slotCountByAddress: staleSlots));
+            slots[Keccak.Compute($"slot-{i}").ValueHash256] = i;
+        store.WriteSnapshot(BuildSnapshot(blockNumber: 7, slotCountByAddress: slots));
 
-        // Manually inject an orphaned chunk for a block that is no longer the
-        // latest — simulating a crash mid-write. PurgeOldEntries must drop it.
-        byte[] orphanChunkKey =
-        [
-            0, 0, 0, 0, 0, 0, 0, 5,        // blockNumber = 5
-            0x01,                            // SlotCountKind
-            0, 0, 0, 0,                      // chunk index 0
-        ];
-        db.Set(orphanChunkKey, [0, 0, 0, 0]); // empty chunk payload
+        // After one write, LatestKey points at gen=1 (first write flips 0→1).
+        // Inject an orphan chunk at gen=0 — what a crashed mid-write would leave.
+        byte[] orphanGen0Chunk = [0x00, 0x01, 0, 0, 0, 0]; // <gen=0><kind=SlotCount><chunkIdx=0>
+        db.Set(orphanGen0Chunk, [0, 0, 0, 0]);
 
         store.PurgeOldEntries();
 
-        Assert.That(db.GetAllKeys().Any(k => k.SequenceEqual(orphanChunkKey)), Is.False,
-            "Orphan chunk for block 5 must be purged.");
+        Assert.That(db.GetAllKeys().Any(k => k.SequenceEqual(orphanGen0Chunk)), Is.False,
+            "Orphan gen 0 chunk must be purged by boot-time PurgeOldEntries.");
         Assert.That(store.ReadLatestSnapshot()!.Value.BlockNumber, Is.EqualTo(7));
     }
 
@@ -178,13 +178,9 @@ public class StateCompositionSnapshotStoreTests
             slots[Keccak.Compute($"slot-{i}").ValueHash256] = i;
         store.WriteSnapshot(BuildSnapshot(blockNumber: 1, slotCountByAddress: slots));
 
-        byte[] truncatedChunkKey =
-        [
-            0, 0, 0, 0, 0, 0, 0, 1,        // blockNumber = 1
-            0x01,                            // SlotCountKind
-            0, 0, 0, 0,                      // chunk index 0
-        ];
-        // Header claims 4 entries (160 bytes payload) but only 3 bytes follow.
+        // First write commits at gen=1. Overwrite that gen's chunk 0 with a
+        // truncated payload to simulate a partial flush.
+        byte[] truncatedChunkKey = [0x01, 0x01, 0, 0, 0, 0]; // <gen=1><kind=SlotCount><chunkIdx=0>
         db.Set(truncatedChunkKey, [0, 0, 0, 4, 0xAA, 0xBB, 0xCC]);
 
         StateCompositionSnapshot loaded = store.ReadLatestSnapshot()!.Value;
@@ -205,13 +201,8 @@ public class StateCompositionSnapshotStoreTests
             slots[Keccak.Compute($"slot-{i}").ValueHash256] = i + 1;
         store.WriteSnapshot(BuildSnapshot(blockNumber: 1, slotCountByAddress: slots));
 
-        // Manually inject a truncated chunk 1 (header claims 2 entries, only 5 bytes follow).
-        byte[] truncatedChunk1 =
-        [
-            0, 0, 0, 0, 0, 0, 0, 1,        // blockNumber = 1
-            0x01,                            // SlotCountKind
-            0, 0, 0, 1,                      // chunk index 1
-        ];
+        // Inject a truncated chunk 1 at the live gen (gen=1 after one write).
+        byte[] truncatedChunk1 = [0x01, 0x01, 0, 0, 0, 1]; // <gen=1><kind=SlotCount><chunkIdx=1>
         db.Set(truncatedChunk1, [0, 0, 0, 2, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE]);
 
         StateCompositionSnapshot loaded = store.ReadLatestSnapshot()!.Value;
@@ -227,11 +218,56 @@ public class StateCompositionSnapshotStoreTests
 
         store.WriteSnapshot(BuildSnapshot(blockNumber: 1));
 
-        // Only main blob (8-byte key) + LatestKey (8-byte 0xFF) should be present.
+        // Only main blob (2-byte gen-prefixed key) + LatestKey (8-byte 0xFF) present.
         Assert.That(db.GetAllKeys().Count(), Is.EqualTo(2));
         StateCompositionSnapshot loaded = store.ReadLatestSnapshot()!.Value;
         Assert.That(loaded.SlotCountByAddress, Is.Empty);
         Assert.That(loaded.CodeHashRefcounts, Is.Empty);
         Assert.That(loaded.CodeHashSizes, Is.Empty);
     }
+
+    [Test]
+    public void WriteSnapshot_HundredIterations_BoundsKeyCountToOneGeneration()
+    {
+        MemDb db = new();
+        const int chunkSize = 100;
+        StateCompositionSnapshotStore store = new(db, LimboLogs.Instance, entriesPerChunk: chunkSize);
+
+        Dictionary<ValueHash256, long> slots = [];
+        for (int i = 0; i < 250; i++)
+            slots[Keccak.Compute($"slot-{i}").ValueHash256] = i;
+
+        for (int round = 0; round < 100; round++)
+            store.WriteSnapshot(BuildSnapshot(blockNumber: 100 + round, slotCountByAddress: slots));
+
+        // Per snapshot: 1 main blob + 3 chunks (250 entries / 100 chunkSize → 3 chunks per kind, only SlotCount populated → 3 chunks total).
+        // After cleanup, only the live gen survives + LatestKey.
+        // Live gen: 1 main blob + 3 chunks = 4 keys. Plus LatestKey = 5 keys total.
+        int keys = db.GetAllKeys().Count();
+        Assert.That(keys, Is.LessThanOrEqualTo(6),
+            $"after 100 writes, db should hold ≤6 keys (live gen + LatestKey); got {keys}");
+        Assert.That(store.ReadLatestSnapshot()!.Value.BlockNumber, Is.EqualTo(199));
+    }
+
+    [Test]
+    public void WriteSnapshot_RotatesGenerationsAcrossWrites()
+    {
+        // The first write commits to gen 1; the second flips back to gen 0;
+        // alternating. Reads always go to the gen recorded in LatestKey.
+        MemDb db = new();
+        StateCompositionSnapshotStore store = new(db, LimboLogs.Instance, entriesPerChunk: 100);
+
+        store.WriteSnapshot(BuildSnapshot(blockNumber: 10));
+        byte[] latest = db.Get(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF })!;
+        Assert.That(latest.Length, Is.EqualTo(9), "new-schema LatestKey value is 9 bytes (gen + blockNumber)");
+        byte firstGen = latest[0];
+
+        store.WriteSnapshot(BuildSnapshot(blockNumber: 11));
+        latest = db.Get(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF })!;
+        byte secondGen = latest[0];
+
+        Assert.That(secondGen, Is.Not.EqualTo(firstGen), "second write must flip generation");
+        Assert.That(store.ReadLatestSnapshot()!.Value.BlockNumber, Is.EqualTo(11));
+    }
+
 }
