@@ -61,6 +61,13 @@ public sealed unsafe class ArenaFile : RefCountingDisposable
     /// </summary>
     internal long Frontier { get; set; }
 
+    /// <summary>
+    /// Cumulative bytes marked dead by <see cref="ArenaManager.MarkDead"/>. When this reaches
+    /// <see cref="Frontier"/> the arena has no live data and the manager drops it. Per-file
+    /// state held on the file itself so the manager doesn't keep a parallel dict.
+    /// </summary>
+    internal long DeadBytes { get; set; }
+
     public ArenaFile(int id, string path, long mappedSize)
     {
         Id = id;

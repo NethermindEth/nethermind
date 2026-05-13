@@ -26,7 +26,6 @@ public sealed class ArenaManager : IArenaManager
     private readonly PersistedSnapshotTier _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
-    private readonly Dictionary<int, long> _deadBytes = [];
     private readonly HashSet<int> _reservedArenas = [];
     private readonly HashSet<int> _standaloneFiles = [];
     private readonly HashSet<int> _mutableArenas = [];
@@ -107,7 +106,6 @@ public sealed class ArenaManager : IArenaManager
 
                 ArenaFile arena = new(arenaId, file, mappedSize);
                 _arenas[arenaId] = arena;
-                _deadBytes[arenaId] = 0;
                 _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
                 OnArenaAdded(mappedSize);
 
@@ -131,11 +129,11 @@ public sealed class ArenaManager : IArenaManager
                 liveSizes[aid] = live + entry.Location.Size;
             }
 
-            // Dead bytes = frontier - live sizes
+            // Dead bytes = frontier - live sizes (stored on the file itself)
             foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
             {
                 liveSizes.TryGetValue(kv.Key, out long live);
-                _deadBytes[kv.Key] = kv.Value.Frontier - live;
+                kv.Value.DeadBytes = kv.Value.Frontier - live;
             }
         }
     }
@@ -199,7 +197,6 @@ public sealed class ArenaManager : IArenaManager
             _reservedArenas.Remove(arenaId);
             _standaloneFiles.Remove(arenaId);
             _arenas.TryRemove(arenaId, out _);
-            _deadBytes.Remove(arenaId);
             OnArenaRemoved(mappedSize);
         }
     }
@@ -249,11 +246,9 @@ public sealed class ArenaManager : IArenaManager
             if (_disposed || !_arenas.TryGetValue(location.ArenaId, out ArenaFile? arena))
                 goto ForgetTracker;
 
-            _deadBytes.TryGetValue(location.ArenaId, out long dead);
-            long totalDead = dead + location.Size;
-            _deadBytes[location.ArenaId] = totalDead;
+            arena.DeadBytes += location.Size;
 
-            if (totalDead >= arena.Frontier)
+            if (arena.DeadBytes >= arena.Frontier)
             {
                 // All data is dead: drop the manager's dict ref. The file self-cleans
                 // (closes handle, deletes on-disk) as soon as the last reservation also
@@ -266,7 +261,6 @@ public sealed class ArenaManager : IArenaManager
                     OnArenaRemoved(arena.MappedSize);
                     arena.Dispose();
                 }
-                _deadBytes.Remove(location.ArenaId);
             }
             else
             {
@@ -408,7 +402,6 @@ public sealed class ArenaManager : IArenaManager
         string path = Path.Combine(_basePath, $"{prefix}{id:D4}{ArenaFileExtension}");
         ArenaFile arena = new(id, path, mappedSize);
         _arenas[id] = arena;
-        _deadBytes[id] = 0;
         if (dedicated) _standaloneFiles.Add(id);
         else _mutableArenas.Add(id);
         OnArenaAdded(mappedSize);
