@@ -118,7 +118,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", param);
-        JsonRpcResponse<SignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<SignTransactionResult>>(serialized)!;
+        JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
         response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
 
         response.Result!.Tx.Should().BeOfType(expectedEchoType,
@@ -132,7 +132,7 @@ public partial class EthRpcModuleTests
     public async Task SignTransaction_WhenValid_RawRoundTripsAndTxEcho(TxType type, Type expectedEchoType)
     {
         TransactionForRpc rpcTx = BuildTx(type);
-        SignTransactionResult result = await SignTransactionForResult(rpcTx);
+        ParsedSignTransactionResult result = await SignTransactionForResult(rpcTx);
 
         Transaction decoded = TxDecoder.Instance.DecodeCompleteNotNull(
             result.Raw,
@@ -157,14 +157,23 @@ public partial class EthRpcModuleTests
         return await ctx.Test.TestEthRpc("eth_signTransaction", rpcTx);
     }
 
-    private async Task<SignTransactionResult> SignTransactionForResult(TransactionForRpc rpcTx)
+    private async Task<ParsedSignTransactionResult> SignTransactionForResult(TransactionForRpc rpcTx)
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", rpcTx);
-        JsonRpcResponse<SignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<SignTransactionResult>>(serialized)!;
+        JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
         response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
         return response.Result!;
+    }
+
+    private sealed class ParsedSignTransactionResult
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("raw")]
+        public required byte[] Raw { get; init; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("tx")]
+        public required TransactionForRpc Tx { get; init; }
     }
 
     private static TransactionForRpc BuildTx(TxType type, string? omitField = null, string? fromOverride = null)

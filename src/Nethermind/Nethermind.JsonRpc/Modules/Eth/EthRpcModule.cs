@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -406,7 +407,21 @@ public partial class EthRpcModule(
 
         if (_logger.IsInfo) _logger.Info($"eth_signTransaction signed tx {tx.Hash} from {tx.SenderAddress}");
 
-        byte[] raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes;
+        const RlpBehaviors encodeBehaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm;
+        int encodedLength = TxDecoder.Instance.GetLength(tx, encodeBehaviors);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(encodedLength);
+        try
+        {
+            RlpStream stream = new(new CappedArray<byte>(rented, encodedLength));
+            TxDecoder.Instance.Encode(stream, tx, encodeBehaviors);
+        }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+            throw;
+        }
+
+        OwnedByteMemory raw = new(rented, encodedLength, ArrayPool<byte>.Shared);
 
         return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
         {
