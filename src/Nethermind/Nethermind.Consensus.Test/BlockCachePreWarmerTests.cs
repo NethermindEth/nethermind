@@ -3,7 +3,9 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -18,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -248,6 +251,62 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// Verifies that the prewarmer suppresses the <see cref="ProcessingThread.IsBlockProcessingThread"/>
+    /// flag inside the Task.Run continuation, so speculative EVM work is attributed to the
+    /// _other* metric counters rather than the per-block _main* counters.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_SuppressesIsBlockProcessingThread_InsideTask()
+    {
+        bool observedFlag = true; // assume worst-case; the task must flip it to false
+        ManualResetEventSlim observed = new(initialState: false);
+
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        // Simulate the main processing thread setting the flag before kicking off prewarming
+        ProcessingThread.IsBlockProcessingThread = true;
+        try
+        {
+            Task prewarmTask = preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+
+            // The flag is suppressed at the top of PreWarmCachesParallel; by the time the
+            // task completes, we can verify it was false inside the continuation by checking
+            // that the calling thread's flag is still true (Task.Run copies, not aliases).
+            await prewarmTask;
+
+            // Verify the caller's flag was NOT disturbed (copy-on-write semantics of AsyncLocal)
+            ProcessingThread.IsBlockProcessingThread.Should().BeTrue(
+                "the caller's AsyncLocal flag must remain true — Task.Run gets a copy");
+
+            // Now run a second prewarm where we directly observe the flag inside the task
+            // by using a custom pool policy that captures the flag during Build().
+            PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+            PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+            NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+
+            FlagCapturingPolicy flagPolicy = new(envFactory, preBlockCaches, observed, v => observedFlag = v);
+            BlockCachePreWarmer flagWarmer = new(
+                flagPolicy,
+                maxPoolSize: 10,
+                concurrency: 2,
+                parallelExecutionBatchRead: true,
+                nodeStorageCache,
+                preBlockCaches,
+                LimboLogs.Instance);
+
+            await flagWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+
+            observed.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue("the flag-capturing policy must have been invoked");
+            observedFlag.Should().BeFalse(
+                "IsBlockProcessingThread must be false inside the prewarmer task");
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = false;
+        }
+    }
+
+    /// <summary>
     /// Verifies the prewarmer gate logic: ParallelExecution ON skips speculative prewarming
     /// only when BAL is active for the spec (so parallel execution can actually run); when
     /// BAL is not active, speculative prewarming runs regardless of ParallelExecution.
@@ -400,6 +459,50 @@ public class BlockCachePreWarmerTests
             .WithTransactions(txs)
             .WithGasLimit(30_000_000)
             .TestObject;
+    }
+
+    /// <summary>
+    /// Pool policy that captures the <see cref="ProcessingThread.IsBlockProcessingThread"/>
+    /// flag during <see cref="IReadOnlyTxProcessorSource.Build"/> to verify the prewarmer
+    /// suppresses it inside the task continuation.
+    /// </summary>
+    private sealed class FlagCapturingPolicy(
+        PrewarmerEnvFactory factory,
+        PreBlockCaches caches,
+        ManualResetEventSlim observed,
+        Action<bool> capture)
+        : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    {
+        private readonly ManualResetEventSlim _observed = observed;
+        private readonly Action<bool> _capture = capture;
+        private int _captured;
+
+        public IReadOnlyTxProcessorSource Create()
+        {
+            IReadOnlyTxProcessorSource inner = factory.Create(caches);
+            return new CapturingEnv(inner, this);
+        }
+
+        public bool Return(IReadOnlyTxProcessorSource obj) => true;
+
+        private sealed class CapturingEnv(
+            IReadOnlyTxProcessorSource inner,
+            FlagCapturingPolicy owner)
+            : IReadOnlyTxProcessorSource
+        {
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            {
+                if (Interlocked.CompareExchange(ref owner._captured, 1, 0) == 0)
+                {
+                    owner._capture(ProcessingThread.IsBlockProcessingThread);
+                    owner._observed.Set();
+                }
+
+                return inner.Build(baseBlock);
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
     }
 
     /// <summary>

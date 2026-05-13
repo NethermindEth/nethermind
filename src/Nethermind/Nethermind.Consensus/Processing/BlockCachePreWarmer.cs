@@ -128,10 +128,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
-        // Task.Run flows ExecutionContext, which carries the AsyncLocal IsBlockProcessingThread flag
-        // from the main processing loop. Prewarming EVM execution must NOT be attributed to the
-        // main block-processing thread, otherwise the per-block opcode counters (calls/sload/sstore)
-        // become non-deterministic — they include a variable amount of speculative work.
+        // Suppress the IsBlockProcessingThread flag inherited via ExecutionContext from Task.Run
+        // so speculative EVM metrics are routed to _other* counters, not the per-block _main* counters.
         ProcessingThread.IsBlockProcessingThread = false;
 
         try
