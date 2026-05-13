@@ -1,0 +1,61 @@
+name: Scheduled jobs
+
+on:
+  schedule:
+    # Weekly Sunday 00:00 UTC — codeql + update-fast-sync + update-superchain
+    - cron: '0 0 * * 0'
+    # Daily 00:00 UTC — update-dockerfiles
+    - cron: '0 0 * * *'
+    # Thursday 19:29 UTC — trivy
+    - cron: '29 19 * * 4'
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Which scheduled job to run (all = run every job)
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - codeql
+          - update-fast-sync
+          - update-superchain
+          - update-dockerfiles
+          - trivy
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: write
+  actions: read
+
+jobs:
+  codeql:
+    name: CodeQL
+    if: github.event.schedule == '0 0 * * 0' || inputs.job == 'codeql' || inputs.job == 'all'
+    uses: ./.github/workflows/_security-scans.yml
+    with:
+      scans: 'codeql'
+
+  trivy:
+    name: Trivy
+    if: github.event.schedule == '29 19 * * 4' || inputs.job == 'trivy' || inputs.job == 'all'
+    uses: ./.github/workflows/_security-scans.yml
+    with:
+      scans: 'trivy'
+
+  weekly-updates:
+    name: Weekly updates
+    if: github.event.schedule == '0 0 * * 0' || inputs.job == 'update-fast-sync' || inputs.job == 'update-superchain' || inputs.job == 'all'
+    uses: ./.github/workflows/_scheduled-updates.yml
+    with:
+      which: ${{ inputs.job == 'all' && 'update-fast-sync,update-superchain' || inputs.job || 'update-fast-sync,update-superchain' }}
+    secrets: inherit
+
+  daily-updates:
+    name: Daily updates
+    if: github.event.schedule == '0 0 * * *' || inputs.job == 'update-dockerfiles' || inputs.job == 'all'
+    uses: ./.github/workflows/_scheduled-updates.yml
+    with:
+      which: 'update-dockerfiles'
+    secrets: inherit

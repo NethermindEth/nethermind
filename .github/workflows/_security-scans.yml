@@ -1,0 +1,95 @@
+name: '[reusable] Security scans'
+
+on:
+  workflow_call:
+    inputs:
+      scans:
+        description: 'Comma-separated list of scans to run: trivy, codeql, dependency-review, all'
+        required: false
+        default: all
+        type: string
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  trivy:
+    name: Trivy scanner
+    if: contains(inputs.scans, 'trivy') || inputs.scans == 'all'
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: nethermind:${{ github.sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6.0.2
+
+      - name: Build Docker image
+        run: docker build -t $IMAGE_TAG .
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 #v0.35.0
+        with:
+          image-ref: ${{ env.IMAGE_TAG }}
+          format: template
+          template: '@/contrib/sarif.tpl'
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
+
+      - name: Upload scan results
+        uses: github/codeql-action/upload-sarif@0c0c5dc2f136b98cb0537075ccfa21f94cd9a63e #v2.24.3
+        with:
+          sarif_file: trivy-results.sarif
+
+  codeql:
+    name: CodeQL analysis (${{ matrix.language }})
+    if: contains(inputs.scans, 'codeql') || inputs.scans == 'all'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['csharp', 'actions']
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+          packs: githubsecuritylab/codeql-csharp-queries
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Build Nethermind
+        working-directory: src/Nethermind
+        run: dotnet build Nethermind.slnx -c release
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: '/language:${{ matrix.language }}'
+
+  dependency-review:
+    name: Dependency review
+    if: contains(inputs.scans, 'dependency-review') || inputs.scans == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Dependency review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
