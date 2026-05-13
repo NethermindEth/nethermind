@@ -128,6 +128,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
+        ProcessingThread.IsBlockProcessingThread = false;
         try
         {
             if (cancellationToken.IsCancellationRequested) return;

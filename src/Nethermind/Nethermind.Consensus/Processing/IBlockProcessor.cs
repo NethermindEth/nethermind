@@ -27,6 +27,12 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event Action? TransactionsExecuted;
 
+        /// <summary>
+        /// Raised just before transaction execution begins. Subscribers should
+        /// cancel CPU-intensive background work (prewarming) to avoid contention.
+        /// </summary>
+        event Action? TransactionsStarting;
+
         public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,

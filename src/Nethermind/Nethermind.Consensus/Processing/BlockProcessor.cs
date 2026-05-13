@@ -67,6 +67,7 @@ public partial class BlockProcessor(
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
     public event Action? TransactionsExecuted;
+    public event Action? TransactionsStarting;
 
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
@@ -131,6 +132,9 @@ public partial class BlockProcessor(
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
+
+        // Cancel prewarming before tx execution to avoid CPU contention
+        TransactionsStarting?.Invoke();
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 

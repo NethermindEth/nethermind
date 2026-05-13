@@ -22,6 +22,12 @@ public class BalRecordingBlockProcessor(
         remove => inner.TransactionsExecuted -= value;
     }
 
+    public event Action? TransactionsStarting
+    {
+        add => inner.TransactionsStarting += value;
+        remove => inner.TransactionsStarting -= value;
+    }
+
     public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (store.ReplayEnabled && suggestedBlock.BlockAccessList is null)

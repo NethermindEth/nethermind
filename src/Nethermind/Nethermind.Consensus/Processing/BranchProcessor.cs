@@ -78,6 +78,7 @@ public class BranchProcessor(
         // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
+        blockProcessor.TransactionsStarting += CancelBackgroundWork;
 
         try
         {
@@ -186,6 +187,7 @@ public class BranchProcessor(
         finally
         {
             blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+            blockProcessor.TransactionsStarting -= CancelBackgroundWork;
             worldStateCloser?.Dispose();
         }
 
