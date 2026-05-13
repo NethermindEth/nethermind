@@ -2,43 +2,63 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Storage;
 
 /// <summary>
-/// A handle held by a <see cref="PersistedSnapshots.PersistedSnapshot"/> onto one
-/// referenced blob arena file. Owns no file resource of its own — borrows a
-/// <see cref="SafeFileHandle"/> from the issuing <see cref="IBlobArenaManager"/>,
-/// which keeps the file open as long as at least one lease is alive. Reads use the
-/// borrowed handle directly via <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/>;
-/// no mmap, no page tracker, no advise — the blob path is pure <c>pread</c>.
+/// A blob arena file storing trie-node RLP bytes. Owns its <see cref="SafeFileHandle"/>
+/// and is refcounted: the owning <see cref="BlobArenaManager"/>'s dictionary entry holds
+/// the initial lease, each leased <see cref="PersistedSnapshots.PersistedSnapshot"/> holds
+/// an additional one. The manager drops its lease via <see cref="RefCountingDisposable.Dispose"/>;
+/// the on-disk file is deleted by <see cref="CleanUp"/> when the last lease is released,
+/// unless the manager is in shutdown — in which case the file is preserved for the next
+/// session.
 ///
 /// <para>
-/// Lifecycle: created by <see cref="IBlobArenaManager.TryLeaseFile"/> with a fresh
-/// lease on the underlying file's refcount. The caller (typically
-/// <c>PersistedSnapshotRepository</c>) populates a
-/// <c>Dictionary&lt;int, BlobArenaFile&gt;</c> with one entry per referenced blob
-/// arena id and hands it to the persisted snapshot. The snapshot disposes each entry
-/// in its <c>CleanUp</c>. <see cref="Dispose"/> is idempotent.
+/// Reads use <see cref="RandomAccess.Read(SafeFileHandle, Span{byte}, long)"/> directly:
+/// no mmap, no page tracker, no advise — the blob path is pure <c>pread</c>.
 /// </para>
 /// </summary>
-public sealed class BlobArenaFile : IDisposable
+public sealed class BlobArenaFile : RefCountingDisposable
 {
-    private readonly IBlobArenaManager _manager;
-    private readonly ushort _blobArenaId;
-    // Borrowed from the manager — not owned, not disposed here. The manager keeps the
-    // file open until the per-id refcount drops to zero.
-    private readonly SafeFileHandle _handle;
-    private int _disposed;
+    private readonly BlobArenaManager _manager;
 
-    internal BlobArenaFile(IBlobArenaManager manager, ushort blobArenaId, SafeFileHandle handle)
+    /// <summary>Stable file id, narrowed from int to ushort. Embedded in every <see cref="NodeRef"/>.</summary>
+    public ushort BlobArenaId { get; }
+
+    /// <summary>On-disk path. Deleted by <see cref="CleanUp"/> unless the manager is in shutdown.</summary>
+    public string Path { get; }
+
+    /// <summary>Pre-extended file length (sparse on Linux). Writers append within this cap.</summary>
+    public long MaxSize { get; }
+
+    /// <summary>Underlying read/write file handle. Borrowed by leases for direct <c>pread</c>.</summary>
+    internal SafeFileHandle Handle { get; }
+
+    /// <summary>Next-write offset. Mutated under the manager's lock during writer registration.</summary>
+    internal long Frontier { get; set; }
+
+    internal BlobArenaFile(BlobArenaManager manager, ushort id, string path, long maxSize, long frontier)
     {
         _manager = manager;
-        _blobArenaId = blobArenaId;
-        _handle = handle;
+        BlobArenaId = id;
+        Path = path;
+        MaxSize = maxSize;
+        Handle = File.OpenHandle(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+        // Pre-extend file to MaxSize if smaller (sparse on Linux via ftruncate). Subsequent
+        // appends never have to grow the file.
+        if (RandomAccess.GetLength(Handle) < maxSize)
+            RandomAccess.SetLength(Handle, maxSize);
+        Frontier = frontier;
     }
 
-    public ushort BlobArenaId => _blobArenaId;
+    /// <summary>
+    /// Defensive lease acquisition; returns false when the file has already entered
+    /// <see cref="CleanUp"/>. Promotes <see cref="RefCountingDisposable.TryAcquireLease"/>
+    /// from protected to internal so the owning manager can lease under its lock.
+    /// </summary>
+    internal new bool TryAcquireLease() => base.TryAcquireLease();
 
     /// <summary>
     /// Read <paramref name="destination"/>.Length bytes starting at
@@ -53,16 +73,30 @@ public sealed class BlobArenaFile : IDisposable
         int total = 0;
         while (total < destination.Length)
         {
-            int read = RandomAccess.Read(_handle, destination[total..], offset + total);
+            int read = RandomAccess.Read(Handle, destination[total..], offset + total);
             if (read <= 0) break;
             total += read;
         }
         return total;
     }
 
-    public void Dispose()
+    /// <summary>
+    /// Open a write stream seeked to <paramref name="startOffset"/>. Caller disposes when done.
+    /// </summary>
+    internal FileStream OpenWriteStream(long startOffset)
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _manager.ReleaseBlobArena(_blobArenaId);
+        FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
+        fs.Seek(startOffset, SeekOrigin.Begin);
+        return fs;
+    }
+
+    protected override void CleanUp()
+    {
+        Handle.Dispose();
+        // Shutdown preserves files for the next session — skip the on-disk delete.
+        if (!_manager.IsDisposed)
+        {
+            try { File.Delete(Path); } catch { /* best-effort */ }
+        }
     }
 }

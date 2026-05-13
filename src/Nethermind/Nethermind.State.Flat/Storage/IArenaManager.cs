@@ -68,4 +68,10 @@ public unsafe interface IArenaManager : IDisposable
     /// the in-memory test arena) return a 0-capacity tracker whose <c>TryTouch</c> is a no-op.
     /// </summary>
     PageResidencyTracker PageTracker { get; }
+
+    /// <summary>
+    /// Whether the manager has been disposed. Consulted by <see cref="ArenaFile.CleanUp"/>
+    /// to decide whether to delete the on-disk file (preserved across restarts on shutdown).
+    /// </summary>
+    bool IsDisposed { get; }
 }

@@ -58,8 +58,10 @@ public class PageResidencyTrackerTests
     private sealed unsafe class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
     {
         private readonly Dictionary<int, ArenaFile> _files = [];
+        private bool _disposed;
 
         public PageResidencyTracker PageTracker => tracker;
+        public bool IsDisposed => _disposed;
         public void QueueEviction(int arenaId, int pageIdx) => handler.OnPageEvicted(arenaId, pageIdx);
         public ArenaWriter CreateWriter(long estimatedSize, string tag) => throw new NotSupportedException();
         public (SnapshotLocation Location, ArenaReservation Reservation) CompleteWrite(int arenaId, long startOffset, long actualSize, string tag) => throw new NotSupportedException();
@@ -82,13 +84,14 @@ public class PageResidencyTrackerTests
             string path = Path.Combine(tempDir, $"stub_{arenaId:D4}.bin");
             // Size to comfortably cover the widest test reservation (~16 pages); reads past
             // file length via RandomAccess.Read just return 0 bytes, so this is a safety margin.
-            ArenaFile file = new(arenaId, path, Environment.SystemPageSize * 16);
+            ArenaFile file = new(this, arenaId, path, Environment.SystemPageSize * 16);
             _files[arenaId] = file;
             return file;
         }
 
         public void Dispose()
         {
+            _disposed = true;
             foreach (ArenaFile f in _files.Values) f.Dispose();
             _files.Clear();
         }

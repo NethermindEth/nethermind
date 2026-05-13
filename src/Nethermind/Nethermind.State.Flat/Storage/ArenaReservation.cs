@@ -26,6 +26,13 @@ public sealed class ArenaReservation : RefCountingDisposable
                             int arenaId, long offset, long size, string tag)
         : base(1)
     {
+        // Pin the arena file so it can't be torn down while this reservation is alive.
+        // TryAcquireLease handles the race where the manager removed the file from its
+        // dict between the caller's lookup and this ctor — surface as InvalidOperationException
+        // so the caller's lease path can react instead of operating on a doomed file.
+        if (!arenaFile.TryAcquireLease())
+            throw new InvalidOperationException(
+                $"Cannot construct ArenaReservation for arena {arenaId}: the underlying ArenaFile is already being disposed.");
         _arenaManager = arenaManager;
         _arenaFile = arenaFile;
         ArenaId = arenaId;
@@ -99,5 +106,9 @@ public sealed class ArenaReservation : RefCountingDisposable
         _arenaManager.MarkDead(new SnapshotLocation(ArenaId, Offset, Size));
         Metrics.ArenaReservationCountByTag.AddOrUpdate(Tag, 0L, static (_, c) => Math.Max(0, c - 1));
         Metrics.ArenaReservationBytesByTag.AddOrUpdate(Tag, static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), _initialSize);
+        // Release the lease taken at construction. If this was the last lease (manager has
+        // already dropped its dict ref via MarkDead's "all dead" branch), the file's CleanUp
+        // runs and the on-disk file is deleted.
+        _arenaFile.Dispose();
     }
 }

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
+using Nethermind.Core.Utils;
 
 namespace Nethermind.State.Flat.Storage;
 
@@ -12,8 +14,18 @@ namespace Nethermind.State.Flat.Storage;
 /// A single append-only arena file for storing persisted snapshot HSST data.
 /// Reads use a read-only mmap for zero-copy access; writes go through a
 /// <see cref="FileStream"/> seeked to the target offset.
+///
+/// <para>
+/// Lifecycle is refcounted: the owning <see cref="ArenaManager"/>'s dictionary entry
+/// holds the initial lease (count 1). Each <see cref="ArenaReservation"/> referencing
+/// the file holds an additional lease. The manager drops its lease via <see cref="Dispose"/>
+/// (typically through <see cref="ArenaManager.MarkDead"/> or <see cref="ArenaManager.CancelWrite"/>);
+/// the on-disk file is deleted by <see cref="CleanUp"/> when the last lease is released,
+/// unless the manager is in shutdown — in which case the file is preserved for the
+/// next session.
+/// </para>
 /// </summary>
-public sealed unsafe class ArenaFile : IDisposable
+public sealed unsafe class ArenaFile : RefCountingDisposable
 {
     private const int MADV_NORMAL = 0;
     private const int MADV_RANDOM = 1;
@@ -27,20 +39,28 @@ public sealed unsafe class ArenaFile : IDisposable
     [DllImport("libc", EntryPoint = "posix_fadvise", SetLastError = true)]
     private static extern int PosixFadvise(int fd, long offset, long len, int advice);
 
+    private readonly IArenaManager? _owner;
     private readonly SafeFileHandle _handle;
-    private readonly MemoryMappedFile _mmf;
-    private readonly MemoryMappedViewAccessor _accessor;
-    private readonly byte* _basePtr;
+    private MemoryMappedFile _mmf;
+    private MemoryMappedViewAccessor _accessor;
+    private byte* _basePtr;
 
     /// <summary>Raw pointer to the first byte of the arena's mmap. Long-offset arithmetic OK across the full <see cref="MappedSize"/>.</summary>
     public byte* BasePtr => _basePtr;
 
     public int Id { get; }
     public string Path { get; }
-    public long MappedSize { get; }
+    public long MappedSize { get; private set; }
 
-    public ArenaFile(int id, string path, long mappedSize)
+    /// <summary>
+    /// Construct an arena file. <paramref name="owner"/> may be null for standalone usage
+    /// (e.g. unit tests) — in that case <see cref="CleanUp"/> always deletes the on-disk
+    /// file. Production callers always pass the owning <see cref="ArenaManager"/> so
+    /// shutdown-preservation works.
+    /// </summary>
+    public ArenaFile(IArenaManager? owner, int id, string path, long mappedSize)
     {
+        _owner = owner;
         Id = id;
         Path = path;
         MappedSize = mappedSize;
@@ -51,14 +71,14 @@ public sealed unsafe class ArenaFile : IDisposable
         if (RandomAccess.GetLength(_handle) < mappedSize)
             RandomAccess.SetLength(_handle, mappedSize);
 
-        _mmf = MemoryMappedFile.CreateFromFile(_handle, mapName: null, mappedSize, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
-        _accessor = _mmf.CreateViewAccessor(0, mappedSize, MemoryMappedFileAccess.Read);
-
-        _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _basePtr);
-
-        if (OperatingSystem.IsLinux())
-            Madvise(_basePtr, (nuint)mappedSize, MADV_RANDOM);
+        OpenMmap(mappedSize);
     }
+
+    /// <summary>
+    /// Try to acquire a lease without throwing on a disposing file. Returns false when the
+    /// file is already in cleanup. Wraps the protected <see cref="RefCountingDisposable.TryAcquireLease"/>.
+    /// </summary>
+    internal new bool TryAcquireLease() => base.TryAcquireLease();
 
     public ReadOnlySpan<byte> GetSpan(long offset, long size) =>
         // Span<T> is intrinsically int-bounded; a single GetSpan can't materialise a
@@ -78,6 +98,43 @@ public sealed unsafe class ArenaFile : IDisposable
         FileStream fs = new(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite, bufferSize: 1);
         fs.Seek(startOffset, SeekOrigin.Begin);
         return fs;
+    }
+
+    /// <summary>
+    /// Shrink the file to <paramref name="newSize"/> in place: close the current mmap view,
+    /// <c>SetLength</c> on the underlying handle, then reopen the mmap at the new size.
+    /// Refcount is untouched — the same <see cref="ArenaFile"/> instance survives across the
+    /// resize so any reservations capturing it stay valid (pre-resize <see cref="BasePtr"/>
+    /// values are invalidated, but the trim path only runs before any reservation is created
+    /// against this file). The caller must hold the manager's lock.
+    /// </summary>
+    internal void Truncate(long newSize)
+    {
+        if (newSize == MappedSize) return;
+        CloseMmap();
+        RandomAccess.SetLength(_handle, newSize);
+        MappedSize = newSize;
+        OpenMmap(newSize);
+    }
+
+    [MemberNotNull(nameof(_mmf), nameof(_accessor))]
+    private void OpenMmap(long size)
+    {
+        _mmf = MemoryMappedFile.CreateFromFile(_handle, mapName: null, size, MemoryMappedFileAccess.Read, HandleInheritability.None, leaveOpen: true);
+        _accessor = _mmf.CreateViewAccessor(0, size, MemoryMappedFileAccess.Read);
+        _basePtr = null;
+        _accessor.SafeMemoryMappedViewHandle.AcquirePointer(ref _basePtr);
+
+        if (OperatingSystem.IsLinux())
+            Madvise(_basePtr, (nuint)size, MADV_RANDOM);
+    }
+
+    private void CloseMmap()
+    {
+        _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
+        _accessor.Dispose();
+        _mmf.Dispose();
+        _basePtr = null;
     }
 
     /// <summary>
@@ -216,11 +273,15 @@ public sealed unsafe class ArenaFile : IDisposable
         }
     }
 
-    public void Dispose()
+    protected override void CleanUp()
     {
-        _accessor.SafeMemoryMappedViewHandle.ReleasePointer();
-        _accessor.Dispose();
-        _mmf.Dispose();
+        CloseMmap();
         _handle.Dispose();
+        // On shutdown the manager preserves files for the next session — skip the delete.
+        // Null owner (standalone construction) always deletes on cleanup.
+        if (_owner is null || !_owner.IsDisposed)
+        {
+            try { File.Delete(Path); } catch { /* best-effort */ }
+        }
     }
 }

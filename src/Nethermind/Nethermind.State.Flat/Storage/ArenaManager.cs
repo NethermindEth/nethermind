@@ -57,6 +57,10 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
+    // Consulted by ArenaFile.CleanUp to decide whether to delete the on-disk file. During
+    // shutdown the file is preserved so the next session can rehydrate it.
+    public bool IsDisposed => _disposed;
+
     public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, string tier = "default")
     {
         _basePath = basePath;
@@ -104,7 +108,7 @@ public sealed class ArenaManager : IArenaManager
                 long fileLength = new FileInfo(file).Length;
                 long mappedSize = fileLength > 0 ? fileLength : _maxArenaSize;
 
-                ArenaFile arena = new(arenaId, file, mappedSize);
+                ArenaFile arena = new(this, arenaId, file, mappedSize);
                 _arenas[arenaId] = arena;
                 _frontiers[arenaId] = 0;
                 _deadBytes[arenaId] = 0;
@@ -176,12 +180,10 @@ public sealed class ArenaManager : IArenaManager
                 && newFrontier < oldFile.MappedSize)
             {
                 long oldMappedSize = oldFile.MappedSize;
-                string path = oldFile.Path;
-                oldFile.Dispose();
-                using (Microsoft.Win32.SafeHandles.SafeFileHandle h =
-                    File.OpenHandle(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
-                    RandomAccess.SetLength(h, newFrontier);
-                _arenas[arenaId] = new ArenaFile(arenaId, path, newFrontier);
+                // Truncate in place so the refcount survives: dedicated files reach this
+                // path before any reservation is constructed against them, so it's safe to
+                // shrink the mapping under the manager's lock.
+                oldFile.Truncate(newFrontier);
                 OnArenaResized(newFrontier - oldMappedSize);
             }
 
@@ -208,8 +210,10 @@ public sealed class ArenaManager : IArenaManager
                 if (_arenas.TryRemove(arenaId, out ArenaFile? file))
                 {
                     OnArenaRemoved(file.MappedSize);
+                    // Drop manager's dict ref. The file's CleanUp closes the handle + deletes
+                    // the on-disk file. No reservation exists yet for a cancelled writer, so
+                    // the refcount goes straight to zero.
                     file.Dispose();
-                    File.Delete(file.Path);
                 }
                 _frontiers.Remove(arenaId);
                 _deadBytes.Remove(arenaId);
@@ -219,11 +223,19 @@ public sealed class ArenaManager : IArenaManager
 
     /// <summary>
     /// Open an existing snapshot location as an <see cref="ArenaReservation"/> for zero-copy reads.
+    /// Lookup + lease acquisition happens under the manager's lock so a concurrent
+    /// <see cref="MarkDead"/> can't tear the file down mid-construction. If the file has
+    /// already started its CleanUp the reservation's ctor surfaces an
+    /// <see cref="InvalidOperationException"/> from its <see cref="ArenaFile.TryAcquireLease"/>.
     /// </summary>
     public ArenaReservation Open(in SnapshotLocation location, string tag)
     {
-        ArenaFile arenaFile = _arenas[location.ArenaId];
-        return new(this, arenaFile, location.ArenaId, location.Offset, location.Size, tag);
+        lock (_lock)
+        {
+            if (!_arenas.TryGetValue(location.ArenaId, out ArenaFile? arenaFile))
+                throw new InvalidOperationException($"Arena {location.ArenaId} is not registered with this manager.");
+            return new ArenaReservation(this, arenaFile, location.ArenaId, location.Offset, location.Size, tag);
+        }
     }
 
     /// <summary>
@@ -269,22 +281,28 @@ public sealed class ArenaManager : IArenaManager
         lock (_lock)
         {
             // After Dispose, on-disk files must be preserved for the next session — skip
-            // dead-byte accounting and file deletion entirely.
-            if (_disposed) return;
+            // dead-byte accounting and file deletion entirely. Also tolerate unknown arenaIds
+            // (e.g. synthesised test reservations whose id was never registered): the tracker
+            // forget below still runs, but there is no file to advise or accounting to update.
+            if (_disposed || !_frontiers.TryGetValue(location.ArenaId, out long frontier))
+                goto ForgetTracker;
+
             _deadBytes.TryGetValue(location.ArenaId, out long dead);
             long totalDead = dead + location.Size;
             _deadBytes[location.ArenaId] = totalDead;
 
-            if (totalDead >= _frontiers[location.ArenaId])
+            if (totalDead >= frontier)
             {
-                // All data is dead: dispose and delete the file
+                // All data is dead: drop the manager's dict ref. The file self-cleans
+                // (closes handle, deletes on-disk) as soon as the last reservation also
+                // releases its lease — which, since this branch only fires once every
+                // slice has been marked dead, is typically right now.
                 _standaloneFiles.Remove(location.ArenaId);
                 _mutableArenas.Remove(location.ArenaId);
                 if (_arenas.TryRemove(location.ArenaId, out ArenaFile? file))
                 {
                     OnArenaRemoved(file.MappedSize);
                     file.Dispose();
-                    File.Delete(file.Path);
                 }
                 _frontiers.Remove(location.ArenaId);
                 _deadBytes.Remove(location.ArenaId);
@@ -295,6 +313,7 @@ public sealed class ArenaManager : IArenaManager
                 if (_fadviseOnEviction)
                     arena.FadviseDontNeed(location.Offset, location.Size);
             }
+            ForgetTracker:;
         }
         ForgetTrackerRange(location.ArenaId, location.Offset, location.Size);
     }
@@ -441,7 +460,7 @@ public sealed class ArenaManager : IArenaManager
         int id = _nextArenaId++;
         string prefix = dedicated ? DedicatedArenaFilePrefix : ArenaFilePrefix;
         string path = Path.Combine(_basePath, $"{prefix}{id:D4}{ArenaFileExtension}");
-        ArenaFile arena = new(id, path, mappedSize);
+        ArenaFile arena = new(this, id, path, mappedSize);
         _arenas[id] = arena;
         _frontiers[id] = 0;
         _deadBytes[id] = 0;
