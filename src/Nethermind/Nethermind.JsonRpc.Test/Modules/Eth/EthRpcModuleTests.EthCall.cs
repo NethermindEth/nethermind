@@ -66,7 +66,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
-        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
+        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient sender balance");
         AssertAccountDoesNotExist(ctx, TestAccount);
     }
 
@@ -322,7 +322,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken parsed = JToken.Parse(serialized);
         parsed["error"]!["code"]!.Value<int>().Should().Be(-32003);
-        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient funds");
+        parsed["error"]!["message"]!.Value<string>().Should().Contain("insufficient sender balance");
     }
 
     [Test]

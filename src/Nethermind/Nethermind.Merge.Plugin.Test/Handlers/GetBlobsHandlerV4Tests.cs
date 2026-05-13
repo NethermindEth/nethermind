@@ -48,7 +48,7 @@ public class GetBlobsHandlerV4Tests
         BlobCellMask requestedMask = BlobCellMask.FromIndices([0]);
         GetBlobsHandlerV4Request request = new([null!, [1]], requestedMask);
 
-        ResultWrapper<IEnumerable<BlobCellsAndProofsV1?>?> result = await handler.HandleAsync(request);
+        ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?> result = await handler.HandleAsync(request);
 
         using (Assert.EnterMultipleScope())
         {

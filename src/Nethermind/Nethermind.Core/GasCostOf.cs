@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 namespace Nethermind.Core
@@ -70,20 +70,21 @@ namespace Nethermind.Core
         public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const long TotalCostFloorPerTokenEip7976 = 16; // eip-7976
 
-        // EIP-8037: Two-dimensional gas metering constants.
-        // Devnet-3 keeps CPSB hardcoded and replaces it with dynamic CPSB in devnet-4.
-        public const long CostPerStateByte = 1174;
+        public const long CostPerStateByte = 1530; // eip-8037
+        public const long StateBytesPerStorageSet = 64; // eip-8037
+        public const long StateBytesPerNewAccount = 120; // eip-8037
+        public const long StateBytesPerAuthBase = 23; // eip-8037
         public const long SSetRegular = 2_900;
-        public const long SSetState = 32 * CostPerStateByte;
+        public const long SSetState = StateBytesPerStorageSet * CostPerStateByte;
         public const long CreateRegular = 9_000;
-        public const long CreateState = 112 * CostPerStateByte;
-        public const long NewAccountState = 112 * CostPerStateByte;
+        public const long CreateState = StateBytesPerNewAccount * CostPerStateByte;
+        public const long NewAccountState = StateBytesPerNewAccount * CostPerStateByte;
         public const long CodeDepositRegularPerWord = 6;
         public const long CodeDepositState = CostPerStateByte;
         public const long PerAuthBaseRegular = 7_500;
-        public const long PerAuthBaseState = 23 * CostPerStateByte;
-        public const long PerEmptyAccountState = 112 * CostPerStateByte;
-        public const long BlockAccessListItem = 2_000; // eip-7928
+        public const long PerAuthBaseState = StateBytesPerAuthBase * CostPerStateByte;
+        public const long PerEmptyAccountState = StateBytesPerNewAccount * CostPerStateByte;
+        public const long BlockAccessListItem = Eip7928Constants.ItemCost; // eip-7928
 
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;

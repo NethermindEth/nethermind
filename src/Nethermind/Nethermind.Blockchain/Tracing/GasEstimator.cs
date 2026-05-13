@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -28,7 +28,7 @@ public class GasEstimator(
     public const string GasExceedsAllowanceMsgPrefix = "gas required exceeds allowance";
 
     /// <summary>Message emitted when the sender has insufficient balance.</summary>
-    public const string InsufficientBalance = "insufficient funds for transfer";
+    public const string InsufficientBalance = "insufficient sender balance for transfer";
 
     private const int MaxErrorMargin = 10000;
     private const double BasisPointsDivisor = 10000d;
@@ -71,7 +71,7 @@ public class GasEstimator(
         if (CheckFunds(tx, spec, gasTracer, senderBalance) is { } fundsResult)
             return fundsResult;
 
-        long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec).MinimalGas;
+        long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, spec, header.GasLimit).MinimalGas;
         long leftBound = Math.Max(gasTracer.GasSpent - 1, intrinsicGas - 1);
         long rightBound = Math.Min(
             tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas ? tx.GasLimit : header.GasLimit,

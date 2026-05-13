@@ -10,16 +10,16 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4Request, IEnumerable<BlobCellsAndProofsV1?>?>
+public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?>
 {
     private const int MaxRequest = 128;
 
-    public Task<ResultWrapper<IEnumerable<BlobCellsAndProofsV1?>?>> HandleAsync(GetBlobsHandlerV4Request request)
+    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>> HandleAsync(GetBlobsHandlerV4Request request)
     {
         if (request.BlobVersionedHashes.Length > MaxRequest)
         {
             string error = $"The number of requested blobs must not exceed {MaxRequest}";
-            return ResultWrapper<IEnumerable<BlobCellsAndProofsV1?>?>.Fail(error, MergeErrorCodes.TooLargeRequest);
+            return ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 
         int requestedCellCount = request.CellMask.Count;
@@ -65,7 +65,7 @@ public class GetBlobsHandlerV4(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV4
             Metrics.GetBlobsRequestsFailureTotal++;
         }
 
-        return ResultWrapper<IEnumerable<BlobCellsAndProofsV1?>?>.Success(result);
+        return ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>.Success(result);
     }
 }
 

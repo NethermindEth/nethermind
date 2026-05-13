@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -94,18 +94,24 @@ public sealed class TxValidator : ITxValidator
     /// just before the execution of the block / tx.
     /// </remarks>
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit) =>
         _validators.TryGetByTxType(transaction.Type, out ITxValidator validator)
-            ? validator.IsWellFormed(transaction, releaseSpec)
+            ? validator.IsWellFormed(transaction, releaseSpec, blockGasLimit)
             : TxErrorMessages.InvalidTxType(releaseSpec.Name);
 }
 
 public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidator
 {
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit)
     {
         foreach (ITxValidator validator in validators)
         {
-            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec);
+            ValidationResult isWellFormed = validator.IsWellFormed(transaction, releaseSpec, blockGasLimit);
             if (!isWellFormed)
             {
                 return isWellFormed;
@@ -122,9 +128,12 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     private IntrinsicGasTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0);
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, long blockGasLimit)
     {
         // This is unnecessarily calculated twice - at validation and execution times.
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec);
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, releaseSpec, blockGasLimit);
         return transaction.GasLimit < intrinsicGas.MinimalGas
             ? TxErrorMessages.IntrinsicGasTooLow
             : ValidationResult.Success;

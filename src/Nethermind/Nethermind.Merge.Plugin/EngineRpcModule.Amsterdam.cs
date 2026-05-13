@@ -16,9 +16,9 @@ namespace Nethermind.Merge.Plugin;
 public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV6Result?> _getPayloadHandlerV6 = getPayloadHandlerV6;
-    private readonly IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> _executionGetPayloadBodiesByHashV2Handler = getPayloadBodiesByHashV2Handler;
+    private readonly IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> _executionGetPayloadBodiesByHashV2Handler = getPayloadBodiesByHashV2Handler;
     private readonly IGetPayloadBodiesByRangeV2Handler _executionGetPayloadBodiesByRangeV2Handler = getPayloadBodiesByRangeV2Handler;
-    private readonly IAsyncHandler<GetBlobsHandlerV4Request, IEnumerable<BlobCellsAndProofsV1?>?> _getBlobsHandlerV4 = getBlobsHandlerV4;
+    private readonly IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofsV1?>?> _getBlobsHandlerV4 = getBlobsHandlerV4;
 
     public Task<ResultWrapper<GetPayloadV6Result?>> engine_getPayloadV6(byte[] payloadId)
         => _getPayloadHandlerV6.HandleAsync(payloadId);
@@ -48,17 +48,17 @@ public partial class EngineRpcModule : IEngineRpcModule
         return result;
     }
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes)
+    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByHashV2(IReadOnlyList<Hash256> blockHashes)
         => _executionGetPayloadBodiesByHashV2Handler.Handle(blockHashes);
 
-    public Task<ResultWrapper<IEnumerable<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count)
+    public Task<ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>>> engine_getPayloadBodiesByRangeV2(long start, long count)
         => _executionGetPayloadBodiesByRangeV2Handler.Handle(start, count);
 
-    public Task<ResultWrapper<IEnumerable<BlobCellsAndProofsV1?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, byte[]? indicesBitarray)
+    public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, byte[]? indicesBitarray)
     {
         if (!TryGetBlobCellMask(indicesBitarray, out BlobCellMask cellMask, out string? error))
         {
-            return Task.FromResult(ResultWrapper<IEnumerable<BlobCellsAndProofsV1?>?>.Fail(error!, ErrorCodes.InvalidParams));
+            return Task.FromResult(ResultWrapper<IReadOnlyList<BlobCellsAndProofsV1?>?>.Fail(error!, ErrorCodes.InvalidParams));
         }
 
         return _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, cellMask));
