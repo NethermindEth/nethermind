@@ -43,6 +43,34 @@ public static class ZkGasSchedule
     public const ulong MasayaBlockZkGasLimit = 1_000_000_000;
 
     /// <summary>
+    /// Fixed ZK gas charged once per transaction before any opcode or precompile runs,
+    /// applied on Devnet, Hoodi, and Mainnet (Unzen). Covers the proving cost of
+    /// per-transaction sender ecrecovery.
+    /// Sourced from taiko-mono PR #21669; mirrors <c>TX_INTRINSIC_ZK_GAS</c> in
+    /// alethia-reth PR #180 (<c>crates/evm/src/zk_gas/unzen.rs</c>).
+    /// </summary>
+    public const ulong TxIntrinsicZkGas = 243_000;
+
+    /// <summary>
+    /// Per-transaction intrinsic ZK gas for Taiko Masaya. Pinned at 0 because Masaya
+    /// activated Unzen before taiko-mono PR #21669 landed; charging the non-zero value
+    /// retroactively would break consensus on already-finalized blocks whose
+    /// <c>difficulty</c> header field encodes the finalized block ZK gas.
+    /// Mirrors <c>MASAYA_TX_INTRINSIC_ZK_GAS</c> in alethia-reth PR #180.
+    /// </summary>
+    public const ulong MasayaTxIntrinsicZkGas = 0;
+
+    /// <summary>
+    /// Returns the per-transaction intrinsic ZK gas for the given chain id.
+    /// <see cref="TaikoMasayaChainId"/> returns 0 to preserve historical block consensus;
+    /// all other networks return <see cref="TxIntrinsicZkGas"/> (243 000).
+    /// </summary>
+    /// <param name="chainId">Chain id from <see cref="Nethermind.Core.Specs.ISpecProvider.ChainId"/>.</param>
+    /// <returns>The flat intrinsic ZK gas charged once per transaction.</returns>
+    public static ulong ResolveTxIntrinsicZkGas(ulong chainId) =>
+        chainId == TaikoMasayaChainId ? MasayaTxIntrinsicZkGas : TxIntrinsicZkGas;
+
+    /// <summary>
     /// Returns the Unzen block ZK gas limit for the given chain id. Masaya
     /// (<see cref="TaikoMasayaChainId"/>) uses <see cref="MasayaBlockZkGasLimit"/>;
     /// every other network uses <see cref="BlockZkGasLimit"/>. Opcode multipliers,

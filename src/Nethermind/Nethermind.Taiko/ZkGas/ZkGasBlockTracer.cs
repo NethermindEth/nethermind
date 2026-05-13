@@ -18,10 +18,12 @@ public sealed class ZkGasBlockTracer : IBlockTracer
     private readonly IBlockTracer _inner;
     private readonly ZkGasMeter _meter;
 
-    public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null, ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit)
+    public ZkGasBlockTracer(IBlockTracer inner, ZkGasMeterHolder? holder = null,
+        ulong blockZkGasLimit = ZkGasSchedule.BlockZkGasLimit,
+        ulong txIntrinsicZkGas = ZkGasSchedule.TxIntrinsicZkGas)
     {
         _inner = inner;
-        _meter = new ZkGasMeter(blockZkGasLimit);
+        _meter = new ZkGasMeter(blockZkGasLimit, txIntrinsicZkGas);
         // Publish once: the meter reference is stable across blocks (we Reset it in
         // StartNewBlockTrace rather than reallocating), so the holder never needs
         // re-pointing for the lifetime of this tracer.
@@ -49,12 +51,20 @@ public sealed class ZkGasBlockTracer : IBlockTracer
     }
 
     /// <summary>
-    /// Resets in-flight transaction gas, obtains the inner per-tx tracer,
-    /// creates a <see cref="ZkGasTxTracer"/>, and returns a composite of both.
+    /// Resets in-flight transaction gas, charges the flat per-transaction intrinsic ZK gas
+    /// (taiko-mono PR #21669), obtains the inner per-tx tracer, creates a
+    /// <see cref="ZkGasTxTracer"/>, and returns a composite of both.
+    /// If the intrinsic charge alone exceeds the block budget, <see cref="ZkGasMeter.IsLimitExceeded"/>
+    /// is set and <see cref="BlockTransactionExecutors.BlockInvalidTxExecutor"/> will roll back
+    /// the transaction after execution.
     /// </summary>
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         _meter.ResetTransaction();
+        // Charge the flat per-transaction intrinsic ZK gas before any opcode runs.
+        // Mirrors charge_tx_intrinsic_zk_gas in alethia-reth PR #180 (executor.rs).
+        // A value of 0 (Masaya) makes this a no-op, preserving historical consensus.
+        _meter.ChargeTxIntrinsic();
         ITxTracer innerTxTracer = _inner.StartNewTxTrace(tx);
         ZkGasTxTracer zkTracer = new(_meter);
         return new CompositeTxTracer(innerTxTracer, zkTracer);

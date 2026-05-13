@@ -197,4 +197,54 @@ public class ZkGasMeterTests
         // Meter will flag IsLimitExceeded because halfMax >> BlockZkGasLimit
         Assert.That(meter.IsLimitExceeded, Is.True);
     }
+
+    // ── TX intrinsic ZK gas ───────────────────────────────────────────────────
+
+    [Test]
+    public void TxIntrinsicZkGas_Schedule_Constant_Is_243000() =>
+        Assert.That(ZkGasSchedule.TxIntrinsicZkGas, Is.EqualTo(243_000UL));
+
+    [Test]
+    public void MasayaTxIntrinsicZkGas_Schedule_Constant_Is_Zero() =>
+        Assert.That(ZkGasSchedule.MasayaTxIntrinsicZkGas, Is.EqualTo(0UL));
+
+    [Test]
+    public void ChargeTxIntrinsic_Adds_Intrinsic_To_InFlight_Tx()
+    {
+        ZkGasMeter meter = new(txIntrinsicZkGas: ZkGasSchedule.TxIntrinsicZkGas);
+
+        bool result = meter.ChargeTxIntrinsic();
+
+        Assert.That(result, Is.True);
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(ZkGasSchedule.TxIntrinsicZkGas));
+
+        // Confirm the charge is promoted to block total on commit.
+        meter.CommitTransaction();
+        Assert.That(meter.BlockZkGasUsed, Is.EqualTo(ZkGasSchedule.TxIntrinsicZkGas));
+    }
+
+    [Test]
+    public void ChargeTxIntrinsic_IsNoop_WhenIntrinsicIsZero()
+    {
+        ZkGasMeter meter = new(txIntrinsicZkGas: 0); // Masaya schedule
+
+        bool result = meter.ChargeTxIntrinsic();
+
+        Assert.That(result, Is.True);
+        Assert.That(meter.TxZkGasUsed, Is.EqualTo(0UL));
+        Assert.That(meter.IsLimitExceeded, Is.False);
+    }
+
+    [Test]
+    public void ChargeTxIntrinsic_SetsLimitExceeded_WhenRemainingBudgetTooSmall()
+    {
+        const ulong intrinsic = ZkGasSchedule.TxIntrinsicZkGas;
+        // Set block limit one unit below the intrinsic so the charge must fail.
+        ZkGasMeter meter = new(blockZkGasLimit: intrinsic - 1, txIntrinsicZkGas: intrinsic);
+
+        bool result = meter.ChargeTxIntrinsic();
+
+        Assert.That(result, Is.False);
+        Assert.That(meter.IsLimitExceeded, Is.True);
+    }
 }
