@@ -329,9 +329,7 @@ public class BlockProcessorTests
             .WithBlockAccessList(suggestedBal)
             .TestObject;
 
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        balManager.Setup(block);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
         // Generated BAL has the account but no storage reads
         BlockAccessListAtIndex generatedAtIndex = new();
         generatedAtIndex.AddAccountRead(TestItem.AddressA);
@@ -348,30 +346,15 @@ public class BlockProcessorTests
         }
     }
 
-    [Test]
-    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_multi_tx_blocks()
+    [TestCase(1)]
+    [TestCase(2)]
+    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount)
     {
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
 
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithTransactions(2, Amsterdam.Instance)
-            .WithBlockAccessList(new ReadOnlyBlockAccessList())
-            .TestObject;
-
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-
-        Assert.That(balManager.ParallelExecutionEnabled, Is.True);
-    }
-
-    [Test]
-    public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_single_tx_blocks()
-    {
-        BlockAccessListManager balManager = CreateAmsterdamBalManager();
-
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithTransactions(1, Amsterdam.Instance)
+            .WithTransactions(txCount, Amsterdam.Instance)
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
@@ -405,17 +388,11 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        balManager.Setup(block);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        GasValidationResultSlot[] gasResults =
-        [
-            new(),
-            new()
-        ];
-        gasResults[0].TrySetResult(GasResult(block, 0, 65_000, 0));
-        gasResults[1].TrySetResult(GasResult(block, 1, 21_000, 0));
+        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+            (65_000, 0, null),
+            (21_000, 0, null));
 
         InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -444,17 +421,11 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        balManager.Setup(block);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        GasValidationResultSlot[] gasResults =
-        [
-            new(),
-            new()
-        ];
-        gasResults[0].TrySetResult(GasResult(block, 0, 80_000, 0));
-        gasResults[1].TrySetResult(GasResult(block, 1, 21_000, 0));
+        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+            (80_000, 0, null),
+            (21_000, 0, null));
 
         InvalidBlockException? exception = Assert.Throws<InvalidBlockException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -489,17 +460,11 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        balManager.Setup(block);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
 
-        GasValidationResultSlot[] gasResults =
-        [
-            new(),
-            new()
-        ];
-        gasResults[0].TrySetResult(GasResult(block, 0, 0, 60_000));
-        gasResults[1].TrySetResult(GasResult(block, 1, 50_000, GasCostOf.CreateState));
+        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+            (0, 60_000, null),
+            (50_000, GasCostOf.CreateState, null));
 
         Assert.DoesNotThrow(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -528,16 +493,10 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        balManager.Setup(block);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
 
         InvalidBlockException workerException = new(block, "worker-original-cause");
-        GasValidationResultSlot[] gasResults =
-        [
-            new()
-        ];
-        gasResults[0].TrySetResult(GasResult(block, 0, 0, 0, workerException));
+        GasValidationResultSlot[] gasResults = BuildGasResults(block, (0, 0, workerException));
 
         BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[1], null, Task.CompletedTask, CancellationToken.None));
@@ -576,19 +535,13 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        balManager.Setup(block);
+        PrepareSetup(balManager, block, Amsterdam.Instance);
 
         InvalidBlockException workerException = new(block, "worker-original-cause");
-        GasValidationResultSlot[] gasResults =
-        [
-            new(),
-            new()
-        ];
-        gasResults[0].TrySetResult(GasResult(block, 0, 80_000, 0));
-        // Legacy buggy shape: charges tx.GasLimit on rejection. Cumulative 80k+50k > 100k limit.
-        gasResults[1].TrySetResult(GasResult(block, 1, 50_000, 0, workerException));
+        // tx1 row uses legacy buggy shape: charges tx.GasLimit on rejection. Cumulative 80k+50k > 100k limit.
+        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+            (80_000, 0, null),
+            (50_000, 0, workerException));
 
         BlockAccessListManager.ParallelExecutionException? thrown = Assert.Throws<BlockAccessListManager.ParallelExecutionException>(() =>
             balManager.IncrementalValidation(block, gasResults, new BlockReceiptsTracer[2], null, Task.CompletedTask, CancellationToken.None));
@@ -696,6 +649,34 @@ public class BlockProcessorTests
     private static GasValidationResult
         GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
         => new(blockGasUsed, blockStateGasUsed, EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit), exception);
+
+    private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
+    {
+        balManager.PrepareForProcessing(block, spec, options);
+        balManager.SetBlockExecutionContext(new(block.Header, spec));
+        balManager.Setup(block);
+    }
+
+    private static GasValidationResultSlot[] ResultsForCount(int count)
+    {
+        GasValidationResultSlot[] results = new GasValidationResultSlot[count];
+        for (int i = 0; i < results.Length; i++)
+        {
+            results[i] = new();
+        }
+
+        return results;
+    }
+
+    private static GasValidationResultSlot[] BuildGasResults(Block block, params (long Gas, long StateGas, InvalidBlockException? Exception)[] rows)
+    {
+        GasValidationResultSlot[] slots = ResultsForCount(rows.Length);
+        for (int i = 0; i < rows.Length; i++)
+        {
+            slots[i].TrySetResult(GasResult(block, i, rows[i].Gas, rows[i].StateGas, rows[i].Exception));
+        }
+        return slots;
+    }
 
     private static Transaction[] CreateParallelValidationTransactions(int txCount)
     {
