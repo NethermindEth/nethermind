@@ -78,9 +78,13 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
             {
                 if (!txProcessor.Execute(tx, receiptsTracer))
                 {
-                    // if the transaction was invalid, we ignore it and continue
+                    // if the transaction was invalid, we ignore it and continue.
+                    // CancelTransaction clears any IsLimitExceeded set by the intrinsic
+                    // charge in StartNewTxTrace so it does not trip the pre-loop guard
+                    // on the next iteration and prematurely terminate block production.
                     worldState.Restore(snap);
                     receiptsTracer.Restore(receiptsSnap);
+                    if (enforceZkGas) zkGasMeterHolder!.Meter?.CancelTransaction();
                     continue;
                 }
             }
@@ -90,6 +94,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
                 // they are detected later in the processing pipeline
                 worldState.Restore(snap);
                 receiptsTracer.Restore(receiptsSnap);
+                if (enforceZkGas) zkGasMeterHolder!.Meter?.CancelTransaction();
                 continue;
             }
 

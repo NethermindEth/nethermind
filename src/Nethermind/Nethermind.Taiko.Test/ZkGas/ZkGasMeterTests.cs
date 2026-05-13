@@ -200,6 +200,14 @@ public class ZkGasMeterTests
 
     // ── TX intrinsic ZK gas ───────────────────────────────────────────────────
 
+    [TestCase(ZkGasSchedule.TaikoMainnetChainId, ZkGasSchedule.TxIntrinsicZkGas)]
+    [TestCase(ZkGasSchedule.TaikoDevnetChainId,  ZkGasSchedule.TxIntrinsicZkGas)]
+    [TestCase(ZkGasSchedule.TaikoHoodiChainId,   ZkGasSchedule.TxIntrinsicZkGas)]
+    [TestCase(ZkGasSchedule.TaikoMasayaChainId,  ZkGasSchedule.MasayaTxIntrinsicZkGas)]
+    [TestCase(999_999UL /* unknown */,           ZkGasSchedule.TxIntrinsicZkGas)]
+    public void ResolveTxIntrinsicZkGas_ReturnsExpected_ForChainId(ulong chainId, ulong expected) =>
+        Assert.That(ZkGasSchedule.ResolveTxIntrinsicZkGas(chainId), Is.EqualTo(expected));
+
     [Test]
     public void TxIntrinsicZkGas_Schedule_Constant_Is_243000() =>
         Assert.That(ZkGasSchedule.TxIntrinsicZkGas, Is.EqualTo(243_000UL));

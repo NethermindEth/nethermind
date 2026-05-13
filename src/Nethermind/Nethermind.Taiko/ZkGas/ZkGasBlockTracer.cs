@@ -64,7 +64,9 @@ public sealed class ZkGasBlockTracer : IBlockTracer
         // Charge the flat per-transaction intrinsic ZK gas before any opcode runs.
         // Mirrors charge_tx_intrinsic_zk_gas in alethia-reth PR #180 (executor.rs).
         // A value of 0 (Masaya) makes this a no-op, preserving historical consensus.
-        _meter.ChargeTxIntrinsic();
+        // Return value is intentionally discarded: failure sets IsLimitExceeded, which
+        // BlockInvalidTxExecutor checks post-execution and responds to via CancelTransaction.
+        _ = _meter.ChargeTxIntrinsic();
         ITxTracer innerTxTracer = _inner.StartNewTxTrace(tx);
         ZkGasTxTracer zkTracer = new(_meter);
         return new CompositeTxTracer(innerTxTracer, zkTracer);
