@@ -1437,7 +1437,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     ) : IBlockCommitter
     {
         internal TrieNode? StateRoot;
-        private int _concurrency = 1;
+        private int _concurrency = Environment.ProcessorCount;
 
         public void Dispose() => trieStore.FinishBlockCommit(commitSet, StateRoot);
 
