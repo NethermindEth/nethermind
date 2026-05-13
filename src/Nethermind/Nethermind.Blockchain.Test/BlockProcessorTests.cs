@@ -49,6 +49,206 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
+    [Test]
+    public void ApplyStateChanges_uses_parent_state_without_prestate_sentinels()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 150))
+                .WithNonceChanges(new NonceChange(0, 3))
+                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
+            assertState: stateProvider =>
+            {
+                StorageCell storageCell = new(TestItem.AddressA, 1);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
+                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)3));
+                    Assert.That(new UInt256(stateProvider.Get(storageCell), isBigEndian: true), Is.EqualTo((UInt256)0x2Au));
+                }
+            });
+    }
+
+    [Test]
+    public void ApplyStateChanges_creates_missing_account_from_balance_change()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(0, 25))
+                .TestObject)
+            .TestObject;
+
+        ApplyStateChangesInParentScope(
+            bal,
+            genesisSetup: null,
+            assertState: stateProvider =>
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
+                    Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)25));
+                }
+            });
+    }
+
+    [Test]
+    public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        Hash256 parentStateRoot;
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
+            stateProvider.CommitTree(0);
+            parentStateRoot = stateProvider.StateRoot;
+        }
+
+        Hash256 parentHash = TestItem.KeccakA;
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithNumber(6)
+            .WithHash(parentHash)
+            .WithStateRoot(parentStateRoot)
+            .TestObject;
+
+        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
+        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
+        using BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = true },
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            readOnlyTxProcessingEnvFactory: parentReaderFactory);
+
+        Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
+        Transaction secondTx = Build.A.Transaction.WithNonce(1).TestObject;
+        Block block = Build.A.Block
+            .WithNumber(7)
+            .WithParentHash(parentHash)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        _ = balManager.GetTxProcessor(1);
+        _ = balManager.GetTxProcessor(2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltWorldStates, Has.Count.EqualTo(2));
+            Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
+            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
+        }
+
+        for (int i = 0; i < parentReaderFactory.BuiltHeaders.Count; i++)
+        {
+            BlockHeader builtHeader = parentReaderFactory.BuiltHeaders[i]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(builtHeader.Number, Is.EqualTo(6));
+                Assert.That(builtHeader.Hash, Is.EqualTo(parentHash));
+                Assert.That(builtHeader.StateRoot, Is.EqualTo(parentStateRoot));
+            }
+        }
+
+        balManager.ReturnTxProcessor(1);
+        balManager.ReturnTxProcessor(2);
+
+        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void Parallel_validation_parent_reader_uses_parent_root_captured_before_pre_block_changes()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        Hash256 parentStateRoot;
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
+            stateProvider.CommitTree(0);
+            parentStateRoot = stateProvider.StateRoot;
+        }
+
+        Hash256 parentHash = TestItem.KeccakA;
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithNumber(6)
+            .WithHash(parentHash)
+            .WithStateRoot(parentStateRoot)
+            .TestObject;
+
+        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
+        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
+        using BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = true },
+            new WithdrawalProcessorFactory(LimboLogs.Instance),
+            readOnlyTxProcessingEnvFactory: parentReaderFactory);
+
+        Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
+        Block block = Build.A.Block
+            .WithNumber(7)
+            .WithParentHash(parentHash)
+            .WithTransactions(tx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+
+        stateProvider.CreateAccount(TestItem.AddressB, 1);
+        stateProvider.Commit(Amsterdam.Instance, commitRoots: false);
+
+        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
+        Assert.DoesNotThrow(() => balManager.Setup(block));
+
+        _ = balManager.GetTxProcessor(1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(1));
+            Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
+        }
+
+        balManager.ReturnTxProcessor(1);
+    }
+
+    private static void ApplyStateChangesInParentScope(
+        ReadOnlyBlockAccessList bal,
+        Action<IWorldState>? genesisSetup,
+        Action<IWorldState> assertState)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (stateProvider.BeginScope(IWorldState.PreGenesis))
+        {
+            genesisSetup?.Invoke(stateProvider);
+            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
+            stateProvider.CommitTree(0);
+            stateRoot = stateProvider.StateRoot;
+        }
+
+        BlockHeader parent = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        using (stateProvider.BeginScope(parent))
+        {
+            BlockAccessListManager.ApplyStateChanges(bal, stateProvider, Amsterdam.Instance, shouldComputeStateRoot: false);
+            assertState(stateProvider);
+        }
+    }
+
     private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
         IBlockCachePreWarmer? preWarmer = null)
@@ -348,6 +548,56 @@ public class BlockProcessorTests
         }
     }
 
+    [Test]
+    public void ValidateBlockAccessList_matches_accounts_by_address_when_insertion_order_differs()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+        Address lowAddress = TestItem.AddressA;
+        Address highAddress = TestItem.AddressB;
+        if (lowAddress.CompareTo(highAddress) > 0)
+        {
+            (lowAddress, highAddress) = (highAddress, lowAddress);
+        }
+
+        // Build suggested BAL with accounts declared in high→low order so the validator must
+        // match by address rather than by insertion order.
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(highAddress)
+                .WithBalanceChanges(new BalanceChange(0, 2))
+                .TestObject)
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(lowAddress)
+                .WithBalanceChanges(new BalanceChange(0, 1))
+                .TestObject)
+            .TestObject;
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(0)
+            .WithBlockAccessList(suggestedBal)
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        // Generated BAL in low→high (canonical) order — index lookup must reconcile despite
+        // the suggested side using the opposite insertion order.
+        BlockAccessListAtIndex slice = new();
+        slice.AddBalanceChange(lowAddress, before: 0, after: 1);
+        slice.AddBalanceChange(highAddress, before: 0, after: 2);
+        balManager.GeneratedBlockAccessList.Merge(slice);
+
+        Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+    }
+
     [TestCase(1)]
     [TestCase(2)]
     public void PrepareForProcessing_keeps_parallel_bal_execution_for_validated_eip8037_blocks(int txCount) =>
@@ -356,9 +606,6 @@ public class BlockProcessorTests
     [Test]
     public void PrepareForProcessing_disables_parallel_bal_execution_when_state_provider_is_not_scoped()
     {
-        // Without an active state scope we can't capture a parent state root for the
-        // per-worker parent reader, so PrepareForProcessing must fall back to the
-        // sequential path even when the BAL body is present.
         using BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Block block = Build.A.Block
             .WithNumber(1)
@@ -379,11 +626,11 @@ public class BlockProcessorTests
     [Test]
     public void IncrementalValidation_rejects_eip8037_tx_at_inclusion_when_worst_case_exceeds_remaining_budget()
     {
-        // The EIP-8037 per-tx 2D inclusion check rejects a tx whose worst-case dimension
-        // contribution exceeds the remaining budget, even if its actual post-execution gas
-        // would have fit. tx1.GasLimit (50_000) exceeds the remaining regular budget of
-        // 35_000 left after tx0's 65_000 actual usage, so tx1 is rejected at inclusion
-        // regardless of its actual usage.
+        // execution-specs PR 2703: the per-tx 2D inclusion check rejects a tx whose
+        // worst-case dimension contribution exceeds the remaining budget, even if its
+        // actual post-execution gas would have fit. tx1.GasLimit (50_000) exceeds the
+        // remaining regular budget of 35_000 left after tx0's 65_000 actual usage, so
+        // the spec rejects tx1 at inclusion regardless of its actual usage.
         BlockAccessListManager balManager = CreateAmsterdamBalManager();
         Transaction firstTx = Build.A.Transaction
             .WithHash(TestItem.KeccakA)
@@ -648,213 +895,6 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void ApplyStateChanges_replays_balance_nonce_and_storage_onto_parent_state()
-    {
-        // The suggested BAL holds only the within-block deltas (no prestate sentinels under
-        // the parent-reader model). ApplyStateChanges must replay the last-of-each onto a
-        // parent state seeded with the pre-block balance.
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(0, 150))
-                .WithNonceChanges(new NonceChange(0, 3))
-                .WithStorageChanges(1, new StorageChange(0, 0x2Au))
-                .TestObject)
-            .TestObject;
-
-        ApplyStateChangesInParentScope(
-            bal,
-            genesisSetup: stateProvider => stateProvider.CreateAccount(TestItem.AddressA, 100),
-            assertState: stateProvider =>
-            {
-                StorageCell storageCell = new(TestItem.AddressA, 1);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
-                    Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo((UInt256)3));
-                    Assert.That(new UInt256(stateProvider.Get(storageCell), isBigEndian: true), Is.EqualTo((UInt256)0x2Au));
-                }
-            });
-    }
-
-    [Test]
-    public void ApplyStateChanges_creates_missing_account_from_balance_change()
-    {
-        // No genesis setup: AddressA doesn't exist before the block. A net positive balance
-        // change must materialise the account in the parent state.
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
-                .WithBalanceChanges(new BalanceChange(0, 25))
-                .TestObject)
-            .TestObject;
-
-        ApplyStateChangesInParentScope(
-            bal,
-            genesisSetup: null,
-            assertState: stateProvider =>
-            {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(stateProvider.AccountExists(TestItem.AddressA), Is.True);
-                    Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)25));
-                }
-            });
-    }
-
-    private static void ApplyStateChangesInParentScope(
-        ReadOnlyBlockAccessList bal,
-        Action<IWorldState>? genesisSetup,
-        Action<IWorldState> assertState)
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        Hash256 stateRoot;
-        using (stateProvider.BeginScope(IWorldState.PreGenesis))
-        {
-            genesisSetup?.Invoke(stateProvider);
-            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
-            stateProvider.CommitTree(0);
-            stateRoot = stateProvider.StateRoot;
-        }
-
-        BlockHeader parent = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
-        using (stateProvider.BeginScope(parent))
-        {
-            BlockAccessListManager.ApplyStateChanges(bal, stateProvider, Amsterdam.Instance, shouldComputeStateRoot: false);
-            assertState(stateProvider);
-        }
-    }
-
-    [Test]
-    public void Parallel_validation_parent_reader_scope_is_per_worker_and_disposed_on_return()
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        Hash256 parentStateRoot;
-        using (stateProvider.BeginScope(IWorldState.PreGenesis))
-        {
-            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
-            stateProvider.CommitTree(0);
-            parentStateRoot = stateProvider.StateRoot;
-        }
-
-        Hash256 parentHash = TestItem.KeccakA;
-        BlockHeader parentHeader = Build.A.BlockHeader
-            .WithNumber(6)
-            .WithHash(parentHash)
-            .WithStateRoot(parentStateRoot)
-            .TestObject;
-
-        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
-        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
-        using BlockAccessListManager balManager = new(
-            stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
-            readOnlyTxProcessingEnvFactory: parentReaderFactory);
-
-        Transaction firstTx = Build.A.Transaction.WithNonce(0).TestObject;
-        Transaction secondTx = Build.A.Transaction.WithNonce(1).TestObject;
-        Block block = Build.A.Block
-            .WithNumber(7)
-            .WithParentHash(parentHash)
-            .WithTransactions(firstTx, secondTx)
-            .WithBlockAccessList(new ReadOnlyBlockAccessList())
-            .TestObject;
-
-        PrepareSetup(balManager, block, Amsterdam.Instance);
-
-        _ = balManager.GetTxProcessor(1);
-        _ = balManager.GetTxProcessor(2);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parentReaderFactory.CreatedSources, Is.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates, Has.Count.EqualTo(2));
-            Assert.That(parentReaderFactory.BuiltWorldStates[0], Is.Not.SameAs(parentReaderFactory.BuiltWorldStates[1]));
-            Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
-        }
-
-        for (int i = 0; i < parentReaderFactory.BuiltHeaders.Count; i++)
-        {
-            BlockHeader builtHeader = parentReaderFactory.BuiltHeaders[i]!;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(builtHeader.Number, Is.EqualTo(6));
-                Assert.That(builtHeader.Hash, Is.EqualTo(parentHash));
-                Assert.That(builtHeader.StateRoot, Is.EqualTo(parentStateRoot));
-            }
-        }
-
-        balManager.ReturnTxProcessor(1);
-        balManager.ReturnTxProcessor(2);
-
-        Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void Parallel_validation_parent_reader_uses_parent_root_captured_before_pre_block_changes()
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        Hash256 parentStateRoot;
-        using (stateProvider.BeginScope(IWorldState.PreGenesis))
-        {
-            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
-            stateProvider.CommitTree(0);
-            parentStateRoot = stateProvider.StateRoot;
-        }
-
-        Hash256 parentHash = TestItem.KeccakA;
-        BlockHeader parentHeader = Build.A.BlockHeader
-            .WithNumber(6)
-            .WithHash(parentHash)
-            .WithStateRoot(parentStateRoot)
-            .TestObject;
-
-        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
-        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
-        using BlockAccessListManager balManager = new(
-            stateProvider,
-            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
-            Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
-            readOnlyTxProcessingEnvFactory: parentReaderFactory);
-
-        Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
-        Block block = Build.A.Block
-            .WithNumber(7)
-            .WithParentHash(parentHash)
-            .WithTransactions(tx)
-            .WithBlockAccessList(new ReadOnlyBlockAccessList())
-            .TestObject;
-
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-
-        // Mutate state AFTER PrepareForProcessing. The parent reader scope must still see the
-        // pre-mutation state root (captured inside PrepareForProcessing), not the new one.
-        stateProvider.CreateAccount(TestItem.AddressB, 1);
-        stateProvider.Commit(Amsterdam.Instance, commitRoots: false);
-
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        Assert.DoesNotThrow(() => balManager.Setup(block));
-
-        _ = balManager.GetTxProcessor(1);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parentReaderFactory.BuiltHeaders, Has.Count.EqualTo(1));
-            Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
-        }
-
-        balManager.ReturnTxProcessor(1);
-    }
-
-    [Test]
     public void Parallel_validation_execution_order_keeps_canonical_lead_and_sorts_tail_by_gas_limit()
     {
         Transaction[] transactions =
@@ -892,65 +932,6 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
-    {
-        IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
-        GasValidationResultSlot[] gasResults = ResultsForCount(2);
-        gasResults[0].TrySetResult(new GasValidationResult(1, 2, intrinsicGas, null));
-
-        BlockProcessor.ParallelBlockValidationTransactionsExecutor.CancelIncompleteGasResults(gasResults, gasResults.Length);
-
-        Assert.That(gasResults[0].GetResult().BlockGasUsed, Is.EqualTo(1));
-        Assert.Throws<TaskCanceledException>(() => gasResults[1].GetResult());
-    }
-
-    [Test]
-    public void ValidateBlockAccessList_matches_accounts_by_address_when_insertion_order_differs()
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        using BlockAccessListManager balManager = CreateAmsterdamBalManager(stateProvider);
-
-        Address lowAddress = TestItem.AddressA;
-        Address highAddress = TestItem.AddressB;
-        if (lowAddress.CompareTo(highAddress) > 0)
-        {
-            (lowAddress, highAddress) = (highAddress, lowAddress);
-        }
-
-        // Build suggested BAL with accounts declared in high→low order so the validator must
-        // match by address rather than by insertion order. The 0→2/0→1 net balance changes
-        // produce a single BalanceChange at index 0 per account (see AccountChangesBuilder).
-        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(highAddress)
-                .WithBalanceChanges(new BalanceChange(0, 2))
-                .TestObject)
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(lowAddress)
-                .WithBalanceChanges(new BalanceChange(0, 1))
-                .TestObject)
-            .TestObject;
-
-        Block block = Build.A.Block
-            .WithNumber(1)
-            .WithGasUsed(0)
-            .WithBlockAccessList(suggestedBal)
-            .TestObject;
-
-        PrepareSetup(balManager, block, Amsterdam.Instance);
-
-        // Generated BAL in low→high (canonical) order — index lookup must reconcile despite
-        // the suggested side using the opposite insertion order.
-        BlockAccessListAtIndex slice = new();
-        slice.AddBalanceChange(lowAddress, before: 0, after: 1);
-        slice.AddBalanceChange(highAddress, before: 0, after: 2);
-        balManager.GeneratedBlockAccessList.Merge(slice);
-
-        Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
-    }
-
-    [Test]
     public void Parallel_validation_uses_canonical_receipt_and_bal_indexes_with_scheduled_work_order()
     {
         int txCount = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(256) + 4;
@@ -958,8 +939,6 @@ public class BlockProcessorTests
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction[] transactions = CreateParallelValidationTransactions(txCount);
-        // Bump the last three tx gas limits so the scheduler's tail-sort surfaces them ahead of
-        // the canonical-lead prefix; receipts/balIndexes must still end up in natural tx order.
         transactions[txCount - 1].GasLimit = 1_000_000;
         transactions[txCount - 2].GasLimit = 900_000;
         transactions[txCount - 3].GasLimit = 800_000;
@@ -971,7 +950,7 @@ public class BlockProcessorTests
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
 
-        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = new();
         BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
             Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
             stateProvider,
@@ -997,6 +976,19 @@ public class BlockProcessorTests
         {
             Assert.That(balIndex, Is.EqualTo((uint)(txIndex + 1)));
         }
+    }
+
+    [Test]
+    public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
+    {
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = default;
+        GasValidationResultSlot[] gasResults = ResultsForCount(2);
+        gasResults[0].TrySetResult(new GasValidationResult(1, 2, intrinsicGas, null));
+
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor.CancelIncompleteGasResults(gasResults, gasResults.Length);
+
+        Assert.That(gasResults[0].GetResult().BlockGasUsed, Is.EqualTo(1));
+        Assert.Throws<TaskCanceledException>(() => gasResults[1].GetResult());
     }
 
     private static BlockAccessListManager CreateAmsterdamBalManager()
@@ -1035,17 +1027,6 @@ public class BlockProcessorTests
         Assert.That(balManager.ParallelExecutionEnabled, Is.True);
     }
 
-    private static GasValidationResult
-        GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
-        => new(blockGasUsed, blockStateGasUsed, EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit), exception);
-
-    private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
-    {
-        balManager.PrepareForProcessing(block, spec, options);
-        balManager.SetBlockExecutionContext(new(block.Header, spec));
-        balManager.Setup(block);
-    }
-
     private static GasValidationResultSlot[] ResultsForCount(int count)
     {
         GasValidationResultSlot[] results = new GasValidationResultSlot[count];
@@ -1055,6 +1036,20 @@ public class BlockProcessorTests
         }
 
         return results;
+    }
+
+    private static GasValidationResult
+        GasResult(Block block, int txIndex, long blockGasUsed, long blockStateGasUsed, InvalidBlockException? exception = null)
+    {
+        IntrinsicGas<EthereumGasPolicy> intrinsicGas = EthereumGasPolicy.CalculateIntrinsicGas(block.Transactions[txIndex], Amsterdam.Instance, block.Header.GasLimit);
+        return new(blockGasUsed, blockStateGasUsed, intrinsicGas, exception);
+    }
+
+    private static void PrepareSetup(BlockAccessListManager balManager, Block block, IReleaseSpec spec, ProcessingOptions options = ProcessingOptions.None)
+    {
+        balManager.PrepareForProcessing(block, spec, options);
+        balManager.SetBlockExecutionContext(new(block.Header, spec));
+        balManager.Setup(block);
     }
 
     private static GasValidationResultSlot[] BuildGasResults(Block block, params (long Gas, long StateGas, InvalidBlockException? Exception)[] rows)
@@ -1196,32 +1191,14 @@ public class BlockProcessorTests
 
             public void Dispose()
             {
-                if (_disposed) return;
+                if (_disposed)
+                {
+                    return;
+                }
+
                 _disposed = true;
                 factory.OnScopeDisposed();
             }
-        }
-    }
-
-    private sealed class BalIndexRecordingTransactionProcessorAdapter(
-        uint balIndex,
-        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes)
-        : ITransactionProcessorAdapter
-    {
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-        {
-            int txIndex = (int)transaction.Nonce;
-            balIndexes.Add((txIndex, balIndex));
-
-            long gasUsed = 21_000 + txIndex;
-            transaction.BlockGasUsed = gasUsed;
-            txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
-
-            return TransactionResult.Ok;
-        }
-
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-        {
         }
     }
 
@@ -1295,6 +1272,28 @@ public class BlockProcessorTests
         }
 
         public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
+        {
+        }
+    }
+
+    private sealed class BalIndexRecordingTransactionProcessorAdapter(
+        uint balIndex,
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes)
+        : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            int txIndex = (int)transaction.Nonce;
+            balIndexes.Add((txIndex, balIndex));
+
+            long gasUsed = 21_000 + txIndex;
+            transaction.BlockGasUsed = gasUsed;
+            txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
+
+            return TransactionResult.Ok;
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
         }
     }
