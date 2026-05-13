@@ -70,10 +70,4 @@ public interface IBlobArenaManager : IDisposable
     /// crash where Complete never ran.
     /// </summary>
     void SweepUnreferenced();
-
-    /// <summary>Number of blob arena files currently open. Telemetry only.</summary>
-    int BlobArenaFileCount { get; }
-
-    /// <summary>Total mmap'd bytes across blob arena files. Telemetry only.</summary>
-    long BlobArenaMappedBytes { get; }
 }

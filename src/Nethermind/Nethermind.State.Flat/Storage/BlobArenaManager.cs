@@ -72,18 +72,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
         Directory.CreateDirectory(basePath);
     }
 
-    public int BlobArenaFileCount => _files.Count;
-
-    public long BlobArenaMappedBytes
-    {
-        get
-        {
-            long sum = 0;
-            foreach (KeyValuePair<ushort, BlobFileEntry> kv in _files) sum += kv.Value.MaxSize;
-            return sum;
-        }
-    }
-
     /// <summary>
     /// Rehydrate the file pool from on-disk file lengths. Must be called before any
     /// <see cref="PersistedSnapshots.PersistedSnapshot"/> is constructed so

@@ -59,8 +59,6 @@ public sealed class PersistedSnapshotRepository(
     public int SnapshotCount => _baseSnapshots.Count + _compactedSnapshots.Count;
     public long BaseSnapshotMemory => SumMemory(_baseSnapshots);
     public long CompactedSnapshotMemory => SumMemory(_compactedSnapshots);
-    public int ArenaFileCount => _arena.ArenaFileCount;
-    public long ArenaMappedBytes => _arena.ArenaMappedBytes;
 
     /// <summary>
     /// Load this tier's persisted snapshots from its catalog. Routes each

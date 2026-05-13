@@ -12,8 +12,6 @@ public interface IPersistedSnapshotRepository : IDisposable
     int SnapshotCount { get; }
     long BaseSnapshotMemory { get; }
     long CompactedSnapshotMemory { get; }
-    int ArenaFileCount { get; }
-    long ArenaMappedBytes { get; }
     void LoadFromCatalog();
 
     // Two-layer storage

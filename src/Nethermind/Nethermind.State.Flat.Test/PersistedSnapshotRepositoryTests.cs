@@ -246,7 +246,8 @@ public class PersistedSnapshotRepositoryTests
 
         Assert.That(repo.SnapshotCount, Is.EqualTo(count));
         // Files stay packed: bounded by max file size / typical write size, not by snapshot count.
-        Assert.That(smallBlobs.BlobArenaFileCount, Is.LessThan(count),
+        int blobFileCount = Directory.GetFiles(Path.Combine(_testDir, "blobs", "small"), "blob_*.bin").Length;
+        Assert.That(blobFileCount, Is.LessThan(count),
             "expected many base snapshots to share blob arena files");
     }
 }

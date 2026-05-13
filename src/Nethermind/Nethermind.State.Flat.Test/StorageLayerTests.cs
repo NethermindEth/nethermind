@@ -243,7 +243,6 @@ public class StorageLayerTests
         }
 
         Assert.That(new FileInfo(dedicatedFile).Length, Is.EqualTo(data.Length));
-        Assert.That(manager.ArenaMappedBytes, Is.EqualTo(data.Length));
         using WholeReadSession session = manager.Open(location, ArenaReservationTags.Test).BeginWholeReadSession();
         Assert.That(session.AsSpanIntBounded().ToArray(), Is.EqualTo(data));
     }

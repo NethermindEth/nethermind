@@ -26,8 +26,6 @@ public sealed class MemoryArenaManager : IArenaManager
     }
 
     public PageResidencyTracker PageTracker => _inner.PageTracker;
-    public int ArenaFileCount => _inner.ArenaFileCount;
-    public long ArenaMappedBytes => _inner.ArenaMappedBytes;
 
     public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => _inner.Initialize(entries);
 

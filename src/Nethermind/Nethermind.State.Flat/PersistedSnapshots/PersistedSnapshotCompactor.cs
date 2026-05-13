@@ -165,8 +165,8 @@ public class PersistedSnapshotCompactor(
         Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
         Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
         Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
-        Metrics.ArenaFileCount = persistedSnapshotRepository.ArenaFileCount;
-        Metrics.ArenaMappedBytes = persistedSnapshotRepository.ArenaMappedBytes;
+        // Arena file/byte counters update themselves via push deltas in ArenaManager —
+        // no manual recompute needed here.
         return true;
     }
 }

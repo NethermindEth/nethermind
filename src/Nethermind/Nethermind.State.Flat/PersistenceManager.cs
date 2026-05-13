@@ -423,8 +423,8 @@ public class PersistenceManager(
                     Metrics.PersistedSnapshotCount = _smallRepo.SnapshotCount + _largeRepo.SnapshotCount;
                     Metrics.PersistedSnapshotMemory = _smallRepo.BaseSnapshotMemory + _largeRepo.BaseSnapshotMemory;
                     Metrics.CompactedPersistedSnapshotMemory = _smallRepo.CompactedSnapshotMemory + _largeRepo.CompactedSnapshotMemory;
-                    Metrics.ArenaFileCount = _smallRepo.ArenaFileCount + _largeRepo.ArenaFileCount;
-                    Metrics.ArenaMappedBytes = _smallRepo.ArenaMappedBytes + _largeRepo.ArenaMappedBytes;
+                    // Arena file/byte counters update themselves via push deltas in ArenaManager —
+                    // no manual recompute needed here.
                     if (_logger.IsDebug) _logger.Debug($"Pruned {pruned} persisted snapshots before block {persistedToPersist.To.BlockNumber}");
                 }
             }

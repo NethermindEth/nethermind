@@ -68,14 +68,4 @@ public unsafe interface IArenaManager : IDisposable
     /// the in-memory test arena) return a 0-capacity tracker whose <c>TryTouch</c> is a no-op.
     /// </summary>
     PageResidencyTracker PageTracker { get; }
-
-    /// <summary>
-    /// Number of arena files currently held by this manager.
-    /// </summary>
-    int ArenaFileCount { get; }
-
-    /// <summary>
-    /// Sum of mmap sizes across all arena files in this manager (bytes).
-    /// </summary>
-    long ArenaMappedBytes { get; }
 }

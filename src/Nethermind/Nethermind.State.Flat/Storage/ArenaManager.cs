@@ -23,6 +23,7 @@ public sealed class ArenaManager : IArenaManager
     private readonly long _maxArenaSize;
     private readonly long _dedicatedArenaThreshold;
     private readonly bool _fadviseOnEviction;
+    private readonly string _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
     private readonly Dictionary<int, long> _frontiers = [];
@@ -56,30 +57,13 @@ public sealed class ArenaManager : IArenaManager
 
     public PageResidencyTracker PageTracker => _pageTracker;
 
-    public int ArenaFileCount
-    {
-        get { lock (_lock) return _arenas.Count; }
-    }
-
-    public long ArenaMappedBytes
-    {
-        get
-        {
-            lock (_lock)
-            {
-                long sum = 0;
-                foreach (KeyValuePair<int, ArenaFile> kv in _arenas) sum += kv.Value.MappedSize;
-                return sum;
-            }
-        }
-    }
-
-    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold)
+    public ArenaManager(string basePath, long pageCacheBytes, long maxArenaSize = 1L * 1024 * 1024 * 1024, bool fadviseOnEviction = false, long dedicatedArenaThreshold = DefaultDedicatedArenaThreshold, string tier = "default")
     {
         _basePath = basePath;
         _maxArenaSize = maxArenaSize;
         _dedicatedArenaThreshold = dedicatedArenaThreshold;
         _fadviseOnEviction = fadviseOnEviction;
+        _tier = tier;
         Directory.CreateDirectory(basePath);
         _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
 
@@ -125,6 +109,7 @@ public sealed class ArenaManager : IArenaManager
                 _frontiers[arenaId] = 0;
                 _deadBytes[arenaId] = 0;
                 _nextArenaId = Math.Max(_nextArenaId, arenaId + 1);
+                OnArenaAdded(mappedSize);
 
                 if (isDedicated)
                     _standaloneFiles.Add(arenaId);
@@ -190,12 +175,14 @@ public sealed class ArenaManager : IArenaManager
                 && _arenas.TryGetValue(arenaId, out ArenaFile? oldFile)
                 && newFrontier < oldFile.MappedSize)
             {
+                long oldMappedSize = oldFile.MappedSize;
                 string path = oldFile.Path;
                 oldFile.Dispose();
                 using (Microsoft.Win32.SafeHandles.SafeFileHandle h =
                     File.OpenHandle(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite))
                     RandomAccess.SetLength(h, newFrontier);
                 _arenas[arenaId] = new ArenaFile(arenaId, path, newFrontier);
+                OnArenaResized(newFrontier - oldMappedSize);
             }
 
             SnapshotLocation location = new(arenaId, startOffset, actualSize);
@@ -220,6 +207,7 @@ public sealed class ArenaManager : IArenaManager
                 _standaloneFiles.Remove(arenaId);
                 if (_arenas.TryRemove(arenaId, out ArenaFile? file))
                 {
+                    OnArenaRemoved(file.MappedSize);
                     file.Dispose();
                     File.Delete(file.Path);
                 }
@@ -294,6 +282,7 @@ public sealed class ArenaManager : IArenaManager
                 _mutableArenas.Remove(location.ArenaId);
                 if (_arenas.TryRemove(location.ArenaId, out ArenaFile? file))
                 {
+                    OnArenaRemoved(file.MappedSize);
                     file.Dispose();
                     File.Delete(file.Path);
                 }
@@ -458,8 +447,32 @@ public sealed class ArenaManager : IArenaManager
         _deadBytes[id] = 0;
         if (dedicated) _standaloneFiles.Add(id);
         else _mutableArenas.Add(id);
+        OnArenaAdded(mappedSize);
         return arena;
     }
+
+    // Push-style gauge updates. Called under _lock at every file add / remove / resize site so
+    // Metrics.ArenaFileCountByTier / ArenaMappedBytesByTier stay consistent with _arenas without
+    // periodic iteration. ConcurrentDictionary.AddOrUpdate is atomic.
+    private void OnArenaAdded(long mappedSize)
+    {
+        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier,
+            static (_, _) => 1L, static (_, c, _) => c + 1, mappedSize);
+        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
+            static (_, m) => m, static (_, b, m) => b + m, mappedSize);
+    }
+
+    private void OnArenaRemoved(long mappedSize)
+    {
+        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier,
+            static (_, _) => 0L, static (_, c, _) => Math.Max(0, c - 1), mappedSize);
+        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
+            static (_, _) => 0L, static (_, b, m) => Math.Max(0, b - m), mappedSize);
+    }
+
+    private void OnArenaResized(long delta) =>
+        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
+            static (_, d) => d, static (_, b, d) => b + d, delta);
 
     private static int ParseArenaId(string filePath, bool dedicated)
     {
@@ -497,7 +510,10 @@ public sealed class ArenaManager : IArenaManager
         lock (_lock)
         {
             foreach (KeyValuePair<int, ArenaFile> kv in _arenas)
+            {
+                OnArenaRemoved(kv.Value.MappedSize);
                 kv.Value.Dispose();
+            }
             _arenas.Clear();
         }
         _pageTracker.Dispose();
