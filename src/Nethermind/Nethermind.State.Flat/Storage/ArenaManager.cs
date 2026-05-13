@@ -26,8 +26,10 @@ public sealed class ArenaManager : IArenaManager
     private readonly PersistedSnapshotTier _tier;
     // Make it prefer earlier arena.
     private readonly ConcurrentDictionary<int, ArenaFile> _arenas = new();
-    private readonly HashSet<int> _reservedArenas = [];
     private readonly HashSet<int> _standaloneFiles = [];
+    // Shared (non-dedicated) arenas with headroom for further packing AND not currently
+    // held by a writer. A writer reserves a file by removing it from this set; the writer's
+    // Complete / Cancel re-adds it (if room remains). Same pattern as BlobArenaManager.
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
     private readonly PageResidencyTracker _pageTracker;
@@ -154,34 +156,39 @@ public sealed class ArenaManager : IArenaManager
                 ? CreateArenaFile(estimatedSize, dedicated: true)
                 : GetOrCreateArena(estimatedSize);
             long offset = file.Frontier;
-            _reservedArenas.Add(file.Id);
+            // Reserve: remove from the mutable pool so no concurrent CreateWriter picks
+            // the same file. The writer's OnWriteCompleted / OnWriteCancelledShared
+            // re-adds the id if there's still room. Dedicated files never enter the
+            // mutable pool (they live in _standaloneFiles).
+            if (!dedicated) _mutableArenas.Remove(file.Id);
             FileStream stream = file.CreateWriteStream(offset);
             return new ArenaWriter(this, file, dedicated, offset, stream, tag);
         }
     }
 
     /// <summary>
-    /// Bookkeeping after <see cref="ArenaWriter.Complete"/>: clears the reservation marker
-    /// and applies the byte-metric delta for any dedicated trim. The writer has already
-    /// set <see cref="ArenaFile.Frontier"/> and (if dedicated) called <see cref="ArenaFile.Truncate"/>;
-    /// the manager does NOT touch the file here.
+    /// Bookkeeping after <see cref="ArenaWriter.Complete"/>. The writer has already set
+    /// <see cref="ArenaFile.Frontier"/> and (if dedicated) called <see cref="ArenaFile.Truncate"/>;
+    /// the manager does NOT touch the file here. <paramref name="hasHeadroom"/> is true for
+    /// shared writes whose post-frontier still leaves room for further packing.
     /// </summary>
-    internal void OnWriteCompleted(int arenaId, long resizeDelta)
+    internal void OnWriteCompleted(int arenaId, bool hasHeadroom, long resizeDelta)
     {
         lock (_lock)
         {
-            _reservedArenas.Remove(arenaId);
+            if (hasHeadroom) _mutableArenas.Add(arenaId);
             if (resizeDelta != 0) OnArenaResized(resizeDelta);
         }
     }
 
     /// <summary>
-    /// Bookkeeping after a cancelled write on a shared (non-dedicated) arena: just clear
-    /// the reservation marker. The file stays in <c>_arenas</c> for the next writer.
+    /// Bookkeeping after a cancelled write on a shared (non-dedicated) arena: return the id
+    /// to the mutable pool (the writer didn't advance the frontier, so by construction it
+    /// still has the same headroom it had when picked).
     /// </summary>
     internal void OnWriteCancelledShared(int arenaId)
     {
-        lock (_lock) _reservedArenas.Remove(arenaId);
+        lock (_lock) _mutableArenas.Add(arenaId);
     }
 
     /// <summary>
@@ -194,7 +201,6 @@ public sealed class ArenaManager : IArenaManager
     {
         lock (_lock)
         {
-            _reservedArenas.Remove(arenaId);
             _standaloneFiles.Remove(arenaId);
             _arenas.TryRemove(arenaId, out _);
             OnArenaRemoved(mappedSize);
@@ -369,12 +375,13 @@ public sealed class ArenaManager : IArenaManager
 
     private ArenaFile GetOrCreateArena(long requiredSize)
     {
-        // Scan only mutable arenas; remove any that can't fit (they become permanently read-only)
+        // Scan mutable arenas (files in this set are by definition not currently held by
+        // a writer — reservation == removal from _mutableArenas). Files that can't fit are
+        // pruned (they become permanently read-only from the manager's POV).
         List<int>? toRemove = null;
         ArenaFile? result = null;
         foreach (int id in _mutableArenas)
         {
-            if (_reservedArenas.Contains(id)) continue;
             ArenaFile candidate = _arenas[id];
             if (candidate.Frontier + requiredSize <= candidate.MappedSize)
             {
@@ -403,7 +410,8 @@ public sealed class ArenaManager : IArenaManager
         ArenaFile arena = new(id, path, mappedSize);
         _arenas[id] = arena;
         if (dedicated) _standaloneFiles.Add(id);
-        else _mutableArenas.Add(id);
+        // Fresh shared file isn't added to _mutableArenas — the writer that just took it
+        // is its "owner". The writer's Complete / Cancel adds it (if room remains).
         OnArenaAdded(mappedSize);
         return arena;
     }

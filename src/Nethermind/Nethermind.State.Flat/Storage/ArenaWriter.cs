@@ -59,7 +59,10 @@ public sealed class ArenaWriter : IDisposable
 
         SnapshotLocation location = new(_file.Id, _startOffset, actualSize);
         ArenaReservation reservation = new(_manager, _file, _file.Id, _startOffset, actualSize, _tag);
-        _manager.OnWriteCompleted(_file.Id, resizeDelta);
+        // Dedicated arenas are one-shot — they never return to the mutable pool. Shared
+        // arenas re-enter the pool iff there's still room for the next packing scan.
+        bool hasHeadroom = !_dedicated && newFrontier < _file.MappedSize;
+        _manager.OnWriteCompleted(_file.Id, hasHeadroom, resizeDelta);
         return (location, reservation);
     }
 
