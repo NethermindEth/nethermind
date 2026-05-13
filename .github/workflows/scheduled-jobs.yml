@@ -8,10 +8,13 @@ on:
     - cron: '0 0 * * *'
     # Thursday 19:29 UTC — trivy
     - cron: '29 19 * * 4'
+  push:
+    # Re-scan with CodeQL on every release tag (preserves pre-refactor codeql.yml trigger)
+    tags: ['*']
   workflow_dispatch:
     inputs:
       job:
-        description: Which scheduled job to run (all = run every job)
+        description: Which job to run (all = run every scheduled job)
         required: true
         default: all
         type: choice
@@ -21,7 +24,13 @@ on:
           - update-fast-sync
           - update-superchain
           - update-dockerfiles
+          - update-docs
           - trivy
+      docs_ref:
+        description: 'Ref for update-docs (branch or tag); only used when job=update-docs'
+        required: false
+        default: master
+        type: string
 
 permissions:
   contents: write
@@ -32,7 +41,7 @@ permissions:
 jobs:
   codeql:
     name: CodeQL
-    if: github.event.schedule == '0 0 * * 0' || inputs.job == 'codeql' || inputs.job == 'all'
+    if: github.event.schedule == '0 0 * * 0' || github.event_name == 'push' || inputs.job == 'codeql' || inputs.job == 'all'
     uses: ./.github/workflows/_security-scans.yml
     with:
       scans: 'codeql'
@@ -58,4 +67,13 @@ jobs:
     uses: ./.github/workflows/_scheduled-updates.yml
     with:
       which: 'update-dockerfiles'
+    secrets: inherit
+
+  update-docs:
+    name: Update docs
+    # Manual-only; excluded from 'all' since docs are normally regenerated via release-pipeline.yml on release events.
+    if: inputs.job == 'update-docs'
+    uses: ./.github/workflows/update-docs.yml
+    with:
+      ref: ${{ inputs.docs_ref || 'master' }}
     secrets: inherit

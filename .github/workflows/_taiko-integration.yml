@@ -9,9 +9,9 @@ permissions:
 jobs:
   surge:
     name: Surge integration tests
-    if: >-
-      ${{ github.event.pull_request.draft == false
-      && !startsWith(github.head_ref, 'release-please') }}
+    # pull_request-only gate: github.event.pull_request is null in merge_group/push,
+    # so this also acts as an implicit "PR-only" guard (matches pre-refactor ci-surge/ci-taiko).
+    if: github.event.pull_request.draft == false && !startsWith(github.head_ref, 'release-please')
     runs-on: [ubuntu-latest]
     timeout-minutes: 20
     env:
@@ -164,9 +164,9 @@ jobs:
 
   taiko:
     name: Taiko integration tests
-    if: >-
-      ${{ github.event.pull_request.draft == false
-      && !startsWith(github.head_ref, 'release-please') }}
+    # pull_request-only gate: github.event.pull_request is null in merge_group/push,
+    # so this also acts as an implicit "PR-only" guard (matches pre-refactor ci-surge/ci-taiko).
+    if: github.event.pull_request.draft == false && !startsWith(github.head_ref, 'release-please')
     runs-on: [ubuntu-latest]
     timeout-minutes: 20
     env:
