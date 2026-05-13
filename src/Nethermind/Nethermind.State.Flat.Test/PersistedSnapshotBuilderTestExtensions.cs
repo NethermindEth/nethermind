@@ -23,8 +23,8 @@ internal static class PersistedSnapshotBuilderTestExtensions
         string tempDir = Path.Combine(Path.GetTempPath(), "nm-blobtest-" + Guid.NewGuid().ToString("N"));
         try
         {
-            using BlobArenaManager blobs = new(tempDir, 4L * 1024 * 1024, ArenaReservationTags.BlobSmall);
-            using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize, "TestBlob");
+            using BlobArenaManager blobs = new(tempDir, 4L * 1024 * 1024, PersistedSnapshotTier.Small);
+            using BlobArenaWriter blobWriter = blobs.CreateWriter(estimatedSize);
             PersistedSnapshotBuilder.Build<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
                 snapshot, ref pooled.GetWriter(), blobWriter);
             blobWriter.Complete();

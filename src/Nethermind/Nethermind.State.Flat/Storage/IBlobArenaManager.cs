@@ -39,7 +39,7 @@ public interface IBlobArenaManager : IDisposable
     /// Open a writer that appends RLP items into a blob arena file (either
     /// an existing one with headroom, or a fresh one).
     /// </summary>
-    BlobArenaWriter CreateWriter(long estimatedSize, string tag);
+    BlobArenaWriter CreateWriter(long estimatedSize);
 
     /// <summary>
     /// Acquire a lease on the file identified by <paramref name="blobArenaId"/>. Returns

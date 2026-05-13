@@ -55,7 +55,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         _blobs = new BlobArenaManager(
             Path.Combine(_testDir, "blobs"),
             maxFileSize: 16 * 1024 * 1024,
-            ArenaReservationTags.BlobSmall);
+            PersistedSnapshotTier.Small);
         _repo = new PersistedSnapshotRepository(
             _arena, _blobs, new MemDb(),
             new FlatDbConfig(), new PersistedSnapshotBloomFilterManager());

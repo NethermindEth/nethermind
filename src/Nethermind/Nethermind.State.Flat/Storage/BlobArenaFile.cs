@@ -21,10 +21,11 @@ namespace Nethermind.State.Flat.Storage;
 /// </para>
 ///
 /// <para>
-/// Owns its own contribution to <see cref="Metrics.ArenaReservationCountByTag"/> /
-/// <see cref="Metrics.ArenaReservationBytesByTag"/> under <see cref="_reservationTag"/>:
-/// the count gauge is bumped on construction and dropped on <see cref="CleanUp"/>; the
-/// bytes gauge grows via <see cref="OnFrontierGrew"/> as the file is appended to.
+/// Owns its own contribution to <see cref="Metrics.ArenaFileCountByTier"/> /
+/// <see cref="Metrics.ArenaMappedBytesByTier"/> under <see cref="_tier"/>: count +1 and
+/// bytes <c>+MaxSize</c> on construction; symmetric -1 / -<c>MaxSize</c> on
+/// <see cref="CleanUp"/>. The bytes gauge reports disk allocation per tier, matching
+/// <see cref="ArenaManager"/>'s file-add metric semantics.
 /// </para>
 /// </summary>
 public sealed class BlobArenaFile : RefCountingDisposable
@@ -33,10 +34,7 @@ public sealed class BlobArenaFile : RefCountingDisposable
     // PersistOnShutdown via Interlocked.Exchange so it is safe to call from any path.
     private int _preserveOnDispose;
 
-    private readonly string _reservationTag;
-    // Cumulative bytes this file has added to ArenaReservationBytesByTag — used by
-    // CleanUp to balance the gauge symmetrically with the increments we emitted.
-    private long _registeredBytes;
+    private readonly PersistedSnapshotTier _tier;
 
     /// <summary>Stable file id, narrowed from int to ushort. Embedded in every <see cref="NodeRef"/>.</summary>
     public ushort BlobArenaId { get; }
@@ -53,9 +51,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
     /// <summary>Next-write offset. Mutated under the manager's lock during writer registration.</summary>
     internal long Frontier { get; set; }
 
-    internal BlobArenaFile(string reservationTag, ushort id, string path, long maxSize, long frontier)
+    internal BlobArenaFile(PersistedSnapshotTier tier, ushort id, string path, long maxSize, long frontier)
     {
-        _reservationTag = reservationTag;
+        _tier = tier;
         BlobArenaId = id;
         Path = path;
         MaxSize = maxSize;
@@ -65,16 +63,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
         if (RandomAccess.GetLength(Handle) < maxSize)
             RandomAccess.SetLength(Handle, maxSize);
         Frontier = frontier;
-        // Register one count immediately; the bytes gauge gets seeded with whatever the
-        // on-disk file already contains (Initialize-loaded files). Fresh writer-created
-        // files start at 0 and grow via OnFrontierGrew on RegisterCompleted.
-        Metrics.ArenaReservationCountByTag.AddOrUpdate(reservationTag, 1L, static (_, c) => c + 1);
-        if (frontier > 0)
-        {
-            _registeredBytes = frontier;
-            Metrics.ArenaReservationBytesByTag.AddOrUpdate(reservationTag,
-                static (_, s) => s, static (_, b, s) => b + s, frontier);
-        }
+        Metrics.ArenaFileCountByTier.AddOrUpdate(tier, 1L, static (_, c) => c + 1);
+        Metrics.ArenaMappedBytesByTier.AddOrUpdate(tier,
+            static (_, m) => m, static (_, b, m) => b + m, maxSize);
     }
 
     /// <summary>
@@ -132,19 +123,6 @@ public sealed class BlobArenaFile : RefCountingDisposable
         return fs;
     }
 
-    /// <summary>
-    /// Add <paramref name="delta"/> bytes to this file's contribution to the bytes gauge.
-    /// Called by <see cref="BlobArenaManager.RegisterCompleted"/> after a writer commits a
-    /// new frontier so the gauge tracks file growth in real time.
-    /// </summary>
-    internal void OnFrontierGrew(long delta)
-    {
-        if (delta <= 0) return;
-        _registeredBytes += delta;
-        Metrics.ArenaReservationBytesByTag.AddOrUpdate(_reservationTag,
-            static (_, s) => s, static (_, b, s) => b + s, delta);
-    }
-
     protected override void CleanUp()
     {
         Handle.Dispose();
@@ -154,13 +132,9 @@ public sealed class BlobArenaFile : RefCountingDisposable
         {
             try { File.Delete(Path); } catch { /* best-effort */ }
         }
-        // Symmetric drop: one count, _registeredBytes bytes.
-        Metrics.ArenaReservationCountByTag.AddOrUpdate(_reservationTag,
+        Metrics.ArenaFileCountByTier.AddOrUpdate(_tier,
             0L, static (_, c) => Math.Max(0, c - 1));
-        if (_registeredBytes > 0)
-        {
-            Metrics.ArenaReservationBytesByTag.AddOrUpdate(_reservationTag,
-                static (_, _) => 0L, static (_, b, s) => Math.Max(0, b - s), _registeredBytes);
-        }
+        Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
+            static (_, _) => 0L, static (_, b, m) => Math.Max(0, b - m), MaxSize);
     }
 }

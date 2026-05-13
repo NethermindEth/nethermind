@@ -18,12 +18,6 @@ public static class ArenaReservationTags
     /// <summary>Metadata reservation for a large-tier snapshot (To-From &gt;= CompactSize).</summary>
     public const string BlobBackedLarge = "BlobBackedLarge";
 
-    /// <summary>Blob arena reservation in the small-tier blob pool.</summary>
-    public const string BlobSmall = "BlobSmall";
-
-    /// <summary>Blob arena reservation in the large-tier blob pool.</summary>
-    public const string BlobLarge = "BlobLarge";
-
     /// <summary>In-memory temp arena used during NWayMergeSnapshots (metadata merge).</summary>
     public const string TempLinkedConversion = "TempLinkedConversion";
 

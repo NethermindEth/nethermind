@@ -40,7 +40,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
     private readonly string _basePath;
     private readonly long _maxFileSize;
-    private readonly string _reservationTag;
+    private readonly PersistedSnapshotTier _tier;
     private readonly Lock _lock = new();
     // Indexed by blob arena id. Null slot = no file. Reads (TryLeaseFile lookup) are
     // unlocked — reference-slot reads are atomic in the CLR memory model. Slot mutations
@@ -55,16 +55,16 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
     /// <summary>
     /// Construct a blob arena manager rooted at <paramref name="basePath"/> with a per-file
-    /// size cap of <paramref name="maxFileSize"/>. <paramref name="reservationTag"/> tags
-    /// metric updates (typically <see cref="ArenaReservationTags.BlobSmall"/> or
-    /// <see cref="ArenaReservationTags.BlobLarge"/>); passed through to every
-    /// <see cref="BlobArenaFile"/> this manager constructs.
+    /// size cap of <paramref name="maxFileSize"/>. <paramref name="tier"/> is the
+    /// pool-tier label (small / large); passed through to every <see cref="BlobArenaFile"/>
+    /// for its <see cref="Metrics.ArenaFileCountByTier"/> / <see cref="Metrics.ArenaMappedBytesByTier"/>
+    /// contributions.
     /// </summary>
-    public BlobArenaManager(string basePath, long maxFileSize, string reservationTag)
+    public BlobArenaManager(string basePath, long maxFileSize, PersistedSnapshotTier tier)
     {
         _basePath = basePath;
         _maxFileSize = maxFileSize;
-        _reservationTag = reservationTag;
+        _tier = tier;
         Directory.CreateDirectory(basePath);
     }
 
@@ -85,7 +85,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
                 if (id < 0 || id > ushort.MaxValue) continue;
                 long len = new FileInfo(path).Length;
                 long maxSize = len > 0 ? Math.Max(len, _maxFileSize) : _maxFileSize;
-                BlobArenaFile file = new(_reservationTag, (ushort)id, path, maxSize, frontier: len);
+                BlobArenaFile file = new(_tier, (ushort)id, path, maxSize, frontier: len);
                 _files[id] = file;
                 _nextFileId = Math.Max(_nextFileId, id + 1);
                 if (len < _maxFileSize) _mutableFiles.Add((ushort)id);
@@ -100,7 +100,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
     /// drops it. The caller takes a separate snapshot lease via <see cref="TryLeaseFile"/>
     /// before disposing the writer.
     /// </summary>
-    public BlobArenaWriter CreateWriter(long estimatedSize, string tag)
+    public BlobArenaWriter CreateWriter(long estimatedSize)
     {
         lock (_lock)
         {
@@ -141,7 +141,7 @@ public sealed class BlobArenaManager : IBlobArenaManager
                         $"Blob arena file id space exhausted ({ushort.MaxValue + 1} files).");
                 fileId = (ushort)_nextFileId++;
                 string path = Path.Combine(_basePath, $"{BlobFilePrefix}{fileId:D4}{BlobFileExtension}");
-                file = new BlobArenaFile(_reservationTag, fileId, path, _maxFileSize, frontier: 0);
+                file = new BlobArenaFile(_tier, fileId, path, _maxFileSize, frontier: 0);
                 _files[fileId] = file;
                 // Fresh file isn't added to _mutableFiles yet — Complete/Cancel adds it.
                 startOffset = 0;
@@ -193,7 +193,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
             BlobArenaFile file = _files[blobArenaId]
                 ?? throw new InvalidOperationException(
                     $"Blob arena {blobArenaId} is not registered; cannot register completion.");
-            file.OnFrontierGrew(bytesWritten);
             file.Frontier = newFrontier;
             // Un-reserve: return the file to the mutable pool iff it still has room.
             if (newFrontier < file.MaxSize) _mutableFiles.Add(blobArenaId);

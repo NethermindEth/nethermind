@@ -23,11 +23,10 @@ namespace Nethermind.State.Flat.PersistedSnapshots;
 ///   its compactor merges these into 2×, 4×, ... CompactSize spans.</item>
 /// </list>
 /// Each instance owns its <c>(ArenaManager, BlobArenaManager,
-/// SnapshotCatalog)</c> set plus a fixed pair of reservation tags
-/// (<paramref name="metaTag"/>/<paramref name="blobTag"/>) used for arena
-/// labeling. Blob arena ids are unique within a repo, not across repos;
-/// <c>PersistedSnapshot</c>s only ever resolve <c>NodeRef</c>s through their
-/// own repo's blob manager.
+/// SnapshotCatalog)</c> set plus a reservation tag (<paramref name="metaTag"/>) used
+/// for the metadata-arena reservation label. Blob arena ids are unique within a repo,
+/// not across repos; <c>PersistedSnapshot</c>s only ever resolve <c>NodeRef</c>s through
+/// their own repo's blob manager.
 /// </summary>
 public sealed class PersistedSnapshotRepository(
     IArenaManager arenaManager,
@@ -35,8 +34,7 @@ public sealed class PersistedSnapshotRepository(
     IDb catalogDb,
     IFlatDbConfig config,
     PersistedSnapshotBloomFilterManager bloomManager,
-    string metaTag = ArenaReservationTags.BlobBackedSmall,
-    string blobTag = ArenaReservationTags.BlobSmall) : IPersistedSnapshotRepository
+    string metaTag = ArenaReservationTags.BlobBackedSmall) : IPersistedSnapshotRepository
 {
     private readonly IArenaManager _arena = arenaManager;
     private readonly IBlobArenaManager _blobs = blobArenaManager;
@@ -46,7 +44,6 @@ public sealed class PersistedSnapshotRepository(
     private readonly double _bloomBitsPerKey = config.PersistedSnapshotBloomBitsPerKey;
     private readonly double _trieBloomBitsPerKey = config.PersistedSnapshotTrieBloomBitsPerKey;
     private readonly string _metaTag = metaTag;
-    private readonly string _blobTag = blobTag;
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _baseSnapshots = new();
     private readonly ConcurrentDictionary<StateId, PersistedSnapshot> _compactedSnapshots = new();
     // Shared across both per-tier repos. Owned by the DI container, not this repo —
@@ -179,7 +176,7 @@ public sealed class PersistedSnapshotRepository(
         SnapshotLocation location;
         ArenaReservation reservation;
         ushort blobArenaId;
-        using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize, _blobTag);
+        using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize);
         using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize, _metaTag))
         {
             PersistedSnapshotBuilder.Build<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
