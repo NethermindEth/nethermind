@@ -19,7 +19,7 @@ namespace Nethermind.Xdc.RPC;
 internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IQuorumCertificateManager quorumCertificateManager, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, ISyncInfoManager syncInfoManager, IRewardsStore rewardsStore) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> CalculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
-        throw new NotSupportedException("Calculating block info by V1 epoch number is not supported because only XDC V2 is supported");
+        ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
 
     public ResultWrapper<EpochNumInfo> GetBlockInfoByEpochNum(ulong epochNumber)
     {

@@ -170,8 +170,15 @@ public class RpcModuleTests
     #region CalculateBlockInfoByV1EpochNum Tests
 
     [Test]
-    public void CalculateBlockInfoByV1EpochNum_ShouldThrowNotSupportedException() =>
-        Assert.Throws<NotSupportedException>(() => _rpcModule.CalculateBlockInfoByV1EpochNum(1));
+    public void CalculateBlockInfoByV1EpochNum_ShouldReturnFail_WhenV1EpochIsRequested()
+    {
+        // Act
+        ResultWrapper<EpochNumInfo> result = _rpcModule.CalculateBlockInfoByV1EpochNum(1);
+
+        // Assert
+        result.Result.Should().NotBe(Result.Success);
+        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
+    }
 
     #endregion
 
@@ -247,7 +254,7 @@ public class RpcModuleTests
     #region GetBlockInfoByEpochNum Tests
 
     [Test]
-    public void GetBlockInfoByEpochNum_ShouldCallV1Method_WhenEpochNumberBelowSwitchEpoch()
+    public void GetBlockInfoByEpochNum_ShouldReturnFail_WhenEpochNumberBelowSwitchEpoch()
     {
         // Arrange
         ulong epochNumber = 3;
@@ -261,8 +268,12 @@ public class RpcModuleTests
         IXdcReleaseSpec spec = CreateDummyXdcReleaseSpec(switchEpoch: switchEpoch, configsCount: (int)epochNumber);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
-        // Act & Assert
-        Assert.Throws<NotSupportedException>(() => _rpcModule.GetBlockInfoByEpochNum(epochNumber));
+        // Act
+        ResultWrapper<EpochNumInfo> result = _rpcModule.GetBlockInfoByEpochNum(epochNumber);
+
+        // Assert
+        result.Result.Should().NotBe(Result.Success);
+        result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
     [Test]
