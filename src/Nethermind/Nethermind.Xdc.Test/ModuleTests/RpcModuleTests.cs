@@ -167,8 +167,6 @@ public class RpcModuleTests
             _rewardsStore);
     }
 
-    #region CalculateBlockInfoByV1EpochNum Tests
-
     [Test]
     public void CalculateBlockInfoByV1EpochNum_ShouldReturnFail_WhenV1EpochIsRequested()
     {
@@ -180,9 +178,6 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
-
-    #region GetBlockInfoByV2EpochNum Tests
 
     [Test]
     public void GetBlockInfoByV2EpochNum_ShouldReturnSuccess_WhenEpochExists()
@@ -249,9 +244,6 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
-
-    #region GetBlockInfoByEpochNum Tests
 
     [Test]
     public void GetBlockInfoByEpochNum_ShouldReturnFail_WhenEpochNumberBelowSwitchEpoch()
@@ -302,9 +294,6 @@ public class RpcModuleTests
         _epochSwitchManager.Received(1).GetBlockByEpochNumber(epochNumber);
     }
 
-    #endregion
-
-    #region GetEpochNumbersBetween Tests
 
     [Test]
     public void GetEpochNumbersBetween_ShouldReturnSuccess_WhenValidRange()
@@ -449,9 +438,6 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
-
-    #region GetLatestPoolStatus Tests
 
     [Test]
     public void GetLatestPoolStatus_ShouldReturnSuccess_WhenValidState()
@@ -539,9 +525,6 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
-
-    #region GetMasternodesByNumber Tests
 
     [Test]
     public void GetMasternodesByNumber_ShouldReturnSuccess_WithLatestBlockParameter()
@@ -694,9 +677,6 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
-
-    #region GetSigners Tests
 
     [Test]
     public void GetSigners_ShouldReturnSuccess_WithLatestBlockParameter()
@@ -780,9 +760,6 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
-
-    #region GetMissedRoundsInEpochByBlockNum Tests
 
     [Test]
     public void GetMissedRoundsInEpochByBlockNum_ShouldReturnFail_WhenInvalidBlockNumber()
@@ -830,9 +807,6 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
-
-    #region GetRewardByAccount Tests
 
     [Test]
     public void GetRewardByAccount_ShouldReturnSuccess_WhenRewardsExist()
@@ -986,5 +960,4 @@ public class RpcModuleTests
         result.ErrorCode.Should().Be(ErrorCodes.InternalError);
     }
 
-    #endregion
 }
