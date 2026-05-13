@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -91,7 +91,9 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
             if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
             {
-                rlpStream.Encode(networkWrapper.CellMask.ToBytes());
+                Span<byte> cellMaskBytes = stackalloc byte[BlobCellMask.FixedByteLength];
+                networkWrapper.CellMask.WriteTo(cellMaskBytes);
+                rlpStream.Encode(cellMaskBytes);
                 rlpStream.Encode(networkWrapper.Cells ?? []);
             }
         }
@@ -133,7 +135,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
 
         if (rlpBehaviors.HasFlag(RlpBehaviors.Storage) && decoderContext.PeekNumberOfItemsRemaining(maxSearch: 2) > 0)
         {
-            cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan().ToArray());
+            cellMask = BlobCellMask.FromBytes(decoderContext.DecodeByteArraySpan());
             byte[][] decodedCells = decoderContext.DecodeByteArrays(NetworkWrapperCellProofsCountLimit);
             cells = cellMask.IsEmpty && decodedCells.Length == 0 ? null : decodedCells;
         }
@@ -167,7 +169,7 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
                    + Rlp.LengthOf(networkWrapper.Commitments)
                    + Rlp.LengthOf(networkWrapper.Proofs)
                    + (rlpBehaviors.HasFlag(RlpBehaviors.Storage)
-                       ? Rlp.LengthOf(networkWrapper.CellMask.ToBytes()) + Rlp.LengthOf(networkWrapper.Cells ?? [])
+                       ? Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0) + Rlp.LengthOf(networkWrapper.Cells ?? [])
                        : 0);
         }
     }
