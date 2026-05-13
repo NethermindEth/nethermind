@@ -183,7 +183,7 @@ public class PersistedSnapshotRepositoryTests
         Assert.That(readSlot.AsReadOnlySpan.ToArray(), Is.EqualTo(slotBytes));
 
         // 3. Self-destruct flag
-        Assert.That(persisted.IsSelfDestructed(ValueKeccak.Compute(selfDestructAddr.Bytes)), Is.True);
+        Assert.That(persisted.TryGetSelfDestructFlag(ValueKeccak.Compute(selfDestructAddr.Bytes)), Is.Not.Null);
 
         // 4. State trie node
         Assert.That(persisted.TryLoadStateNodeRlp(statePath, out byte[]? stateResult), Is.True);

@@ -59,7 +59,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -98,7 +98,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -136,7 +136,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         Snapshot snap = new(s0, s1, content, _pool, ResourcePool.Usage.MainBlockProcessing);
         byte[] hsstData = PersistedSnapshotBuilderTestExtensions.Build(snap, _blobs);
 
-        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, hsstData);
+        PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, hsstData);
         PersistedSnapshotList list = new(1);
         list.Add(persisted);
 
@@ -182,7 +182,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         reader.Received(1).TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>());
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, PersistedSnapshotType type, byte[] data)
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
         Span<byte> span = writer.GetWriter().GetSpan(data.Length);

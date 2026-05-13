@@ -87,16 +87,6 @@ public static class PersistedSnapshotReader
         return true;
     }
 
-    internal static bool IsSelfDestructed<TReader, TPin>(scoped in TReader reader, Bound addressBound)
-        where TPin : struct, IBufferPin, allows ref struct
-        where TReader : IHsstByteReader<TPin>, allows ref struct
-    {
-        using HsstReader<TReader, TPin> r = new(in reader, addressBound);
-        // Presence-marker encoding: an entry of length 0 means "no SD record" (gap-filled
-        // by DenseByteIndex); only a non-empty value (with marker [0x00]/[0x01]) counts.
-        return r.TrySeek(PersistedSnapshot.SelfDestructSubTag, out Bound sd) && sd.Length > 0;
-    }
-
     internal static bool? TryGetSelfDestructFlag<TReader, TPin>(scoped in TReader reader, Bound addressBound)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct

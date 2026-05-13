@@ -34,17 +34,6 @@ public class PersistedSnapshotCompactorTests
     public void TearDown() =>
         _memArena.Dispose();
 
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, PersistedSnapshotType type, byte[] data,
-        PersistedSnapshot[]? referencedSnapshots = null)
-    {
-        using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
-        Span<byte> span = writer.GetWriter().GetSpan(data.Length);
-        data.CopyTo(span);
-        writer.GetWriter().Advance(data.Length);
-        (_, ArenaReservation reservation) = writer.Complete();
-        return new PersistedSnapshot(from, to, reservation, NullBlobArenaManager.Instance);
-    }
-
     [Test]
     public void TryCompactPersistedSnapshots_MergesMultipleBaseSnapshots()
     {
@@ -449,7 +438,7 @@ public class PersistedSnapshotCompactorTests
                     Assert.That(s.TryGetSlot(hashA, 2, ref slot2), Is.True);
                     Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
 
-                    Assert.That(s.IsSelfDestructed(ValueKeccak.Compute(TestItem.AddressB.Bytes)), Is.True,
+                    Assert.That(s.TryGetSelfDestructFlag(ValueKeccak.Compute(TestItem.AddressB.Bytes)), Is.Not.Null,
                         "Self-destruct flag for B (set in c0) must be present after compaction");
 
                     Assert.That(s.TryLoadStateNodeRlp(statePath, out byte[]? stateRlp), Is.True);
@@ -521,8 +510,7 @@ public class PersistedSnapshotCompactorTests
                     SlotValue slot2 = default;
                     Assert.That(s.TryGetSlot(hashA, 2, ref slot2), Is.True);
                     Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
-                    Assert.That(s.IsSelfDestructed(hashA), Is.True, "Destruct flag must be present");
-                    Assert.That(s.TryGetSelfDestructFlag(hashA), Is.False, "Destruct flag value must be `false` (destructed)");
+                    Assert.That(s.TryGetSelfDestructFlag(hashA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
                 }))
                 .SetName("Merge_SelfDestruct_ClearsOlderStorage");
         }
@@ -538,7 +526,6 @@ public class PersistedSnapshotCompactorTests
                 (Action<PersistedSnapshot>)(s =>
                 {
                     ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
-                    Assert.That(s.IsSelfDestructed(hashA), Is.True);
                     Assert.That(s.TryGetSelfDestructFlag(hashA), Is.False,
                         "Older `false` (destructed) flag must win over newer `true` (new-account) flag");
                 }))

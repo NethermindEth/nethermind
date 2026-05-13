@@ -66,7 +66,7 @@ public class LongFinalityIntegrationTests
         return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
     }
 
-    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, PersistedSnapshotType type, byte[] data,
+    private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data,
         PersistedSnapshot[]? referencedSnapshots = null)
     {
         using ArenaWriter writer = _memArena.CreateWriter(data.Length, ArenaReservationTags.Test);
@@ -200,14 +200,14 @@ public class LongFinalityIntegrationTests
 
         byte[] data1 = PersistedSnapshotBuilderTestExtensions.Build(snap1, _helperBlobs);
         byte[] data2 = PersistedSnapshotBuilderTestExtensions.Build(snap2, _helperBlobs);
-        PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, PersistedSnapshotType.Full, data1);
-        PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, PersistedSnapshotType.Full, data2);
+        PersistedSnapshot baseSnap1 = CreatePersistedSnapshot(s0, s1, data1);
+        PersistedSnapshot baseSnap2 = CreatePersistedSnapshot(s1, s2, data2);
         PersistedSnapshotList toMerge = new(2);
         toMerge.Add(baseSnap1);
         toMerge.Add(baseSnap2);
         byte[] merged = PersistedSnapshotBuilderTestExtensions.MergeSnapshots(toMerge);
 
-        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, PersistedSnapshotType.Linked, merged,
+        PersistedSnapshot mergedSnap = CreatePersistedSnapshot(s0, s2, merged,
             [baseSnap1, baseSnap2]);
 
         // State node should have newer value

@@ -224,7 +224,6 @@ public class PersistedSnapshotBenchmark
             id: 0,
             from: initialStateId,
             to: new StateId(1, scope.RootHash),
-            type: PersistedSnapshotType.Full,
             reservation: reservation);
 
         // Verify hit arrays are populated (thrown in Release too, unlike Debug.Assert)

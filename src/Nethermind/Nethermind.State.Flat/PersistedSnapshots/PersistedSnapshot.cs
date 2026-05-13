@@ -173,13 +173,6 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         return true;
     }
 
-    public bool IsSelfDestructed(in ValueHash256 addressHash)
-    {
-        ArenaByteReader reader = CreateReader();
-        return TryGetAddressBound(in reader, in addressHash, out Bound addrBound)
-            && PersistedSnapshotReader.IsSelfDestructed<ArenaByteReader, NoOpPin>(in reader, addrBound);
-    }
-
     public bool? TryGetSelfDestructFlag(in ValueHash256 addressHash)
     {
         ArenaByteReader reader = CreateReader();
