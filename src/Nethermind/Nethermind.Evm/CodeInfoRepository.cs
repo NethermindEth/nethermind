@@ -120,6 +120,14 @@ public class CodeInfoRepository : ICodeInfoRepository
         return worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
     }
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress)
+    {
+        if (!_worldState.HasCode(address))
+        {
+            delegatedAddress = null;
+            return false;
+        }
+
+        return ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+    }
 }
