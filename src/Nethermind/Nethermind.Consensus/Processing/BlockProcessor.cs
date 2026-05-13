@@ -133,10 +133,18 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
-        // Cancel prewarming before tx execution to avoid CPU contention
         TransactionsStarting?.Invoke();
 
+        // Suppress GC during transaction execution to avoid non-deterministic pauses
+        bool noGcActive = false;
+        try { noGcActive = GC.TryStartNoGCRegion(256 * 1024 * 1024, disallowFullBlockingGC: true); } catch { }
+
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        if (noGcActive && System.Runtime.GCSettings.LatencyMode == System.Runtime.GCLatencyMode.NoGCRegion)
+        {
+            try { GC.EndNoGCRegion(); } catch { }
+        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
