@@ -224,19 +224,16 @@ public sealed class ArenaManager : IArenaManager
 
     /// <summary>
     /// Open an existing snapshot location as an <see cref="ArenaReservation"/> for zero-copy reads.
-    /// Lookup + lease acquisition happens under the manager's lock so a concurrent
-    /// <see cref="MarkDead(ArenaFile, long)"/> can't tear the file down mid-construction. If the
-    /// file has already started its CleanUp the reservation's ctor surfaces an
-    /// <see cref="InvalidOperationException"/> from its <see cref="ArenaFile.TryAcquireLease"/>.
+    /// Lookup is lock-free against the <see cref="ConcurrentDictionary{TKey,TValue}"/>; the race
+    /// with a concurrent <see cref="MarkDead(ArenaFile, long)"/> tearing the file down is resolved
+    /// by <see cref="ArenaFile.TryAcquireLease"/> inside the reservation's ctor — if the file has
+    /// already started its CleanUp, the ctor surfaces an <see cref="InvalidOperationException"/>.
     /// </summary>
     public ArenaReservation Open(in SnapshotLocation location, string tag)
     {
-        lock (_lock)
-        {
-            if (!_arenas.TryGetValue(location.ArenaId, out ArenaFile? arenaFile))
-                throw new InvalidOperationException($"Arena {location.ArenaId} is not registered with this manager.");
-            return new ArenaReservation(this, arenaFile, location.ArenaId, location.Offset, location.Size, tag);
-        }
+        if (!_arenas.TryGetValue(location.ArenaId, out ArenaFile? arenaFile))
+            throw new InvalidOperationException($"Arena {location.ArenaId} is not registered with this manager.");
+        return new ArenaReservation(this, arenaFile, location.ArenaId, location.Offset, location.Size, tag);
     }
 
     /// <summary>

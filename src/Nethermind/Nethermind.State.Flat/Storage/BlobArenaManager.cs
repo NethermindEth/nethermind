@@ -161,23 +161,18 @@ public sealed class BlobArenaManager : IBlobArenaManager
 
     public bool TryLeaseFile(ushort blobArenaId, [NotNullWhen(true)] out BlobArenaFile? file)
     {
-        lock (_lock)
+        // Lock-free: reference-slot reads are atomic and TryAcquireLease guards the race
+        // where the file is mid-CleanUp (see the comment on _files). SweepUnreferenced/Dispose
+        // either land before our read (slot is null) or after our lease (HasOnlyManagerLease
+        // sees the extra lease and skips).
+        BlobArenaFile? candidate = _files[blobArenaId];
+        if (candidate is null || !candidate.TryAcquireLease())
         {
-            BlobArenaFile? candidate = _files[blobArenaId];
-            if (candidate is null)
-            {
-                file = null;
-                return false;
-            }
-            // TryAcquireLease guards against the race where the file is mid-CleanUp.
-            if (!candidate.TryAcquireLease())
-            {
-                file = null;
-                return false;
-            }
-            file = candidate;
-            return true;
+            file = null;
+            return false;
         }
+        file = candidate;
+        return true;
     }
 
     public BlobArenaFile GetFile(ushort blobArenaId) =>
