@@ -18,6 +18,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.History;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 
@@ -46,7 +47,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
             .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
+            .AddSingleton<OldestStateBlockStore, IDbProvider>(dbProvider => new OldestStateBlockStore(dbProvider.MetadataDb));
 
         builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
             .AddDecorator<ILogIndexConfig>((ctx, config) =>

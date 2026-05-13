@@ -20,16 +20,9 @@ public interface IWorldStateManager
     /// <summary>
     /// Configured rolling-window retention in blocks (e.g. trie memory pruning). Null when
     /// there is no rolling window (archive, full pruning, flat storage); the absolute floor is
-    /// then reported via <see cref="OldestStateBlock"/>.
+    /// then reported via <see cref="OldestStateBlockStore"/>.
     /// </summary>
     long? RetentionWindowBlocks { get; }
-
-    /// <summary>
-    /// Absolute lower bound of the persisted state window. Updated when fast/snap sync
-    /// completes (= pivot) and after a full pruning run completes (= copied state's block).
-    /// Null if never set (archive node syncing from genesis).
-    /// </summary>
-    long? OldestStateBlock { get; set; }
 
     /// <summary>
     /// Used by read only tasks that need to execute blocks.

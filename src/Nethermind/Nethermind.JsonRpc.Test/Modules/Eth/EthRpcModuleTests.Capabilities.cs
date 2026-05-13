@@ -9,6 +9,7 @@ using Nethermind.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Json;
@@ -41,8 +42,10 @@ public partial class EthRpcModuleTests
         blockTree.BestSuggestedHeader.Returns(head.Header);
 
         IWorldStateManager wsm = Substitute.For<IWorldStateManager>();
-        wsm.OldestStateBlock.Returns(oldestStateBlock);
         wsm.RetentionWindowBlocks.Returns(retentionWindow);
+
+        OldestStateBlockStore floor = new(new MemDb());
+        floor.Value = oldestStateBlock;
 
         ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
         syncPointers.LowestInsertedBodyNumber.Returns(lowestInsertedBody);
@@ -51,6 +54,7 @@ public partial class EthRpcModuleTests
         return new EthCapabilitiesProvider(
             blockTree,
             wsm,
+            floor,
             syncConfig ?? new SyncConfig(),
             syncPointers,
             historyConfig ?? Substitute.For<IHistoryConfig>(),
@@ -290,6 +294,7 @@ public partial class EthRpcModuleTests
         EthCapabilities caps = new EthCapabilitiesProvider(
             blockTree,
             wsm,
+            new OldestStateBlockStore(new MemDb()),
             new SyncConfig(),
             Substitute.For<ISyncPointers>(),
             Substitute.For<IHistoryConfig>(),

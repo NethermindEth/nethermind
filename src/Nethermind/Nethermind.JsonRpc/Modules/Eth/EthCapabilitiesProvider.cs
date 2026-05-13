@@ -15,6 +15,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 public sealed class EthCapabilitiesProvider(
     IReadOnlyBlockTree blockTree,
     IWorldStateManager worldStateManager,
+    OldestStateBlockStore oldestStateBlockStore,
     ISyncConfig syncConfig,
     ISyncPointers syncPointers,
     IHistoryConfig historyConfig,
@@ -49,9 +50,6 @@ public sealed class EthCapabilitiesProvider(
 
         ResourceAvailability state = BuildState(head, fastSyncing);
 
-        // Stateproofs alias state for both Nethermind storage backends: trie storage stores trie
-        // nodes by hash, flat storage retains them in path-keyed columns (see BaseTriePersistence).
-        // Both serve eth_getProof in O(trie-depth) for any block where state is available.
         return new EthCapabilities(
             Head: new ChainHead(head.Number, head.Hash!),
             State: state,
@@ -62,10 +60,11 @@ public sealed class EthCapabilitiesProvider(
 
     private ResourceAvailability BuildState(BlockHeader head, bool fastSyncing)
     {
+        long? oldestStateBlock = oldestStateBlockStore.Value;
         // During fast sync, state isn't queryable until StateSyncRunner writes the pivot floor.
-        if (fastSyncing && worldStateManager.OldestStateBlock is null) return Disabled;
+        if (fastSyncing && oldestStateBlock is null) return Disabled;
 
-        long stateFloor = worldStateManager.OldestStateBlock ?? 0L;
+        long stateFloor = oldestStateBlock ?? 0L;
         long? retention = worldStateManager.RetentionWindowBlocks;
         long? windowOldest = retention is { } r ? Math.Max(0L, head.Number - r) : (long?)null;
         long stateOldest = Math.Max(stateFloor, windowOldest ?? 0L);
@@ -77,13 +76,8 @@ public sealed class EthCapabilitiesProvider(
         return new ResourceAvailability(Disabled: false, OldestBlock: stateOldest, DeleteStrategy: window);
     }
 
-    private static bool IsDescendingResourceDownloaded(bool fastSyncing, long pivot, bool downloadInFastSync, long? pointer)
-    {
-        if (!fastSyncing) return true;
-        if (!downloadInFastSync) return false;
-        if (pivot == 0) return true;
-        return pointer is not null;
-    }
+    private static bool IsDescendingResourceDownloaded(bool fastSyncing, long pivot, bool downloadInFastSync, long? pointer) =>
+        !fastSyncing || (downloadInFastSync && (pivot == 0 || pointer is not null));
 
     private static ResourceAvailability BuildResource(bool enabled, long oldestBlock, DeleteStrategy? deleteStrategy) =>
         enabled ? new ResourceAvailability(false, oldestBlock, deleteStrategy) : Disabled;

@@ -15,31 +15,35 @@ namespace Nethermind.Blockchain;
 /// </summary>
 public static class StateMetadataValidator
 {
-    public static void DiscardStaleFloors(IWorldStateManager worldStateManager, IBlockTree blockTree, ILogManager logManager)
+    public static void DiscardStaleFloors(
+        OldestStateBlockStore oldestStateBlockStore,
+        IStateReader stateReader,
+        IBlockTree blockTree,
+        ILogManager logManager)
     {
         ILogger logger = logManager.GetClassLogger(typeof(StateMetadataValidator));
 
-        if (worldStateManager.OldestStateBlock is { } oldestStateBlock
-            && IsStateMissing(oldestStateBlock, worldStateManager, blockTree))
+        if (oldestStateBlockStore.Value is { } oldestStateBlock
+            && IsStateMissing(oldestStateBlock, stateReader, blockTree))
         {
             if (logger.IsInfo) logger.Info($"State at OldestStateBlock={oldestStateBlock} not present on disk; clearing stale floor.");
-            worldStateManager.OldestStateBlock = null;
+            oldestStateBlockStore.Value = null;
         }
 
         if (blockTree.BestPersistedState is { } bestPersisted
-            && IsStateMissing(bestPersisted, worldStateManager, blockTree))
+            && IsStateMissing(bestPersisted, stateReader, blockTree))
         {
             if (logger.IsInfo) logger.Info($"State at BestPersistedState={bestPersisted} not present on disk; clearing stale marker.");
             blockTree.BestPersistedState = null;
         }
     }
 
-    private static bool IsStateMissing(long blockNumber, IWorldStateManager worldStateManager, IBlockTree blockTree)
+    private static bool IsStateMissing(long blockNumber, IStateReader stateReader, IBlockTree blockTree)
     {
         BlockHeader? header = blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
         // No header: can't verify. Not a deadlock — FullPruner aborts its cycle on null header,
         // and the next sync writer overwrites the marker.
         if (header is null) return false;
-        return !worldStateManager.GlobalStateReader.HasStateForBlock(header);
+        return !stateReader.HasStateForBlock(header);
     }
 }

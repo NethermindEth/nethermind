@@ -25,7 +25,7 @@ public class StateSyncRunner(
     ISyncProgressResolver syncProgressResolver,
     IBeaconSyncStrategy beaconSyncStrategy,
     ISyncPeerPool syncPeerPool,
-    IWorldStateManager worldStateManager,
+    OldestStateBlockStore oldestStateBlockStore,
     [KeyFilter(DbNames.State)] ITunableDb? stateDb,
     [KeyFilter(DbNames.Code)] ITunableDb? codeDb,
     ILogManager logManager,
@@ -111,7 +111,7 @@ public class StateSyncRunner(
 
         // Records the pivot as the oldest block for which we now have state.
         // Reported through eth_capabilities.
-        worldStateManager.OldestStateBlock = finalPivot.Number;
+        oldestStateBlockStore.Value = finalPivot.Number;
 
         if (syncConfig.VerifyTrieOnStateSyncFinished)
             verifyTrieStarter?.TryStartVerifyTrie(finalPivot);

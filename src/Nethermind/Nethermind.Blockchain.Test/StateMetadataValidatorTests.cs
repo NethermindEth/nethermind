@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
@@ -12,109 +13,80 @@ namespace Nethermind.Blockchain.Test;
 
 public class StateMetadataValidatorTests
 {
-    private const long FloorBlock = 100;
+    public enum Marker { OldestStateBlock, BestPersistedState }
+    public enum StateAt { Present, Missing, HeaderUnknown }
 
-    [Test]
-    public void Clears_OldestStateBlock_when_state_root_missing()
+    [TestCase(Marker.OldestStateBlock, 100L, StateAt.Missing, /* cleared */ true)]
+    [TestCase(Marker.OldestStateBlock, 100L, StateAt.Present, /* cleared */ false)]
+    [TestCase(Marker.OldestStateBlock, 100L, StateAt.HeaderUnknown, /* cleared */ false)]
+    [TestCase(Marker.OldestStateBlock, null, StateAt.Missing, /* cleared */ false)]
+    [TestCase(Marker.BestPersistedState, 100L, StateAt.Missing, /* cleared */ true)]
+    [TestCase(Marker.BestPersistedState, 100L, StateAt.Present, /* cleared */ false)]
+    [TestCase(Marker.BestPersistedState, 100L, StateAt.HeaderUnknown, /* cleared */ false)]
+    [TestCase(Marker.BestPersistedState, null, StateAt.Missing, /* cleared */ false)]
+    public void Discard_clears_only_stale_marker(Marker marker, long? initial, StateAt stateAt, bool shouldClear)
     {
         Fixture f = new();
-        f.WorldStateManager.OldestStateBlock.Returns(FloorBlock);
-        f.WithHeaderAt(FloorBlock, stateAvailable: false);
+        f.SetMarker(marker, initial);
+        if (initial is { } block && stateAt is not StateAt.HeaderUnknown)
+        {
+            f.WithHeaderAt(block, stateAt is StateAt.Present);
+        }
 
-        StateMetadataValidator.DiscardStaleFloors(f.WorldStateManager, f.BlockTree, LimboLogs.Instance);
+        StateMetadataValidator.DiscardStaleFloors(f.Floor, f.StateReader, f.BlockTree, LimboLogs.Instance);
 
-        f.WorldStateManager.Received().OldestStateBlock = null;
+        f.AssertCleared(marker, shouldClear, initial);
     }
 
     [Test]
-    public void Keeps_OldestStateBlock_when_state_root_present()
+    public void Markers_evaluated_independently()
     {
         Fixture f = new();
-        f.WorldStateManager.OldestStateBlock.Returns(FloorBlock);
-        f.WithHeaderAt(FloorBlock, stateAvailable: true);
-
-        StateMetadataValidator.DiscardStaleFloors(f.WorldStateManager, f.BlockTree, LimboLogs.Instance);
-
-        f.WorldStateManager.DidNotReceive().OldestStateBlock = Arg.Any<long?>();
-    }
-
-    [Test]
-    public void Keeps_OldestStateBlock_when_header_unknown()
-    {
-        Fixture f = new();
-        f.WorldStateManager.OldestStateBlock.Returns(FloorBlock);
-        // No header recorded — FindHeader returns null. Should not call HasStateForBlock.
-
-        StateMetadataValidator.DiscardStaleFloors(f.WorldStateManager, f.BlockTree, LimboLogs.Instance);
-
-        f.WorldStateManager.DidNotReceive().OldestStateBlock = Arg.Any<long?>();
-        f.StateReader.DidNotReceive().HasStateForBlock(Arg.Any<BlockHeader>());
-    }
-
-    [Test]
-    public void Does_nothing_when_OldestStateBlock_is_null()
-    {
-        Fixture f = new();
-        f.WorldStateManager.OldestStateBlock.Returns((long?)null);
-
-        StateMetadataValidator.DiscardStaleFloors(f.WorldStateManager, f.BlockTree, LimboLogs.Instance);
-
-        f.WorldStateManager.DidNotReceive().OldestStateBlock = Arg.Any<long?>();
-        f.BlockTree.DidNotReceive().FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>());
-    }
-
-    [Test]
-    public void Clears_BestPersistedState_when_state_root_missing()
-    {
-        Fixture f = new();
-        f.BlockTree.BestPersistedState.Returns(FloorBlock);
-        f.WithHeaderAt(FloorBlock, stateAvailable: false);
-
-        StateMetadataValidator.DiscardStaleFloors(f.WorldStateManager, f.BlockTree, LimboLogs.Instance);
-
-        f.BlockTree.Received().BestPersistedState = null;
-    }
-
-    [Test]
-    public void Keeps_BestPersistedState_when_state_root_present()
-    {
-        Fixture f = new();
-        f.BlockTree.BestPersistedState.Returns(FloorBlock);
-        f.WithHeaderAt(FloorBlock, stateAvailable: true);
-
-        StateMetadataValidator.DiscardStaleFloors(f.WorldStateManager, f.BlockTree, LimboLogs.Instance);
-
-        f.BlockTree.DidNotReceive().BestPersistedState = Arg.Any<long?>();
-    }
-
-    [Test]
-    public void Both_markers_independent()
-    {
-        Fixture f = new();
-        f.WorldStateManager.OldestStateBlock.Returns(50L);
-        f.BlockTree.BestPersistedState.Returns(200L);
+        f.SetMarker(Marker.OldestStateBlock, 50L);
+        f.SetMarker(Marker.BestPersistedState, 200L);
         f.WithHeaderAt(50, stateAvailable: false);  // floor stale
         f.WithHeaderAt(200, stateAvailable: true);  // persisted ok
 
-        StateMetadataValidator.DiscardStaleFloors(f.WorldStateManager, f.BlockTree, LimboLogs.Instance);
+        StateMetadataValidator.DiscardStaleFloors(f.Floor, f.StateReader, f.BlockTree, LimboLogs.Instance);
 
-        f.WorldStateManager.Received().OldestStateBlock = null;
-        f.BlockTree.DidNotReceive().BestPersistedState = Arg.Any<long?>();
+        f.AssertCleared(Marker.OldestStateBlock, shouldClear: true, initial: 50L);
+        f.AssertCleared(Marker.BestPersistedState, shouldClear: false, initial: 200L);
     }
 
     private sealed class Fixture
     {
-        public IWorldStateManager WorldStateManager { get; } = Substitute.For<IWorldStateManager>();
+        public OldestStateBlockStore Floor { get; } = new(new MemDb());
         public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
         public IStateReader StateReader { get; } = Substitute.For<IStateReader>();
-
-        public Fixture() => WorldStateManager.GlobalStateReader.Returns(StateReader);
 
         public void WithHeaderAt(long blockNumber, bool stateAvailable)
         {
             BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
             BlockTree.FindHeader(blockNumber, Arg.Any<BlockTreeLookupOptions>()).Returns(header);
             StateReader.HasStateForBlock(header).Returns(stateAvailable);
+        }
+
+        public void SetMarker(Marker marker, long? value)
+        {
+            switch (marker)
+            {
+                case Marker.OldestStateBlock: Floor.Value = value; break;
+                case Marker.BestPersistedState: BlockTree.BestPersistedState.Returns(value); break;
+            }
+        }
+
+        public void AssertCleared(Marker marker, bool shouldClear, long? initial)
+        {
+            switch (marker)
+            {
+                case Marker.OldestStateBlock:
+                    Assert.That(Floor.Value, Is.EqualTo(shouldClear ? null : initial));
+                    break;
+                case Marker.BestPersistedState:
+                    if (shouldClear) BlockTree.Received().BestPersistedState = null;
+                    else BlockTree.DidNotReceive().BestPersistedState = Arg.Any<long?>();
+                    break;
+            }
         }
     }
 }

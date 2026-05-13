@@ -82,7 +82,7 @@ public class PruningTrieStateFactory(
 
         disposeStack.Push(mainWorldTrieStore);
 
-        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager, trieStore);
+        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager.GlobalStateReader, trieStore);
         if (fullPruner is not null)
         {
             disposeStack.Push(fullPruner);

@@ -20,7 +20,6 @@ public class WorldStateManager : IWorldStateManager
     private readonly ILogManager _logManager;
     private readonly ReadOnlyDb _readaOnlyCodeCb;
     private readonly IDbProvider _dbProvider;
-    private readonly OldestStateBlockStore _oldestStateBlockStore;
     private readonly BlockingVerifyTrie? _blockingVerifyTrie;
     private readonly ILastNStateRootTracker _lastNStateRootTracker;
 
@@ -38,7 +37,6 @@ public class WorldStateManager : IWorldStateManager
         _trieStore = trieStore;
         _readOnlyTrieStore = trieStore.AsReadOnly();
         _logManager = logManager;
-        _oldestStateBlockStore = new OldestStateBlockStore(dbProvider.MetadataDb);
 
         IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
         _readaOnlyCodeCb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
@@ -49,18 +47,10 @@ public class WorldStateManager : IWorldStateManager
             ? NoopSnapServer.Instance
             : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
 
-        _retentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
+        RetentionWindowBlocks = pruningConfig.Mode.IsMemory() ? pruningConfig.PruningBoundary : null;
     }
 
-    private readonly long? _retentionWindowBlocks;
-
-    public long? RetentionWindowBlocks => _retentionWindowBlocks;
-
-    public long? OldestStateBlock
-    {
-        get => _oldestStateBlockStore.Value;
-        set => _oldestStateBlockStore.Value = value;
-    }
+    public long? RetentionWindowBlocks { get; }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
 

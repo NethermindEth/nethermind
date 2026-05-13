@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Db.LogIndex;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules;
@@ -66,6 +67,7 @@ public class BoundedModulePoolTests
             new EthCapabilitiesProvider(
                 blockTree.AsReadOnly(),
                 Substitute.For<IWorldStateManager>(),
+                new OldestStateBlockStore(new MemDb()),
                 new SyncConfig(),
                 Substitute.For<ISyncPointers>(),
                 Substitute.For<IHistoryConfig>(),
