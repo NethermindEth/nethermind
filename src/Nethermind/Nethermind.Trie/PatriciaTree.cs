@@ -70,8 +70,11 @@ namespace Nethermind.Trie
         /// The in-memory root of this trie. Three states for the backing field:
         /// <list type="bullet">
         /// <item><see cref="_unresolvedSentinel"/> - not yet lazy-resolved; first read
-        /// loads from the underlying store (or returns null if <see cref="_rootHash"/>
-        /// == <see cref="Keccak.EmptyTreeHash"/> or the store has no entry).</item>
+        /// loads from the underlying store via <see cref="ITrieNodeResolver.GetOrLoadNode"/>,
+        /// or returns null when <see cref="_rootHash"/> == <see cref="Keccak.EmptyTreeHash"/>.
+        /// A non-empty hash that cannot be resolved surfaces as
+        /// <see cref="MissingTrieNodeException"/> - state root absent is an invariant
+        /// violation, not "empty trie".</item>
         /// <item><c>null</c> - authoritative empty root (delete-all, selfdestruct, or
         /// explicit clear via the setter). Sticks; no re-resolve.</item>
         /// <item>typed <see cref="TrieNode"/> - resolved root.</item>
@@ -102,7 +105,13 @@ namespace Nethermind.Trie
                     TrieNode? resolved = null;
                     if (!ReferenceEquals(rootHash, Keccak.EmptyTreeHash))
                     {
-                        _readResolver.TryGetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256, out resolved);
+                        // Throwing variant: a non-empty _rootHash that cannot be resolved
+                        // is an invariant violation (state root missing from the store).
+                        // The silent Try-shape would convert that into "trie appears empty",
+                        // which corrupts downstream reads (account balances return 0,
+                        // transactions fail with bogus "insufficient funds", etc.). Let the
+                        // MissingTrieNodeException propagate so the caller sees the real fault.
+                        resolved = _readResolver.GetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256);
                     }
                     Volatile.Write(ref _rootRef, resolved);
                     return resolved;
