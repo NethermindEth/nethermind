@@ -105,6 +105,12 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
         return this;
     }
 
+    public new XdcBlockHeaderBuilder WithStateRoot(Hash256 stateRoot)
+    {
+        TestObjectInternal.StateRoot = stateRoot;
+        return this;
+    }
+
     public XdcBlockHeaderBuilder WithValidator(Signature signature)
     {
         XdcTestObjectInternal.Validator = signature.Bytes.ToArray();
