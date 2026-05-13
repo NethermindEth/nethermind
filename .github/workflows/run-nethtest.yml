@@ -52,6 +52,26 @@ on:
         required: false
         default: '35'
         type: string
+      diagnostic_dumps:
+        description: Capture CLI-readable gcdump reports at memory thresholds
+        required: false
+        default: false
+        type: boolean
+      diagnostic_full_dump:
+        description: Also capture a heap dump at the stop threshold
+        required: false
+        default: false
+        type: boolean
+      diagnostic_mem_increment_gb:
+        description: Capture gcdump each time process RSS crosses another N GB
+        required: false
+        default: '5'
+        type: string
+      diagnostic_mem_limit_gb:
+        description: Stop nethtest after diagnostic dump capture at this RSS GB limit
+        required: false
+        default: '35'
+        type: string
       runner_label:
         description: Override runner label for workflow_dispatch smoke runs
         required: false
@@ -72,6 +92,10 @@ env:
   DOTMEMORY: ${{ inputs.dotmemory || 'false' }}
   DOTMEMORY_MEM_INCREMENT_GB: ${{ inputs.dotmemory_mem_increment_gb || '5' }}
   DOTMEMORY_MEM_LIMIT_GB: ${{ inputs.dotmemory_mem_limit_gb || '35' }}
+  DIAGNOSTIC_DUMPS: ${{ inputs.diagnostic_dumps || 'false' }}
+  DIAGNOSTIC_FULL_DUMP: ${{ inputs.diagnostic_full_dump || 'false' }}
+  DIAGNOSTIC_MEM_INCREMENT_GB: ${{ inputs.diagnostic_mem_increment_gb || '5' }}
+  DIAGNOSTIC_MEM_LIMIT_GB: ${{ inputs.diagnostic_mem_limit_gb || '35' }}
 
 defaults:
   run:
@@ -188,6 +212,19 @@ jobs:
           echo "DOTMEMORY_CMD=$DOTMEMORY_HOME/tools/dotmemory" >> "$GITHUB_ENV"
           "$DOTMEMORY_HOME/tools/dotmemory" help start | head -80
 
+      - name: Install .NET diagnostics tools
+        if: ${{ env.DIAGNOSTIC_DUMPS == 'true' }}
+        run: |
+          DIAGNOSTIC_TOOLS_HOME="$RUNNER_TEMP/dotnet-diagnostics-tools"
+          mkdir -p "$DIAGNOSTIC_TOOLS_HOME"
+          dotnet tool install --tool-path "$DIAGNOSTIC_TOOLS_HOME" dotnet-gcdump --version 9.0.661903
+          if [ "$DIAGNOSTIC_FULL_DUMP" = "true" ]; then
+            dotnet tool install --tool-path "$DIAGNOSTIC_TOOLS_HOME" dotnet-dump --version 9.0.661903
+            echo "DOTNET_DUMP=$DIAGNOSTIC_TOOLS_HOME/dotnet-dump" >> "$GITHUB_ENV"
+          fi
+          echo "DOTNET_GCDUMP=$DIAGNOSTIC_TOOLS_HOME/dotnet-gcdump" >> "$GITHUB_ENV"
+          "$DIAGNOSTIC_TOOLS_HOME/dotnet-gcdump" collect --help
+
       - name: Resolve EEST release
         id: eest_release
         run: |
@@ -281,9 +318,11 @@ jobs:
           STDERR_FILE="$RUNNER_TMP/nethtest-stderr.log"
           CLEAN_FILE="$RUNNER_TMP/nethtest-clean.log"
           DOTMEMORY_OUTPUT_DIR="$RUNNER_TMP/dotmemory"
+          DIAGNOSTIC_OUTPUT_DIR="$RUNNER_TMP/nethtest-diagnostics"
           LOW_MEMORY_FILE="$RUNNER_TMP/nethtest-low-memory"
           WATCHDOG_TIMEOUT_FILE="$RUNNER_TMP/nethtest-watchdog-timeout"
           DOTMEMORY_LIMIT_FILE="$RUNNER_TMP/nethtest-dotmemory-limit-reached"
+          DIAGNOSTIC_LIMIT_FILE="$RUNNER_TMP/nethtest-diagnostic-limit-reached"
 
           # Write summary even if the process crashes
           write_summary() {
@@ -413,14 +452,19 @@ jobs:
               wait "$DOTMEMORY_MONITOR_PID" 2>/dev/null || true
             fi
 
+            if [ -n "${DIAGNOSTIC_MONITOR_PID:-}" ]; then
+              kill "$DIAGNOSTIC_MONITOR_PID" 2>/dev/null || true
+              wait "$DIAGNOSTIC_MONITOR_PID" 2>/dev/null || true
+            fi
+
             write_summary
           }
 
           trap cleanup EXIT
 
           touch "$RESULTS_FILE" "$STDOUT_FILE" "$STDERR_FILE"
-          mkdir -p "$DOTMEMORY_OUTPUT_DIR"
-          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE" "$DOTMEMORY_LIMIT_FILE"
+          mkdir -p "$DOTMEMORY_OUTPUT_DIR" "$DIAGNOSTIC_OUTPUT_DIR"
+          rm -f "$WATCHDOG_TIMEOUT_FILE" "$LOW_MEMORY_FILE" "$DOTMEMORY_LIMIT_FILE" "$DIAGNOSTIC_LIMIT_FILE"
 
           print_diagnostics() {
             echo ""
@@ -457,7 +501,7 @@ jobs:
           }
 
           find_profiled_pid() {
-            pgrep -f "$RUNNER_DLL" | head -1 || true
+            pgrep -f "nethtest.dll" | head -1 || true
           }
 
           terminate_profiled_nethtest() {
@@ -498,6 +542,76 @@ jobs:
               if [ "$rss_mb" -ge "$limit_mb" ]; then
                 echo "::warning::Profiled nethtest RSS reached ${rss_mb}MiB; requested dotMemory limit is ${DOTMEMORY_MEM_LIMIT_GB}GiB"
                 touch "$DOTMEMORY_LIMIT_FILE"
+                print_diagnostics
+                terminate_profiled_nethtest
+                exit 0
+              fi
+            done
+          }
+
+          collect_gcdump() {
+            local pid="$1"
+            local label="$2"
+            local gcdump_file="$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.gcdump"
+            local report_file="$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.heapstat.txt"
+
+            echo "Collecting gcdump '$label' from process $pid"
+            if "$DOTNET_GCDUMP" collect --process-id "$pid" --output "$gcdump_file" --timeout 120; then
+              "$DOTNET_GCDUMP" report "$gcdump_file" > "$report_file" || true
+              echo "gcdump saved: $gcdump_file"
+              echo "heap report saved: $report_file"
+            else
+              echo "::warning::Failed to collect gcdump '$label' from process $pid"
+            fi
+          }
+
+          collect_heap_dump() {
+            local pid="$1"
+            local label="$2"
+            local dump_file="$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.dmp"
+
+            if [ "$DIAGNOSTIC_FULL_DUMP" != "true" ]; then
+              return 0
+            fi
+
+            echo "Collecting heap dump '$label' from process $pid"
+            if "$DOTNET_DUMP" collect --process-id "$pid" --type Heap --output "$dump_file"; then
+              echo "heap dump saved: $dump_file"
+            else
+              echo "::warning::Failed to collect heap dump '$label' from process $pid"
+            fi
+          }
+
+          monitor_diagnostic_dumps() {
+            local increment_mb=$((DIAGNOSTIC_MEM_INCREMENT_GB * 1024))
+            local limit_mb=$((DIAGNOSTIC_MEM_LIMIT_GB * 1024))
+            local next_capture_mb=$increment_mb
+
+            while kill -0 "$NETHTEST_PID" 2>/dev/null; do
+              sleep 5 || exit 0
+
+              local pid
+              pid="$(find_profiled_pid)"
+              if [ -z "$pid" ]; then
+                continue
+              fi
+
+              local rss_kb
+              rss_kb="$(ps -o rss= -p "$pid" 2>/dev/null | awk '{ print $1 + 0 }')"
+              local rss_mb=$((rss_kb / 1024))
+
+              if [ "$rss_mb" -ge "$next_capture_mb" ]; then
+                collect_gcdump "$pid" "${rss_mb}mb"
+                while [ "$rss_mb" -ge "$next_capture_mb" ]; do
+                  next_capture_mb=$((next_capture_mb + increment_mb))
+                done
+              fi
+
+              if [ "$rss_mb" -ge "$limit_mb" ]; then
+                echo "::warning::Profiled nethtest RSS reached ${rss_mb}MiB; diagnostic limit is ${DIAGNOSTIC_MEM_LIMIT_GB}GiB"
+                touch "$DIAGNOSTIC_LIMIT_FILE"
+                collect_gcdump "$pid" "limit-${rss_mb}mb"
+                collect_heap_dump "$pid" "limit-${rss_mb}mb"
                 print_diagnostics
                 terminate_profiled_nethtest
                 exit 0
@@ -595,6 +709,10 @@ jobs:
             monitor_dotmemory_limit &
             DOTMEMORY_MONITOR_PID=$!
           fi
+          if [ "$DIAGNOSTIC_DUMPS" = "true" ]; then
+            monitor_diagnostic_dumps &
+            DIAGNOSTIC_MONITOR_PID=$!
+          fi
 
           watchdog &
           WATCHDOG_PID=$!
@@ -615,6 +733,9 @@ jobs:
             rc=124
           elif [ -f "$DOTMEMORY_LIMIT_FILE" ]; then
             echo "::warning::nethtest was stopped after dotMemory memory limit capture"
+            rc=0
+          elif [ -f "$DIAGNOSTIC_LIMIT_FILE" ]; then
+            echo "::warning::nethtest was stopped after diagnostic dump memory limit capture"
             rc=0
           fi
 
@@ -656,6 +777,17 @@ jobs:
             echo "::warning::dotMemory produced files, but no .dmw or numbered workspace chunk was found"
           fi
 
+      - name: Verify diagnostic dumps
+        if: ${{ always() && env.DIAGNOSTIC_DUMPS == 'true' }}
+        run: |
+          DIAGNOSTIC_OUTPUT_DIR="${RUNNER_TEMP:-/tmp}/nethtest-diagnostics"
+          echo "Diagnostic files:"
+          find "$DIAGNOSTIC_OUTPUT_DIR" -maxdepth 2 -type f -printf "%p %s bytes\n" | sort || true
+          REPORT_COUNT="$(find "$DIAGNOSTIC_OUTPUT_DIR" -type f -name '*.heapstat.txt' | wc -l)"
+          if [ "$REPORT_COUNT" -eq 0 ]; then
+            echo "::warning::No gcdump heapstat reports were produced"
+          fi
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v7
@@ -676,5 +808,18 @@ jobs:
             ${{ runner.temp }}/dotmemory
             ${{ runner.temp }}/nethtest-stdout.log
           if-no-files-found: error
+          compression-level: 9
+          retention-days: 7
+
+      - name: Upload diagnostic dumps
+        if: ${{ always() && env.DIAGNOSTIC_DUMPS == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethtest-diagnostics-${{ matrix.test_setup }}-${{ inputs.runner_label || matrix.runner }}-${{ env.TEST_TYPE }}
+          path: |
+            ${{ runner.temp }}/nethtest-diagnostics
+            ${{ runner.temp }}/nethtest-stdout.log
+            ${{ runner.temp }}/nethtest-stderr.log
+          if-no-files-found: warn
           compression-level: 9
           retention-days: 7
