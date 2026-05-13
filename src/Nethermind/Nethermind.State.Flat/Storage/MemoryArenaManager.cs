@@ -38,22 +38,10 @@ public sealed class MemoryArenaManager : IArenaManager
 
     public ArenaReservation Open(in SnapshotLocation location, string tag) => _inner.Open(location, tag);
 
-    public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) => _inner.GetSpan(reservation);
-
-    public unsafe void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size) =>
-        _inner.GetReservationPointer(reservation, out dataPtr, out size);
-
-    public IArenaWholeView OpenWholeView(ArenaReservation reservation) => _inner.OpenWholeView(reservation);
-
     public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size) =>
         _inner.OpenPendingView(arenaId, absoluteOffset, size);
 
     public void AdviseDontNeed(ArenaReservation reservation) => _inner.AdviseDontNeed(reservation);
-
-    public void Touch(ArenaReservation reservation, long subOffset, long size) => _inner.Touch(reservation, subOffset, size);
-
-    public int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination) =>
-        _inner.RandomRead(reservation, subOffset, destination);
 
     public void QueueEviction(int arenaId, int pageIdx) => _inner.QueueEviction(arenaId, pageIdx);
 

@@ -55,7 +55,7 @@ public class PageResidencyTrackerTests
     /// small file-backed <see cref="ArenaFile"/> in <paramref name="tempDir"/> so the
     /// non-nullable contract on <see cref="ArenaReservation"/> is satisfied.
     /// </summary>
-    private sealed unsafe class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
+    private sealed class StubArenaManager(PageResidencyTracker tracker, IPageEvictionHandler handler, string tempDir) : IArenaManager, IDisposable
     {
         private readonly Dictionary<int, ArenaFile> _files = [];
 
@@ -66,15 +66,10 @@ public class PageResidencyTrackerTests
         public void CancelWrite(int arenaId, long startOffset) => throw new NotSupportedException();
         public void Initialize(IReadOnlyList<SnapshotCatalog.CatalogEntry> entries) => throw new NotSupportedException();
         public ArenaReservation Open(in SnapshotLocation location, string tag) => throw new NotSupportedException();
-        public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) => throw new NotSupportedException();
-        public IArenaWholeView OpenWholeView(ArenaReservation reservation) => throw new NotSupportedException();
         public IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size) => throw new NotSupportedException();
-        public void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size) => throw new NotSupportedException();
         // No-op so reservation disposal doesn't blow up in tests.
         public void MarkDead(in SnapshotLocation location) { }
         public void AdviseDontNeed(ArenaReservation reservation) { }
-        public void Touch(ArenaReservation reservation, long subOffset, long size) { }
-        public int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination) => throw new NotSupportedException();
 
         public ArenaFile GetOrCreateFile(int arenaId)
         {

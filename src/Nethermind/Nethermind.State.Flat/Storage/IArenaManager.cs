@@ -12,8 +12,6 @@ public unsafe interface IArenaManager : IDisposable
 
     void CancelWrite(int arenaId, long startOffset);
     ArenaReservation Open(in SnapshotLocation location, string tag);
-    ReadOnlySpan<byte> GetSpan(ArenaReservation reservation);
-    IArenaWholeView OpenWholeView(ArenaReservation reservation);
 
     /// <summary>
     /// Open a read-only view of bytes that have been written to <paramref name="arenaId"/>
@@ -26,27 +24,8 @@ public unsafe interface IArenaManager : IDisposable
     /// </summary>
     IArenaWholeView OpenPendingView(int arenaId, long absoluteOffset, long size);
 
-    /// <summary>
-    /// Raw pointer to the first byte of <paramref name="reservation"/> within the
-    /// owning arena's mmap. Long-offset arithmetic on the returned pointer is valid
-    /// for <paramref name="size"/> bytes. Pointer lifetime matches the reservation
-    /// (or, for the test arena, the manager's lifetime).
-    /// </summary>
-    void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size);
-
-    /// <summary>
-    /// Read bytes from the reservation at <paramref name="subOffset"/> via a non-mmap
-    /// file primitive (<c>pread</c>). Used by the cross-snapshot <c>NodeRef</c> deref
-    /// path to avoid faulting referenced Full-snapshot pages into our resident set
-    /// or polluting the per-arena <see cref="PageResidencyTracker"/>. Returns the
-    /// number of bytes copied into <paramref name="destination"/> (may be less than
-    /// the destination length on short read at end-of-data).
-    /// </summary>
-    int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination);
-
     void MarkDead(in SnapshotLocation location);
     void AdviseDontNeed(ArenaReservation reservation);
-    void Touch(ArenaReservation reservation, long subOffset, long size);
 
     /// <summary>
     /// Enqueue a page eviction for asynchronous dispatch. The implementation pushes

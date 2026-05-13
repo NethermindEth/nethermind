@@ -237,27 +237,6 @@ public sealed class ArenaManager : IArenaManager
     }
 
     /// <summary>
-    /// Get a read-only span for the reservation's data region.
-    /// </summary>
-    public ReadOnlySpan<byte> GetSpan(ArenaReservation reservation) =>
-        _arenas[reservation.ArenaId].GetSpan(reservation.Offset, reservation.Size);
-
-    public unsafe void GetReservationPointer(ArenaReservation reservation, out byte* dataPtr, out long size)
-    {
-        ArenaFile arena = _arenas[reservation.ArenaId];
-        dataPtr = arena.BasePtr + reservation.Offset;
-        size = reservation.Size;
-    }
-
-    public IArenaWholeView OpenWholeView(ArenaReservation reservation)
-    {
-        lock (_lock)
-        {
-            return _arenas[reservation.ArenaId].OpenWholeView(reservation.Offset, reservation.Size);
-        }
-    }
-
-    /// <summary>
     /// Mmap a fresh read view over the just-written range. The arena file is opened
     /// <see cref="FileShare.ReadWrite"/> with a parallel mmap (<see cref="ArenaFile"/>),
     /// so the bytes are visible to the read view as soon as the writer's stream has
@@ -337,21 +316,6 @@ public sealed class ArenaManager : IArenaManager
         long endPageExclusive = (byteOffset + byteSize) / pageSize;
         for (long p = startPage; p < endPageExclusive; p++)
             _pageTracker.Forget(arenaId, (int)p);
-    }
-
-    public void Touch(ArenaReservation reservation, long subOffset, long size)
-    {
-        if (_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena))
-            arena.Touch(reservation.Offset + subOffset, size);
-    }
-
-    public int RandomRead(ArenaReservation reservation, long subOffset, Span<byte> destination)
-    {
-        // Intentionally does not touch the page residency tracker: the whole point of
-        // this path is to avoid faulting the referenced arena's pages into our resident
-        // set.
-        if (!_arenas.TryGetValue(reservation.ArenaId, out ArenaFile? arena)) return 0;
-        return arena.RandomRead(reservation.Offset + subOffset, destination);
     }
 
     public void QueueEviction(int arenaId, int pageIdx)

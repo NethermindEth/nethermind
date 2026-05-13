@@ -158,13 +158,6 @@ public sealed class BlobArenaManager : IBlobArenaManager
         }
     }
 
-    public int RandomRead(ushort blobArenaId, long offset, Span<byte> destination)
-    {
-        BlobArenaFile? file = _files[blobArenaId];
-        if (file is null) return 0;
-        return file.RandomRead(offset, destination);
-    }
-
     public bool TryLeaseFile(ushort blobArenaId, [NotNullWhen(true)] out BlobArenaFile? file)
     {
         lock (_lock)

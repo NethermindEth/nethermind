@@ -21,7 +21,6 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
     public BlobArenaWriter CreateWriter(long estimatedSize, string tag) =>
         throw new InvalidOperationException("NullBlobArenaManager cannot create writers.");
 
-    public int RandomRead(ushort blobArenaId, long offset, Span<byte> destination) => 0;
     public bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file)
     {
         file = null;

@@ -42,13 +42,6 @@ public interface IBlobArenaManager : IDisposable
     BlobArenaWriter CreateWriter(long estimatedSize, string tag);
 
     /// <summary>
-    /// Random-access read at <paramref name="offset"/> (file-absolute) within the
-    /// file identified by <paramref name="blobArenaId"/>. Used by the <c>NodeRef</c>
-    /// dereference path on the read side.
-    /// </summary>
-    int RandomRead(ushort blobArenaId, long offset, Span<byte> destination);
-
-    /// <summary>
     /// Acquire a lease on the file identified by <paramref name="blobArenaId"/>. Returns
     /// false if the manager doesn't know the id, or if the file is mid-cleanup. The
     /// caller drops the lease by calling <see cref="BlobArenaFile.Dispose"/>.
