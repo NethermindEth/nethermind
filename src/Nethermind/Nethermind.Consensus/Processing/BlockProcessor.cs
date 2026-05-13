@@ -137,7 +137,7 @@ public partial class BlockProcessor(
 
         // Suppress GC during transaction execution to avoid non-deterministic pauses
         bool noGcActive = false;
-        try { noGcActive = GC.TryStartNoGCRegion(1024L * 1024 * 1024, disallowFullBlockingGC: true); } catch { }
+        try { noGcActive = GC.TryStartNoGCRegion(256 * 1024 * 1024, disallowFullBlockingGC: true); } catch { }
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
