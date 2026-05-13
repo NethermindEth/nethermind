@@ -272,55 +272,41 @@ namespace Nethermind.Serialization.Rlp
             => new(BlockAccessListDecoder.EncodeToBytes(item, behaviors));
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (item is Rlp rlp)
-            {
-                return rlp;
-            }
-
-            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
-            if (rlpStreamEncoder is not null)
-            {
-                return Encode(rlpStreamEncoder, item, behaviors);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-        }
+            => item is Rlp rlp
+                ? rlp
+                : GetStreamEncoder<T>() is { } rlpStreamEncoder
+                    ? Encode(rlpStreamEncoder, item, behaviors)
+                    : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T item, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            ArgumentNullException.ThrowIfNull(rlpStreamEncoder);
-
-            int totalLength = rlpStreamEncoder.GetLength(item, behaviors);
-            RlpStream stream = new(totalLength);
-            rlpStreamEncoder.Encode(stream, item, behaviors);
-            return new Rlp(stream.Data.ToArray());
-        }
+            => EncodeWithStreamEncoder(rlpStreamEncoder, item, behaviors);
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            if (items is [])
-            {
-                return OfEmptyList;
-            }
-
-            IRlpStreamEncoder<T>? rlpStreamEncoder = GetStreamEncoder<T>();
-            if (rlpStreamEncoder is not null)
-            {
-                return Encode(rlpStreamEncoder, items, behaviors);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
-        }
+            => items is []
+                ? OfEmptyList
+                : GetStreamEncoder<T>() is { } rlpStreamEncoder
+                    ? Encode(rlpStreamEncoder, items, behaviors)
+                    : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
+            => EncodeWithStreamEncoder(rlpStreamEncoder, items, behaviors);
+
+        private static Rlp EncodeWithStreamEncoder<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T item, RlpBehaviors behaviors)
         {
             ArgumentNullException.ThrowIfNull(rlpStreamEncoder);
 
-            int totalLength = rlpStreamEncoder.GetLength(items, behaviors);
-            RlpStream stream = new(totalLength);
-            rlpStreamEncoder.Encode(stream, items, behaviors);
-            return new Rlp(stream.Data.ToArray());
+            byte[] bytes = new byte[rlpStreamEncoder.GetLength(item, behaviors)];
+            rlpStreamEncoder.Encode(new RlpStream(bytes), item, behaviors);
+            return new Rlp(bytes);
+        }
+
+        private static Rlp EncodeWithStreamEncoder<T>(IRlpStreamEncoder<T> rlpStreamEncoder, T[] items, RlpBehaviors behaviors)
+        {
+            ArgumentNullException.ThrowIfNull(rlpStreamEncoder);
+
+            byte[] bytes = new byte[rlpStreamEncoder.GetLength(items, behaviors)];
+            rlpStreamEncoder.Encode(new RlpStream(bytes), items, behaviors);
+            return new Rlp(bytes);
         }
 
         public static Rlp Encode(int[] integers)
