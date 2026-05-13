@@ -36,6 +36,7 @@ public sealed class BlobArenaWriter : IDisposable
     private const int BufferSize = 1024 * 1024;
 
     private readonly BlobArenaManager _manager;
+    private readonly BlobArenaFile _file;
     private readonly ushort _blobArenaId;
     private readonly long _startOffset;
     private readonly FileStream _stream;
@@ -49,10 +50,19 @@ public sealed class BlobArenaWriter : IDisposable
     private bool _completed;
     private bool _disposed;
 
-    internal BlobArenaWriter(BlobArenaManager manager, ushort blobArenaId, long startOffset, FileStream stream)
+    /// <summary>
+    /// The writer holds a lease on <paramref name="file"/> acquired by
+    /// <see cref="BlobArenaManager.CreateWriter"/> via <see cref="BlobArenaFile.TryAcquireLease"/>.
+    /// Disposal drops the lease via <see cref="RefCountingDisposable.Dispose"/>; if no
+    /// snapshot picked the file up via <see cref="BlobArenaManager.TryLeaseFile"/> in the
+    /// meantime, the file self-cleans (manager's array-slot ref is still 1, so the file
+    /// stays alive — it only goes away on manager shutdown or sweep).
+    /// </summary>
+    internal BlobArenaWriter(BlobArenaManager manager, BlobArenaFile file, long startOffset, FileStream stream)
     {
         _manager = manager;
-        _blobArenaId = blobArenaId;
+        _file = file;
+        _blobArenaId = file.BlobArenaId;
         _startOffset = startOffset;
         _written = startOffset;
         _stream = stream;
@@ -108,11 +118,11 @@ public sealed class BlobArenaWriter : IDisposable
     }
 
     /// <summary>
-    /// Finalise the write: flush the in-memory buffer to the file, register the new
-    /// frontier with the manager. The manager bumps the refcount by 1 for the writer's
-    /// transient creation lease; <see cref="PersistedSnapshots.PersistedSnapshotRepository"/>
-    /// transfers that lease to the new snapshot via <see cref="BlobArenaManager.TryLeaseFile"/>
-    /// then drops it via <see cref="BlobArenaManager.ReleaseBlobArena"/>.
+    /// Finalise the write: flush the in-memory buffer to the file and register the new
+    /// frontier with the manager. The writer's own lease on the file is still held — it
+    /// is released by <see cref="Dispose"/>. <see cref="PersistedSnapshots.PersistedSnapshotRepository"/>
+    /// takes its own snapshot lease via <see cref="BlobArenaManager.TryLeaseFile"/> before
+    /// this writer is disposed.
     /// </summary>
     public void Complete()
     {
@@ -136,6 +146,10 @@ public sealed class BlobArenaWriter : IDisposable
         byte[] buffer = _buffer;
         _buffer = null!;
         if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
+        // Drop the writer's lease on the file. If a snapshot has already picked the file
+        // up via TryLeaseFile, this just decrements one lease; if nobody else holds a
+        // lease, the file stays alive on the manager's array-slot ref until shutdown / sweep.
+        _file.Dispose();
     }
 
     private Span<byte> EnsureBufferSpace(int sizeHint)

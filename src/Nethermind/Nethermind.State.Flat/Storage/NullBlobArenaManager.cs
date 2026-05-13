@@ -27,7 +27,6 @@ public sealed class NullBlobArenaManager : IBlobArenaManager
         file = null;
         return false;
     }
-    public void ReleaseBlobArena(ushort blobArenaId) { }
     public void SweepUnreferenced() { }
     public void Dispose() { }
 }

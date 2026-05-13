@@ -49,20 +49,11 @@ public interface IBlobArenaManager : IDisposable
     int RandomRead(ushort blobArenaId, long offset, Span<byte> destination);
 
     /// <summary>
-    /// Increment the refcount on the file's whole-file reservation and hand back
-    /// a <see cref="BlobArenaFile"/> wrapping it. Returns false if this manager
-    /// doesn't know the id. Disposing the returned <see cref="BlobArenaFile"/>
-    /// calls back into <see cref="ReleaseBlobArena"/>.
+    /// Acquire a lease on the file identified by <paramref name="blobArenaId"/>. Returns
+    /// false if the manager doesn't know the id, or if the file is mid-cleanup. The
+    /// caller drops the lease by calling <see cref="BlobArenaFile.Dispose"/>.
     /// </summary>
     bool TryLeaseFile(ushort blobArenaId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out BlobArenaFile? file);
-
-    /// <summary>
-    /// Decrement the refcount. When the last referencing snapshot is released the
-    /// reservation's <c>CleanUp</c> runs <see cref="IArenaManager.MarkDead"/> over
-    /// the file's full span and deletes the file. Typically invoked indirectly via
-    /// <see cref="BlobArenaFile.Dispose"/>.
-    /// </summary>
-    void ReleaseBlobArena(ushort blobArenaId);
 
     /// <summary>
     /// After <see cref="Initialize"/> + snapshot rehydration, delete any arena file

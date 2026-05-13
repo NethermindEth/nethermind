@@ -216,10 +216,10 @@ public sealed class PersistedSnapshotRepository(
         // read working set yet.
         reservation.AdviseDontNeed();
 
-        // Release the writers' "creation" leases. PersistedSnapshot took its own
-        // (metadata reservation + the blob arena lease via BlobArenaFile) in the ctor.
+        // Release the metadata writer's creation lease (PersistedSnapshot took its own in
+        // the ctor). The blob writer's creation lease is dropped automatically when its
+        // `using` scope exits — BlobArenaWriter.Dispose calls BlobArenaFile.Dispose.
         reservation.Dispose();
-        _blobs.ReleaseBlobArena(blobArenaId);
     }
 
     /// <summary>
