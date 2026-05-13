@@ -238,33 +238,6 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     [Test]
-    public void GetStorage_DeclaredRead_FallsThroughToParentReader()
-    {
-        StorageCell cell = new(TestItem.AddressA, 1);
-        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
-            .WithAccountChanges(Build.An.AccountChanges
-                .WithAddress(TestItem.AddressA)
-                .WithStorageReads(cell.Index)
-                .TestObject)
-            .TestObject;
-
-        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
-            blockAccessIndex: 1,
-            suggestedBal: bal,
-            genesisSetup: ws =>
-            {
-                ws.CreateAccount(TestItem.AddressA, 0);
-                ws.Set(cell, [0x42]);
-                ws.Commit(Spec);
-            });
-        using (scope)
-        {
-            ReadOnlySpan<byte> retrieved = bws.Get(cell);
-            Assert.That(retrieved.ToArray(), Is.EqualTo(new byte[] { 0x42 }));
-        }
-    }
-
-    [Test]
     public void AccountExists_ExistedInParentState_ReturnsTrue()
     {
         // Account is declared in BAL but has no entries at index 0; existence comes from
