@@ -22,8 +22,11 @@ namespace Nethermind.State.Flat.Hsst;
 /// supplied reader. Per-entry common prefix lengths against the prior entry's key are
 /// precomputed once into <see cref="_commonPrefixArr"/> by
 /// <see cref="PrecomputeCommonPrefixLengths"/>; leaf separators are derived as
-/// <c>min(commonPrefix + 1, currKeyLen)</c>. Internal-node separators are produced
-/// via <see cref="WriteSeparatorBetween"/> over the two boundary keys.
+/// <c>min(commonPrefix + 1, currKeyLen)</c>. Internal-node separators are derived
+/// the same way — adjacency of <c>NodeInfo</c> ranges means
+/// <c>_commonPrefixArr[curr.FirstEntry]</c> already holds the LCP between the
+/// left-subtree's last key and the right-subtree's first key; the separator bytes
+/// are taken from the right-subtree's first key (cached in <c>_leafFirstKeys</c>).
 /// </summary>
 public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     where TWriter : IByteBufferWriterWithReader<TReader, TPin>
@@ -45,6 +48,12 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     // and WriteLeafIndexNode / WriteInternalIndexNode / ChooseIntermediateChildCount
     // read it directly. Rented from ArrayPool; returned in Build's finally.
     private byte[]? _commonPrefixArr;
+    // Per-leaf first-key buffer; flat numLeaves * _keyLength bytes. Filled in
+    // WriteLeafIndexNode after the entry-0 ReadKey, consumed by
+    // WriteInternalIndexNode / ChooseIntermediateChildCount as RAM-only
+    // substitute for ReadKey(node.FirstEntry, ...). Each leaf at index L lives at
+    // _leafFirstKeys.AsSpan().Slice(L * _keyLength, _keyLength).
+    private NativeMemoryListRef<byte> _leafFirstKeys;
 
     public HsstIndexBuilder(ref TWriter writer, TReader reader, ReadOnlySpan<long> entryPositions, int keyLength)
     {
@@ -100,6 +109,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         // capacity is small; doublings amortise to O(1) per Add.
         NativeMemoryListRef<NodeInfo> currentNative = new(capacity: 64);
         NativeMemoryListRef<NodeInfo> nextNative = new(capacity: 64);
+        // Sized to a small leaf count up front; grows on demand as leaves emit.
+        _leafFirstKeys = new NativeMemoryListRef<byte>(capacity: Math.Max(64, _keyLength * 64));
 
         // lastNodeLen tracks the byte length of the most recently written node; the
         // returned value is the root node's size (the last node emitted).
@@ -116,6 +127,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 _commonPrefixArr, _entryPositions, n, minLeafEntries, maxLeafEntries);
 
             int entryIdx = 0;
+            int leafIdx = 0;
 
             // True until the first node of the index region has been written.
             // Used to gate MaybePadToNextPage so we never pad after the root —
@@ -146,9 +158,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                 currentNative.Add(new NodeInfo(
                     childOffset,
                     entryIdx,
-                    entryIdx + count - 1));
+                    entryIdx + count - 1,
+                    leafIdx));
 
                 entryIdx += count;
+                leafIdx++;
             }
 
             // Build internal levels until single root. Each iteration consumes
@@ -187,7 +201,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
                     nextNative.Add(new NodeInfo(
                         childOffset,
                         first.FirstEntry,
-                        last.LastEntry));
+                        last.LastEntry,
+                        first.FirstLeafIdx));
 
                     childIdx += childCount;
                 }
@@ -202,6 +217,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         {
             currentNative.Dispose();
             nextNative.Dispose();
+            _leafFirstKeys.Dispose();
             ArrayPool<byte>.Shared.Return(valueScratchArr);
             ArrayPool<byte>.Shared.Return(_commonPrefixArr);
             _commonPrefixArr = null;
@@ -283,6 +299,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         ReadKey(globalStartIndex, currKey);
         currKey[..prefixLen].CopyTo(commonPrefixBuf);
+        // Persist this leaf's first key for intermediate-node construction. Keys are
+        // uniform length, so the slot at leafIdx is _leafFirstKeys[leafIdx*_keyLength..].
+        // Appending in leaf-emission order keeps that invariant without an explicit index.
+        _leafFirstKeys.AddRange(currKey[.._keyLength]);
 
         scoped BSearchIndexWriter<TWriter> indexWriter = new(ref _writer, new BSearchIndexMetadata
         {
@@ -361,17 +381,19 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         int commonLen = -1;
         Span<byte> firstSep = stackalloc byte[MaxKeyLen];
 
-        Span<byte> leftKey = stackalloc byte[MaxKeyLen];
-        Span<byte> rightKey = stackalloc byte[MaxKeyLen];
         Span<byte> sepBuf = stackalloc byte[MaxKeyLen];
+        ReadOnlySpan<byte> leafKeys = _leafFirstKeys.AsSpan();
 
         while (childCount < hardMax)
         {
-            NodeInfo prev = level[childIdx + childCount - 1];
             NodeInfo curr = level[childIdx + childCount];
-            int leftLen = ReadKey(prev.LastEntry, leftKey);
-            int rightLen = ReadKey(curr.FirstEntry, rightKey);
-            int sepLen = WriteSeparatorBetween(sepBuf, leftKey[..leftLen], rightKey[..rightLen]);
+            // Adjacency invariant: prev.LastEntry == curr.FirstEntry - 1, so
+            // _commonPrefixArr[curr.FirstEntry] is exactly LCP(leftKey, rightKey).
+            // Separator length is min(LCP + 1, _keyLength); separator bytes are
+            // rightKey[..sepLen] — leftKey is never observed downstream.
+            ReadOnlySpan<byte> rightKey = leafKeys.Slice(curr.FirstLeafIdx * _keyLength, _keyLength);
+            int sepLen = Math.Min(_commonPrefixArr![curr.FirstEntry] + 1, _keyLength);
+            rightKey[..sepLen].CopyTo(sepBuf);
 
             long newMaxOff = curr.ChildOffset > maxOff ? curr.ChildOffset : maxOff;
             int valueSlotSize = MinBytesFor(newMaxOff - baseChildOffset);
@@ -488,10 +510,11 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         }
         int valueSlotSize = MinBytesFor(maxVal - baseOffset);
 
-        // Pass 2: ReadKey rightKey + AddKey. Sep 0's rightKey also feeds commonPrefix.
-        // The planner's keySlotSize (post-widen, post-strip) drives slice width.
-        Span<byte> rightKey = stackalloc byte[MaxKeyLen];
+        // Pass 2: rightKey sourced from _leafFirstKeys (no data-section IO) + AddKey.
+        // Sep 0's rightKey also feeds commonPrefix. The planner's keySlotSize
+        // (post-widen, post-strip) drives slice width.
         Span<byte> commonPrefixBuf = stackalloc byte[prefixLen];
+        ReadOnlySpan<byte> leafKeys = _leafFirstKeys.AsSpan();
 
         // keyBuf must fit the widest per-entry payload across layouts (see WriteLeafIndexNode).
         int perEntryKeyBytes = entryCount > 0 ? Math.Max(keySlotSize, _keyLength - prefixLen) : 0;
@@ -502,7 +525,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         if (entryCount > 0)
         {
-            ReadKey(children[1].FirstEntry, rightKey);
+            ReadOnlySpan<byte> rightKey = leafKeys.Slice(children[1].FirstLeafIdx * _keyLength, _keyLength);
             rightKey[..prefixLen].CopyTo(commonPrefixBuf);
         }
 
@@ -521,12 +544,13 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
 
         if (entryCount > 0)
         {
+            ReadOnlySpan<byte> rightKey = leafKeys.Slice(children[1].FirstLeafIdx * _keyLength, _keyLength);
             WriteUInt64LE(valueBuf, children[1].ChildOffset - baseOffset, valueSlotSize);
             indexWriter.AddKey(rightKey.Slice(prefixLen, KeySliceLength(prefixLen, keyType, keySlotSize, sepLengths[0])), valueBuf[..valueSlotSize]);
         }
         for (int i = 1; i < entryCount; i++)
         {
-            ReadKey(children[i + 1].FirstEntry, rightKey);
+            ReadOnlySpan<byte> rightKey = leafKeys.Slice(children[i + 1].FirstLeafIdx * _keyLength, _keyLength);
             WriteUInt64LE(valueBuf, children[i + 1].ChildOffset - baseOffset, valueSlotSize);
             indexWriter.AddKey(rightKey.Slice(prefixLen, KeySliceLength(prefixLen, keyType, keySlotSize, sepLengths[i])), valueBuf[..valueSlotSize]);
         }
@@ -712,7 +736,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         return len;
     }
 
-    internal readonly struct NodeInfo(long childOffset, int firstEntry, int lastEntry)
+    internal readonly struct NodeInfo(long childOffset, int firstEntry, int lastEntry, int firstLeafIdx)
     {
         /// <summary>Absolute first-byte position of this node in _data (= absoluteIndexStart + relativeStart).</summary>
         public readonly long ChildOffset = childOffset;
@@ -720,6 +744,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
         public readonly int FirstEntry = firstEntry;
         /// <summary>Index (into <c>_entryPositions</c>) of the last leaf entry under this subtree.</summary>
         public readonly int LastEntry = lastEntry;
+        /// <summary>Index of the leftmost leaf under this subtree — keys into <c>_leafFirstKeys</c>
+        /// for the first-key of that leaf. At leaf level it is the leaf's own index; at higher
+        /// levels it is inherited from the leftmost child.</summary>
+        public readonly int FirstLeafIdx = firstLeafIdx;
     }
 }
 
