@@ -69,12 +69,14 @@ internal class TransactionProcessorEip7702Tests
     {
         yield return new TestCaseData(AuthorityPreState.Nonexistent, false, 0UL, 0L)
             .SetName("Nonexistent authority - no auth state refund");
+        yield return new TestCaseData(AuthorityPreState.Nonexistent, true, 0UL, GasCostOf.PerAuthBaseState)
+            .SetName("Nonexistent authority clear - refunds auth-base state gas");
         yield return new TestCaseData(AuthorityPreState.ExistingLeaf, false, 0UL, GasCostOf.NewAccountState)
             .SetName("Existing authority leaf - refunds new account state gas");
+        yield return new TestCaseData(AuthorityPreState.ExistingLeaf, true, 0UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
+            .SetName("Existing authority leaf clear - refunds full auth state gas");
         yield return new TestCaseData(AuthorityPreState.ExistingDelegation, false, 1UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             .SetName("Existing delegation overwrite - refunds full auth state gas");
-        // The auth-base refund depends on the pre-state delegation slot, so clearing
-        // an existing delegation receives the same refund as overwriting it.
         yield return new TestCaseData(AuthorityPreState.ExistingDelegation, true, 1UL, GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState)
             .SetName("Existing delegation clear - refunds full auth state gas");
     }
