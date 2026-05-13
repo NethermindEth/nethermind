@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Numerics;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Hsst;
@@ -76,6 +78,28 @@ public class PersistedSnapshotCompactor(
     private readonly Histogram _persistedSnapshotCompactTime =
         Prometheus.Metrics.CreateHistogram("persisted_snapshot_compact_time", "persisted_snapshot_compact_time", "tier", "size");
 
+    // Compact sizes are powers of 2; cache one Histogram.Child per (tier, sizeLabel) so the
+    // observe path is a single array read instead of two WithLabels lookups + a string
+    // interpolation. Indexed by BitOperations.Log2(compactSize). Filled lazily on first use.
+    private (Histogram.Child Size, Histogram.Child Time)[]? _sizeMetricsByLog2;
+
+    private (Histogram.Child Size, Histogram.Child Time) GetSizeMetrics(int compactSize)
+    {
+        int log2 = BitOperations.Log2((uint)compactSize);
+        (Histogram.Child Size, Histogram.Child Time)[] table =
+            _sizeMetricsByLog2 ??= new (Histogram.Child, Histogram.Child)[32];
+        (Histogram.Child Size, Histogram.Child Time) entry = table[log2];
+        if (entry.Size is null)
+        {
+            string sizeLabel = $"size{compactSize}";
+            entry = (
+                _persistedSnapshotSize.WithLabels(_tier.Name, sizeLabel),
+                _persistedSnapshotCompactTime.WithLabels(_tier.Name, sizeLabel));
+            table[log2] = entry;
+        }
+        return entry;
+    }
+
     private bool CompactRange(StateId snapshotTo, long startingBlockNumber, int compactSize)
     {
         using PersistedSnapshotList snapshots = persistedSnapshotRepository.AssembleSnapshotsForCompaction(snapshotTo, startingBlockNumber);
@@ -92,84 +116,110 @@ public class PersistedSnapshotCompactor(
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
 
-        // Union of blob arena ids the inputs already reference. The merged snapshot
-        // does not write any new RLP bytes; it just inherits these. Each input's id list
-        // is materialised once from its on-disk metadata HSST (no in-memory cache).
-        HashSet<ushort> referencedBlobArenaIds = [];
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            ushort[]? ids = snapshots[i].ReadReferencedBlobArenaIds();
-            if (ids is null) continue;
-            foreach (ushort id in ids)
-                referencedBlobArenaIds.Add(id);
-        }
+        SortedSet<ushort> referencedBlobArenaIds = [];
 
-        SnapshotLocation location;
-        ArenaReservation reservation;
-        long estimatedSize = 0;
-        long bloomCapacity = 0;
-        for (int i = 0; i < snapshots.Count; i++)
+        // Open one WholeReadSession per source for the whole compaction. The same views
+        // serve both the ref-ids read (formerly a per-snapshot session) and every column
+        // helper inside NWayMergeSnapshots (formerly per-column sessions). This collapses
+        // ~5N + N session round-trips into N — each saving an mmap + MADV_NORMAL on open
+        // and an MADV_DONTNEED on close. ForgetTracker after the merge cleans the
+        // page-tracker side; AdviseDontNeed on session dispose handles the page cache.
+        int n = snapshots.Count;
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        WholeReadSession[] sessionArr = sessionsList.UnsafeGetInternalArray();
+        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        try
         {
-            estimatedSize += snapshots[i].Size;
-            using PersistedSnapshotBloom srcBloom = bloomManager.LeaseOrSentinel(snapshots[i].To);
-            bloomCapacity += srcBloom.KeyBloomCount;
-        }
-
-        if (estimatedSize > _maxCompactedSourceBytes)
-        {
-            if (_logger.IsDebug) _logger.Debug(
-                $"Skipping compactSize={compactSize}: source bytes {estimatedSize} > {_maxCompactedSourceBytes} cap");
-            return false;
-        }
-
-        BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
-            ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
-            : null;
-        using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, _reservationTag))
-        {
-            long sw = Stopwatch.GetTimestamp();
-            PersistedSnapshotBuilder.NWayMergeSnapshots<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
-                snapshots, ref arenaWriter.GetWriter(), referencedBlobArenaIds, mergedBloom);
-
-            for (int i = 0; i < snapshots.Count; i++)
+            long estimatedSize = 0;
+            long bloomCapacity = 0;
+            for (int i = 0; i < n; i++)
             {
-                PersistedSnapshot s = snapshots[i];
-                bool isPersistableSize = s.To.BlockNumber - s.From.BlockNumber == _compactSize;
-                if (!isPersistableSize)
-                    s.AdviseDontNeed();
+                sessionArr[i] = snapshots[i].BeginWholeReadSession();
+                views[i] = sessionArr[i].GetRawView();
+
+                // Union of blob arena ids the inputs already reference. The merged snapshot
+                // does not write any new RLP bytes; it just inherits these. SortedSet keeps
+                // the on-disk ref_ids list in ascending order so byte-for-byte diffs of the
+                // compacted metadata stay stable across runs. Read via the shared session
+                // view — no extra mmap per source.
+                WholeReadSessionReader refIdsReader = sessionArr[i].GetReader();
+                ushort[]? ids = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
+                if (ids is not null)
+                    foreach (ushort id in ids)
+                        referencedBlobArenaIds.Add(id);
+
+                estimatedSize += snapshots[i].Size;
+                using PersistedSnapshotBloom srcBloom = bloomManager.LeaseOrSentinel(snapshots[i].To);
+                bloomCapacity += srcBloom.KeyBloomCount;
             }
 
-            long len = arenaWriter.GetWriter().Written;
-            _persistedSnapshotSize.WithLabels(_tier.Name, $"size{compactSize}").Observe(len);
-            _persistedSnapshotCompactTime.WithLabels(_tier.Name, $"size{compactSize}").Observe(Stopwatch.GetTimestamp() - sw);
+            if (estimatedSize > _maxCompactedSourceBytes)
+            {
+                if (_logger.IsDebug) _logger.Debug(
+                    $"Skipping compactSize={compactSize}: source bytes {estimatedSize} > {_maxCompactedSourceBytes} cap");
+                return false;
+            }
 
-            (location, reservation) = arenaWriter.Complete();
+            BloomFilter? mergedBloom = _bloomBitsPerKey > 0 && bloomCapacity > 0
+                ? new BloomFilter(bloomCapacity, _bloomBitsPerKey)
+                : null;
+            SnapshotLocation location;
+            ArenaReservation reservation;
+            using (ArenaWriter arenaWriter = arenaManager.CreateWriter(estimatedSize, _reservationTag))
+            {
+                long sw = Stopwatch.GetTimestamp();
+                PersistedSnapshotBuilder.NWayMergeSnapshotsWithViews<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
+                    views, ref arenaWriter.GetWriter(), referencedBlobArenaIds, mergedBloom);
+
+                for (int i = 0; i < n; i++)
+                {
+                    PersistedSnapshot s = snapshots[i];
+                    bool isPersistableSize = s.To.BlockNumber - s.From.BlockNumber == _compactSize;
+                    // The per-source WholeReadSession we still hold open will MADV_DONTNEED
+                    // its mmap range on dispose at the end of this try block, so just clear
+                    // the per-arena page tracker entries here — re-issuing AdviseDontNeed
+                    // would madvise a second time.
+                    if (!isPersistableSize)
+                        s.ForgetTracker();
+                }
+
+                long len = arenaWriter.GetWriter().Written;
+                (Histogram.Child sizeChild, Histogram.Child timeChild) = GetSizeMetrics(compactSize);
+                sizeChild.Observe(len);
+                timeChild.Observe(Stopwatch.GetTimestamp() - sw);
+
+                (location, reservation) = arenaWriter.Complete();
+            }
+
+            persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, mergedBloom);
+
+            // The freshly-written compacted bytes are warm in the kernel page cache from the write
+            // path; drop them so they don't crowd out the random-access read working set. Subsequent
+            // reads will fault them back in on demand.
+            reservation.AdviseDontNeed();
+
+            // Bring the address-index BTree (outer column 0x01) back through the standard reader
+            // so the PageResidencyTracker registers each index page. Bypassing via
+            // RandomAccess.Read would warm the kernel cache but leave the tracker blind, letting
+            // the next legitimate reader access collision-evict pages it never saw. The walk
+            // touches index nodes only — per-address inner HSSTs stay cold. The new
+            // PersistedSnapshot installed by AddCompactedSnapshot holds the reservation's
+            // ArenaFile lease, so no extra session is needed to keep the mmap alive here.
+            ArenaByteReader warmReader = reservation.CreateReader();
+            PersistedSnapshotReader.WarmAddressIndex<ArenaByteReader, NoOpPin>(in warmReader);
+
+            Metrics.PersistedSnapshotCompactions++;
+            Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
+            Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
+            Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
+            // Arena file/byte counters update themselves via push deltas in ArenaManager —
+            // no manual recompute needed here.
+            return true;
         }
-
-        persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, mergedBloom);
-
-        // The freshly-written compacted bytes are warm in the kernel page cache from the write
-        // path; drop them so they don't crowd out the random-access read working set. Subsequent
-        // reads will fault them back in on demand.
-        reservation.AdviseDontNeed();
-
-        // Bring the address-index BTree (outer column 0x01) back through the standard reader
-        // so the PageResidencyTracker registers each index page. Bypassing via
-        // RandomAccess.Read would warm the kernel cache but leave the tracker blind, letting
-        // the next legitimate reader access collision-evict pages it never saw. The walk
-        // touches index nodes only — per-address inner HSSTs stay cold.
-        using (reservation.BeginWholeReadSession())
+        finally
         {
-            ArenaByteReader reader = reservation.CreateReader();
-            PersistedSnapshotReader.WarmAddressIndex<ArenaByteReader, NoOpPin>(in reader);
+            for (int i = 0; i < n; i++) sessionArr[i]?.Dispose();
         }
-
-        Metrics.PersistedSnapshotCompactions++;
-        Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;
-        Metrics.PersistedSnapshotMemory = persistedSnapshotRepository.BaseSnapshotMemory;
-        Metrics.CompactedPersistedSnapshotMemory = persistedSnapshotRepository.CompactedSnapshotMemory;
-        // Arena file/byte counters update themselves via push deltas in ArenaManager —
-        // no manual recompute needed here.
-        return true;
     }
 }

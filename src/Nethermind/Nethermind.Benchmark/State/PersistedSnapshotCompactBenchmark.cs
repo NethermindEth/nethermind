@@ -38,7 +38,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
     private PersistedSnapshotRepository _repo = null!;
     private ResourcePool _pool = null!;
     private PersistedSnapshotList _snapshots = null!;
-    private HashSet<ushort> _referencedBlobArenaIds = null!;
+    private SortedSet<ushort> _referencedBlobArenaIds = null!;
     private long _estimatedSize;
     private int _disposed;
 
@@ -83,11 +83,12 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         // The merge opens fresh WholeReadSessions per call so repeated benchmark invocations
         // remain independent.
         _snapshots = _repo.AssembleSnapshotsForCompaction(prev, 0);
-        _referencedBlobArenaIds = new HashSet<ushort>();
+        _referencedBlobArenaIds = [];
         for (int i = 0; i < _snapshots.Count; i++)
         {
-            foreach (ushort id in _snapshots[i].ReferencedBlobArenaIds)
-                _referencedBlobArenaIds.Add(id);
+            ushort[]? ids = _snapshots[i].ReadReferencedBlobArenaIds();
+            if (ids is not null)
+                foreach (ushort id in ids) _referencedBlobArenaIds.Add(id);
             _estimatedSize += _snapshots[i].Size;
         }
     }

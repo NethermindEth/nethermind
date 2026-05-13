@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -324,7 +325,9 @@ public static class PersistedSnapshotBuilder
         {
             MinSeparatorLength = 4,
         }, expectedKeyCount: uniqueAddressHashes.Count);
-        byte[] rlpBuffer = new byte[256];
+        // Slim-account RLP for any single account fits comfortably in 256 bytes (4×u256 fields
+        // plus framing). Pool the scratch so it doesn't allocate per WriteAccountColumn call.
+        byte[] rlpBuffer = ArrayPool<byte>.Shared.Rent(256);
         RlpStream rlpStream = new(rlpBuffer);
         Span<byte> slotKey = stackalloc byte[32];
         Span<byte> currentPrefixBuf = stackalloc byte[slotPrefixLength];
@@ -555,6 +558,7 @@ public static class PersistedSnapshotBuilder
 
         addressLevel.Build();
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
+        ArrayPool<byte>.Shared.Return(rlpBuffer);
     }
 
     private static void WriteStateTopNodesColumn<TWriter, TReader, TPin>(ref HsstDenseByteIndexBuilder<TWriter> outer, Snapshot snapshot, NativeMemoryList<TreePath> stateNodeKeys, BlobArenaWriter blobWriter, BloomFilter? trieBloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -641,7 +645,43 @@ public static class PersistedSnapshotBuilder
     /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
     /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
     /// </summary>
-    internal static void NWayMergeSnapshots<TWriter, TReader, TPin>(PersistedSnapshotList snapshots, ref TWriter writer, HashSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    internal static void NWayMergeSnapshots<TWriter, TReader, TPin>(PersistedSnapshotList snapshots, ref TWriter writer, SortedSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    {
+        // Open one WholeReadSession per source for the whole merge — every column helper
+        // reads through these without re-opening per-helper sessions (which would mmap +
+        // MADV_NORMAL on open and MADV_DONTNEED on close between columns, dropping pages
+        // we'd then re-fault for the next column). One open per source, one close at the
+        // end, regardless of how many columns we walk.
+        int n = snapshots.Count;
+        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
+        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
+        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
+        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                sessions[i] = snapshots[i].BeginWholeReadSession();
+                views[i] = sessions[i].GetRawView();
+            }
+
+            NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(views, ref writer, referencedBlobArenaIds, bloom);
+        }
+        finally
+        {
+            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Variant of <see cref="NWayMergeSnapshots"/> that takes pre-opened mmap views instead
+    /// of opening (and closing) one <see cref="WholeReadSession"/> per source. Used by the
+    /// compactor, which opens the sessions once at the top of <c>CompactRange</c> so the
+    /// ref-ids read and the merge share the same mmap views.
+    /// </summary>
+    internal static void NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views, ref TWriter writer,
+        SortedSet<ushort> referencedBlobArenaIds, BloomFilter? bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // All snapshots are blob-backed (values in trie columns are NodeRefs), so we can
         // merge them directly without any Full→Linked pre-conversion stage.
@@ -653,19 +693,19 @@ public static class PersistedSnapshotBuilder
             switch (tag[0])
             {
                 case 0x00:
-                    NWayMetadataMerge<TWriter, TReader, TPin>(snapshots, ref valueWriter, referencedBlobArenaIds);
+                    NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter, referencedBlobArenaIds);
                     break;
                 case 0x01:
-                    NWayMergeAccountColumn<TWriter, TReader, TPin>(snapshots, tag, ref valueWriter, bloom);
+                    NWayMergeAccountColumn<TWriter, TReader, TPin>(views, tag, ref valueWriter, bloom);
                     break;
                 case 0x03:
-                    NWayStreamingMerge<TWriter, TReader, TPin>(snapshots, tag, ref valueWriter, keySize: 8);
+                    NWayStreamingMerge<TWriter, TReader, TPin>(views, tag, ref valueWriter, keySize: 8);
                     break;
                 case 0x05:
-                    NWayStreamingMerge<TWriter, TReader, TPin>(snapshots, tag, ref valueWriter, keySize: 4);
+                    NWayStreamingMerge<TWriter, TReader, TPin>(views, tag, ref valueWriter, keySize: 4);
                     break;
                 case 0x06:
-                    NWayStreamingMerge<TWriter, TReader, TPin>(snapshots, tag, ref valueWriter, keySize: 33);
+                    NWayStreamingMerge<TWriter, TReader, TPin>(views, tag, ref valueWriter, keySize: 33);
                     break;
                 default:
                     throw new InvalidOperationException($"Unknown tag 0x{tag[0]:X2}");
@@ -686,16 +726,16 @@ public static class PersistedSnapshotBuilder
     /// <summary>
     /// N-way streaming merge of a column across N snapshots. On key collision, newest (highest index) wins.
     /// Uses <see cref="HsstEnumerator"/> for zero-allocation cursor-based enumeration.
+    /// The caller supplies a parallel <paramref name="views"/> span — one entry per source —
+    /// so the helper does not re-open per-reservation mmap views inside its scope.
     /// </summary>
     internal static void NWayStreamingMerge<TWriter, TReader, TPin>(
-        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views, byte[] tag, ref TWriter writer,
         int keySize) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        int n = snapshots.Count;
+        int n = views.Length;
         using ArrayPoolList<HsstEnumerator> enums = new(n, n);
         using NativeMemoryList<bool> hasMore = new(n, n);
-        using ArrayPoolList<WholeReadSession> sessions = new(n, n);
-        using NativeMemoryList<(IntPtr Ptr, long Len)> views = new(n, n);
         // Cache each source's current logical key once per MoveNext so the O(N) find-min
         // and match-detection scans don't redo CopyCurrentLogicalKey 2-3x per output key.
         // Slot i occupies keyBuf[i*keySize .. (i+1)*keySize].
@@ -707,8 +747,6 @@ public static class PersistedSnapshotBuilder
         {
             for (int i = 0; i < n; i++)
             {
-                sessions[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessions[i].GetRawView();
                 WholeReadSessionReader r = Reader(views[i]);
                 HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
                 (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
@@ -773,7 +811,6 @@ public static class PersistedSnapshotBuilder
         finally
         {
             for (int i = 0; i < n; i++) enums[i].Dispose();
-            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
 
@@ -1183,18 +1220,14 @@ public static class PersistedSnapshotBuilder
     /// <see cref="NWayMergePerAddressHsst"/>.
     /// </summary>
     internal static void NWayMergeAccountColumn<TWriter, TReader, TPin>(
-        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views, byte[] tag, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        int n = snapshots.Count;
+        int n = views.Length;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
         using NativeMemoryList<bool> hasMoreList = new(n, n);
-        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
         using NativeMemoryList<int> matchingSourcesList = new(n, n);
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
         Span<bool> hasMore = hasMoreList.AsSpan();
-        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
-        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
         Span<int> matchingSources = matchingSourcesList.AsSpan();
 
         // Cache each source's current 20-byte address-hash key (stride 32 with room).
@@ -1206,8 +1239,6 @@ public static class PersistedSnapshotBuilder
         {
             for (int i = 0; i < n; i++)
             {
-                sessions[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessions[i].GetRawView();
                 WholeReadSessionReader r = Reader(views[i]);
                 HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
                 (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
@@ -1305,7 +1336,6 @@ public static class PersistedSnapshotBuilder
         finally
         {
             for (int i = 0; i < n; i++) enums[i].Dispose();
-            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
         }
     }
 
@@ -1655,13 +1685,11 @@ public static class PersistedSnapshotBuilder
     /// Emits in sorted key order.
     /// </summary>
     internal static void NWayMetadataMerge<TWriter, TReader, TPin>(
-        PersistedSnapshotList snapshots, ref TWriter writer, HashSet<ushort> refIds) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views, ref TWriter writer, SortedSet<ushort> refIds) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
-        int n = snapshots.Count;
-        using WholeReadSession oldestSession = snapshots[0].BeginWholeReadSession();
-        using WholeReadSession newestSession = snapshots[n - 1].BeginWholeReadSession();
-        WholeReadSessionReader oldestReader = oldestSession.GetReader();
-        WholeReadSessionReader newestReader = newestSession.GetReader();
+        int n = views.Length;
+        WholeReadSessionReader oldestReader = Reader(views[0]);
+        WholeReadSessionReader newestReader = Reader(views[n - 1]);
 
         // Walk metadata fields directly through the long-aware readers. Each field
         // gets a narrow PinBuffer so the resulting Span is just the field bytes —

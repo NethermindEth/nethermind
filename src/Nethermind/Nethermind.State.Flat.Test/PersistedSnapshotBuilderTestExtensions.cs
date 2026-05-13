@@ -46,7 +46,7 @@ internal static class PersistedSnapshotBuilderTestExtensions
             return session.AsSpanIntBounded().ToArray();
         }
 
-        HashSet<ushort> referencedIds = new();
+        SortedSet<ushort> referencedIds = [];
         for (int i = 0; i < snapshots.Count; i++)
         {
             ushort[]? ids = snapshots[i].ReadReferencedBlobArenaIds();

@@ -236,7 +236,7 @@ public sealed class PersistedSnapshotRepository(
     /// <paramref name="referencedBlobArenaIds"/> is the union of blob arena ids
     /// inherited from the inputs of the N-way merge that produced this snapshot.
     /// </summary>
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, HashSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null)
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, SortedSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null)
     {
         ushort[] refIds = [.. referencedBlobArenaIds];
         LeaseBlobFilesForSnapshot(refIds);
