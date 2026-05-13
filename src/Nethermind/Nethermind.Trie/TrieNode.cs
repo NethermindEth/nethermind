@@ -2015,12 +2015,12 @@ namespace Nethermind.Trie
         }
 
         /// <summary>
-        /// Decode the child at the current <paramref name="rlpStream"/> position into a
-        /// resolved <see cref="TrieNode"/>. Empty entries return <see cref="NullNode"/>;
-        /// inline children decode eagerly into a typed instance; by-hash references fall
-        /// through to <paramref name="tree"/>.<c>FindCachedOrUnknown</c> so the slot
-        /// always lands on a typed <see cref="TrieNode"/> reference. The hash itself is
-        /// not retained in the slot — it lives in the parent's <c>_rlpArray</c>.
+        /// Decode the child at the current <paramref name="rlpStream"/> position. Empty
+        /// entries return <see cref="NullNode"/>; inline children decode eagerly into a
+        /// typed instance; by-hash references load through <paramref name="tree"/>.
+        /// <see cref="ITrieNodeResolver.GetOrLoadNode"/>, returning a fully resolved typed
+        /// <see cref="TrieNode"/>. The hash itself is not retained in the slot — it lives
+        /// in the parent's <c>_rlpArray</c>.
         /// </summary>
         private static TrieNode DecodeChildReference(ITrieNodeResolver tree, in TreePath childPath, CappedArray<byte> rlp, ref ValueRlpStream rlpStream)
         {
@@ -2033,7 +2033,7 @@ namespace Nethermind.Trie
                 case 160:
                     rlpStream.Position--;
                     rlpStream.DecodeValueKeccak(out ValueHash256 childHash);
-                    return tree.FindCachedOrUnknown(in childPath, childHash);
+                    return tree.GetOrLoadNode(in childPath, in childHash);
                 default:
                     rlpStream.Position--;
                     int offset = rlpStream.Position;
@@ -2060,10 +2060,10 @@ namespace Nethermind.Trie
                 childOrRef = Volatile.Read(ref data);
                 if (childOrRef is null)
                 {
-                    // Allows to load children in parallel.
-                    // DecodeChildReference returns the empty sentinel for empty slots,
-                    // a typed inline TrieNode for inline children, or a resolved-by-hash
-                    // TrieNode through the resolver for the by-hash case.
+                    // Lazy resolve from parent RLP: empty entries publish NullNode,
+                    // inline children publish the typed inline TrieNode, by-hash
+                    // references resolve through the supplied resolver and publish the
+                    // fully resolved typed node.
                     ValueRlpStream rlpStream = new(rlp);
                     SeekChild(ref rlpStream, i);
                     childOrRef = DecodeChildReference(tree, in childPath, rlp, ref rlpStream);
@@ -2122,12 +2122,13 @@ namespace Nethermind.Trie
                         {
                             path.SetLast(i);
                             rlpStream.DecodeValueKeccak(out ValueHash256 childHash);
-                            // Materialize the typed (placeholder) node through the resolver.
-                            // Flipping this to eager GetOrLoadNode would change observable
-                            // visitor semantics (some callers prune the subtree without ever
-                            // resolving) and is deferred to step 3 with FindCachedOrUnknown
-                            // removal.
-                            TrieNode child = tree.FindCachedOrUnknown(in path, childHash);
+                            // By-hash child: resolve fully through the resolver. Visitors used
+                            // to consume an unresolved placeholder, call ShouldVisit on the
+                            // hash, and only then load. With placeholders gone they consume
+                            // the typed resolved node instead - on the cache-hit path this is
+                            // free, on the miss path it pulls the same RLP they would have
+                            // loaded one step later.
+                            TrieNode child = tree.GetOrLoadNode(in path, in childHash);
                             chCount++;
                             output[i] = child;
 

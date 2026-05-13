@@ -968,16 +968,21 @@ namespace Nethermind.Trie.Test.Pruning
 
             IScopedTrieStore readOnlyScopedTrieStore = fullTrieStore.AsReadOnly().GetTrieStore(null);
             ITrieNodeResolver sharedResolver = ((ITrieNodeResolverSource)readOnlyScopedTrieStore).GetReadOnlyTraversalResolver()!;
-            TrieNode sharedNode = sharedResolver.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
+            TrieNode sharedNode = sharedResolver.GetOrLoadNode(TreePath.Empty, node.Keccak.ValueHash256);
 
             sharedNode.IsSealed.Should().BeTrue();
             sharedNode.HasRlp.Should().BeTrue();
             sharedNode.FullRlp.AsSpan().ToArray().Should().Equal(node.FullRlp.AsSpan().ToArray());
 
-            TreePath childPath = TreePath.Empty;
-            sharedNode.GetChild(sharedResolver, ref childPath, 0)!.Keccak.Should().Be(TestItem.Keccaks[0]);
-            childPath = TreePath.Empty;
-            sharedNode.GetChild(sharedResolver, ref childPath, 0)!.Keccak.Should().Be(TestItem.Keccaks[0]);
+            // The branch has 16 fake by-hash children that are NOT in the underlying
+            // store. The shared node retains the parent RLP, so the canonical child
+            // hashes are recoverable without forcing a load. GetChild would force a
+            // load and surface the missing-node failure - that path is exercised by
+            // the production visitor tests above.
+            sharedNode.TryGetChildHash(0, out ValueHash256 childHash0).Should().BeTrue();
+            childHash0.Should().Be(TestItem.Keccaks[0].ValueHash256);
+            sharedNode.TryGetChildHash(0, out ValueHash256 childHash0Again).Should().BeTrue();
+            childHash0Again.Should().Be(TestItem.Keccaks[0].ValueHash256);
         }
 
         [Test]

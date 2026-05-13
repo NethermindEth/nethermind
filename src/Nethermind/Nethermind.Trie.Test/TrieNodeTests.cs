@@ -921,23 +921,18 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
         trieNode.Seal();
 
-        ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-        trieStore.LoadRlp(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Throws(new TrieException());
+        // Empty store - the child was never persisted. After encoding the parent
+        // retains the by-hash child reference; dropping the cached typed child
+        // forces the lazy GetChild path to issue GetOrLoadNode against an empty
+        // store, which surfaces TrieException via the missing-node path.
+        IScopedTrieStore trieStore = new TestRawTrieStore(new MemDb()).GetTrieStore(null);
         TreePath emptyPath = TreePath.Empty;
         child.ResolveKey(trieStore, ref emptyPath);
         child.IsPersisted = true;
-        // Encode the parent so its _rlpArray retains the by-hash child reference
-        // that the next-read decode-on-demand path consults.
         trieNode.ResolveKey(trieStore, ref emptyPath);
 
-        trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<ValueHash256>()).Returns(new TrieNode(NodeType.Unknown, child.Keccak!));
-        trieNode.GetChild(trieStore, ref emptyPath, 0);
-        Assert.Throws<TrieException>(() =>
-        {
-            TrieNode child = trieNode.GetChild(trieStore, ref emptyPath, 0)!;
-            TreePath rootPath = TreePath.Empty;
-            TrieNode.ResolveNode(ref child, trieStore, in rootPath);
-        });
+        trieNode.UnresolveChild(0);
+        Assert.Throws<MissingTrieNodeException>(() => trieNode.GetChild(trieStore, ref emptyPath, 0));
     }
 
     [Test]
@@ -975,7 +970,10 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        TestRawTrieStore fullTrieStore = new(new MemDb());
+        // Hash key scheme so child lookup at any path resolves by keccak alone:
+        // the parent retains the by-hash references in its RLP, the lazy GetChild
+        // path issues GetOrLoadNode, and the underlying store is keyed only by hash.
+        TestRawTrieStore fullTrieStore = new(new NodeStorage(new MemDb(), INodeStorage.KeyScheme.Hash));
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = TrieNode.CreateLeafTyped();
@@ -1013,8 +1011,6 @@ public class TrieNodeTests
         TrieNode clone = restoredBranch.Clone();
         TrieNode restoredLeaf1 = clone.GetChild(trieStore, ref emptyPath, 1);
         restoredLeaf1.Should().NotBeNull();
-        TreePath rootPath = TreePath.Empty;
-        TrieNode.ResolveNode(ref restoredLeaf1, trieStore, in rootPath);
         restoredLeaf1.Value.ToArray().Should().BeEquivalentTo(leaf1.Value.ToArray());
     }
 
