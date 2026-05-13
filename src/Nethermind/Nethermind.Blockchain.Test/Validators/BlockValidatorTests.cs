@@ -270,30 +270,18 @@ public class BlockValidatorTests
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
-        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
             .WithGasLimit(gasLimit)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
-            .WithBlockAccessList(bal)
-            .WithEncodedBlockAccessList(encodedBal)
-            .WithBlockAccessListHash(balHash)
+            .WithBal(bal)
             .TestObject;
-        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = AmsterdamSut(Always.Valid);
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
-        Assert.That(isValid, Is.EqualTo(expectedValid));
-        if (expectedValid)
-        {
-            Assert.That(error, Is.Null);
-        }
-        else
-        {
-            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
-        }
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
     [TestCase(0u, true)]
@@ -311,31 +299,19 @@ public class BlockValidatorTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(accountChanges)
             .TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
-        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
             .WithGasLimit(10_000)
             .WithTransactions(2, Amsterdam.Instance)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
-            .WithBlockAccessList(bal)
-            .WithEncodedBlockAccessList(encodedBal)
-            .WithBlockAccessListHash(balHash)
+            .WithBal(bal)
             .TestObject;
-        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = AmsterdamSut(Always.Valid);
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
-        Assert.That(isValid, Is.EqualTo(expectedValid));
-        if (expectedValid)
-        {
-            Assert.That(error, Is.Null);
-        }
-        else
-        {
-            Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
-        }
+        AssertValidation(expectedValid, isValid, error, "InvalidBlockLevelAccessList");
     }
 
     [Test]
@@ -349,25 +325,19 @@ public class BlockValidatorTests
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
             .WithAccountChanges(accountChanges)
             .TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
-        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
             .WithGasLimit(0)
             .WithTransactions([])
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
-            .WithBlockAccessList(bal)
-            .WithEncodedBlockAccessList(encodedBal)
-            .WithBlockAccessListHash(balHash)
+            .WithBal(bal)
             .TestObject;
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = AmsterdamSut();
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
-        Assert.That(isValid, Is.False);
-        Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        AssertValidation(false, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
     [TestCase(30_000, true)]
@@ -415,20 +385,11 @@ public class BlockValidatorTests
         generated.Merge(contribution);
         processedBlock.GeneratedBlockAccessList = generated;
 
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = AmsterdamSut();
 
         bool isValid = sut.ValidateProcessedBlock(processedBlock, [], suggestedBlock, out string? error);
 
-        Assert.That(isValid, Is.EqualTo(expectedValid));
-        if (expectedValid)
-        {
-            Assert.That(error, Is.Null);
-        }
-        else
-        {
-            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
-        }
+        AssertValidation(expectedValid, isValid, error, "BlockAccessListGasLimitExceeded");
     }
 
     // EIP-7928 BlockAccessIndex must be in [0, txCount + 1]: 0 = pre-execution,
@@ -449,20 +410,15 @@ public class BlockValidatorTests
                     .WithBalanceChanges([new BalanceChange(balanceChangeIndex, 100)])
                     .TestObject)
             .TestObject;
-        byte[] encodedBal = Rlp.Encode(bal).Bytes;
-        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
 
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
             .WithGasLimit(30_000_000)
             .WithBlobGasUsed(0)
             .WithWithdrawals([])
-            .WithBlockAccessList(bal)
-            .WithEncodedBlockAccessList(encodedBal)
-            .WithBlockAccessListHash(balHash)
+            .WithBal(bal)
             .TestObject;
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+        BlockValidator sut = AmsterdamSut();
 
         bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
@@ -471,5 +427,34 @@ public class BlockValidatorTests
         {
             Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
         }
+    }
+
+    private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>
+        new(tx ?? new TxValidator(TestBlockchainIds.ChainId), Always.Valid, Always.Valid,
+            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+    private static void AssertValidation(bool expected, bool actual, string? error, string failPrefix)
+    {
+        Assert.That(actual, Is.EqualTo(expected));
+        if (expected)
+        {
+            Assert.That(error, Is.Null);
+        }
+        else
+        {
+            Assert.That(error, Does.StartWith(failPrefix));
+        }
+    }
+}
+
+file static class BalBuilderExtensions
+{
+    public static BlockBuilder WithBal(this BlockBuilder builder, ReadOnlyBlockAccessList bal)
+    {
+        byte[] encoded = Rlp.Encode(bal).Bytes;
+        return builder
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encoded)
+            .WithBlockAccessListHash(new Hash256(ValueKeccak.Compute(encoded).Bytes));
     }
 }
