@@ -878,6 +878,116 @@ public class TrieNodeTests
     }
 
     [Test]
+    public void Snap_stitched_branch_preserves_unmodified_by_hash_slot_hashes()
+    {
+        // Regression repro: simulates the snap-sync boundary stitching path.
+        //
+        // 1. Build a canonical branch with 4 by-hash children at slots 0, 4, 8, 12.
+        //    Encode + re-decode through DecodeNode so the result has the exact shape a
+        //    freshly-loaded branch would: _rlpArray retained, all 16 slots null, hashes
+        //    pulled on demand via TryGetChildHash.
+        // 2. Mutate slot 4 via SetChild with a NEW typed leaf whose keccak differs from
+        //    the original slot-4 hash. This models snap-stitch recursion modifying an
+        //    in-range subtree.
+        // 3. Drop the old _rlpArray would normally happen if the encoder mistakenly
+        //    rewrote it; instead the parent retains its original RLP because we only
+        //    SetChild without ClearKeccak-then-encode-then-WriteRlp on the parent yet.
+        // 4. Re-encode the parent and verify that:
+        //    a. The mutated slot 4 encodes the NEW child's keccak.
+        //    b. The unmodified slots 0, 8, 12 still encode the ORIGINAL canonical hashes
+        //       from the parent's _rlpArray (the null-slot decode-on-demand path).
+        //    c. The empty slots are still 0x80.
+        //
+        // Failure mode under the suspect bug: encoder emits stale / wrong bytes for the
+        // unmodified by-hash slots, producing a parent whose hash is non-canonical and
+        // whose re-decode yields a child hash the network never published.
+
+        ValueHash256 hashAt0 = TestItem.Keccaks[0].ValueHash256;
+        ValueHash256 hashAt4 = TestItem.Keccaks[1].ValueHash256;
+        ValueHash256 hashAt8 = TestItem.Keccaks[2].ValueHash256;
+        ValueHash256 hashAt12 = TestItem.Keccaks[3].ValueHash256;
+
+        TrieNode source = TrieNode.CreateBranchTyped();
+        source.SetChildHash(0, new Hash256(hashAt0));
+        source.SetChildHash(4, new Hash256(hashAt4));
+        source.SetChildHash(8, new Hash256(hashAt8));
+        source.SetChildHash(12, new Hash256(hashAt12));
+
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> canonicalRlp = source.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        ValueHash256 canonicalHash = ValueKeccak.Compute(canonicalRlp.AsSpan());
+
+        // Decode through the production DecodeNode contract: this yields a TrieNodeBranch
+        // with retained _rlpArray, IsPersisted = true, all 16 slots null.
+        TrieNode parent = TrieNode.DecodeNode(in emptyPath, in canonicalHash, canonicalRlp.AsSpan().ToArray());
+        parent.IsBranch.Should().BeTrue();
+        parent.GetRawChildRef(0).Should().BeNull("slot 0 should be unresolved (decoded on demand from RLP)");
+        parent.GetRawChildRef(4).Should().BeNull("slot 4 should be unresolved");
+        parent.GetRawChildRef(8).Should().BeNull("slot 8 should be unresolved");
+        parent.GetRawChildRef(12).Should().BeNull("slot 12 should be unresolved");
+
+        // Independent baseline: unmodified slots should still report the original canonical hashes.
+        parent.TryGetChildHash(0, out ValueHash256 readBack0).Should().BeTrue();
+        readBack0.Should().Be(hashAt0);
+        parent.TryGetChildHash(4, out ValueHash256 readBack4).Should().BeTrue();
+        readBack4.Should().Be(hashAt4);
+        parent.TryGetChildHash(8, out ValueHash256 readBack8).Should().BeTrue();
+        readBack8.Should().Be(hashAt8);
+        parent.TryGetChildHash(12, out ValueHash256 readBack12).Should().BeTrue();
+        readBack12.Should().Be(hashAt12);
+
+        // Phase 2: mutate slot 4 with a typed leaf whose computed keccak DIFFERS from hashAt4.
+        // Use a heavy-enough leaf to ensure ResolveKey produces a 32-byte hash entry.
+        TrieNode replacementChild = TrieNode.CreateLeafTyped();
+        replacementChild.Key = new byte[20];
+        replacementChild.Value = Bytes.Concat(Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes);
+        TreePath childPath = TreePath.Empty;
+        childPath.AppendMut(4);
+        replacementChild.ResolveKey(NullTrieNodeResolver.Instance, ref childPath);
+        replacementChild.IsPersisted = true;
+        ValueHash256 replacementHash = replacementChild.Keccak!.ValueHash256;
+        replacementHash.Should().NotBe(hashAt4, "test setup: replacement must differ from original");
+
+        parent.SetChild(4, replacementChild);
+
+        // Phase 3: re-encode the parent. The encoder must:
+        // - emit replacementHash at slot 4 (modified in-range slot)
+        // - emit hashAt0, hashAt8, hashAt12 from the retained _rlpArray (unmodified by-hash slots)
+        // - emit 0x80 (RLP empty) at slots 1, 2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15
+        CappedArray<byte> reEncoded = parent.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        ValueHash256 reEncodedHash = ValueKeccak.Compute(reEncoded.AsSpan());
+
+        // Phase 4: independently compute the expected canonical encoding by building a fresh
+        // branch with the new slot-4 hash and the three unmodified hashes.
+        TrieNode expectedParent = TrieNode.CreateBranchTyped();
+        expectedParent.SetChildHash(0, new Hash256(hashAt0));
+        expectedParent.SetChildHash(4, new Hash256(replacementHash));
+        expectedParent.SetChildHash(8, new Hash256(hashAt8));
+        expectedParent.SetChildHash(12, new Hash256(hashAt12));
+        TreePath expectedPath = TreePath.Empty;
+        CappedArray<byte> expectedRlp = expectedParent.RlpEncode(NullTrieNodeResolver.Instance, ref expectedPath);
+        ValueHash256 expectedHash = ValueKeccak.Compute(expectedRlp.AsSpan());
+
+        reEncoded.AsSpan().ToArray().Should().Equal(
+            expectedRlp.AsSpan().ToArray(),
+            "snap-stitched parent must encode bit-identically to a freshly-built branch with the same children");
+        reEncodedHash.Should().Be(
+            expectedHash,
+            "snap-stitched parent keccak must match canonical recomputation");
+
+        // Direct slot-hash readback after re-encode (write-through to _rlpArray).
+        TrieNode reDecoded = TrieNode.DecodeNode(in emptyPath, in reEncodedHash, reEncoded.AsSpan().ToArray());
+        reDecoded.TryGetChildHash(0, out ValueHash256 final0).Should().BeTrue();
+        final0.Should().Be(hashAt0);
+        reDecoded.TryGetChildHash(4, out ValueHash256 final4).Should().BeTrue();
+        final4.Should().Be(replacementHash);
+        reDecoded.TryGetChildHash(8, out ValueHash256 final8).Should().BeTrue();
+        final8.Should().Be(hashAt8);
+        reDecoded.TryGetChildHash(12, out ValueHash256 final12).Should().BeTrue();
+        final12.Should().Be(hashAt12);
+    }
+
+    [Test]
     public void Branch_child_as_keccak_resolved()
     {
         TrieNode child = new TrieNodePlaceholder(Keccak.Zero);
