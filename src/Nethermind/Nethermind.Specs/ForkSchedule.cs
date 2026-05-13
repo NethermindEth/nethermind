@@ -4,25 +4,67 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs;
 
 /// <summary>
-/// Collection initializer for declaring a fork schedule as
-/// <c>[block] = spec</c> or <c>[timestamp] = spec</c> entries.
+/// Collection initializer for declaring a fork schedule as <c>[KeyConst] = spec</c> entries.
 /// </summary>
 /// <remarks>
-/// Distinguishes block- vs timestamp-keyed activations via the indexer's parameter type
-/// (<see cref="long"/> for block numbers, <see cref="ulong"/> for timestamps). Iteration
-/// preserves insertion order, which is the order activations are declared.
+/// Block- vs timestamp-keyed activations are inferred from the key's identifier name:
+/// names containing <c>Timestamp</c> are timestamp-keyed; otherwise the name must contain
+/// <c>Block</c> (e.g. <c>GenesisBlock</c>, <c>LondonBlockNumber</c>). This keeps call sites
+/// concise and remains valid once block numbers migrate to <see cref="ulong"/>, since the
+/// inference does not depend on signed/unsigned type dispatch. The explicit
+/// <see cref="ForkActivationKind"/> overloads are available when a key cannot follow the
+/// naming convention. Iteration preserves insertion order.
 /// </remarks>
 public sealed class ForkSchedule : IEnumerable<ForkSpec>
 {
     private readonly List<ForkSpec> _entries = [];
 
-    public IReleaseSpec this[long block] { set => _entries.Add(new ForkSpec(block, value)); }
-    public IReleaseSpec this[ulong timestamp] { set => _entries.Add(new ForkSpec(timestamp, value)); }
+    public IReleaseSpec this[long key, [CallerArgumentExpression(nameof(key))] string? keyExpression = null]
+    {
+        set => Add(key, InferKind(keyExpression), value);
+    }
+
+    public IReleaseSpec this[ulong key, [CallerArgumentExpression(nameof(key))] string? keyExpression = null]
+    {
+        set => Add(key, InferKind(keyExpression), value);
+    }
+
+    public IReleaseSpec this[long key, ForkActivationKind kind] { set => Add(key, kind, value); }
+    public IReleaseSpec this[ulong key, ForkActivationKind kind] { set => Add(key, kind, value); }
+
+    private void Add(long key, ForkActivationKind kind, IReleaseSpec spec) =>
+        _entries.Add(kind switch
+        {
+            ForkActivationKind.Block => new ForkSpec(key, spec),
+            ForkActivationKind.Timestamp => new ForkSpec((ulong)key, spec),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        });
+
+    private void Add(ulong key, ForkActivationKind kind, IReleaseSpec spec) =>
+        _entries.Add(kind switch
+        {
+            ForkActivationKind.Block => new ForkSpec((long)key, spec),
+            ForkActivationKind.Timestamp => new ForkSpec(key, spec),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        });
+
+    private static ForkActivationKind InferKind(string? keyExpression)
+    {
+        if (keyExpression is null)
+            throw new ArgumentException("Cannot infer Block/Timestamp without a caller-argument expression. Use the explicit ForkActivationKind overload.");
+        if (keyExpression.Contains("Timestamp", StringComparison.Ordinal))
+            return ForkActivationKind.Timestamp;
+        if (keyExpression.Contains("Block", StringComparison.Ordinal))
+            return ForkActivationKind.Block;
+        throw new ArgumentException(
+            $"Cannot infer Block/Timestamp from key expression '{keyExpression}': name must contain 'Block' or 'Timestamp'. Use the explicit ForkActivationKind overload otherwise.");
+    }
 
     public IEnumerator<ForkSpec> GetEnumerator() => _entries.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
