@@ -33,6 +33,9 @@ public sealed class ArenaManager : IArenaManager
     private readonly HashSet<int> _mutableArenas = [];
     private readonly Lock _lock = new();
     private readonly PageResidencyTracker _pageTracker;
+    // 1s tick that mirrors _pageTracker.ResidentBytes into Metrics.PageTrackerResidentBytesByTier.
+    // Null when the tracker is disabled (no residency to track).
+    private readonly Timer? _metricsTimer;
     // MPSC-used MpmcRingBuffer for queued evictions; null when the tracker is disabled
     // (no pages tracked → no evictions to dispatch).
     private readonly MpmcRingBuffer<long>? _evictionRing;
@@ -68,6 +71,18 @@ public sealed class ArenaManager : IArenaManager
         _tier = tier ?? PersistedSnapshotTier.Small;
         Directory.CreateDirectory(basePath);
         _pageTracker = PageResidencyTracker.FromByteBudget(pageCacheBytes);
+        // Per-tier static facts: metadata footprint and configured cap. ResidentBytes is
+        // refreshed by _metricsTimer below; seed to 0 so the gauge appears immediately.
+        Metrics.PageTrackerResidentBytesByTier[_tier] = 0L;
+        Metrics.PageTrackerMetadataBytesByTier[_tier] = _pageTracker.MetadataBytes;
+        Metrics.PageTrackerMaxBytesByTier[_tier] =
+            (long)_pageTracker.MaxCapacity * Environment.SystemPageSize;
+        // Poll the tracker's _residentPages counter once a second rather than pushing on
+        // every Inserted — the hot path stays untouched and the gauge lags by at most ~1s.
+        // Skip when the tracker is disabled (MaxCapacity == 0): no residency, no point ticking.
+        if (_pageTracker.MaxCapacity > 0)
+            _metricsTimer = new Timer(RefreshResidencyMetric, null,
+                dueTime: TimeSpan.FromSeconds(1), period: TimeSpan.FromSeconds(1));
 
         // Eviction queue is sized at 10% of the tracker's slot capacity (rounded up to the next
         // power of two, floored at 64). With the tracker disabled (capacity 0) there are no
@@ -408,6 +423,15 @@ public sealed class ArenaManager : IArenaManager
         Metrics.ArenaMappedBytesByTier.AddOrUpdate(_tier,
             static (_, d) => d, static (_, b, d) => b + d, delta);
 
+    // Mirror the tracker's resident-bytes counter into the per-tier gauge. Runs on the
+    // ThreadPool from a 1s System.Threading.Timer; ResidentBytes is a single Volatile.Read
+    // so the work is trivial and Volatile-safe against the hot Inserted path.
+    private void RefreshResidencyMetric(object? _)
+    {
+        if (_disposed) return;
+        Metrics.PageTrackerResidentBytesByTier[_tier] = _pageTracker.ResidentBytes;
+    }
+
     private static int ParseArenaId(string filePath, bool dedicated)
     {
         string fileName = Path.GetFileNameWithoutExtension(filePath);
@@ -424,6 +448,8 @@ public sealed class ArenaManager : IArenaManager
             if (_disposed) return;
             _disposed = true;
         }
+
+        _metricsTimer?.Dispose();
 
         // Stop the drain task first so it doesn't race with arena disposal below.
         _evictionDrainCts?.Cancel();
@@ -451,5 +477,11 @@ public sealed class ArenaManager : IArenaManager
             _arenas.Clear();
         }
         _pageTracker.Dispose();
+        // Zero out per-tier gauges so a teardown doesn't leave stale entries behind. Matters
+        // in tests that build multiple managers; in production the entries are overwritten
+        // on the next start.
+        Metrics.PageTrackerResidentBytesByTier[_tier] = 0L;
+        Metrics.PageTrackerMetadataBytesByTier[_tier] = 0L;
+        Metrics.PageTrackerMaxBytesByTier[_tier] = 0L;
     }
 }

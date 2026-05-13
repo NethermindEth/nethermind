@@ -153,6 +153,21 @@ public static class Metrics
     [KeyIsLabel("tier")]
     public static ConcurrentDictionary<PersistedSnapshotTier, long> ArenaMappedBytesByTier { get; } = new();
 
+    // Per-tier PageResidencyTracker gauges. ResidentBytes is refreshed by ArenaManager on a
+    // 1-second System.Threading.Timer so the tracker's hot path stays untouched; the gauge
+    // lags reality by at most ~1s. MetadataBytes and MaxBytes are fixed at tracker construction.
+    [Description("Currently-bounded resident bytes in the page-residency tracker, by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerResidentBytesByTier { get; } = new();
+
+    [Description("Unmanaged metadata bytes used by the page-residency tracker (slot + meta arrays), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerMetadataBytesByTier { get; } = new();
+
+    [Description("Maximum bytes the page-residency tracker can bound (configured page-cache budget), by tier")]
+    [KeyIsLabel("tier")]
+    public static ConcurrentDictionary<PersistedSnapshotTier, long> PageTrackerMaxBytesByTier { get; } = new();
+
     [DetailedMetric]
     [Description("Live arena reservations by tag")]
     [KeyIsLabel("tag")]
