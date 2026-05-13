@@ -168,10 +168,9 @@ public class BranchProcessor(
 
                 stateProvider.Reset();
 
-                // Calculate the transaction hashes in the background and release tx sequence memory
-                // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
-                // Though we still want to release the memory even if syncing rather than processing live
-                TxHashCalculator.CalculateInBackground(suggestedBlock);
+                // Calculate tx hashes synchronously to avoid background ThreadPool contention
+                foreach (Transaction tx in suggestedBlock.Transactions)
+                    tx.CalculateHashInternal();
             }
 
             return processedBlocks;

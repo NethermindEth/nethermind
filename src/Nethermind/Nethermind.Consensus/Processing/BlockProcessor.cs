@@ -228,16 +228,10 @@ public partial class BlockProcessor(
     private static void CalculateBlooms(TxReceipt[] receipts)
     {
         long start = Stopwatch.GetTimestamp();
-        ParallelUnbalancedWork.For(
-            0,
-            receipts.Length,
-            ParallelUnbalancedWork.DefaultOptions,
-            receipts,
-            static (i, receipts) =>
-            {
-                receipts[i].CalculateBloom();
-                return receipts;
-            });
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            receipts[i].CalculateBloom();
+        }
         Evm.Metrics.IncrementBloomsTime(Stopwatch.GetElapsedTime(start).Ticks);
     }
 

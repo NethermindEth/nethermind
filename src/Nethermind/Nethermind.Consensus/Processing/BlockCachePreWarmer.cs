@@ -69,31 +69,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (_preBlockCaches is not null && ShouldPreWarm(spec))
+        // Fully disabled: all background prewarming (EVM + AddressWarmer) causes CPU contention
+        // with block processing, producing non-deterministic per-block timing variance.
+        if (_preBlockCaches is not null)
         {
-            CacheType result = _preBlockCaches.ClearCaches();
+            _preBlockCaches.ClearCaches();
             _nodeStorageCache.ClearCaches();
-            _nodeStorageCache.Enabled = true;
-            if (result != default)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
-            }
-
-            if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
-            {
-                BlockState blockState = new(this, suggestedBlock, parent, spec);
-                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
-
-                // BAL makes speculative tx execution redundant — when BAL-based read warming
-                // is in use, drive warmup directly off the suggested block's access list.
-                BlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
-
-                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
-                AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
-                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
-                // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
-            }
         }
 
         return Task.CompletedTask;
