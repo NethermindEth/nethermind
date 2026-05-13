@@ -65,26 +65,28 @@ public class RewardsStoreTests
     public void SaveEpochRewards_WhenEpochIsOutsideRetentionWindow_ShouldPruneOlderEntries()
     {
         IDb db = new MemDb();
-        RewardsStore store = new(db);
+        const int retention = 3;
+        RewardsStore store = new(db, retention);
         Address account = Address.FromNumber(1);
 
-        const ulong oldEpoch = 100;
-        const ulong keptEpoch = 6_000;
-        const ulong latestEpoch = 25_000; // cutoff = 5_000 when retention is 20_000
+        ulong oldEpoch = 1;
+        ulong latestEpoch = (ulong)retention + 1;
 
-        store.SaveEpochRewards(oldEpoch, [new BlockReward(account, (UInt256)10)]);
-        store.SaveEpochRewards(keptEpoch, [new BlockReward(account, (UInt256)20)]);
-        store.SaveEpochRewards(latestEpoch, [new BlockReward(account, (UInt256)30)]);
+        for (ulong epoch = oldEpoch; epoch <= latestEpoch; epoch++)
+        {
+            store.SaveEpochRewards(epoch, [new BlockReward(account, (UInt256)epoch)]);
+        }
 
         store.HasEpochRewards(oldEpoch).Should().BeFalse();
         store.TryGetAccountReward(account, oldEpoch, out _).Should().BeFalse();
 
-        store.HasEpochRewards(keptEpoch).Should().BeTrue();
-        store.TryGetAccountReward(account, keptEpoch, out UInt256 keptReward).Should().BeTrue();
-        keptReward.Should().Be((UInt256)20);
+        ulong newOldestKeptEpoch = 2;
+        store.HasEpochRewards(newOldestKeptEpoch).Should().BeTrue();
+        store.TryGetAccountReward(account, newOldestKeptEpoch, out UInt256 keptReward).Should().BeTrue();
+        keptReward.Should().Be((UInt256)newOldestKeptEpoch);
 
         store.TryGetRetainedRange(out ulong oldest, out ulong newest).Should().BeTrue();
-        oldest.Should().Be(keptEpoch);
+        oldest.Should().Be(newOldestKeptEpoch);
         newest.Should().Be(latestEpoch);
     }
 }
