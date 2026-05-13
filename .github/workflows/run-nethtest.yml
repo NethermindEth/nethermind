@@ -555,6 +555,8 @@ jobs:
             local gcdump_file="$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.gcdump"
             local report_file="$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.heapstat.txt"
 
+            collect_process_memory_info "$pid" "$label"
+
             echo "Collecting gcdump '$label' from process $pid"
             if "$DOTNET_GCDUMP" collect --process-id "$pid" --output "$gcdump_file" --timeout 120; then
               "$DOTNET_GCDUMP" report "$gcdump_file" > "$report_file" || true
@@ -562,6 +564,24 @@ jobs:
               echo "heap report saved: $report_file"
             else
               echo "::warning::Failed to collect gcdump '$label' from process $pid"
+            fi
+          }
+
+          collect_process_memory_info() {
+            local pid="$1"
+            local label="$2"
+
+            echo "Collecting process memory info '$label' from process $pid"
+            if [ -r "/proc/$pid/status" ]; then
+              cat "/proc/$pid/status" > "$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.proc-status.txt" || true
+            fi
+
+            if [ -r "/proc/$pid/smaps_rollup" ]; then
+              cat "/proc/$pid/smaps_rollup" > "$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.smaps-rollup.txt" || true
+            fi
+
+            if [ -r "/proc/$pid/maps" ]; then
+              cat "/proc/$pid/maps" > "$DIAGNOSTIC_OUTPUT_DIR/nethtest-${label}.proc-maps.txt" || true
             fi
           }
 
