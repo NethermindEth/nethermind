@@ -18,21 +18,21 @@ public class ChiadoSpecProvider : ForkScheduleSpecProvider
 
     public static readonly Address FeeCollector = new("0x1559000000000000000000000000000000000000");
 
-    private ChiadoSpecProvider() : base(
-    [
-        new(0ul, London.Instance),
-        new(ShanghaiTimestamp, ShanghaiGnosis.Instance),
-        new(CancunTimestamp, CancunGnosis.Instance),
-        new(PragueTimestamp, PragueGnosis.Instance),
-        new(OsakaTimestamp, OsakaGnosis.Instance),
-    ], terminalTotalDifficulty: new UInt256(18446744073375486960ul, 18446744073709551615ul, 680927ul)) =>
-        TransitionActivations =
-        [
-            (0, ShanghaiTimestamp),
-            (0, CancunTimestamp),
-            (0, PragueTimestamp),
-            (0, OsakaTimestamp),
-        ];
+    private ChiadoSpecProvider() : this(new ForkSchedule
+    {
+        [GenesisBlock] = London.Instance,
+        [ShanghaiTimestamp] = ShanghaiGnosis.Instance,
+        [CancunTimestamp] = CancunGnosis.Instance,
+        [PragueTimestamp] = PragueGnosis.Instance,
+        [OsakaTimestamp] = OsakaGnosis.Instance,
+    }) { }
+
+    private ChiadoSpecProvider(ForkSchedule schedule) : base(schedule,
+        // 231707791542740786049188744689299064356246512
+        terminalTotalDifficulty: new UInt256(18446744073375486960ul, 18446744073709551615ul, 680927ul)) =>
+        TransitionActivations = schedule.ToTransitionActivations(
+            postMergeBlock: GenesisBlock,
+            incrementBlockPerTimestampFork: false);
 
     public override ulong TimestampFork => ShanghaiTimestamp;
     public override ulong NetworkId => BlockchainIds.Chiado;

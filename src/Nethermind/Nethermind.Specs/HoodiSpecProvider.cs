@@ -10,7 +10,6 @@ namespace Nethermind.Specs;
 
 public class HoodiSpecProvider : ForkScheduleSpecProvider
 {
-    public const ulong GenesisTimestamp = 0x0;
     public const ulong ShanghaiTimestamp = 0x0;
     public const ulong CancunTimestamp = 0x0;
     public const ulong PragueTimestamp = 0x67e41118;
@@ -23,25 +22,22 @@ public class HoodiSpecProvider : ForkScheduleSpecProvider
     private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
         static () => new Prague { DepositContractAddress = Eip6110Constants.HoodiDepositContractAddress });
 
-    private HoodiSpecProvider() : base(
-    [
-        new(0ul, London.Instance),
-        new(ShanghaiTimestamp, Shanghai.Instance),
-        new(CancunTimestamp, Cancun.Instance),
-        new(PragueTimestamp, Prague),
-        new(OsakaTimestamp, Osaka.Instance),
-        new(BPO1Timestamp, BPO1.Instance),
-        new(BPO2Timestamp, BPO2.Instance),
-    ], terminalTotalDifficulty: 0, mergeBlockNumber: (0, GenesisTimestamp)) =>
-        TransitionActivations =
-        [
-            (1, ShanghaiTimestamp),
-            (2, CancunTimestamp),
-            (3, PragueTimestamp),
-            (4, OsakaTimestamp),
-            (5, BPO1Timestamp),
-            (6, BPO2Timestamp),
-        ];
+    private HoodiSpecProvider() : this(new ForkSchedule
+    {
+        [GenesisBlock] = London.Instance,
+        [ShanghaiTimestamp] = Shanghai.Instance,
+        [CancunTimestamp] = Cancun.Instance,
+        [PragueTimestamp] = Prague,
+        [OsakaTimestamp] = Osaka.Instance,
+        [BPO1Timestamp] = BPO1.Instance,
+        [BPO2Timestamp] = BPO2.Instance,
+    }) { }
+
+    private HoodiSpecProvider(ForkSchedule schedule) : base(schedule,
+        terminalTotalDifficulty: 0,
+        mergeBlockNumber: (GenesisBlock, GenesisTimestamp)) =>
+        TransitionActivations = schedule.ToTransitionActivations(
+            postMergeBlock: GenesisBlock + 1);
 
     public override ulong TimestampFork => ShanghaiTimestamp;
     public override ulong NetworkId => BlockchainIds.Hoodi;

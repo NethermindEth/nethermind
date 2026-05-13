@@ -10,13 +10,16 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs;
 
-public abstract class ForkScheduleSpecProvider : ISpecProvider
+public abstract class ForkScheduleSpecProvider : IForkAwareSpecProvider
 {
+    public const long GenesisBlock = 0L;
+    public const ulong GenesisTimestamp = 0UL;
+
     private readonly Lazy<ForkSpec[]> _schedule;
     private readonly Lazy<FrozenDictionary<string, IReleaseSpec>> _forks;
     private readonly Lazy<string[]> _availableForks;
 
-    protected ForkSpec[] ForkSchedule => _schedule.Value;
+    protected internal ForkSpec[] ForkSchedule => _schedule.Value;
     public FrozenDictionary<string, IReleaseSpec> Forks => _forks.Value;
     public IEnumerable<string> AvailableForks => _availableForks.Value;
     public bool TryGetForkSpec(string forkName, out IReleaseSpec? spec) => Forks.TryGetValue(forkName, out spec);
@@ -31,7 +34,7 @@ public abstract class ForkScheduleSpecProvider : ISpecProvider
     {
         _schedule = schedule;
         _forks = new(() => ForkSchedule.ToFrozenDictionary(static x => x.Spec.Name, static x => x.Spec, StringComparer.OrdinalIgnoreCase));
-        _availableForks = new(() => [.. Forks.Keys.Order()]);
+        _availableForks = new(() => [.. ForkSchedule.Select(static x => x.Spec.Name)]);
         TerminalTotalDifficulty = terminalTotalDifficulty;
         MergeBlockNumber = mergeBlockNumber;
     }

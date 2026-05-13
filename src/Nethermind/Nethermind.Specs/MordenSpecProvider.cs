@@ -12,17 +12,15 @@ public class MordenSpecProvider : ForkScheduleSpecProvider
     public const long HomesteadBlockNumber = 494_000;
     public const long SpuriousDragonBlockNumber = 1_885_000;
 
-    private MordenSpecProvider() : base(
-    [
-        new(0L, Frontier.Instance),
-        new(HomesteadBlockNumber, Homestead.Instance),
-        new(SpuriousDragonBlockNumber, SpuriousDragon.Instance),
-    ]) =>
-        TransitionActivations =
-        [
-            (ForkActivation)HomesteadBlockNumber,
-            (ForkActivation)SpuriousDragonBlockNumber,
-        ];
+    private MordenSpecProvider() : this(new ForkSchedule
+    {
+        [GenesisBlock] = Frontier.Instance,
+        [HomesteadBlockNumber] = Homestead.Instance,
+        [SpuriousDragonBlockNumber] = SpuriousDragon.Instance,
+    }) { }
+
+    private MordenSpecProvider(ForkSchedule schedule) : base(schedule) =>
+        TransitionActivations = schedule.ToTransitionActivations();
 
     public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public override ulong NetworkId => BlockchainIds.Morden;

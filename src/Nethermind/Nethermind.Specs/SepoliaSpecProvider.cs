@@ -10,6 +10,7 @@ namespace Nethermind.Specs;
 
 public class SepoliaSpecProvider : ForkScheduleSpecProvider
 {
+    public const long MergeForkIdBlockNumber = 1735371;
     public const ulong BeaconChainGenesisTimestampConst = 0x62b07d60;
     public const ulong ShanghaiTimestamp = 0x63fd7d60;
     public const ulong CancunTimestamp = 0x65B97D60;
@@ -23,26 +24,23 @@ public class SepoliaSpecProvider : ForkScheduleSpecProvider
     private static IReleaseSpec Prague => LazyInitializer.EnsureInitialized(ref _prague,
         static () => new Prague { DepositContractAddress = Eip6110Constants.SepoliaDepositContractAddress });
 
-    private SepoliaSpecProvider() : base(
-    [
-        new(0ul, London.Instance),
-        new(ShanghaiTimestamp, Shanghai.Instance),
-        new(CancunTimestamp, Cancun.Instance),
-        new(PragueTimestamp, Prague),
-        new(OsakaTimestamp, Osaka.Instance),
-        new(BPO1Timestamp, BPO1.Instance),
-        new(BPO2Timestamp, BPO2.Instance),
-    ], terminalTotalDifficulty: 17000000000000000) =>
-        TransitionActivations =
-        [
-            (ForkActivation)1735371,
-            (1735371, ShanghaiTimestamp),
-            (1735371, CancunTimestamp),
-            (1735371, PragueTimestamp),
-            (1735371, OsakaTimestamp),
-            (1735371, BPO1Timestamp),
-            (1735371, BPO2Timestamp),
-        ];
+    private SepoliaSpecProvider() : this(new ForkSchedule
+    {
+        [GenesisBlock] = London.Instance,
+        [ShanghaiTimestamp] = Shanghai.Instance,
+        [CancunTimestamp] = Cancun.Instance,
+        [PragueTimestamp] = Prague,
+        [OsakaTimestamp] = Osaka.Instance,
+        [BPO1Timestamp] = BPO1.Instance,
+        [BPO2Timestamp] = BPO2.Instance,
+    }) { }
+
+    private SepoliaSpecProvider(ForkSchedule schedule) : base(schedule,
+        terminalTotalDifficulty: 17000000000000000) =>
+        TransitionActivations = schedule.ToTransitionActivations(
+            postMergeBlock: MergeForkIdBlockNumber,
+            incrementBlockPerTimestampFork: false,
+            prepend: [(ForkActivation)MergeForkIdBlockNumber]);
 
     public override ulong TimestampFork => ISpecProvider.TimestampForkNever;
     public override ulong NetworkId => BlockchainIds.Sepolia;

@@ -9,7 +9,7 @@ using Nethermind.Specs.GnosisForks;
 
 namespace Nethermind.Specs;
 
-public class GnosisSpecProvider : ForkScheduleSpecProvider, IForkAwareSpecProvider
+public class GnosisSpecProvider : ForkScheduleSpecProvider
 {
     public const long ConstantinopleBlockNumber = 1_604_400;
     public const long ConstantinopleFixBlockNumber = 2_508_800;
@@ -29,19 +29,20 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider, IForkAwareSpecProvid
     // init → LondonGnosis.Instance (still building → null) is a circular init if Chiado or anything
     // else touches a Gnosis fork instance before GnosisSpecProvider is first directly accessed.
     private GnosisSpecProvider() : base(
-        static () =>
-        [
-            new(0L, Byzantium.Instance),
-            new(ConstantinopleBlockNumber, Constantinople.Instance),
-            new(ConstantinopleFixBlockNumber, ConstantinopleFix.Instance),
-            new(IstanbulBlockNumber, Istanbul.Instance),
-            new(BerlinBlockNumber, Berlin.Instance),
-            new(LondonBlockNumber, LondonGnosis.Instance),
-            new(ShanghaiTimestamp, ShanghaiGnosis.Instance),
-            new(CancunTimestamp, CancunGnosis.Instance),
-            new(PragueTimestamp, PragueGnosis.Instance),
-            new(OsakaTimestamp, OsakaGnosis.Instance),
-        ],
+        static () => new ForkSchedule
+        {
+            [GenesisBlock] = Byzantium.Instance,
+            [ConstantinopleBlockNumber] = Constantinople.Instance,
+            [ConstantinopleFixBlockNumber] = ConstantinopleFix.Instance,
+            [IstanbulBlockNumber] = Istanbul.Instance,
+            [BerlinBlockNumber] = Berlin.Instance,
+            [LondonBlockNumber] = LondonGnosis.Instance,
+            [ShanghaiTimestamp] = ShanghaiGnosis.Instance,
+            [CancunTimestamp] = CancunGnosis.Instance,
+            [PragueTimestamp] = PragueGnosis.Instance,
+            [OsakaTimestamp] = OsakaGnosis.Instance,
+        },
+        // 8626000000000000000000058750000000000000000000
         terminalTotalDifficulty: new UInt256(15847367919172845568ul, 12460455203863319017ul, 25349535ul)) =>
         TransitionActivations =
         [
@@ -62,7 +63,6 @@ public class GnosisSpecProvider : ForkScheduleSpecProvider, IForkAwareSpecProvid
     public override ulong NetworkId => BlockchainIds.Gnosis;
     public override ulong ChainId => BlockchainIds.Gnosis;
     public override ulong? BeaconChainGenesisTimestamp => BeaconChainGenesisTimestampConst;
-    // 8626000000000000000000058750000000000000000000
     public override long? DaoBlockNumber => null;
     public string SealEngine => SealEngineType.AuRa;
 
