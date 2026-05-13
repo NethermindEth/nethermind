@@ -51,6 +51,9 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
     Snapshot? ISnapshotManager.GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec) => GetSnapshotByBlockNumber(blockNumber, spec);
 
+    Snapshot ISnapshotManager.GetOrCreateSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+        => GetOrCreateSnapshotByBlockNumber(blockNumber, spec);
+
     void ISnapshotManager.StoreSnapshot(Snapshot snapshot)
     {
         if (snapshot is TSnapshot typedSnapshot)
@@ -95,6 +98,22 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     {
         long gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
         return GetSnapshotByGapNumber(gapBlockNum);
+    }
+
+    public TSnapshot GetOrCreateSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
+    {
+        long gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+
+        if (_blockTree.FindHeader(gapBlockNum) is not XdcBlockHeader gapBlockHeader)
+            throw new InvalidOperationException($"Cannot create snapshot: block header #{gapBlockNum} not found in block tree");
+
+        TSnapshot? existing = GetSnapshot(gapBlockHeader.Hash);
+        if (existing is not null)
+            return existing;
+
+        TSnapshot snapshot = CreateSnapshot(gapBlockHeader, spec);
+        StoreSnapshot(snapshot);
+        return snapshot;
     }
 
     public void StoreSnapshot(TSnapshot snapshot)

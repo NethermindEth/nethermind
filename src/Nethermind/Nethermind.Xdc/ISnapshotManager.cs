@@ -17,5 +17,6 @@ public interface ISnapshotManager : IDisposable
     }
     Snapshot? GetSnapshotByGapNumber(long gapNumber);
     Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec);
+    Snapshot GetOrCreateSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec);
     void StoreSnapshot(Snapshot snapshot);
 }
