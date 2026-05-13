@@ -18,14 +18,27 @@ namespace Nethermind.Trie
     // Once every resolver in the tree exposes typed load/decode APIs (and only
     // when), TrieNode can become abstract; that work is out of scope here.
 
-    /// <summary>16-slot inline storage for branch children. Each slot holds
-    /// <see langword="null"/>, the empty sentinel, a <see cref="Hash256"/> for
-    /// an unresolved by-hash child, or a resolved <see cref="TrieNode"/>.</summary>
+    /// <summary>16-slot inline storage for branch children. Each slot holds one of:
+    /// <see langword="null"/> (unresolved - decode from parent RLP on read),
+    /// the empty sentinel (<see cref="TrieNode.NullNode"/>), or a resolved
+    /// <see cref="TrieNode"/>. The unresolved-by-hash shape is gone:
+    /// hashes live in the parent's retained <c>_rlpArray</c> only.</summary>
     [InlineArray(Length)]
     internal struct BranchArray
     {
         public const int Length = TrieNode.BranchesCount;
-        private object? _element0;
+        private TrieNode? _element0;
+    }
+
+    /// <summary>
+    /// Empty-child marker. A distinct sentinel <see cref="TrieNode"/> instance the
+    /// branch / extension slot publishes when the parent RLP encoded an empty entry,
+    /// so subsequent reads do not re-decode the empty marker. Compared by reference.
+    /// </summary>
+    internal sealed class TrieNodeNullSentinel : TrieNode
+    {
+        internal TrieNodeNullSentinel() { }
+        public override NodeType NodeType => NodeType.Unknown;
     }
 
     internal sealed class TrieNodeBranch : TrieNode
@@ -41,7 +54,7 @@ namespace Nethermind.Trie
         // Clone constructor: copy each branch slot and the dirty mask.
         private TrieNodeBranch(TrieNodeBranch source) : base(source)
         {
-            // Shallow copy of the 16 slots — references to TrieNode / Hash256 are shared
+            // Shallow copy of the 16 slots — TrieNode references are shared
             for (int i = 0; i < BranchArray.Length; i++)
             {
                 _branches[i] = source._branches[i];
@@ -53,7 +66,7 @@ namespace Nethermind.Trie
         public override NodeType NodeType => NodeType.Branch;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal override ref object GetSlotRef(int index) => ref _branches[index];
+        internal override ref TrieNode? GetSlotRef(int index) => ref _branches[index];
 
         internal override int MemorySizeOfData =>
             MemorySizes.RefSize * BranchArray.Length;
@@ -106,7 +119,7 @@ namespace Nethermind.Trie
         // Key + Value, not slot-based child decoding, so callers should never invoke
         // GetSlotRef on a leaf. Throw to surface accidental misuse.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        internal override ref object GetSlotRef(int index) => throw new IndexOutOfRangeException();
+        internal override ref TrieNode? GetSlotRef(int index) => throw new IndexOutOfRangeException();
 
         internal override int MemorySizeOfData =>
             MemorySizes.RefSize + // storage root reference
@@ -126,7 +139,7 @@ namespace Nethermind.Trie
     internal sealed class TrieNodeExtension : TrieNode
     {
         internal byte[]? _key;
-        internal object? _child;
+        internal TrieNode? _child;
 
         internal TrieNodeExtension() { }
 
@@ -165,7 +178,7 @@ namespace Nethermind.Trie
         // pass 0 when handling extensions explicitly and (i + 1) when iterating uniformly
         // with branches (i is always 0 in that case).
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal override ref object GetSlotRef(int index) => ref _child!;
+        internal override ref TrieNode? GetSlotRef(int index) => ref _child;
 
         internal override int MemorySizeOfData =>
             MemorySizes.RefSize + // child reference

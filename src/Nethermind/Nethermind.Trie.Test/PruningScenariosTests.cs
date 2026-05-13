@@ -1116,12 +1116,11 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
-                // B4: -8 per node * 951 = -7608
-                // After dropping NodeType.Unknown placeholders from child slots, unresolved
-                // children are accounted as bare Hash256 references (48 B each) instead of
-                // staying invisible behind a placeholder TrieNode in the same slot. Same
-                // node count, +960 bytes accounted (20 newly visible Hash256 slots * 48 B).
-                .AssertThatTotalMemoryUsedIs(816448);
+                // After narrowing branch / extension slots from object? to TrieNode? and
+                // dropping the Hash256 slot encoding entirely, unresolved children show up
+                // as bare null slots; the canonical hash lives in the parent's _rlpArray
+                // and is decoded on demand. Per-node accounting drops accordingly.
+                .AssertThatTotalMemoryUsedIs(575536);
         }
 
         [Test]

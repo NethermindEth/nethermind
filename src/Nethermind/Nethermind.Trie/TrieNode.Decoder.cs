@@ -49,14 +49,15 @@ namespace Nethermind.Trie
 
                 HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
 
-                // Fast path: child was unresolved to a Hash256 (e.g. by pruning) — encode the hash directly
-                // without materializing a TrieNode via FindCachedOrUnknown + ResolveKey.
+                // Fast path: child was unresolved (slot null, hash held in parent _rlpArray) —
+                // encode the hash directly via TryGetChildHash without materializing a TrieNode.
                 TrieNode? nodeRef = null;
                 ValueHash256 childKeccak = default;
-                bool hasChildKeccak;
-                if (item.GetSlotRef(0) is Hash256 storedHash)
+                bool hasChildKeccak = false;
+                TrieNode? extChild = item.GetSlotRef(0);
+                if (extChild is null && item.TryGetChildHash(0, out ValueHash256 hashFromRlp))
                 {
-                    childKeccak = storedHash.ValueHash256;
+                    childKeccak = hashFromRlp;
                     hasChildKeccak = true;
                 }
                 else
@@ -171,8 +172,8 @@ namespace Nethermind.Trie
                     int nonNullChildren = 0;
                     for (int i = 0; i < BranchesCount; i++)
                     {
-                        object? data = item.GetSlotRef(i);
-                        if (data is not null && !ReferenceEquals(data, _nullNode) && ++nonNullChildren >= MinChildrenForParallel)
+                        TrieNode? data = item.GetSlotRef(i);
+                        if (data is not null && !ReferenceEquals(data, NullNode) && ++nonNullChildren >= MinChildrenForParallel)
                         {
                             return true;
                         }
@@ -201,22 +202,19 @@ namespace Nethermind.Trie
                     (local: 0, item, tree, bufferPool, rootPath, canBeParallel),
                     static (i, state) =>
                     {
-                        object? data = state.item.GetSlotRef(i);
-                        if (ReferenceEquals(data, _nullNode) || data is null)
+                        TrieNode? data = state.item.GetSlotRef(i);
+                        if (data is null || ReferenceEquals(data, NullNode))
                         {
+                            // Null slot on a non-RLP branch is impossible (no parent RLP to
+                            // decode from). Treat as empty.
                             state.local++;
-                        }
-                        else if (data is Hash256)
-                        {
-                            state.local += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
-                            TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
-                            state.local += childNode.HasKeccak ? Rlp.LengthOfKeccakRlp : childNode.FullRlp.Length;
+                            data.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
+                            state.local += data.HasKeccak ? Rlp.LengthOfKeccakRlp : data.FullRlp.Length;
                         }
 
                         return state;
@@ -234,22 +232,17 @@ namespace Nethermind.Trie
                 int totalLength = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object? data = item.GetSlotRef(i);
-                    if (ReferenceEquals(data, _nullNode) || data is null)
+                    TrieNode? data = item.GetSlotRef(i);
+                    if (data is null || ReferenceEquals(data, NullNode))
                     {
                         totalLength++;
-                    }
-                    else if (data is Hash256)
-                    {
-                        totalLength += Rlp.LengthOfKeccakRlp;
                     }
                     else
                     {
                         path.AppendMut(i);
-                        TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        data.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
                         path.TruncateOne();
-                        totalLength += childNode.HasKeccak ? Rlp.LengthOfKeccakRlp : childNode.FullRlp.Length;
+                        totalLength += data.HasKeccak ? Rlp.LengthOfKeccakRlp : data.FullRlp.Length;
                     }
                 }
                 return totalLength;
@@ -264,27 +257,22 @@ namespace Nethermind.Trie
                     {
                         ValueRlpStream rlpStream = state.item.RlpStream;
                         state.item.SeekChild(ref rlpStream, i);
-                        object? data = state.item.GetSlotRef(i);
+                        TrieNode? data = state.item.GetSlotRef(i);
                         if (data is null)
                         {
+                            // Slot unresolved; canonical encoding lives in the parent RLP.
                             state.local += rlpStream.PeekNextRlpLength();
                         }
-                        else if (ReferenceEquals(data, _nullNode))
+                        else if (ReferenceEquals(data, NullNode))
                         {
                             state.local++;
-                        }
-                        else if (data is Hash256)
-                        {
-                            state.local += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
                             TreePath path = state.rootPath;
                             path.AppendMut(i);
-                            Debug.Assert(data is TrieNode, "Data is not TrieNode");
-                            TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
-                            state.local += childNode.HasKeccak ? Rlp.LengthOfKeccakRlp : childNode.FullRlp.Length;
+                            data.ResolveKey(state.tree, ref path, bufferPool: state.bufferPool, canBeParallel: state.canBeParallel);
+                            state.local += data.HasKeccak ? Rlp.LengthOfKeccakRlp : data.FullRlp.Length;
                         }
 
                         return state;
@@ -304,31 +292,27 @@ namespace Nethermind.Trie
                 item.SeekChild(ref rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item.GetSlotRef(i);
+                    TrieNode? data = item.GetSlotRef(i);
                     if (data is null)
                     {
+                        // Unresolved slot; canonical bytes live in the parent RLP at the
+                        // current stream position. Take the same length the source has.
                         int length = rlpStream.PeekNextRlpLength();
                         totalLength += length;
                         rlpStream.SkipBytes(length);
                     }
                     else
                     {
-                        if (ReferenceEquals(data, _nullNode) || data is null)
+                        if (ReferenceEquals(data, NullNode))
                         {
                             totalLength++;
-                        }
-                        else if (data is Hash256)
-                        {
-                            totalLength += Rlp.LengthOfKeccakRlp;
                         }
                         else
                         {
                             path.AppendMut(i);
-                            Debug.Assert(data is TrieNode, "Data is not TrieNode");
-                            TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                            data.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
                             path.TruncateOne();
-                            totalLength += childNode.HasKeccak ? Rlp.LengthOfKeccakRlp : childNode.FullRlp.Length;
+                            totalLength += data.HasKeccak ? Rlp.LengthOfKeccakRlp : data.FullRlp.Length;
                         }
 
                         rlpStream.SkipItem();
@@ -356,30 +340,24 @@ namespace Nethermind.Trie
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item.GetSlotRef(i);
-                    if (ReferenceEquals(data, _nullNode) || data is null)
+                    TrieNode? data = item.GetSlotRef(i);
+                    if (data is null || ReferenceEquals(data, NullNode))
                     {
                         destination[position++] = 128;
-                    }
-                    else if (data is Hash256 hash)
-                    {
-                        position = Rlp.Encode(destination, position, hash);
                     }
                     else
                     {
                         path.AppendMut(i);
-                        Debug.Assert(data is TrieNode, "Data is not TrieNode");
-                        TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        data.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
                         path.TruncateOne();
 
-                        if (childNode.TryGetKeccak(out ValueHash256 childKeccak))
+                        if (data.TryGetKeccak(out ValueHash256 childKeccak))
                         {
                             position = Rlp.Encode(destination, position, in childKeccak);
                         }
                         else
                         {
-                            Span<byte> fullRlp = childNode.FullRlp.AsSpan();
+                            Span<byte> fullRlp = data.FullRlp.AsSpan();
                             fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
                             position += fullRlp.Length;
                         }
@@ -394,9 +372,10 @@ namespace Nethermind.Trie
                 int position = 0;
                 for (int i = 0; i < BranchesCount; i++)
                 {
-                    object data = item.GetSlotRef(i);
+                    TrieNode? data = item.GetSlotRef(i);
                     if (data is null)
                     {
+                        // Unresolved slot: copy the canonical bytes from the parent's RLP.
                         int length = rlpStream.PeekNextRlpLength();
                         ReadOnlySpan<byte> nextItem = rlpStream.Data.Slice(rlpStream.Position, length);
                         nextItem.CopyTo(destination.Slice(position, nextItem.Length));
@@ -405,32 +384,25 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        if (ReferenceEquals(data, _nullNode) || data is null)
+                        if (ReferenceEquals(data, NullNode))
                         {
                             destination[position++] = 128;
-                        }
-                        else if (data is Hash256 hash)
-                        {
-                            position = Rlp.Encode(destination, position, hash);
                         }
                         else
                         {
                             path.AppendMut(i);
-                            Debug.Assert(data is TrieNode, "Data is not TrieNode");
-                            TrieNode childNode = Unsafe.As<TrieNode>(data);
-                            childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                            data.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
                             path.TruncateOne();
 
-                            hash = childNode.Keccak;
-                            if (hash is null)
+                            if (data.TryGetKeccak(out ValueHash256 childKeccak))
                             {
-                                Span<byte> fullRlp = childNode.FullRlp.AsSpan();
-                                fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
-                                position += fullRlp.Length;
+                                position = Rlp.Encode(destination, position, in childKeccak);
                             }
                             else
                             {
-                                position = Rlp.Encode(destination, position, hash);
+                                Span<byte> fullRlp = data.FullRlp.AsSpan();
+                                fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
+                                position += fullRlp.Length;
                             }
                         }
 

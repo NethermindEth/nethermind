@@ -366,19 +366,17 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
+        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, TrieNode? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
         {
-            if (child is TrieNode childNode)
+            // Resolved typed child: the boundary-proof flag carries the answer directly.
+            // The empty sentinel and unresolved (null) slots both fall through to the
+            // hash-from-RLP path so the snap tree can confirm persistence by hash.
+            if (child is not null && !ReferenceEquals(child, TrieNode.NullNode))
             {
-                return !childNode.IsBoundaryProofNode;
+                return !child.IsBoundaryProofNode;
             }
 
-            ValueHash256 childKeccak;
-            if (child is Hash256 hash)
-            {
-                childKeccak = hash.ValueHash256;
-            }
-            else if (!node.GetChildHashAsValueKeccak(childIndex, out childKeccak))
+            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
             {
                 return true;
             }
