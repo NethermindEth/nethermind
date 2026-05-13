@@ -56,52 +56,59 @@ namespace Nethermind.Trie
 
         private Hash256 _rootHash = Keccak.EmptyTreeHash;
 
-        private TrieNode? _rootRef;
-        private bool _rootRefResolved;
+        // Distinct sentinel instance of TrieNodeNullSentinel (same class as TrieNode.NullNode
+        // which marks empty branch slots, but a different instance - identity, not type,
+        // disambiguates). When _rootRef holds this sentinel, the root has not yet been
+        // lazy-resolved; any other value (typed TrieNode or null) is the authoritative
+        // result of either lazy-resolve or an explicit setter call.
+        private static readonly TrieNode _unresolvedSentinel = new TrieNodeNullSentinel();
+
+        private TrieNode? _rootRef = _unresolvedSentinel;
         private readonly Lock _rootRefLock = new();
 
         /// <summary>
-        /// The in-memory root of this trie. Returns <c>null</c> when
-        /// <see cref="_rootHash"/> == <see cref="Keccak.EmptyTreeHash"/>; otherwise
-        /// lazy-resolves the root through the read resolver on first access. A miss
-        /// surfaces as <see cref="MissingTrieNodeException"/> via the underlying
-        /// store's <see cref="ITrieNodeResolver.LoadRlp"/>. Snap-sync stitching
-        /// (where the root is not in the store yet) must publish the root via the
-        /// setter before the first read.
+        /// The in-memory root of this trie. Three states for the backing field:
+        /// <list type="bullet">
+        /// <item><see cref="_unresolvedSentinel"/> - not yet lazy-resolved; first read
+        /// loads from the underlying store (or returns null if <see cref="_rootHash"/>
+        /// == <see cref="Keccak.EmptyTreeHash"/> or the store has no entry).</item>
+        /// <item><c>null</c> - authoritative empty root (delete-all, selfdestruct, or
+        /// explicit clear via the setter). Sticks; no re-resolve.</item>
+        /// <item>typed <see cref="TrieNode"/> - resolved root.</item>
+        /// </list>
+        /// All state transitions are single atomic reference writes; the sentinel
+        /// collapses what used to be a (field, flag) pair so there is no torn-state
+        /// window between the two values and the setter/invalidate paths need no lock.
         /// </summary>
         public TrieNode? RootRef
         {
             get
             {
-                if (Volatile.Read(ref _rootRefResolved))
+                TrieNode? local = Volatile.Read(ref _rootRef);
+                if (!ReferenceEquals(local, _unresolvedSentinel))
                 {
-                    return _rootRef;
+                    return local;
                 }
 
                 lock (_rootRefLock)
                 {
-                    if (_rootRefResolved)
+                    local = _rootRef;
+                    if (!ReferenceEquals(local, _unresolvedSentinel))
                     {
-                        return _rootRef;
+                        return local;
                     }
 
-                    if (_rootHash != Keccak.EmptyTreeHash)
+                    Hash256 rootHash = _rootHash;
+                    TrieNode? resolved = null;
+                    if (!ReferenceEquals(rootHash, Keccak.EmptyTreeHash))
                     {
-                        _rootRef = _readResolver.GetOrLoadNode(TreePath.Empty, _rootHash.ValueHash256);
+                        _readResolver.TryGetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256, out resolved);
                     }
-
-                    Volatile.Write(ref _rootRefResolved, true);
-                    return _rootRef;
+                    Volatile.Write(ref _rootRef, resolved);
+                    return resolved;
                 }
             }
-            set
-            {
-                lock (_rootRefLock)
-                {
-                    _rootRef = value;
-                    Volatile.Write(ref _rootRefResolved, true);
-                }
-            }
+            set => Volatile.Write(ref _rootRef, value);
         }
 
         // Used to estimate if parallelization is needed during commit
@@ -213,8 +220,10 @@ namespace Nethermind.Trie
             // Need to be after committer dispose so that it can find it in trie store properly
             RootRef = newRoot;
 
-            // Sometimes RootRef is set to null, so we still need to reset roothash to empty tree hash.
-            SetRootHash(RootRef?.Keccak, true);
+            // Use newRoot directly rather than re-reading RootRef via the property getter:
+            // when newRoot is null (delete-all / selfdestruct), the lazy-resolve fast path
+            // would otherwise reload the stale _rootHash and resurrect the deleted root.
+            SetRootHash(newRoot?.Keccak, true);
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
@@ -392,13 +401,10 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                // Drop any cached root reference; the next RootRef read lazily
-                // resolves the new root hash through _readResolver.TryGetOrLoadNode.
-                lock (_rootRefLock)
-                {
-                    _rootRef = null;
-                    Volatile.Write(ref _rootRefResolved, false);
-                }
+                // Publish the unresolved sentinel atomically; the next RootRef read
+                // lazily resolves the new root hash via _readResolver.TryGetOrLoadNode.
+                // No lock needed - the sentinel transition is a single atomic ref write.
+                Volatile.Write(ref _rootRef, _unresolvedSentinel);
             }
         }
 
