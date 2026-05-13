@@ -137,7 +137,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
-                WarmupTransactions(blockState, parallelOptions);
+                // Skip speculative EVM execution — it causes heavy CPU contention with
+                // the real block processor, producing non-deterministic per-block timing.
+                // AddressWarmer (runs separately via ThreadPool) handles lightweight I/O
+                // prefetching of trie nodes for sender/to addresses.
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 
