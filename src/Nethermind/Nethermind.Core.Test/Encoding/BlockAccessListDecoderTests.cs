@@ -43,11 +43,27 @@ public class BlockAccessListDecoderTests
     public void Decode_truncated_outer_list_throws_RlpException() =>
         Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xf8 }), Throws.TypeOf<RlpException>());
 
+    // 0x80 is an empty byte string, not an EIP-7928 BAL list. The public Decode<T>
+    // entry point must fail with a typed RlpException rather than returning null.
+    [Test]
+    public void Decode_empty_string_throws_RlpException() =>
+        Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0x80 }), Throws.TypeOf<RlpException>());
+
     // 0xc1 0xc0 = outer list of 1 containing an empty inner list. EIP-7928 requires each
     // AccountChanges to be a 6-field sequence; an empty list is structurally invalid.
     [Test]
     public void Decode_inner_empty_list_in_account_changes_throws_RlpException() =>
         Assert.That(() => Rlp.Decode<ReadOnlyBlockAccessList>(new byte[] { 0xc1, 0xc0 }), Throws.TypeOf<RlpException>());
+
+    [Test]
+    public void Decode_empty_slot_changes_entry_in_account_changes_throws_RlpException()
+    {
+        byte[] encoded = EncodeAccountChangesWithEmptySlotChangesEntry(TestItem.AddressA);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Empty SlotChanges entry; EIP-7928 requires a 2-field sequence."));
+    }
 
     [Test]
     public void Decode_account_changes_without_changes_or_reads_roundtrips_as_account_read()
@@ -137,6 +153,11 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void DecodeArrayPool_wraps_non_rlp_decoder_exceptions() => Assert.That(
+        () => { Rlp.ValueDecoderContext c = new(new byte[] { 0xc1, 0x01 }); Rlp.DecodeArrayPool(ref c, new ThrowingArgumentDecoder()); },
+        Throws.TypeOf<RlpException>().With.InnerException.TypeOf<ArgumentException>());
+
+    [Test]
     public void Decode_slot_changes_with_empty_accesses_throws_RlpException()
     {
         // SlotChanges = [StorageKey, List[StorageChange]]. An empty StorageChange list means a
@@ -158,6 +179,17 @@ public class BlockAccessListDecoderTests
 
         Assert.That(thrown, Is.Not.Null);
         Assert.That(thrown!.Message, Does.Contain("Empty storage_changes"));
+    }
+
+    [Test]
+    public void Decode_slot_changes_rejects_storage_change_count_above_max_txs()
+    {
+        byte[] encoded = EncodeSlotChangesWithEmptyStorageChangeEntries(Eip7928Constants.MaxTxs + 1);
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlySlotChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpLimitException>()
+                .With.Message.Contains($"over limit {Eip7928Constants.MaxTxs}"));
     }
 
     [Test]
@@ -410,6 +442,25 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
+    public void Decoding_account_changes_with_duplicate_balance_change_indices_throws()
+    {
+        BalanceChange[] balanceChanges = [new(1, UInt256.One), new(1, UInt256.Zero)];
+        ReadOnlyAccountChanges accountChanges = new(
+            TestItem.AddressA,
+            [],
+            [],
+            balanceChanges,
+            [],
+            []);
+
+        byte[] encoded = Rlp.Encode(accountChanges, RlpBehaviors.None).Bytes;
+
+        Assert.That(
+            () => Rlp.Decode<ReadOnlyAccountChanges>(encoded, RlpBehaviors.None),
+            Throws.TypeOf<RlpException>().With.Message.EqualTo("Balance changes were in incorrect order."));
+    }
+
+    [Test]
     public void Decoding_account_changes_with_unsorted_nonce_changes_throws()
     {
         NonceChange[] nonceChanges = [new(2, 2), new(1, 1)];
@@ -526,6 +577,44 @@ public class BlockAccessListDecoderTests
         }
     }
 
+    private static byte[] EncodeAccountChangesWithEmptySlotChangesEntry(Address address)
+    {
+        int storageChangesLength = Rlp.LengthOfSequence(Rlp.OfEmptyList.Length);
+        int contentLength = Rlp.LengthOfAddressRlp
+            + storageChangesLength
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length
+            + Rlp.OfEmptyList.Length;
+
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(address);
+        stream.StartSequence(Rlp.OfEmptyList.Length);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
+        stream.Encode(Rlp.OfEmptyList);
+        return stream.Data.ToArray()!;
+    }
+
+    private static byte[] EncodeSlotChangesWithEmptyStorageChangeEntries(int count)
+    {
+        int changesContentLength = count * Rlp.OfEmptyList.Length;
+        int contentLength = Rlp.LengthOf(UInt256.Zero) + Rlp.LengthOfSequence(changesContentLength);
+        RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
+        stream.StartSequence(contentLength);
+        stream.Encode(UInt256.Zero);
+        stream.StartSequence(changesContentLength);
+        for (int i = 0; i < count; i++)
+        {
+            stream.Encode(Rlp.OfEmptyList);
+        }
+
+        return stream.Data.ToArray()!;
+    }
+
     private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>
     {
         public const string Error = "semantic failure";
@@ -591,5 +680,16 @@ public class BlockAccessListDecoderTests
         }
 
         public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
+    }
+
+    private sealed class ThrowingArgumentDecoder : IRlpValueDecoder<byte>
+    {
+        public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            decoderContext.DecodeByte();
+            throw new ArgumentException("semantic argument failure");
+        }
+
+        public int GetLength(byte item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 }
