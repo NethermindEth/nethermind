@@ -10,7 +10,7 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BlockAccessListDecoder : IRlpValueDecoder<BlockAccessList>, IRlpStreamEncoder<BlockAccessList>
+public class BlockAccessListDecoder : IRlpDecoder<BlockAccessList>
 {
     public static readonly BlockAccessListDecoder Instance = new();
 

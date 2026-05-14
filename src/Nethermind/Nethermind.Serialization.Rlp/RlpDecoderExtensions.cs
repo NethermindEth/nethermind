@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly CappedArray<byte>[] s_intPreEncodes = CreatePreEncodes();
 
-        public static T[] DecodeArray<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static T[] DecodeArray<T>(this IRlpDecoder<T> decoder, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             int checkPosition = decoderContext.ReadSequenceLength() + decoderContext.Position;
             int length = decoderContext.PeekNumberOfItemsRemaining(checkPosition);
@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
-        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamEncoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpDecoder<T> decoder, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             NettyRlpStream rlpStream;
             if (item is null)
@@ -45,7 +45,7 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamEncoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             NettyRlpStream rlpStream;
             if (items is null)
@@ -74,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamEncoder<T> decoder, IList<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpDecoder<T> decoder, IList<T?>? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             NettyRlpStream rlpStream;
             if (items is null)
@@ -103,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpStreamEncoder<T> decoder, in ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static NettyRlpStream EncodeToNewNettyStream<T>(this IRlpDecoder<T> decoder, in ArrayPoolListRef<T?> items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             int totalLength = 0;
             for (int i = 0; i < items.Count; i++)
@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
             return rlpStream;
         }
 
-        public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpStreamEncoder<T> decoder, T? item,
+        public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpDecoder<T> decoder, T? item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
         {
             int size = decoder.GetLength(item, rlpBehaviors);
@@ -146,7 +146,7 @@ namespace Nethermind.Serialization.Rlp
             return buffer;
         }
 
-        public static void Encode<T>(this IRlpStreamEncoder<T> decoder, RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static void Encode<T>(this IRlpDecoder<T> decoder, RlpStream stream, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (items is null)
             {
@@ -170,7 +170,7 @@ namespace Nethermind.Serialization.Rlp
 
         }
 
-        public static int GetContentLength<T>(this IRlpStreamEncoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static int GetContentLength<T>(this IRlpDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (items is null)
             {
@@ -186,7 +186,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public static int GetLength<T>(this IRlpStreamEncoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
+        public static int GetLength<T>(this IRlpDecoder<T> decoder, T?[]? items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (items is null)
             {

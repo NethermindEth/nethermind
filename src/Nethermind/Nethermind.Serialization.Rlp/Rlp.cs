@@ -126,18 +126,17 @@ namespace Nethermind.Serialization.Rlp
 
         internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span) => span.Length == 0 ? ArrayPoolList<byte>.Empty() : span.ToPooledList();
 
-        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
-        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
+        public static IRlpDecoder<T>? GetDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpDecoder<T> : null;
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
-            IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
+            IRlpDecoder<T>? rlpDecoder = GetDecoder<T>();
             return rlpDecoder is not null
                 ? DecodeArrayPool(ref decoderContext, rlpDecoder, rlpBehaviors, limit)
                 : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpValueDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
+        public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, IRlpDecoder<T> rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
         {
             ArrayPoolList<T>? result = null;
             try
@@ -215,7 +214,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            IRlpValueDecoder<T> rlpDecoder = GetValueDecoder<T>() ??
+            IRlpDecoder<T> rlpDecoder = GetDecoder<T>() ??
                 throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
 
             bool shouldCheckStream = decoderContext.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
@@ -245,15 +244,15 @@ namespace Nethermind.Serialization.Rlp
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
             => item is Rlp rlp
                 ? rlp
-                : GetStreamEncoder<T>() is { } rlpStreamEncoder
-                    ? rlpStreamEncoder.Encode(item, behaviors)
+                : GetDecoder<T>() is { } rlpDecoder
+                    ? rlpDecoder.Encode(item, behaviors)
                     : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
             => items is []
                 ? OfEmptyList
-                : GetStreamEncoder<T>() is { } rlpStreamEncoder
-                    ? rlpStreamEncoder.Encode(items, behaviors)
+                : GetDecoder<T>() is { } rlpDecoder
+                    ? rlpDecoder.Encode(items, behaviors)
                     : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static Rlp Encode(int[] integers)
@@ -1416,9 +1415,9 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            public T[] DecodeArray<T>(IRlpDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
             {
-                decoder ??= GetValueDecoder<T>()
+                decoder ??= GetDecoder<T>()
                     ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(T)}");
 
                 int positionCheck = ReadSequenceLength() + Position;

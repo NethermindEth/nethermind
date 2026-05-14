@@ -117,6 +117,10 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
 
+        void IRlpDecoder<LogEntry>.Encode(RlpStream stream, LogEntry item, RlpBehaviors rlpBehaviors) => Encode(stream, item, rlpBehaviors);
+
+        LogEntry IRlpDecoder<LogEntry>.Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors)!;
+
         private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
         {
             int zeroPrefix = decoderContext.DecodePositiveInt();

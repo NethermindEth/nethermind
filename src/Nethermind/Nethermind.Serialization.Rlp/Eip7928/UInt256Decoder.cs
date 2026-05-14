@@ -5,7 +5,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class UInt256Decoder : IRlpValueDecoder<UInt256>, IRlpStreamEncoder<UInt256>
+public class UInt256Decoder : IRlpDecoder<UInt256>
 {
     public static readonly UInt256Decoder Instance = new();
 

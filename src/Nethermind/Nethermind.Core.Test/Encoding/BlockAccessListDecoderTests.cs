@@ -801,7 +801,7 @@ public class BlockAccessListDecoderTests
         return stream.Data.ToArray()!;
     }
 
-    private static int GetArrayLength<T>(T[] items, IRlpStreamEncoder<T> encoder)
+    private static int GetArrayLength<T>(T[] items, IRlpDecoder<T> encoder)
     {
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
@@ -812,7 +812,7 @@ public class BlockAccessListDecoderTests
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private static void EncodeArray<T>(RlpStream stream, T[] items, IRlpStreamEncoder<T> encoder)
+    private static void EncodeArray<T>(RlpStream stream, T[] items, IRlpDecoder<T> encoder)
     {
         int contentLength = 0;
         for (int i = 0; i < items.Length; i++)
@@ -831,7 +831,7 @@ public class BlockAccessListDecoderTests
         typeof(T).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
         ?? throw new MissingFieldException(typeof(T).FullName, name);
 
-    private sealed class ThrowingByteDecoder : IRlpValueDecoder<byte>
+    private sealed class ThrowingByteDecoder : IRlpDecoder<byte>
     {
         public const string Error = "semantic failure";
         private int _calls;
@@ -860,7 +860,7 @@ public class BlockAccessListDecoderTests
         public void Dispose() => DisposedCount++;
     }
 
-    private sealed class ThrowingDisposableDecoder : IRlpValueDecoder<DisposableElement>
+    private sealed class ThrowingDisposableDecoder : IRlpDecoder<DisposableElement>
     {
         public const string Error = "disposable semantic failure";
         private int _calls;
@@ -882,7 +882,7 @@ public class BlockAccessListDecoderTests
         public int GetLength(DisposableElement item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
-    private sealed class ThrowingObjectDecoder : IRlpValueDecoder<object>
+    private sealed class ThrowingObjectDecoder : IRlpDecoder<object>
     {
         public const string Error = "object semantic failure";
         private int _calls;
@@ -904,7 +904,7 @@ public class BlockAccessListDecoderTests
         public int GetLength(object item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => 1;
     }
 
-    private sealed class ThrowingArgumentDecoder : IRlpValueDecoder<byte>
+    private sealed class ThrowingArgumentDecoder : IRlpDecoder<byte>
     {
         public byte Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

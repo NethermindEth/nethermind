@@ -12,8 +12,7 @@ namespace Nethermind.Optimism;
 
 [Decoder(RlpDecoderKey.Storage)]
 public class OptimismCompactReceiptStorageDecoder :
-    IRlpStreamEncoder<OptimismTxReceipt>, IRlpValueDecoder<OptimismTxReceipt>, IReceiptRefDecoder,
-    IRlpStreamEncoder<TxReceipt>, IRlpValueDecoder<TxReceipt>
+    IRlpDecoder<OptimismTxReceipt>, IReceiptRefDecoder, IRlpDecoder<TxReceipt>
 {
     public OptimismTxReceipt Decode(ref ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -238,6 +237,6 @@ public class OptimismCompactReceiptStorageDecoder :
 
     public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors) => GetLength((OptimismTxReceipt)item, rlpBehaviors);
 
-    TxReceipt IRlpValueDecoder<TxReceipt>.Decode(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors);
+    TxReceipt IRlpDecoder<TxReceipt>.Decode(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors) => Decode(ref decoderContext, rlpBehaviors);
 
 }

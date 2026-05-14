@@ -201,7 +201,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return _transactions;
 
-        IRlpValueDecoder<Transaction>? rlpDecoder = Rlp.GetValueDecoder<Transaction>();
+        IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return $"{nameof(Transaction)} decoder is not registered";
 
         int i = 0;

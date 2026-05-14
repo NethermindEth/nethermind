@@ -11,13 +11,10 @@ namespace Nethermind.Serialization.Rlp
     {
     }
 
-    public interface IRlpDecoder<in T> : IRlpDecoder
+    public interface IRlpDecoder<T> : IRlpDecoder
     {
         int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
 
-    public interface IRlpStreamEncoder<in T> : IRlpDecoder<T>
-    {
         void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
         Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -38,16 +35,13 @@ namespace Nethermind.Serialization.Rlp
             RlpDecoderExtensions.Encode(this, new RlpStream(bytes), items, rlpBehaviors);
             return new Rlp(bytes);
         }
-    }
 
-    public interface IRlpValueDecoder<T> : IRlpStreamEncoder<T>
-    {
         T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
     public static class RlpValueDecoderExtensions
     {
-        extension<T>(IRlpValueDecoder<T> decoder)
+        extension<T>(IRlpDecoder<T> decoder)
         {
             public T Decode(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             {
@@ -77,7 +71,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        extension<T>(IRlpValueDecoder<T> decoder) where T : class
+        extension<T>(IRlpDecoder<T> decoder) where T : class
         {
             public T DecodeGuardNotNull(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
                 decoder.Decode(ref context, rlpBehaviors) ?? ThrowNullDecodedValue<T>();
@@ -118,7 +112,7 @@ namespace Nethermind.Serialization.Rlp
             => throw new RlpException($"{typeof(T).Name} decoding returned null");
     }
 
-    public abstract class RlpStreamEncoder<T> : IRlpStreamEncoder<T>
+    public abstract class RlpValueDecoder<T> : IRlpDecoder<T>
     {
         public abstract int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
 
@@ -128,10 +122,7 @@ namespace Nethermind.Serialization.Rlp
         [StackTraceHidden]
         protected static void ThrowRlpException(Exception exception) =>
             throw new RlpException($"Cannot decode stream of {nameof(T)}", exception);
-    }
 
-    public abstract class RlpValueDecoder<T> : RlpStreamEncoder<T>, IRlpValueDecoder<T>
-    {
         public T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             try

@@ -29,7 +29,7 @@ public class LogEntryDecoderTests
     public void Can_do_roundtrip(bool valueDecode, bool useDecoderInstance)
     {
         LogEntry logEntry = CreateSampleLogEntry();
-        IRlpValueDecoder<LogEntry> decoder = LogEntryDecoder.Instance;
+        IRlpDecoder<LogEntry> decoder = LogEntryDecoder.Instance;
 
         Rlp rlp = useDecoderInstance
             ? decoder.Encode(logEntry)

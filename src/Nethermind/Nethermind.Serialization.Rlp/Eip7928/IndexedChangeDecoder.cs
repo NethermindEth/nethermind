@@ -12,7 +12,7 @@ namespace Nethermind.Serialization.Rlp.Eip7928;
 /// Base class for RLP decoders of <see cref="IIndexedChange"/> types that share the pattern:
 /// sequence of (Index, value). Subclasses provide the value field operations.
 /// </summary>
-public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamEncoder<T>
+public abstract class IndexedChangeDecoder<T> : IRlpDecoder<T>
     where T : struct, IIndexedChange
 {
     public int GetLength(T item, RlpBehaviors rlpBehaviors)

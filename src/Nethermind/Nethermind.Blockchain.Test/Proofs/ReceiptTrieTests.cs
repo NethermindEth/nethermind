@@ -20,8 +20,8 @@ namespace Nethermind.Blockchain.Test.Proofs;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptTrieTests
 {
-    private static readonly IRlpStreamEncoder<TxReceipt> _decoder = Rlp.GetStreamEncoder<TxReceipt>()!;
-    private static readonly IRlpValueDecoder<TxReceipt> _valueDecoder = Rlp.GetValueDecoder<TxReceipt>()!;
+    private static readonly IRlpDecoder<TxReceipt> _decoder = Rlp.GetDecoder<TxReceipt>()!;
+    private static readonly IRlpDecoder<TxReceipt> _valueDecoder = Rlp.GetDecoder<TxReceipt>()!;
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_calculate_root_no_eip_658()
