@@ -25,7 +25,7 @@ public class InputData
         if (TxRlp is not null)
         {
             Rlp.ValueDecoderContext ctx = new(Bytes.FromHexString(TxRlp));
-            transactions = decoder.DecodeArray(ref ctx).ToList();
+            transactions = ((IRlpDecoder<Transaction>)decoder).DecodeArray(ref ctx).ToList();
         }
         else if (Txs is not null && TransactionMetaDataList is not null)
         {
