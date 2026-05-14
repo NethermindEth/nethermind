@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -406,13 +407,29 @@ public partial class EthRpcModule(
 
         if (_logger.IsInfo) _logger.Info($"eth_signTransaction signed tx {tx.Hash} from {tx.SenderAddress}");
 
-        byte[] raw = TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm).Bytes;
+        return BuildSignedResult(tx);
+    }
 
-        return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
+    private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
+    {
+        const RlpBehaviors encodeBehaviors = RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm;
+        int length = TxDecoder.Instance.GetLength(tx, encodeBehaviors);
+        ArrayPoolList<byte> buffer = new(length, length);
+        try
         {
-            Raw = raw,
-            Tx = TransactionForRpc.FromTransaction(tx)
-        });
+            RlpStream stream = new(new CappedArray<byte>(buffer.UnsafeGetInternalArray(), length));
+            TxDecoder.Instance.Encode(stream, tx, encodeBehaviors);
+            return ResultWrapper<SignTransactionResult>.Success(new SignTransactionResult
+            {
+                Raw = buffer,
+                Tx = TransactionForRpc.FromTransaction(tx)
+            });
+        }
+        catch
+        {
+            buffer.Dispose();
+            throw;
+        }
     }
 
     private ResultWrapper<SignTransactionResult>? CheckTxFeeCap(Transaction tx)
