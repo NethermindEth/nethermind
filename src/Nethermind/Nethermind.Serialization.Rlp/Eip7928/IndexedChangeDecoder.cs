@@ -18,9 +18,10 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    // Nethermind internal: Eip7928Constants.PrestateIndex (uint.MaxValue) overloads the
-    // wire block_access_index space as a prestate sentinel. EIP-7928 reserves no such value;
-    // we reject it on both ends so the sentinel can never collide with a real index.
+    // Eip7928Constants.PrestateIndex (uint.MaxValue) is reserved as a Nethermind-internal
+    // sentinel. EIP-7928 itself doesn't reserve it, so the rejection is purely defensive —
+    // applied on both encode and decode to keep the sentinel from ever round-tripping through
+    // RLP if a future internal mechanism starts using it.
     public T Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
@@ -29,7 +30,7 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
         T result = DecodeFields(ref ctx);
         if (result.Index == Eip7928Constants.PrestateIndex)
         {
-            ThrowPrestateIndexReserved();
+            ThrowReservedIndex();
         }
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
@@ -44,13 +45,11 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     {
         if (item.Index == Eip7928Constants.PrestateIndex)
         {
-            ThrowPrestateIndexReserved();
+            ThrowReservedIndex();
         }
 
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
-        // PrestateIndex sentinel is never encoded — it's only added to the suggested BAL on
-        // the receiving side via LoadPreStateToSuggestedBlockAccessList.
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Index);
         EncodeValue(stream, item);
     }
@@ -68,6 +67,6 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     protected abstract int GetValueLength(T item);
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowPrestateIndexReserved() =>
-        throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is reserved for internal prestate tracking.");
+    private static void ThrowReservedIndex() =>
+        throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is a reserved sentinel value.");
 }

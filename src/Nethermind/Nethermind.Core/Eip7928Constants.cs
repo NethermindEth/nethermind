@@ -25,9 +25,14 @@ public static class Eip7928Constants
     public const int ItemCost = 2000;
 
     /// <summary>
-    /// Sentinel index used internally for prestate (pre-block) entries in the
-    /// generating BAL. Never appears on the wire; replaces the legacy <c>-1</c>
-    /// sentinel used before BlockAccessIndex was widened to <see cref="uint"/>.
+    /// Reserved sentinel value at the high end of the <c>BlockAccessIndex</c> space.
+    /// EIP-7928 doesn't reserve it, so Nethermind enforces the reservation only at the wire
+    /// boundary: <see cref="Nethermind.Serialization.Rlp.Eip7928.IndexedChangeDecoder{T}"/>
+    /// rejects entries with this index on both encode and decode, so a malicious peer can't
+    /// inject one. The legacy <c>-1</c> sentinel used before <c>BlockAccessIndex</c> was
+    /// widened to <see cref="uint"/> mapped to this same wire slot. Currently unused by
+    /// any internal mechanism but retained as a reserved value so future internal sentinels
+    /// can use it without colliding with valid wire indices.
     /// </summary>
     public const uint PrestateIndex = uint.MaxValue;
 }

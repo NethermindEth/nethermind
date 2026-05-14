@@ -191,15 +191,15 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Balance_change_at_prestate_sentinel_index_is_rejected_by_encoder()
+    public void Balance_change_at_reserved_sentinel_index_is_rejected_by_encoder()
     {
-        // Upper bound of EIP-7928 BlockAccessIndex spec collides with
-        // Eip7928Constants.PrestateIndex (internal-only); the encoder must reject any wire
-        // entry at that index so the sentinel can never round-trip through RLP.
+        // Eip7928Constants.PrestateIndex (uint.MaxValue) is a Nethermind-internal reserved
+        // sentinel; the encoder rejects any entry at that index so it can never round-trip
+        // through RLP.
         BalanceChange original = new(uint.MaxValue, 0x1);
 
         Assert.That(() => Rlp.Encode(original),
-            Throws.TypeOf<RlpException>().With.Message.Contain("reserved for internal prestate tracking"));
+            Throws.TypeOf<RlpException>().With.Message.Contain("reserved sentinel"));
     }
 
     [Test]
