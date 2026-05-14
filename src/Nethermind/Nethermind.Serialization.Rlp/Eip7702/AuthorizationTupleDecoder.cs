@@ -10,7 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp;
 
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AuthorizationTupleDecoder))]
-public sealed class AuthorizationTupleDecoder() : RlpValueDecoder<AuthorizationTuple>
+public sealed class AuthorizationTupleDecoder() : RlpDecoder<AuthorizationTuple>
 {
     public static readonly AuthorizationTupleDecoder Instance = new();
 

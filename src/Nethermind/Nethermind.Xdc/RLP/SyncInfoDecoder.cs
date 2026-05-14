@@ -7,7 +7,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class SyncInfoDecoder : RlpValueDecoder<SyncInfo>
+internal class SyncInfoDecoder : RlpDecoder<SyncInfo>
 {
     private readonly QuorumCertificateDecoder _quorumCertificateDecoder = new();
     private readonly TimeoutCertificateDecoder _timeoutCertificateDecoder = new();

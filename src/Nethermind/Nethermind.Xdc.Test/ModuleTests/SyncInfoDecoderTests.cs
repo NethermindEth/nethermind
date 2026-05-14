@@ -156,7 +156,8 @@ public class SyncInfoDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        SyncInfo decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
+        Rlp.ValueDecoderContext context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+        SyncInfo decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }

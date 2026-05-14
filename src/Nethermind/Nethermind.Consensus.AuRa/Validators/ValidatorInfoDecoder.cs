@@ -6,7 +6,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    internal sealed class ValidatorInfoDecoder : RlpValueDecoder<ValidatorInfo>
+    internal sealed class ValidatorInfoDecoder : RlpDecoder<ValidatorInfo>
     {
         protected override ValidatorInfo? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

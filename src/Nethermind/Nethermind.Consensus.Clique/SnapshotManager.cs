@@ -231,7 +231,8 @@ namespace Nethermind.Consensus.Clique
             byte[]? bytes = _blocksDb.Get(key);
             if (bytes is null) return null;
 
-            return _decoder.Decode(bytes);
+            Rlp.ValueDecoderContext context = bytes.AsRlpValueContext();
+            return _decoder.Decode(ref context);
         }
 
         private void Store(Snapshot snapshot)

@@ -9,7 +9,7 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc.RLP;
 
-internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Snapshot
+internal abstract class BaseSnapshotDecoder<T> : RlpDecoder<T> where T : Snapshot
 {
     protected TResult DecodeBase<TResult>(ref Rlp.ValueDecoderContext decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {

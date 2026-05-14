@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp;
 
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
-public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal>
+public sealed class WithdrawalDecoder() : RlpDecoder<Withdrawal>
 {
     protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {

@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
-    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpValueDecoder<TxReceipt>, IReceiptRefDecoder
+    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpDecoder<TxReceipt>, IReceiptRefDecoder
     {
         private const byte MarkTxHashByte = 255;
 

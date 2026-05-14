@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IBlocksConfig blocksConfig)
         : ITraceRpcModule
     {
-        private readonly TxDecoder _txDecoder = TxDecoder.Instance;
+        private readonly IRlpDecoder<Transaction> _txDecoder = TxDecoder.Instance;
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 
         public static ParityTraceTypes GetParityTypes(string[] types) =>

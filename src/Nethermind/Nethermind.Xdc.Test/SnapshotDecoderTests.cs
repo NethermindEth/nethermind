@@ -48,7 +48,8 @@ public class SnapshotDecoderTests
         encoder.Encode(stream, original);
 
         SnapshotDecoder decoder = new();
-        Snapshot decoded = decoder.Decode(stream.Data.AsSpan());
+        Rlp.ValueDecoderContext context = stream.Data.AsSpan().AsRlpValueContext();
+        Snapshot decoded = decoder.Decode(ref context);
         decoded.Should().BeEquivalentTo(original);
     }
 }

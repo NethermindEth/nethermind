@@ -13,7 +13,7 @@ namespace Nethermind.Serialization.Rlp
     public interface IBlockHeaderDecoder<T> : IRlpDecoder<T> where T : BlockHeader { }
 
     [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-    public sealed class HeaderDecoder() : RlpValueDecoder<BlockHeader>, IHeaderDecoder
+    public sealed class HeaderDecoder() : RlpDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
 

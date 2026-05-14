@@ -87,7 +87,8 @@ public class ReceiptsMessageSerializerTests
         ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        TxReceipt decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
+        Rlp.ValueDecoderContext context = encoded.AsRlpValueContext();
+        TxReceipt decoded = decoder.Decode(ref context);
 
         TxReceipt expectedDecoded = new()
         {

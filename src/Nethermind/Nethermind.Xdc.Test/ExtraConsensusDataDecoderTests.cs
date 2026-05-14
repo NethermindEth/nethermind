@@ -25,7 +25,8 @@ internal class ExtraConsensusDataDecoderTests
 
         Rlp encodedExtraData = decoder.Encode(decodedExtraData);
 
-        ExtraFieldsV2 unencoded = decoder.Decode((ReadOnlySpan<byte>)encodedExtraData.Bytes);
+        Rlp.ValueDecoderContext encodedContext = encodedExtraData.Bytes.AsRlpValueContext();
+        ExtraFieldsV2 unencoded = decoder.Decode(ref encodedContext);
 
         unencoded.Should().BeEquivalentTo(decodedExtraData);
     }
@@ -62,7 +63,8 @@ internal class ExtraConsensusDataDecoderTests
 
         Rlp encodedExtraData = decoder.Encode(extraFieldsV2);
 
-        ExtraFieldsV2 unencoded = decoder.Decode((ReadOnlySpan<byte>)encodedExtraData.Bytes);
+        Rlp.ValueDecoderContext context = encodedExtraData.Bytes.AsRlpValueContext();
+        ExtraFieldsV2 unencoded = decoder.Decode(ref context);
 
         unencoded.Should().BeEquivalentTo(extraFieldsV2);
     }

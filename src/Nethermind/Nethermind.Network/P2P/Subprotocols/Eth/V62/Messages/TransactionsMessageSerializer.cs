@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
-        private readonly TxDecoder _decoder = TxDecoder.Instance;
+        private static readonly IRlpDecoder<Transaction> TxDecoder = Nethermind.Serialization.Rlp.TxDecoder.Instance;
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             contentLength = 0;
             for (int i = 0; i < message.Transactions.Count; i++)
             {
-                contentLength += _decoder.GetLength(message.Transactions[i], RlpBehaviors.InMempoolForm);
+                contentLength += TxDecoder.GetLength(message.Transactions[i], RlpBehaviors.InMempoolForm);
             }
 
             return Rlp.LengthOfSequence(contentLength);
@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 for (int i = 0; i < length; i++)
                 {
-                    result.Add(TxDecoder.Instance.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
+                    result.Add(TxDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.InMempoolForm));
                 }
                 ctx.Check(checkPosition);
                 return result;

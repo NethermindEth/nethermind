@@ -8,7 +8,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public sealed class NetworkNodeDecoder : RlpValueDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpDecoder<NetworkNode>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
 

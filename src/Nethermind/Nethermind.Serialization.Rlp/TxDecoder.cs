@@ -48,7 +48,7 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 public sealed class SystemTxDecoder : TxDecoder<SystemTransaction>;
 public sealed class GeneratedTxDecoder : TxDecoder<GeneratedTransaction>;
 
-public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
+public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 {
     private readonly ITxDecoder?[] _decoders = new ITxDecoder?[Transaction.MaxTxType + 1];
 

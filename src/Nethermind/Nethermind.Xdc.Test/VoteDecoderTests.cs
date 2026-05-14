@@ -130,7 +130,8 @@ public class VoteDecoderTests
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)sealingEncoded.Bytes, RlpBehaviors.ForSealing);
+        Rlp.ValueDecoderContext context = sealingEncoded.Bytes.AsRlpValueContext();
+        Vote decoded = decoder.Decode(ref context, RlpBehaviors.ForSealing);
 
         Assert.That(decoded.Signature, Is.Null,
             "ForSealing decoding should not contain Signature field.");
@@ -152,7 +153,8 @@ public class VoteDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
+        Rlp.ValueDecoderContext context = Rlp.OfEmptyList.Bytes.AsRlpValueContext();
+        Vote decoded = decoder.Decode(ref context);
 
         Assert.That(decoded, Is.Null);
     }

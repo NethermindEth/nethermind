@@ -647,7 +647,8 @@ public class DebugRpcModule(
 
         try
         {
-            block = _blockDecoder.Decode(blockRlp.Bytes);
+            Rlp.ValueDecoderContext context = blockRlp.Bytes.AsRlpValueContext();
+            block = _blockDecoder.Decode(ref context);
             if (block is null)
             {
                 error = GetRlpDecodingFailureResult<TResult>(blockRlp);

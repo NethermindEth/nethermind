@@ -8,7 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class AccountDecoder : RlpValueDecoder<Account?>
+    public sealed class AccountDecoder : RlpDecoder<Account?>
     {
         private readonly bool _slimFormat;
 
