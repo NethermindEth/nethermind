@@ -354,6 +354,20 @@ void ConfigureLogger(ParseResult parseResult)
     // TODO: dynamically switch log levels from CLI
     if (logLevel is not null)
         NLogConfigurator.ConfigureLogLevels(logLevel);
+
+    string? loggingFormat = parseResult.GetValue(BasicOptions.LoggingFormat);
+
+    if (!string.IsNullOrWhiteSpace(loggingFormat))
+    {
+        try
+        {
+            NLogConfigurator.ConfigureConsoleFormat(loggingFormat);
+        }
+        catch (ArgumentException ex)
+        {
+            logger.Error(ex.Message);
+        }
+    }
 }
 
 void ConfigureSeqLogger(IConfigProvider configProvider)
@@ -466,6 +480,7 @@ RootCommand CreateRootCommand()
         BasicOptions.ForceResync,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.LogLevel,
+        BasicOptions.LoggingFormat,
         BasicOptions.PluginsDirectory,
         BasicOptions.PurgeDb
     ];
@@ -598,6 +613,12 @@ static class BasicOptions
     {
         Description = "Log level (severity). Allowed values: off, trace, debug, info, warn, error.",
         HelpName = "level"
+    };
+
+    public static Option<string> LoggingFormat { get; } = new("--logging-format", "--loggingFormat")
+    {
+        Description = "Console log output format. Allowed values: plain (default), ecs, gcp, logstash, gelf.",
+        HelpName = "format"
     };
 
     public static Option<bool> ForceResync { get; } = CreateForceResyncOption();
