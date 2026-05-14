@@ -107,5 +107,9 @@ namespace Nethermind.Config
         public long SlowBlockThresholdMs { get; set; } = -1;
 
         public long SlowBlockPerTxThresholdMs { get; set; } = -1;
+
+        public double PreWarmFirstPassRatio { get; set; } = 0.5;
+
+        public string PreWarmRetryMode { get; set; } = "Hammer";
     }
 }

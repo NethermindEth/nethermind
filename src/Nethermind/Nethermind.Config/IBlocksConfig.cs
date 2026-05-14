@@ -89,4 +89,16 @@ public interface IBlocksConfig : IConfig
                       "Set to `0` to log all transactions. Set to `-1` to disable per-transaction logging.",
         DefaultValue = "-1")]
     long SlowBlockPerTxThresholdMs { get; set; }
+
+    [ConfigItem(
+        Description = "Fraction of block txs (0.0-1.0) to cover in the first prewarmer pass before switching to retry mode.",
+        DefaultValue = "0.5",
+        HiddenFromDocs = true)]
+    double PreWarmFirstPassRatio { get; set; }
+
+    [ConfigItem(
+        Description = "Prewarmer retry mode after first pass: 'Hammer' (continuous re-execution) or 'StateGated' (re-execute only when main thread advances).",
+        DefaultValue = "Hammer",
+        HiddenFromDocs = true)]
+    string PreWarmRetryMode { get; set; }
 }

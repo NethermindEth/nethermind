@@ -35,6 +35,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly double _firstPassRatio;
+    private readonly bool _hammerMode;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -47,6 +49,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         Environment.ProcessorCount * 2,
         blocksConfig.PreWarmStateConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
+        blocksConfig.PreWarmFirstPassRatio,
+        string.Equals(blocksConfig.PreWarmRetryMode, "Hammer", StringComparison.OrdinalIgnoreCase),
         nodeStorageCache,
         preBlockCaches,
         logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
@@ -56,12 +60,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int maxPoolSize,
         int concurrency,
         bool parallelExecutionBatchRead,
+        double firstPassRatio,
+        bool hammerMode,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
     {
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 2, 16) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
+        _firstPassRatio = Math.Clamp(firstPassRatio, 0.0, 1.0);
+        _hammerMode = hammerMode;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
@@ -218,12 +226,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int txCount = block.Transactions.Length;
             if (txCount == 0) return;
 
+            int firstPassLimit = (int)(txCount * _firstPassRatio);
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
 
             int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
+            bool hammerMode = _hammerMode;
 
             Thread[] workers = new Thread[threadCount];
             for (int t = 0; t < threadCount; t++)
@@ -233,43 +243,101 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IReadOnlyTxProcessorSource env = _envPool.Get();
                     try
                     {
+                        // Phase 1: first pass — one execution per tx, no retry, cover first N txs fast
+                        while (!token.IsCancellationRequested)
+                        {
+                            int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                            if (myTx >= firstPassLimit) break;
+
+                            if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
+
+                            using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
+                            {
+                                BlockExecutionContext context = new(block.Header, blockState.Spec);
+                                scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                                if (preWarmer.MainThreadWorldState is not null)
+                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                                WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                            }
+                        }
+
+                        // Phase 2: retry mode — re-warm txs with fresher state
+                        // Reset counter so all workers start claiming from tx 0
+                        Interlocked.CompareExchange(ref _nextWarmupIndex, 0, firstPassLimit + threadCount);
+
                         while (!token.IsCancellationRequested)
                         {
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
                             if (myTx >= txCount)
                             {
-                                // All txs claimed — reset counter so workers re-warm
-                                // with fresher fallback state from main thread
                                 Interlocked.CompareExchange(ref _nextWarmupIndex, 0, txCount + threadCount);
                                 continue;
                             }
 
-                            // Re-execute this tx each time the main thread advances
-                            // (new state available via fallback). No blind hammering.
                             int lastSeenMain = Volatile.Read(ref MainThreadTxIndex);
-                            while (!token.IsCancellationRequested)
+                            if (lastSeenMain >= myTx) continue;
+
+                            // Execute once
+                            using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
                             {
-                                if (lastSeenMain >= myTx) break;
+                                BlockExecutionContext context = new(block.Header, blockState.Spec);
+                                scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                                using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
-                                {
-                                    BlockExecutionContext context = new(block.Header, blockState.Spec);
-                                    scope.TransactionProcessor.SetBlockExecutionContext(context);
+                                if (preWarmer.MainThreadWorldState is not null)
+                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
-                                    if (preWarmer.MainThreadWorldState is not null)
-                                        (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+                                WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                            }
 
-                                    WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
-                                }
-
-                                // Wait for main thread to advance before re-executing
-                                SpinWait spin = default;
+                            if (hammerMode)
+                            {
+                                // Hammer: keep re-executing until main thread passes
                                 while (!token.IsCancellationRequested)
                                 {
-                                    int current = Volatile.Read(ref MainThreadTxIndex);
-                                    if (current > lastSeenMain) { lastSeenMain = current; break; }
-                                    if (current >= myTx) { lastSeenMain = current; break; }
-                                    spin.SpinOnce();
+                                    if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
+
+                                    using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
+                                    {
+                                        BlockExecutionContext context = new(block.Header, blockState.Spec);
+                                        scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                                        if (preWarmer.MainThreadWorldState is not null)
+                                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                                        WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // State-gated: re-execute only when main thread advances
+                                while (!token.IsCancellationRequested)
+                                {
+                                    if (lastSeenMain >= myTx) break;
+
+                                    SpinWait spin = default;
+                                    while (!token.IsCancellationRequested)
+                                    {
+                                        int current = Volatile.Read(ref MainThreadTxIndex);
+                                        if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                        if (current >= myTx) { lastSeenMain = current; break; }
+                                        spin.SpinOnce();
+                                    }
+
+                                    if (lastSeenMain >= myTx) break;
+
+                                    using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
+                                    {
+                                        BlockExecutionContext context = new(block.Header, blockState.Spec);
+                                        scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                                        if (preWarmer.MainThreadWorldState is not null)
+                                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                                        WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                                    }
                                 }
                             }
                         }
