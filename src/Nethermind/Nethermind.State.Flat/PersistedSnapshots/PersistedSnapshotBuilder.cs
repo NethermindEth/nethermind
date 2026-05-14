@@ -310,15 +310,14 @@ public static class PersistedSnapshotBuilder
         Span<byte> compactPathKey = stackalloc byte[8];
         Span<byte> fallbackPathKey = stackalloc byte[33];
         Span<byte> nrBuf = stackalloc byte[NodeRef.Size];
-        // Reusable work buffers for the slot prefix (30-byte) and slot suffix (2-byte)
-        // HSST builders. The prefix builder is constructed once per address; the suffix
-        // builder once per prefix group per address. Sharing the buffer struct across
-        // every iteration of the address loop avoids the rent/return churn that would
+        // Reusable work buffer for the slot prefix (30-byte) HSST BTree builder.
+        // Constructed once per address. Sharing the buffer struct across every
+        // iteration of the address loop avoids the rent/return churn that would
         // otherwise hit ArrayPool / NativeMemory once per slot subtree.
-        // Declared as plain locals (not `using`) so they can be passed by ref into the
-        // builder constructors — the compiler forbids `ref` on `using` variables.
+        // Declared as a plain local (not `using`) so it can be passed by ref into
+        // the builder constructor — the compiler forbids `ref` on `using` variables.
+        // The slot suffix layer now uses TwoByteSlotValue[Large] which pool internally.
         HsstBTreeBuilderBuffers slotPrefixBuffers = new();
-        HsstBTreeBuilderBuffers slotSuffixBuffers = new();
         int storageIdx = 0;
         int storTopIdx = 0;
         int storCompactIdx = 0;
@@ -470,37 +469,61 @@ public static class PersistedSnapshotBuilder
                     slotKey[..slotPrefixLength].CopyTo(currentPrefixBuf);
                     ReadOnlySpan<byte> currentPrefix = currentPrefixBuf;
 
-                    ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
-                    using HsstBTreeBuilder<TWriter, TReader, TPin> suffixLevel = new(ref suffixWriter, ref slotSuffixBuffers, keyLength: slotSuffixLength,
-                        new HsstBTreeOptions { MinSeparatorLength = slotSuffixLength });
-
-                    while (storageIdx < sortedStorages.Count &&
-                        sortedStorages[storageIdx].Key.AddrHash.Equals(addressHash))
+                    // Look ahead over the current prefix group to total its value bytes.
+                    // TwoByteSlotValue caps the data region at ushort.MaxValue; fall back to
+                    // BTree when a group's payload overflows. In practice, per-prefix groups
+                    // are tiny (a handful of slots) so the look-ahead is cheap and the
+                    // u16 cap is virtually never hit.
+                    int groupStart = storageIdx;
+                    int groupEnd = groupStart;
+                    long groupValueBytes = 0;
+                    while (groupEnd < sortedStorages.Count &&
+                        sortedStorages[groupEnd].Key.AddrHash.Equals(addressHash))
                     {
-                        sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
+                        sortedStorages[groupEnd].Key.Slot.ToBigEndian(slotKey);
                         if (!slotKey[..slotPrefixLength].SequenceEqual(currentPrefix))
                             break;
-
-                        // Per-slot bloom add keyed on the full 32-byte slot; matches the
-                        // reader-side hash in ReadOnlySnapshotBundle.GetSlot.
-                        if (bloom is not null)
-                            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
-
-                        SlotValue? value = sortedStorages[storageIdx].Value;
-                        ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
-                        if (value.HasValue)
-                        {
-                            ReadOnlySpan<byte> withoutLeadingZeros = value.Value.AsReadOnlySpan.WithoutLeadingZeros();
-                            suffixLevel.Add(suffixKey, withoutLeadingZeros);
-                        }
-                        else
-                        {
-                            suffixLevel.Add(suffixKey, []);
-                        }
-                        storageIdx++;
+                        SlotValue? v = sortedStorages[groupEnd].Value;
+                        groupValueBytes += v.HasValue ? v.Value.AsReadOnlySpan.WithoutLeadingZeros().Length : 0;
+                        groupEnd++;
                     }
 
-                    suffixLevel.Build();
+                    ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
+                    if (HsstTwoByteSlotValueBuilder<TWriter>.FitsInOffsetWidth(groupValueBytes))
+                    {
+                        using HsstTwoByteSlotValueBuilder<TWriter> suffixLevel = new(ref suffixWriter);
+                        for (int i = groupStart; i < groupEnd; i++)
+                        {
+                            sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
+                            if (bloom is not null)
+                                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
+                            SlotValue? value = sortedStorages[i].Value;
+                            ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
+                            ReadOnlySpan<byte> payload = value.HasValue
+                                ? value.Value.AsReadOnlySpan.WithoutLeadingZeros()
+                                : [];
+                            suffixLevel.Add(suffixKey, payload);
+                        }
+                        suffixLevel.Build();
+                    }
+                    else
+                    {
+                        using HsstTwoByteSlotValueLargeBuilder<TWriter> suffixLevel = new(ref suffixWriter);
+                        for (int i = groupStart; i < groupEnd; i++)
+                        {
+                            sortedStorages[i].Key.Slot.ToBigEndian(slotKey);
+                            if (bloom is not null)
+                                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
+                            SlotValue? value = sortedStorages[i].Value;
+                            ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);
+                            ReadOnlySpan<byte> payload = value.HasValue
+                                ? value.Value.AsReadOnlySpan.WithoutLeadingZeros()
+                                : [];
+                            suffixLevel.Add(suffixKey, payload);
+                        }
+                        suffixLevel.Build();
+                    }
+                    storageIdx = groupEnd;
                     prefixLevel.FinishValueWrite(currentPrefix);
                 }
 
@@ -540,7 +563,6 @@ public static class PersistedSnapshotBuilder
         addressLevel.Build();
         outer.FinishValueWrite(PersistedSnapshot.AccountColumnTag);
         ArrayPool<byte>.Shared.Return(rlpBuffer);
-        slotSuffixBuffers.Dispose();
         slotPrefixBuffers.Dispose();
     }
 

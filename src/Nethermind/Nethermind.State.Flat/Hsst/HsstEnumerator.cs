@@ -38,16 +38,18 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     where TPin : struct, IBufferPin, allows ref struct
     where TReader : IHsstByteReader<TPin>, allows ref struct
 {
-    private enum VariantKind : byte { Empty, PackedArray, BTree }
+    private enum VariantKind : byte { Empty, PackedArray, BTree, TwoByteSlotValue, TwoByteSlotValueLarge }
 
     // Struct envelope: only thing that needs to live on the value is the
-    // discriminator and the two nullable variant references. All mutable
+    // discriminator and the variant references. All mutable
     // iteration state lives on the heap-allocated variant objects, so copies
     // of this struct (e.g. via ArrayPoolList<T>'s by-value indexer) still
     // observe / advance the same underlying cursor.
     private readonly VariantKind _kind;
     private readonly PackedArrayVariant? _packed;
     private readonly BTreeVariant? _btree;
+    private readonly TwoByteSlotValueVariant? _tbsv;
+    private readonly TwoByteSlotValueLargeVariant? _tbsvLarge;
 
     public HsstEnumerator(scoped in TReader reader, Bound scope)
     {
@@ -75,6 +77,14 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 _btree = new BTreeVariant(in reader, scope);
                 _kind = VariantKind.BTree;
                 break;
+            case IndexType.TwoByteSlotValue:
+                _tbsv = TwoByteSlotValueVariant.TryCreate(in reader, scope);
+                _kind = _tbsv is not null ? VariantKind.TwoByteSlotValue : VariantKind.Empty;
+                break;
+            case IndexType.TwoByteSlotValueLarge:
+                _tbsvLarge = TwoByteSlotValueLargeVariant.TryCreate(in reader, scope);
+                _kind = _tbsvLarge is not null ? VariantKind.TwoByteSlotValueLarge : VariantKind.Empty;
+                break;
             // DenseByteIndex is used for the persisted-snapshot outer + per-address
             // containers, which the merge code accesses directly via TryGet rather
             // than via this enumerator. Defensive empty enumeration: never invoked
@@ -90,6 +100,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.Count,
         VariantKind.BTree => _btree!.Count,
+        VariantKind.TwoByteSlotValue => _tbsv!.Count,
+        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.Count,
         _ => 0,
     };
 
@@ -97,6 +109,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.MoveNext(),
         VariantKind.BTree => _btree!.MoveNext(in reader),
+        VariantKind.TwoByteSlotValue => _tbsv!.MoveNext(in reader),
+        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.MoveNext(in reader),
         _ => false,
     };
 
@@ -109,6 +123,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.CurrentKey,
         VariantKind.BTree => _btree!.CurrentKey,
+        VariantKind.TwoByteSlotValue => _tbsv!.CurrentKey,
+        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentKey,
         _ => default,
     };
 
@@ -131,7 +147,13 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         Span<byte> outSpan = dst[..len];
         using TPin pin = reader.PinBuffer(b.Offset, b.Length);
         ReadOnlySpan<byte> stored = pin.Buffer;
-        if (_kind == VariantKind.PackedArray && _packed!.IsLittleEndian)
+        // LE-stored variants byte-reverse on the way out so callers see the original
+        // BE/lex input bytes. PackedArray opts in via IsLittleEndian; the two
+        // TwoByteSlotValue formats always store LE.
+        bool reverse = (_kind == VariantKind.PackedArray && _packed!.IsLittleEndian)
+            || _kind == VariantKind.TwoByteSlotValue
+            || _kind == VariantKind.TwoByteSlotValueLarge;
+        if (reverse)
         {
             for (int i = 0; i < len; i++) outSpan[i] = stored[len - 1 - i];
         }
@@ -153,6 +175,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.CurrentValue,
         VariantKind.BTree => _btree!.CurrentValue,
+        VariantKind.TwoByteSlotValue => _tbsv!.CurrentValue,
+        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentValue,
         _ => default,
     };
 
@@ -160,6 +184,8 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
     {
         VariantKind.PackedArray => _packed!.CurrentMetadataStart,
         VariantKind.BTree => _btree!.CurrentMetadataStart,
+        VariantKind.TwoByteSlotValue => _tbsv!.CurrentMetadataStart,
+        VariantKind.TwoByteSlotValueLarge => _tbsvLarge!.CurrentMetadataStart,
         _ => 0,
     };
 
@@ -459,6 +485,100 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             _currentValueLength = valueLength;
             return true;
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // TwoByteSlotValue: fixed 2-byte keys, variable values, packed start-offset
+    // trailer. Forward iteration is a flat index walk; bounds are derived from
+    // a single u16 offset read per entry (or zero / data-end for the endpoints).
+    // -----------------------------------------------------------------------
+
+    private sealed class TwoByteSlotValueVariant
+    {
+        private readonly HsstTwoByteSlotValueReader.Layout _layout;
+        private int _index = -1;
+        private long _currentValueStart;
+        private long _currentValueEnd;
+
+        public static TwoByteSlotValueVariant? TryCreate(scoped in TReader reader, Bound scope)
+        {
+            if (!HsstTwoByteSlotValueReader.TryReadLayout<TReader, TPin>(in reader, scope, out HsstTwoByteSlotValueReader.Layout layout))
+                return null;
+            return new TwoByteSlotValueVariant(layout);
+        }
+
+        private TwoByteSlotValueVariant(HsstTwoByteSlotValueReader.Layout layout) => _layout = layout;
+
+        public long Count => _layout.Count;
+
+        public bool MoveNext(scoped in TReader reader)
+        {
+            int next = _index + 1;
+            if (next >= _layout.Count) return false;
+            _index = next;
+            // Start of this entry: 0 if first, else Offset_{index} stored at offsetsStart + 2*(index-1).
+            long start = _index == 0 ? 0L : ReadU16LE(in reader, _layout.OffsetsStart + (long)(_index - 1) * 2);
+            // End of this entry: data end if last, else Offset_{index+1} stored at offsetsStart + 2*index.
+            long end = _index == _layout.Count - 1
+                ? _layout.DataEnd - _layout.DataStart
+                : ReadU16LE(in reader, _layout.OffsetsStart + (long)_index * 2);
+            _currentValueStart = _layout.DataStart + start;
+            _currentValueEnd = _layout.DataStart + end;
+            return true;
+        }
+
+        public Bound CurrentKey => new(_layout.KeysStart + (long)_index * HsstTwoByteSlotValueReader.KeyLength, HsstTwoByteSlotValueReader.KeyLength);
+        public Bound CurrentValue => new(_currentValueStart, _currentValueEnd - _currentValueStart);
+        public long CurrentMetadataStart => _currentValueEnd;
+
+        private static long ReadU16LE(scoped in TReader reader, long offset)
+        {
+            Span<byte> buf = stackalloc byte[2];
+            reader.TryRead(offset, buf);
+            return BinaryPrimitives.ReadUInt16LittleEndian(buf);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // TwoByteSlotValueLarge: wider sibling of TwoByteSlotValue. Same iteration
+    // shape but reads u24 (3-byte LE) start offsets instead of u16.
+    // -----------------------------------------------------------------------
+
+    private sealed class TwoByteSlotValueLargeVariant
+    {
+        private readonly HsstTwoByteSlotValueLargeReader.Layout _layout;
+        private int _index = -1;
+        private long _currentValueStart;
+        private long _currentValueEnd;
+
+        public static TwoByteSlotValueLargeVariant? TryCreate(scoped in TReader reader, Bound scope)
+        {
+            if (!HsstTwoByteSlotValueLargeReader.TryReadLayout<TReader, TPin>(in reader, scope, out HsstTwoByteSlotValueLargeReader.Layout layout))
+                return null;
+            return new TwoByteSlotValueLargeVariant(layout);
+        }
+
+        private TwoByteSlotValueLargeVariant(HsstTwoByteSlotValueLargeReader.Layout layout) => _layout = layout;
+
+        public long Count => _layout.Count;
+
+        public bool MoveNext(scoped in TReader reader)
+        {
+            int next = _index + 1;
+            if (next >= _layout.Count) return false;
+            _index = next;
+            long start = _index == 0 ? 0L : HsstTwoByteSlotValueLargeReader.ReadU24LE<TReader, TPin>(in reader, _layout.OffsetsStart + (long)(_index - 1) * HsstTwoByteSlotValueLargeReader.OffsetSize);
+            long end = _index == _layout.Count - 1
+                ? _layout.DataEnd - _layout.DataStart
+                : HsstTwoByteSlotValueLargeReader.ReadU24LE<TReader, TPin>(in reader, _layout.OffsetsStart + (long)_index * HsstTwoByteSlotValueLargeReader.OffsetSize);
+            _currentValueStart = _layout.DataStart + start;
+            _currentValueEnd = _layout.DataStart + end;
+            return true;
+        }
+
+        public Bound CurrentKey => new(_layout.KeysStart + (long)_index * HsstTwoByteSlotValueLargeReader.KeyLength, HsstTwoByteSlotValueLargeReader.KeyLength);
+        public Bound CurrentValue => new(_currentValueStart, _currentValueEnd - _currentValueStart);
+        public long CurrentMetadataStart => _currentValueEnd;
     }
 }
 

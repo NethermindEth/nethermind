@@ -28,4 +28,20 @@ public enum IndexType : byte
     /// container, where the set of tag positions is fixed and known.
     /// </summary>
     DenseByteIndex = 0x04,
+    /// <summary>
+    /// Fixed 2-byte key, variable value, packed start-offset trailer. Concatenated
+    /// values followed by <c>[Offset_1..Offset_{N-1}: u16 LE][Key_0..Key_{N-1}: 2 bytes each][KeyCount: u16 LE = N − 1][IndexType: u8]</c>.
+    /// <c>Offset_0</c> is omitted (always 0); <c>Offset_N</c> is derived from the
+    /// trailer length. Data region is capped at 65,535 bytes by the u16 offset width.
+    /// See FORMAT.md for full layout / lookup procedure.
+    /// </summary>
+    TwoByteSlotValue = 0x05,
+    /// <summary>
+    /// Wider sibling of <see cref="TwoByteSlotValue"/>: same layout but u24 LE offsets,
+    /// raising the data-region cap from 64 KiB to ~16 MiB. Trailer is
+    /// <c>[Offset_1..Offset_{N-1}: u24 LE][Key_0..Key_{N-1}: 2 bytes each][KeyCount: u16 LE = N − 1][IndexType: u8]</c>.
+    /// Picked when the cumulative SlotSuffix payload exceeds the u16 sibling's cap.
+    /// See FORMAT.md for full layout / lookup procedure.
+    /// </summary>
+    TwoByteSlotValueLarge = 0x06,
 }

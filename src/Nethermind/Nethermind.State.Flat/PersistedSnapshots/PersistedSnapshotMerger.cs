@@ -211,7 +211,6 @@ public static class PersistedSnapshotMerger
         // Plain locals (not `using`) so they can be passed by ref through the call
         // chain into the builder constructors.
         HsstBTreeBuilderBuffers slotPrefixBuffers = new();
-        HsstBTreeBuilderBuffers slotSuffixBuffers = new();
 
         try
         {
@@ -286,7 +285,7 @@ public static class PersistedSnapshotMerger
                     }
                     NWayMergePerAddressHsst<TWriter, TReader, TPin>(
                         enums, matchingSources, matchCount, views,
-                        ref perAddrWriter, ref slotPrefixBuffers, ref slotSuffixBuffers,
+                        ref perAddrWriter, ref slotPrefixBuffers,
                         bloom, addrKey);
                     builder.FinishValueWrite(minKey);
                 }
@@ -299,7 +298,6 @@ public static class PersistedSnapshotMerger
         finally
         {
             for (int i = 0; i < n; i++) enums[i].Dispose();
-            slotSuffixBuffers.Dispose();
             slotPrefixBuffers.Dispose();
         }
     }
@@ -320,7 +318,6 @@ public static class PersistedSnapshotMerger
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         ref HsstBTreeBuilderBuffers slotPrefixBuffers,
-        ref HsstBTreeBuilderBuffers slotSuffixBuffers,
         BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source.
@@ -454,7 +451,7 @@ public static class PersistedSnapshotMerger
                         NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
                             slotEnums, slotHasMore, slotSourceCount, slotViews,
                             ref slotWriter,
-                            ref slotPrefixBuffers, ref slotSuffixBuffers,
+                            ref slotPrefixBuffers,
                             bloom, addrBloomKey);
                         perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
                     }
@@ -543,7 +540,6 @@ public static class PersistedSnapshotMerger
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
-        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers,
         BloomFilter? bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int OuterKeyLen = 30;
@@ -579,6 +575,13 @@ public static class PersistedSnapshotMerger
         // populates [0,30); per-slot innerSuffix (2 bytes) populates [30,32). Allocated once
         // here so the per-slot bloom path is allocation-free.
         Span<byte> slotKeyBuf = stackalloc byte[32];
+
+        // Inner-merge scratch buffers — hoisted once and Clear()ed between multi-source
+        // prefix groups so both the ArrayPool rents and the ArrayPoolList wrappers reuse.
+        // Sized at construction for a typical small group; the lists grow internally as needed.
+        using ArrayPoolList<byte> scratchValues = new(512);
+        using ArrayPoolList<byte> scratchKeys = new(Math.Max(1, n) * InnerKeyLen);
+        using ArrayPoolList<int> scratchLens = new(Math.Max(1, n));
 
         NWayMergeCursor outerCursor = new(
             outerEnums, outerHasMore, views, srcMap,
@@ -657,8 +660,15 @@ public static class PersistedSnapshotMerger
                         innerEnums, innerHasMore, views, outerMatches,
                         innerN, InnerKeyLen, InnerKeyLen, iKeyBuf, iMatchingBuf, iTree);
 
-                    ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
-                    using HsstBTreeBuilder<TWriter, TReader, TPin> innerBuilder = new(ref innerWriter, ref slotSuffixBuffers, InnerKeyLen, new HsstBTreeOptions { MinSeparatorLength = 2 });
+                    // Buffer the merged stream so we can size it and pick the inner format
+                    // afterward. TwoByteSlotValue caps the data region at ushort.MaxValue;
+                    // BTree handles anything larger. Per-prefix-group payloads are tiny in
+                    // practice (a handful of slots × ≤32 bytes), so the buffering cost
+                    // beats the format-choice trade-off. Scratch lists are hoisted; reuse
+                    // their backing arrays across outer iterations.
+                    scratchValues.Clear();
+                    scratchKeys.Clear();
+                    scratchLens.Clear();
 
                     while (innerCursor.MoveNext())
                     {
@@ -672,11 +682,38 @@ public static class PersistedSnapshotMerger
                             innerKey.CopyTo(slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
                             bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
                         }
-                        innerBuilder.Add(innerKey, valPin.Buffer);
+                        scratchValues.AddRange(valPin.Buffer);
+                        scratchKeys.AddRange(innerKey);
+                        scratchLens.Add((int)vb.Length);
                         innerCursor.AdvanceMatching();
                     }
 
-                    innerBuilder.Build();
+                    ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
+                    ReadOnlySpan<byte> mergedValues = scratchValues.AsSpan();
+                    ReadOnlySpan<byte> mergedKeys = scratchKeys.AsSpan();
+                    ReadOnlySpan<int> mergedLens = scratchLens.AsSpan();
+                    if (HsstTwoByteSlotValueBuilder<TWriter>.FitsInOffsetWidth(mergedValues.Length))
+                    {
+                        using HsstTwoByteSlotValueBuilder<TWriter> innerBuilder = new(ref innerWriter);
+                        int valOff = 0;
+                        for (int i = 0; i < mergedLens.Length; i++)
+                        {
+                            innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
+                            valOff += mergedLens[i];
+                        }
+                        innerBuilder.Build();
+                    }
+                    else
+                    {
+                        using HsstTwoByteSlotValueLargeBuilder<TWriter> innerBuilder = new(ref innerWriter);
+                        int valOff = 0;
+                        for (int i = 0; i < mergedLens.Length; i++)
+                        {
+                            innerBuilder.Add(mergedKeys.Slice(i * InnerKeyLen, InnerKeyLen), mergedValues.Slice(valOff, mergedLens[i]));
+                            valOff += mergedLens[i];
+                        }
+                        innerBuilder.Build();
+                    }
                     outerBuilder.FinishValueWrite(outerKey);
                 }
                 finally

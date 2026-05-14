@@ -41,6 +41,8 @@ A compact, immutable binary format for sorted key/value tables.
 | **BTree** | `[Data Region][Index Region][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]` |
 | **PackedArray** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x02]` |
 | **DenseByteIndex** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]` |
+| **TwoByteSlotValue** | `[Value_0]…[Value_{N-1}][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][KeyCount: u16 LE = N − 1][IndexType: u8 = 0x05]` |
+| **TwoByteSlotValueLarge** | `[Value_0]…[Value_{N-1}][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][KeyCount: u16 LE = N − 1][IndexType: u8 = 0x06]` |
 
 The trailing **index type byte** is the last byte of the HSST and selects
 the variant by enumerated value (not a bitfield):
@@ -51,6 +53,8 @@ the variant by enumerated value (not a bitfield):
 | `0x02` | `PackedArray` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
 | `0x03` | _reserved_ | Previously `ByteTagMap`; do not reuse without bumping the wire format. |
 | `0x04` | `DenseByteIndex` | Single-byte-keyed map indexed directly by the tag byte; gap-filled with zero-length values. |
+| `0x05` | `TwoByteSlotValue` | Fixed 2-byte key map; packed start-offset trailer (first offset omitted, always 0). Data region capped at 65,535 bytes by u16 offsets. |
+| `0x06` | `TwoByteSlotValueLarge` | Identical shape to `TwoByteSlotValue` but u24 LE offsets, raising the data-region cap to ~16 MiB. Picked when the u16 sibling can't fit the payload. |
 
 Other values are reserved for future index strategies. The root B-tree
 node lives just before the BTree trailer (`[RootSize u16 LE][KeyLength u8][IndexType u8]`)
@@ -233,6 +237,103 @@ per-address sub-tag container).
   worse when most tag positions are unused (gap-filled `Ends` slots are
   paid in full).
 
+### TwoByteSlotValue variant
+
+A fixed 2-byte key map with variable values, a packed start-offset trailer,
+and a contiguous sorted key array. Designed for the inner slot-suffix HSST
+(2-byte slot-suffix → 0..32-byte slot value) where the data region is small
+enough to encode every start offset in a single `u16`.
+
+```
+[Value_0][Value_1]…[Value_{N-1}][Offset_1: u16 LE]…[Offset_{N-1}: u16 LE][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][KeyCount: u16 LE = N − 1][IndexType: u8 = 0x05]
+```
+
+- **`Value_i`** — raw bytes of the value associated with `Key_i`. Length is
+  derived from adjacent offsets (see below); 0-length is legal and is the
+  in-band "absent / deleted" marker.
+- **`Offset_i`** — exclusive **start** offset of `Value_i` measured from byte
+  0 of the HSST (= first data byte). `Offset_0` is omitted because it is
+  always `0`. `Offset_N` (one-past-end of the data region) is not stored;
+  the reader derives it from the trailer length (`HSSTLength − 4·N − 1`),
+  so `Value_i` occupies `[Offset_i, Offset_{i+1})` with `Offset_0 = 0`
+  implicit.
+- **`Key_i`** — 2 bytes, **byte-reversed** from the caller's input
+  (LE-stored). A native `u16` load over a stored key recovers the original
+  BE-numeric value, so unsigned `u16` compare on the loaded value matches
+  lex byte compare on the input — supporting SIMD scans of 8/16/32 keys
+  per iteration. Keys are strictly ascending in caller (lex/BE) order
+  across `i`. Matches the `PackedArray` LE-stored convention for 2-byte
+  keys.
+- **`KeyCount`** — `u16` LE holding `N − 1`, so the range `1..65536` fits.
+  The empty case is not representable; callers must omit Build for
+  zero-entry maps.
+
+**Trailer length** = `(N − 1)·2 + N·2 + 2 + 1 = 4N + 1` bytes.
+
+**Lookup procedure** (exact and floor):
+
+1. Read tail byte → `IndexType` must equal `0x05`.
+2. Read 2 bytes at `end - 3` → `KeyCount` u16 LE → `N = KeyCount + 1`.
+3. Reject lookups whose key length is not exactly 2.
+4. Keys array lives at `[end - 3 - 2·N, end - 3)`. Binary-search the array
+   for the smallest index `i` whose key is `≥ target`.
+5. On exact match — return `Value_i`. On miss with exact-lookup → not
+   found. On miss with floor lookup → return `Value_{i-1}` (or not-found
+   when `i == 0`).
+6. Resolve `Value_i`'s bound from `Offset_i` (= 0 when `i == 0`, else read
+   `u16` LE at `offsetsStart + 2·(i-1)`) and `Offset_{i+1}` (= `dataEnd`
+   when `i == N-1`, else read `u16` LE at `offsetsStart + 2·i`).
+   `dataEnd = HSSTLength − 4·N − 1`.
+
+**Restrictions and trade-offs.**
+
+- All keys are exactly 2 bytes. Multi-byte/empty keys are rejected at
+  build time.
+- The cumulative data region is capped at `ushort.MaxValue` (65,535
+  bytes) by the u16 offset width. Builders reject overflow; callers
+  expected to gate on a size check.
+- `N ≤ 65536` (`KeyCount` is a u16 holding `N − 1`).
+- Per-entry overhead is `2` (key) `+ 2` (offset; except for the omitted
+  `Offset_0`) bytes; no LEB128, no metadata pointer, no separator. Lookups
+  are one binary search over `2N` contiguous bytes plus at most two `u16`
+  reads to resolve the value bound.
+
+### TwoByteSlotValueLarge variant
+
+Identical layout to `TwoByteSlotValue` but with `u24` (3-byte LE) start
+offsets, raising the data-region cap from 64 KiB to ~16 MiB. Picked
+when the cumulative payload for a slot-suffix group exceeds the u16
+sibling's cap.
+
+```
+[Value_0][Value_1]…[Value_{N-1}][Offset_1: u24 LE]…[Offset_{N-1}: u24 LE][Key_0: 2 bytes]…[Key_{N-1}: 2 bytes][KeyCount: u16 LE = N − 1][IndexType: u8 = 0x06]
+```
+
+- **`Offset_i`** — `u24` LE start offset (low 3 bytes of a `u32`).
+  `Offset_0` is omitted; `Offset_N` is derived from the trailer length
+  (`HSSTLength − 5·N`). Value `i` spans `[Offset_i, Offset_{i+1})`.
+- All other fields (`Key_i`, `KeyCount`, `IndexType`) match the u16
+  sibling exactly, including the LE-stored 2-byte key convention, the
+  strict-ascending byte-lex order on caller input, and the `N − 1`
+  encoding of `KeyCount`.
+
+**Trailer length** = `3·(N − 1) + 2·N + 2 + 1 = 5N` bytes.
+
+**Lookup procedure**: identical to `TwoByteSlotValue` (read tail
+`IndexType` → `0x06`; read `KeyCount` u16 LE at `end − 3`; binary-search
+the `2·N`-byte key array at `end − 3 − 2·N`; resolve value bounds via
+two `u24` LE reads — or zero for the omitted `Offset_0` and the
+derived `Offset_N`).
+
+**Restrictions and trade-offs.**
+
+- All keys are exactly 2 bytes.
+- Data region is capped at `(1 << 24) − 1 = 16,777,215` bytes.
+- `N ≤ 65,536`.
+- One byte wider per offset than `TwoByteSlotValue`; pays back as soon
+  as any single group exceeds 64 KiB (which would otherwise spill into
+  a much heavier `BTree`).
+
 ## B-tree index node layout
 
 Each node (root, intermediate, or leaf) ends with a trailing `MetadataLength`
@@ -358,6 +459,10 @@ Writers / encoders:
   writer / reader (recursive summary index, optional hash table).
 - `Hsst/HsstDenseByteIndexBuilder.cs` — `DenseByteIndex` writer
   (concatenated values + Ends-only trailer; tag-byte = array index).
+- `Hsst/HsstTwoByteSlotValueBuilder.cs` — `TwoByteSlotValue` writer (fixed
+  2-byte keys, variable values, u16 start-offset trailer).
+- `Hsst/HsstTwoByteSlotValueLargeBuilder.cs` — `TwoByteSlotValueLarge`
+  writer (same shape as `TwoByteSlotValue` but u24 offsets, ~16 MiB cap).
 
 Readers / decoders:
 - `Hsst/HsstReader.cs` — point-query reader; reads the trailing
@@ -370,6 +475,10 @@ Readers / decoders:
   `HsstReader`.
 - `Hsst/HsstPackedArrayReader.cs` — `PackedArray` lookup helper
   (recursive summary descent + optional hash fast path).
+- `Hsst/HsstTwoByteSlotValueReader.cs` — `TwoByteSlotValue` lookup helper
+  (binary search over the 2-byte key array; u16 LE offset resolution).
+- `Hsst/HsstTwoByteSlotValueLargeReader.cs` — `TwoByteSlotValueLarge`
+  lookup helper (same shape as `TwoByteSlotValueReader` but u24 LE reads).
 
 Iterators:
 - `Hsst/HsstEnumerator.cs` — forward iterator over a whole HSST scope;

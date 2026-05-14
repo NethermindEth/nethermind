@@ -351,4 +351,28 @@ internal static class HsstSizeEstimator
         int offsetSize = HsstOffset.ChooseOffsetSize(sumValueBytes);
         return entryCount * offsetSize + 3 + sumValueBytes;
     }
+
+    /// <summary>
+    /// Exact size of a <c>TwoByteSlotValue</c> HSST: trailer is
+    /// <c>(N − 1)·2 + N·2 + 2 + 1 = 4·N + 1</c> bytes (offsets array with first omitted,
+    /// keys array, u16 keycount, u8 index-type), plus the concatenated value bytes.
+    /// Caller must ensure <paramref name="sumValueBytes"/> ≤ <c>ushort.MaxValue</c>.
+    /// </summary>
+    internal static int EstimateTwoByteSlotValueSize(int entryCount, int sumValueBytes)
+    {
+        if (entryCount <= 0) return 0;
+        return entryCount * 4 + 1 + sumValueBytes;
+    }
+
+    /// <summary>
+    /// Exact size of a <c>TwoByteSlotValueLarge</c> HSST: trailer is
+    /// <c>(N − 1)·3 + N·2 + 2 + 1 = 5·N</c> bytes (u24 offsets array with first omitted,
+    /// keys array, u16 keycount, u8 index-type), plus the concatenated value bytes.
+    /// Caller must ensure <paramref name="sumValueBytes"/> ≤ <c>(1 &lt;&lt; 24) − 1</c>.
+    /// </summary>
+    internal static int EstimateTwoByteSlotValueLargeSize(int entryCount, int sumValueBytes)
+    {
+        if (entryCount <= 0) return 0;
+        return entryCount * 5 + sumValueBytes;
+    }
 }
