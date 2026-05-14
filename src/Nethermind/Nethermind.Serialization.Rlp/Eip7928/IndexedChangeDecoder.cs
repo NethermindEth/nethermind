@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
@@ -18,20 +15,12 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
     public int GetLength(T item, RlpBehaviors rlpBehaviors)
         => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    // Eip7928Constants.PrestateIndex (uint.MaxValue) is reserved as a Nethermind-internal
-    // sentinel. EIP-7928 itself doesn't reserve it, so the rejection is purely defensive —
-    // applied on both encode and decode to keep the sentinel from ever round-tripping through
-    // RLP if a future internal mechanism starts using it.
     public T Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
     {
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
         T result = DecodeFields(ref ctx);
-        if (result.Index == Eip7928Constants.PrestateIndex)
-        {
-            ThrowReservedIndex();
-        }
 
         if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
         {
@@ -43,11 +32,6 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
 
     public void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (item.Index == Eip7928Constants.PrestateIndex)
-        {
-            ThrowReservedIndex();
-        }
-
         // EIP-7928 v5.7.0 widened BlockAccessIndex to uint32 (commit 645099785a).
         stream.StartSequence(GetContentLength(item, rlpBehaviors));
         stream.Encode(item.Index);
@@ -65,8 +49,4 @@ public abstract class IndexedChangeDecoder<T> : IRlpValueDecoder<T>, IRlpStreamE
 
     /// <summary>Return the RLP length of the value field.</summary>
     protected abstract int GetValueLength(T item);
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowReservedIndex() =>
-        throw new RlpException($"BlockAccessIndex {Eip7928Constants.PrestateIndex} is a reserved sentinel value.");
 }

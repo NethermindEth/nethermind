@@ -500,8 +500,6 @@ public class BlockValidator(
         for (int i = 0; i < changes.Length; i++)
         {
             uint index = changes[i].Index;
-            // The wire decoder also rejects the reserved sentinel (uint.MaxValue), but it would
-            // be caught here anyway: maxAllowed is the block's tx count + 1, far below uint.MaxValue.
             if (index <= maxAllowed) continue;
 
             error = BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(index, maxAllowed);

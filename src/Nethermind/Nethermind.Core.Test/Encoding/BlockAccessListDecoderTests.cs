@@ -191,18 +191,6 @@ public class BlockAccessListDecoderTests
     }
 
     [Test]
-    public void Balance_change_at_reserved_sentinel_index_is_rejected_by_encoder()
-    {
-        // Eip7928Constants.PrestateIndex (uint.MaxValue) is a Nethermind-internal reserved
-        // sentinel; the encoder rejects any entry at that index so it can never round-trip
-        // through RLP.
-        BalanceChange original = new(uint.MaxValue, 0x1);
-
-        Assert.That(() => Rlp.Encode(original),
-            Throws.TypeOf<RlpException>().With.Message.Contain("reserved sentinel"));
-    }
-
-    [Test]
     public void Can_decode_then_encode_nonce_change()
     {
         const string rlp = "0xc20101";
