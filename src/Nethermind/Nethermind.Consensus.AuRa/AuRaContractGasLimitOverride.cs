@@ -39,9 +39,9 @@ AuRaContractGasLimitOverride.Cache cache,
 
         // CL-supplied targetGasLimit (PayloadAttributesV4) takes precedence over the on-chain
         // contract value so validators can steer per-FCU; contract value is the fallback.
-        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimitOverride = null) =>
-            targetGasLimitOverride is not null
-                ? _innerCalculator.GetGasLimit(parentHeader, targetGasLimitOverride)
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimit = null) =>
+            targetGasLimit is not null
+                ? _innerCalculator.GetGasLimit(parentHeader, targetGasLimit)
                 : GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
 
         private long? GetGasLimitFromContract(BlockHeader parentHeader)
