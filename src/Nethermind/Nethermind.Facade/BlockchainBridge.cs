@@ -507,23 +507,35 @@ namespace Nethermind.Facade
 
         public void RecoverTxSenders(Block block)
         {
+            Transaction[] transactions = block.Transactions;
+            if (AllSendersPopulated(transactions)) return;
+
             TxReceipt[] receipts = receiptStorage.Get(block);
-            if (block.Transactions.Length == receipts.Length)
+            if (transactions.Length == receipts.Length)
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
+                for (int i = 0; i < transactions.Length; i++)
                 {
-                    Transaction transaction = block.Transactions[i];
+                    Transaction transaction = transactions[i];
                     TxReceipt receipt = receipts[i];
                     transaction.SenderAddress ??= receipt.Sender ?? RecoverTxSender(transaction);
                 }
             }
             else
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
+                for (int i = 0; i < transactions.Length; i++)
                 {
-                    Transaction transaction = block.Transactions[i];
+                    Transaction transaction = transactions[i];
                     transaction.SenderAddress ??= RecoverTxSender(transaction);
                 }
+            }
+
+            static bool AllSendersPopulated(Transaction[] transactions)
+            {
+                for (int i = 0; i < transactions.Length; i++)
+                {
+                    if (transactions[i].SenderAddress is null) return false;
+                }
+                return true;
             }
         }
 

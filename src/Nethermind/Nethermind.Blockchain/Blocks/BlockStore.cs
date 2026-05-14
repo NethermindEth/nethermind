@@ -15,7 +15,10 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder headerDecoder = null) : IBlockStore, IClearableCache
 {
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
-    public const int CacheSize = 128 + 32;
+    // Matches geth's blockCacheLimit (core/blockchain.go:125) for a fair
+    // baseline. RPC workloads scanning recent history benefit from the larger
+    // window; memory cost is negligible (~10 KB/block × 256 ≈ 2.5 MB).
+    public const int CacheSize = 256;
 
     private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
