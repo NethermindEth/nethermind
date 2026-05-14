@@ -267,13 +267,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                                 if (!succeeded)
                                 {
-                                    // Tx failed (revert/exception) — wait for main thread to advance
-                                    // which commits more state that might resolve the dependency
-                                    int currentMain = Volatile.Read(ref MainThreadTxIndex);
-                                    if (currentMain >= myTx) break; // main thread passed us
+                                    // Tx failed — only retry when main thread actually advances
+                                    int lastSeenMain = Volatile.Read(ref MainThreadTxIndex);
+                                    if (lastSeenMain >= myTx) break; // main thread passed us
 
-                                    // Brief wait for main thread to commit next tx
-                                    Thread.Sleep(0);
+                                    // Spin-wait until main thread commits another tx (state changes)
+                                    // or passes our tx (too late). No dummy loops.
+                                    SpinWait spin = default;
+                                    while (!token.IsCancellationRequested)
+                                    {
+                                        int currentMain = Volatile.Read(ref MainThreadTxIndex);
+                                        if (currentMain > lastSeenMain) break; // main thread advanced — retry
+                                        if (currentMain >= myTx) break; // main thread passed us
+                                        spin.SpinOnce();
+                                    }
                                 }
                             }
                         }
