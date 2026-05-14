@@ -30,6 +30,7 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
         public static long StateTreeCache => _mainStateTreeCacheHits + _otherStateTreeCacheHits;
+        public static long MainStateTreeCacheHits => _mainStateTreeCacheHits;
         private static long _mainStateTreeCacheHits;
         private static long _otherStateTreeCacheHits;
         internal static void IncrementStateTreeCacheHits() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits : ref _otherStateTreeCacheHits);
@@ -37,6 +38,7 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of State Trie reads.")]
         public static long StateTreeReads => _mainStateTreeReads + _otherStateTreeReads;
+        public static long MainStateTreeReads => _mainStateTreeReads;
         private static long _mainStateTreeReads;
         private static long _otherStateTreeReads;
         internal static void IncrementStateTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeReads : ref _otherStateTreeReads);
@@ -67,6 +69,7 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of storage trie cache hits.")]
         public static long StorageTreeCache => _mainStorageTreeCache + _otherStorageTreeCache;
+        public static long MainStorageTreeCache => _mainStorageTreeCache;
         private static long _mainStorageTreeCache;
         private static long _otherStorageTreeCache;
         internal static void IncrementStorageTreeCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeCache : ref _otherStorageTreeCache);
@@ -74,6 +77,7 @@ namespace Nethermind.Db
         [CounterMetric]
         [Description("Number of storage trie reads.")]
         public static long StorageTreeReads => _mainStorageTreeReads + _otherStorageTreeReads;
+        public static long MainStorageTreeReads => _mainStorageTreeReads;
         private static long _mainStorageTreeReads;
         private static long _otherStorageTreeReads;
         internal static void IncrementStorageTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeReads : ref _otherStorageTreeReads);

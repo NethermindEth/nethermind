@@ -131,6 +131,7 @@ public class Metrics
     [CounterMetric]
     [Description("Number of code reads during execution.")]
     public static long CodeReads => _mainCodeReads + _otherCodeReads;
+    public static long MainCodeReads => _mainCodeReads;
     private static long _mainCodeReads;
     private static long _otherCodeReads;
     internal static void IncrementCodeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeReads : ref _otherCodeReads);
