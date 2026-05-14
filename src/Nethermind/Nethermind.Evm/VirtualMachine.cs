@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1251,12 +1252,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 programCounter++;
                 opCodeCount++;
 
-                // Warmup budget: bail out once we've executed enough opcodes to discover
-                // most state accesses. Avoids burning CPU on the long tail of computation.
-                if (WarmupOpcodeBudget > 0 && opCodeCount >= WarmupOpcodeBudget)
+                // --- Warmup mode optimizations ---
+                // Skip allocation-heavy opcodes and yield after state reads to reduce
+                // CPU/cache contention with the main block processing thread.
+                if (WarmupOpcodeBudget > 0)
                 {
-                    OpCodeCount += opCodeCount;
-                    return default;
+                    // Skip LOG0-LOG4: allocate topic arrays + data buffers, zero state access value.
+                    // Just pop the correct number of stack items (2 + number of topics).
+                    if (instruction >= Instruction.LOG0 && instruction <= Instruction.LOG4)
+                    {
+                        int popCount = 2 + (instruction - Instruction.LOG0);
+                        stack.Head -= popCount;
+                        continue;
+                    }
+
+                    // Skip SSTORE: the slot's trie nodes are loaded by preceding SLOADs.
+                    // Pop key and value from stack without writing to state.
+                    if (instruction == Instruction.SSTORE)
+                    {
+                        stack.Head -= 2;
+                        continue;
+                    }
                 }
 
                 // For the very common POP opcode, use an inlined implementation to reduce overhead.
@@ -1271,6 +1287,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     // Invoke the opcode method, which may modify the stack, gas, and program counter.
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
+                }
+
+                // Yield after state-reading opcodes so the main thread gets CPU while
+                // the prewarmer waits for NVMe I/O to complete.
+                if (WarmupOpcodeBudget > 0 && (
+                    instruction == Instruction.SLOAD ||
+                    instruction == Instruction.CALL ||
+                    instruction == Instruction.STATICCALL ||
+                    instruction == Instruction.DELEGATECALL))
+                {
+                    Thread.Yield();
                 }
 
                 // If gas is exhausted, jump to the out-of-gas handler.
