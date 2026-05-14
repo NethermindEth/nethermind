@@ -465,6 +465,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     bool accountExists = WorldState.AccountExists(authority);
                     bool hasDelegation = accountExists && _codeInfoRepository.TryGetDelegation(authority, spec, out _);
+                    bool clearsDelegation = authTuple.CodeAddress == Address.Zero;
 
                     if (!accountExists)
                     {
@@ -476,7 +477,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         WorldState.IncrementNonce(authority);
                     }
 
-                    if (hasDelegation)
+                    if (hasDelegation || clearsDelegation)
                     {
                         authBaseRefunds++;
                     }

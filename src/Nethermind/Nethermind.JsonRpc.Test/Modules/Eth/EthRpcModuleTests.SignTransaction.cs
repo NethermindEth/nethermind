@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
@@ -118,7 +121,7 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", param);
-        JsonRpcResponse<SignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<SignTransactionResult>>(serialized)!;
+        JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
         response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
 
         response.Result!.Tx.Should().BeOfType(expectedEchoType,
@@ -132,7 +135,7 @@ public partial class EthRpcModuleTests
     public async Task SignTransaction_WhenValid_RawRoundTripsAndTxEcho(TxType type, Type expectedEchoType)
     {
         TransactionForRpc rpcTx = BuildTx(type);
-        SignTransactionResult result = await SignTransactionForResult(rpcTx);
+        ParsedSignTransactionResult result = await SignTransactionForResult(rpcTx);
 
         Transaction decoded = TxDecoder.Instance.DecodeCompleteNotNull(
             result.Raw,
@@ -157,14 +160,54 @@ public partial class EthRpcModuleTests
         return await ctx.Test.TestEthRpc("eth_signTransaction", rpcTx);
     }
 
-    private async Task<SignTransactionResult> SignTransactionForResult(TransactionForRpc rpcTx)
+    private async Task<ParsedSignTransactionResult> SignTransactionForResult(TransactionForRpc rpcTx)
     {
         using Context ctx = await Context.Create();
         ctx.Test.RpcConfig.EnableEthSignTransaction = true;
         string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", rpcTx);
-        JsonRpcResponse<SignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<SignTransactionResult>>(serialized)!;
+        JsonRpcResponse<ParsedSignTransactionResult> response = ctx.Test.JsonSerializer.Deserialize<JsonRpcResponse<ParsedSignTransactionResult>>(serialized)!;
         response.Result.Should().NotBeNull("precondition: signing must succeed for valid input");
         return response.Result!;
+    }
+
+    [Test]
+    public void SignTransactionResult_Dispose_ReturnsRentedBufferToPool()
+    {
+        TrackingPool pool = new();
+        ArrayPoolList<byte> raw = new(pool, capacity: 32, startingCount: 16);
+        byte[] rented = raw.UnsafeGetInternalArray();
+        SignTransactionResult result = new()
+        {
+            Raw = raw,
+            Tx = BuildTx(TxType.EIP1559)
+        };
+
+        // Drive the same disposal path the JSON-RPC pipeline uses for a successful response —
+        // a regression test for the pool-rental leak that occurs when SignTransactionResult
+        // is not IDisposable: TryDispose(object?) skips non-IDisposable values, so Raw never
+        // gets disposed and the rented buffer is lost to GC instead of returning to the pool.
+        JsonRpcSuccessResponse response = new() { Result = result };
+        response.Dispose();
+
+        pool.Returned.Should().ContainSingle().Which.Should().BeSameAs(rented,
+            "the rented buffer must come back to the pool — otherwise pooling is strictly " +
+            "worse than direct allocation");
+    }
+
+    private sealed class ParsedSignTransactionResult
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("raw")]
+        public required byte[] Raw { get; init; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("tx")]
+        public required TransactionForRpc Tx { get; init; }
+    }
+
+    private sealed class TrackingPool : ArrayPool<byte>
+    {
+        public List<byte[]> Returned { get; } = [];
+        public override byte[] Rent(int minimumLength) => new byte[minimumLength];
+        public override void Return(byte[] array, bool clearArray = false) => Returned.Add(array);
     }
 
     private static TransactionForRpc BuildTx(TxType type, string? omitField = null, string? fromOverride = null)

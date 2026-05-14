@@ -195,7 +195,7 @@ public static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    public static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TEip8037 : struct, IFlag
         where TEip7708 : struct, IFlag
