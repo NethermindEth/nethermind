@@ -74,7 +74,6 @@ public class BranchProcessor(
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
         BlockProcessor? blockProcessorWithTxCallback = null;
-        BlockCachePreWarmer? blockCachePreWarmer = preWarmer as BlockCachePreWarmer;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -82,10 +81,10 @@ public class BranchProcessor(
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
-        if (blockCachePreWarmer is not null && blockProcessor is BlockProcessor bp)
+        if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
         {
-            blockCachePreWarmer.MainThreadWorldState = stateProvider;
-            bp.SetTxExecutedCallback(blockCachePreWarmer.ReportMainThreadTxExecuted);
+            bcpw.MainThreadWorldState = stateProvider;
+            bp.SetTxExecutedCallback(bcpw.ReportMainThreadTxExecuted);
             blockProcessorWithTxCallback = bp;
         }
 
@@ -94,7 +93,6 @@ public class BranchProcessor(
             // Start prewarming as early as possible
             WaitForCacheClear();
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            blockCachePreWarmer?.PrepareAccountCacheForParent(baseBlock);
             preWarmTask = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
             Task? prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
@@ -118,7 +116,6 @@ public class BranchProcessor(
                 // If prewarmCancellation is not null it means we are in first iteration of loop
                 // and started prewarming at method entry, so don't start it again
                 backgroundCancellation ??= new CancellationTokenSource();
-                blockCachePreWarmer?.PrepareAccountCacheForParent(preBlockBaseBlock);
                 preWarmTask ??= PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
                 prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
@@ -144,10 +141,11 @@ public class BranchProcessor(
 
                 // Wait for prewarmer to fill caches, then stop it before EVM starts
                 // so prewarmer threads don't compete with main thread for memory bandwidth
-                if (blockCachePreWarmer is not null)
+                BlockCachePreWarmer? bcpwRef = preWarmer as BlockCachePreWarmer;
+                if (bcpwRef is not null)
                 {
-                    blockCachePreWarmer.WaitForFirstPass();
-                    if (blockCachePreWarmer.HeadStartEnabled)
+                    bcpwRef.WaitForFirstPass();
+                    if (bcpwRef.HeadStartEnabled)
                     {
                         backgroundCancellation?.Cancel();
                         WaitAndClear(ref preWarmTask);
@@ -163,7 +161,6 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
-                blockCachePreWarmer?.PublishCommittedState(stateProvider, processedBlock.Header);
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)

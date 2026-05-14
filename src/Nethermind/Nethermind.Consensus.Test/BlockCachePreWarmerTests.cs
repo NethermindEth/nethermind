@@ -16,7 +16,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -367,62 +366,6 @@ public class BlockCachePreWarmerTests
         populatedAccount!.Balance.Should().Be(1_000_000.Ether);
         preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage).Should().BeTrue();
         new UInt256(populatedStorage, isBigEndian: true).Should().Be((UInt256)0x99);
-    }
-
-    [Test]
-    public void PrepareAccountCacheForParent_KeepsOnlyMatchingStateRoot()
-    {
-        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
-
-        BlockHeader parentA = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
-        BlockHeader parentB = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakB).TestObject;
-        AddressAsKey address = TestItem.AddressA;
-        Account account = new((UInt256)777);
-
-        preWarmer.PrepareAccountCacheForParent(parentA);
-        preBlockCaches.StateCache.Set(in address, account);
-
-        preWarmer.PrepareAccountCacheForParent(parentA);
-        preBlockCaches.StateCache.TryGetValue(in address, out Account? cachedAccount).Should().BeTrue();
-        cachedAccount.Should().BeSameAs(account);
-
-        preWarmer.PrepareAccountCacheForParent(parentB);
-        preBlockCaches.StateCache.TryGetValue(in address, out _).Should().BeFalse();
-    }
-
-    [Test]
-    public void PublishCommittedState_CopiesFinalAccountChangesWithoutMetrics()
-    {
-        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
-        IWorldState worldState = _processingScope.Resolve<IWorldState>();
-
-        using (worldState.BeginScope(BuildParentHeader()))
-        {
-            worldState.AddToBalance(TestItem.AddressA, 1.Wei, Osaka.Instance, out _);
-            worldState.DeleteAccount(TestItem.AddressB);
-            worldState.Commit(Osaka.Instance, commitRoots: true);
-            worldState.RecalculateStateRoot();
-
-            BlockHeader blockHeader = Build.A.BlockHeader
-                .WithStateRoot(worldState.StateRoot)
-                .TestObject;
-
-            long before = MainThreadMetricsTotal();
-            preWarmer.PublishCommittedState(worldState, blockHeader);
-            long after = MainThreadMetricsTotal();
-
-            (after - before).Should().Be(0);
-        }
-
-        AddressAsKey changedAddress = TestItem.AddressA;
-        preBlockCaches.StateCache.TryGetValue(in changedAddress, out Account? changedAccount).Should().BeTrue();
-        changedAccount!.Balance.Should().Be(1_000_000.Ether + 1.Wei);
-
-        AddressAsKey deletedAddress = TestItem.AddressB;
-        preBlockCaches.StateCache.TryGetValue(in deletedAddress, out Account? deletedAccount).Should().BeTrue();
-        deletedAccount.Should().BeNull();
     }
 
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
