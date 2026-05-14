@@ -208,6 +208,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private int _nextWarmupIndex;
 
+    private const int MovingWindowWorkers = 4;
+
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -221,7 +223,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
 
-            int threadCount = Math.Min(_concurrencyLevel, txCount);
+            int threadCount = Math.Min(MovingWindowWorkers, txCount);
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
 
@@ -236,7 +238,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         while (!token.IsCancellationRequested)
                         {
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
-                            if (myTx >= txCount) break;
+                            if (myTx >= txCount)
+                            {
+                                // All txs claimed — reset counter so workers re-warm
+                                // with fresher fallback state from main thread
+                                Interlocked.CompareExchange(ref _nextWarmupIndex, 0, txCount + threadCount);
+                                continue;
+                            }
 
                             // Hammer this tx until main thread passes it
                             while (!token.IsCancellationRequested)
