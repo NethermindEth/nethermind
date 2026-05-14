@@ -79,52 +79,33 @@ internal class TrieStoreDirtyNodesCache
         KeyMemoryUsage += MemorySizes.ObjectHeaderMethodTable + MemorySizes.RefSize + 4 + MemorySizes.RefSize;
     }
 
-    public TrieNode FindCachedOrUnknown(in Key key)
+    /// <summary>
+    /// Returns the cached typed node for <paramref name="key"/>, or <see langword="null"/>
+    /// if no resolved entry exists. Never fabricates a <see cref="TrieNodePlaceholder"/>;
+    /// callers handle the miss by loading RLP and decoding directly.
+    /// </summary>
+    public TrieNode? FindCachedNode(in Key key)
     {
-        TrieNode trieNode;
-        if (TryGetValue(key, out TrieNode cached))
+        if (TryGetValue(key, out TrieNode cached) && cached.NodeType != NodeType.Unknown)
         {
-            trieNode = cached;
-            if (trieNode.NodeType != NodeType.Unknown)
-            {
-                Metrics.LoadedFromCacheNodesCount++;
-            }
-            else
-            {
-                if (_logger.IsTrace) Trace(trieNode);
-            }
+            Metrics.LoadedFromCacheNodesCount++;
+            return cached;
         }
-        else
-        {
-            trieNode = new TrieNodePlaceholder(in key.Keccak);
-            if (_logger.IsTrace) Trace(trieNode);
-        }
-
-        return trieNode;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
+        return null;
     }
 
-    public TrieNode FromCachedRlpOrUnknown(in Key key)
+    /// <summary>
+    /// Read-only sibling of <see cref="FindCachedNode"/>: returns a clone/shared copy of the
+    /// cached node when present, or <see langword="null"/> on miss.
+    /// </summary>
+    public TrieNode? FromCachedRlp(in Key key)
     {
-        // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-        if (TryGetValue(key, out TrieNode trieNode))
+        if (TryGetValue(key, out TrieNode trieNode) && trieNode.NodeType != NodeType.Unknown)
         {
-            trieNode = _trieStore.CloneForReadOnly(key, trieNode);
-
             Metrics.LoadedFromCacheNodesCount++;
+            return _trieStore.CloneForReadOnly(key, trieNode);
         }
-        else
-        {
-            trieNode = new TrieNodePlaceholder(in key.Keccak);
-        }
-
-        if (_logger.IsTrace) Trace(trieNode);
-        return trieNode;
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
+        return null;
     }
 
     public bool IsNodeCached(in Key key)

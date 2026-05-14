@@ -164,34 +164,34 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        public void Pruning_off_cache_should_find_cached_or_unknown()
+        public void Pruning_off_cache_miss_returns_null()
         {
             using TrieStore trieStore = CreateTrieStore();
             long startSize = trieStore.MemoryUsedByDirtyCache;
-            TrieNode returnedNode = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
-            TrieNode returnedNode2 = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
-            TrieNode returnedNode3 = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
-            Assert.That(returnedNode.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
+            TrieNode? returnedNode = trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
+            TrieNode? returnedNode2 = trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
+            TrieNode? returnedNode3 = trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
+            Assert.That(returnedNode, Is.Null);
+            Assert.That(returnedNode2, Is.Null);
+            Assert.That(returnedNode3, Is.Null);
             trieStore.WaitForPruning();
             trieStore.MemoryUsedByDirtyCache.Should().Be(startSize);
         }
 
         [Test]
-        public void FindCachedOrUnknown_DoesNotCachePlaceholderOnMiss()
+        public void GetCachedNode_DoesNotCacheAnythingOnMiss()
         {
             using TrieStore trieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             long startSize = trieStore.MemoryUsedByDirtyCache;
-            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
+            trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
-            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
+            trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
-            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
+            trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
-            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
+            trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
-            trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakD, isReadOnly: true);
+            trieStore.GetCachedNode(null, TreePath.Empty, TestItem.KeccakD, isReadOnly: true);
             Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
         }
 
@@ -985,19 +985,18 @@ namespace Nethermind.Trie.Test.Pruning
 
         [Test]
         [NonParallelizable]
-        public void Shared_read_only_lookup_miss_returns_placeholder_without_cloning()
+        public void Shared_read_only_lookup_miss_returns_null_without_cloning()
         {
             using TrieStore fullTrieStore = CreateTrieStore();
             TreePath emptyPath = TreePath.Empty;
-            fullTrieStore.GetCachedOrPlaceholder(null, emptyPath, TestItem.KeccakA, isReadOnly: false);
+            fullTrieStore.GetCachedNode(null, emptyPath, TestItem.KeccakA, isReadOnly: false);
 
             long fallbacksBefore = fullTrieStore.FallbackNotShareableCount;
             long clonesBefore = fullTrieStore.CloneForReadOnlyCount;
 
-            TrieNode node = fullTrieStore.GetSharedCachedOrPlaceholder(null, emptyPath, TestItem.KeccakA);
+            TrieNode? node = fullTrieStore.GetSharedCachedNode(null, emptyPath, TestItem.KeccakA);
 
-            node.NodeType.Should().Be(NodeType.Unknown);
-            node.Keccak.Should().Be(TestItem.KeccakA);
+            node.Should().BeNull();
             fullTrieStore.FallbackNotShareableCount.Should().Be(fallbacksBefore);
             fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
         }
@@ -1336,8 +1335,10 @@ namespace Nethermind.Trie.Test.Pruning
                 new TrieStoreScopeProvider(fullTrieStore, memDbProvider.CodeDb, _logManager),
                 LimboLogs.Instance);
 
-            // Simulate some kind of cache access which causes unresolved node to remain.
-            fullTrieStore.GetCachedOrPlaceholder(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot.ToCommitment().ValueHash256, isReadOnly: false);
+            // Cache miss now returns null without polluting the dirty cache; the call below
+            // is a no-op asserting the new invariant. Pruning correctness for legitimate
+            // (committed) nodes is exercised by the steps that follow.
+            fullTrieStore.GetCachedNode(address.ToAccountPath.ToCommitment(), TreePath.Empty, storageRoot.ToCommitment().ValueHash256, isReadOnly: false).Should().BeNull();
 
             using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(1).WithStateRoot(stateRoot).TestObject))
             {

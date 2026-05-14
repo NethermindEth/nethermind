@@ -55,8 +55,10 @@ namespace Nethermind.Trie.Pruning
             {
                 // Cache hit on the shared dirty cache returns the shared / cloned node directly;
                 // miss falls through to LoadRlp + decode.
-                TrieNode candidate = fullTrieStore._trieStore.GetSharedCachedOrPlaceholder(Address, in path, in hash);
-                if (candidate.NodeType != NodeType.Unknown) return candidate;
+                if (fullTrieStore._trieStore.GetSharedCachedNode(Address, in path, in hash) is { } cached)
+                {
+                    return cached;
+                }
 
                 byte[]? rlp = fullTrieStore._trieStore.TryLoadRlp(Address, in path, in hash, flags)
                     ?? throw new MissingTrieNodeException("Node missing", Address, path, new Hash256(in hash));
@@ -65,10 +67,9 @@ namespace Nethermind.Trie.Pruning
 
             public override bool TryGetOrLoadNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
             {
-                TrieNode candidate = fullTrieStore._trieStore.GetSharedCachedOrPlaceholder(Address, in path, in hash);
-                if (candidate.NodeType != NodeType.Unknown)
+                if (fullTrieStore._trieStore.GetSharedCachedNode(Address, in path, in hash) is { } cached)
                 {
-                    node = candidate;
+                    node = cached;
                     return true;
                 }
 
