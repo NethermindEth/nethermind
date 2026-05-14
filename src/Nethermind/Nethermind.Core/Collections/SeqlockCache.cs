@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
@@ -19,7 +21,7 @@ namespace Nethermind.Core.Collections;
 ///   breaking correlation between ways ("power of two choices"). Keys that collide
 ///   in way 0 scatter to different sets in way 1, virtually eliminating conflict misses.
 ///
-/// Hash bit partitioning (64-bit hash):
+/// Default hash bit partitioning (64-bit hash):
 ///   Bits  0-13: way 0 set index (14 bits)
 ///   Bits 22-41: hash signature stored in header (20 bits)
 ///   Bits 42-55: way 1 set index (14 bits, independent from way 0)
@@ -32,7 +34,7 @@ namespace Nethermind.Core.Collections;
 /// - Seq   (bits  1-16): per-entry sequence counter (16 bits) - increments on every successful write
 /// - Occ   (bit   0): occupied flag - set when slot contains valid data (value may still be null)
 ///
-/// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
+/// Array layout: [way0_set0..way0_setN, way1_set0..way1_setN] (split, not interleaved).
 /// </summary>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
 /// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
@@ -44,8 +46,9 @@ public sealed class SeqlockCache<TKey, TValue>
     /// Number of sets. Must be a power of 2 for mask operations.
     /// 16384 sets × 2 ways = 32768 total entries.
     /// </summary>
-    private const int Sets = 1 << 14; // 16384
-    private const int SetMask = Sets - 1;
+    private const int DefaultSets = 1 << 14; // 16384
+    private const int MaxCapacity = 1 << 23;
+    public const int DefaultCapacity = DefaultSets << 1; // 32768
 
     // Header bit layout:
     // [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
@@ -80,6 +83,8 @@ public sealed class SeqlockCache<TKey, TValue>
     /// Split layout ensures each way is a contiguous block for better prefetch behavior.
     /// </summary>
     private readonly Entry[] _entries;
+    private readonly int _sets;
+    private readonly int _setMask;
 
     /// <summary>
     /// Current epoch counter (unshifted, informational / debugging).
@@ -92,9 +97,15 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     private long _shiftedEpoch;
 
-    public SeqlockCache()
+    public SeqlockCache(int capacity = DefaultCapacity)
     {
-        _entries = new Entry[Sets << 1]; // Sets * 2
+        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 2);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, MaxCapacity);
+
+        int sets = (int)BitOperations.RoundUpToPowerOf2((uint)((capacity + 1) >> 1));
+        _sets = sets;
+        _setMask = sets - 1;
+        _entries = new Entry[sets << 1];
         _epoch = 0;
         _shiftedEpoch = 0;
     }
@@ -108,8 +119,8 @@ public sealed class SeqlockCache<TKey, TValue>
     public unsafe bool TryGetValue(in TKey key, out TValue? value)
     {
         long hashCode = key.GetHashCode64();
-        int idx0 = (int)hashCode & SetMask;
-        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
 
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long hashPart = (hashCode >> HashShift) & HashMask;
@@ -197,8 +208,8 @@ public sealed class SeqlockCache<TKey, TValue>
     public TValue? GetOrAdd<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory)
     {
         long hashCode = key.GetHashCode64();
-        int idx0 = (int)hashCode & SetMask;
-        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
         long hashPart = (hashCode >> HashShift) & HashMask;
 
         if (TryGetValueCore(in key, idx0, idx1, hashPart, out TValue? value))
@@ -357,8 +368,8 @@ public sealed class SeqlockCache<TKey, TValue>
     public void Set(in TKey key, TValue? value)
     {
         long hashCode = key.GetHashCode64();
-        int idx0 = (int)hashCode & SetMask;
-        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
         long hashPart = (hashCode >> HashShift) & HashMask;
 
         SetCore(in key, value, idx0, idx1, hashPart);

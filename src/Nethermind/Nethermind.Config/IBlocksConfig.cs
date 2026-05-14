@@ -43,7 +43,7 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Whether to cache precompile results when processing blocks.", DefaultValue = "True", HiddenFromDocs = true)]
     bool CachePrecompilesOnBlockProcessing { get; set; }
 
-    [ConfigItem(Description = "Specify pre-warm state concurrency. Default is logical processor - 1.", DefaultValue = "0", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Specify pre-warm state concurrency. 0 selects an automatic value capped at 4 workers.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmStateConcurrency { get; set; }
 
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
@@ -92,7 +92,7 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(
         Description = "Fraction of block txs (0.0-1.0) to cover in the first prewarmer pass before switching to retry mode.",
-        DefaultValue = "0.5",
+        DefaultValue = "1.0",
         HiddenFromDocs = true)]
     double PreWarmFirstPassRatio { get; set; }
 

@@ -14,22 +14,30 @@ namespace Nethermind.Evm.State;
 
 public class PreBlockCaches
 {
-    private const int InitialCapacity = 4096 * 8;
+    private const int PrecompileCacheInitialCapacity = 4096 * 8;
+    public const int DefaultStorageCacheCapacity = PrecompileCacheInitialCapacity * 2;
     private static int LockPartitions => CollectionExtensions.LockPartitions;
 
     private readonly Func<CacheType>[] _clearCaches;
 
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
-    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
-    private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache = new();
-    private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache = new(LockPartitions, InitialCapacity);
+    private readonly SeqlockCache<StorageCell, byte[]> _storageCache;
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache;
+    private readonly SeqlockCache<NodeKey, byte[]?> _rlpCache;
+    private readonly ConcurrentDictionary<PrecompileCacheKey, Result<byte[]>> _precompileCache;
 
-    public PreBlockCaches() => _clearCaches =
+    public PreBlockCaches(int storageCacheCapacity = DefaultStorageCacheCapacity)
+    {
+        _storageCache = new(storageCacheCapacity);
+        _stateCache = new();
+        _rlpCache = new();
+        _precompileCache = new(LockPartitions, PrecompileCacheInitialCapacity);
+        _clearCaches =
         [
             () => { _storageCache.Clear(); return CacheType.None; },
             () => { _stateCache.Clear(); return CacheType.None; },
             () => { _precompileCache.NoResizeClear(); return CacheType.None; }
         ];
+    }
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
     public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;

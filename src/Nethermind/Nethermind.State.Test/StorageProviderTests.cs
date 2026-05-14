@@ -733,6 +733,41 @@ public class StorageProviderTests(bool useFlat)
         clearedHash.Should().Be(emptyHash);
     }
 
+    [Test]
+    public void Read_fallback_uses_deleted_account_from_source_block_changes()
+    {
+        using Context source = new(useFlat);
+        using Context reader = new(useFlat);
+
+        source.StateProvider.DeleteAccount(source.Address1);
+        source.StateProvider.Commit(Prague.Instance);
+
+        reader.StateProvider.Reset();
+        reader.StateProvider.SetReadFallback(source.StateProvider);
+
+        reader.StateProvider.AccountExists(reader.Address1).Should().BeFalse();
+    }
+
+    [Test]
+    public void Read_fallback_uses_zero_storage_from_source_block_changes()
+    {
+        using Context source = new(useFlat);
+        using Context reader = new(useFlat);
+
+        StorageCell storageCell = new(reader.Address1, 1);
+        reader.StateProvider.Set(storageCell, _values[11]);
+        reader.StateProvider.Commit(Prague.Instance);
+        reader.StateProvider.CommitTree(0);
+        reader.StateProvider.Reset();
+
+        source.StateProvider.Set(storageCell, StorageTree.ZeroBytes);
+        source.StateProvider.Commit(Prague.Instance);
+
+        reader.StateProvider.SetReadFallback(source.StateProvider);
+
+        reader.StateProvider.Get(storageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
     private class Context : IDisposable
     {
         public WorldState StateProvider { get; }

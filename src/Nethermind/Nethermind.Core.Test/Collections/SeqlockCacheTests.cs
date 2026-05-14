@@ -15,6 +15,8 @@ namespace Nethermind.Core.Test.Collections;
 
 public class SeqlockCacheTests
 {
+    private const int PreBlockCacheCapacity = 4096 * 16;
+
     /// <summary>
     /// All instances share the same 64-bit hash, forcing every key into the same
     /// cache set with the same header signature. Correctness depends entirely on
@@ -61,6 +63,21 @@ public class SeqlockCacheTests
     public void Set_then_get_returns_value()
     {
         SeqlockCache<StorageCell, byte[]> cache = new();
+        StorageCell key = CreateKey(1);
+        byte[] expected = CreateValue(1);
+
+        cache.Set(in key, expected);
+        bool found = cache.TryGetValue(in key, out byte[]? value);
+
+        found.Should().BeTrue();
+        value.Should().BeSameAs(expected);
+    }
+
+    [TestCase(4)]
+    [TestCase(PreBlockCacheCapacity)]
+    public void Custom_capacity_cache_stores_values(int capacity)
+    {
+        SeqlockCache<StorageCell, byte[]> cache = new(capacity);
         StorageCell key = CreateKey(1);
         byte[] expected = CreateValue(1);
 

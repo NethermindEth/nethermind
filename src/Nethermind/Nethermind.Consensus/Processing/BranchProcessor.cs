@@ -73,6 +73,7 @@ public class BranchProcessor(
 
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
+        BlockProcessor? blockProcessorWithTxCallback = null;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -83,7 +84,8 @@ public class BranchProcessor(
         if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
         {
             bcpw.MainThreadWorldState = stateProvider;
-            bp.SetTxExecutedCallback((txIndex) => Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex));
+            bp.SetTxExecutedCallback(bcpw.ReportMainThreadTxExecuted);
+            blockProcessorWithTxCallback = bp;
         }
 
         try
@@ -144,7 +146,10 @@ public class BranchProcessor(
                 {
                     bcpwRef.WaitForFirstPass();
                     if (bcpwRef.HeadStartEnabled)
+                    {
                         backgroundCancellation?.Cancel();
+                        WaitAndClear(ref preWarmTask);
+                    }
                 }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
@@ -203,6 +208,7 @@ public class BranchProcessor(
         finally
         {
             blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
+            blockProcessorWithTxCallback?.SetTxExecutedCallback(null);
             worldStateCloser?.Dispose();
         }
 

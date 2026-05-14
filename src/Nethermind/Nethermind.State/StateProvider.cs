@@ -728,12 +728,13 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
         ref ChangeTrace accountChanges = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, addressAsKey, out bool exists);
         if (!exists)
         {
-            // Check fallback (main thread's block changes) before going to trie
+            // Check fallback before going to trie. A present null account is still a
+            // useful hit: it can represent an account deleted earlier in the block.
             if (_readFallback is not null)
             {
                 try
                 {
-                    if (_readFallback.TryGetValue(addressAsKey, out ChangeTrace fallbackTrace) && fallbackTrace.After is not null)
+                    if (_readFallback.TryGetValue(addressAsKey, out ChangeTrace fallbackTrace))
                     {
                         accountChanges = fallbackTrace;
                         Metrics.IncrementStateTreeCacheHits();

@@ -28,6 +28,7 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
+    private const int AutoConcurrencyLimit = 4;
     private readonly int _concurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
@@ -70,7 +71,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
     {
-        _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 2, 16) : concurrency;
+        _concurrencyLevel = concurrency == 0 ? Math.Clamp(Environment.ProcessorCount - 2, 1, AutoConcurrencyLimit) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _firstPassRatio = Math.Clamp(firstPassRatio, 0.0, 1.0);
         _hammerMode = hammerMode;
@@ -138,10 +139,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return cachesCleared;
     }
 
-    public void Dispose() => (_envPool as IDisposable)?.Dispose();
+    public void Dispose()
+    {
+        (_envPool as IDisposable)?.Dispose();
+        _mainThreadAdvanced.Dispose();
+    }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = false;
         try
         {
             if (cancellationToken.IsCancellationRequested) return;
@@ -162,9 +169,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
         finally
         {
-            // Don't complete the task until address warmer is also done.
-            addressWarmer.Wait();
-            addressWarmer.Dispose();
+            try
+            {
+                // Don't complete the task until address warmer is also done.
+                addressWarmer.Wait();
+                addressWarmer.Dispose();
+            }
+            finally
+            {
+                ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+            }
         }
     }
 
@@ -233,6 +247,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// Workers abandon their current tx when the main thread passes it.
     /// </summary>
     internal int MainThreadTxIndex = -1;
+    private readonly ManualResetEventSlim _mainThreadAdvanced = new(false);
+
+    internal void ReportMainThreadTxExecuted(int txIndex)
+    {
+        Volatile.Write(ref MainThreadTxIndex, txIndex);
+        _mainThreadAdvanced.Set();
+    }
 
     private int _nextWarmupIndex;
 
@@ -250,6 +271,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
             _firstPassDone.Reset();
+            _mainThreadAdvanced.Reset();
 
             int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
@@ -264,7 +286,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IReadOnlyTxProcessorSource env = _envPool.Get();
                     try
                     {
-                        // Phase 1: first pass — one execution per tx, no retry, cover first N txs fast
+                        // Phase 1: one execution per tx, no retry, cover first N txs fast.
                         while (!token.IsCancellationRequested)
                         {
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
@@ -286,8 +308,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                         if (firstPassLimit > 0) preWarmer._firstPassDone.Set();
 
-                        // Phase 2: retry mode — re-warm txs with fresher state
-                        // Reset counter so all workers start claiming from tx 0
+                        if (!token.CanBeCanceled) return;
+
+                        // Phase 2: retry mode, re-warm txs with fresher state.
                         Interlocked.CompareExchange(ref _nextWarmupIndex, 0, firstPassLimit + threadCount);
 
                         while (!token.IsCancellationRequested)
@@ -317,18 +340,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             if (hammerMode)
                             {
                                 // Hammer: keep re-executing until main thread passes.
-                                // Reuse the same scope — avoids allocation/GC overhead per retry.
-                                // The scope accumulates state which helps subsequent executions.
-                                using IReadOnlyTxProcessingScope hammerScope = env.Build(blockState.Parent);
-                                BlockExecutionContext hammerCtx = new(block.Header, blockState.Spec);
-                                hammerScope.TransactionProcessor.SetBlockExecutionContext(hammerCtx);
-
-                                if (preWarmer.MainThreadWorldState is not null)
-                                    (hammerScope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
-
+                                // Each retry uses a fresh scope so read-through fallback can observe newer state.
                                 while (!token.IsCancellationRequested)
                                 {
                                     if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
+
+                                    using IReadOnlyTxProcessingScope hammerScope = env.Build(blockState.Parent);
+                                    BlockExecutionContext hammerCtx = new(block.Header, blockState.Spec);
+                                    hammerScope.TransactionProcessor.SetBlockExecutionContext(hammerCtx);
+
+                                    if (preWarmer.MainThreadWorldState is not null)
+                                        (hammerScope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
                                     WarmupSingleTransaction(hammerScope, block.Transactions[myTx], myTx, blockState);
                                 }
                             }
@@ -339,13 +362,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 {
                                     if (lastSeenMain >= myTx) break;
 
-                                    SpinWait spin = default;
                                     while (!token.IsCancellationRequested)
                                     {
                                         int current = Volatile.Read(ref MainThreadTxIndex);
                                         if (current > lastSeenMain) { lastSeenMain = current; break; }
                                         if (current >= myTx) { lastSeenMain = current; break; }
-                                        spin.SpinOnce();
+
+                                        _mainThreadAdvanced.Reset();
+                                        current = Volatile.Read(ref MainThreadTxIndex);
+                                        if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                        if (current >= myTx) { lastSeenMain = current; break; }
+
+                                        _mainThreadAdvanced.Wait(token);
                                     }
 
                                     if (lastSeenMain >= myTx) break;
@@ -665,12 +693,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         private static void DisposeThreadState(WarmingState<TPayload> state) => state.Dispose();
     }
 
-    /// <summary>
-    /// Copy committed account + storage state from the main thread's WorldState into
-    /// the prewarmer's scope. This lets the prewarmer see state from already-committed txs
-    /// instead of always reading stale parent state.
-    /// Unsafe: reads from main thread's Dictionary concurrently. Acceptable for prefetching.
-    /// </summary>
     /// <summary>
     /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
     /// </summary>

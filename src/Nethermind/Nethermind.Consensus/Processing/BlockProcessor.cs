@@ -68,7 +68,7 @@ public partial class BlockProcessor(
 
     public event Action? TransactionsExecuted;
 
-    internal void SetTxExecutedCallback(Action<int> callback)
+    internal void SetTxExecutedCallback(Action<int>? callback)
     {
         if (_blockTransactionsExecutor is BlockValidationTransactionsExecutor executor)
             executor.OnTxExecuted = callback;

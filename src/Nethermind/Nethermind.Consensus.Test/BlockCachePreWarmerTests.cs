@@ -3,7 +3,9 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -18,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -25,6 +28,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
+
+using DbMetrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.Consensus.Test;
 
@@ -117,6 +122,31 @@ public class BlockCachePreWarmerTests
 
         disposed.Count.Should().Be(created.Count,
             "all retained envs must be disposed when the prewarmer is disposed");
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task PreWarmCaches_DoesNotIncrementMainThreadMetrics()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        long before = MainThreadMetricsTotal();
+        bool previousIsBlockProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        try
+        {
+            using CancellationTokenSource cancellation = new(TimeSpan.FromMilliseconds(100));
+            await preWarmer.PreWarmCaches(BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance, cancellation.Token);
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = previousIsBlockProcessingThread;
+        }
+
+        long after = MainThreadMetricsTotal();
+
+        (after - before).Should().Be(0,
+            "prewarmer reads must be excluded from main-thread cache hit metrics");
     }
 
     /// <summary>
@@ -370,6 +400,9 @@ public class BlockCachePreWarmerTests
             maxPoolSize: maxPoolSize,
             concurrency: 2,
             parallelExecutionBatchRead: parallelExecutionBatchRead,
+            firstPassRatio: 1.0,
+            hammerMode: true,
+            headStartMs: 0,
             nodeStorageCache,
             preBlockCaches,
             LimboLogs.Instance);
@@ -383,6 +416,12 @@ public class BlockCachePreWarmerTests
             .WithStateRoot(_genesisStateRoot)
             .WithGasLimit(30_000_000)
             .TestObject;
+
+    private static long MainThreadMetricsTotal() =>
+        DbMetrics.MainStateTreeCacheHits +
+        DbMetrics.MainStateTreeReads +
+        DbMetrics.MainStorageTreeCache +
+        DbMetrics.MainStorageTreeReads;
 
     /// <summary>
     /// Builds a block with transactions from two distinct senders, producing two parallel

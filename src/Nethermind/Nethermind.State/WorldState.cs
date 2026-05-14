@@ -33,10 +33,6 @@ namespace Nethermind.State
         internal readonly PersistentStorageProvider _persistentStorageProvider;
 
         /// <summary>
-        /// Copy committed account state into another WorldState's block changes cache.
-        /// Used by prewarmer to see main thread's committed state (unsafe concurrent read).
-        /// </summary>
-        /// <summary>
         /// Set up a read-through fallback to another WorldState's committed block changes.
         /// Reads: this._blockChanges → source._blockChanges → trie
         /// Writes: this._blockChanges only (never touches source)

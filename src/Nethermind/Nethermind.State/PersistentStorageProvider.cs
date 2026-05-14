@@ -84,15 +84,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             try
             {
-                if (_storageFallback._storages.TryGetValue(storageCell.Address, out PerContractState? fallbackContract))
+                if (_storageFallback._storages.TryGetValue(storageCell.Address, out PerContractState? fallbackContract) &&
+                    fallbackContract.TryLoadFromBlockChange(storageCell.Index, out byte[]? fallbackValue))
                 {
-                    ReadOnlySpan<byte> fallbackValue = fallbackContract.TryLoadFromBlockChange(storageCell.Index);
-                    if (!fallbackValue.IsEmpty)
-                    {
-                        Db.Metrics.IncrementStorageTreeCache();
-                        PushToRegistryOnly(storageCell, fallbackValue.ToArray());
-                        return fallbackValue;
-                    }
+                    Db.Metrics.IncrementStorageTreeCache();
+                    PushToRegistryOnly(storageCell, fallbackValue);
+                    return fallbackValue;
                 }
             }
             catch { /* concurrent access — fall through to trie */ }
@@ -506,18 +503,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         /// <summary>
-        /// Read-only check of BlockChange for a storage slot. Does NOT mutate.
-        /// Used by prewarmer to read from the main thread's committed storage.
+        /// Checks block-local storage changes without mutating this storage state.
         /// </summary>
-        /// <summary>
-        /// Read-only check of BlockChange for a storage slot. Does NOT mutate.
-        /// Used by prewarmer to read from the main thread's committed storage.
-        /// </summary>
-        public ReadOnlySpan<byte> TryLoadFromBlockChange(in UInt256 index)
+        public bool TryLoadFromBlockChange(in UInt256 index, [NotNullWhen(true)] out byte[]? value)
         {
             if (BlockChange.TryGetValue(index, out StorageChangeTrace trace))
-                return trace.After;
-            return ReadOnlySpan<byte>.Empty;
+            {
+                value = trace.After;
+                return true;
+            }
+
+            value = null;
+            return false;
         }
 
         public ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
