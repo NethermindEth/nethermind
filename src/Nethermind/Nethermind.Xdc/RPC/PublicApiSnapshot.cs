@@ -24,9 +24,4 @@ public class PublicApiSnapshot
     /// </summary>
     public HashSet<Address> Signers { get; set; }
 
-    /// <summary>
-    /// Set of recent signers for spam protections
-    /// </summary>
-    public Dictionary<ulong, Address> Recents { get; set; }
-
 }
