@@ -37,6 +37,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly bool _parallelExecutionEnabled;
     private readonly double _firstPassRatio;
     private readonly bool _hammerMode;
+    private readonly int _headStartMs;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -51,6 +52,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.ParallelExecutionBatchRead,
         blocksConfig.PreWarmFirstPassRatio,
         string.Equals(blocksConfig.PreWarmRetryMode, "Hammer", StringComparison.OrdinalIgnoreCase),
+        blocksConfig.PreWarmHeadStartMs,
         nodeStorageCache,
         preBlockCaches,
         logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
@@ -62,6 +64,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         bool parallelExecutionBatchRead,
         double firstPassRatio,
         bool hammerMode,
+        int headStartMs,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager)
@@ -70,6 +73,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _firstPassRatio = Math.Clamp(firstPassRatio, 0.0, 1.0);
         _hammerMode = hammerMode;
+        _headStartMs = headStartMs;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
@@ -208,6 +212,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </summary>
     internal IWorldState? MainThreadWorldState;
 
+    private readonly ManualResetEventSlim _firstPassDone = new(false);
+
+    /// <summary>
+    /// Block until the prewarmer's first pass completes or timeout expires.
+    /// Called by the main thread before starting EVM execution.
+    /// </summary>
+    internal void WaitForFirstPass()
+    {
+        if (_headStartMs <= 0) return;
+        _firstPassDone.Wait(_headStartMs);
+    }
+
     /// <summary>
     /// Incremented by the main block processor after each tx.
     /// Workers abandon their current tx when the main thread passes it.
@@ -229,6 +245,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int firstPassLimit = (int)(txCount * _firstPassRatio);
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
+            _firstPassDone.Reset();
 
             int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
@@ -262,6 +279,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                             }
                         }
+
+                        preWarmer._firstPassDone.Set();
 
                         // Phase 2: retry mode — re-warm txs with fresher state
                         // Reset counter so all workers start claiming from tx 0

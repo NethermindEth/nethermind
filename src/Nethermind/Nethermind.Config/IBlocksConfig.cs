@@ -101,4 +101,10 @@ public interface IBlocksConfig : IConfig
         DefaultValue = "Hammer",
         HiddenFromDocs = true)]
     string PreWarmRetryMode { get; set; }
+
+    [ConfigItem(
+        Description = "Max milliseconds the main thread waits for the prewarmer first pass to complete before starting EVM execution. 0 = no wait.",
+        DefaultValue = "0",
+        HiddenFromDocs = true)]
+    int PreWarmHeadStartMs { get; set; }
 }

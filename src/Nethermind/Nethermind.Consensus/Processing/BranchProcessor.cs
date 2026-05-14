@@ -137,6 +137,9 @@ public class BranchProcessor(
                     }
                 }
 
+                // Wait for prewarmer first pass so caches are warm before EVM starts
+                (preWarmer as BlockCachePreWarmer)?.WaitForFirstPass();
+
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
