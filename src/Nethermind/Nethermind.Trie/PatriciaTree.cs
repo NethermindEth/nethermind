@@ -794,22 +794,31 @@ namespace Nethermind.Trie
                         return originalNode;
                     }
 
-                    // Making a T branch here.
-                    // If the commonPrefixLength > 0, we'll also need to also make an extension in front of the branch.
-                    TrieNode theBranch = TrieNodeFactory.CreateBranch();
-
                     // This is the current node branch
+                    // If the existing extension child is still an unresolved by-hash
+                    // reference, carry the hash into the new branch RLP instead of
+                    // loading a witness node that this update does not otherwise need.
                     int currentNodeNib = node.Key[commonPrefixLength];
+                    TrieNode theBranch;
                     if (node.Key.Length == commonPrefixLength + 1 && node.IsExtension)
                     {
-                        // Collapsing the extension, taking the child directly and set the branch
-                        int originalLength = path.Length;
-                        path.AppendMut(node.Key);
-                        theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                        path.TruncateMut(originalLength);
+                        if (node.GetRawChildRef(0) is null && node.TryGetChildHash(0, out ValueHash256 childHash))
+                        {
+                            theBranch = TrieNodeFactory.CreateBranchWithChildHash(currentNodeNib, in childHash);
+                        }
+                        else
+                        {
+                            theBranch = TrieNodeFactory.CreateBranch();
+                            // Collapsing the extension, taking the child directly and set the branch
+                            int originalLength = path.Length;
+                            path.AppendMut(node.Key);
+                            theBranch[currentNodeNib] = node.GetChildWithChildPath(TrieStore, ref path, 0);
+                            path.TruncateMut(originalLength);
+                        }
                     }
                     else
                     {
+                        theBranch = TrieNodeFactory.CreateBranch();
                         // Note: could be a leaf at the end of the tree which now have zero length key
                         theBranch[currentNodeNib] = node.CloneWithChangedKey(HexPrefix.GetArray(node.Key.AsSpan(commonPrefixLength + 1)));
                     }
@@ -934,20 +943,16 @@ namespace Nethermind.Trie
         internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode? node, TrieNode? originalNode)
         {
             int onlyChildIdx = -1;
-            TrieNode? onlyChildNode = null;
             path.AppendMut(0);
-            TrieNode.ChildIterator iterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 path.SetLast(i);
-                TrieNode? child = iterator.GetChildWithChildPath(TrieStore, ref path, i);
 
-                if (child is not null)
+                if (!node.IsChildNull(i))
                 {
                     if (onlyChildIdx == -1)
                     {
                         onlyChildIdx = i;
-                        onlyChildNode = child;
                     }
                     else
                     {
@@ -964,6 +969,7 @@ namespace Nethermind.Trie
             if (onlyChildIdx == -1) return null; // No child at all.
 
             path.AppendMut(onlyChildIdx);
+            TrieNode? onlyChildNode = node.GetChildWithChildPath(TrieStore, ref path, onlyChildIdx);
             TrieNode.ResolveNode(ref onlyChildNode, TrieStore, in path);
             path.TruncateOne();
 
