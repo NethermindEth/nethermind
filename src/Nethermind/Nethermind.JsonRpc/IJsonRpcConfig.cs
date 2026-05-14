@@ -215,4 +215,15 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "Maximum server-side wait, in milliseconds, that eth_sendRawTransactionSync will accept; client-supplied timeouts above this are clamped down.", DefaultValue = "60000")]
     int RpcTxSyncMaxTimeoutMs { get; set; }
+
+    [ConfigItem(
+        Description = """
+            Additional CIDR networks treated as trusted local sources for the
+            JSON-RPC fast lane. Loopback and RFC1918 ranges (10.0.0.0/8,
+            172.16.0.0/12, 192.168.0.0/16) are always trusted; use this to extend
+            the set with overlay networks or custom proxy CIDRs. Invalid entries
+            are logged and ignored.
+            """,
+        DefaultValue = "[]")]
+    string[] AdditionalTrustedNetworks { get; set; }
 }

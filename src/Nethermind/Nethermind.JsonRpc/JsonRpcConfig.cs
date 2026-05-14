@@ -81,4 +81,5 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool StrictHexFormat { get; set; } = true;
     public int RpcTxSyncDefaultTimeoutMs { get; set; } = 20_000;
     public int RpcTxSyncMaxTimeoutMs { get; set; } = 60_000;
+    public string[] AdditionalTrustedNetworks { get; set; } = [];
 };
