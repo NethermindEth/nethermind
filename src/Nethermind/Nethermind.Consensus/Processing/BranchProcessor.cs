@@ -137,8 +137,15 @@ public class BranchProcessor(
                     }
                 }
 
-                // Wait for prewarmer first pass so caches are warm before EVM starts
-                (preWarmer as BlockCachePreWarmer)?.WaitForFirstPass();
+                // Wait for prewarmer to fill caches, then stop it before EVM starts
+                // so prewarmer threads don't compete with main thread for memory bandwidth
+                BlockCachePreWarmer? bcpwRef = preWarmer as BlockCachePreWarmer;
+                if (bcpwRef is not null)
+                {
+                    bcpwRef.WaitForFirstPass();
+                    if (bcpwRef.HeadStartEnabled)
+                        backgroundCancellation?.Cancel();
+                }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 

@@ -38,6 +38,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly double _firstPassRatio;
     private readonly bool _hammerMode;
     private readonly int _headStartMs;
+    internal bool HeadStartEnabled => _headStartMs > 0;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -221,7 +222,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal void WaitForFirstPass()
     {
         if (_headStartMs <= 0) return;
-        _firstPassDone.Wait(_headStartMs);
+        // Always wait the full duration — the prewarmer fills caches during this window.
+        // Don't use the signal, since first pass may complete early but we still want
+        // the full head start for retry passes to build up more cache hits.
+        Thread.Sleep(_headStartMs);
     }
 
     /// <summary>
