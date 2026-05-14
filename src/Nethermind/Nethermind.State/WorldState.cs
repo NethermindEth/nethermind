@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -30,6 +31,24 @@ namespace Nethermind.State
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
+
+        /// <summary>
+        /// Copy committed account state into another WorldState's block changes cache.
+        /// Used by prewarmer to see main thread's committed state (unsafe concurrent read).
+        /// </summary>
+        public void CopyAccountBlockChangesTo(IWorldState target)
+        {
+            if (target is not WorldState targetWs) return;
+            try
+            {
+                foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> kvp in _stateProvider._blockChanges)
+                {
+                    if (kvp.Value.After is not null)
+                        targetWs._stateProvider._blockChanges[kvp.Key] = kvp.Value;
+                }
+            }
+            catch { /* concurrent modification — acceptable for prefetching */ }
+        }
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;
         private bool _isInScope;

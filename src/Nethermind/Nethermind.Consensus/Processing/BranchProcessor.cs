@@ -83,6 +83,8 @@ public class BranchProcessor(
         if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
         {
             bp.SetTxExecutedCallback((txIndex) => Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex));
+            // Share main thread's WorldState so prewarmer can read committed state
+            bcpw.MainThreadWorldState = stateProvider;
         }
 
         try

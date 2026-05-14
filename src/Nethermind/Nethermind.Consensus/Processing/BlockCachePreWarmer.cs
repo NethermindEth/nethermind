@@ -17,6 +17,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -199,6 +200,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </summary>
     internal int MainThreadTxIndex = -1;
 
+    /// <summary>
+    /// Reference to the main thread's WorldState. Prewarmer reads from its internal
+    /// _blockChanges to see committed state from earlier txs (better than parent state).
+    /// Unsafe concurrent read — acceptable for prefetching (wrong value = warm wrong trie node).
+    /// </summary>
+    internal IWorldState? MainThreadWorldState;
+
     /// <summary>Atomic counter for prewarmer threads to claim the next tx to warm.</summary>
     private int _nextWarmupIndex;
 
@@ -216,12 +224,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
 
-            // Moving window: threads only warm txs within a window ahead of the
-            // main thread. When too far ahead, they WAIT instead of racing through
-            // all txs against stale state. This keeps prewarmer work focused on
-            // what the main thread will need soon.
-            const int WindowSize = 16;
+            // Threads claim txs in block order, sync committed state from main
+            // thread before each warmup tx so they see fresh state.
             int threadCount = Math.Min(_concurrencyLevel, txCount);
+            BlockCachePreWarmer preWarmer = this;
 
             Thread[] workers = new Thread[threadCount];
             CancellationToken token = parallelOptions.CancellationToken;
@@ -241,22 +247,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         {
                             int mainPos = Volatile.Read(ref MainThreadTxIndex);
 
-                            // Peek at next available tx without claiming it yet
-                            int nextTx = Volatile.Read(ref _nextWarmupIndex);
-
-                            // Wait if we're too far ahead of the main thread
-                            if (nextTx > mainPos + WindowSize)
-                            {
-                                Thread.Sleep(0);
-                                continue;
-                            }
-
                             // Atomically claim the next tx
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
                             if (myTx >= txCount) break;
 
                             // Skip txs the main thread already processed
                             if (myTx <= mainPos) continue;
+
+                            // Sync committed state from main thread into prewarmer's scope.
+                            // Unsafe concurrent read of Dictionary — acceptable for prefetching.
+                            try { SyncStateFromMainThread(scope.WorldState, preWarmer.MainThreadWorldState); }
+                            catch { /* torn read — ignore */ }
 
                             WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                         }
@@ -562,6 +563,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     /// <summary>
+    /// Copy committed account + storage state from the main thread's WorldState into
+    /// the prewarmer's scope. This lets the prewarmer see state from already-committed txs
+    /// instead of always reading stale parent state.
+    /// Unsafe: reads from main thread's Dictionary concurrently. Acceptable for prefetching.
+    /// </summary>
+    private static void SyncStateFromMainThread(IWorldState prewarmState, IWorldState? mainState) =>
+        (mainState as WorldState)?.CopyAccountBlockChangesTo(prewarmState);
+
+    /// <summary>
     /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
     /// </summary>
     internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
@@ -576,5 +586,5 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, IWorldState? MainThreadState = null);
 }
