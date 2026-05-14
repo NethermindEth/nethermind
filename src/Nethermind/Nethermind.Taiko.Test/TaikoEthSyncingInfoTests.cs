@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.Synchronization.ParallelSync;
@@ -18,14 +17,12 @@ namespace Nethermind.Taiko.Test;
 public class TaikoEthSyncingInfoTests
 {
     [TestCaseSource(nameof(GetFullInfoCases))]
-    public void GetFullInfo_ReturnsExpected(long? suggested, long? beacon, long? head, SyncMode innerMode, SyncingResult expected)
+    public SyncingResult GetFullInfo_ReturnsExpected(long? suggested, long? beacon, long? head, SyncMode innerMode)
     {
         IEthSyncingInfo inner = Substitute.For<IEthSyncingInfo>();
         inner.SyncMode.Returns(innerMode);
 
-        SyncingResult result = new TaikoEthSyncingInfo(BlockTreeWith(suggested, beacon, head), inner).GetFullInfo();
-
-        Assert.That(result, Is.EqualTo(expected));
+        return new TaikoEthSyncingInfo(BlockTreeWith(suggested, beacon, head), inner).GetFullInfo();
     }
 
     [Test]
@@ -63,25 +60,21 @@ public class TaikoEthSyncingInfoTests
         // Regression: BeaconSync inserts headers via BestSuggestedBeaconHeader only, so
         // FindBestSuggestedHeader can lag (or be null) even after Head reaches the pivot.
         // Before the fix, isSyncing stuck at true once Head caught up.
-        yield return new TestCaseData(
-            (long?)null, (long?)1000L, (long?)1000L, SyncMode.None,
-            SyncingResult.NotSyncing
-        ).SetName("BeaconPivot_HeadCaughtUp_NotSyncing");
+        yield return new TestCaseData((long?)null, (long?)1000L, (long?)1000L, SyncMode.None)
+            .Returns(SyncingResult.NotSyncing)
+            .SetName("BeaconPivot_HeadCaughtUp_NotSyncing");
 
-        yield return new TestCaseData(
-            (long?)null, (long?)1000L, (long?)500L, SyncMode.FastSync,
-            new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 1000L, SyncMode = SyncMode.FastSync }
-        ).SetName("BeaconPivot_HeadBehind_Syncing");
+        yield return new TestCaseData((long?)null, (long?)1000L, (long?)500L, SyncMode.FastSync)
+            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 1000L, SyncMode = SyncMode.FastSync })
+            .SetName("BeaconPivot_HeadBehind_Syncing");
 
-        yield return new TestCaseData(
-            (long?)null, (long?)null, (long?)null, SyncMode.None,
-            new SyncingResult { IsSyncing = true, CurrentBlock = 0L, HighestBlock = 0L, SyncMode = SyncMode.None }
-        ).SetName("Genesis_Syncing");
+        yield return new TestCaseData((long?)null, (long?)null, (long?)null, SyncMode.None)
+            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 0L, HighestBlock = 0L, SyncMode = SyncMode.None })
+            .SetName("Genesis_Syncing");
 
         // Both pointers populated — decorator must take max(suggested, beacon).
-        yield return new TestCaseData(
-            (long?)2000L, (long?)1000L, (long?)500L, SyncMode.None,
-            new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 2000L, SyncMode = SyncMode.None }
-        ).SetName("TakesMaxOfBothPointers");
+        yield return new TestCaseData((long?)2000L, (long?)1000L, (long?)500L, SyncMode.None)
+            .Returns(new SyncingResult { IsSyncing = true, CurrentBlock = 500L, HighestBlock = 2000L, SyncMode = SyncMode.None })
+            .SetName("TakesMaxOfBothPointers");
     }
 }
