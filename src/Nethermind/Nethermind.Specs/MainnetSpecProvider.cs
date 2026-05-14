@@ -30,9 +30,6 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
     public const ulong OsakaBlockTimestamp = 0x6930b057;
     public const ulong BPO1BlockTimestamp = 0x69383057;
     public const ulong BPO2BlockTimestamp = 0x695db057;
-    public const ulong BPO3BlockTimestamp = ulong.MaxValue - 3;
-    public const ulong BPO4BlockTimestamp = ulong.MaxValue - 2;
-    public const ulong BPO5BlockTimestamp = ulong.MaxValue - 1;
     public const ulong AmsterdamBlockTimestamp = ulong.MaxValue;
 
     public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
@@ -41,10 +38,7 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
     public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
     public static ForkActivation BPO1Activation { get; } = (ParisBlockNumber + 5, BPO1BlockTimestamp);
     public static ForkActivation BPO2Activation { get; } = (ParisBlockNumber + 6, BPO2BlockTimestamp);
-    public static ForkActivation BPO3Activation { get; } = (ParisBlockNumber + 7, BPO3BlockTimestamp);
-    public static ForkActivation BPO4Activation { get; } = (ParisBlockNumber + 8, BPO4BlockTimestamp);
-    public static ForkActivation BPO5Activation { get; } = (ParisBlockNumber + 9, BPO5BlockTimestamp);
-    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 10, AmsterdamBlockTimestamp);
+    public static ForkActivation AmsterdamActivation { get; } = (ParisBlockNumber + 7, AmsterdamBlockTimestamp);
 
     public MainnetSpecProvider() : this(new ForkSchedule
     {
@@ -68,20 +62,15 @@ public class MainnetSpecProvider : ForkScheduleSpecProvider
         [OsakaBlockTimestamp] = Osaka.Instance,
         [BPO1BlockTimestamp] = BPO1.Instance,
         [BPO2BlockTimestamp] = BPO2.Instance,
-        [BPO3BlockTimestamp] = BPO3.Instance,
-        [BPO4BlockTimestamp] = BPO4.Instance,
-        [BPO5BlockTimestamp] = BPO5.Instance,
         [AmsterdamBlockTimestamp] = Amsterdam.Instance,
     })
     { }
 
     private MainnetSpecProvider(ForkSchedule schedule) : base(schedule,
         terminalTotalDifficulty: new UInt256(15566869308787654656ul, 3184ul)) =>
-        // BPO3/4/5 are sentinel placeholders, intentionally excluded from fork-ID boundaries
         TransitionActivations = schedule.ToTransitionActivations(
             postMergeBlock: ParisBlockNumber + 1,
-            excludeBlocks: [ParisBlockNumber],
-            excludeTimestamps: [BPO3BlockTimestamp, BPO4BlockTimestamp, BPO5BlockTimestamp]);
+            excludeBlocks: [ParisBlockNumber]);
 
     public override ulong NetworkId => Core.BlockchainIds.Mainnet;
     public override long? DaoBlockNumber => DaoForkBlockNumber;

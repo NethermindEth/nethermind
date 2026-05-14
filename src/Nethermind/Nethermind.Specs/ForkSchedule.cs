@@ -79,19 +79,15 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
     /// Used when forks share a timestamp (Hoodi) or fork-IDs must differ per fork (Mainnet).</param>
     /// <param name="excludeBlocks">Block numbers in the schedule that should not produce an activation
     /// (e.g. Mainnet's Paris, which is TTD-determined and not a fork-ID boundary).</param>
-    /// <param name="excludeTimestamps">Timestamps in the schedule that should not produce an activation
-    /// (e.g. Mainnet's BPO3/4/5 sentinel placeholders).</param>
     /// <param name="prepend">Activations to emit before iterating the schedule (e.g. Sepolia's merge-block
     /// boundary, which has no corresponding schedule entry).</param>
     public ForkActivation[] ToTransitionActivations(
         long postMergeBlock = 0L,
         bool incrementBlockPerTimestampFork = true,
         long[]? excludeBlocks = null,
-        ulong[]? excludeTimestamps = null,
         ForkActivation[]? prepend = null)
     {
         ReadOnlySpan<long> excludedBlocks = excludeBlocks.AsSpan();
-        ReadOnlySpan<ulong> excludedTimestamps = excludeTimestamps.AsSpan();
         int prependLength = prepend?.Length ?? 0;
 
         int count = prependLength;
@@ -102,7 +98,7 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
             {
                 if (!excludedBlocks.Contains(block)) count++;
             }
-            else if (fork.Timestamp is { } timestamp && !excludedTimestamps.Contains(timestamp))
+            else if (fork.Timestamp.HasValue)
             {
                 count++;
             }
@@ -125,8 +121,7 @@ public sealed class ForkSchedule : IEnumerable<ForkSpec>
                 long blockForTimestamp = incrementBlockPerTimestampFork
                     ? postMergeBlock + timestampIndex
                     : postMergeBlock;
-                if (!excludedTimestamps.Contains(timestamp))
-                    result[index++] = (blockForTimestamp, timestamp);
+                result[index++] = (blockForTimestamp, timestamp);
                 timestampIndex++;
             }
         }
