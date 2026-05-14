@@ -23,6 +23,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -1043,12 +1044,35 @@ public class Eth72ProtocolHandler(
         {
             Transaction tx = txs[i];
             types[i] = (byte)tx.Type;
-            sizes[i] = tx.GetLength();
+            sizes[i] = GetAnnouncementSize(tx);
             hashes[i] = tx.Hash!;
             TxPool.Metrics.PendingTransactionsHashesSent++;
         }
 
         Send(new NewPooledTransactionHashesMessage72(types, sizes, hashes, cellMask));
+    }
+
+    private static int GetAnnouncementSize(Transaction tx)
+    {
+        if (!tx.SupportsBlobs || tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+        {
+            return tx.GetLength();
+        }
+
+        int typedTransactionPayloadLength = tx.GetLength(shouldCountBlobs: false) - 1;
+        int networkWrapperContentLength =
+            typedTransactionPayloadLength
+            + (wrapper.Version switch
+            {
+                ProofVersion.V0 => 0,
+                ProofVersion.V1 => 1,
+                _ => throw new RlpException($"Unknown version of {nameof(ShardBlobNetworkWrapper)}: {wrapper.Version}")
+            })
+            + Rlp.OfEmptyList.Length
+            + Rlp.LengthOf(wrapper.Commitments)
+            + Rlp.LengthOf(wrapper.Proofs);
+
+        return 1 + Rlp.LengthOfSequence(networkWrapperContentLength);
     }
 
     private static Transaction ElideBlobPayload(Transaction tx)

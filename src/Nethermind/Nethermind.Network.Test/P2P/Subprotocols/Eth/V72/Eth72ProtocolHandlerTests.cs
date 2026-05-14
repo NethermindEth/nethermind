@@ -404,6 +404,51 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_announce_sparse_blob_tx_size_matching_elided_pooled_response()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        int fullTxLength = tx.GetLength();
+        int elidedTxLength = GetElidedBlobTransactionLength(tx);
+
+        _handler.SendNewTransaction(tx);
+
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
+            m.Hashes.Length == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            m.Sizes.Length == 1 &&
+            m.Sizes[0] == elidedTxLength &&
+            m.Sizes[0] < fullTxLength));
+    }
+
+    [Test]
+    public void should_validate_sparse_v1_wrapper_lengths_without_full_blob_array()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithNonce(UInt256.Zero)
+            .SignedAndResolved()
+            .TestObject;
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
+        Assert.That(BlobCellsHelper.TryGetFlattenedCells(wrapper, cellMask, out byte[][] cells), Is.True);
+
+        ShardBlobNetworkWrapper sparseWrapper = wrapper with
+        {
+            Blobs = [],
+            CellMask = cellMask,
+            Cells = cells,
+        };
+
+        IBlobProofsVerifier proofsVerifier = IBlobProofsManager.For(ProofVersion.V1);
+        Assert.That(proofsVerifier.ValidateLengths(sparseWrapper), Is.True);
+        Assert.That(proofsVerifier.ValidateProofs(sparseWrapper), Is.True);
+    }
+
+    [Test]
     public void should_truncate_cells_response_to_available_mask()
     {
         Transaction tx = Build.A.Transaction
@@ -1167,6 +1212,16 @@ public class Eth72ProtocolHandlerTests
 
     private static Transaction BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells)
         => BuildSparseBlobTransaction(out cellMask, out cells, out _);
+
+    private static int GetElidedBlobTransactionLength(Transaction tx)
+    {
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
+        Transaction clone = new();
+        tx.CopyTo(clone);
+        clone.NetworkWrapper = wrapper with { Blobs = [] };
+        clone.ClearLengthCache();
+        return clone.GetLength();
+    }
 
     private static Transaction BuildSparseBlobTransaction(out BlobCellMask cellMask, out byte[][] cells, out byte[][] fullCells)
     {

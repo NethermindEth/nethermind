@@ -60,10 +60,18 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
         for (int i = 0; i < blobCount; i++)
         {
-            int blobLength = wrapper.Blobs[i].Length;
-            if ((blobLength != 0 && blobLength != Ckzg.BytesPerBlob) || wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
+            if (wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
             {
                 return false;
+            }
+
+            if (wrapper.Blobs.Length != 0)
+            {
+                int blobLength = wrapper.Blobs[i].Length;
+                if (blobLength != 0 && blobLength != Ckzg.BytesPerBlob)
+                {
+                    return false;
+                }
             }
         }
 
