@@ -37,7 +37,10 @@ AuRaContractGasLimitOverride.Cache cache,
         private readonly IGasLimitCalculator _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public long GetGasLimit(BlockHeader parentHeader) => GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
+        public long GetGasLimit(BlockHeader parentHeader) => GetGasLimit(parentHeader, targetGasLimitOverride: null);
+
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimitOverride) =>
+            GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader, targetGasLimitOverride);
 
         private long? GetGasLimitFromContract(BlockHeader parentHeader)
         {

@@ -287,6 +287,7 @@ public class TestingRpcModuleTests
 
         IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
         gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<long?>()).Returns(parentHeader.GasLimit);
 
         IBlockchainProcessor blockchainProcessor = CreateBlockProcessor(processOverride, onProcess);
 

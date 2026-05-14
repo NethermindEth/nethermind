@@ -48,6 +48,45 @@ namespace Nethermind.Consensus.Test
             actualValue.Should().Be(expectedGasLimit);
         }
 
+        // Config target would decrease, override pushes up — confirms override drives the direction.
+        [TestCase(30_000_000, 20_000_000, 50_000_000, 30029295)]
+        // Config target would increase, override pulls down — confirms override drives the direction.
+        [TestCase(30_000_000, 100_000_000, 20_000_000, 29970705)]
+        public void Override_takes_precedence_over_config_target(long currentGasLimit, long configTargetGasLimit, long overrideTargetGasLimit, long expectedGasLimit)
+        {
+            int blockNumber = 20_000_000;
+            TestSpecProvider specProvider = new(Prague.Instance);
+            TargetAdjustedGasLimitCalculator calculator = new(specProvider,
+                new BlocksConfig()
+                {
+                    TargetBlockGasLimit = configTargetGasLimit
+                });
+            BlockHeader header = Build.A.BlockHeader.WithNumber(blockNumber - 1).WithGasLimit(currentGasLimit).TestObject;
+
+            long actualValue = calculator.GetGasLimit(header, overrideTargetGasLimit);
+
+            actualValue.Should().Be(expectedGasLimit);
+        }
+
+        [Test]
+        public void Null_override_falls_back_to_config_target()
+        {
+            const long currentGasLimit = 30_000_000;
+            const long configTargetGasLimit = 100_000_000;
+            TestSpecProvider specProvider = new(Prague.Instance);
+            TargetAdjustedGasLimitCalculator calculator = new(specProvider,
+                new BlocksConfig()
+                {
+                    TargetBlockGasLimit = configTargetGasLimit
+                });
+            BlockHeader header = Build.A.BlockHeader.WithNumber(20_000_000 - 1).WithGasLimit(currentGasLimit).TestObject;
+
+            long withoutOverride = calculator.GetGasLimit(header);
+            long withNullOverride = calculator.GetGasLimit(header, targetGasLimitOverride: null);
+
+            withNullOverride.Should().Be(withoutOverride);
+        }
+
         [Test]
         public void DoesNot_go_below_minimum()
         {
