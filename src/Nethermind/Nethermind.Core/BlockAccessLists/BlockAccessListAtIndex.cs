@@ -50,18 +50,17 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
-        bool isZeroBalanceChange = before == after;
-        if (address == Address.SystemUser && isZeroBalanceChange)
-        {
-            return;
-        }
+        // Skip zero net-change calls before allocating an entry in _accountChanges. Otherwise
+        // GetOrAddAccountChanges would leave behind a completely empty AccountChangesAtIndex
+        // that later propagates through GeneratedBlockAccessList.Merge and trips
+        // ValidateBlockAccessList for accounts not in the suggested BAL. A later non-zero
+        // AddBalanceChange in the same tx still captures the correct pre-tx balance from its
+        // own `before` argument.
+        if (before == after) return;
+
+        if (address == Address.SystemUser) return;
 
         AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
-
-        if (isZeroBalanceChange)
-        {
-            return;
-        }
 
         UInt256 preTxBalance = accountChanges.PreTxBalance ??= before;
 

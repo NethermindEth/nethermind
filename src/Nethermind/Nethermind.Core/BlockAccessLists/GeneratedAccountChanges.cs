@@ -69,6 +69,16 @@ public class GeneratedAccountChanges(Address address)
         && CodeChangeAtIndex(index) is null
         && !HasSlotChangesAtIndex(index);
 
+    /// <summary>True iff this account carries no per-index changes of any kind across the entire
+    /// merge result — i.e. it is a pure tracking artifact created by <c>AddAccountRead</c> or a
+    /// zero-net-change <c>AddBalanceChange</c> with no follow-up. Storage reads are not changes
+    /// and are checked separately by callers.</summary>
+    public bool HasNoValueOrStorageChanges
+        => BalanceChanges.Count == 0
+        && NonceChanges.Count == 0
+        && CodeChanges.Count == 0
+        && _storageChanges.Count == 0;
+
     /// <summary>Structural equality of the per-index slice of this account against the suggested
     /// (decoded) account. Address is not compared (callers ensure they're matched). Walks both
     /// sides without allocating: per-slot lookup is an O(log n) binary search via

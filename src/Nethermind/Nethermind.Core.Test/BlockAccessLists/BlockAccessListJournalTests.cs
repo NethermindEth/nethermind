@@ -100,4 +100,22 @@ public class BlockAccessListJournalTests
         Assert.That(accountChanges.NonceChange, Is.Null);
         Assert.That(accountChanges.TryGetStorageChange(slot, out _), Is.False);
     }
+
+    /// <summary>
+    /// Regression for the PR-11573 review fix: a zero net-change <c>AddBalanceChange</c>
+    /// (e.g. EIP-1559 zero-tip coinbase credit) must NOT allocate a per-account entry. Earlier
+    /// the call to <c>GetOrAddAccountChanges</c> created an empty <see cref="AccountChangesAtIndex"/>
+    /// which propagated through merging into <c>GeneratedBlockAccessList</c> as an empty
+    /// <c>GeneratedAccountChanges</c> and caused <c>ValidateBlockAccessList</c> to throw for
+    /// addresses absent from the suggested BAL.
+    /// </summary>
+    [Test]
+    public void AddBalanceChange_zero_delta_does_not_create_account_entry()
+    {
+        BlockAccessListAtIndex slice = new() { Index = 0 };
+
+        slice.AddBalanceChange(TestItem.AddressA, before: 5, after: 5);
+
+        Assert.That(slice.GetAccountChanges(TestItem.AddressA), Is.Null);
+    }
 }

@@ -345,18 +345,14 @@ public partial class BlockAccessListManager
 
         public void Dispose() { }
 
+        // No onSlice dispatch: the only producer of a non-null onSlice is
+        // BlockAccessListManager.IncrementalValidation, which runs solely on the parallel path
+        // (gated by ParallelExecutionEnabled). The validator's per-slice index is also only
+        // allocated under that flag (PrepareForProcessing), so even an invocation here would
+        // dereference a null index. The parameter remains on the interface so the sequential
+        // and parallel pools share a signature.
         public void MergeAndReturnBal(uint _, GeneratedBlockAccessList target, Action<BlockAccessListAtIndex>? onSlice = null)
-        {
-            _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
-            // Sequential path keeps the per-tx slice alive on the worldstate; expose it to
-            // the validator-fast-path hook so the validation index sees the same per-tx rows
-            // as the parallel path would.
-            if (onSlice is not null)
-            {
-                BlockAccessListAtIndex? slice = _txProcessorWithWorldState.WorldState.GetGeneratingBlockAccessList();
-                if (slice is not null) onSlice(slice);
-            }
-        }
+            => _txProcessorWithWorldState.WorldState.MergeGeneratingBal(target);
     }
 
     private class TxProcessorWithWorldState
