@@ -1289,17 +1289,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
                 }
 
-                // Yield after state-reading opcodes so the main thread gets CPU while
-                // the prewarmer waits for NVMe I/O to complete.
-                if (WarmupOpcodeBudget > 0 && (
-                    instruction == Instruction.SLOAD ||
-                    instruction == Instruction.CALL ||
-                    instruction == Instruction.STATICCALL ||
-                    instruction == Instruction.DELEGATECALL))
-                {
-                    Thread.Yield();
-                }
-
                 // If gas is exhausted, jump to the out-of-gas handler.
                 if (TGasPolicy.GetRemainingGas(in gas) < 0)
                 {
