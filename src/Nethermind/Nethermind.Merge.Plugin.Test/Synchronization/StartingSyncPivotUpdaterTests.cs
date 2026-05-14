@@ -102,6 +102,59 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         }
 
         [Test]
+        public void Finite_attempts_fall_back_to_static_pivot_after_exhaustion()
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = 2;
+            // Finalized hash unset → TrySetFreshPivot returns null → counts as a failed attempt.
+            _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
+
+            _ = new StartingSyncPivotUpdater(
+                _blockTree!,
+                _syncModeSelector!,
+                _syncPeerPool!,
+                _syncConfig!,
+                _blockCacheService!,
+                _beaconSyncStrategy!,
+                LimboLogs.Instance
+            );
+
+            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
+            for (int i = 0; i < 5; i++)
+            {
+                _syncModeSelector!.Changed += Raise.EventWith(args);
+            }
+
+            _beaconSyncStrategy.Received().AllowBeaconHeaderSync();
+            _syncConfig.MaxAttemptsToUpdatePivot.Should().Be(0);
+        }
+
+        [Test]
+        public void Infinite_attempts_never_fall_back_to_static_pivot()
+        {
+            _syncConfig!.MaxAttemptsToUpdatePivot = StartingSyncPivotUpdater.InfiniteAttempts;
+            _beaconSyncStrategy!.GetFinalizedHash().Returns((Hash256?)null);
+
+            _ = new StartingSyncPivotUpdater(
+                _blockTree!,
+                _syncModeSelector!,
+                _syncPeerPool!,
+                _syncConfig!,
+                _blockCacheService!,
+                _beaconSyncStrategy!,
+                LimboLogs.Instance
+            );
+
+            SyncModeChangedEventArgs args = new(SyncMode.FastSync, SyncMode.UpdatingPivot);
+            for (int i = 0; i < 100; i++)
+            {
+                _syncModeSelector!.Changed += Raise.EventWith(args);
+            }
+
+            _beaconSyncStrategy.DidNotReceive().AllowBeaconHeaderSync();
+            _syncConfig.MaxAttemptsToUpdatePivot.Should().Be(StartingSyncPivotUpdater.InfiniteAttempts);
+        }
+
+        [Test]
         public void TrySetFreshPivot_for_unsafe_updater_saves_pivot_64_blocks_behind_HeadBlockHash_in_db()
         {
             _ = new UnsafeStartingSyncPivotUpdater(
