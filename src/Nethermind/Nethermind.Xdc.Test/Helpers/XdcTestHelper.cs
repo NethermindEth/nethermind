@@ -44,6 +44,16 @@ internal static class XdcTestHelper
         return signatures.ToArray();
     }
 
+    public static Signature CreateAlternativeSignatureForSameSigner(Signature signature)
+    {
+        UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
+        UInt256 alternativeS = SecP256k1Curve.N - sValue;
+        Span<byte> alternativeSBytes = stackalloc byte[32];
+        alternativeS.ToBigEndian(alternativeSBytes);
+        ulong alternativeV = signature.V == Signature.VOffset ? Signature.VOffset + 1ul : Signature.VOffset;
+        return new Signature(signature.RAsSpan, alternativeSBytes, alternativeV);
+    }
+
     public static Timeout BuildSignedTimeout(PrivateKey key, ulong round, ulong gap)
     {
         TimeoutDecoder decoder = new();

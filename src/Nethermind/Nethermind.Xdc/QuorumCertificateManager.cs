@@ -12,6 +12,7 @@ using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
@@ -172,6 +173,7 @@ internal class QuorumCertificateManager(
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
         double certificateThreshold = spec.CertificateThreshold;
         double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certificateThreshold);
+<<<<<<< Updated upstream
 
         if (qcRound > 0)
         {
@@ -193,6 +195,26 @@ internal class QuorumCertificateManager(
                 error = $"Number of votes ({signCount}/{masternodes.Length}) does not meet threshold of {certificateThreshold}";
                 return false;
             }
+=======
+        HashSet<Address> masternodes = [.. epochSwitchInfo.Masternodes];
+        HashSet<Address> uniqueSigners = [];
+        ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
+        foreach (Signature signature in qc.Signatures)
+        {
+            Address signer = _ethereumEcdsa.RecoverAddress(signature, voteHash);
+            if (!masternodes.Contains(signer))
+            {
+                error = "Quorum certificate contains one or more invalid vote signatures";
+                return false;
+            }
+            uniqueSigners.Add(signer);
+        }
+
+        if ((qcRound > 0) && (uniqueSigners.Count < required))
+        {
+            error = $"Number of votes ({uniqueSigners.Count}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
+            return false;
+>>>>>>> Stashed changes
         }
 
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;

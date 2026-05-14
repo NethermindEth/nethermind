@@ -167,6 +167,47 @@ public class TimeoutCertificateManagerTests
         Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out _), Is.EqualTo(expected));
     }
 
+    [Test]
+    public void VerifyTC_DifferentSignaturesFromSameSigner_DoNotCountTwice()
+    {
+        PrivateKey[] allKeys = XdcTestHelper.GeneratePrivateKeys(20);
+        TimeoutCertificate timeoutCertificate = BuildTimeoutCertificate(allKeys.Take(14).ToArray());
+        Signature[] signatures = timeoutCertificate.Signatures.ToArray();
+        signatures[13] = XdcTestHelper.CreateAlternativeSignatureForSameSigner(signatures[0]);
+        timeoutCertificate.Signatures = signatures;
+
+        Address[] masternodes = allKeys.Select(k => k.Address).ToArray();
+        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
+        snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
+            .Returns(new Snapshot(0, Hash256.Zero, masternodes));
+
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        EpochSwitchInfo epochSwitchInfo = new(masternodes, [], [], new BlockRoundInfo(Hash256.Zero, 1, 10));
+        epochSwitchManager.GetTimeoutCertificateEpochInfo(Arg.Any<TimeoutCertificate>()).Returns(epochSwitchInfo);
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
+        blockTree.Head.Returns(new Block(header, new BlockBody()));
+
+        TimeoutCertificateManager tcManager = new(
+            new XdcConsensusContext(),
+            Substitute.For<ITimeoutTimer>(),
+            Substitute.For<ISyncPeerPool>(),
+            snapshotManager,
+            epochSwitchManager,
+            specProvider,
+            blockTree,
+            Substitute.For<ISigner>());
+
+        Assert.That(tcManager.VerifyTimeoutCertificate(timeoutCertificate, out string? error), Is.False);
+        Assert.That(error, Does.Contain("does not meet threshold"));
+    }
+
     [TestCase(4UL)]
     [TestCase(6UL)]
     public async Task HandleTimeoutVote_RoundDoesNotMatchCurrentRound_ShouldReturnEarly(ulong round)

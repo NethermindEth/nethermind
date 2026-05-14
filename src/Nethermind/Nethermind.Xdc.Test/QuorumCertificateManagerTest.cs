@@ -50,6 +50,44 @@ public class QuorumCertificateManagerTest
         Assert.That(() => quorumCertificateManager.VerifyCertificate(Build.A.QuorumCertificate().TestObject, null!, out _), Throws.ArgumentNullException);
     }
 
+    [Test]
+    public void VerifyCertificate_DifferentSignaturesFromSameSigner_DoNotCountTwice()
+    {
+        XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData();
+        PrivateKey[] allKeys = XdcTestHelper.GeneratePrivateKeys(20);
+        PrivateKey[] signingKeys = allKeys.Take(14).ToArray();
+        BlockRoundInfo roundInfo = new(headerBuilder.TestObject.Hash!, 1, 1);
+        Signature[] signatures = XdcTestHelper.CreateVoteSignatures(roundInfo, 0, signingKeys);
+        signatures[13] = XdcTestHelper.CreateAlternativeSignatureForSameSigner(signatures[0]);
+        QuorumCertificate quorumCert = new(roundInfo, signatures, 0);
+
+        Address[] masternodes = allKeys.Select(k => k.Address).ToArray();
+        IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
+        epochSwitchManager
+            .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>())
+            .Returns(new EpochSwitchInfo(masternodes, [], [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
+        epochSwitchManager
+            .GetEpochSwitchInfo(Arg.Any<Hash256>())
+            .Returns(new EpochSwitchInfo(masternodes, [], [], new BlockRoundInfo(Hash256.Zero, 1, 10)));
+
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        IXdcReleaseSpec xdcReleaseSpec = Substitute.For<IXdcReleaseSpec>();
+        xdcReleaseSpec.EpochLength.Returns(900);
+        xdcReleaseSpec.Gap.Returns(450);
+        xdcReleaseSpec.CertificateThreshold.Returns(0.667);
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
+
+        QuorumCertificateManager quorumCertificateManager = new(
+            new XdcConsensusContext(),
+            Substitute.For<IBlockTree>(),
+            specProvider,
+            epochSwitchManager,
+            Substitute.For<ILogManager>());
+
+        Assert.That(quorumCertificateManager.VerifyCertificate(quorumCert, headerBuilder.TestObject, out string? error), Is.False);
+        Assert.That(error, Does.Contain("does not meet threshold"));
+    }
+
     public static IEnumerable<TestCaseData> QcCases()
     {
         XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData();
