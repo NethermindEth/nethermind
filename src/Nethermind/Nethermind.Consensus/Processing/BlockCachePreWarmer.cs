@@ -193,6 +193,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    /// <summary>
+    /// Shared atomic counter incremented by the main block processor after each tx.
+    /// Prewarmer threads use this to know which txs to warm next (moving window).
+    /// </summary>
+    internal int MainThreadTxIndex = -1;
+
+    /// <summary>Atomic counter for prewarmer threads to claim the next tx to warm.</summary>
+    private int _nextWarmupIndex;
+
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -200,60 +209,59 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             Block block = blockState.Block;
-            if (block.Transactions.Length == 0) return;
+            int txCount = block.Transactions.Length;
+            if (txCount == 0) return;
 
-            // Group transactions by sender to process same-sender transactions sequentially
-            // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            // Reset counters for this block
+            Volatile.Write(ref _nextWarmupIndex, 0);
+            Volatile.Write(ref MainThreadTxIndex, -1);
 
-            try
+            // Moving window: N threads each grab the next tx in block order.
+            // Threads stay close to the main thread's position, warming only
+            // what it will need soon — not distant future txs.
+            int threadCount = Math.Min(parallelOptions.MaxDegreeOfParallelism, txCount);
+
+            Thread[] workers = new Thread[threadCount];
+            CancellationToken token = parallelOptions.CancellationToken;
+
+            for (int t = 0; t < threadCount; t++)
             {
-                // Convert to array for parallel iteration
-                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
-
-                // Parallel across different senders, sequential within the same sender
-                ParallelUnbalancedWork.For(
-                    0,
-                    groupArray.Count,
-                    parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
-                    static (groupIndex, tupleState) =>
+                workers[t] = new Thread(() =>
+                {
+                    IReadOnlyTxProcessorSource env = _envPool.Get();
+                    try
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
+                        using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                        BlockExecutionContext context = new(block.Header, blockState.Spec);
+                        scope.TransactionProcessor.SetBlockExecutionContext(context);
 
-                        // Get thread-local processing state for this sender's transactions
-                        IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                        try
+                        while (!token.IsCancellationRequested)
                         {
-                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                            scope.TransactionProcessor.SetBlockExecutionContext(context);
+                            int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                            if (myTx >= txCount) break;
 
-                            // Sequential within the same sender-state changes propagate correctly
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
-                            {
-                                if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
-                            }
-                        }
-                        finally
-                        {
-                            blockState.PreWarmer._envPool.Return(env);
-                        }
+                            // Skip txs the main thread already processed
+                            if (myTx <= Volatile.Read(ref MainThreadTxIndex)) continue;
 
-                        return tupleState;
-                    });
+                            WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                        }
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception) { }
+                    finally
+                    {
+                        _envPool.Return(env);
+                    }
+                }) { IsBackground = true, Name = $"PrewarmWorker" };
+                workers[t].Start();
             }
-            finally
-            {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
-            }
+
+            // Wait for all workers
+            for (int t = 0; t < threadCount; t++)
+                workers[t].Join();
         }
         catch (OperationCanceledException)
         {
-            // Ignore, block completed cancel
         }
         catch (Exception ex)
         {
