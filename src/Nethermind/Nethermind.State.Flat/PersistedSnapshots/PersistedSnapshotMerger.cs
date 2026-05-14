@@ -258,15 +258,21 @@ public static class PersistedSnapshotMerger
                     WholeReadSessionReader srcReader = Reader(views[srcIdx]);
                     ref TWriter perAddrWriter = ref builder.BeginValueWrite();
                     IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref perAddrWriter, in srcReader, vb);
-                    builder.FinishValueWrite(minKey);
                     if (bloom is not null)
                     {
                         ulong addrKey = MemoryMarshal.Read<ulong>(minKey);
                         bloom.Add(addrKey);
-                        HsstReader<WholeReadSessionReader, NoOpPin> slot = new(in srcReader, vb);
+                        // Walk the just-written per-address blob through the writer's own
+                        // OpenReader: when the blob still fits the unflushed arena buffer the
+                        // pages are already hot in cache, and the fast path hands back a
+                        // pinned pointer with no syscall. Reader window is [0, vb.Length).
+                        TReader dstReader = perAddrWriter.OpenReader(vb.Length);
+                        HsstReader<TReader, TPin> slot = new(in dstReader, new Bound(0, vb.Length));
                         if (slot.TrySeek(PersistedSnapshot.SlotSubTag, out Bound slotBound))
-                            AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in srcReader, slotBound, addrKey, bloom);
+                            AddSlotKeysToBloom<TReader, TPin>(in dstReader, slotBound, addrKey, bloom);
+                        perAddrWriter.DisposeActiveReader();
                     }
+                    builder.FinishValueWrite(minKey);
                 }
                 else
                 {
@@ -409,15 +415,20 @@ public static class PersistedSnapshotMerger
                     // Single-source fast path: byte-copy the whole slot HSST blob verbatim.
                     // HSST internal pointers are HSST-relative so the relocated blob stays
                     // readable. Streamed via the long-aware IByteBufferWriter.Copy to stay
-                    // safe above the 2 GiB single-Span ceiling. Bloom adds are walked
-                    // separately since this path skips NWayNestedStreamingSlotMerge.
+                    // safe above the 2 GiB single-Span ceiling. Bloom keys are walked from
+                    // the just-written bytes via the writer's OpenReader so the pages are
+                    // hot in cache (and the arena buffer-backed fast path skips a syscall).
                     WholeReadSessionReader slotReader = Reader(views[slotSources[0]]);
                     Bound slotBlob = new(slotBounds[0].Offset, slotBounds[0].Length);
                     ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
                     IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(ref slotWriter, in slotReader, slotBlob);
-                    perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
                     if (bloom is not null)
-                        AddSlotKeysToBloom<WholeReadSessionReader, NoOpPin>(in slotReader, slotBlob, addrBloomKey, bloom);
+                    {
+                        TReader dstReader = slotWriter.OpenReader(slotBlob.Length);
+                        AddSlotKeysToBloom<TReader, TPin>(in dstReader, new Bound(0, slotBlob.Length), addrBloomKey, bloom);
+                        slotWriter.DisposeActiveReader();
+                    }
+                    perAddrBuilder.FinishValueWrite(PersistedSnapshot.SlotSubTag);
                 }
                 else if (slotSourceCount > 1)
                 {
@@ -564,6 +575,11 @@ public static class PersistedSnapshotMerger
         Span<int> innerMatchingBuf = stackalloc int[Math.Max(1, n)];
         Span<int> innerTree = stackalloc int[2 * pow2N];
 
+        // Reusable 32-byte slot-key scratch for per-slot bloom adds: outerKey (30 bytes)
+        // populates [0,30); per-slot innerSuffix (2 bytes) populates [30,32). Allocated once
+        // here so the per-slot bloom path is allocation-free.
+        Span<byte> slotKeyBuf = stackalloc byte[32];
+
         NWayMergeCursor outerCursor = new(
             outerEnums, outerHasMore, views, srcMap,
             n, OuterKeyLen, OuterStride, outerKeyBuf, outerMatchingBuf, outerTree);
@@ -574,10 +590,8 @@ public static class PersistedSnapshotMerger
             int outerMatchCount = outerCursor.MatchCount;
             ReadOnlySpan<int> outerMatches = outerCursor.MatchingSources;
 
-            // Bloom is keyed on the 30-byte slot prefix only, so one add per outer bucket
-            // covers every slot key in this bucket regardless of matchCount.
             if (bloom is not null)
-                bloom.Add(PersistedSnapshotBloomBuilder.SlotPrefixKey(addrBloomKey, outerKey));
+                outerKey.CopyTo(slotKeyBuf[..OuterKeyLen]);
 
             if (outerMatchCount == 1)
             {
@@ -591,6 +605,22 @@ public static class PersistedSnapshotMerger
                 ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
                 IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(
                     ref innerWriter, in srcReader, vb);
+                if (bloom is not null)
+                {
+                    // Walk the just-written inner suffix HSST through the writer's own
+                    // OpenReader. The blob is a single 2-byte-keyed HSST (no nesting) so
+                    // one enumerator pass suffices; compose the 32-byte slot from
+                    // outerKey || innerSuffix and emit a per-slot bloom add.
+                    TReader dstReader = innerWriter.OpenReader(vb.Length);
+                    HsstEnumerator<TReader, TPin> suffixEnum = new(in dstReader, new Bound(0, vb.Length));
+                    while (suffixEnum.MoveNext(in dstReader))
+                    {
+                        suffixEnum.CopyCurrentLogicalKey(in dstReader, slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
+                        bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                    }
+                    suffixEnum.Dispose();
+                    innerWriter.DisposeActiveReader();
+                }
                 outerBuilder.FinishValueWrite(outerKey);
             }
             else
@@ -636,7 +666,13 @@ public static class PersistedSnapshotMerger
                         Bound vb = innerEnums[innerMinIdx].CurrentValue;
                         WholeReadSessionReader rMin = Reader(views[outerMatches[innerMinIdx]]);
                         using NoOpPin valPin = rMin.PinBuffer(vb.Offset, vb.Length);
-                        innerBuilder.Add(innerCursor.MinKey, valPin.Buffer);
+                        ReadOnlySpan<byte> innerKey = innerCursor.MinKey;
+                        if (bloom is not null)
+                        {
+                            innerKey.CopyTo(slotKeyBuf.Slice(OuterKeyLen, InnerKeyLen));
+                            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKeyBuf));
+                        }
+                        innerBuilder.Add(innerKey, valPin.Buffer);
                         innerCursor.AdvanceMatching();
                     }
 
@@ -896,23 +932,30 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
-    /// Walk the outer 30-byte slot-prefix HSST at <paramref name="slotScope"/> and add
-    /// one bloom entry per prefix bucket. The inner 2-byte suffix HSST is not walked —
-    /// the bloom is keyed on the 30-byte prefix only (see
-    /// <see cref="PersistedSnapshotBloomBuilder.SlotPrefixKey"/>). Used by the
-    /// matchCount==1 / slotSourceCount==1 byte-copy fast paths.
+    /// Walk the outer 30-byte slot-prefix HSST at <paramref name="slotScope"/> and,
+    /// for every outer entry, walk the inner 2-byte suffix HSST nested in its value
+    /// to compose the full 32-byte slot key. Adds one bloom entry per slot. Used by
+    /// the matchCount==1 / slotSourceCount==1 byte-copy fast paths, called against
+    /// a reader opened on the destination writer's just-written bytes.
     /// </summary>
     private static void AddSlotKeysToBloom<TReader, TPin>(
         scoped in TReader reader, Bound slotScope, ulong addrKey, BloomFilter bloom)
         where TPin : struct, IBufferPin, allows ref struct
         where TReader : IHsstByteReader<TPin>, allows ref struct
     {
-        Span<byte> prefix = stackalloc byte[30];
+        Span<byte> slotKey = stackalloc byte[32];
         HsstEnumerator<TReader, TPin> outerEnum = new(in reader, slotScope);
         while (outerEnum.MoveNext(in reader))
         {
-            outerEnum.CopyCurrentLogicalKey(in reader, prefix);
-            bloom.Add(PersistedSnapshotBloomBuilder.SlotPrefixKey(addrKey, prefix));
+            outerEnum.CopyCurrentLogicalKey(in reader, slotKey[..30]);
+            Bound innerScope = outerEnum.CurrentValue;
+            HsstEnumerator<TReader, TPin> innerEnum = new(in reader, innerScope);
+            while (innerEnum.MoveNext(in reader))
+            {
+                innerEnum.CopyCurrentLogicalKey(in reader, slotKey.Slice(30, 2));
+                bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrKey, slotKey));
+            }
+            innerEnum.Dispose();
         }
         outerEnum.Dispose();
     }

@@ -470,11 +470,6 @@ public static class PersistedSnapshotBuilder
                     slotKey[..slotPrefixLength].CopyTo(currentPrefixBuf);
                     ReadOnlySpan<byte> currentPrefix = currentPrefixBuf;
 
-                    // Bloom: one add per outer slot-prefix bucket — composition matches
-                    // PersistedSnapshotBloomBuilder.SlotPrefixKey (prefix-only hash).
-                    if (bloom is not null)
-                        bloom.Add(PersistedSnapshotBloomBuilder.SlotPrefixKey(addrBloomKey, currentPrefix));
-
                     ref TWriter suffixWriter = ref prefixLevel.BeginValueWrite();
                     using HsstBTreeBuilder<TWriter, TReader, TPin> suffixLevel = new(ref suffixWriter, ref slotSuffixBuffers, keyLength: slotSuffixLength,
                         new HsstBTreeOptions { MinSeparatorLength = slotSuffixLength });
@@ -485,6 +480,11 @@ public static class PersistedSnapshotBuilder
                         sortedStorages[storageIdx].Key.Slot.ToBigEndian(slotKey);
                         if (!slotKey[..slotPrefixLength].SequenceEqual(currentPrefix))
                             break;
+
+                        // Per-slot bloom add keyed on the full 32-byte slot; matches the
+                        // reader-side hash in ReadOnlySnapshotBundle.GetSlot.
+                        if (bloom is not null)
+                            bloom.Add(PersistedSnapshotBloomBuilder.SlotKey(addrBloomKey, slotKey));
 
                         SlotValue? value = sortedStorages[storageIdx].Value;
                         ReadOnlySpan<byte> suffixKey = slotKey.Slice(slotPrefixLength, slotSuffixLength);

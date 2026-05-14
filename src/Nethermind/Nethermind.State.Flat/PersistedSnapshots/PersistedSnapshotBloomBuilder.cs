@@ -84,32 +84,30 @@ internal static class PersistedSnapshotBloomBuilder
         MemoryMarshal.Read<ulong>(addressHash.Bytes);
 
     /// <summary>
-    /// Hashes the leading 30 bytes of the big-endian slot (the slot-prefix bucket
-    /// used as the outer HSST key). The trailing 2-byte suffix is intentionally
-    /// dropped — bloom checks only the prefix bucket. Writer-side adds go through
-    /// <see cref="SlotPrefixKey"/> with the prefix bytes already in hand.
+    /// Slot bloom hash: XORs the full 32-byte big-endian slot into the address key.
+    /// Reader-side overload — serialises the <see cref="UInt256"/> once and routes
+    /// through the span variant so writer and reader share the exact hash bytes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong SlotKey(ulong addressKey, in UInt256 slot)
     {
         Span<byte> slotBytes = stackalloc byte[32];
         slot.ToBigEndian(slotBytes);
-        return SlotPrefixKey(addressKey, slotBytes[..30]);
+        return SlotKey(addressKey, slotBytes);
     }
 
     /// <summary>
-    /// Writer-side slot bloom hash: XORs the 30-byte slot prefix into the address
-    /// key. Reads four ulongs covering bytes [0,8), [8,16), [16,24), [22,30); the
-    /// last read is masked to zero its low 2 bytes so bytes 22-23 don't double-XOR
-    /// against the third read (they'd cancel).
+    /// Writer-side slot bloom hash: XORs the 32-byte big-endian slot into the
+    /// address key as four non-overlapping ulongs covering [0,8), [8,16),
+    /// [16,24), [24,32).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong SlotPrefixKey(ulong addressKey, scoped ReadOnlySpan<byte> slotPrefix30)
+    internal static ulong SlotKey(ulong addressKey, scoped ReadOnlySpan<byte> slot32)
     {
-        ulong s0 = MemoryMarshal.Read<ulong>(slotPrefix30);
-        ulong s1 = MemoryMarshal.Read<ulong>(slotPrefix30[8..]);
-        ulong s2 = MemoryMarshal.Read<ulong>(slotPrefix30[16..]);
-        ulong s3 = MemoryMarshal.Read<ulong>(slotPrefix30[22..]) & 0xFFFF_FFFF_FFFF_0000ul;
+        ulong s0 = MemoryMarshal.Read<ulong>(slot32);
+        ulong s1 = MemoryMarshal.Read<ulong>(slot32[8..]);
+        ulong s2 = MemoryMarshal.Read<ulong>(slot32[16..]);
+        ulong s3 = MemoryMarshal.Read<ulong>(slot32[24..]);
         return addressKey ^ s0 ^ s1 ^ s2 ^ s3;
     }
 
