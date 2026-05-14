@@ -313,8 +313,8 @@ public static class PersistedSnapshotMerger
         HsstEnumerator[] outerEnums, scoped ReadOnlySpan<int> matchingSources, int matchCount,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
-        scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
-        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers,
+        ref HsstBTreeBuilderBuffers slotPrefixBuffers,
+        ref HsstBTreeBuilderBuffers slotSuffixBuffers,
         BloomFilter? bloom = null, ulong addrBloomKey = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // Get per-address HSST bounds (absolute offset from snapshot start) for each matching source.
@@ -379,9 +379,10 @@ public static class PersistedSnapshotMerger
             }
 
             // Sub-tag 0x04: Slots
-            // Merge slots only from max(0, destructBarrier)..matchCount-1. The slot merge
-            // emits bloom adds inline from the merged stream (one walk per source) — the
-            // separate pre-pass that did a duplicate walk per source has been removed.
+            // Merge slots only from max(0, destructBarrier)..matchCount-1. Collect the
+            // active slot sources, then early-return for 0 sources (no emit), byte-copy
+            // for 1 source (with a separate bloom walk), or call NWayNestedStreamingSlotMerge
+            // for >1 sources (it folds bloom adds inline).
             int slotStart = Math.Max(0, destructBarrier);
             int slotTag = PersistedSnapshot.SlotSubTag[0];
 
@@ -405,11 +406,11 @@ public static class PersistedSnapshotMerger
 
                 if (slotSourceCount == 1)
                 {
-                    // Single-source fast path: byte-copy the source's slot HSST blob.
-                    // HSST internal pointers are HSST-relative, so the relocated blob stays
-                    // readable. Streamed via the long-aware IByteBufferWriter.Copy so a slot
-                    // HSST above the 2 GiB single-Span ceiling stays safe. Bloom adds are
-                    // walked separately since this path skips NWayInnerSlotMerge.
+                    // Single-source fast path: byte-copy the whole slot HSST blob verbatim.
+                    // HSST internal pointers are HSST-relative so the relocated blob stays
+                    // readable. Streamed via the long-aware IByteBufferWriter.Copy to stay
+                    // safe above the 2 GiB single-Span ceiling. Bloom adds are walked
+                    // separately since this path skips NWayNestedStreamingSlotMerge.
                     WholeReadSessionReader slotReader = Reader(views[slotSources[0]]);
                     Bound slotBlob = new(slotBounds[0].Offset, slotBounds[0].Length);
                     ref TWriter slotWriter = ref perAddrBuilder.BeginValueWrite();
@@ -420,8 +421,8 @@ public static class PersistedSnapshotMerger
                 }
                 else if (slotSourceCount > 1)
                 {
-                    // M > 1 sources collide on this address's slots: streaming merge through
-                    // NWayNestedStreamingSlotMerge / NWayInnerSlotMerge folds bloom adds in.
+                    // M > 1 slot sources: outer 30-byte BTree streaming merge with inline
+                    // bloom adds and inline inner 2-byte suffix BTree merge.
                     using ArrayPoolList<HsstEnumerator> slotEnumsList = new(slotSourceCount, slotSourceCount);
                     using NativeMemoryList<bool> slotHasMoreList = new(slotSourceCount, slotSourceCount);
                     using NativeMemoryList<(IntPtr Ptr, long Len)> slotViewsList = new(slotSourceCount, slotSourceCount);
@@ -516,6 +517,142 @@ public static class PersistedSnapshotMerger
         {
             perAddrBuilder.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Outer 30-byte slot-prefix BTree streaming merge across M slot-bearing sources, with
+    /// the inner 2-byte suffix BTree merge inlined per bucket. Per outer bucket, emits one
+    /// bloom add (keyed on the 30-byte prefix); the byte-copy fast path for outer-match
+    /// count == 1 skips the inner merge entirely. Caller is responsible for: collecting
+    /// the slot-bearing sources from per-address sub-tag 0x04, opening the slot enums,
+    /// and wrapping this call in BeginValueWrite/FinishValueWrite on its outer builder.
+    /// </summary>
+    private static void NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
+        HsstEnumerator[] outerEnums, Span<bool> outerHasMore, int n,
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
+        ref TWriter writer,
+        scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
+        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers,
+        BloomFilter? bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    {
+        const int OuterKeyLen = 30;
+        const int OuterStride = 32;
+        const int InnerKeyLen = 2;
+        using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 });
+
+        // Prime outer 30-byte keys (stride 32 for alignment). The outerEnums have already
+        // been MoveNext'd once by the caller; we just copy the first key per still-live
+        // source so the cursor can build its tree.
+        Span<byte> outerKeyBuf = stackalloc byte[n * OuterStride];
+        for (int i = 0; i < n; i++)
+        {
+            if (!outerHasMore[i]) continue;
+            WholeReadSessionReader r = Reader(views[i]);
+            outerEnums[i].CopyCurrentLogicalKey(in r, outerKeyBuf.Slice(i * OuterStride, OuterKeyLen));
+        }
+
+        int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, n));
+        Span<int> srcMap = stackalloc int[Math.Max(1, n)];
+        for (int i = 0; i < n; i++) srcMap[i] = i;
+        Span<int> outerMatchingBuf = stackalloc int[Math.Max(1, n)];
+        Span<int> outerTree = stackalloc int[2 * pow2N];
+
+        // Pre-allocate inner-merge working buffers sized to the worst case (innerN == n),
+        // sliced down per outer iteration. Hoisted out of the cursor loop so the stackalloc
+        // doesn't repeatedly grow the frame (CA2014).
+        Span<byte> innerKeyBuf = stackalloc byte[Math.Max(1, n) * InnerKeyLen];
+        Span<int> innerMatchingBuf = stackalloc int[Math.Max(1, n)];
+        Span<int> innerTree = stackalloc int[2 * pow2N];
+
+        NWayMergeCursor outerCursor = new(
+            outerEnums, outerHasMore, views, srcMap,
+            n, OuterKeyLen, OuterStride, outerKeyBuf, outerMatchingBuf, outerTree);
+
+        while (outerCursor.MoveNext())
+        {
+            ReadOnlySpan<byte> outerKey = outerCursor.MinKey;
+            int outerMatchCount = outerCursor.MatchCount;
+            ReadOnlySpan<int> outerMatches = outerCursor.MatchingSources;
+
+            // Bloom is keyed on the 30-byte slot prefix only, so one add per outer bucket
+            // covers every slot key in this bucket regardless of matchCount.
+            if (bloom is not null)
+                bloom.Add(PersistedSnapshotBloomBuilder.SlotPrefixKey(addrBloomKey, outerKey));
+
+            if (outerMatchCount == 1)
+            {
+                // 1 matching source for this outer key: byte-copy its suffix HSST blob
+                // verbatim. HSST internal pointers are blob-relative so the relocated
+                // blob stays readable at the destination writer position. Streamed via
+                // the long-aware IByteBufferWriter.Copy so >2 GiB suffix HSSTs stay safe.
+                int srcIdx = outerMatches[0];
+                Bound vb = outerEnums[srcIdx].CurrentValue;
+                WholeReadSessionReader srcReader = Reader(views[srcIdx]);
+                ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
+                IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(
+                    ref innerWriter, in srcReader, vb);
+                outerBuilder.FinishValueWrite(outerKey);
+            }
+            else
+            {
+                // >1 matching sources: inner 2-byte BTree streaming merge driven by a
+                // second cursor over the matched-source subset. Working buffers
+                // (innerKeyBuf/innerMatchingBuf/innerTree) are pre-allocated above and
+                // sliced to the actual inner-source count per iteration.
+                int innerN = outerMatchCount;
+                using ArrayPoolList<HsstEnumerator> innerEnumsList = new(innerN, innerN);
+                using NativeMemoryList<bool> innerHasMoreList = new(innerN, innerN);
+                HsstEnumerator[] innerEnums = innerEnumsList.UnsafeGetInternalArray();
+                Span<bool> innerHasMore = innerHasMoreList.AsSpan();
+                Span<byte> iKeyBuf = innerKeyBuf[..(innerN * InnerKeyLen)];
+                try
+                {
+                    for (int k = 0; k < innerN; k++)
+                    {
+                        int srcIdx = outerMatches[k];
+                        Bound vb = outerEnums[srcIdx].CurrentValue;
+                        WholeReadSessionReader r = Reader(views[srcIdx]);
+                        innerEnums[k] = new HsstEnumerator(in r, new Bound(vb.Offset, vb.Length));
+                        innerHasMore[k] = innerEnums[k].MoveNext(in r);
+                        if (innerHasMore[k])
+                            innerEnums[k].CopyCurrentLogicalKey(in r, iKeyBuf.Slice(k * InnerKeyLen, InnerKeyLen));
+                    }
+
+                    int innerPow2N = (int)BitOperations.RoundUpToPowerOf2((uint)innerN);
+                    Span<int> iMatchingBuf = innerMatchingBuf[..innerN];
+                    Span<int> iTree = innerTree[..(2 * innerPow2N)];
+
+                    // sourceMap = outerMatches: inner cursor slot k → views[outerMatches[k]].
+                    NWayMergeCursor innerCursor = new(
+                        innerEnums, innerHasMore, views, outerMatches,
+                        innerN, InnerKeyLen, InnerKeyLen, iKeyBuf, iMatchingBuf, iTree);
+
+                    ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
+                    using HsstBTreeBuilder<TWriter, TReader, TPin> innerBuilder = new(ref innerWriter, ref slotSuffixBuffers, InnerKeyLen, new HsstBTreeOptions { MinSeparatorLength = 2 });
+
+                    while (innerCursor.MoveNext())
+                    {
+                        int innerMinIdx = innerCursor.MinIdx;
+                        Bound vb = innerEnums[innerMinIdx].CurrentValue;
+                        WholeReadSessionReader rMin = Reader(views[outerMatches[innerMinIdx]]);
+                        using NoOpPin valPin = rMin.PinBuffer(vb.Offset, vb.Length);
+                        innerBuilder.Add(innerCursor.MinKey, valPin.Buffer);
+                        innerCursor.AdvanceMatching();
+                    }
+
+                    innerBuilder.Build();
+                    outerBuilder.FinishValueWrite(outerKey);
+                }
+                finally
+                {
+                    for (int k = 0; k < innerN; k++) innerEnums[k].Dispose();
+                }
+            }
+
+            outerCursor.AdvanceMatching();
+        }
+
+        outerBuilder.Build();
     }
 
     /// <summary>
@@ -686,145 +823,6 @@ public static class PersistedSnapshotMerger
         builder.Add(PersistedSnapshot.MetadataVersionKey, version);
 
         builder.Build();
-    }
-
-    /// <summary>
-    /// Specialised slot merger: outer 30-byte BTree, inner 2-byte BTree (suffix → slot value).
-    /// Emits bloom adds inline from the merged stream so the compactor doesn't need a
-    /// separate per-source slot-tree walk just to populate the bloom. The merged-stream
-    /// adds skip duplicates that newest-wins merge collapses; capacity is sized as the
-    /// sum-of-sources count in <see cref="PersistedSnapshotCompactor"/>, which over-sizes
-    /// after dedup — harmless (false-positive rate is the same or strictly better).
-    /// </summary>
-    private static void NWayNestedStreamingSlotMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, Span<bool> outerHasMore, int n,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-        ref TWriter writer,
-        scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
-        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers,
-        BloomFilter? bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        const int OuterKeyLen = 30;
-        const int OuterStride = 32;
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 });
-
-        // Prime cached outer 30-byte keys (stride 32 for alignment). The outerEnums have
-        // already been MoveNext'd once by the caller (NWayMergePerAddressHsst); we just
-        // copy the first key per still-live source so the cursor can build its tree.
-        Span<byte> outerKeyBuf = stackalloc byte[n * OuterStride];
-        for (int i = 0; i < n; i++)
-        {
-            if (!outerHasMore[i]) continue;
-            WholeReadSessionReader r = Reader(views[i]);
-            outerEnums[i].CopyCurrentLogicalKey(in r, outerKeyBuf.Slice(i * OuterStride, OuterKeyLen));
-        }
-
-        int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, n));
-        Span<int> srcMap = stackalloc int[Math.Max(1, n)];
-        for (int i = 0; i < n; i++) srcMap[i] = i;
-        Span<int> matchingBuf = stackalloc int[Math.Max(1, n)];
-        Span<int> tree = stackalloc int[2 * pow2N];
-
-        NWayMergeCursor cursor = new(
-            outerEnums, outerHasMore, views, srcMap, n, OuterKeyLen, OuterStride, outerKeyBuf, matchingBuf, tree);
-
-        while (cursor.MoveNext())
-        {
-            ReadOnlySpan<byte> minKey = cursor.MinKey;
-            int matchCount = cursor.MatchCount;
-            ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
-
-            // Bloom is keyed on the 30-byte slot prefix only, so one add per outer
-            // bucket covers every slot key in this bucket regardless of matchCount.
-            if (bloom is not null)
-                bloom.Add(PersistedSnapshotBloomBuilder.SlotPrefixKey(addrBloomKey, minKey));
-
-            if (matchCount == 1)
-            {
-                // Single-source fast path: byte-copy the source's slot-suffix HSST blob
-                // verbatim. HSST internal pointers are blob-relative, so the relocated
-                // blob stays readable at the destination writer position. Streamed via
-                // the long-aware IByteBufferWriter.Copy so >2 GiB suffix HSSTs stay safe.
-                int srcIdx = matchingSources[0];
-                Bound vb = outerEnums[srcIdx].CurrentValue;
-                WholeReadSessionReader srcReader = Reader(views[srcIdx]);
-                ref TWriter innerWriter = ref builder.BeginValueWrite();
-                IByteBufferWriter.Copy<TWriter, WholeReadSessionReader, NoOpPin>(
-                    ref innerWriter, in srcReader, vb);
-                builder.FinishValueWrite(minKey);
-            }
-            else
-            {
-                ref TWriter innerWriter = ref builder.BeginValueWrite();
-                NWayInnerSlotMerge<TWriter, TReader, TPin>(
-                    outerEnums, matchingSources, matchCount, views,
-                    ref innerWriter, ref slotSuffixBuffers);
-                builder.FinishValueWrite(minKey);
-            }
-
-            cursor.AdvanceMatching();
-        }
-
-        builder.Build();
-    }
-
-    /// <summary>
-    /// Inner BTree merge for the slot path. Same structure as <see cref="NWayInnerMerge{TWriter, TReader, TPin}"/>
-    /// but with a fixed 2-byte inner key. The slot bloom is keyed on the 30-byte outer
-    /// prefix (added once per bucket by the caller), so this inner pass does not touch
-    /// the bloom.
-    /// </summary>
-    private static void NWayInnerSlotMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, scoped ReadOnlySpan<int> matchingSources, int matchCount,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-        ref TWriter writer,
-        scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        const int InnerKeyLen = 2;
-        using ArrayPoolList<HsstEnumerator> innerEnums = new(matchCount, matchCount);
-        using NativeMemoryList<bool> innerHasMore = new(matchCount, matchCount);
-        Span<byte> keyBuf = stackalloc byte[matchCount * InnerKeyLen];
-
-        try
-        {
-            for (int j = 0; j < matchCount; j++)
-            {
-                int srcIdx = matchingSources[j];
-                Bound vb = outerEnums[srcIdx].CurrentValue;
-                WholeReadSessionReader r = Reader(views[srcIdx]);
-                innerEnums[j] = new HsstEnumerator(in r, new Bound(vb.Offset, vb.Length));
-                innerHasMore[j] = innerEnums[j].MoveNext(in r);
-                if (innerHasMore[j])
-                    innerEnums[j].CopyCurrentLogicalKey(in r, keyBuf.Slice(j * InnerKeyLen, InnerKeyLen));
-            }
-
-            int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, matchCount));
-            Span<int> matchingBuf = stackalloc int[Math.Max(1, matchCount)];
-            Span<int> tree = stackalloc int[2 * pow2N];
-
-            // sourceMap = matchingSources: cursor slot j → views[matchingSources[j]].
-            NWayMergeCursor cursor = new(
-                innerEnums.UnsafeGetInternalArray(), innerHasMore.AsSpan(),
-                views, matchingSources, matchCount, InnerKeyLen, InnerKeyLen, keyBuf, matchingBuf, tree);
-
-            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref slotSuffixBuffers, InnerKeyLen, new HsstBTreeOptions { MinSeparatorLength = 2 });
-
-            while (cursor.MoveNext())
-            {
-                int minIdx = cursor.MinIdx;
-                Bound vb = innerEnums[minIdx].CurrentValue;
-                WholeReadSessionReader rMin = Reader(views[matchingSources[minIdx]]);
-                using NoOpPin valPin = rMin.PinBuffer(vb.Offset, vb.Length);
-                builder.Add(cursor.MinKey, valPin.Buffer);
-                cursor.AdvanceMatching();
-            }
-
-            builder.Build();
-        }
-        finally
-        {
-            for (int j = 0; j < matchCount; j++) innerEnums[j].Dispose();
-        }
     }
 
     /// <summary>
