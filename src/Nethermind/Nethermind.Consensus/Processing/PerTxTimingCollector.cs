@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using Nethermind.Core.Collections;
 
 namespace Nethermind.Consensus.Processing;
@@ -13,16 +12,16 @@ namespace Nethermind.Consensus.Processing;
 /// The tx executor calls <see cref="Prepare"/> and <see cref="Record"/>;
 /// ProcessingStats snapshots via <see cref="Snapshot"/> after block execution.
 /// State is shared across threads so parallel tx workers can record into the
-/// array prepared on the block-processing thread; assumes a single block is
+/// list prepared on the block-processing thread; assumes a single block is
 /// being timing-collected at any moment.
 /// </summary>
 public static class PerTxTimingCollector
 {
     private static bool _enabled;
-    // Backing buffer rented from ArrayPool<long>.Shared. The pool may return an array
-    // larger than the requested length, so we track the in-use count separately.
-    private static long[]? _ticksPerTx;
-    private static int _count;
+    // Backing storage is pooled via ArrayPoolList<long>; the underlying array is rented
+    // from the shared pool and returned on Dispose. The 256-slot capacity floor keeps
+    // small blocks in a single pool bucket to avoid churn.
+    private static ArrayPoolList<long>? _ticksPerTx;
 
     /// <summary>Whether per-tx timing capture is active.</summary>
     public static bool IsEnabled => _enabled;
@@ -33,41 +32,33 @@ public static class PerTxTimingCollector
     /// <summary>Called by the tx executor before processing transactions.</summary>
     public static void Prepare(int txCount)
     {
-        // The buffer is reused across blocks; only re-rent when capacity must grow.
-        // The 256-slot floor amortizes the first few blocks before steady-state size is reached.
-        if (_ticksPerTx is null || _ticksPerTx.Length < txCount)
-        {
-            if (_ticksPerTx is not null)
-            {
-                ArrayPool<long>.Shared.Return(_ticksPerTx);
-            }
-            _ticksPerTx = ArrayPool<long>.Shared.Rent(Math.Max(txCount, 256));
-        }
-        // Clear the slice we're about to use so stale entries from prior blocks don't bleed in.
-        _ticksPerTx.AsSpan(0, txCount).Clear();
-        _count = txCount;
+        // Either Snapshot already handed off the previous list and nulled this reference,
+        // or the previous block produced no snapshot (e.g. zero txs). In both cases dispose
+        // the leftover (if any) so the pool reclaims its backing array.
+        _ticksPerTx?.Dispose();
+        _ticksPerTx = new ArrayPoolList<long>(capacity: Math.Max(txCount, 256), count: txCount);
     }
 
     /// <summary>Called by the tx executor after each transaction.</summary>
     public static void Record(int index, long ticks)
     {
-        if (_ticksPerTx is not null && (uint)index < (uint)_ticksPerTx.Length)
-        {
-            _ticksPerTx[index] = ticks;
-        }
+        ArrayPoolList<long>? list = _ticksPerTx;
+        if (list is null) return;
+        Span<long> span = list.AsSpan();
+        if ((uint)index < (uint)span.Length) span[index] = ticks;
     }
 
     /// <summary>
-    /// Takes a snapshot of per-tx timing data, or null if no data was captured.
-    /// The returned list rents its backing array from the shared pool and MUST be disposed
-    /// when the caller is done (see <see cref="ArrayPoolList{T}.Dispose"/>).
+    /// Hands off the per-tx timing list to the caller, or returns null if no data was captured.
+    /// The caller takes ownership and MUST dispose the list (returns its backing array to the
+    /// shared pool). The internal reference is cleared so the next <see cref="Prepare"/> rents
+    /// a fresh backing array.
     /// </summary>
     public static ArrayPoolList<long>? Snapshot()
     {
-        if (!_enabled || _ticksPerTx is null || _count == 0) return null;
-
-        ArrayPoolList<long> copy = new(capacity: _count, count: _count);
-        _ticksPerTx.AsSpan(0, _count).CopyTo(copy.AsSpan());
-        return copy;
+        ArrayPoolList<long>? handoff = _ticksPerTx;
+        if (!_enabled || handoff is null || handoff.Count == 0) return null;
+        _ticksPerTx = null;
+        return handoff;
     }
 }
