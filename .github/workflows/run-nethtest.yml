@@ -123,7 +123,7 @@ jobs:
           - test_setup: new_spec
             runner: ubuntu-gigachad
             eest_repository: ethereum/execution-specs
-            eest_version: tests-bal@v7.0.0
+            eest_version: latest-bal
             eest_archive: fixtures_bal.tar.gz
             workers: '8'
     env:
@@ -154,6 +154,13 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/$EEST_REPOSITORY/releases/latest" \
               | jq -r '.tag_name')"
+          elif [[ "$EEST_VERSION" == latest-* ]]; then
+            KEYWORD="${EEST_VERSION#latest-}"
+            RESOLVED_EEST_VERSION="$(curl -fsSL \
+              --max-time 300 \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$EEST_REPOSITORY/releases?per_page=20" \
+              | jq -r --arg keyword "$KEYWORD" '[.[] | select(.tag_name | contains($keyword))] | first | .tag_name')"
           else
             RESOLVED_EEST_VERSION="$EEST_VERSION"
           fi
