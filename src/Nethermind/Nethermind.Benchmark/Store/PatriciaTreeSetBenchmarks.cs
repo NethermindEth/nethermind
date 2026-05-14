@@ -81,7 +81,9 @@ namespace Nethermind.Benchmarks.Store
             if (PreloadedCount > 0)
             {
                 PatriciaTree walker = new(baseStore, _preloadedRootHash, false, LimboLogs.Instance);
-                walker.RootRef!.ResolveNode(baseStore, TreePath.Empty);
+                TrieNode root = walker.RootRef!;
+                TrieNode.ResolveNode(ref root, baseStore, in TreePath.Empty);
+                walker.RootRef = root;
                 BlockCacheTrieStore.CollectNodes(baseStore, walker.RootRef!, TreePath.Empty, nodeList);
                 nodeList.Sort((a, b) => a.Path.CompareTo(b.Path));
             }
