@@ -41,26 +41,35 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
         byte[] rewardBytes = SerializeEpochRewards(rewardsByAccount);
         batch[epochRewardsKey] = rewardBytes;
 
+        ulong oldestSequence = TryReadUInt64(OldestSequenceKey, out ulong oldestSequenceValue) ? oldestSequenceValue : 0;
+        ulong newestSequence = TryReadUInt64(NewestSequenceKey, out ulong newestSequenceValue) ? newestSequenceValue : 0;
+        int retainedCount = TryReadInt32(RetainedCountKey, out int retainedCountValue) ? retainedCountValue : 0;
+
         byte[] epochToSequenceKey = BuildEpochToSequenceKey(epochBlockNumber);
         byte[]? existingSequenceBytes = _rewardsDb.Get(epochToSequenceKey);
         if (existingSequenceBytes is null)
         {
-            ulong nextSequence = TryReadUInt64(NewestSequenceKey, out ulong newestSequence) ? newestSequence + 1 : 0;
+            ulong nextSequence = retainedCount == 0 ? 0 : newestSequence + 1;
 
             batch[BuildSequenceToEpochKey(nextSequence)] = ToBigEndian(epochBlockNumber);
             batch[epochToSequenceKey] = ToBigEndian(nextSequence);
-            batch[NewestSequenceKey] = ToBigEndian(nextSequence);
-
-            if (!TryReadUInt64(OldestSequenceKey, out _))
+            newestSequence = nextSequence;
+            if (retainedCount == 0)
             {
-                batch[OldestSequenceKey] = ToBigEndian(nextSequence);
+                oldestSequence = nextSequence;
             }
-
-            int count = TryReadInt32(RetainedCountKey, out int currentCount) ? currentCount + 1 : 1;
-            batch[RetainedCountKey] = ToBigEndian(count);
-
-            PruneOldEpochs(batch);
+            retainedCount++;
         }
+
+        PruneOldEpochs(batch, ref oldestSequence, ref retainedCount);
+
+        if (retainedCount > 0)
+        {
+            batch[OldestSequenceKey] = ToBigEndian(oldestSequence);
+            batch[NewestSequenceKey] = ToBigEndian(newestSequence);
+        }
+
+        batch[RetainedCountKey] = ToBigEndian(retainedCount);
     }
 
     public bool HasEpochRewards(ulong epochBlockNumber) => _rewardsDb.KeyExists(BuildEpochRewardsKey(epochBlockNumber));
@@ -101,21 +110,15 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
         return true;
     }
 
-    private void PruneOldEpochs(IWriteBatch batch)
+    private void PruneOldEpochs(IWriteBatch batch, ref ulong oldestSequence, ref int retainedCount)
     {
         if (_rewardHistoryEpochRetention <= 0)
         {
             return;
         }
 
-        while (TryReadInt32(RetainedCountKey, out int retainedCount) &&
-               retainedCount > _rewardHistoryEpochRetention)
+        while (retainedCount > _rewardHistoryEpochRetention)
         {
-            if (!TryReadUInt64(OldestSequenceKey, out ulong oldestSequence))
-            {
-                return;
-            }
-
             byte[]? oldestEpochBytes = _rewardsDb.Get(BuildSequenceToEpochKey(oldestSequence));
             if (oldestEpochBytes is null)
             {
@@ -127,9 +130,8 @@ internal sealed class RewardsStore(IDb rewardsDb, int rewardHistoryEpochRetentio
             batch.Remove(BuildEpochToSequenceKey(oldestEpoch));
             batch.Remove(BuildSequenceToEpochKey(oldestSequence));
 
-            ulong nextOldestSequence = oldestSequence + 1;
-            batch[OldestSequenceKey] = ToBigEndian(nextOldestSequence);
-            batch[RetainedCountKey] = ToBigEndian(retainedCount - 1);
+            oldestSequence++;
+            retainedCount--;
         }
     }
 
