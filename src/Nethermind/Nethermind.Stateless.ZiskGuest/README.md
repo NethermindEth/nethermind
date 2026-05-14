@@ -33,7 +33,7 @@ The `INPUT` variable must point to a file in the `Nethermind.Stateless.ZiskGuest
 
 ### Input serialization
 
-The input data is a version-prefixed SSZ as specified [here](https://github.com/ethereum/execution-specs/blob/projects/zkevm/src/ethereum/forks/amsterdam/stateless_ssz.py): `schema: u16le | ssz_bytes`. For the pre-Amsterdam forks, `schema` is 0.
+The input data is a version-prefixed SSZ as specified [here](https://github.com/ethereum/execution-specs/blob/projects/zkevm/src/ethereum/forks/amsterdam/stateless_ssz.py): `schema: u16be | ssz_bytes`. For the pre-Amsterdam forks, `schema` is 0.
 
 Starting from Zisk v0.16.0, the input data (`input.bin`) must be framed as follows when specified with the `--inputs` option:
 
