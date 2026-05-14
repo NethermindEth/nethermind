@@ -129,6 +129,13 @@ public class BranchProcessor(
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
                 }
+                else
+                {
+                    // Give prewarmer a head start to warm caches before block processing begins.
+                    // The prewarmer runs full EVM speculatively on background threads — without
+                    // lead time, it races with the main thread and achieves only ~30% storage hit rate.
+                    Thread.Sleep(5);
+                }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
