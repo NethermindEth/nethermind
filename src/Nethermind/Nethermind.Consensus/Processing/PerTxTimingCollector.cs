@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -20,15 +21,17 @@ public static class PerTxTimingCollector
     private static long[]? _ticksPerTx;
     private static int _count;
 
-    /// <summary>Whether per-tx timing capture is active on this thread.</summary>
+    /// <summary>Whether per-tx timing capture is active.</summary>
     public static bool IsEnabled => _enabled;
 
-    /// <summary>Called by ProcessingStats to enable/disable capture on the block-processing thread.</summary>
+    /// <summary>Called by ProcessingStats to enable/disable capture.</summary>
     public static void SetEnabled(bool enabled) => _enabled = enabled;
 
     /// <summary>Called by the tx executor before processing transactions.</summary>
     public static void Prepare(int txCount)
     {
+        // _ticksPerTx is reused across blocks; only reallocates when capacity must grow.
+        // The 256-slot floor amortizes the first few blocks before steady-state size is reached.
         if (_ticksPerTx is null || _ticksPerTx.Length < txCount)
         {
             _ticksPerTx = new long[Math.Max(txCount, 256)];
@@ -47,13 +50,27 @@ public static class PerTxTimingCollector
 
     /// <summary>
     /// Takes a snapshot of per-tx timing data. Returns null if no data was captured.
-    /// The returned array is a copy safe to use on another thread.
+    /// The returned array is rented from <see cref="ArrayPool{T}.Shared"/> and MUST be
+    /// returned via <see cref="ReturnSnapshot"/> when the caller is done with it.
+    /// The valid range is <c>[0, count)</c>; the pooled array may be larger than <paramref name="count"/>.
     /// </summary>
-    public static long[]? Snapshot()
+    public static long[]? Snapshot(out int count)
     {
-        if (!_enabled || _ticksPerTx is null || _count == 0) return null;
-        long[] copy = new long[_count];
+        if (!_enabled || _ticksPerTx is null || _count == 0)
+        {
+            count = 0;
+            return null;
+        }
+
+        count = _count;
+        long[] copy = ArrayPool<long>.Shared.Rent(_count);
         Array.Copy(_ticksPerTx, copy, _count);
         return copy;
+    }
+
+    /// <summary>Returns a snapshot array to the shared pool.</summary>
+    public static void ReturnSnapshot(long[]? snapshot)
+    {
+        if (snapshot is not null) ArrayPool<long>.Shared.Return(snapshot);
     }
 }

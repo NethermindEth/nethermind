@@ -364,8 +364,16 @@ public partial class BlockProcessor
             in IntrinsicGas<EthereumGasPolicy> intrinsicGas)
         {
             long txStart = inner.StartTxTimer();
-            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
-            inner.StopTxTimer(index, txStart);
+            TransactionResult result;
+            try
+            {
+                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider, in intrinsicGas);
+            }
+            finally
+            {
+                // Stop the timer even on failure so a slow-block log captures the failing tx's time
+                inner.StopTxTimer(index, txStart);
+            }
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
         }
 

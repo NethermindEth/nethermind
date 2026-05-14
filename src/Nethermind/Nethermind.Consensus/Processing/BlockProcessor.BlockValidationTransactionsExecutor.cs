@@ -57,8 +57,16 @@ public partial class BlockProcessor
         protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
         {
             long txStart = StartTxTimer();
-            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
-            StopTxTimer(index, txStart);
+            TransactionResult result;
+            try
+            {
+                result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
+            }
+            finally
+            {
+                // Stop the timer even on failure so a slow-block log captures the failing tx's time
+                StopTxTimer(index, txStart);
+            }
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
             _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }

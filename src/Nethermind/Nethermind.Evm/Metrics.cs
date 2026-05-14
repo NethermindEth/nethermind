@@ -119,6 +119,8 @@ public class Metrics
     public static long AccountReads => _mainAccountReads + _otherAccountReads;
     private static long _mainAccountReads;
     private static long _otherAccountReads;
+    // Exposed for ProcessingStats so block-level deltas exclude background prewarmer activity.
+    internal static long MainThreadAccountReads => _mainAccountReads;
     internal static void IncrementAccountReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountReads : ref _otherAccountReads);
 
     [CounterMetric]
@@ -126,6 +128,7 @@ public class Metrics
     public static long StorageReads => _mainStorageReads + _otherStorageReads;
     private static long _mainStorageReads;
     private static long _otherStorageReads;
+    internal static long MainThreadStorageReads => _mainStorageReads;
     internal static void IncrementStorageReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageReads : ref _otherStorageReads);
 
     [CounterMetric]
@@ -133,6 +136,7 @@ public class Metrics
     public static long CodeReads => _mainCodeReads + _otherCodeReads;
     private static long _mainCodeReads;
     private static long _otherCodeReads;
+    internal static long MainThreadCodeReads => _mainCodeReads;
     internal static void IncrementCodeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeReads : ref _otherCodeReads);
 
     [CounterMetric]
@@ -140,6 +144,7 @@ public class Metrics
     public static long CodeBytesRead => _mainCodeBytesRead + _otherCodeBytesRead;
     private static long _mainCodeBytesRead;
     private static long _otherCodeBytesRead;
+    internal static long MainThreadCodeBytesRead => _mainCodeBytesRead;
     internal static void IncrementCodeBytesRead(int bytes) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesRead : ref _otherCodeBytesRead, bytes);
 
     [CounterMetric]
@@ -147,6 +152,7 @@ public class Metrics
     public static long AccountWrites => _mainAccountWrites + _otherAccountWrites;
     private static long _mainAccountWrites;
     private static long _otherAccountWrites;
+    internal static long MainThreadAccountWrites => _mainAccountWrites;
     internal static void IncrementAccountWrites() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountWrites : ref _otherAccountWrites);
 
     [CounterMetric]
@@ -154,6 +160,7 @@ public class Metrics
     public static long AccountDeleted => _mainAccountDeleted + _otherAccountDeleted;
     private static long _mainAccountDeleted;
     private static long _otherAccountDeleted;
+    internal static long MainThreadAccountDeleted => _mainAccountDeleted;
     internal static void IncrementAccountDeleted() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainAccountDeleted : ref _otherAccountDeleted);
 
     [CounterMetric]
@@ -161,6 +168,7 @@ public class Metrics
     public static long StorageWrites => _mainStorageWrites + _otherStorageWrites;
     private static long _mainStorageWrites;
     private static long _otherStorageWrites;
+    internal static long MainThreadStorageWrites => _mainStorageWrites;
     internal static void IncrementStorageWrites() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageWrites : ref _otherStorageWrites);
 
     [CounterMetric]
@@ -168,6 +176,7 @@ public class Metrics
     public static long StorageDeleted => _mainStorageDeleted + _otherStorageDeleted;
     private static long _mainStorageDeleted;
     private static long _otherStorageDeleted;
+    internal static long MainThreadStorageDeleted => _mainStorageDeleted;
     internal static void IncrementStorageDeleted() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageDeleted : ref _otherStorageDeleted);
 
     [CounterMetric]
@@ -175,6 +184,7 @@ public class Metrics
     public static long CodeWrites => _mainCodeWrites + _otherCodeWrites;
     private static long _mainCodeWrites;
     private static long _otherCodeWrites;
+    internal static long MainThreadCodeWrites => _mainCodeWrites;
     internal static void IncrementCodeWrites() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeWrites : ref _otherCodeWrites);
 
     [CounterMetric]
@@ -182,6 +192,7 @@ public class Metrics
     public static long CodeBytesWritten => _mainCodeBytesWritten + _otherCodeBytesWritten;
     private static long _mainCodeBytesWritten;
     private static long _otherCodeBytesWritten;
+    internal static long MainThreadCodeBytesWritten => _mainCodeBytesWritten;
     internal static void IncrementCodeBytesWritten(int bytes) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCodeBytesWritten : ref _otherCodeBytesWritten, bytes);
 
     [CounterMetric]
@@ -189,6 +200,7 @@ public class Metrics
     public static long Eip7702DelegationsSet => _mainEip7702DelegationsSet + _otherEip7702DelegationsSet;
     private static long _mainEip7702DelegationsSet;
     private static long _otherEip7702DelegationsSet;
+    internal static long MainThreadEip7702DelegationsSet => _mainEip7702DelegationsSet;
     internal static void IncrementEip7702DelegationsSet() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsSet : ref _otherEip7702DelegationsSet);
 
     [CounterMetric]
@@ -196,42 +208,49 @@ public class Metrics
     public static long Eip7702DelegationsCleared => _mainEip7702DelegationsCleared + _otherEip7702DelegationsCleared;
     private static long _mainEip7702DelegationsCleared;
     private static long _otherEip7702DelegationsCleared;
+    internal static long MainThreadEip7702DelegationsCleared => _mainEip7702DelegationsCleared;
     internal static void IncrementEip7702DelegationsCleared() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainEip7702DelegationsCleared : ref _otherEip7702DelegationsCleared);
 
     [Description("Time spent on state hashing/merkleization (ticks). Sum of storage merkle + state root.")]
     public static long StateHashTime => _mainStateHashTime + _otherStateHashTime;
     private static long _mainStateHashTime;
     private static long _otherStateHashTime;
+    internal static long MainThreadStateHashTime => _mainStateHashTime;
     internal static void IncrementStateHashTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateHashTime : ref _otherStateHashTime, ticks);
 
     [Description("Time spent committing state to storage (ticks).")]
     public static long CommitTime => _mainCommitTime + _otherCommitTime;
     private static long _mainCommitTime;
     private static long _otherCommitTime;
+    internal static long MainThreadCommitTime => _mainCommitTime;
     internal static void IncrementCommitTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCommitTime : ref _otherCommitTime, ticks);
 
     [Description("Time spent on storage trie merkleization — Commit(commitRoots: true) (ticks).")]
     public static long StorageMerkleTime => _mainStorageMerkleTime + _otherStorageMerkleTime;
     private static long _mainStorageMerkleTime;
     private static long _otherStorageMerkleTime;
+    internal static long MainThreadStorageMerkleTime => _mainStorageMerkleTime;
     internal static void IncrementStorageMerkleTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageMerkleTime : ref _otherStorageMerkleTime, ticks);
 
     [Description("Time spent on state root recalculation + commit tree (ticks).")]
     public static long StateRootTime => _mainStateRootTime + _otherStateRootTime;
     private static long _mainStateRootTime;
     private static long _otherStateRootTime;
+    internal static long MainThreadStateRootTime => _mainStateRootTime;
     internal static void IncrementStateRootTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStateRootTime : ref _otherStateRootTime, ticks);
 
     [Description("Time spent calculating bloom filters (ticks).")]
     public static long BloomsTime => _mainBloomsTime + _otherBloomsTime;
     private static long _mainBloomsTime;
     private static long _otherBloomsTime;
+    internal static long MainThreadBloomsTime => _mainBloomsTime;
     internal static void IncrementBloomsTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainBloomsTime : ref _otherBloomsTime, ticks);
 
     [Description("Time spent calculating receipts root (ticks).")]
     public static long ReceiptsRootTime => _mainReceiptsRootTime + _otherReceiptsRootTime;
     private static long _mainReceiptsRootTime;
     private static long _otherReceiptsRootTime;
+    internal static long MainThreadReceiptsRootTime => _mainReceiptsRootTime;
     internal static void IncrementReceiptsRootTime(long ticks) => Interlocked.Add(ref IsBlockProcessingThread ? ref _mainReceiptsRootTime : ref _otherReceiptsRootTime, ticks);
 
     [GaugeMetric]
