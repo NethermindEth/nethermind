@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
-    private const int AutoConcurrencyLimit = 8;
+    private const int AutoConcurrencyLimit = 4;
     private readonly int _concurrencyLevel;
     private readonly bool _parallelExecutionBatchRead;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
@@ -121,6 +121,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
             CacheType result = _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
             if (result != default)
             {
@@ -167,6 +168,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
         CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
