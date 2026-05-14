@@ -48,6 +48,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     /// Writes always go to this instance's own _blockChanges.
     /// </summary>
     internal Dictionary<AddressAsKey, ChangeTrace>? _readFallback;
+    internal SeqlockCache<AddressAsKey, Account>? _readFallbackCache;
 
     private readonly List<Change> _keptInCache = [];
     private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -737,6 +738,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                     if (_readFallback.TryGetValue(addressAsKey, out ChangeTrace fallbackTrace))
                     {
                         accountChanges = fallbackTrace;
+                        _readFallbackCache?.Set(in addressAsKey, accountChanges.After);
                         Metrics.IncrementStateTreeCacheHits();
                         return accountChanges.After;
                     }

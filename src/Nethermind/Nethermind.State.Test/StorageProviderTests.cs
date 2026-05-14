@@ -737,22 +737,27 @@ public class StorageProviderTests(bool useFlat)
     public void Read_fallback_uses_deleted_account_from_source_block_changes()
     {
         using Context source = new(useFlat);
-        using Context reader = new(useFlat);
+        PreBlockCaches preBlockCaches = new();
+        using Context reader = new(useFlat, preBlockCaches);
 
         source.StateProvider.DeleteAccount(source.Address1);
         source.StateProvider.Commit(Prague.Instance);
 
+        preBlockCaches.ClearCaches();
         reader.StateProvider.Reset();
         reader.StateProvider.SetReadFallback(source.StateProvider);
 
         reader.StateProvider.AccountExists(reader.Address1).Should().BeFalse();
+        preBlockCaches.StateCache.TryGetValue(reader.Address1, out Account account).Should().BeTrue();
+        account.Should().BeNull();
     }
 
     [Test]
     public void Read_fallback_uses_zero_storage_from_source_block_changes()
     {
         using Context source = new(useFlat);
-        using Context reader = new(useFlat);
+        PreBlockCaches preBlockCaches = new();
+        using Context reader = new(useFlat, preBlockCaches);
 
         StorageCell storageCell = new(reader.Address1, 1);
         reader.StateProvider.Set(storageCell, _values[11]);
@@ -763,9 +768,12 @@ public class StorageProviderTests(bool useFlat)
         source.StateProvider.Set(storageCell, StorageTree.ZeroBytes);
         source.StateProvider.Commit(Prague.Instance);
 
+        preBlockCaches.ClearCaches();
         reader.StateProvider.SetReadFallback(source.StateProvider);
 
         reader.StateProvider.Get(storageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+        preBlockCaches.StorageCache.TryGetValue(in storageCell, out byte[] cachedValue).Should().BeTrue();
+        cachedValue.Should().BeEquivalentTo(StorageTree.ZeroBytes);
     }
 
     private class Context : IDisposable
