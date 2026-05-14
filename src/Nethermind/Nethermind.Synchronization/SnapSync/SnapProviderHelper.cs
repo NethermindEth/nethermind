@@ -8,7 +8,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync
 {
