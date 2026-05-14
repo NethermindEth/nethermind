@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -296,11 +297,64 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private CancellationToken CancellationToken
         => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
 
+    [DllImport("libc", SetLastError = true)]
+    private static extern int sched_getaffinity(int pid, nint cpusetsize, ref ulong mask);
+
+    [DllImport("libc", SetLastError = true)]
+    private static extern int sched_setaffinity(int pid, nint cpusetsize, ref ulong mask);
+
+    [DllImport("kernel32.dll")]
+    private static extern nint GetCurrentThread();
+
+    [DllImport("kernel32.dll")]
+    private static extern nuint SetThreadAffinityMask(nint hThread, nuint dwThreadAffinityMask);
+
+    private static bool TryPinToTwoLogicalCpus()
+    {
+        try
+        {
+            if (OperatingSystem.IsLinux())
+            {
+                ulong available = 0;
+                if (sched_getaffinity(0, sizeof(ulong), ref available) != 0) return false;
+                ulong pin = PickFirstNBits(available, 2);
+                if (pin == 0) return false;
+                return sched_setaffinity(0, sizeof(ulong), ref pin) == 0;
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                ulong available = (ulong)(nint)System.Diagnostics.Process.GetCurrentProcess().ProcessorAffinity;
+                ulong pin = PickFirstNBits(available, 2);
+                if (pin == 0) return false;
+                return SetThreadAffinityMask(GetCurrentThread(), (nuint)pin) != 0;
+            }
+        }
+        catch { /* fall through */ }
+        return false;
+    }
+
+    private static ulong PickFirstNBits(ulong mask, int count)
+    {
+        ulong result = 0;
+        int found = 0;
+        for (int bit = 0; bit < 64 && found < count; bit++)
+        {
+            if ((mask & (1UL << bit)) != 0)
+            {
+                result |= 1UL << bit;
+                found++;
+            }
+        }
+        return found >= count ? result : 0;
+    }
+
     private Task RunProcessing()
     {
         TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Thread thread = new(() =>
         {
+            bool pinned = TryPinToTwoLogicalCpus();
             try
             {
                 RunProcessingLoop();
