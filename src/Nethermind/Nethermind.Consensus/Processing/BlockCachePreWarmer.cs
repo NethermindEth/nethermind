@@ -333,7 +333,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private static Dictionary<AddressAsKey, SenderTxGroup> GroupTransactionsBySender(Block block)
     {
-        Dictionary<AddressAsKey, SenderTxGroup> groups = new();
+        // Explicit comparer: ZK_EVM / bflat has no working
+        // EqualityComparer<AddressAsKey>.Default.
+        Dictionary<AddressAsKey, SenderTxGroup> groups = new(GenericEqualityComparer.GetOptimized<AddressAsKey>());
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {

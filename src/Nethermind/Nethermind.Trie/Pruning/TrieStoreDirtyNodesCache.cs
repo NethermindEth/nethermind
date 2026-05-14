@@ -66,11 +66,14 @@ internal class TrieStoreDirtyNodesCache
         GetDictionarySizing(out int concurrencyLevel, out int initialBuckets);
         if (_storeByHash)
         {
-            _byHashObjectCache = new(concurrencyLevel, initialBuckets);
+            // Explicit comparer: ZK_EVM / bflat builds have no working
+            // EqualityComparer<ValueHash256>.Default (reflection-free runtime),
+            // so the dictionary must be constructed with a typed comparer.
+            _byHashObjectCache = new(concurrencyLevel, initialBuckets, GenericEqualityComparer.GetOptimized<ValueHash256>());
         }
         else
         {
-            _byKeyObjectCache = new(concurrencyLevel, initialBuckets);
+            _byKeyObjectCache = new(concurrencyLevel, initialBuckets, GenericEqualityComparer.GetOptimized<Key>());
         }
         KeyMemoryUsage = _storeByHash ? 0 : Key.MemoryUsage; // 0 because previously it was not counted.
 
