@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -63,29 +64,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private JsonRpcErrorResponse ReturnErrorResponse(JsonRpcRequest rpcRequest, Exception ex)
     {
-        int errorCode;
-        string errorText;
-        if (ex is TargetInvocationException tx)
+        // Unwrap reflection-wrapped exceptions so the switch below sees the real type.
+        if (ex is TargetInvocationException { InnerException: { } inner })
         {
-            errorCode = ErrorCodes.InternalError;
-            ex = tx.InnerException;
-            errorText = "Internal error";
+            ex = inner;
         }
-        else if (ex is LimitExceededException)
+
+        (int errorCode, string errorText) = ex switch
         {
-            errorCode = ErrorCodes.LimitExceeded;
-            errorText = "Too many requests";
-        }
-        else if (ex is ModuleRentalTimeoutException)
-        {
-            errorCode = ErrorCodes.ModuleTimeout;
-            errorText = "Timeout";
-        }
-        else
-        {
-            errorCode = ErrorCodes.InternalError;
-            errorText = "Internal error";
-        }
+            LimitExceededException or ConcurrencyLimitReachedException => (ErrorCodes.LimitExceeded, "Too many requests"),
+            ModuleRentalTimeoutException => (ErrorCodes.ModuleTimeout, "Timeout"),
+            _ => (ErrorCodes.InternalError, "Internal error"),
+        };
 
         if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, ex.ToString(), rpcRequest.Id);
@@ -267,6 +257,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
                     $"{methodName} request was canceled due to enabled timeout.", null, request.Id, returnAction),
+
+            LimitExceededException or ConcurrencyLimitReachedException
+                or { InnerException: LimitExceededException }
+                or { InnerException: ConcurrencyLimitReachedException } =>
+                GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, request.Id, returnAction),
 
             { InnerException: InsufficientBalanceException } =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.InnerException.Message, ex.ToString(), request.Id, returnAction),
