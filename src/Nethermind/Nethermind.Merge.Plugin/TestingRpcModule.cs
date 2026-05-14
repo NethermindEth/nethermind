@@ -199,7 +199,7 @@ public class TestingRpcModule(
             blockAuthor,
             UInt256.Zero,
             parent.Number + 1,
-            payloadAttributes.GetGasLimit() ?? gasLimitCalculator.GetGasLimit(parent, (long?)payloadAttributes.TargetGasLimit),
+            payloadAttributes.GetGasLimit() ?? gasLimitCalculator.GetGasLimit(parent, checked((long?)payloadAttributes.TargetGasLimit)),
             payloadAttributes.Timestamp,
             extraData ?? [])
         {

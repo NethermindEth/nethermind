@@ -15,8 +15,11 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -64,6 +67,54 @@ public class AuRaContractGasLimitOverrideTests
         bool isValid = ((AuRaContractGasLimitOverride)chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out long? expectedGasLimit);
         isValid.Should().BeFalse();
         expectedGasLimit.Should().Be(CorrectHeadGasLimit);
+    }
+
+    [Test]
+    public void Override_is_ignored_when_contract_returns_a_limit()
+    {
+        const long contractGasLimit = 42_000_000;
+        IGasLimitCalculator inner = Substitute.For<IGasLimitCalculator>();
+        AuRaContractGasLimitOverride calculator = new(
+            [StubContract(contractGasLimit)],
+            new AuRaContractGasLimitOverride.Cache(),
+            minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract: false,
+            inner,
+            LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).TestObject;
+
+        long result = calculator.GetGasLimit(parent, targetGasLimitOverride: 50_000_000);
+
+        result.Should().Be(contractGasLimit);
+        inner.DidNotReceiveWithAnyArgs().GetGasLimit(default!);
+    }
+
+    [Test]
+    public void Override_is_forwarded_to_inner_when_no_contract_limit()
+    {
+        const long innerGasLimit = 31_000_000;
+        const long overrideTarget = 33_000_000;
+        IGasLimitCalculator inner = Substitute.For<IGasLimitCalculator>();
+        inner.GetGasLimit(Arg.Any<BlockHeader>(), Arg.Any<long?>()).Returns(innerGasLimit);
+        AuRaContractGasLimitOverride calculator = new(
+            contracts: [],
+            new AuRaContractGasLimitOverride.Cache(),
+            minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract: false,
+            inner,
+            LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(10).TestObject;
+
+        long result = calculator.GetGasLimit(parent, targetGasLimitOverride: overrideTarget);
+
+        result.Should().Be(innerGasLimit);
+        inner.Received(1).GetGasLimit(parent, overrideTarget);
+    }
+
+    private static IBlockGasLimitContract StubContract(long gasLimit)
+    {
+        IBlockGasLimitContract contract = Substitute.For<IBlockGasLimitContract>();
+        contract.ActivationBlock.Returns(0L);
+        contract.BlockGasLimit(Arg.Any<BlockHeader>()).Returns((UInt256)gasLimit);
+        return contract;
     }
 
     [Test]

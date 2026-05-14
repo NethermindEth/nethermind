@@ -7,17 +7,11 @@ namespace Nethermind.Consensus
 {
     public interface IGasLimitCalculator
     {
-        long GetGasLimit(BlockHeader parentHeader);
-
         /// <summary>
-        /// Computes the gas limit for the next block using <paramref name="targetGasLimitOverride"/>
-        /// in place of any statically-configured target. Used to honor the per-FCU
-        /// <c>targetGasLimit</c> introduced in PayloadAttributesV4 (Amsterdam).
+        /// Computes the gas limit for the next block. When <paramref name="targetGasLimitOverride"/> is supplied
+        /// (e.g. from <c>PayloadAttributesV4.targetGasLimit</c> introduced in Amsterdam), it takes precedence over
+        /// any statically-configured target. Implementations that don't honor a per-call target may ignore it.
         /// </summary>
-        /// <remarks>
-        /// Implementations that do not support a per-call target override should ignore it and fall
-        /// back to <see cref="GetGasLimit(BlockHeader)"/>.
-        /// </remarks>
-        long GetGasLimit(BlockHeader parentHeader, long? targetGasLimitOverride) => GetGasLimit(parentHeader);
+        long GetGasLimit(BlockHeader parentHeader, long? targetGasLimitOverride = null);
     }
 }
