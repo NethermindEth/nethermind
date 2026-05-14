@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -24,6 +25,12 @@ public partial class BlockProcessor
     {
         protected IWorldState _stateProvider = stateProvider;
         protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
+
+        /// <summary>
+        /// Optional callback invoked after each transaction completes, passing the tx index.
+        /// Used by the prewarmer to skip already-executed transactions.
+        /// </summary>
+        internal Action<int>? OnTxExecuted;
         private bool _enableTxTimingMetrics = false;
 
         public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -60,6 +67,7 @@ public partial class BlockProcessor
             TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
             StopTxTimer(index, txStart);
             if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+            OnTxExecuted?.Invoke(index);
             _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }
 

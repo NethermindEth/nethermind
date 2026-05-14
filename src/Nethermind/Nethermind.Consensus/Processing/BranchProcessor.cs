@@ -79,6 +79,12 @@ public class BranchProcessor(
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
+        // Wire prewarmer's skip-already-executed tracking to the tx executor
+        if (preWarmer is not null && blockProcessor is BlockProcessor bp)
+        {
+            bp.SetTxExecutedCallback(preWarmer.NotifyTxExecuted);
+        }
+
         try
         {
             // Start prewarming as early as possible

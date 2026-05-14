@@ -34,6 +34,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly PrewarmerTaskScheduler _dedicatedScheduler;
+    private readonly TaskFactory _dedicatedFactory;
+
+    /// <summary>
+    /// Shared with the block processor so the prewarmer can skip transactions
+    /// that main execution has already processed (like Reth's atomic tx index).
+    /// </summary>
+    public TxExecutionProgress TxProgress { get; } = new();
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -65,6 +73,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
+
+        // Dedicated thread pool keeps prewarmer off the shared .NET ThreadPool,
+        // preventing CPU contention with block processing, RPC, and post-tx work.
+        _dedicatedScheduler = new PrewarmerTaskScheduler(_concurrencyLevel);
+        _dedicatedFactory = new TaskFactory(_dedicatedScheduler);
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -81,18 +94,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
+                TxProgress.Reset();
                 BlockState blockState = new(this, suggestedBlock, parent, spec);
-                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken };
+                ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = cancellationToken, TaskScheduler = _dedicatedScheduler };
 
                 // BAL makes speculative tx execution redundant — when BAL-based read warming
                 // is in use, drive warmup directly off the suggested block's access list.
                 BlockAccessList? bal = IsBalReadWarmingEnabled(spec) ? suggestedBlock.BlockAccessList : null;
 
-                // Run address warmer ahead of transactions warmer, but queue to ThreadPool so it doesn't block the txs
+                // Run address warmer on the dedicated pool (not the shared .NET ThreadPool)
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
-                ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
-                // Do not pass the cancellation token to the task, we don't want exceptions to be thrown in the main processing thread
-                return Task.Run(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
+                _dedicatedFactory.StartNew(() => ((IThreadPoolWorkItem)addressWarmer).Execute(), cancellationToken);
+                // Run prewarming on dedicated threads to avoid CPU contention with block processing
+                return _dedicatedFactory.StartNew(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken), cancellationToken);
             }
         }
 
@@ -124,10 +138,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return cachesCleared;
     }
 
-    public void Dispose() => (_envPool as IDisposable)?.Dispose();
+    public void NotifyTxExecuted(int txIndex) => TxProgress.MarkExecuted(txIndex);
+
+    public void Dispose()
+    {
+        (_envPool as IDisposable)?.Dispose();
+        _dedicatedScheduler.Dispose();
+    }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
+        ProcessingThread.IsBlockProcessingThread = false;
         try
         {
             if (cancellationToken.IsCancellationRequested) return;
@@ -234,6 +255,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
                             {
                                 if (token.IsCancellationRequested) return tupleState;
+                                // Skip transactions the main processor has already executed (Reth-style)
+                                if (blockState.PreWarmer.TxProgress.IsAlreadyExecuted(txIndex)) continue;
                                 WarmupSingleTransaction(scope, tx, txIndex, blockState);
                             }
                         }

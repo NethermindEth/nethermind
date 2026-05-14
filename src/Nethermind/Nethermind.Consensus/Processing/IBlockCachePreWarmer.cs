@@ -16,4 +16,10 @@ public interface IBlockCachePreWarmer : IDisposable
     Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists);
     CacheType ClearCaches();
     bool IsBalReadWarmingEnabled(IReleaseSpec spec);
+
+    /// <summary>
+    /// Notify prewarmer that the main processor has finished executing transaction at <paramref name="txIndex"/>.
+    /// Prewarmer threads will skip this and earlier transactions to avoid redundant work.
+    /// </summary>
+    void NotifyTxExecuted(int txIndex) { }
 }
