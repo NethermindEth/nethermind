@@ -200,6 +200,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// </summary>
     internal IWorldState? MainThreadWorldState;
 
+    /// <summary>
+    /// Incremented by the main block processor after each tx. Used to throttle retry passes —
+    /// the prewarmer waits for the main thread to advance before starting a new pass.
+    /// </summary>
+    internal int MainThreadTxIndex = -1;
+
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -209,6 +215,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
+            Volatile.Write(ref MainThreadTxIndex, -1);
+
             Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
 
             try
@@ -216,10 +224,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
                 BlockCachePreWarmer preWarmer = this;
 
-                // First pass: sender-grouped with read fallback to main thread's live state.
-                // After all groups complete, re-run — the main thread will have committed more
-                // txs by then, so the fallback provides fresher state and previously-failed
-                // txs may succeed. Each pass uses a fresh scope to pick up new fallback data.
+                int lastSeenMainTx = -1;
                 while (!parallelOptions.CancellationToken.IsCancellationRequested)
                 {
                     ParallelUnbalancedWork.For(
@@ -255,6 +260,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                             return tupleState;
                         });
+
+                    // Wait for the main thread to advance before starting another pass.
+                    // Retrying immediately just burns CPU and creates L1/L2 cache contention.
+                    SpinWait spin = default;
+                    while (!parallelOptions.CancellationToken.IsCancellationRequested)
+                    {
+                        int currentMain = Volatile.Read(ref MainThreadTxIndex);
+                        if (currentMain > lastSeenMainTx)
+                        {
+                            lastSeenMainTx = currentMain;
+                            break;
+                        }
+                        spin.SpinOnce();
+                    }
                 }
             }
             finally
