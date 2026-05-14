@@ -238,6 +238,9 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         private readonly long _scopeStart;
         private readonly long _scopeEnd;
         private readonly long _rootAbsStart;
+        // Fixed key length read from the BTree trailer. Every entry in the HSST has a
+        // key of exactly this many bytes — the data-section entry no longer repeats it.
+        private readonly int _keyLength;
         private readonly Ancestor[] _ancestors = new Ancestor[MaxDepth];
 
         // Current leaf state. _depth: -1 = not started, -2 = exhausted, ≥0 = leaf depth in tree.
@@ -258,14 +261,16 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         {
             _scopeStart = scope.Offset;
             _scopeEnd = scope.Offset + scope.Length;
-            // BTree trailer is [RootSize u16 LE][IndexType u8]; root starts at scopeEnd - 3 - rootSize.
-            if (scope.Length >= 3 + 12)
+            // BTree trailer is [RootSize u16 LE][KeyLength u8][IndexType u8];
+            // root starts at scopeEnd - 4 - rootSize.
+            if (scope.Length >= 4 + 12)
             {
-                Span<byte> sizeBuf = stackalloc byte[2];
-                if (reader.TryRead(_scopeEnd - 3, sizeBuf))
+                Span<byte> trailerBuf = stackalloc byte[3];
+                if (reader.TryRead(_scopeEnd - 4, trailerBuf))
                 {
-                    int rootSize = sizeBuf[0] | (sizeBuf[1] << 8);
-                    _rootAbsStart = _scopeEnd - 3 - rootSize;
+                    int rootSize = trailerBuf[0] | (trailerBuf[1] << 8);
+                    _keyLength = trailerBuf[2];
+                    _rootAbsStart = _scopeEnd - 4 - rootSize;
                 }
                 else
                 {
@@ -326,7 +331,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
             int depth = depthHint;
             while (depth < MaxDepth)
             {
-                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, _scopeEnd - 3, out HsstIndex node, out TPin pin))
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, currentStart, _scopeEnd - 4, out HsstIndex node, out TPin pin))
                     return false;
 
                 using (pin)
@@ -394,7 +399,7 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
                 ref Ancestor anc = ref _ancestors[_depth];
                 anc.LastIdx++;
 
-                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, _scopeEnd - 3, out HsstIndex parent, out TPin parentPin))
+                if (!HsstBTreeReader.TryLoadNode<TReader, TPin>(in reader, anc.AbsStart, _scopeEnd - 4, out HsstIndex parent, out TPin parentPin))
                 {
                     _depth = -2;
                     return false;
@@ -432,26 +437,24 @@ public struct HsstEnumerator<TReader, TPin> : IDisposable
         {
             long metaStart = _leafMetaStarts[_leafIdx];
 
-            // Entry layout: [Value][ValueLength: LEB128][KeyLength: u8][FullKey].
-            // metaStart points at the ValueLength LEB128 — value sits before, lengths + key after.
-            // Long LEB128 occupies up to 10 bytes; KeyLength is a single u8, so the worst-case
-            // length-prefix window is 11 bytes.
-            const int LenPrefixMaxBytes = 11;
-            int lebWindow = (int)Math.Min(LenPrefixMaxBytes, _scopeEnd - metaStart);
+            // Entry layout: [Value][ValueLength: LEB128][FullKey].
+            // metaStart points at the ValueLength LEB128 — value sits before, key after.
+            // Long LEB128 occupies up to 10 bytes; the key length comes from the trailer,
+            // not from per-entry storage.
+            const int ValueLenMaxBytes = 10;
+            int lebWindow = (int)Math.Min(ValueLenMaxBytes, _scopeEnd - metaStart);
             int pos;
             long valueLength;
-            int keyLength;
             using (TPin lebPin = reader.PinBuffer(metaStart, lebWindow))
             {
                 ReadOnlySpan<byte> leb = lebPin.Buffer;
                 pos = 0;
                 valueLength = Leb128.Read(leb, ref pos);
-                keyLength = leb[pos++];
             }
 
             _currentMetaStart = metaStart;
             _currentKeyOffset = metaStart + pos;
-            _currentKeyLength = keyLength;
+            _currentKeyLength = _keyLength;
             _currentValueOffset = metaStart - valueLength;
             _currentValueLength = valueLength;
             return true;

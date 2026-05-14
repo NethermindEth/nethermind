@@ -305,10 +305,11 @@ internal static class HsstSizeEstimator
         if (entryCount == 0)
             return 2; // Minimal HSST (empty index + IndexType byte)
 
-        // Data region: entries with separators and values
-        // Each entry has: key(remaining), separator, value length(LEB128), value
-        // LEB128 overhead: ~3 bytes for separator length, ~2 bytes for value length
-        int avgDataPerEntry = avgValueSize + avgRemainingKeyLen + 5;
+        // Data region: entries with full key and value
+        // Each entry has: value, value length(LEB128), key (key length lives in the trailer,
+        // not per entry). LEB128 overhead: ~4 bytes for the value length on the kind of
+        // values this estimator is sized for.
+        int avgDataPerEntry = avgValueSize + avgRemainingKeyLen + 4;
         long dataSize = (long)entryCount * avgDataPerEntry;
 
         // Index region: leaf nodes with separators

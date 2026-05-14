@@ -251,14 +251,16 @@ public static class PersistedSnapshotReader
             if (!outer.TrySeek(PersistedSnapshot.AccountColumnTag, out _)) return;
             col = outer.GetBound();
         }
-        if (col.Length < 3 + 12) return;
+        if (col.Length < 4 + 12) return;
 
-        // BTree trailer is [RootSize u16 LE][IndexType u8]; root starts at scopeEnd - 3 - rootSize.
+        // BTree trailer is [RootSize u16 LE][KeyLength u8][IndexType u8];
+        // root starts at scopeEnd - 4 - rootSize. We only need the rootSize here — the
+        // per-HSST KeyLength isn't consulted while walking intermediate nodes.
         Span<byte> sizeBuf = stackalloc byte[2];
-        if (!reader.TryRead(col.Offset + col.Length - 3, sizeBuf)) return;
+        if (!reader.TryRead(col.Offset + col.Length - 4, sizeBuf)) return;
         int rootSize = sizeBuf[0] | (sizeBuf[1] << 8);
-        long rootAbsStart = col.Offset + col.Length - 3 - rootSize;
-        long scopeEnd = col.Offset + col.Length - 3;
+        long rootAbsStart = col.Offset + col.Length - 4 - rootSize;
+        long scopeEnd = col.Offset + col.Length - 4;
         WalkBTreeIndexNodes<TReader, TPin>(in reader, col, rootAbsStart, scopeEnd);
     }
 

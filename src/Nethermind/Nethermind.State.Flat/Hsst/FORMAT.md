@@ -38,7 +38,7 @@ A compact, immutable binary format for sorted key/value tables.
 
 | Variant | Bytes |
 |---|---|
-| **BTree** | `[Data Region][Index Region][IndexType: u8 = 0x01]` |
+| **BTree** | `[Data Region][Index Region][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]` |
 | **PackedArray** | `[Data][Summary L0]…[Summary L(D-1)][HashTable: 4·TableSize bytes (omitted when 0)][Metadata][MetadataLength: u8][IndexType: u8 = 0x02]` |
 | **DenseByteIndex** | `[Value_0]…[Value_{N-1}][Ends: N·u32 LE][Count: u8 = N − 1][IndexType: u8 = 0x04]` |
 
@@ -47,23 +47,25 @@ the variant by enumerated value (not a bitfield):
 
 | Value | Name | Meaning |
 |---|---|---|
-| `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. |
+| `0x01` | `BTree` | Separate data region; leaves hold metaStart pointers. Fixed key length recorded once in the trailer rather than per entry. |
 | `0x02` | `PackedArray` | Fixed-size key/value array with a recursive "summary" index and an optional hash table. |
 | `0x03` | _reserved_ | Previously `ByteTagMap`; do not reuse without bumping the wire format. |
 | `0x04` | `DenseByteIndex` | Single-byte-keyed map indexed directly by the tag byte; gap-filled with zero-length values. |
 
 Other values are reserved for future index strategies. The root B-tree
-node lives just before the index type byte and is read backward via its
-trailing `MetadataLength` byte; there is no header.
+node lives just before the BTree trailer (`[RootSize u16 LE][KeyLength u8][IndexType u8]`)
+and is located by computing `root_start = HSST_end - 4 - RootSize`.
 
 ### BTree variant
 
-The data region is a packed sequence of variable-length, **self-describing**
-entries laid out value-first so that decoding is forward-readable from a
-known `MetadataStart` cursor:
+The BTree HSST stores a fixed key length per blob: every entry in the
+table has a key of exactly `KeyLength` bytes (0–255), recorded once in the
+trailer's `KeyLength: u8` field. The data region is a packed sequence of
+variable-length, **self-describing** entries laid out value-first so that
+decoding is forward-readable from a known `MetadataStart` cursor:
 
 ```
-[Value: V bytes][ValueLength: LEB128][KeyLength: u8][FullKey: K bytes]
+[Value: V bytes][ValueLength: LEB128][FullKey: KeyLength bytes]
                 ^
                 MetadataStart  (= the index pointer's target byte)
 ```
@@ -75,8 +77,10 @@ the leaf, take the metaStart pointer, then:
 
 1. Decode `ValueLength` (LEB128) — the value bytes live at
    `[MetadataStart - ValueLength, MetadataStart)`.
-2. Read `KeyLength` (single `u8`, 0–255).
-3. The full key sits at `[MetadataStart + lebBytes + 1, MetadataStart + lebBytes + 1 + KeyLength)`.
+2. The full key sits at
+   `[MetadataStart + lebBytes, MetadataStart + lebBytes + KeyLength)`,
+   where `KeyLength` comes from the BTree trailer (the value is the same
+   for every entry in this HSST).
 
 **Why `MetadataStart` aims at `ValueLength` and not at the value.** Values
 are unbounded (KiB–MiB, including nested HSSTs) so `ValueLength` is LEB128.
@@ -84,8 +88,8 @@ LEB128 has a forward-only terminator (high-bit "continuation" chain): given
 a byte mid-stream you can't tell whether you're inside someone else's
 continuation run or sitting at the start of a fresh varint. So the format
 places the length *after* the value and aims the index pointer at it; the
-value is back-derived from `MetadataStart - ValueLength`. The fixed-width
-`KeyLength` then `FullKey` are forward-decoded after that. This is a
+value is back-derived from `MetadataStart - ValueLength`. `FullKey` is
+forward-decoded after that, using the trailer's `KeyLength`. This is a
 load-bearing invariant — the entry tail must keep `MetadataStart` as the
 value↔length pivot.
 
@@ -321,8 +325,10 @@ data region).
 - Maximum entries per leaf node: **64** by default; configurable at write
   time. Beyond that, the writer splits the leaf and promotes a separator
   into an intermediate node.
-- Maximum key length per entry: **255 bytes**, encoded as a single `u8`.
-  Writers must reject longer keys.
+- Maximum key length per entry: **255 bytes**. Every entry in a BTree HSST
+  shares the same key length, recorded once in the trailer as a single `u8`
+  (so 0–255). Writers must reject longer keys and reject mid-build key-length
+  changes.
 - `MetadataLength` is a single byte → metadata section ≤ 255 bytes.
 - Per-entry value slots are 1..8 byte LE unsigned integers (width per
   `ValueSize`). Combined with the optional 6-byte `BaseOffset`, a single

@@ -19,11 +19,12 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class BSearchIndexTests
 {
-    // Read the root node from a full-HSST byte array. Trailer is [RootSize u16 LE][IndexType u8].
+    // Read the root node from a full-HSST byte array.
+    // Trailer is [RootSize u16 LE][KeyLength u8][IndexType u8].
     private static BSearchIndexReader ReadHsstRoot(byte[] data)
     {
-        int rootSize = data[data.Length - 3] | (data[data.Length - 2] << 8);
-        int rootStart = data.Length - 3 - rootSize;
+        int rootSize = data[data.Length - 4] | (data[data.Length - 3] << 8);
+        int rootStart = data.Length - 4 - rootSize;
         return BSearchIndexReader.ReadFromStart(data, rootStart);
     }
 

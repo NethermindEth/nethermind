@@ -28,14 +28,21 @@ internal static class HsstBTreeReader
     {
         resultBound = default;
 
-        // Trailer is [RootSize u16 LE][IndexType u8]. Root start = bound end - 3 - RootSize.
-        if (bound.Length < 3 + 12) return false;
-        Span<byte> sizeBuf = stackalloc byte[2];
-        if (!reader.TryRead(bound.Offset + bound.Length - 3, sizeBuf)) return false;
-        int rootSize = sizeBuf[0] | (sizeBuf[1] << 8);
-        long currentAbsStart = bound.Offset + bound.Length - 3 - rootSize;
-        // Trailer is 3 bytes; nodes live in [bound.Offset, scopeEnd).
-        long scopeEnd = bound.Offset + bound.Length - 3;
+        // Trailer is [RootSize u16 LE][KeyLength u8][IndexType u8]. Root start = bound end - 4 - RootSize.
+        if (bound.Length < 4 + 12) return false;
+        Span<byte> trailerBuf = stackalloc byte[3];
+        if (!reader.TryRead(bound.Offset + bound.Length - 4, trailerBuf)) return false;
+        int rootSize = trailerBuf[0] | (trailerBuf[1] << 8);
+        int trailerKeyLength = trailerBuf[2];
+
+        // Exact-match needs the input key to match the HSST's fixed key length; reject up
+        // front before walking the tree. Floor lookups intentionally allow mismatched
+        // lengths so callers can seek with a key prefix or sentinel.
+        if (exactMatch && key.Length != trailerKeyLength) return false;
+
+        long currentAbsStart = bound.Offset + bound.Length - 4 - rootSize;
+        // Trailer is 4 bytes; nodes live in [bound.Offset, scopeEnd).
+        long scopeEnd = bound.Offset + bound.Length - 4;
 
         while (true)
         {
@@ -75,13 +82,13 @@ internal static class HsstBTreeReader
                 long metaStart = (long)(BSearchIndex.BSearchIndexReader.ReadUInt64LE(metaBytes) + node.Metadata.BaseOffset);
                 long absMetaStart = bound.Offset + metaStart;
 
-                // Read up to 11 bytes from absMetaStart: enough for ValueLength (≤10
-                // for long LEB128) + KeyLength (1 byte). KeyLength only consumed when
-                // exact-matching.
+                // Read up to 10 bytes from absMetaStart for the ValueLength LEB128 (max
+                // 10 bytes for a 64-bit varint). The key length comes from the trailer,
+                // not from per-entry storage.
                 long available = bound.Offset + bound.Length - absMetaStart;
                 if (available <= 0) return false;
-                Span<byte> lebBuf = stackalloc byte[11];
-                int lebRead = (int)Math.Min(11, available);
+                Span<byte> lebBuf = stackalloc byte[10];
+                int lebRead = (int)Math.Min(10, available);
                 if (!reader.TryRead(absMetaStart, lebBuf[..lebRead])) return false;
 
                 int pos = 0;
@@ -89,13 +96,11 @@ internal static class HsstBTreeReader
 
                 if (exactMatch)
                 {
-                    if (pos >= lebRead) return false;
-                    int keyLength = lebBuf[pos++];
-                    if (keyLength != key.Length) return false;
-
-                    // Stored key fits in 255 bytes — single read + compare, no chunking.
+                    // trailerKeyLength == key.Length was already enforced at the top of
+                    // TrySeek; compare the stored key bytes against the input. Stored key
+                    // fits in 255 bytes — single read + compare, no chunking.
                     Span<byte> stored = stackalloc byte[255];
-                    Span<byte> storedSlice = stored[..keyLength];
+                    Span<byte> storedSlice = stored[..trailerKeyLength];
                     if (!reader.TryRead(absMetaStart + pos, storedSlice)) return false;
                     if (!storedSlice.SequenceEqual(key)) return false;
                 }

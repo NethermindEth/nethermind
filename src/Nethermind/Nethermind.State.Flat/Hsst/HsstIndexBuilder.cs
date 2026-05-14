@@ -38,9 +38,10 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     private ref TWriter _writer;
     private TReader _reader;
     private readonly ReadOnlySpan<long> _entryPositions;
-    // Fixed key length for every entry (HsstBTreeBuilder enforces uniformity). Used directly
-    // wherever we previously called ReadKeyLength / tracked minKeyLen — those collapse to
-    // this single scalar.
+    // Fixed key length for every entry (HsstBTreeBuilder enforces uniformity, and the
+    // HSST trailer records the same value so readers don't need a per-entry length
+    // byte). Used directly wherever we previously tracked minKeyLen — those collapse
+    // to this single scalar.
     private readonly int _keyLength;
     // Pointer to the caller-supplied buffers struct holding the work arrays/lists
     // (CommonPrefixArr, LeafFirstKeys, CurrentLevel, NextLevel, ValueScratch, SegTree,
@@ -66,8 +67,9 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Build B-tree index via writer.
     /// The absolute data region start offset (= 1 + dataLen) is needed to compute child offsets.
-    /// Returns the byte length of the root node — the caller writes a u16 trailer with that
-    /// value so readers can locate the root from the HSST end.
+    /// Returns the byte length of the root node — the caller writes the
+    /// <c>[RootSize u16][KeyLength u8][IndexType u8]</c> trailer using that value so readers
+    /// can locate the root from the HSST end.
     /// </summary>
     public unsafe int Build(long absoluteIndexStart,
         int maxLeafEntries = HsstBTreeOptions.DefaultMaxLeafEntries,
@@ -580,8 +582,8 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// <summary>
     /// Read the full key for entry index <paramref name="idx"/> into <paramref name="dest"/>.
     /// Walks the LEB128 ValueLength header byte-by-byte (so end-of-data-section reads
-    /// stay in bounds), then reads the KeyLength byte and the key bytes.
-    /// Returns the key length (≤ 255).
+    /// stay in bounds), then reads the key bytes — key length is uniform per HSST and
+    /// stored in the trailer, not per entry. Returns the key length (≤ 255).
     /// </summary>
     private int ReadKey(int idx, scoped Span<byte> dest)
     {
@@ -596,11 +598,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
             offset++;
         } while ((oneByte[0] & 0x80) != 0);
 
-        // KeyLength byte.
-        if (!_reader.TryRead(offset, oneByte)) ThrowReadFailed();
-        int keyLen = oneByte[0];
-        offset++;
-
+        int keyLen = _keyLength;
         if (keyLen > 0)
         {
             if (!_reader.TryRead(offset, dest[..keyLen])) ThrowReadFailed();
@@ -677,7 +675,7 @@ public ref struct HsstIndexBuilder<TWriter, TReader, TPin>
     /// fresh page. Padding bytes are inert: parent nodes record exact child
     /// offsets, so readers never look at the padding region. Caller must avoid
     /// invoking this after the very last node (root) — the trailer formula
-    /// <c>root_start = HSST_end - 3 - rootSize</c> assumes the trailer abuts the
+    /// <c>root_start = HSST_end - 4 - rootSize</c> assumes the trailer abuts the
     /// root, and any padding between them would offset the computed root start.
     /// </summary>
     private void MaybePadToNextPage()

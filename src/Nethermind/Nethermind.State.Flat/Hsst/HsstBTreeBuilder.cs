@@ -15,20 +15,21 @@ namespace Nethermind.State.Flat.Hsst;
 /// Entries MUST be added in sorted key order. No internal sorting is performed.
 ///
 /// Binary layout (BTree):
-///   [Data Region: entries...][Index Region: B-tree nodes...][RootSize: u16 LE][IndexType: u8 = 0x01]
-///   The root node's start is computed as (HSST end - 3 - RootSize); its header sits at that
+///   [Data Region: entries...][Index Region: B-tree nodes...][RootSize: u16 LE][KeyLength: u8][IndexType: u8 = 0x01]
+///   The root node's start is computed as (HSST end - 4 - RootSize); its header sits at that
 ///   first byte. Per-node fields run header → keys → values (low → high) so a forward read of
 ///   the metadata pulls the keys/values into cache via the hardware prefetcher.
 ///
-/// Entry format (normal, value first, lengths forward-readable from MetadataStart):
-///   [optional pad][Value][ValueLength: LEB128][KeyLength: u8][FullKey]
-/// MetadataStart points at the ValueLength LEB128. KeyLength is a single byte: keys are
-/// capped at 255 bytes by format contract. The leaf B-tree node also stores a separator
-/// (a min-length prefix of the full key) for binary-search navigation, but the
-/// data-region entry is self-describing — the full key lives in the entry tail and the
-/// reader does not need to consult the leaf to recover it. (ValueLength uses LEB128
-/// because values are unbounded; the LEB128 terminator chain is forward-readable only,
-/// so the lengths sit after the value and the index aims at them.)
+/// Entry format (normal, value first, ValueLength forward-readable from MetadataStart):
+///   [optional pad][Value][ValueLength: LEB128][FullKey]
+/// MetadataStart points at the ValueLength LEB128. Key length is invariant per HSST and
+/// lives in the trailer (single byte, 0–255 by format contract), so the data-section
+/// entry does not repeat it. The leaf B-tree node also stores a separator (a min-length
+/// prefix of the full key) for binary-search navigation, but the data-region entry is
+/// self-describing — the full key lives in the entry tail and the reader does not need
+/// to consult the leaf to recover it. (ValueLength uses LEB128 because values are
+/// unbounded; the LEB128 terminator chain is forward-readable only, so the length sits
+/// after the value and the index aims at it.)
 /// The reader recovers the value via ValueStart = MetadataStart - ValueLength, so any
 /// leading pad bytes a caller inserts between BeginValueWrite and the real value (e.g.
 /// to keep the value within a 4 KiB page) are inert gap data — no index entry points at
@@ -66,14 +67,15 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
 
     /// <summary>
     /// Create builder writing via the given writer.
-    /// The trailing IndexType byte is appended in <see cref="Build"/>.
+    /// The trailing [RootSize u16][KeyLength u8][IndexType u8] is appended in <see cref="Build"/>.
     /// Allocates working buffers from NativeMemory — call Dispose() to free them.
     /// <paramref name="keyLength"/> declares the fixed key length (0–255) every entry must use;
     /// all keys in a single HSST must be exactly this many bytes. Pass -1 to defer the
     /// declaration to the first <see cref="Add"/>/<see cref="FinishValueWrite(System.ReadOnlySpan{byte})"/>
-    /// call, which then locks the length for the rest of the build. The on-disk format is
-    /// unchanged — the per-entry KeyLength:u8 byte is still written — but the builder
-    /// rejects mismatches at build time so downstream code can rely on uniform keys.
+    /// call, which then locks the length for the rest of the build. The fixed length is
+    /// recorded once in the trailer (single KeyLength:u8 byte before the IndexType byte)
+    /// rather than per-entry, and the builder rejects mismatches at build time so readers
+    /// can rely on the trailer value.
     /// <paramref name="expectedKeyCount"/> sizes the entry-positions buffer up front;
     /// pass an estimate when known to avoid resize allocations. The buffer still grows on demand.
     /// </summary>
@@ -195,17 +197,14 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         // The index builder reads keys back through OpenReader using these positions.
         long metadataPos = _writer.Written - _baseOffset;
 
-        // Write [ValueLength: LEB128][KeyLength: u8][FullKey]. The full key lives in
-        // the data region so the entry is self-describing; the leaf separator stored
-        // in the B-tree node is recomputed at Build() time from the flushed bytes.
+        // Write [ValueLength: LEB128][FullKey]. The full key lives in the data region
+        // so the entry is self-describing; the leaf separator stored in the B-tree
+        // node is recomputed at Build() time from the flushed bytes. Key length is
+        // uniform per HSST and recorded once in the trailer, not per entry.
         // 64-bit LEB128 takes up to 10 bytes.
         Span<byte> leb = _writer.GetSpan(10);
         int lebLen = Leb128.Write(leb, 0, valueLength);
         _writer.Advance(lebLen);
-
-        Span<byte> kl = _writer.GetSpan(1);
-        kl[0] = (byte)key.Length;
-        _writer.Advance(1);
 
         if (key.Length > 0)
         {
@@ -233,9 +232,11 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
     }
 
     /// <summary>
-    /// Build index, then append the trailing [RootSize u16 LE][IndexType u8] (3 bytes).
-    /// Reader locates the root via (HSST end - 3 - RootSize). A node is capped at 64 KiB
-    /// so RootSize fits in u16.
+    /// Build index, then append the trailing [RootSize u16 LE][KeyLength u8][IndexType u8] (4 bytes).
+    /// Reader locates the root via (HSST end - 4 - RootSize). A node is capped at 64 KiB
+    /// so RootSize fits in u16. KeyLength is the fixed key length for every entry in this
+    /// HSST (the builder enforces uniformity); 0 when the build was empty and no length
+    /// was declared.
     /// </summary>
     public unsafe void Build()
     {
@@ -290,11 +291,15 @@ public ref struct HsstBTreeBuilder<TWriter, TReader, TPin>
         if ((uint)rootSize > ushort.MaxValue)
             throw new InvalidOperationException($"Root node size {rootSize} exceeds u16 trailer field");
 
-        // Trailing [RootSize u16 LE][IndexType u8]; IndexType is the last byte of the HSST.
-        Span<byte> tail = _writer.GetSpan(3);
+        // Trailing [RootSize u16 LE][KeyLength u8][IndexType u8]; IndexType is the last
+        // byte of the HSST. Empty builds (_keyLength still -1 because no Add() / FinishValueWrite
+        // was called) record KeyLength = 0; the reader never decodes any keys in that case.
+        int trailerKeyLength = _keyLength < 0 ? 0 : _keyLength;
+        Span<byte> tail = _writer.GetSpan(4);
         tail[0] = (byte)rootSize;
         tail[1] = (byte)(rootSize >> 8);
-        tail[2] = (byte)IndexType.BTree;
-        _writer.Advance(3);
+        tail[2] = (byte)trailerKeyLength;
+        tail[3] = (byte)IndexType.BTree;
+        _writer.Advance(4);
     }
 }
