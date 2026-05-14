@@ -37,11 +37,24 @@ namespace Nethermind.State
         /// Reads: this._blockChanges → source._blockChanges → trie
         /// Writes: this._blockChanges only (never touches source)
         /// </summary>
-        public void SetReadFallback(IWorldState source)
+        public void SetReadFallback(IWorldState source, bool populatePreBlockCacheFromFallback = false)
         {
             if (source is not WorldState srcWs) return;
             _stateProvider._readFallback = srcWs._stateProvider._blockChanges;
             _persistentStorageProvider._storageFallback = srcWs._persistentStorageProvider;
+
+            if (populatePreBlockCacheFromFallback &&
+                ScopeProvider is IPreBlockCaches preBlockCaches &&
+                !preBlockCaches.IsWarmWorldState)
+            {
+                _stateProvider._readFallbackCache = preBlockCaches.Caches.StateCache;
+                _persistentStorageProvider._storageFallbackCache = preBlockCaches.Caches.StorageCache;
+            }
+            else
+            {
+                _stateProvider._readFallbackCache = null;
+                _persistentStorageProvider._storageFallbackCache = null;
+            }
         }
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;

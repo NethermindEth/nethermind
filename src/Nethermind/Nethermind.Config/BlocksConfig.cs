@@ -110,7 +110,7 @@ namespace Nethermind.Config
 
         public double PreWarmFirstPassRatio { get; set; } = 1.0;
 
-        public string PreWarmRetryMode { get; set; } = "Hammer";
+        public string PreWarmRetryMode { get; set; } = "StateGated";
 
         public int PreWarmHeadStartMs { get; set; } = 0;
     }

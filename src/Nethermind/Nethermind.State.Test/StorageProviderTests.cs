@@ -768,6 +768,33 @@ public class StorageProviderTests(bool useFlat)
         reader.StateProvider.Get(storageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
     }
 
+    [Test]
+    public void Read_fallback_can_populate_preblock_cache_when_requested()
+    {
+        using Context source = new(useFlat);
+        PreBlockCaches preBlockCaches = new();
+        using Context reader = new(useFlat, preBlockCaches);
+
+        StorageCell storageCell = new(reader.Address1, 1);
+        source.StateProvider.Set(storageCell, _values[11]);
+        source.StateProvider.Commit(Prague.Instance);
+        source.StateProvider.Set(storageCell, StorageTree.ZeroBytes);
+        source.StateProvider.DeleteAccount(source.Address2);
+        source.StateProvider.Commit(Prague.Instance);
+
+        preBlockCaches.ClearCaches();
+        reader.StateProvider.Reset();
+        reader.StateProvider.SetReadFallback(source.StateProvider, populatePreBlockCacheFromFallback: true);
+
+        reader.StateProvider.AccountExists(reader.Address2).Should().BeFalse();
+        reader.StateProvider.Get(storageCell).ToArray().Should().BeEquivalentTo(StorageTree.ZeroBytes);
+
+        preBlockCaches.StateCache.TryGetValue(reader.Address2, out Account account).Should().BeTrue();
+        account.Should().BeNull();
+        preBlockCaches.StorageCache.TryGetValue(in storageCell, out byte[] cachedValue).Should().BeTrue();
+        cachedValue.Should().BeEquivalentTo(StorageTree.ZeroBytes);
+    }
+
     private class Context : IDisposable
     {
         public WorldState StateProvider { get; }
