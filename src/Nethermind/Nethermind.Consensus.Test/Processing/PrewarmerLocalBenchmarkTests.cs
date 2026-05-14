@@ -55,8 +55,10 @@ public class PrewarmerLocalBenchmarkTests
         [
             CreateDefaultCase("current-default"),
             new("no-prewarm", Enabled: false, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
+            new("auto-100-none", Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "None", HeadStartMs: 0),
             new("auto-100-hammer-32k", Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0, StorageCacheCapacity: SeqlockCache<StorageCell, byte[]>.DefaultCapacity),
             new("auto-100-hammer", Enabled: true, Concurrency: 0, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
+            new("4t-100-none", Enabled: true, Concurrency: 4, FirstPassRatio: 1.0, RetryMode: "None", HeadStartMs: 0),
             new("2t-100-hammer", Enabled: true, Concurrency: 2, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
             new("4t-100-hammer", Enabled: true, Concurrency: 4, FirstPassRatio: 1.0, RetryMode: "Hammer", HeadStartMs: 0),
             new("4t-100-gated", Enabled: true, Concurrency: 4, FirstPassRatio: 1.0, RetryMode: "StateGated", HeadStartMs: 0),

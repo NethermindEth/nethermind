@@ -97,7 +97,7 @@ public interface IBlocksConfig : IConfig
     double PreWarmFirstPassRatio { get; set; }
 
     [ConfigItem(
-        Description = "Prewarmer retry mode after first pass: 'Hammer' (continuous re-execution) or 'StateGated' (re-execute only when main thread advances).",
+        Description = "Prewarmer retry mode after first pass: 'None' (stop after first pass), 'Hammer' (continuous re-execution), or 'StateGated' (re-execute only when main thread advances).",
         DefaultValue = "StateGated",
         HiddenFromDocs = true)]
     string PreWarmRetryMode { get; set; }

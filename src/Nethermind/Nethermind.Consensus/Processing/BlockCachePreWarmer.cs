@@ -37,7 +37,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
     private readonly double _firstPassRatio;
-    private readonly bool _hammerMode;
+    private readonly PreWarmRetryMode _retryMode;
     private readonly int _headStartMs;
     internal bool HeadStartEnabled => _headStartMs > 0;
 
@@ -53,7 +53,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.PreWarmStateConcurrency,
         blocksConfig.ParallelExecutionBatchRead,
         blocksConfig.PreWarmFirstPassRatio,
-        string.Equals(blocksConfig.PreWarmRetryMode, "Hammer", StringComparison.OrdinalIgnoreCase),
+        ParseRetryMode(blocksConfig.PreWarmRetryMode),
         blocksConfig.PreWarmHeadStartMs,
         nodeStorageCache,
         preBlockCaches,
@@ -65,7 +65,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int concurrency,
         bool parallelExecutionBatchRead,
         double firstPassRatio,
-        bool hammerMode,
+        PreWarmRetryMode retryMode,
         int headStartMs,
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
@@ -74,12 +74,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _concurrencyLevel = concurrency == 0 ? Math.Clamp(Environment.ProcessorCount - 2, 1, AutoConcurrencyLimit) : concurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
         _firstPassRatio = Math.Clamp(firstPassRatio, 0.0, 1.0);
-        _hammerMode = hammerMode;
+        _retryMode = retryMode;
         _headStartMs = headStartMs;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
+    }
+
+    private static PreWarmRetryMode ParseRetryMode(string retryMode)
+    {
+        if (string.Equals(retryMode, "Hammer", StringComparison.OrdinalIgnoreCase))
+        {
+            return PreWarmRetryMode.Hammer;
+        }
+
+        if (string.Equals(retryMode, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            return PreWarmRetryMode.None;
+        }
+
+        return PreWarmRetryMode.StateGated;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
@@ -276,9 +291,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
-            bool hammerMode = _hammerMode;
+            PreWarmRetryMode retryMode = _retryMode;
 
             Thread[] workers = new Thread[threadCount];
+            using SenderGroups senderGroups = SenderGroups.Build(block, firstPassLimit);
+            int firstPassWorkItems = senderGroups.Count;
             for (int t = 0; t < threadCount; t++)
             {
                 workers[t] = new Thread(() =>
@@ -286,13 +303,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IReadOnlyTxProcessorSource env = _envPool.Get();
                     try
                     {
-                        // Phase 1: one execution per tx, no retry, cover first N txs fast.
+                        // Phase 1: one execution per tx, no retry. Keep same-sender
+                        // transactions in order so their speculative nonce/state changes
+                        // are visible to the following txs from that sender.
                         while (!token.IsCancellationRequested)
                         {
-                            int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
-                            if (myTx >= firstPassLimit) break;
+                            int groupIndex = Interlocked.Increment(ref _nextWarmupIndex) - 1;
+                            if (groupIndex >= senderGroups.Count) break;
 
-                            if (Volatile.Read(ref MainThreadTxIndex) >= myTx) continue;
+                            ArrayPoolList<(int Index, Transaction Tx)> txList = senderGroups[groupIndex];
 
                             using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
                             {
@@ -302,16 +321,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 if (preWarmer.MainThreadWorldState is not null)
                                     (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
-                                WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                                foreach ((int txIndex, Transaction tx) in txList.AsSpan())
+                                {
+                                    if (token.IsCancellationRequested) break;
+                                    if (Volatile.Read(ref MainThreadTxIndex) >= txIndex) continue;
+
+                                    WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                                }
                             }
                         }
 
                         if (firstPassLimit > 0) preWarmer._firstPassDone.Set();
 
-                        if (!token.CanBeCanceled) return;
+                        if (!token.CanBeCanceled || retryMode == PreWarmRetryMode.None) return;
 
                         // Phase 2: retry mode, re-warm txs with fresher state.
-                        Interlocked.CompareExchange(ref _nextWarmupIndex, 0, firstPassLimit + threadCount);
+                        Interlocked.CompareExchange(ref _nextWarmupIndex, 0, firstPassWorkItems + threadCount);
 
                         while (!token.IsCancellationRequested)
                         {
@@ -337,7 +362,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                             }
 
-                            if (hammerMode)
+                            if (retryMode == PreWarmRetryMode.Hammer)
                             {
                                 // Hammer: keep re-executing until main thread passes.
                                 // Each retry uses a fresh scope so read-through fallback can observe newer state.
@@ -414,11 +439,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block)
+    private static Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> GroupTransactionsBySender(Block block, int txLimit)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = new();
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        for (int i = 0; i < txLimit; i++)
         {
             Transaction tx = block.Transactions[i];
             Address sender = tx.SenderAddress!;
@@ -432,6 +457,40 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
 
         return groups;
+    }
+
+    private readonly struct SenderGroups : IDisposable
+    {
+        private readonly Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> _bySender;
+        private readonly ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> _groups;
+
+        private SenderGroups(
+            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> bySender,
+            ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups)
+        {
+            _bySender = bySender;
+            _groups = groups;
+        }
+
+        public int Count => _groups.Count;
+
+        public ArrayPoolList<(int Index, Transaction Tx)> this[int index] => _groups[index];
+
+        public static SenderGroups Build(Block block, int txLimit)
+        {
+            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> bySender = GroupTransactionsBySender(block, txLimit);
+            return new(bySender, bySender.Values.ToPooledList());
+        }
+
+        public void Dispose()
+        {
+            _groups.Dispose();
+
+            foreach (ArrayPoolList<(int Index, Transaction Tx)> group in _bySender.Values)
+            {
+                group.Dispose();
+            }
+        }
     }
 
     private static bool WarmupSingleTransaction(
@@ -709,4 +768,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     }
 
     private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, IWorldState? MainThreadState = null);
+
+    internal enum PreWarmRetryMode
+    {
+        None,
+        Hammer,
+        StateGated,
+    }
 }
