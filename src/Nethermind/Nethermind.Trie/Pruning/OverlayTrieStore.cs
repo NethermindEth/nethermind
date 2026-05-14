@@ -27,6 +27,37 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? _baseStore.TryLoadRlp(address, in path, in hash, flags);
 
+    // Forward resolved-node lookups to the inner ReadOnlyTrieStore so its dirty-cache
+    // path is consulted. The IScopableTrieStore default would only check our own
+    // (always-false) TryGetCachedNode then LoadRlp, which here goes straight to the
+    // overlay + persistent stores and misses any node still in the underlying base
+    // store's dirty cache or commit buffer. Same fix pattern as PreCachedTrieStore
+    // and WitnessCapturingTrieStore.
+    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        // Overlay-first: an overlaid node shadows the base store entirely.
+        byte[]? rlp = _nodeStorage.Get(address, in path, hash, flags);
+        if (rlp is not null)
+        {
+            return TrieNode.DecodeNode(in path, in hash, rlp);
+        }
+        return _baseStore.GetOrLoadNode(address, in path, in hash, flags);
+    }
+
+    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        byte[]? rlp = _nodeStorage.Get(address, in path, hash, flags);
+        if (rlp is not null)
+        {
+            node = TrieNode.DecodeNode(in path, in hash, rlp);
+            return true;
+        }
+        return _baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags);
+    }
+
+    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        _baseStore.TryGetCachedNode(address, in path, in hash, out node);
+
     public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || _baseStore.HasRoot(stateRoot);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => _baseStore.BeginScope(baseBlock);

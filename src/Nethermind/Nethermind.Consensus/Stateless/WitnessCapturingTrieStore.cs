@@ -36,6 +36,31 @@ public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStor
         return rlp;
     }
 
+    // Forward resolved-node lookups to the inner ReadOnlyTrieStore so its dirty-cache
+    // path is consulted. The IScopableTrieStore default would only check our own
+    // (always-false) TryGetCachedNode then LoadRlp, which here goes straight to the
+    // persistent store and misses any node still in the underlying dirty cache or
+    // commit buffer. Same fix pattern as PreCachedTrieStore.GetOrLoadNode.
+    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        TrieNode node = _baseStore.GetOrLoadNode(address, in path, in hash, flags);
+        CaptureNode(node);
+        return node;
+    }
+
+    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None)
+    {
+        if (!_baseStore.TryGetOrLoadNode(address, in path, in hash, out node, flags))
+        {
+            return false;
+        }
+        CaptureNode(node);
+        return true;
+    }
+
+    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        _baseStore.TryGetCachedNode(address, in path, in hash, out node);
+
     public bool HasRoot(Hash256 stateRoot) => _baseStore.HasRoot(stateRoot);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => _baseStore.BeginScope(baseBlock);
