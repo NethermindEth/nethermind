@@ -177,10 +177,9 @@ public class BlockAccessListValidationIndexTests
     {
         suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount, _addressIndex);
         BlockAccessListValidationIndex generatedIndex = new(txCount, _addressIndex, suggestedIndex);
-        // The validator only exposes a per-tx-slice Add API in production (each slice is what
-        // BlockAccessListManager.MergeAndReturnBal emits on the parallel hot path). Tests express
-        // their "generated BAL" as a full ReadOnlyBlockAccessList for parity with master's
-        // structure, so we shred it back into per-index slices here and push each.
+        // BlockAccessListValidationIndex.Add only accepts per-tx slices (one BlockAccessListAtIndex
+        // per block-access index). Tests phrase the generated side as a full ReadOnlyBlockAccessList
+        // for symmetry with the suggested side, so we shred it back into per-index slices here.
         SortedDictionary<uint, BlockAccessListAtIndex> slicesByIndex = [];
         foreach (ReadOnlyAccountChanges acc in generated.AccountChanges)
         {
