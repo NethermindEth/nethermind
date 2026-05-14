@@ -13,6 +13,8 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Xdc;
 
@@ -25,12 +27,17 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     private readonly IBlockTree _blockTree;
     private readonly IMasternodeVotingContract _votingContract;
     private readonly ISpecProvider _specProvider;
+    private readonly IStateReader _stateReader;
+    private readonly ILogger _logger;
+
 
     protected BaseSnapshotManager(
         IDb snapshotDb,
         IBlockTree blockTree,
         IMasternodeVotingContract votingContract,
         ISpecProvider specProvider,
+        IStateReader stateReader,
+        ILogManager logManager,
         BaseSnapshotDecoder<TSnapshot> snapshotDecoder,
         string cacheName
     )
@@ -40,6 +47,8 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         _snapshotDb = snapshotDb;
         _votingContract = votingContract;
         _specProvider = specProvider;
+        _stateReader = stateReader;
+        _logger = logManager.GetClassLogger<BaseSnapshotManager<TSnapshot>>();
         _snapshotDecoder = snapshotDecoder;
         _snapshotCache = new LruCache<Hash256, TSnapshot>(128, 128, cacheName);
     }
@@ -67,7 +76,10 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     {
         if (_blockTree.FindHeader(gapNumber) is not XdcBlockHeader gapBlockHeader)
             return null;
-        return GetSnapshot(gapBlockHeader.Hash);
+        TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash);
+        snapshot ??= TryRecoverSnapshot(gapBlockHeader);
+
+        return snapshot;
     }
 
     protected TSnapshot? GetSnapshot(Hash256 headerHash)
@@ -125,6 +137,37 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
         TSnapshot snapshot = CreateSnapshot(header, spec);
         StoreSnapshot(snapshot);
+    }
+
+    private TSnapshot? TryRecoverSnapshot(XdcBlockHeader gapBlockHeader)
+    {
+        if (!ISnapshotManager.IsTimeForSnapshot(gapBlockHeader.Number, _specProvider.GetXdcSpec(gapBlockHeader)))
+            return null;
+
+        if (!_stateReader.HasStateForBlock(gapBlockHeader) || !_blockTree.WasProcessed(gapBlockHeader.Number, gapBlockHeader.Hash))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Cannot recover snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): state or processing unavailable");
+            return null;
+        }
+
+        try
+        {
+            UpdateMasterNodes(gapBlockHeader);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Snapshot recovery failed for block {gapBlockHeader.Number} ({gapBlockHeader.Hash}): {ex.Message}");
+            return null;
+        }
+
+        TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash);
+
+        if (snapshot is null)
+            if (_logger.IsWarn) _logger.Warn($"Snapshot recovery produced no snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash})");
+        else
+            if (_logger.IsDebug) _logger.Debug($"Recovered snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash})");
+
+        return snapshot;
     }
 
     protected abstract TSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec);

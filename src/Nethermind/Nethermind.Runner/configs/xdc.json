@@ -12,6 +12,9 @@
   "Discovery": {
     "DiscoveryVersion": "V4"
   },
+  "Pruning": {
+    "PruningBoundary": 4096
+  },
   "TxPool": {
     "BlobsSupport": "Disabled"
   },
