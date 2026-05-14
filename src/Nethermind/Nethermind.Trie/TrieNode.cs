@@ -862,6 +862,11 @@ namespace Nethermind.Trie
             typed.InitRlp(new CappedArray<byte>(rlp));
             typed.SetKeccak(in hash);
             typed.IsPersisted = true;
+            // Decoded-from-RLP nodes represent committed state. Seal so commit walks
+            // do not treat them as dirty and re-encode them into a parent's RLP
+            // (mutation paths that legitimately edit a loaded node call CloneTyped
+            // first, producing a fresh dirty copy).
+            typed.Seal();
             return typed;
 
             [DoesNotReturn, StackTraceHidden]
@@ -912,6 +917,7 @@ namespace Nethermind.Trie
             typed.InitRlp(new CappedArray<byte>(rlp));
             typed.SetKeccak(in hash);
             typed.IsPersisted = true;
+            typed.Seal();
             node = typed;
             return true;
         }
