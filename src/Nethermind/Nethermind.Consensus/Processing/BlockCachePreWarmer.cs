@@ -208,8 +208,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private int _nextWarmupIndex;
 
-    private const int MovingWindowWorkers = 4;
-
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -223,7 +221,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
 
-            int threadCount = Math.Min(MovingWindowWorkers, txCount);
+            int threadCount = Math.Min(_concurrencyLevel, txCount);
             BlockCachePreWarmer preWarmer = this;
             CancellationToken token = parallelOptions.CancellationToken;
 
@@ -246,10 +244,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 continue;
                             }
 
-                            // Hammer this tx until main thread passes it
+                            // Re-execute this tx each time the main thread advances
+                            // (new state available via fallback). No blind hammering.
+                            int lastSeenMain = Volatile.Read(ref MainThreadTxIndex);
                             while (!token.IsCancellationRequested)
                             {
-                                if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
+                                if (lastSeenMain >= myTx) break;
 
                                 using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
                                 {
@@ -260,6 +260,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                         (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                                     WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                                }
+
+                                // Wait for main thread to advance before re-executing
+                                SpinWait spin = default;
+                                while (!token.IsCancellationRequested)
+                                {
+                                    int current = Volatile.Read(ref MainThreadTxIndex);
+                                    if (current > lastSeenMain) { lastSeenMain = current; break; }
+                                    if (current >= myTx) { lastSeenMain = current; break; }
+                                    spin.SpinOnce();
                                 }
                             }
                         }
