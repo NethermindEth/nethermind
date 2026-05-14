@@ -29,9 +29,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     private readonly WholeReadSession _session = session;
     private readonly PersistedSnapshot _snapshot = snapshot;
 
-    public SelfDestructEnumerable SelfDestructedStorageAddresses => new(_session.GetReader());
-    public AccountEnumerable Accounts => new(_session.GetReader());
-    public StorageEnumerable Storages => new(_session.GetReader());
+    public PerAddressEnumerable PerAddresses => new(_session.GetReader());
     public StateNodeEnumerable StateNodes => new(_snapshot, _session.GetReader());
     public StorageNodeEnumerable StorageNodes => new(_snapshot, _session.GetReader());
 
@@ -39,107 +37,96 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
     private static NoOpPin Pin(scoped in WholeReadSessionReader reader, Bound b) =>
         reader.PinBuffer(b.Offset, b.Length);
 
-    // ---------------- SelfDestruct ----------------
+    // ---------------- PerAddress (column 0x01: SD + Account + Slots) ----------------
 
-    public readonly ref struct SelfDestructEntry(WholeReadSessionReader reader, Address address, Bound value)
+    /// <summary>
+    /// One row's worth of per-address data from column 0x01. The on-disk format bundles
+    /// the self-destruct flag (sub-tag 0x06), account RLP (0x05), and the slot HSST
+    /// (0x04) under a single per-address inner HSST, so a single outer walk yields all
+    /// three sub-tags at once. The <see cref="Address"/> is materialised once per row by
+    /// the enumerator and reused across sub-tag access and nested slot iteration.
+    /// </summary>
+    public readonly ref struct PerAddressEntry(
+        WholeReadSessionReader reader, Address address, Bound slotBound, Bound accountBound, Bound sdBound)
     {
         private readonly WholeReadSessionReader _reader = reader;
-        private readonly Bound _value = value;
+        private readonly Bound _slotBound = slotBound;
+        private readonly Bound _accountBound = accountBound;
+        private readonly Bound _sdBound = sdBound;
+
         public Address Address { get; } = address;
-        public bool IsNew
+
+        /// <summary>
+        /// Self-destruct flag tri-state: <c>null</c> = sub-tag absent (length 0),
+        /// <c>false</c> = destructed (0x00), <c>true</c> = new account marker (0x01).
+        /// Matches <see cref="PersistedSnapshot.TryGetSelfDestructFlag"/> semantics.
+        /// </summary>
+        public bool? SelfDestructFlag
         {
             get
             {
-                if (_value.Length == 0) return false;
+                if (_sdBound.Length == 0) return null;
                 Span<byte> tag = stackalloc byte[1];
-                _reader.TryRead(_value.Offset, tag);
-                return tag[0] == 0x01;
+                _reader.TryRead(_sdBound.Offset, tag);
+                return tag[0] != 0x00;
             }
         }
-    }
 
-    public readonly ref struct SelfDestructEnumerable(WholeReadSessionReader reader)
-    {
-        private readonly WholeReadSessionReader _reader = reader;
-        public readonly SelfDestructEnumerator GetEnumerator() => new(_reader);
-    }
+        public bool HasAccount => _accountBound.Length > 0;
 
-    public ref struct SelfDestructEnumerator : IDisposable
-    {
-        private readonly WholeReadSessionReader _reader;
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
-        private Address? _curAddress;
-        private Bound _curValue;
-
-        public SelfDestructEnumerator(WholeReadSessionReader reader)
-        {
-            _reader = reader;
-            HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
-            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
-        }
-
-        public bool MoveNext()
-        {
-            Span<byte> addrBuf = stackalloc byte[Address.Size];
-            while (_addrEnum.MoveNext())
-            {
-                KeyValueEntry addrEntry = _addrEnum.Current;
-                HsstReader<WholeReadSessionReader, NoOpPin> perAddr = new(in _reader, addrEntry.ValueBound);
-                // DenseByteIndex returns success even for gap-filled (length 0) absent
-                // entries; only yield addresses with an actual SD record (length > 0).
-                if (!perAddr.TrySeek(PersistedSnapshot.SelfDestructSubTag, out _))
-                    continue;
-                Bound sdBound = perAddr.GetBound();
-                if (sdBound.Length == 0)
-                    continue;
-                ReadOnlySpan<byte> key = _addrEnum.CopyCurrentLogicalKey(addrBuf);
-                _curAddress = new Address(key.ToArray());
-                _curValue = sdBound;
-                return true;
-            }
-            return false;
-        }
-
-        public readonly SelfDestructEntry Current => new(_reader, _curAddress!, _curValue);
-        public void Dispose() => _addrEnum.Dispose();
-    }
-
-    // ---------------- Account ----------------
-
-    public readonly ref struct AccountEntry(WholeReadSessionReader reader, Address address, Bound rlp)
-    {
-        private readonly WholeReadSessionReader _reader = reader;
-        private readonly Bound _rlp = rlp;
-        public Address Address { get; } = address;
+        /// <summary>
+        /// Decoded account, or <c>null</c> when the on-disk marker is [0x00] (deleted) or
+        /// the sub-tag is absent. Callers should branch on <see cref="HasAccount"/> first
+        /// when they need to distinguish "no account update in this snapshot" from
+        /// "account explicitly deleted".
+        /// </summary>
         public Account? Account
         {
             get
             {
-                // Presence-marker encoding: [0x00] = deleted (null), RLP-bytes = present.
-                // The enumerator already filters length-0 absences before yielding.
-                using NoOpPin pin = Pin(in _reader, _rlp);
+                if (_accountBound.Length == 0) return null;
+                using NoOpPin pin = Pin(in _reader, _accountBound);
                 ReadOnlySpan<byte> rlp = pin.Buffer;
                 if (rlp.Length == 1 && rlp[0] == 0x00) return null;
                 return AccountDecoder.Slim.Decode(rlp);
             }
         }
+
+        public bool HasSlots => _slotBound.Length > 0;
+
+        /// <summary>
+        /// Nested enumerable over the slot HSST (sub-tag 0x04). Empty when <see cref="HasSlots"/>
+        /// is false. The yielded <see cref="SlotEntry"/> values carry only <c>Slot</c> and
+        /// <c>Value</c>; the address is on this entry and lives one foreach scope up.
+        /// </summary>
+        public SlotEnumerable Slots => new(_reader, _slotBound);
     }
 
-    public readonly ref struct AccountEnumerable(WholeReadSessionReader reader)
+    public readonly ref struct PerAddressEnumerable(WholeReadSessionReader reader)
     {
         private readonly WholeReadSessionReader _reader = reader;
-        public readonly AccountEnumerator GetEnumerator() => new(_reader);
+        public PerAddressEnumerator GetEnumerator() => new(_reader);
     }
 
-    public ref struct AccountEnumerator : IDisposable
+    public ref struct PerAddressEnumerator : IDisposable
     {
+        // Per-address inner DenseByteIndex tags range 0x01..0x06; pin every entry with one
+        // TryResolveAll call (sized to max tag + 1 = 7). Sub-tags 0x01/0x02/0x03 only exist
+        // in column 0x02 (storage trie), not here, but the dense index gap-fills them with
+        // length-0 absences and we read them as such without complaint.
+        private const int PerAddrSubTagCount = 7;
+
         private readonly WholeReadSessionReader _reader;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
+        // _curAddress is allocated exactly once per outer row and reused for every sub-tag
+        // access and every yielded SlotEntry. Per-row cost: one 20-byte managed array plus
+        // one Address object.
         private Address? _curAddress;
-        private Bound _curRlp;
+        private Bound _slotBound;
+        private Bound _accountBound;
+        private Bound _sdBound;
 
-        public AccountEnumerator(WholeReadSessionReader reader)
+        public PerAddressEnumerator(WholeReadSessionReader reader)
         {
             _reader = reader;
             HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
@@ -150,39 +137,46 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         public bool MoveNext()
         {
             Span<byte> addrBuf = stackalloc byte[Address.Size];
+            Span<Bound> sub = stackalloc Bound[PerAddrSubTagCount];
             while (_addrEnum.MoveNext())
             {
                 KeyValueEntry addrEntry = _addrEnum.Current;
-                HsstReader<WholeReadSessionReader, NoOpPin> perAddr = new(in _reader, addrEntry.ValueBound);
-                // DenseByteIndex returns success even for gap-filled (length 0) absent
-                // entries; only yield addresses with an actual account record (length > 0).
-                if (!perAddr.TrySeek(PersistedSnapshot.AccountSubTag, out _))
-                    continue;
-                Bound rlpBound = perAddr.GetBound();
-                if (rlpBound.Length == 0)
+                sub.Clear();
+                HsstDenseByteIndexReader.TryResolveAll<WholeReadSessionReader, NoOpPin>(
+                    in _reader, addrEntry.ValueBound, sub);
+                Bound slot = sub[PersistedSnapshot.SlotSubTag[0]];
+                Bound account = sub[PersistedSnapshot.AccountSubTag[0]];
+                Bound sd = sub[PersistedSnapshot.SelfDestructSubTag[0]];
+                // Defensive: skip rows where every sub-tag is gap-filled. The builder never
+                // emits such a row, but DenseByteIndex tolerates it.
+                if (slot.Length == 0 && account.Length == 0 && sd.Length == 0)
                     continue;
                 ReadOnlySpan<byte> key = _addrEnum.CopyCurrentLogicalKey(addrBuf);
                 _curAddress = new Address(key.ToArray());
-                _curRlp = rlpBound;
+                _slotBound = slot;
+                _accountBound = account;
+                _sdBound = sd;
                 return true;
             }
             return false;
         }
 
-        public readonly AccountEntry Current => new(_reader, _curAddress!, _curRlp);
+        public readonly PerAddressEntry Current =>
+            new(_reader, _curAddress!, _slotBound, _accountBound, _sdBound);
+
         public void Dispose() => _addrEnum.Dispose();
     }
 
-    // ---------------- Storage ----------------
+    // ---------------- Slot (nested inside PerAddressEntry) ----------------
 
-    public readonly ref struct StorageEntry(
-        WholeReadSessionReader reader, Address address, ReadOnlySpan<byte> prefixKey, ReadOnlySpan<byte> suffixKey, Bound suffixValue)
+    public readonly ref struct SlotEntry(
+        WholeReadSessionReader reader, ReadOnlySpan<byte> prefixKey, ReadOnlySpan<byte> suffixKey, Bound suffixValue)
     {
         private readonly WholeReadSessionReader _reader = reader;
-        public Address Address { get; } = address;
         private readonly ReadOnlySpan<byte> _prefix = prefixKey;
         private readonly ReadOnlySpan<byte> _suffix = suffixKey;
         private readonly Bound _value = suffixValue;
+
         public UInt256 Slot
         {
             get
@@ -193,6 +187,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                 return new UInt256(slotKey, isBigEndian: true);
             }
         }
+
         public SlotValue? Value
         {
             get
@@ -204,42 +199,44 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
         }
     }
 
-    public readonly ref struct StorageEnumerable(WholeReadSessionReader reader)
+    public readonly ref struct SlotEnumerable(WholeReadSessionReader reader, Bound slotBound)
     {
         private readonly WholeReadSessionReader _reader = reader;
-        public readonly StorageEnumerator GetEnumerator() => new(_reader);
+        private readonly Bound _slotBound = slotBound;
+        public SlotEnumerator GetEnumerator() => new(_reader, _slotBound);
     }
 
-    public ref struct StorageEnumerator : IDisposable
+    /// <summary>
+    /// Two-level walk over a per-address slot HSST: outer 30-byte prefix BTree → inner
+    /// 2-byte suffix BTree. The address is supplied by the enclosing
+    /// <see cref="PerAddressEntry"/>; this enumerator yields only (slot, value) pairs.
+    /// </summary>
+    public ref struct SlotEnumerator : IDisposable
     {
         private readonly WholeReadSessionReader _reader;
-        private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _addrEnum;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _prefixEnum;
         private HsstRefEnumerator<WholeReadSessionReader, NoOpPin> _suffixEnum;
-        private byte _level; // 0=need new addr, 1=have prefixEnum, 2=have suffixEnum
-        private Address? _curAddress;
-        // Slot prefix is 30 bytes (BTree, not LE-stored), slot suffix is 2 bytes (inner BTree).
-        // Logical-form copies; HsstRefEnumerator hides any LE-stored layout.
+        private byte _level; // 0=need prefix MoveNext, 1=have prefix, 2=have suffixEnum
         private readonly byte[] _curPrefix;
         private int _curPrefixLen;
         private readonly byte[] _curSuffix;
         private int _curSuffixLen;
         private Bound _curSuffixValue;
 
-        public StorageEnumerator(WholeReadSessionReader reader)
+        public SlotEnumerator(WholeReadSessionReader reader, Bound slotBound)
         {
             _reader = reader;
             _curPrefix = new byte[SlotPrefixLength];
             _curSuffix = new byte[SlotSuffixLength];
-            HsstReader<WholeReadSessionReader, NoOpPin> r = new(in _reader);
-            Bound colBound = r.TrySeek(PersistedSnapshot.AccountColumnTag, out Bound matched) ? matched : default;
-            _addrEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, colBound);
-            _level = 0;
+            // Empty slotBound (no slots for this address) → empty enumeration.
+            _prefixEnum = slotBound.Length > 0
+                ? new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound)
+                : default;
+            _level = (byte)(slotBound.Length > 0 ? 1 : 0);
         }
 
         public bool MoveNext()
         {
-            Span<byte> addrBuf = stackalloc byte[Address.Size];
             while (true)
             {
                 if (_level >= 2)
@@ -254,7 +251,7 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     _suffixEnum = default;
                     _level = 1;
                 }
-                if (_level >= 1)
+                if (_level == 1)
                 {
                     if (_prefixEnum.MoveNext())
                     {
@@ -267,33 +264,17 @@ public sealed class PersistedSnapshotScanner(WholeReadSession session, Persisted
                     _prefixEnum = default;
                     _level = 0;
                 }
-                // _level == 0: pull next address that has SlotSubTag
-                if (!_addrEnum.MoveNext()) return false;
-                KeyValueEntry addrEntry = _addrEnum.Current;
-                HsstReader<WholeReadSessionReader, NoOpPin> perAddr = new(in _reader, addrEntry.ValueBound);
-                if (!perAddr.TrySeek(PersistedSnapshot.SlotSubTag, out _))
-                    continue;
-                Bound slotBound = perAddr.GetBound();
-                // DenseByteIndex returns success even for gap-filled (length 0) absences;
-                // skip addresses that have other sub-tags but no slots.
-                if (slotBound.Length == 0)
-                    continue;
-                // Decode the 20-byte outer Address once per slot run.
-                ReadOnlySpan<byte> key = _addrEnum.CopyCurrentLogicalKey(addrBuf);
-                _curAddress = new Address(key.ToArray());
-                _prefixEnum = new HsstRefEnumerator<WholeReadSessionReader, NoOpPin>(in _reader, slotBound);
-                _level = 1;
+                return false;
             }
         }
 
-        public readonly StorageEntry Current =>
-            new(_reader, _curAddress!, _curPrefix.AsSpan(0, _curPrefixLen), _curSuffix.AsSpan(0, _curSuffixLen), _curSuffixValue);
+        public readonly SlotEntry Current =>
+            new(_reader, _curPrefix.AsSpan(0, _curPrefixLen), _curSuffix.AsSpan(0, _curSuffixLen), _curSuffixValue);
 
         public void Dispose()
         {
             _suffixEnum.Dispose();
             _prefixEnum.Dispose();
-            _addrEnum.Dispose();
         }
     }
 

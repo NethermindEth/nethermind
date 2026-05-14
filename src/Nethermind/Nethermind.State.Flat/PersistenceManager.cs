@@ -619,17 +619,22 @@ public class PersistenceManager(
         PersistedSnapshotScanner scanner = new(session, snapshot);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
+            // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
+            // same per-address inner HSST, so one outer pass + TryResolveAll resolves all
+            // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
+            // is preserved within the row; cross-address ordering is irrelevant to the
+            // write batch.
+            foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
-                if (entry.IsNew) continue;
-                batch.SelfDestruct(entry.Address);
+                if (entry.SelfDestructFlag is false)
+                    batch.SelfDestruct(entry.Address);
+
+                if (entry.HasAccount)
+                    batch.SetAccount(entry.Address, entry.Account);
+
+                foreach (PersistedSnapshotScanner.SlotEntry slot in entry.Slots)
+                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
             }
-
-            foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
-                batch.SetAccount(entry.Address, entry.Account);
-
-            foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
-                batch.SetStorage(entry.Address, entry.Slot, entry.Value);
 
             foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
                 batch.SetStateTrieNode(entry.Path, entry.Rlp);
