@@ -238,27 +238,31 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     IReadOnlyTxProcessorSource env = _envPool.Get();
                     try
                     {
-                        using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                        BlockExecutionContext context = new(block.Header, blockState.Spec);
-                        scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                        // Set up read-through fallback: reads go to own state → main thread's state → trie.
-                        // Writes only go to own state (never touches main thread).
-                        if (preWarmer.MainThreadWorldState is not null)
-                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
-
                         while (!token.IsCancellationRequested)
                         {
-                            int mainPos = Volatile.Read(ref MainThreadTxIndex);
-
                             // Atomically claim the next tx
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
                             if (myTx >= txCount) break;
 
                             // Skip txs the main thread already processed
+                            int mainPos = Volatile.Read(ref MainThreadTxIndex);
                             if (myTx <= mainPos) continue;
 
-                            WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                            // Build fresh scope each tx from parent state, with read-through
+                            // to main thread's live state. This ensures:
+                            // - No stale overlay from previous warmup txs
+                            // - Reads see main thread's committed state automatically
+                            // - Writes go to local overlay only
+                            using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
+                            {
+                                BlockExecutionContext context = new(block.Header, blockState.Spec);
+                                scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                                if (preWarmer.MainThreadWorldState is not null)
+                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                                WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                            }
                         }
                     }
                     catch (OperationCanceledException) { }
