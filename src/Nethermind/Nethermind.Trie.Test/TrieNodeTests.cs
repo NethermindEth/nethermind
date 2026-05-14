@@ -918,10 +918,20 @@ public class TrieNodeTests
         CappedArray<byte> canonicalRlp = source.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
         ValueHash256 canonicalHash = ValueKeccak.Compute(canonicalRlp.AsSpan());
 
-        // Decode through the production DecodeNode contract: this yields a TrieNodeBranch
-        // with retained _rlpArray, IsPersisted = true, all 16 slots null.
-        TrieNode parent = TrieNode.DecodeNode(in emptyPath, in canonicalHash, canonicalRlp.AsSpan().ToArray());
+        // Build via the production snap-stitch contract: TrieSyncNode wraps the proof RLP
+        // with isDirty=true so the resolved typed branch is NOT sealed, matching what
+        // SnapProviderHelper.CreateProofDict produces. DecodeNode (the simpler hash+rlp
+        // overload) seals on decode and is used for normal committed-state reads where
+        // mutation must go through CloneTyped; this test specifically exercises the
+        // mutate-in-place snap-stitch path, so we must not start from a sealed parent.
+        TrieNode parent = new TrieSyncNode(canonicalRlp.AsSpan().ToArray(), isDirty: true);
+        parent.IsBoundaryProofNode = true;
+        // The TrieSyncNode already carries the proof RLP inline; ResolveNode/ResolveKey
+        // will not call back into the resolver, so the Null one is enough.
+        TrieNode.ResolveNode(ref parent, NullTrieNodeResolver.Instance, in emptyPath);
+        parent.ResolveKey(NullTrieNodeResolver.Instance, ref emptyPath);
         parent.IsBranch.Should().BeTrue();
+        parent.IsSealed.Should().BeFalse("snap proof nodes must remain mutable for boundary stitching");
         parent.GetRawChildRef(0).Should().BeNull("slot 0 should be unresolved (decoded on demand from RLP)");
         parent.GetRawChildRef(4).Should().BeNull("slot 4 should be unresolved");
         parent.GetRawChildRef(8).Should().BeNull("slot 8 should be unresolved");

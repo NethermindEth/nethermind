@@ -120,6 +120,52 @@ namespace Nethermind.Trie
             set => Volatile.Write(ref _rootRef, value);
         }
 
+        /// <summary>
+        /// Non-throwing sibling of the <see cref="RootRef"/> getter. Returns the cached
+        /// typed root, or attempts to lazy-resolve via the read resolver's Try-shape.
+        /// Yields <c>true</c> with a possibly-null <paramref name="rootRef"/> when the
+        /// trie is empty or the root has been resolved; <c>false</c> when the non-empty
+        /// root is not in the store. Used by visitor/sync paths that explicitly handle
+        /// "missing node" instead of treating it as an invariant violation.
+        /// </summary>
+        public bool TryGetRootRef(out TrieNode? rootRef)
+        {
+            TrieNode? local = Volatile.Read(ref _rootRef);
+            if (!ReferenceEquals(local, _unresolvedSentinel))
+            {
+                rootRef = local;
+                return true;
+            }
+
+            lock (_rootRefLock)
+            {
+                local = _rootRef;
+                if (!ReferenceEquals(local, _unresolvedSentinel))
+                {
+                    rootRef = local;
+                    return true;
+                }
+
+                Hash256 rootHash = _rootHash;
+                if (ReferenceEquals(rootHash, Keccak.EmptyTreeHash))
+                {
+                    Volatile.Write(ref _rootRef, null);
+                    rootRef = null;
+                    return true;
+                }
+
+                if (_readResolver.TryGetOrLoadNode(in TreePath.Empty, in rootHash.ValueHash256, out TrieNode? resolved))
+                {
+                    Volatile.Write(ref _rootRef, resolved);
+                    rootRef = resolved;
+                    return true;
+                }
+
+                rootRef = null;
+                return false;
+            }
+        }
+
         // Used to estimate if parallelization is needed during commit
         private long _writeBeforeCommit = 0;
 
@@ -326,13 +372,7 @@ namespace Nethermind.Trie
                 }
                 else if (_logger.IsTrace)
                 {
-                    extensionChild = node.GetChildWithChildPath(TrieStore, ref path, 0);
-                    if (extensionChild is null)
-                    {
-                        ThrowInvalidExtension();
-                    }
-
-                    TraceExtensionSkip(extensionChild);
+                    TraceExtensionSkip(node);
                 }
                 path.TruncateMut(previousPathLength);
             }
@@ -356,21 +396,38 @@ namespace Nethermind.Trie
 
             return node;
 
-            [DoesNotReturn, StackTraceHidden]
-            static void ThrowInvalidExtension() => throw new InvalidOperationException("An attempt to store an extension without a child.");
-
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, ref TreePath path, int i)
             {
-                TrieNode child = node.GetChildWithChildPath(TrieStore, ref path, i);
-                if (child is not null)
+                // Trace-only path: never resolve the child through the store. During snap
+                // stitching the slot may point at a boundary-proof hash whose RLP is
+                // intentionally not in the store yet, and crashing the commit just to log
+                // it would corrupt sync. Read the hash directly out of the parent RLP, or
+                // fall back to whatever raw reference the slot already holds.
+                if (node.TryGetChildHash(i, out ValueHash256 childHash))
                 {
-                    _logger.Trace($"Skipping commit of {child}");
+                    _logger.Trace($"Skipping commit of child {i} -> {childHash}");
+                }
+                else if (node.GetRawChildRef(i) is { } rawChild)
+                {
+                    _logger.Trace($"Skipping commit of {rawChild}");
                 }
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceExtensionSkip(TrieNode extensionChild) => _logger.Trace($"Skipping commit of {extensionChild}");
+            void TraceExtensionSkip(TrieNode extension)
+            {
+                // Same rationale as Trace above: never resolve through the store from a
+                // pure log helper.
+                if (extension.TryGetChildHash(0, out ValueHash256 childHash))
+                {
+                    _logger.Trace($"Skipping commit of extension child -> {childHash}");
+                }
+                else if (extension.GetRawChildRef(0) is { } rawChild)
+                {
+                    _logger.Trace($"Skipping commit of extension child {rawChild}");
+                }
+            }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
@@ -1203,7 +1260,7 @@ namespace Nethermind.Trie
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }
 
-            bool TryGetRootRef(out TrieNode? rootRef)
+            bool TryGetRootRefLocal(out TrieNode? rootRef)
             {
                 rootRef = null;
                 if (rootHash != Keccak.EmptyTreeHash)
@@ -1211,8 +1268,11 @@ namespace Nethermind.Trie
                     TreePath emptyPath = TreePath.Empty;
                     if (RootHash == rootHash)
                     {
-                        rootRef = RootRef;
-                        if (rootRef is null || !TrieNode.TryResolveNode(ref rootRef, resolver, ref emptyPath))
+                        // Use the non-throwing accessor: visitor paths model "missing
+                        // root" via VisitMissingNode, not exception propagation.
+                        if (!TryGetRootRef(out rootRef)
+                            || rootRef is null
+                            || !TrieNode.TryResolveNode(ref rootRef, resolver, ref emptyPath))
                         {
                             visitor.VisitMissingNode(default, rootHash);
                             return false;
@@ -1231,7 +1291,7 @@ namespace Nethermind.Trie
             if (!visitor.IsFullDbScan)
             {
                 visitor.VisitTree(default, rootHash);
-                if (TryGetRootRef(out TrieNode rootRef))
+                if (TryGetRootRefLocal(out TrieNode rootRef))
                 {
                     TreePath emptyPath = TreePath.Empty;
                     rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
@@ -1244,7 +1304,7 @@ namespace Nethermind.Trie
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
-            else if (TryGetRootRef(out TrieNode rootRef))
+            else if (TryGetRootRefLocal(out TrieNode rootRef))
             {
                 TreePath emptyPath = TreePath.Empty;
                 visitor.VisitTree(default, rootHash);
