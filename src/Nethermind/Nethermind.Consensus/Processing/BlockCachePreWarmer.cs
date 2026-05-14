@@ -104,9 +104,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                 // Run address warmer on the dedicated pool (not the shared .NET ThreadPool)
                 AddressWarmer addressWarmer = new(parallelOptions, suggestedBlock, parent, spec, systemAccessLists, this, bal);
-                _dedicatedFactory.StartNew(() => ((IThreadPoolWorkItem)addressWarmer).Execute(), cancellationToken);
-                // Run prewarming on dedicated threads to avoid CPU contention with block processing
-                return _dedicatedFactory.StartNew(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken), cancellationToken);
+                _dedicatedFactory.StartNew(() => ((IThreadPoolWorkItem)addressWarmer).Execute());
+                // Do not pass the cancellation token to the task — we don't want TaskCanceledException
+                // thrown in the main processing thread. The inner method checks the token itself.
+                return _dedicatedFactory.StartNew(() => PreWarmCachesParallel(blockState, suggestedBlock, parent, spec, parallelOptions, addressWarmer, cancellationToken));
             }
         }
 
