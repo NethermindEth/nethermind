@@ -202,54 +202,35 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Block block = blockState.Block;
             if (block.Transactions.Length == 0) return;
 
-            // Group transactions by sender to process same-sender transactions sequentially
-            // This ensures state changes (balance, storage) from tx[N] are visible to tx[N+1]
-            Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>>? senderGroups = GroupTransactionsBySender(block);
+            // No sender grouping — process transactions in block index order.
+            // Each tx gets its own scope (no cross-tx state sharing).
+            // This maximizes alignment with the main thread's processing order.
+            ParallelUnbalancedWork.For(
+                0,
+                block.Transactions.Length,
+                parallelOptions,
+                (blockState, parallelOptions.CancellationToken),
+                static (txIndex, tupleState) =>
+                {
+                    (BlockState? blockState, CancellationToken token) = tupleState;
+                    if (token.IsCancellationRequested) return tupleState;
 
-            try
-            {
-                // Convert to array for parallel iteration
-                using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
-
-                // Parallel across different senders, sequential within the same sender
-                ParallelUnbalancedWork.For(
-                    0,
-                    groupArray.Count,
-                    parallelOptions,
-                    (blockState, groupArray, parallelOptions.CancellationToken),
-                    static (groupIndex, tupleState) =>
+                    Transaction tx = blockState.Block.Transactions[txIndex];
+                    IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
+                    try
                     {
-                        (BlockState? blockState, ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groups, CancellationToken token) = tupleState;
-                        ArrayPoolList<(int Index, Transaction Tx)>? txList = groups[groupIndex];
+                        using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
+                        BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
+                        scope.TransactionProcessor.SetBlockExecutionContext(context);
+                        WarmupSingleTransaction(scope, tx, txIndex, blockState);
+                    }
+                    finally
+                    {
+                        blockState.PreWarmer._envPool.Return(env);
+                    }
 
-                        // Get thread-local processing state for this sender's transactions
-                        IReadOnlyTxProcessorSource env = blockState.PreWarmer._envPool.Get();
-                        try
-                        {
-                            using IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent);
-                            BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-                            scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                            // Sequential within the same sender-state changes propagate correctly
-                            foreach ((int txIndex, Transaction? tx) in txList.AsSpan())
-                            {
-                                if (token.IsCancellationRequested) return tupleState;
-                                WarmupSingleTransaction(scope, tx, txIndex, blockState);
-                            }
-                        }
-                        finally
-                        {
-                            blockState.PreWarmer._envPool.Return(env);
-                        }
-
-                        return tupleState;
-                    });
-            }
-            finally
-            {
-                foreach (KeyValuePair<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> kvp in senderGroups)
-                    kvp.Value.Dispose();
-            }
+                    return tupleState;
+                });
         }
         catch (OperationCanceledException)
         {
