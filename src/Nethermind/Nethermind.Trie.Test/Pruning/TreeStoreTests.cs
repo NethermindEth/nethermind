@@ -167,6 +167,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Pruning_off_cache_should_find_cached_or_unknown()
         {
             using TrieStore trieStore = CreateTrieStore();
+            long startSize = trieStore.MemoryUsedByDirtyCache;
             TrieNode returnedNode = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
             TrieNode returnedNode2 = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
             TrieNode returnedNode3 = trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
@@ -174,27 +175,24 @@ namespace Nethermind.Trie.Test.Pruning
             Assert.That(returnedNode2.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(returnedNode3.NodeType, Is.EqualTo(NodeType.Unknown));
             trieStore.WaitForPruning();
-            // B4: -8 per Unknown placeholder, 3 placeholders -> -24
-            trieStore.MemoryUsedByDirtyCache.Should().Be(scheme == INodeStorage.KeyScheme.HalfPath ? 552 : 324);
+            trieStore.MemoryUsedByDirtyCache.Should().Be(startSize);
         }
 
         [Test]
-        public void FindCachedOrUnknown_CorrectlyCalculatedMemoryUsedByDirtyCache()
+        public void FindCachedOrUnknown_DoesNotCachePlaceholderOnMiss()
         {
             using TrieStore trieStore = CreateTrieStore(pruningStrategy: new TestPruningStrategy(true));
             long startSize = trieStore.MemoryUsedByDirtyCache;
             trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakA, isReadOnly: false);
-            TrieNode trieNode = TrieNode.CreateLeafTyped(Keccak.Zero);
-            long oneKeccakSize = trieNode.GetMemorySize(false) + ExpectedPerNodeKeyMemorySize - MemorySizes.SmallObjectOverhead;
-            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize + oneKeccakSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
             trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
-            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
             trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakB, isReadOnly: false);
-            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(2 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
             trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakC, isReadOnly: false);
-            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
             trieStore.GetCachedOrPlaceholder(null, TreePath.Empty, TestItem.KeccakD, isReadOnly: true);
-            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(3 * oneKeccakSize + startSize));
+            Assert.That(trieStore.MemoryUsedByDirtyCache, Is.EqualTo(startSize));
         }
 
         [Test]
@@ -987,13 +985,10 @@ namespace Nethermind.Trie.Test.Pruning
 
         [Test]
         [NonParallelizable]
-        public void Shared_read_only_lookup_does_not_clone_cached_ref_only_nodes()
+        public void Shared_read_only_lookup_miss_returns_placeholder_without_cloning()
         {
             using TrieStore fullTrieStore = CreateTrieStore();
             TreePath emptyPath = TreePath.Empty;
-            // Seed the dirty-cache with a hash-only entry. The shared-traversal
-            // resolver path (snap-sync, range visitor) reuses that entry without
-            // cloning when the cached node has no RLP yet.
             fullTrieStore.GetCachedOrPlaceholder(null, emptyPath, TestItem.KeccakA, isReadOnly: false);
 
             long fallbacksBefore = fullTrieStore.FallbackNotShareableCount;
@@ -1003,7 +998,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             node.NodeType.Should().Be(NodeType.Unknown);
             node.Keccak.Should().Be(TestItem.KeccakA);
-            fullTrieStore.FallbackNotShareableCount.Should().BeGreaterThan(fallbacksBefore);
+            fullTrieStore.FallbackNotShareableCount.Should().Be(fallbacksBefore);
             fullTrieStore.CloneForReadOnlyCount.Should().Be(clonesBefore);
         }
 

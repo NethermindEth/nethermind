@@ -81,17 +81,26 @@ internal class TrieStoreDirtyNodesCache
 
     public TrieNode FindCachedOrUnknown(in Key key)
     {
-        NodeRecord nodeRecord = GetOrAdd(in key, this);
-        if (nodeRecord.Node.NodeType != NodeType.Unknown)
+        TrieNode trieNode;
+        if (TryGetValue(key, out TrieNode cached))
         {
-            Metrics.LoadedFromCacheNodesCount++;
+            trieNode = cached;
+            if (trieNode.NodeType != NodeType.Unknown)
+            {
+                Metrics.LoadedFromCacheNodesCount++;
+            }
+            else
+            {
+                if (_logger.IsTrace) Trace(trieNode);
+            }
         }
         else
         {
-            if (_logger.IsTrace) Trace(nodeRecord.Node);
+            trieNode = new TrieNodePlaceholder(in key.Keccak);
+            if (_logger.IsTrace) Trace(trieNode);
         }
 
-        return nodeRecord.Node;
+        return trieNode;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
@@ -163,20 +172,6 @@ internal class TrieStoreDirtyNodesCache
     public bool TryGetRecord(Key key, out NodeRecord nodeRecord) => _storeByHash
             ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
-
-    private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
-        ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
-        {
-            TrieNode trieNode = new TrieNodePlaceholder(in keccak);
-            cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
-        }, cache)
-        : _byKeyObjectCache.GetOrAdd(key, static (key, cache) =>
-        {
-            TrieNode trieNode = new TrieNodePlaceholder(in key.Keccak);
-            cache.IncrementMemory(trieNode);
-            return new NodeRecord(trieNode, -1);
-        }, cache);
 
     public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
             ? GetOrAdd(_byHashObjectCache, key.Keccak, record)

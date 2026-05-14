@@ -53,6 +53,20 @@ public sealed class PreCachedTrieStore : ITrieStore, IScopedReadOnlyTraversalPro
             flags == ReadFlags.None ? _tryLoadRlp :
             (in key) => _inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
+    // Forward resolved-node lookups to the inner TrieStore so its dirty-cache and
+    // commit-buffer are consulted. The IScopableTrieStore default impl would only
+    // check our own (always-false) TryGetCachedNode and then LoadRlp, which goes
+    // straight to the per-block RLP cache and DB - skipping the underlying dirty
+    // cache where freshly-committed nodes live until they flush.
+    public TrieNode GetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags = ReadFlags.None) =>
+        _inner.GetOrLoadNode(address, in path, in hash, flags);
+
+    public bool TryGetOrLoadNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node, ReadFlags flags = ReadFlags.None) =>
+        _inner.TryGetOrLoadNode(address, in path, in hash, out node, flags);
+
+    public bool TryGetCachedNode(Hash256? address, in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node) =>
+        _inner.TryGetCachedNode(address, in path, in hash, out node);
+
     public INodeStorage.KeyScheme Scheme => _inner.Scheme;
 
     public ITrieNodeResolver? GetReadOnlyTraversalResolver(Hash256? address) =>
