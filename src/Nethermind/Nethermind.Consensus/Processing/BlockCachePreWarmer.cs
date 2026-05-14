@@ -300,7 +300,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 scope.TransactionProcessor.SetBlockExecutionContext(context);
 
                                 if (preWarmer.MainThreadWorldState is not null)
-                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState, populatePreBlockCacheFromFallback: !hammerMode);
+                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                                 WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                             }
@@ -332,7 +332,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                 scope.TransactionProcessor.SetBlockExecutionContext(context);
 
                                 if (preWarmer.MainThreadWorldState is not null)
-                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState, populatePreBlockCacheFromFallback: !hammerMode);
+                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                                 WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                             }
@@ -350,7 +350,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                     hammerScope.TransactionProcessor.SetBlockExecutionContext(hammerCtx);
 
                                     if (preWarmer.MainThreadWorldState is not null)
-                                        (hammerScope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState, populatePreBlockCacheFromFallback: false);
+                                        (hammerScope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                                     WarmupSingleTransaction(hammerScope, block.Transactions[myTx], myTx, blockState);
                                 }
@@ -384,7 +384,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                                         scope.TransactionProcessor.SetBlockExecutionContext(context);
 
                                         if (preWarmer.MainThreadWorldState is not null)
-                                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState, populatePreBlockCacheFromFallback: true);
+                                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
 
                                         WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                                     }

@@ -39,7 +39,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// Used by prewarmer to read from the main thread's storage state without copying.
     /// </summary>
     internal PersistentStorageProvider? _storageFallback;
-    internal SeqlockCache<StorageCell, byte[]>? _storageFallbackCache;
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
@@ -88,7 +87,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 if (_storageFallback._storages.TryGetValue(storageCell.Address, out PerContractState? fallbackContract) &&
                     fallbackContract.TryLoadFromBlockChange(storageCell.Index, out byte[]? fallbackValue))
                 {
-                    _storageFallbackCache?.Set(in storageCell, fallbackValue);
                     Db.Metrics.IncrementStorageTreeCache();
                     PushToRegistryOnly(storageCell, fallbackValue);
                     return fallbackValue;
