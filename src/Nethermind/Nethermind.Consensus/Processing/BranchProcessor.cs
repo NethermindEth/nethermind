@@ -134,7 +134,7 @@ public class BranchProcessor(
                     // Give prewarmer a head start to warm caches before block processing begins.
                     // The prewarmer runs full EVM speculatively on background threads — without
                     // lead time, it races with the main thread and achieves only ~30% storage hit rate.
-                    Thread.Sleep(5);
+                    Thread.Sleep(20);
                 }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
