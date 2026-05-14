@@ -312,19 +312,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             }
                             else
                             {
-                                // State-gated: re-execute only when main thread advances.
-                                // Tight spin (Thread.SpinWait) instead of SpinWait.SpinOnce() which
-                                // escalates to Thread.Sleep(1) — too slow for sub-ms tx processing.
+                                // State-gated: re-execute only when main thread advances
                                 while (!token.IsCancellationRequested)
                                 {
                                     if (lastSeenMain >= myTx) break;
 
+                                    SpinWait spin = default;
                                     while (!token.IsCancellationRequested)
                                     {
                                         int current = Volatile.Read(ref MainThreadTxIndex);
                                         if (current > lastSeenMain) { lastSeenMain = current; break; }
                                         if (current >= myTx) { lastSeenMain = current; break; }
-                                        Thread.SpinWait(20);
+                                        spin.SpinOnce();
                                     }
 
                                     if (lastSeenMain >= myTx) break;
