@@ -167,14 +167,37 @@ public class Startup : IStartup
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
 
-        // Engine API fast lane: authenticated engine port POST requests bypass
-        // routing, CORS, compression, and WebSocket middleware
+        // JSON-RPC fast lane: any recognized JSON-RPC HTTP POST bypasses the
+        // ASP.NET middleware chain (UseRouting, UseCors, UseResponseCompression,
+        // UseWebSockets, UseEndpoints, MapWhen) and dispatches directly to
+        // ProcessJsonRpcRequestCoreAsync. Mirrors geth's single-handler model.
+        //
+        // The middleware chain serves features the hot RPC path doesn't use:
+        //   - UseRouting / UseEndpoints — JSON-RPC isn't routed; only the
+        //     health-check endpoint needs these.
+        //   - UseCors — server-to-server clients (libraries, indexers, curl)
+        //     don't need CORS; only browser dApps do.
+        //   - UseResponseCompression — already conditionally skipped for
+        //     localhost; allocates a fresh gzip/brotli stream per request.
+        //   - UseWebSockets — HTTP POST requests don't need WebSocket setup.
+        //
+        // Each layer adds ~one async-state-machine allocation and one
+        // `await next()` hop per request. At Adam's c=10 / 5500 RPS that's
+        // ~50k state machines/sec just for middleware. Bypassing recovers
+        // the bulk of the wall-time gap to geth on the hot path.
+        //
+        // Authentication is still enforced inside ProcessJsonRpcRequestCoreAsync
+        // for authenticated URLs (Engine API), so this generalization is safe.
+        //
+        // Browser dApps that rely on CORS, and remote clients that need
+        // response compression, will need either an inline implementation
+        // added here or to fall through via a different code path. See
+        // task 22 / discussion 2026-05-14.
         app.Use(async (ctx, next) =>
         {
             if (ctx.Request.Method != "POST" ||
                 !(ctx.Request.ContentType?.Contains("application/json") ?? false) ||
                 !jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) ||
-                !jsonRpcUrl.IsAuthenticated ||
                 !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
             {
                 await next();
