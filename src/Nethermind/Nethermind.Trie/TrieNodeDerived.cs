@@ -43,35 +43,36 @@ namespace Nethermind.Trie
     }
 
     /// <summary>
-    /// Concrete sealed placeholder for an as-yet-unresolved by-hash trie node. Carries
-    /// only an optional <see cref="ValueHash256"/> identity and / or RLP payload; the
-    /// shape (branch / leaf / extension) is determined later by <see cref="TrieNode.ResolveNode"/>,
-    /// which decodes the RLP into a typed derived class and rebinds the caller's reference.
-    /// Exists so the abstract <see cref="TrieNode"/> base does not need a public
-    /// constructor for the unknown case while resolver / cache / sync layers that still
-    /// publish unresolved node identities have a concrete type to allocate.
+    /// Transient typed-node wrapper for RLP bytes received from a peer during sync.
+    /// Carries the RLP payload; the shape (branch / leaf / extension) is determined
+    /// later by <see cref="TrieNode.ResolveNode"/>, which decodes the RLP into a
+    /// typed derived class and rebinds the caller's reference.
+    ///
+    /// This class is for sync code only. The hash-only constructors that previously
+    /// existed marked themselves <c>IsPersisted = true</c> without verifying the node
+    /// was actually in the backing store - that lie allowed by-hash placeholders to
+    /// be treated as authoritative cache entries, which is the corruption vector that
+    /// motivated removing the placeholder pattern from cache paths. Do not reintroduce
+    /// a hash-only constructor; cache misses must return <see langword="null"/>, not
+    /// fabricate a TrieSyncNode.
     /// </summary>
     public sealed class TrieSyncNode : TrieNode
     {
         public TrieSyncNode() { }
-
-        public TrieSyncNode(in ValueHash256 keccak) : base(in keccak) => IsPersisted = true;
-
-        public TrieSyncNode(Hash256 keccak) : base(in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
 
         public TrieSyncNode(CappedArray<byte> rlp, bool isDirty = false) : base(rlp, isDirty) { }
 
         public TrieSyncNode(byte[]? rlp, bool isDirty = false)
             : base(new CappedArray<byte>(rlp), isDirty) { }
 
-        public TrieSyncNode(Hash256 keccak, ReadOnlySpan<byte> rlp)
-            : base(new CappedArray<byte>(rlp.ToArray()), in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
+        // Hash-only stub: internal-visible to test assemblies via [InternalsVisibleTo] so
+        // unit tests can construct an unresolved-by-hash node for testing ResolveNode /
+        // child-slot semantics. NOT for production use - the old public hash-only
+        // constructor lied about IsPersisted and that lie was the cache-pollution
+        // corruption vector. This overload deliberately does not set IsPersisted.
+        internal TrieSyncNode(in ValueHash256 keccak) : base(in keccak) { }
 
-        public TrieSyncNode(Hash256 keccak, CappedArray<byte> rlp)
-            : base(rlp, in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) => IsPersisted = true;
-
-        public TrieSyncNode(in ValueHash256 keccak, CappedArray<byte> rlp)
-            : base(rlp, in keccak) => IsPersisted = true;
+        internal TrieSyncNode(Hash256 keccak) : base(in (keccak ?? throw new ArgumentNullException(nameof(keccak))).ValueHash256) { }
 
         // Copy ctor for CloneTyped: preserves the unknown shape; the caller is expected
         // to ResolveNode the clone before treating it as a typed node.

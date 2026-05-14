@@ -17,8 +17,8 @@ internal sealed class StateTrieStoreAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode candidate = bundle.FindStateNodeOrUnknown(path, hashRef);
-        if (candidate.NodeType == NodeType.Unknown)
+        TrieNode? candidate = bundle.FindStateNode(path, hashRef);
+        if (candidate is null)
         {
             node = null;
             return false;
@@ -60,8 +60,8 @@ internal sealed class StateTrieStoreWarmerAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode candidate = bundle.FindStateNodeOrUnknownForTrieWarmer(path, hashRef);
-        if (candidate.NodeType == NodeType.Unknown)
+        TrieNode? candidate = bundle.FindStateNodeForTrieWarmer(path, hashRef);
+        if (candidate is null)
         {
             node = null;
             return false;
@@ -93,8 +93,8 @@ internal sealed class StorageTrieStoreAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode candidate = bundle.FindStorageNodeOrUnknown(addressHash, path, hashRef);
-        if (candidate.NodeType == NodeType.Unknown)
+        TrieNode? candidate = bundle.FindStorageNode(addressHash, path, hashRef);
+        if (candidate is null)
         {
             node = null;
             return false;
@@ -131,8 +131,8 @@ internal sealed class StorageTrieStoreWarmerAdapter(
     public override bool TryGetCachedNode(in TreePath path, in ValueHash256 hash, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TrieNode? node)
     {
         Hash256 hashRef = new(in hash);
-        TrieNode candidate = bundle.FindStorageNodeOrUnknownTrieWarmer(addressHash, path, hashRef);
-        if (candidate.NodeType == NodeType.Unknown)
+        TrieNode? candidate = bundle.FindStorageNodeForTrieWarmer(addressHash, path, hashRef);
+        if (candidate is null)
         {
             node = null;
             return false;

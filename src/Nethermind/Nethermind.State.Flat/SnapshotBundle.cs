@@ -141,7 +141,7 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key);
     }
 
-    public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)
+    public TrieNode? FindStateNode(in TreePath path, Hash256 hash)
     {
         GuardDispose();
 
@@ -150,23 +150,21 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieChanged && _changedStateNodes.TryGetValue(key, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
         }
-        else if (_transientResource.TryGetStateNode(path, hash, out node))
+        if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
         }
-        else if (DoFindStateNodeExternal(path, hash, out node))
+        if (DoFindStateNodeExternal(path, hash, out node))
         {
+            return node;
         }
-        else
-        {
-            node = new TrieSyncNode(hash);
-        }
-
-        return node;
+        return null;
     }
 
-    public TrieNode FindStateNodeOrUnknownForTrieWarmer(in TreePath path, Hash256 hash)
+    public TrieNode? FindStateNodeForTrieWarmer(in TreePath path, Hash256 hash)
     {
         // TrieWarmer only touch `_transientResource`
         GuardDispose();
@@ -174,16 +172,13 @@ public sealed class SnapshotBundle : IDisposable
         if (_transientResource.TryGetStateNode(path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
         }
-        else
+        if (DoFindStateNodeExternal(path, hash, out node))
         {
-            node = _transientResource.GetOrAddStateNode(path,
-                DoFindStateNodeExternal(path, hash, out node)
-                    ? node
-                    : new TrieSyncNode(hash));
+            return _transientResource.GetOrAddStateNode(path, node);
         }
-
-        return node;
+        return null;
     }
 
     private bool DoFindStateNodeExternal(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
@@ -207,7 +202,7 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryFindStateNodes(key, out node);
     }
 
-    public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
+    public TrieNode? FindStorageNode(Hash256 address, in TreePath path, Hash256 hash)
     {
         GuardDispose();
 
@@ -216,40 +211,35 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieChanged && _changedStorageNodes.TryGetValue(key, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
         }
-        else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
+        if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
         }
-        else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
+        if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
         {
+            return node;
         }
-        else
-        {
-            node = new TrieSyncNode(hash);
-        }
-
-        return node;
+        return null;
     }
 
 
-    public TrieNode FindStorageNodeOrUnknownTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
+    public TrieNode? FindStorageNodeForTrieWarmer(Hash256 address, in TreePath path, Hash256 hash)
     {
         GuardDispose();
 
         if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
         }
-        else
+        if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
         {
-            node = _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path,
-                DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
-                    ? node
-                    : new TrieSyncNode(hash));
+            return _transientResource.GetOrAddStorageNode((Hash256AsKey)address, path, node);
         }
-
-        return node;
+        return null;
     }
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
