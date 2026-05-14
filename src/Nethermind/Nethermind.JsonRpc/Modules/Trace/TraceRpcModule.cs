@@ -257,7 +257,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
 
-        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_block(BlockParameter blockParameter, string? fork = null)
         {
             SearchResult<Block> blockSearch = blockFinder.SearchForBlock(blockParameter);
             if (blockSearch.IsError)
@@ -282,7 +282,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromStore>>(parentSearch.Object);
             }
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards));
+            if (!TryResolveForkSpec(fork, out IReleaseSpec? forkSpec, out ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? forkError))
+                return forkError!;
+
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlock(parentSearch.Object, block, new(ParityTraceTypes.Trace | ParityTraceTypes.Rewards), forkSpec);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace));
         }
 
@@ -362,19 +365,87 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return parityTracer.BuildResult();
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer)
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer, IReleaseSpec? specOverride = null)
         {
-            using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseBlock);
+            Block blockToExecute = block;
+            if (specOverride is not null)
+            {
+                BlockHeader adjustedHeader = AdjustHeaderForSpec(block.Header, baseBlock, specOverride);
+                blockToExecute = block.WithReplacedHeader(adjustedHeader);
+            }
+
+            using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseBlock, specOverride: specOverride);
             ITracer tracer2 = env.Component;
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            tracer2.Execute(block, tracer.WithCancellation(cancellationToken));
+            tracer2.Execute(blockToExecute, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
 
+        /// <summary>
+        /// Adjusts a block header to the minimum needed for execution under a different spec:
+        /// fills in <see cref="BlockHeader.BaseFeePerGas"/> when activating EIP-1559 and
+        /// <see cref="BlockHeader.ExcessBlobGas"/> when activating EIP-4844.
+        /// </summary>
+        /// <remarks>
+        /// Known limitation: <c>WithdrawalsRoot</c> (EIP-4895), <c>ParentBeaconBlockRoot</c>
+        /// (EIP-4788), and <c>RequestsHash</c> (EIP-7685) are not synthesized. When a block is
+        /// re-executed under a spec that activates those features for the first time, system
+        /// calls (e.g. the beacon-root contract update) will see <c>null</c>/zero inputs and
+        /// produce side-effects that don't match a real chain — acceptable for tracing
+        /// (NoValidation path) but trace consumers should be aware. The intended use is
+        /// pre-merge fork comparison (e.g. Istanbul ↔ Berlin precompile gas), where these
+        /// fields are inherently absent.
+        /// </remarks>
+        private static BlockHeader AdjustHeaderForSpec(BlockHeader header, BlockHeader parentHeader, IReleaseSpec spec)
+        {
+            BlockHeader adjusted = header.Clone();
+
+            adjusted.BaseFeePerGas = spec.IsEip1559Enabled
+                ? adjusted.BaseFeePerGas.IsZero
+                    ? BaseFeeCalculator.Calculate(parentHeader, spec)
+                    : adjusted.BaseFeePerGas
+                : UInt256.Zero;
+
+            adjusted.ExcessBlobGas = spec.IsEip4844Enabled
+                ? BlobGasCalculator.CalculateExcessBlobGas(parentHeader, spec)
+                : null;
+
+            return adjusted;
+        }
+
+        private bool TryResolveForkSpec<TResult>(string? fork, out IReleaseSpec? forkSpec, out ResultWrapper<TResult>? error)
+        {
+            forkSpec = null;
+            error = null;
+
+            if (fork is null)
+                return true;
+
+            if (specProvider is not IForkAwareSpecProvider forkAwareProvider)
+            {
+                error = ResultWrapper<TResult>.Fail("Spec provider does not support fork overrides", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(fork))
+            {
+                error = ResultWrapper<TResult>.Fail("Fork name must not be null or empty", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            if (!forkAwareProvider.TryGetForkSpec(fork, out forkSpec))
+            {
+                error = ResultWrapper<TResult>.Fail($"Unknown fork: '{fork}'. Available: {string.Join(", ", forkAwareProvider.AvailableForks)}", ErrorCodes.InvalidParams);
+                return false;
+            }
+
+            return true;
+        }
+
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
-        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
 
         private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
             jsonRpcConfig.BuildTimeoutCancellationToken();
