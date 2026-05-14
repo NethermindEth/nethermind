@@ -83,6 +83,17 @@ internal sealed class StateCompositionStateHolder
     /// </summary>
     public Hash256 LastProcessedStateRoot { get { lock (_lock) return _lastProcessedStateRoot; } }
 
+    /// <summary>
+    /// Probe whether a code hash already has a cached size. Lets the incremental
+    /// diff path skip <see cref="IStateReader.GetCode"/> for hashes the holder
+    /// has tracked since the baseline scan; that bytecode allocation is the
+    /// single largest source of GC pressure in <c>ApplyCodeHashChange</c>.
+    /// </summary>
+    public bool HasCachedCodeSize(ValueHash256 hash)
+    {
+        lock (_lock) return _codeHashSizes.ContainsKey(hash);
+    }
+
     public StateCompositionReport BuildReport()
     {
         lock (_lock)

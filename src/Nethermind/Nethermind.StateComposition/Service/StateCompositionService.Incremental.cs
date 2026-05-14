@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -58,11 +59,28 @@ internal sealed partial class StateCompositionService
             IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
 
             TrieDiff diff = _diffWalker.ComputeDiff(prevRoot, head.Header.StateRoot, resolver);
-            // Size-lookup lambda is invoked once per newly-observed code hash,
-            // not per reference, so cost stays bounded by distinct new hashes.
+
+            // Pre-warm code sizes OUTSIDE the holder's _lock. GetCode allocates the
+            // full bytecode just to read .Length; doing it inside the critical section
+            // pins all bytecode buffers live simultaneously and blocks the holder
+            // against RPC readers. Resolving here lets GC reclaim each buffer right
+            // after the .Length read, so ApplyIncrementalDiffAndUpdate becomes a pure
+            // dictionary update with no allocations against IStateReader.
+            Dictionary<ValueHash256, int> preWarmedSizes = new(diff.CodeHashChanges.Count);
+            foreach (CodeHashChange change in diff.CodeHashChanges)
+            {
+                if (change.HasCode && !preWarmedSizes.ContainsKey(change.NewCodeHash)
+                    && !_stateHolder.HasCachedCodeSize(change.NewCodeHash))
+                {
+                    preWarmedSizes[change.NewCodeHash] = _stateReader.GetCode(change.NewCodeHash)?.Length ?? 0;
+                }
+            }
+
             CumulativeTrieStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(
                 diff, head.Number, head.Header.StateRoot,
-                hash => _stateReader.GetCode(hash)?.Length ?? 0);
+                hash => preWarmedSizes.TryGetValue(hash, out int size)
+                    ? size
+                    : (_stateReader.GetCode(hash)?.Length ?? 0));
 
             Metrics.UpdateFromCumulativeStats(updated);
             // Skip the labeled-gauge republish when nothing changed; gauges retain their last value.
