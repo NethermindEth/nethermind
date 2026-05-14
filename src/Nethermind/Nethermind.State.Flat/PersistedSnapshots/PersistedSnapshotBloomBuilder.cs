@@ -20,31 +20,36 @@ internal static class PersistedSnapshotBloomBuilder
         PersistedSnapshotScanner scanner = new(session, snapshot);
 
         // Pass 1: count keys to size the bloom accurately. Lazy entries: no decoding.
+        // One walk over column 0x01 reaches all three sub-tags per address, so the
+        // counting cost drops from 3× to 1× per row (vs the pre-refactor 3 enumerables).
         long capacity = 0;
-        foreach (PersistedSnapshotScanner.AccountEntry _ in scanner.Accounts)
-            capacity++;
-        foreach (PersistedSnapshotScanner.SelfDestructEntry _ in scanner.SelfDestructedStorageAddresses)
-            capacity++;
-        foreach (PersistedSnapshotScanner.StorageEntry _ in scanner.Storages)
-            capacity += 2; // address key + (address, slot) key
+        foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
+        {
+            if (entry.HasAccount) capacity++;
+            if (entry.SelfDestructFlag is not null) capacity++;
+            foreach (PersistedSnapshotScanner.SlotEntry _ in entry.Slots)
+                capacity += 2; // address key + (address, slot) key
+        }
 
         if (capacity == 0)
             capacity = 1;
 
         BloomFilter bloom = new(capacity, bitsPerKey);
 
-        // Pass 2: add keys. Only AddressHash/Slot decoded — Account/SlotValue skipped.
-        foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
-            bloom.Add(AddressKey(entry.AddressHash));
-
-        foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
-            bloom.Add(AddressKey(entry.AddressHash));
-
-        foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
+        // Pass 2: add keys. Address is decoded once per row by the enumerator and reused
+        // across every sub-tag — the bloom-key derivation is allocation-free per slot.
+        foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
-            ulong addrKey = AddressKey(entry.AddressHash);
-            bloom.Add(addrKey);
-            bloom.Add(SlotKey(addrKey, entry.Slot));
+            ulong addrKey = AddressKey(entry.Address);
+            if (entry.HasAccount)
+                bloom.Add(addrKey);
+            if (entry.SelfDestructFlag is not null)
+                bloom.Add(addrKey);
+            foreach (PersistedSnapshotScanner.SlotEntry slot in entry.Slots)
+            {
+                bloom.Add(addrKey);
+                bloom.Add(SlotKey(addrKey, slot.Slot));
+            }
         }
 
         return bloom;
@@ -80,8 +85,17 @@ internal static class PersistedSnapshotBloomBuilder
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ulong AddressKey(in ValueHash256 addressHash) =>
-        MemoryMarshal.Read<ulong>(addressHash.Bytes);
+    internal static ulong AddressKey(Address address) =>
+        MemoryMarshal.Read<ulong>(address.Bytes);
+
+    /// <summary>
+    /// Bloom-key seed from the first 8 bytes of a raw 20-byte Address span. Inlined
+    /// hot path used by both the build loop and the merger byte-copy fast paths
+    /// (which already have the address bytes pinned).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong AddressKey(scoped ReadOnlySpan<byte> addressBytes) =>
+        MemoryMarshal.Read<ulong>(addressBytes);
 
     /// <summary>
     /// Slot bloom hash: XORs the full 32-byte big-endian slot into the address key.

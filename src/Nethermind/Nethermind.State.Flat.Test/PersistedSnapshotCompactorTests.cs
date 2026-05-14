@@ -105,14 +105,14 @@ public class PersistedSnapshotCompactorTests
             // Verify compacted snapshot exists spanning 0→8 and contains all accounts
             Assert.That(repo.TryLeaseCompactedSnapshotTo(s8, out PersistedSnapshot? compacted), Is.True);
             Assert.That(compacted!.From, Is.EqualTo(s0));
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.AddressA.Bytes), out _), Is.True);
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.AddressB.Bytes), out _), Is.True);
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.AddressC.Bytes), out _), Is.True);
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.AddressD.Bytes), out _), Is.True);
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.AddressE.Bytes), out _), Is.True);
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.AddressF.Bytes), out _), Is.True);
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.Addresses[6].Bytes), out _), Is.True);
-            Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.Addresses[7].Bytes), out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressA, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressB, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressC, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressD, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressE, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.AddressF, out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.Addresses[6], out _), Is.True);
+            Assert.That(compacted.TryGetAccount(TestItem.Addresses[7], out _), Is.True);
             compacted.Dispose();
         }
         finally
@@ -156,7 +156,6 @@ public class PersistedSnapshotCompactorTests
                 reservationTag: ArenaReservationTags.BlobBackedLarge);
 
             StateId prev = new(0, Keccak.EmptyTreeHash);
-            ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
             for (int i = 1; i <= n; i++)
             {
                 StateId next = new(i, Keccak.Compute($"s{i}"));
@@ -183,19 +182,19 @@ public class PersistedSnapshotCompactorTests
                 // Every unique account must survive.
                 for (int i = 1; i <= n; i++)
                 {
-                    Assert.That(compacted.TryGetAccount(ValueKeccak.Compute(TestItem.Addresses[i - 1].Bytes), out _), Is.True,
+                    Assert.That(compacted.TryGetAccount(TestItem.Addresses[i - 1], out _), Is.True,
                         $"Account from block {i} missing");
                 }
 
                 // Overlapping account: newest balance wins.
-                Assert.That(compacted.TryGetAccount(hashA, out Account? a), Is.True);
+                Assert.That(compacted.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                 Assert.That(a!.Balance, Is.EqualTo((UInt256)n), "Newest balance must win on the overlapping account");
 
                 // Every per-block slot must survive (each block wrote a distinct slot index).
                 for (int i = 1; i <= n; i++)
                 {
                     SlotValue slot = default;
-                    Assert.That(compacted.TryGetSlot(hashA, (UInt256)i, ref slot), Is.True,
+                    Assert.That(compacted.TryGetSlot(TestItem.AddressA, (UInt256)i, ref slot), Is.True,
                         $"Slot {i} must survive merge");
                     Assert.That(slot.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { (byte)i }).AsReadOnlySpan.ToArray()),
                         $"Slot {i} value mismatch");
@@ -355,7 +354,7 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    Assert.That(s.TryGetAccount(ValueKeccak.Compute(TestItem.AddressA.Bytes), out Account? a), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200));
                 }))
                 .SetName("Merge_AccountOverride");
@@ -425,20 +424,18 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
-
-                    Assert.That(s.TryGetAccount(hashA, out Account? a), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)200), "Account override");
 
                     SlotValue slot1 = default;
-                    Assert.That(s.TryGetSlot(hashA, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.True, "Older-only slot must survive (no self-destruct on A)");
                     Assert.That(slot1.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x42 }).AsReadOnlySpan.ToArray()));
 
                     SlotValue slot2 = default;
-                    Assert.That(s.TryGetSlot(hashA, 2, ref slot2), Is.True);
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
                     Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
 
-                    Assert.That(s.TryGetSelfDestructFlag(ValueKeccak.Compute(TestItem.AddressB.Bytes)), Is.Not.Null,
+                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressB), Is.Not.Null,
                         "Self-destruct flag for B (set in c0) must be present after compaction");
 
                     Assert.That(s.TryLoadStateNodeRlp(statePath, out byte[]? stateRlp), Is.True);
@@ -465,9 +462,9 @@ public class PersistedSnapshotCompactorTests
                 {
                     Assert.That(s.TryLoadStateNodeRlp(path, out byte[]? rlp), Is.True);
                     Assert.That(rlp, Is.EqualTo(new byte[] { 0xC1, 0x80 }), "Newer state-node RLP wins");
-                    Assert.That(s.TryGetAccount(ValueKeccak.Compute(TestItem.AddressA.Bytes), out Account? a), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressA, out Account? a), Is.True);
                     Assert.That(a!.Balance, Is.EqualTo((UInt256)100));
-                    Assert.That(s.TryGetAccount(ValueKeccak.Compute(TestItem.AddressB.Bytes), out Account? b), Is.True);
+                    Assert.That(s.TryGetAccount(TestItem.AddressB, out Account? b), Is.True);
                     Assert.That(b!.Balance, Is.EqualTo((UInt256)200));
                 }))
                 .SetName("Merge_NewerOverridesOlder");
@@ -504,13 +501,12 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
                     SlotValue slot1 = default;
-                    Assert.That(s.TryGetSlot(hashA, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 1, ref slot1), Is.False, "Older slot must be cleared by newer destruct");
                     SlotValue slot2 = default;
-                    Assert.That(s.TryGetSlot(hashA, 2, ref slot2), Is.True);
+                    Assert.That(s.TryGetSlot(TestItem.AddressA, 2, ref slot2), Is.True);
                     Assert.That(slot2.AsReadOnlySpan.ToArray(), Is.EqualTo(new SlotValue(new byte[] { 0x99 }).AsReadOnlySpan.ToArray()));
-                    Assert.That(s.TryGetSelfDestructFlag(hashA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
+                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False, "Destruct flag must be present and value must be `false` (destructed)");
                 }))
                 .SetName("Merge_SelfDestruct_ClearsOlderStorage");
         }
@@ -525,8 +521,7 @@ public class PersistedSnapshotCompactorTests
                 (object)new[] { c0, c1 },
                 (Action<PersistedSnapshot>)(s =>
                 {
-                    ValueHash256 hashA = ValueKeccak.Compute(TestItem.AddressA.Bytes);
-                    Assert.That(s.TryGetSelfDestructFlag(hashA), Is.False,
+                    Assert.That(s.TryGetSelfDestructFlag(TestItem.AddressA), Is.False,
                         "Older `false` (destructed) flag must win over newer `true` (new-account) flag");
                 }))
                 .SetName("Merge_SelfDestruct_TryAddSemantics");

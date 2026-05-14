@@ -619,29 +619,21 @@ public class PersistenceManager(
         PersistedSnapshotScanner scanner = new(session, snapshot);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (PersistedSnapshotScanner.SelfDestructEntry entry in scanner.SelfDestructedStorageAddresses)
+            // Single walk over column 0x01: SD, account, and slot sub-tags all sit in the
+            // same per-address inner HSST, so one outer pass + TryResolveAll resolves all
+            // three for each address. Per-address ordering (SD before SetAccount/SetStorage)
+            // is preserved within the row; cross-address ordering is irrelevant to the
+            // write batch.
+            foreach (PersistedSnapshotScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
-                if (entry.IsNew) continue;
-                // PersistedSnapshot only stores the 20-byte address-hash prefix as the
-                // column 0x01 key — the original Address is unrecoverable. Use the hash-
-                // keyed batch entrypoint, which is what the underlying flat layer uses
-                // anyway (Address-keyed methods just hash internally).
-                batch.SelfDestructRaw(entry.AddressHash);
-            }
+                if (entry.SelfDestructFlag is false)
+                    batch.SelfDestruct(entry.Address);
 
-            foreach (PersistedSnapshotScanner.AccountEntry entry in scanner.Accounts)
-            {
-                if (entry.Account is { } account)
-                    batch.SetAccountRaw(entry.AddressHash, account);
-                else
-                    batch.RemoveAccountRaw(entry.AddressHash);
-            }
+                if (entry.HasAccount)
+                    batch.SetAccount(entry.Address, entry.Account);
 
-            foreach (PersistedSnapshotScanner.StorageEntry entry in scanner.Storages)
-            {
-                ValueHash256 slotHash = ValueKeccak.Zero;
-                StorageTree.ComputeKeyWithLookup(entry.Slot, ref slotHash);
-                batch.SetStorageRaw(entry.AddressHash, slotHash, entry.Value);
+                foreach (PersistedSnapshotScanner.SlotEntry slot in entry.Slots)
+                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
             }
 
             foreach (PersistedSnapshotScanner.StateNodeEntry entry in scanner.StateNodes)
