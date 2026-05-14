@@ -208,8 +208,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             try
             {
-                // Convert to array for parallel iteration
+                // Sort sender groups by their earliest tx index so the prewarmer
+                // processes transactions roughly in block order — staying ahead of
+                // the main thread instead of warming random future transactions.
                 using ArrayPoolList<ArrayPoolList<(int Index, Transaction Tx)>> groupArray = senderGroups.Values.ToPooledList();
+                groupArray.Sort(static (a, b) => a[0].Index.CompareTo(b[0].Index));
 
                 // Parallel across different senders, sequential within the same sender
                 ParallelUnbalancedWork.For(
