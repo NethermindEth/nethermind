@@ -56,13 +56,13 @@ namespace Nethermind.Trie
     /// a hash-only constructor; cache misses must return <see langword="null"/>, not
     /// fabricate a TrieSyncNode.
     /// </summary>
-    public sealed class TrieSyncNode : TrieNode
+    internal sealed class TrieSyncNode : TrieNode
     {
-        public TrieSyncNode() { }
+        internal TrieSyncNode() { }
 
-        public TrieSyncNode(CappedArray<byte> rlp, bool isDirty = false) : base(rlp, isDirty) { }
+        internal TrieSyncNode(CappedArray<byte> rlp, bool isDirty = false) : base(rlp, isDirty) { }
 
-        public TrieSyncNode(byte[]? rlp, bool isDirty = false)
+        internal TrieSyncNode(byte[]? rlp, bool isDirty = false)
             : base(new CappedArray<byte>(rlp), isDirty) { }
 
         // Hash-only stub: internal-visible to test assemblies via [InternalsVisibleTo] so
