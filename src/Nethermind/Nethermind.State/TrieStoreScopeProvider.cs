@@ -47,7 +47,10 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         public void Dispose()
         {
             _trieStoreCloser.Dispose();
-            _backingStateTree.RootHash = Keccak.EmptyTreeHash;
+            if (!_committed)
+            {
+                _backingStateTree.RootHash = Keccak.EmptyTreeHash;
+            }
             _storages.Clear();
         }
 
@@ -80,6 +83,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
         private readonly ILogManager _logManager = logManager;
+        private bool _committed;
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber) => new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
 
@@ -109,6 +113,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
             Task.WaitAll(commitTask.AsSpan());
             _backingStateTree.Commit();
+            _committed = true;
             _storages.Clear();
         }
 

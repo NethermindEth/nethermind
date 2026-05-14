@@ -229,10 +229,11 @@ namespace Nethermind.Trie
             // Need to be after committer dispose so that it can find it in trie store properly
             RootRef = newRoot;
 
-            // Use newRoot directly rather than re-reading RootRef via the property getter:
-            // when newRoot is null (delete-all / selfdestruct), the lazy-resolve fast path
-            // would otherwise reload the stale _rootHash and resurrect the deleted root.
-            SetRootHash(newRoot?.Keccak, true);
+            // resetObjects:false - we just published the freshly-resolved typed root above.
+            // Passing true would invalidate it back to the unresolved sentinel and force the
+            // next RootRef read to lazy-load through the read resolver, which during genesis
+            // processing cannot yet see the committed dirty nodes through that path.
+            SetRootHash(newRoot?.Keccak, resetObjects: false);
         }
 
         private TrieNode Commit(ICommitter committer, ref TreePath path, TrieNode node, int maxLevelForConcurrentCommit, bool skipSelf = false)
@@ -403,7 +404,21 @@ namespace Nethermind.Trie
 
         public void SetRootHash(Hash256? value, bool resetObjects)
         {
-            _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
+            Hash256 rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
+            if (resetObjects && _rootHash == rootHash)
+            {
+                TrieNode? rootRef = Volatile.Read(ref _rootRef);
+                if (!ReferenceEquals(rootRef, _unresolvedSentinel)
+                    && rootRef is not null
+                    && !rootRef.IsDirty
+                    && rootRef.TryGetKeccak(out ValueHash256 rootKeccak)
+                    && rootKeccak == rootHash.ValueHash256)
+                {
+                    return;
+                }
+            }
+
+            _rootHash = rootHash;
             if (_rootHash == Keccak.EmptyTreeHash)
             {
                 RootRef = null;
@@ -411,7 +426,7 @@ namespace Nethermind.Trie
             else if (resetObjects)
             {
                 // Publish the unresolved sentinel atomically; the next RootRef read
-                // lazily resolves the new root hash via _readResolver.TryGetOrLoadNode.
+                // lazily resolves the new root hash via _readResolver.GetOrLoadNode.
                 // No lock needed - the sentinel transition is a single atomic ref write.
                 Volatile.Write(ref _rootRef, _unresolvedSentinel);
             }
