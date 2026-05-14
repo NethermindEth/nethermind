@@ -21,6 +21,7 @@ using Nethermind.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Trie;
 
@@ -40,6 +41,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreWarmRetryMode _retryMode;
     private readonly PreWarmFirstPassMode _firstPassMode;
     private readonly int _headStartMs;
+    private Hash256? _stateCacheRoot;
     internal bool HeadStartEnabled => _headStartMs > 0;
 
     public BlockCachePreWarmer(
@@ -120,12 +122,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         if (_preBlockCaches is not null && ShouldPreWarm(spec))
         {
-            CacheType result = _preBlockCaches.ClearCaches();
+            PrepareAccountCacheForParent(parent);
+            ClearPerBlockCaches();
+            _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
-            if (result != default)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
-            }
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
@@ -166,10 +166,39 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= _nodeStorageCache.Disable() ? CacheType.Rlp : CacheType.None;
+        ClearPerBlockCaches();
+        CacheType cachesCleared = CacheType.None;
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
+    }
+
+    internal void PrepareAccountCacheForParent(BlockHeader? parent)
+    {
+        Hash256? parentStateRoot = parent?.StateRoot;
+        if (_stateCacheRoot == parentStateRoot) return;
+
+        _preBlockCaches.StateCache.Clear();
+        _stateCacheRoot = parentStateRoot;
+    }
+
+    internal void PublishCommittedState(IWorldState worldState, BlockHeader block)
+    {
+        if (worldState is not WorldState concreteWorldState)
+        {
+            _preBlockCaches.StateCache.Clear();
+            _stateCacheRoot = null;
+            return;
+        }
+
+        concreteWorldState.CopyBlockAccountsTo(_preBlockCaches.StateCache);
+        _stateCacheRoot = block.StateRoot;
+    }
+
+    private void ClearPerBlockCaches()
+    {
+        _preBlockCaches.StorageCache.Clear();
+        _preBlockCaches.PrecompileCache.NoResizeClear();
     }
 
     public void Dispose()

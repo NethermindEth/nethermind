@@ -221,6 +221,22 @@ namespace Nethermind.State
             _persistentStorageProvider.ClearStorageMap();
         }
 
+        /// <summary>
+        /// Copies accounts observed or changed in the current block into a caller-owned cache.
+        /// </summary>
+        /// <remarks>
+        /// This is intentionally metric-free: it reads the committed block-change table directly,
+        /// so publishing prewarmer cache updates does not inflate main-thread cache hit counters.
+        /// </remarks>
+        public void CopyBlockAccountsTo(SeqlockCache<AddressAsKey, Account> accountCache)
+        {
+            foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> change in _stateProvider._blockChanges)
+            {
+                AddressAsKey address = change.Key;
+                accountCache.Set(in address, change.Value.After);
+            }
+        }
+
         public UInt256 GetNonce(Address address)
         {
             DebugGuardInScope();

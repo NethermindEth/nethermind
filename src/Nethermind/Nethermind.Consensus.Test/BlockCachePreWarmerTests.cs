@@ -370,32 +370,59 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void ClearCaches_DisablesNodeStorageCacheWithoutEvictingEntries()
+    public void PrepareAccountCacheForParent_KeepsOnlyMatchingStateRoot()
     {
-        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
 
-        NodeKey nodeKey = new(null, TreePath.Empty, Keccak.Zero);
-        byte[] cachedRlp = [0x01, 0x02, 0x03];
-        int loadCount = 0;
+        BlockHeader parentA = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
+        BlockHeader parentB = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakB).TestObject;
+        AddressAsKey address = TestItem.AddressA;
+        Account account = new((UInt256)777);
 
-        nodeStorageCache.Enabled = true;
-        nodeStorageCache.GetOrAdd(in nodeKey, (in NodeKey _) =>
+        preWarmer.PrepareAccountCacheForParent(parentA);
+        preBlockCaches.StateCache.Set(in address, account);
+
+        preWarmer.PrepareAccountCacheForParent(parentA);
+        preBlockCaches.StateCache.TryGetValue(in address, out Account? cachedAccount).Should().BeTrue();
+        cachedAccount.Should().BeSameAs(account);
+
+        preWarmer.PrepareAccountCacheForParent(parentB);
+        preBlockCaches.StateCache.TryGetValue(in address, out _).Should().BeFalse();
+    }
+
+    [Test]
+    public void PublishCommittedState_CopiesFinalAccountChangesWithoutMetrics()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+
+        using (worldState.BeginScope(BuildParentHeader()))
         {
-            loadCount++;
-            return cachedRlp;
-        }).Should().BeSameAs(cachedRlp);
+            worldState.AddToBalance(TestItem.AddressA, 1.Wei, Osaka.Instance, out _);
+            worldState.DeleteAccount(TestItem.AddressB);
+            worldState.Commit(Osaka.Instance, commitRoots: true);
+            worldState.RecalculateStateRoot();
 
-        preWarmer.ClearCaches().Should().HaveFlag(CacheType.Rlp);
-        nodeStorageCache.Enabled.Should().BeFalse();
+            BlockHeader blockHeader = Build.A.BlockHeader
+                .WithStateRoot(worldState.StateRoot)
+                .TestObject;
 
-        nodeStorageCache.Enabled = true;
-        nodeStorageCache.GetOrAdd(in nodeKey, (in NodeKey _) =>
-        {
-            loadCount++;
-            return [0x04, 0x05, 0x06];
-        }).Should().BeSameAs(cachedRlp);
-        loadCount.Should().Be(1);
+            long before = MainThreadMetricsTotal();
+            preWarmer.PublishCommittedState(worldState, blockHeader);
+            long after = MainThreadMetricsTotal();
+
+            (after - before).Should().Be(0);
+        }
+
+        AddressAsKey changedAddress = TestItem.AddressA;
+        preBlockCaches.StateCache.TryGetValue(in changedAddress, out Account? changedAccount).Should().BeTrue();
+        changedAccount!.Balance.Should().Be(1_000_000.Ether + 1.Wei);
+
+        AddressAsKey deletedAddress = TestItem.AddressB;
+        preBlockCaches.StateCache.TryGetValue(in deletedAddress, out Account? deletedAccount).Should().BeTrue();
+        deletedAccount.Should().BeNull();
     }
 
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
