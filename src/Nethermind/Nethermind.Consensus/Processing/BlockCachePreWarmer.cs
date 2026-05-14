@@ -280,7 +280,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             }
                         }
 
-                        preWarmer._firstPassDone.Set();
+                        if (firstPassLimit > 0) preWarmer._firstPassDone.Set();
 
                         // Phase 2: retry mode — re-warm txs with fresher state
                         // Reset counter so all workers start claiming from tx 0
