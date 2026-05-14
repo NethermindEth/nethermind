@@ -138,7 +138,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
                 lastResult = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer);
             }
 
-            Assert.That(lastResult, Is.Not.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            Assert.That(lastResult, Is.EqualTo(SyncResponseHandlingResult.OK));
             snapProvider.Received(1).UpdatePivot();
         }
 
@@ -192,6 +192,6 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             snapProvider.DidNotReceive().UpdatePivot();
         }
 
-        private const int AllowedInvalidResponses = 5;
+        private const int AllowedInvalidResponses = Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses;
     }
 }

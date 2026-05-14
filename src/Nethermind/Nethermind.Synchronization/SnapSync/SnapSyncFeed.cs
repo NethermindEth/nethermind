@@ -3,11 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -15,7 +18,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private readonly Lock _syncLock = new();
 
-        private const int AllowedInvalidResponses = 5;
+        internal const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
 
         private const SnapSyncBatch EmptyBatch = null;
