@@ -445,7 +445,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         }
 
         private static ResultWrapper<TResult> GetStateFailureResult<TResult>(BlockHeader header) =>
-        ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<TResult>.Fail($"No state available for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
 
         private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
             jsonRpcConfig.BuildTimeoutCancellationToken();
