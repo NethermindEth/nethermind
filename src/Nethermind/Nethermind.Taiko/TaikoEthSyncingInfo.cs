@@ -9,6 +9,10 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Taiko;
 
+/// <summary>
+/// Taiko-specific decorator for <see cref="IEthSyncingInfo"/> that accounts for
+/// beacon-sync headers when computing the <c>eth_syncing</c> response.
+/// </summary>
 /// <remarks>
 /// Beacon-sync inserts headers only bump <c>BestSuggestedBeaconHeader</c>, not
 /// <c>BestSuggestedHeader</c>. This decorator widens the suggested-header read to
