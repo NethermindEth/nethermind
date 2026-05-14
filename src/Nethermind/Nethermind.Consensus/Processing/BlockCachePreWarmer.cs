@@ -240,28 +240,41 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                     {
                         while (!token.IsCancellationRequested)
                         {
-                            // Atomically claim the next tx
+                            // Atomically claim the next unclaimed tx
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
                             if (myTx >= txCount) break;
 
-                            // Skip txs the main thread already processed
-                            int mainPos = Volatile.Read(ref MainThreadTxIndex);
-                            if (myTx <= mainPos) continue;
-
-                            // Build fresh scope each tx from parent state, with read-through
-                            // to main thread's live state. This ensures:
-                            // - No stale overlay from previous warmup txs
-                            // - Reads see main thread's committed state automatically
-                            // - Writes go to local overlay only
-                            using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
+                            // Retry loop: keep trying this tx until it succeeds or main thread passes it
+                            bool succeeded = false;
+                            while (!token.IsCancellationRequested && !succeeded)
                             {
-                                BlockExecutionContext context = new(block.Header, blockState.Spec);
-                                scope.TransactionProcessor.SetBlockExecutionContext(context);
+                                int mainPos = Volatile.Read(ref MainThreadTxIndex);
 
-                                if (preWarmer.MainThreadWorldState is not null)
-                                    (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+                                // Main thread already passed this tx — too late, skip
+                                if (myTx <= mainPos) break;
 
-                                WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                                // Fresh scope with read-through to main thread's live state
+                                using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
+                                {
+                                    BlockExecutionContext context = new(block.Header, blockState.Spec);
+                                    scope.TransactionProcessor.SetBlockExecutionContext(context);
+
+                                    if (preWarmer.MainThreadWorldState is not null)
+                                        (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
+                                    succeeded = WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
+                                }
+
+                                if (!succeeded)
+                                {
+                                    // Tx failed (revert/exception) — wait for main thread to advance
+                                    // which commits more state that might resolve the dependency
+                                    int currentMain = Volatile.Read(ref MainThreadTxIndex);
+                                    if (currentMain >= myTx) break; // main thread passed us
+
+                                    // Brief wait for main thread to commit next tx
+                                    Thread.Sleep(0);
+                                }
                             }
                         }
                     }
@@ -308,7 +321,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return groups;
     }
 
-    private static void WarmupSingleTransaction(
+    private static bool WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
@@ -332,14 +345,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
+            return result;
         }
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
-            // Ignore, regular tx processing exceptions
+            return false;
         }
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
+            return false;
         }
     }
 
