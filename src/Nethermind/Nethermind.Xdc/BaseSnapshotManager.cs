@@ -163,9 +163,13 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         TSnapshot? snapshot = GetSnapshot(gapBlockHeader.Hash);
 
         if (snapshot is null)
+        {
             if (_logger.IsWarn) _logger.Warn($"Snapshot recovery produced no snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash})");
+        }
         else
+        {
             if (_logger.IsDebug) _logger.Debug($"Recovered snapshot for block {gapBlockHeader.Number} ({gapBlockHeader.Hash})");
+        }
 
         return snapshot;
     }
