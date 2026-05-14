@@ -18,7 +18,7 @@ public sealed class NullPersistedSnapshotRepository : IPersistedSnapshotReposito
     public long CompactedSnapshotMemory => 0;
     public void LoadFromCatalog() { }
     public void ConvertSnapshotToPersistedSnapshot(Snapshot snapshot) { }
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, SortedSet<ushort> referencedSnapshotIds, BloomFilter? bloom = null) { }
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter? bloom = null) { }
     public PersistedSnapshotList AssembleSnapshotsForCompaction(StateId toStateId, long minBlockNumber) => PersistedSnapshotList.Empty();
     public PersistedSnapshot? TryGetSnapshotFrom(StateId fromState) => null;
     public bool TryLeaseSnapshotTo(StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot) { snapshot = null; return false; }

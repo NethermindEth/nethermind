@@ -44,7 +44,7 @@ public static class PersistedSnapshotMerger
     /// Pre-converts all Full snapshots to Linked so the merge only handles Linked snapshots
     /// (all trie values are already NodeRefs). This eliminates the dual code path in trie merges.
     /// </summary>
-    internal static void NWayMergeSnapshots<TWriter, TReader, TPin>(PersistedSnapshotList snapshots, ref TWriter writer, SortedSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+    internal static void NWayMergeSnapshots<TWriter, TReader, TPin>(PersistedSnapshotList snapshots, ref TWriter writer, BloomFilter? bloom = null) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // Open one WholeReadSession per source for the whole merge — every column helper
         // reads through these without re-opening per-helper sessions (which would mmap +
@@ -64,7 +64,7 @@ public static class PersistedSnapshotMerger
                 views[i] = sessions[i].GetRawView();
             }
 
-            NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(views, ref writer, referencedBlobArenaIds, bloom);
+            NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(views, ref writer, bloom);
         }
         finally
         {
@@ -80,7 +80,7 @@ public static class PersistedSnapshotMerger
     /// </summary>
     internal static void NWayMergeSnapshotsWithViews<TWriter, TReader, TPin>(
         ReadOnlySpan<(IntPtr Ptr, long Len)> views, ref TWriter writer,
-        SortedSet<ushort> referencedBlobArenaIds, BloomFilter? bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        BloomFilter? bloom) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         // All snapshots are blob-backed (values in trie columns are NodeRefs), so we can
         // merge them directly without any Full→Linked pre-conversion stage. Columns are
@@ -92,7 +92,7 @@ public static class PersistedSnapshotMerger
 
         {
             ref TWriter valueWriter = ref outerBuilder.BeginValueWrite();
-            NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter, referencedBlobArenaIds);
+            NWayMetadataMerge<TWriter, TReader, TPin>(views, ref valueWriter);
             outerBuilder.FinishValueWrite(PersistedSnapshot.MetadataTag);
         }
         {
@@ -757,12 +757,15 @@ public static class PersistedSnapshotMerger
     }
 
     /// <summary>
-    /// N-way metadata merge: from_block/from_hash from oldest, to_block/to_hash/version from newest.
-    /// Injects noderefs=[0x01] and ref_ids from referencedIds set.
-    /// Emits in sorted key order.
+    /// N-way metadata merge: from_block/from_hash from oldest, to_block/to_hash/version from
+    /// newest. Injects noderefs=[0x01]. The merged ref_ids value is produced by an N-way
+    /// streaming union over each source's already-sorted little-endian ushort byte span —
+    /// no <c>SortedSet&lt;ushort&gt;</c> or <c>ushort[]</c> allocation along the way.
+    /// Emits all keys in sorted ASCII order so the inner BTree builder accepts them in
+    /// order.
     /// </summary>
     private static void NWayMetadataMerge<TWriter, TReader, TPin>(
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views, ref TWriter writer, SortedSet<ushort> refIds) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
+        ReadOnlySpan<(IntPtr Ptr, long Len)> views, ref TWriter writer) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         int n = views.Length;
         WholeReadSessionReader oldestReader = Reader(views[0]);
@@ -800,13 +803,80 @@ public static class PersistedSnapshotMerger
         ReadOnlySpan<byte> toHash = thPin.Buffer;
         ReadOnlySpan<byte> version = vPin.Buffer;
 
-        // Build ref_ids value
-        byte[] refIdsValue = new byte[refIds.Count * 2];
-        int idx = 0;
-        foreach (ushort id in refIds)
+        // N-way streaming union of source ref_ids byte spans. Each source's value at
+        // MetadataRefIdsKey is already a sorted little-endian ushort sequence (the write
+        // path iterates a SortedSet<ushort>); cross-source duplicates are dropped by
+        // advancing every cursor whose current ushort matches the round's minimum.
+        //
+        // First pass: discover each source's ref_ids byte range. sourceStarts[i] is the
+        // byte offset into the concatenation buffer where source i's slice begins;
+        // sourceStarts[n] is the total byte count (upper bound on merged output).
+        // sourceOrigins[i] is the absolute offset within the source view, fed to TryRead.
+        Span<int> sourceStarts = stackalloc int[n + 1];
+        Span<long> sourceOrigins = stackalloc long[n];
+        int totalRefIdsBytes = 0;
+        for (int i = 0; i < n; i++)
         {
-            BinaryPrimitives.WriteUInt16LittleEndian(refIdsValue.AsSpan(idx * 2, 2), id);
-            idx++;
+            sourceStarts[i] = totalRefIdsBytes;
+            WholeReadSessionReader r = Reader(views[i]);
+            HsstReader<WholeReadSessionReader, NoOpPin> root = new(in r, new Bound(0, r.Length));
+            if (!root.TrySeek(PersistedSnapshot.MetadataTag, out Bound metaScope)) continue;
+            HsstReader<WholeReadSessionReader, NoOpPin> metaHsst = new(in r, metaScope);
+            if (!metaHsst.TrySeek(PersistedSnapshot.MetadataRefIdsKey, out Bound rb)
+                || rb.Length == 0 || rb.Length % 2 != 0) continue;
+            sourceOrigins[i] = rb.Offset;
+            totalRefIdsBytes = checked(totalRefIdsBytes + (int)rb.Length);
+        }
+        sourceStarts[n] = totalRefIdsBytes;
+
+        // Pull every source's ref_ids bytes into one contiguous buffer (sourceBytes), then
+        // merge into mergedRefIds. Both buffers share the same upper bound, so they're
+        // sized to totalRefIdsBytes. NativeMemoryList — heap rental — sidesteps the >2 GiB
+        // stackalloc theoretical risk and matches the working-buffer pattern used by the
+        // other merge helpers in this file. In practice totalRefIdsBytes is ~tens of bytes.
+        using NativeMemoryList<byte> sourceBytesBuf = new(totalRefIdsBytes, totalRefIdsBytes);
+        using NativeMemoryList<byte> mergedRefIdsBuf = new(totalRefIdsBytes, totalRefIdsBytes);
+        Span<byte> sourceBytes = sourceBytesBuf.AsSpan();
+        Span<byte> mergedRefIds = mergedRefIdsBuf.AsSpan();
+        for (int i = 0; i < n; i++)
+        {
+            int start = sourceStarts[i];
+            int len = sourceStarts[i + 1] - start;
+            if (len == 0) continue;
+            WholeReadSessionReader r = Reader(views[i]);
+            r.TryRead(sourceOrigins[i], sourceBytes.Slice(start, len));
+        }
+
+        Span<int> cursor = stackalloc int[n];
+        for (int i = 0; i < n; i++) cursor[i] = sourceStarts[i];
+
+        int writeCursor = 0;
+        while (true)
+        {
+            int minSource = -1;
+            ushort minId = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (cursor[i] >= sourceStarts[i + 1]) continue;
+                ushort id = BinaryPrimitives.ReadUInt16LittleEndian(sourceBytes.Slice(cursor[i], 2));
+                if (minSource < 0 || id < minId)
+                {
+                    minSource = i;
+                    minId = id;
+                }
+            }
+            if (minSource < 0) break;
+
+            BinaryPrimitives.WriteUInt16LittleEndian(mergedRefIds.Slice(writeCursor, 2), minId);
+            writeCursor += 2;
+
+            // Advance every cursor whose current ushort == minId (cross-source dedupe).
+            for (int i = 0; i < n; i++)
+            {
+                if (cursor[i] >= sourceStarts[i + 1]) continue;
+                ushort id = BinaryPrimitives.ReadUInt16LittleEndian(sourceBytes.Slice(cursor[i], 2));
+                if (id == minId) cursor[i] += 2;
+            }
         }
 
         using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, PersistedSnapshot.MetadataKeyLength);
@@ -817,7 +887,7 @@ public static class PersistedSnapshotMerger
         builder.Add(PersistedSnapshot.MetadataFromBlockKey, fromBlock);
         builder.Add(PersistedSnapshot.MetadataFromHashKey, fromHash);
         builder.Add(PersistedSnapshot.MetadataNodeRefsKey, [0x01]);
-        builder.Add(PersistedSnapshot.MetadataRefIdsKey, refIdsValue);
+        builder.Add(PersistedSnapshot.MetadataRefIdsKey, mergedRefIds[..writeCursor]);
         builder.Add(PersistedSnapshot.MetadataToBlockKey, toBlock);
         builder.Add(PersistedSnapshot.MetadataToHashKey, toHash);
         builder.Add(PersistedSnapshot.MetadataVersionKey, version);

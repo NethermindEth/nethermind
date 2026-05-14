@@ -46,22 +46,13 @@ internal static class PersistedSnapshotBuilderTestExtensions
             return session.AsSpanIntBounded().ToArray();
         }
 
-        SortedSet<ushort> referencedIds = [];
-        for (int i = 0; i < snapshots.Count; i++)
-        {
-            ushort[]? ids = snapshots[i].ReadReferencedBlobArenaIds();
-            if (ids is null) continue;
-            foreach (ushort id in ids)
-                referencedIds.Add(id);
-        }
-
         long totalSize = 0;
         for (int i = 0; i < snapshots.Count; i++) totalSize += snapshots[i].Size;
         totalSize += 4096;
 
         using PooledByteBufferWriter pooled = new(checked((int)totalSize));
         PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-            snapshots, ref pooled.GetWriter(), referencedIds);
+            snapshots, ref pooled.GetWriter());
         return pooled.WrittenSpan.ToArray();
     }
 }

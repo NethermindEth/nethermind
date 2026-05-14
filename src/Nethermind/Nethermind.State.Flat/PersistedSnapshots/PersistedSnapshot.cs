@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -105,19 +106,100 @@ public sealed class PersistedSnapshot : RefCountingDisposable
         _reservation = reservation;
         _blobManager = blobManager;
         _reservation.AcquireLease();
+
+        // Walk the on-disk ref_ids stream once and lease each referenced blob arena file.
+        // The snapshot now owns the lease lifecycle: CleanUp / PersistOnShutdown re-walk
+        // the same iterator to release / persist on shutdown. On partial failure we walk
+        // the prefix we already acquired and drop those leases before unwinding the
+        // metadata reservation's lease and rethrowing.
+        int acquired = 0;
+        try
+        {
+            RefIdsEnumerator e = GetRefIdsEnumerator();
+            try
+            {
+                while (e.MoveNext())
+                {
+                    if (!_blobManager.TryLeaseFile(e.Current, out _))
+                        throw new InvalidOperationException($"Blob arena {e.Current} not registered in this tier");
+                    acquired++;
+                }
+            }
+            finally { e.Dispose(); }
+        }
+        catch
+        {
+            int released = 0;
+            RefIdsEnumerator e = GetRefIdsEnumerator();
+            try
+            {
+                while (released < acquired && e.MoveNext())
+                {
+                    _blobManager.GetFile(e.Current).Dispose();
+                    released++;
+                }
+            }
+            finally { e.Dispose(); }
+            _reservation.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
-    /// Read the snapshot's referenced blob arena ids from its on-disk metadata HSST. Allocates
-    /// a fresh array per call — cache locally for hot loops. Returns null if the snapshot has
-    /// no <c>ref_ids</c> entry (synthetic test snapshots whose metadata HSST was hand-rolled
-    /// without the standard builder).
+    /// Forward iterator over this snapshot's referenced blob arena ids. Reads
+    /// the ref_ids HSST value little-endian-ushort at a time from a temporary
+    /// <see cref="WholeReadSession"/>; the session is owned by the enumerator and
+    /// released on <see cref="RefIdsEnumerator.Dispose"/> (called automatically by
+    /// <c>foreach</c>).
     /// </summary>
-    public ushort[]? ReadReferencedBlobArenaIds()
+    public RefIdsEnumerator GetRefIdsEnumerator() => new(this);
+
+    /// <summary>
+    /// Ref-struct enumerator backing <see cref="GetRefIdsEnumerator"/>. Yields each
+    /// <see cref="NodeRef.BlobArenaId"/> stored in the snapshot's <c>ref_ids</c>
+    /// metadata entry in ascending order without allocating a <c>ushort[]</c>.
+    /// </summary>
+    public ref struct RefIdsEnumerator
     {
-        using WholeReadSession session = _reservation.BeginWholeReadSession();
-        WholeReadSessionReader reader = session.GetReader();
-        return PersistedSnapshotReader.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in reader);
+        private WholeReadSession? _session;
+        private long _cursor;
+        private long _end;
+        private ushort _current;
+
+        internal RefIdsEnumerator(PersistedSnapshot snapshot)
+        {
+            _session = snapshot._reservation.BeginWholeReadSession();
+            WholeReadSessionReader r = _session.GetReader();
+            HsstReader<WholeReadSessionReader, NoOpPin> root = new(in r, new Bound(0, r.Length));
+            if (root.TrySeek(MetadataTag, out _) &&
+                root.TrySeek(MetadataRefIdsKey, out Bound rb) &&
+                rb.Length > 0 && rb.Length % 2 == 0)
+            {
+                _cursor = rb.Offset;
+                _end = rb.Offset + rb.Length;
+            }
+        }
+
+        public readonly ushort Current => _current;
+
+        public bool MoveNext()
+        {
+            if (_session is null || _cursor >= _end) return false;
+            Span<byte> buf = stackalloc byte[2];
+            WholeReadSessionReader r = _session.GetReader();
+            if (!r.TryRead(_cursor, buf)) return false;
+            _current = BinaryPrimitives.ReadUInt16LittleEndian(buf);
+            _cursor += 2;
+            return true;
+        }
+
+        public RefIdsEnumerator GetEnumerator() => this;
+
+        public void Dispose()
+        {
+            _session?.Dispose();
+            _session = null;
+        }
     }
 
     /// <summary>
@@ -207,8 +289,10 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     }
 
     /// <summary>
-    /// Read the "ref_ids" list from a snapshot's metadata column — now interpreted as
-    /// referenced <c>BlobArenaId</c>s rather than referenced snapshot ids.
+    /// Read the "ref_ids" list from a snapshot's metadata column as a fresh
+    /// <c>ushort[]</c>. Production code on the snapshot life-cycle path iterates via
+    /// <see cref="GetRefIdsEnumerator"/> instead; this method is preserved for test
+    /// assertions that need a materialised array to compare against.
     /// </summary>
     public static ushort[]? ReadRefIdsFromMetadata<TReader, TPin>(scoped in TReader reader)
         where TPin : struct, IBufferPin, allows ref struct
@@ -256,22 +340,18 @@ public sealed class PersistedSnapshot : RefCountingDisposable
     public void PersistOnShutdown()
     {
         _reservation.PersistOnShutdown();
-        ushort[]? refIds = ReadReferencedBlobArenaIds();
-        if (refIds is null) return;
-        foreach (ushort id in refIds)
+        foreach (ushort id in GetRefIdsEnumerator())
             _blobManager.GetFile(id).PersistOnShutdown();
     }
 
     protected override void CleanUp()
     {
-        // Read the leased id list before disposing the reservation — once the reservation's
-        // last lease drops we can't open a whole-read session against its mmap.
-        ushort[]? refIds = ReadReferencedBlobArenaIds();
-        _reservation.Dispose();
-        if (refIds is null) return;
-        foreach (ushort id in refIds)
-            // Drop this snapshot's lease on each blob file. GetFile is a lock-free array read
-            // — the lease we acquired at construction kept the slot alive.
+        // Drain the iterator before disposing the reservation — the iterator owns a
+        // WholeReadSession on _reservation, and this snapshot's own lease keeps the mmap
+        // alive until both leases drop. GetFile is a lock-free array read; the lease we
+        // acquired at construction kept the slot alive until now.
+        foreach (ushort id in GetRefIdsEnumerator())
             _blobManager.GetFile(id).Dispose();
+        _reservation.Dispose();
     }
 }

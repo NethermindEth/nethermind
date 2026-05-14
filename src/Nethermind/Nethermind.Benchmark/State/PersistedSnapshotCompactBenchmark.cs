@@ -38,7 +38,6 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
     private PersistedSnapshotRepository _repo = null!;
     private ResourcePool _pool = null!;
     private PersistedSnapshotList _snapshots = null!;
-    private SortedSet<ushort> _referencedBlobArenaIds = null!;
     private long _estimatedSize;
     private int _disposed;
 
@@ -83,14 +82,8 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         // The merge opens fresh WholeReadSessions per call so repeated benchmark invocations
         // remain independent.
         _snapshots = _repo.AssembleSnapshotsForCompaction(prev, 0);
-        _referencedBlobArenaIds = [];
         for (int i = 0; i < _snapshots.Count; i++)
-        {
-            ushort[]? ids = _snapshots[i].ReadReferencedBlobArenaIds();
-            if (ids is not null)
-                foreach (ushort id in ids) _referencedBlobArenaIds.Add(id);
             _estimatedSize += _snapshots[i].Size;
-        }
     }
 
     [Benchmark]
@@ -101,7 +94,7 @@ public class PersistedSnapshotCompactBenchmark : IDisposable
         // sum-of-sources upper bound (the same hint PersistedSnapshotCompactor uses).
         using PooledByteBufferWriter pooled = new(checked((int)Math.Min(_estimatedSize, int.MaxValue)));
         PersistedSnapshotMerger.NWayMergeSnapshots<PooledByteBufferWriter.Writer, PooledByteBufferWriter.WriterReader, NoOpPin>(
-            _snapshots, ref pooled.GetWriter(), _referencedBlobArenaIds);
+            _snapshots, ref pooled.GetWriter());
         return pooled.GetWriter().Written;
     }
 

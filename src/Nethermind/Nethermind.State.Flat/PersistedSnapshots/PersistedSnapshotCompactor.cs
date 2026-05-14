@@ -116,14 +116,13 @@ public class PersistedSnapshotCompactor(
         StateId from = snapshots[0].From;
         StateId to = snapshots[^1].To;
 
-        SortedSet<ushort> referencedBlobArenaIds = [];
-
-        // Open one WholeReadSession per source for the whole compaction. The same views
-        // serve both the ref-ids read (formerly a per-snapshot session) and every column
-        // helper inside NWayMergeSnapshots (formerly per-column sessions). This collapses
-        // ~5N + N session round-trips into N — each saving an mmap + MADV_NORMAL on open
-        // and an MADV_DONTNEED on close. ForgetTracker after the merge cleans the
-        // page-tracker side; AdviseDontNeed on session dispose handles the page cache.
+        // Open one WholeReadSession per source for the whole compaction. Every column
+        // helper inside NWayMergeSnapshots reads through these views — one mmap +
+        // MADV_NORMAL on open and one MADV_DONTNEED on close per source, regardless of
+        // how many columns we walk. ForgetTracker after the merge cleans the page-tracker
+        // side; AdviseDontNeed on session dispose handles the page cache. The ref_ids
+        // union is computed inside the merger directly from each source's metadata
+        // value span — no pre-pass on this side.
         int n = snapshots.Count;
         using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
         using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
@@ -137,17 +136,6 @@ public class PersistedSnapshotCompactor(
             {
                 sessionArr[i] = snapshots[i].BeginWholeReadSession();
                 views[i] = sessionArr[i].GetRawView();
-
-                // Union of blob arena ids the inputs already reference. The merged snapshot
-                // does not write any new RLP bytes; it just inherits these. SortedSet keeps
-                // the on-disk ref_ids list in ascending order so byte-for-byte diffs of the
-                // compacted metadata stay stable across runs. Read via the shared session
-                // view — no extra mmap per source.
-                WholeReadSessionReader refIdsReader = sessionArr[i].GetReader();
-                ushort[]? ids = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
-                if (ids is not null)
-                    foreach (ushort id in ids)
-                        referencedBlobArenaIds.Add(id);
 
                 estimatedSize += snapshots[i].Size;
                 using PersistedSnapshotBloom srcBloom = bloomManager.LeaseOrSentinel(snapshots[i].To);
@@ -170,7 +158,7 @@ public class PersistedSnapshotCompactor(
             {
                 long sw = Stopwatch.GetTimestamp();
                 PersistedSnapshotMerger.NWayMergeSnapshotsWithViews<ArenaBufferWriter, ArenaBufferReader, NoOpPin>(
-                    views, ref arenaWriter.GetWriter(), referencedBlobArenaIds, mergedBloom);
+                    views, ref arenaWriter.GetWriter(), mergedBloom);
 
                 for (int i = 0; i < n; i++)
                 {
@@ -192,7 +180,10 @@ public class PersistedSnapshotCompactor(
                 (location, reservation) = arenaWriter.Complete();
             }
 
-            persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, referencedBlobArenaIds, mergedBloom);
+            // PersistedSnapshot's ctor (called from inside AddCompactedSnapshot) reads
+            // the merged ref_ids back from its own metadata and leases each blob arena
+            // file via a ref-struct iterator — no ushort[] materialisation here.
+            persistedSnapshotRepository.AddCompactedSnapshot(from, to, location, reservation, mergedBloom);
 
             // The freshly-written compacted bytes are warm in the kernel page cache from the write
             // path; drop them so they don't crowd out the random-access read working set. Subsequent
@@ -206,8 +197,8 @@ public class PersistedSnapshotCompactor(
             // touches index nodes only — per-address inner HSSTs stay cold. The new
             // PersistedSnapshot installed by AddCompactedSnapshot holds the reservation's
             // ArenaFile lease, so no extra session is needed to keep the mmap alive here.
-            ArenaByteReader warmReader = reservation.CreateReader();
-            PersistedSnapshotReader.WarmAddressIndex<ArenaByteReader, NoOpPin>(in warmReader);
+            ArenaByteReader mergedReader = reservation.CreateReader();
+            PersistedSnapshotReader.WarmAddressIndex<ArenaByteReader, NoOpPin>(in mergedReader);
 
             Metrics.PersistedSnapshotCompactions++;
             Metrics.PersistedSnapshotCount = persistedSnapshotRepository.SnapshotCount;

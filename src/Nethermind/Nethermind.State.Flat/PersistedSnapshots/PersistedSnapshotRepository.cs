@@ -91,68 +91,16 @@ public sealed class PersistedSnapshotRepository(
         long range = entry.To.BlockNumber - entry.From.BlockNumber;
         ArenaReservation reservation = _arena.Open(entry.Location, _metaTag);
 
-        // Recover the snapshot's referenced blob arena ids from its on-disk metadata.
-        ushort[]? refIds;
-        using (WholeReadSession refIdsSession = reservation.BeginWholeReadSession())
-        {
-            WholeReadSessionReader refIdsReader = refIdsSession.GetReader();
-            refIds = PersistedSnapshot.ReadRefIdsFromMetadata<WholeReadSessionReader, NoOpPin>(in refIdsReader);
-        }
-
-        LeaseBlobFilesForSnapshot(refIds);
-        PersistedSnapshot snapshot;
-        try
-        {
-            snapshot = new(entry.From, entry.To, reservation, _blobs);
-        }
-        catch
-        {
-            ReleaseBlobFileLeases(refIds);
-            throw;
-        }
+        // The PersistedSnapshot ctor walks its own ref_ids metadata and leases each blob
+        // arena file; on partial failure it releases what it took and disposes the
+        // reservation lease before rethrowing — no repository-side cleanup needed.
+        PersistedSnapshot snapshot = new(entry.From, entry.To, reservation, _blobs);
         RegisterBlooms(snapshot);
 
         if (range > _compactSize)
             _compactedSnapshots[entry.To] = snapshot;
         else
             _baseSnapshots[entry.To] = snapshot;
-    }
-
-    /// <summary>
-    /// Acquire one lease per id in <paramref name="ids"/> on this tier's blob arena manager.
-    /// Each lease keeps the corresponding <see cref="BlobArenaFile"/>'s manager-array slot
-    /// alive for the lifetime of the snapshot under construction. On partial failure the
-    /// helper releases the leases it already took and rethrows so callers can roll back
-    /// without dangling refs.
-    /// </summary>
-    private void LeaseBlobFilesForSnapshot(IReadOnlyList<ushort>? ids)
-    {
-        if (ids is null) return;
-        int acquired = 0;
-        try
-        {
-            for (; acquired < ids.Count; acquired++)
-            {
-                if (!_blobs.TryLeaseFile(ids[acquired], out _))
-                    throw new InvalidOperationException($"Blob arena {ids[acquired]} not registered in this tier");
-            }
-        }
-        catch
-        {
-            for (int i = 0; i < acquired; i++)
-                _blobs.GetFile(ids[i]).Dispose();
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Release one lease per id, used to unwind a partially-built snapshot whose ctor threw
-    /// after <see cref="LeaseBlobFilesForSnapshot"/> succeeded.
-    /// </summary>
-    private void ReleaseBlobFileLeases(IReadOnlyList<ushort>? ids)
-    {
-        if (ids is null) return;
-        foreach (ushort id in ids) _blobs.GetFile(id).Dispose();
     }
 
     private readonly Histogram _persistedSnapshotSize = Prometheus.Metrics.CreateHistogram("persisted_snapshot_size", "persisted_snapshot_size", "type");
@@ -186,7 +134,6 @@ public sealed class PersistedSnapshotRepository(
 
         SnapshotLocation location;
         ArenaReservation reservation;
-        ushort blobArenaId;
         using BlobArenaWriter blobWriter = _blobs.CreateWriter(estimatedSize);
         using (ArenaWriter arenaWriter = _arena.CreateWriter(estimatedSize, _metaTag))
         {
@@ -196,25 +143,16 @@ public sealed class PersistedSnapshotRepository(
             (location, reservation) = arenaWriter.Complete();
         }
         blobWriter.Complete();
-        blobArenaId = blobWriter.BlobArenaId;
 
-        ushort[] refIds = [blobArenaId];
-        LeaseBlobFilesForSnapshot(refIds);
+        // PersistedSnapshot's ctor reads its own ref_ids metadata and leases each blob
+        // arena file. The single id written above (blobWriter.BlobArenaId) is the only
+        // entry the new metadata carries, so the ctor's iterator yields exactly that id.
         lock (_catalogLock)
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(snapshot.From, snapshot.To, location));
             _catalog.Save();
 
-            PersistedSnapshot persisted;
-            try
-            {
-                persisted = new(snapshot.From, snapshot.To, reservation, _blobs);
-            }
-            catch
-            {
-                ReleaseBlobFileLeases(refIds);
-                throw;
-            }
+            PersistedSnapshot persisted = new(snapshot.From, snapshot.To, reservation, _blobs);
             RegisterBlooms(persisted, bloom, trieBloom);
             if (_validatePersistedSnapshot)
                 PersistedSnapshotUtils.ValidatePersistedSnapshot(snapshot, persisted, _bloomManager);
@@ -232,29 +170,19 @@ public sealed class PersistedSnapshotRepository(
     }
 
     /// <summary>
-    /// Store a compacted snapshot with a pre-computed location and reservation.
-    /// <paramref name="referencedBlobArenaIds"/> is the union of blob arena ids
-    /// inherited from the inputs of the N-way merge that produced this snapshot.
+    /// Store a compacted snapshot with a pre-computed location and reservation. The
+    /// snapshot's referenced blob arena ids are read off its own metadata HSST by the
+    /// <see cref="PersistedSnapshot"/> ctor, which leases each one and rolls back on
+    /// partial failure.
     /// </summary>
-    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, SortedSet<ushort> referencedBlobArenaIds, BloomFilter? bloom = null)
+    public void AddCompactedSnapshot(StateId from, StateId to, SnapshotLocation location, ArenaReservation reservation, BloomFilter? bloom = null)
     {
-        ushort[] refIds = [.. referencedBlobArenaIds];
-        LeaseBlobFilesForSnapshot(refIds);
         lock (_catalogLock)
         {
             _catalog.Add(new SnapshotCatalog.CatalogEntry(from, to, location));
             _catalog.Save();
 
-            PersistedSnapshot snapshot;
-            try
-            {
-                snapshot = new(from, to, reservation, _blobs);
-            }
-            catch
-            {
-                ReleaseBlobFileLeases(refIds);
-                throw;
-            }
+            PersistedSnapshot snapshot = new(from, to, reservation, _blobs);
             RegisterBlooms(snapshot, bloom, trieBloom: null);
             _compactedSnapshots[to] = snapshot;
         }
