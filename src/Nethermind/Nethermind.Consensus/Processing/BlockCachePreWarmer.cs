@@ -569,7 +569,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// Unsafe: reads from main thread's Dictionary concurrently. Acceptable for prefetching.
     /// </summary>
     private static void SyncStateFromMainThread(IWorldState prewarmState, IWorldState? mainState) =>
-        (mainState as WorldState)?.CopyAccountBlockChangesTo(prewarmState);
+        (mainState as WorldState)?.CopyBlockChangesTo(prewarmState);
 
     /// <summary>
     /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.

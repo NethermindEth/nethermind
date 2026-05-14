@@ -31,7 +31,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 {
     private IWorldStateScopeProvider.IScope _currentScope;
     private readonly StateProvider _stateProvider = stateProvider;
-    private readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
+    internal readonly Dictionary<AddressAsKey, PerContractState> _storages = new(4_096);
     private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
     /// <summary>
@@ -376,7 +376,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public void UnmarkClear() => _missingAreDefault = false;
     }
 
-    private sealed class PerContractState : IReturnable
+    internal sealed class PerContractState : IReturnable
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
 

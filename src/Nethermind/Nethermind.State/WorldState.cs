@@ -36,15 +36,24 @@ namespace Nethermind.State
         /// Copy committed account state into another WorldState's block changes cache.
         /// Used by prewarmer to see main thread's committed state (unsafe concurrent read).
         /// </summary>
-        public void CopyAccountBlockChangesTo(IWorldState target)
+        public void CopyBlockChangesTo(IWorldState target)
         {
             if (target is not WorldState targetWs) return;
             try
             {
+                // Copy committed account state (nonces, balances)
                 foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> kvp in _stateProvider._blockChanges)
                 {
                     if (kvp.Value.After is not null)
                         targetWs._stateProvider._blockChanges[kvp.Key] = kvp.Value;
+                }
+
+                // Share storage references — prewarmer sees committed storage from earlier txs.
+                // Shares the PerContractState objects directly (same reference, not copy).
+                // The prewarmer's LoadFromTree will check BlockChange first and find committed values.
+                foreach (KeyValuePair<AddressAsKey, PersistentStorageProvider.PerContractState> kvp in _persistentStorageProvider._storages)
+                {
+                    targetWs._persistentStorageProvider._storages[kvp.Key] = kvp.Value;
                 }
             }
             catch { /* concurrent modification — acceptable for prefetching */ }
