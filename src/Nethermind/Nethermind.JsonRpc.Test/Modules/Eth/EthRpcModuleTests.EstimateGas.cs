@@ -681,7 +681,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
 
         JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().Be($"failed with {ctx.Test.BlockTree.Head!.GasLimit} gas: {TxErrorMessages.MissingAuthorizationList} (sender 0x0001020304050607080910111213141516171819)");
+            .Should().Be($"{TxErrorMessages.MissingAuthorizationList} (sender 0x0001020304050607080910111213141516171819)");
     }
 
     [Test]
@@ -696,7 +696,7 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
 
         JToken.Parse(serialized)["error"]!["message"]!.Value<string>()
-            .Should().Be($"failed with {ctx.Test.BlockTree.Head!.GasLimit} gas: {TxErrorMessages.NotAllowedCreateTransaction} (sender 0x0001020304050607080910111213141516171819)");
+            .Should().Be($"{TxErrorMessages.NotAllowedCreateTransaction} (sender 0x0001020304050607080910111213141516171819)");
     }
 
 }
