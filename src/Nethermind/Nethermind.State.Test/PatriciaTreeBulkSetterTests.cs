@@ -400,8 +400,8 @@ public class PatriciaTreeBulkSetterTests
 
         TestContext.Error.WriteLine($"Time is Baseline: {baselineTime}, Sorted Bulk: {preSortedTime}");
         TestContext.Error.WriteLine($"Write count is Baseline: {baselineWriteCount}, Sorted Bulk: {preSortedWriteCount}");
-        // B3b: see PatriciaTreeBulkSetterTests.BulkSet for the rebind-induced write slack.
-        preSortedWriteCount.Should().BeLessOrEqualTo(baselineWriteCount + 4);
+        // Sorted BulkSet must never write more nodes than a per-key Set baseline.
+        preSortedWriteCount.Should().BeLessOrEqualTo(baselineWriteCount);
     }
 
     [TestCaseSource(nameof(BulkSetTestGen))]
