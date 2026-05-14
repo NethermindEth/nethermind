@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Utils;
 using Nethermind.State.Flat.BSearchIndex;
 
@@ -250,27 +249,30 @@ internal static class HsstPackedArrayReader
             }
         }
 
-        // Floor scan over the data slab [rangeStart, rangeEnd]: pin once and run a SIMD
-        // strided floor scan over the interleaved (key+value) entries; falls back to a
-        // scalar binary search using the same pinned span when SIMD is gated off or the
-        // key shape is unsupported. Returns the largest local index whose stored key is
-        // ≤ search (or -1 if none). Equality at the floor → exact match; otherwise the
-        // floor is the answer for the floor-lookup path.
+        // Floor scan over the data slab [rangeStart, rangeEnd]: pin once and run a per-size
+        // floor lookup over the interleaved (key+value) entries via UniformKeySearch. Returns
+        // the largest local index whose stored key is ≤ search (or -1 if none). Equality at
+        // the floor → exact match; otherwise the floor is the answer for the floor-lookup path.
         long count = rangeEnd - rangeStart + 1;
         if (count <= 0) return false;
         using (TPin dataPin = reader.PinBuffer(L.EntryAbsStart(rangeStart), count * L.EntryStride))
         {
             ReadOnlySpan<byte> dataSpan = dataPin.Buffer;
-            if (!BSearchIndexReaderSimd.TryFindFloorIndexUniformSimdStrided(
-                    key, dataSpan, (int)count, L.KeySize, L.EntryStride, L.IsLittleEndian, out int localFloor))
+            int localFloor = (L.IsLittleEndian, L.KeySize) switch
             {
-                localFloor = ScalarFloorIndexStrided(dataSpan, (int)count, L.KeySize, L.EntryStride, L.IsLittleEndian, key);
-            }
+                (true, 2) => UniformKeySearch.Uniform2LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                (true, 4) => UniformKeySearch.Uniform4LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                (true, 8) => UniformKeySearch.Uniform8LEStrided(key, dataSpan, (int)count, L.EntryStride),
+                (false, 2) => UniformKeySearch.Uniform2BEStrided(key, dataSpan, (int)count, L.EntryStride),
+                (false, 4) => UniformKeySearch.Uniform4BEStrided(key, dataSpan, (int)count, L.EntryStride),
+                (false, 8) => UniformKeySearch.Uniform8BEStrided(key, dataSpan, (int)count, L.EntryStride),
+                _ => UniformKeySearch.UniformBEStrided(key, dataSpan, (int)count, L.KeySize, L.EntryStride),
+            };
 
             if (localFloor >= 0)
             {
                 ReadOnlySpan<byte> floorKey = dataSpan.Slice(localFloor * L.EntryStride, L.KeySize);
-                if (StorageEqualsLex(floorKey, key, L.IsLittleEndian))
+                if (UniformKeySearch.StorageEqualsLex(floorKey, key, L.IsLittleEndian))
                 {
                     resultBound = new Bound(L.ValueAbsStart(rangeStart + localFloor), L.ValueSize);
                     return true;
@@ -296,10 +298,9 @@ internal static class HsstPackedArrayReader
     /// Search a summary level slab <c>[lo, hi)</c> for the smallest checkpoint whose key is
     /// &gt;= <paramref name="key"/>. Returns <c>hi</c> when no such checkpoint exists. Each
     /// summary record is exactly <paramref name="keySize"/> bytes (no trailing index).
-    /// Uses <see cref="BSearchIndexReaderSimd.TryFindFloorIndexUniformSimd"/> when keys are
-    /// 2/4/8 bytes and the SIMD toggle is on; the floor result is translated to ceiling by
-    /// reading the stored bytes at the floor index and bumping +1 unless the key matches
-    /// exactly. Falls back to a scalar binary search on the same pinned span otherwise.
+    /// Dispatches into the per-size <see cref="UniformKeySearch"/> entry points; the floor
+    /// result is translated to ceiling by reading the stored bytes at the floor index and
+    /// bumping +1 unless the key matches exactly.
     /// </summary>
     private static long SearchSummaryLevel<TReader, TPin>(
         scoped in TReader reader, long levelStart, int keySize, bool isLittleEndian,
@@ -314,87 +315,26 @@ internal static class HsstPackedArrayReader
         using TPin pin = reader.PinBuffer(levelStart + lo * keySize, count * keySize);
         ReadOnlySpan<byte> span = pin.Buffer;
 
-        if (!BSearchIndexReaderSimd.TryFindFloorIndexUniformSimd(
-                key, span, (int)count, keySize, isLittleEndian, out int localFloor))
-        {
-            localFloor = ScalarFloorIndexContiguous(span, (int)count, keySize, isLittleEndian, key);
-        }
+        int localFloor = isLittleEndian
+            ? keySize switch
+            {
+                2 => UniformKeySearch.Uniform2LE(key, span, (int)count),
+                4 => UniformKeySearch.Uniform4LE(key, span, (int)count),
+                8 => UniformKeySearch.Uniform8LE(key, span, (int)count),
+                // ParseMetadata rejects LE with other sizes; unreachable in practice.
+                _ => -1
+            }
+            : keySize switch
+            {
+                2 => UniformKeySearch.Uniform2BE(key, span, (int)count),
+                4 => UniformKeySearch.Uniform4BE(key, span, (int)count),
+                8 => UniformKeySearch.Uniform8BE(key, span, (int)count),
+                _ => UniformKeySearch.UniformBE(key, span, (int)count, keySize)
+            };
 
         if (localFloor < 0) return lo;
         ReadOnlySpan<byte> floorKey = span.Slice(localFloor * keySize, keySize);
-        if (StorageEqualsLex(floorKey, key, isLittleEndian)) return lo + localFloor;
+        if (UniformKeySearch.StorageEqualsLex(floorKey, key, isLittleEndian)) return lo + localFloor;
         return lo + localFloor + 1;
-    }
-
-    /// <summary>
-    /// Scalar binary-search fallback: largest local index <c>i</c> with <c>stored[i] &lt;= key</c>,
-    /// or -1. Mirrors <see cref="BSearchIndexReaderSimd.TryFindFloorIndexUniformSimd"/> result
-    /// semantics so callers can treat the SIMD and scalar paths identically.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarFloorIndexContiguous(
-        ReadOnlySpan<byte> span, int count, int keySize, bool isLittleEndian, scoped ReadOnlySpan<byte> key)
-    {
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            ReadOnlySpan<byte> stored = span.Slice(mid * keySize, keySize);
-            int cmp = CompareStorageToLex(stored, key, isLittleEndian);
-            if (cmp <= 0) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
-
-    /// <summary>
-    /// Strided variant of <see cref="ScalarFloorIndexContiguous"/> for the interleaved
-    /// (key+value) data section. <paramref name="stride"/> = <c>keySize + valueSize</c>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ScalarFloorIndexStrided(
-        ReadOnlySpan<byte> span, int count, int keySize, int stride, bool isLittleEndian, scoped ReadOnlySpan<byte> key)
-    {
-        int result = -1;
-        int lo = 0, hi = count - 1;
-        while (lo <= hi)
-        {
-            int mid = (lo + hi) >>> 1;
-            ReadOnlySpan<byte> stored = span.Slice(mid * stride, keySize);
-            int cmp = CompareStorageToLex(stored, key, isLittleEndian);
-            if (cmp <= 0) { result = mid; lo = mid + 1; }
-            else { hi = mid - 1; }
-        }
-        return result;
-    }
-
-    /// <summary>
-    /// Sign of <c>stored - key</c> in lex order. For BE-stored keys this is a direct
-    /// <see cref="MemoryExtensions.SequenceCompareTo{T}"/>; for LE-stored keys (KeySize ∈
-    /// {2,4,8}) the stored bytes are byte-reversed into a temporary lex form first.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CompareStorageToLex(scoped ReadOnlySpan<byte> stored, scoped ReadOnlySpan<byte> key, bool isLittleEndian)
-    {
-        if (!isLittleEndian) return stored.SequenceCompareTo(key);
-        Span<byte> lex = stackalloc byte[8];
-        Span<byte> dst = lex[..stored.Length];
-        for (int i = 0; i < stored.Length; i++) dst[i] = stored[stored.Length - 1 - i];
-        return dst.SequenceCompareTo(key);
-    }
-
-    /// <summary>
-    /// True iff the stored bytes encode the same lex key as <paramref name="key"/>. Equality
-    /// requires same length; for LE-stored keys the stored bytes are the reverse of <paramref name="key"/>.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool StorageEqualsLex(scoped ReadOnlySpan<byte> stored, scoped ReadOnlySpan<byte> key, bool isLittleEndian)
-    {
-        if (key.Length != stored.Length) return false;
-        if (!isLittleEndian) return stored.SequenceEqual(key);
-        for (int i = 0; i < stored.Length; i++)
-            if (stored[i] != key[stored.Length - 1 - i]) return false;
-        return true;
     }
 }

@@ -52,7 +52,7 @@ public class HsstReaderBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        BSearchIndexReaderSimd.Enabled = SimdEnabled;
+        UniformKeySearch.Enabled = SimdEnabled;
 
         // Oversample to dedupe 4-byte random keys (~5K collisions in 8M draws on 32-bit space).
         Random rng = new(42);

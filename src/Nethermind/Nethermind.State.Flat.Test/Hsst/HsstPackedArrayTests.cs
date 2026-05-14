@@ -334,8 +334,8 @@ public class HsstPackedArrayTests
         [Values(8, 0)] int valueSize,
         [Values(64, 256, 4096)] int strideBytes)
     {
-        bool savedEnabled = BSearchIndexReaderSimd.Enabled;
-        BSearchIndexReaderSimd.Enabled = simdOn;
+        bool savedEnabled = UniformKeySearch.Enabled;
+        UniformKeySearch.Enabled = simdOn;
         try
         {
             (byte[][] keys, byte[][] values) = MakeUniqueAscendingKeys(count, keySize, valueSize, seed: keySize * 1000 + count);
@@ -368,7 +368,7 @@ public class HsstPackedArrayTests
         }
         finally
         {
-            BSearchIndexReaderSimd.Enabled = savedEnabled;
+            UniformKeySearch.Enabled = savedEnabled;
         }
     }
 

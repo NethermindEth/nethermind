@@ -160,8 +160,8 @@ public ref struct HsstTwoByteSlotValueBuilder<TWriter>
 
         // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored convention — a native
         // u16 load over a stored key now recovers the BE numeric value, letting SIMD
-        // scans compare numerically; see HsstTwoByteKeySearch). _keys is logical (BE)
-        // during build for the strict-ascending compare in FinishValueWrite.
+        // scans compare numerically; see UniformKeySearch.LowerBound2LE). _keys is logical
+        // (BE) during build for the strict-ascending compare in FinishValueWrite.
         int keysBytes = n * KeyLength;
         Span<byte> keysSpan = _writer.GetSpan(keysBytes);
         ReadOnlySpan<byte> logicalKeys = _keys.AsSpan(0, keysBytes);

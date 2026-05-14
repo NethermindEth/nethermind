@@ -664,84 +664,13 @@ public class BSearchIndexTests
         Assert.That(reader.CommonKeyPrefix.Length, Is.EqualTo(0));
     }
 
-    /// <summary>
-    /// Branchless variant of FindFloorIndex must agree with the branchful one across
-    /// all three KeyTypes and at every probe position (interior, boundary, miss).
-    /// </summary>
-    [TestCase(0, TestName = "Branchless_Variable")]
-    [TestCase(1, TestName = "Branchless_Uniform")]
-    [TestCase(2, TestName = "Branchless_UniformWithLen")]
-    public void BranchlessSearch_AgreesWithBranchful(int keyType)
-    {
-        const int count = 64;
-        int slotSize = keyType == 1 ? 4 : keyType == 2 ? 5 : 0;
-
-        // Sorted, non-trivial 4-byte keys (Variable also gets 4-byte entries; LCP
-        // detection in the writer is bypassed since we hand-construct here).
-        byte[][] keys = new byte[count][];
-        for (int i = 0; i < count; i++)
-        {
-            byte[] k = [(byte)(i * 3 + 1), (byte)(i * 5 + 7), (byte)(i * 7 + 11), (byte)(i * 11 + 13)];
-            keys[i] = k;
-        }
-
-        byte[] keyBuf = new byte[count * (2 + 4)];
-        byte[] valScratch = new byte[count * (2 + 4)];
-        byte[] output = new byte[8 * 1024];
-        SpanBufferWriter w = new(output);
-        BSearchIndexWriter<SpanBufferWriter> writer = new(ref w, new BSearchIndexMetadata
-        {
-            KeyType = keyType,
-            KeySlotSize = slotSize,
-        }, keyBuf, valScratch);
-        Span<byte> valBuf = stackalloc byte[4];
-        for (int i = 0; i < count; i++)
-        {
-            BinaryPrimitives.WriteInt32LittleEndian(valBuf, i);
-            writer.AddKey(keys[i], valBuf);
-        }
-        writer.FinalizeNode();
-
-        BSearchIndexReader reader = BSearchIndexReader.ReadFromStart(output, 0);
-
-        // For each stored key plus a synthetic "between" probe, the two paths must agree.
-        try
-        {
-            for (int i = 0; i < count; i++)
-            {
-                byte[] probe = keys[i];
-                BSearchIndexReader.BranchlessSearch = false;
-                int branchful = reader.FindFloorIndex(probe);
-                BSearchIndexReader.BranchlessSearch = true;
-                int branchless = reader.FindFloorIndex(probe);
-                Assert.That(branchless, Is.EqualTo(branchful), $"Hit i={i}");
-            }
-            // Below-first miss.
-            byte[] below = [0, 0, 0, 0];
-            BSearchIndexReader.BranchlessSearch = false;
-            int b1 = reader.FindFloorIndex(below);
-            BSearchIndexReader.BranchlessSearch = true;
-            int b2 = reader.FindFloorIndex(below);
-            Assert.That(b2, Is.EqualTo(b1), "Below-first miss");
-            // Above-last miss.
-            byte[] above = [0xFF, 0xFF, 0xFF, 0xFF];
-            BSearchIndexReader.BranchlessSearch = false;
-            b1 = reader.FindFloorIndex(above);
-            BSearchIndexReader.BranchlessSearch = true;
-            b2 = reader.FindFloorIndex(above);
-            Assert.That(b2, Is.EqualTo(b1), "Above-last miss");
-        }
-        finally { BSearchIndexReader.BranchlessSearch = false; }
-    }
-
     // ===== LITTLE-ENDIAN KEY STORAGE (Flags bit 5) =====
 
     /// <summary>
     /// Round-trip a Uniform LE-encoded leaf for keySize ∈ {2,4,8}: header bit 5 is set,
     /// raw on-disk slot bytes are byte-reversed, GetKey returns raw stored bytes,
     /// GetFullKey reconstructs the original lex bytes, and FindFloorIndex matches the
-    /// BE baseline at every probe (including misses) under both branchful and branchless
-    /// search and with the SIMD path enabled and disabled.
+    /// BE baseline at every probe (including misses) with the SIMD path enabled and disabled.
     /// </summary>
     [TestCase(2)]
     [TestCase(4)]
@@ -797,20 +726,19 @@ public class BSearchIndexTests
         }
 
         // Floor-index agreement: hits at every stored key, hits between, miss-below, miss-above.
-        // Sweep three configurations: scalar branchful, scalar branchless, SIMD-on.
-        bool simdWasOn = BSearchIndexReaderSimd.Enabled;
-        bool branchlessWas = BSearchIndexReader.BranchlessSearch;
+        // Sweep SIMD on and off — exercises both the AVX-512 linear scan and the scalar
+        // binary-search fallback inside each UniformKeySearch.UniformN{LE,BE} method.
+        bool simdWasOn = UniformKeySearch.Enabled;
         try
         {
-            foreach ((bool branchless, bool simd) in new[] { (false, false), (true, false), (false, true) })
+            foreach (bool simd in new[] { false, true })
             {
-                BSearchIndexReader.BranchlessSearch = branchless;
-                BSearchIndexReaderSimd.Enabled = simd;
+                UniformKeySearch.Enabled = simd;
                 for (int i = 0; i < n; i++)
                 {
                     int beIdx = beReader.FindFloorIndex(keys[i]);
                     int leIdx = leReader.FindFloorIndex(keys[i]);
-                    Assert.That(leIdx, Is.EqualTo(beIdx), $"Hit i={i} branchless={branchless} simd={simd}");
+                    Assert.That(leIdx, Is.EqualTo(beIdx), $"Hit i={i} simd={simd}");
                     Assert.That(leIdx, Is.EqualTo(i));
                 }
                 // Below-first.
@@ -829,13 +757,12 @@ public class BSearchIndexTests
                 byte[] longProbe = new byte[keySize + 5];
                 keys[n / 2].CopyTo(longProbe, 0);
                 Assert.That(leReader.FindFloorIndex(longProbe), Is.EqualTo(beReader.FindFloorIndex(longProbe)),
-                    $"Longer probe branchless={branchless} simd={simd}");
+                    $"Longer probe simd={simd}");
             }
         }
         finally
         {
-            BSearchIndexReaderSimd.Enabled = simdWasOn;
-            BSearchIndexReader.BranchlessSearch = branchlessWas;
+            UniformKeySearch.Enabled = simdWasOn;
         }
     }
 
@@ -904,16 +831,17 @@ public class BSearchIndexTests
     /// <see cref="BSearchIndexReader.GetKey"/> returns the reversed payload tail of
     /// <c>actualLen</c> bytes, <see cref="BSearchIndexReader.GetFullKey"/> recovers original
     /// lex bytes, and <see cref="BSearchIndexReader.FindFloorIndex"/> matches the BE baseline
-    /// at every probe (hits, between, below-first, above-last, longer-search-key) under
-    /// branchful, branchless, and SIMD-on configurations.
+    /// at every probe (hits, between, below-first, above-last, longer-search-key) with the
+    /// SIMD path enabled and disabled.
     /// </summary>
     [Test]
     public void UniformWithLen_LittleEndian_RoundTripAndFloorAgreesWithBigEndian()
     {
         const int slotSize = 4;
-        // Mixed payload lengths in lex+length-sorted order. The lex+length invariant from
-        // BSearchIndexReaderSimd.cs:140-150 is: shorter prefix-equal key < longer one. Build a
-        // sorted, unique sequence by hand to span len ∈ {0,1,2,3} including the empty-slot edge.
+        // Mixed payload lengths in lex+length-sorted order. The lex+length invariant — see
+        // UniformKeySearch.UniformWithLen4LE / UniformWithLen4BE doc comment — is: shorter
+        // prefix-equal key < longer one. Build a sorted, unique sequence by hand to span
+        // len ∈ {0,1,2,3} including the empty-slot edge.
         byte[][] keys =
         [
             [],                          // len=0
@@ -965,21 +893,19 @@ public class BSearchIndexTests
                 $"LE GetFullKey({i}) should equal lex bytes");
         }
 
-        // Floor-index agreement at every probe across {branchful, branchless, SIMD-on}.
-        bool simdWasOn = BSearchIndexReaderSimd.Enabled;
-        bool branchlessWas = BSearchIndexReader.BranchlessSearch;
+        // Floor-index agreement at every probe with SIMD on and off.
+        bool simdWasOn = UniformKeySearch.Enabled;
         try
         {
-            foreach ((bool branchless, bool simd) in new[] { (false, false), (true, false), (false, true) })
+            foreach (bool simd in new[] { false, true })
             {
-                BSearchIndexReader.BranchlessSearch = branchless;
-                BSearchIndexReaderSimd.Enabled = simd;
+                UniformKeySearch.Enabled = simd;
                 for (int i = 0; i < n; i++)
                 {
                     int beIdx = beReader.FindFloorIndex(keys[i]);
                     int leIdx = leReader.FindFloorIndex(keys[i]);
                     Assert.That(leIdx, Is.EqualTo(beIdx),
-                        $"Hit i={i} len={keys[i].Length} branchless={branchless} simd={simd}");
+                        $"Hit i={i} len={keys[i].Length} simd={simd}");
                     Assert.That(leIdx, Is.EqualTo(i));
                 }
                 // Below-first miss (empty key matches keys[0] which is also empty → hit at 0; pick something
@@ -995,13 +921,12 @@ public class BSearchIndexTests
                 // Longer-than-slot search key (intermediate-node descent shape).
                 byte[] longProbe = [0x55, 0x66, 0x77, 0xAB, 0xCD, 0xEF];
                 Assert.That(leReader.FindFloorIndex(longProbe), Is.EqualTo(beReader.FindFloorIndex(longProbe)),
-                    $"Longer probe branchless={branchless} simd={simd}");
+                    $"Longer probe simd={simd}");
             }
         }
         finally
         {
-            BSearchIndexReaderSimd.Enabled = simdWasOn;
-            BSearchIndexReader.BranchlessSearch = branchlessWas;
+            UniformKeySearch.Enabled = simdWasOn;
         }
     }
 

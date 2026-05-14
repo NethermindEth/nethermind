@@ -159,7 +159,7 @@ public ref struct HsstTwoByteSlotValueLargeBuilder<TWriter>
         }
 
         // Keys: N · 2 bytes, byte-reversed on the way out (LE-stored convention; see
-        // HsstTwoByteKeySearch). _keys is logical (BE) during build for the
+        // UniformKeySearch.LowerBound2LE). _keys is logical (BE) during build for the
         // strict-ascending compare in FinishValueWrite.
         int keysBytes = n * KeyLength;
         Span<byte> keysSpan = _writer.GetSpan(keysBytes);

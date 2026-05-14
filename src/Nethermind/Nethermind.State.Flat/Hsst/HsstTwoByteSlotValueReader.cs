@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.State.Flat.BSearchIndex;
 
 namespace Nethermind.State.Flat.Hsst;
 
@@ -82,13 +83,13 @@ internal static class HsstTwoByteSlotValueReader
         using TPin keysPin = reader.PinBuffer(L.KeysStart, keysBytes);
         ReadOnlySpan<byte> keys = keysPin.Buffer;
 
-        int idx = HsstTwoByteKeySearch.LowerBoundLeStored(keys, L.Count, key);
+        int idx = UniformKeySearch.LowerBound2LE(keys, L.Count, key);
         bool exact;
         if (idx < L.Count)
         {
             // Keys are LE-stored: native u16 load recovers the BE numeric value.
             // Compare against the target's BE numeric value derived the same way.
-            ushort storedBeValue = HsstTwoByteKeySearch.ReadKeyAt(keys, idx);
+            ushort storedBeValue = UniformKeySearch.ReadKey2LE(keys, idx);
             ushort targetBeValue = (ushort)((key[0] << 8) | key[1]);
             exact = storedBeValue == targetBeValue;
         }
