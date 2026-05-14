@@ -37,28 +37,22 @@ namespace Nethermind.State
         /// Used by prewarmer to see main thread's committed state (unsafe concurrent read).
         /// </summary>
         /// <summary>
-        /// Publish all committed account+storage state to a thread-safe snapshot.
-        /// Called by the main block processor after each tx commit.
+        /// Unsafe copy of committed account state from another WorldState into this one.
+        /// The source is the main thread's live state — concurrent Dictionary reads may
+        /// occasionally throw or return stale data, which is acceptable for prefetching.
         /// </summary>
-        public void PublishToSnapshot(PrewarmerStateSnapshot snapshot)
+        public void UnsafeCopyBlockChangesFrom(IWorldState source)
         {
-            foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> kvp in _stateProvider._blockChanges)
+            if (source is not WorldState srcWs) return;
+            try
             {
-                if (kvp.Value.After is not null)
-                    snapshot.CommitAccount(kvp.Key, kvp.Value.After);
+                foreach (KeyValuePair<AddressAsKey, StateProvider.ChangeTrace> kvp in srcWs._stateProvider._blockChanges)
+                {
+                    if (kvp.Value.After is not null)
+                        _stateProvider._blockChanges[kvp.Key] = kvp.Value;
+                }
             }
-        }
-
-        /// <summary>
-        /// Import committed state from the snapshot into this WorldState's block changes.
-        /// Called by prewarmer threads before each warmup tx.
-        /// </summary>
-        public void ImportFromSnapshot(PrewarmerStateSnapshot snapshot)
-        {
-            foreach (KeyValuePair<AddressAsKey, Account> kvp in snapshot.Accounts)
-            {
-                _stateProvider._blockChanges[kvp.Key] = new StateProvider.ChangeTrace(kvp.Value, kvp.Value);
-            }
+            catch { }
         }
         private readonly TransientStorageProvider _transientStorageProvider;
         private IWorldStateScopeProvider.IScope? _currentScope;

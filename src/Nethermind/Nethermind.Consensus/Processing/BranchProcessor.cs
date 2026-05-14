@@ -81,17 +81,10 @@ public class BranchProcessor(
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         // Wire prewarmer's moving window to track main thread progress
-        PrewarmerStateSnapshot? snapshot = null;
         if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
         {
-            snapshot = new PrewarmerStateSnapshot();
-            bcpw.StateSnapshot = snapshot;
-            bp.SetTxExecutedCallback((txIndex) =>
-            {
-                Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex);
-                // Publish committed state to snapshot after each tx
-                (stateProvider as WorldState)?.PublishToSnapshot(snapshot);
-            });
+            bcpw.MainThreadWorldState = stateProvider;
+            bp.SetTxExecutedCallback((txIndex) => Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex));
         }
 
         try

@@ -201,10 +201,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     internal int MainThreadTxIndex = -1;
 
     /// <summary>
-    /// Thread-safe snapshot of the main thread's committed state.
-    /// Main thread publishes after each tx; prewarmer reads before each warmup tx.
+    /// Reference to the main thread's live WorldState. Prewarmer copies committed
+    /// account state from it before each warmup tx (unsafe concurrent Dictionary read).
     /// </summary>
-    internal PrewarmerStateSnapshot? StateSnapshot;
+    internal IWorldState? MainThreadWorldState;
 
     /// <summary>Atomic counter for prewarmer threads to claim the next tx to warm.</summary>
     private int _nextWarmupIndex;
@@ -253,11 +253,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                             // Skip txs the main thread already processed
                             if (myTx <= mainPos) continue;
 
-                            // Import committed state from main thread's snapshot
-                            if (preWarmer.StateSnapshot is not null)
-                            {
-                                (scope.WorldState as WorldState)?.ImportFromSnapshot(preWarmer.StateSnapshot);
-                            }
+                            // Copy committed state from main thread (unsafe concurrent read)
+                            (scope.WorldState as WorldState)?.UnsafeCopyBlockChangesFrom(preWarmer.MainThreadWorldState);
 
                             WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                         }
