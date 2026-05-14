@@ -216,10 +216,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             Volatile.Write(ref _nextWarmupIndex, 0);
             Volatile.Write(ref MainThreadTxIndex, -1);
 
-            // Moving window: N threads each grab the next tx in block order.
-            // Threads stay close to the main thread's position, warming only
-            // what it will need soon — not distant future txs.
-            int threadCount = Math.Min(parallelOptions.MaxDegreeOfParallelism, txCount);
+            // Moving window: threads only warm txs within a window ahead of the
+            // main thread. When too far ahead, they WAIT instead of racing through
+            // all txs against stale state. This keeps prewarmer work focused on
+            // what the main thread will need soon.
+            const int WindowSize = 16;
+            int threadCount = Math.Min(_concurrencyLevel, txCount);
 
             Thread[] workers = new Thread[threadCount];
             CancellationToken token = parallelOptions.CancellationToken;
@@ -237,11 +239,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                         while (!token.IsCancellationRequested)
                         {
+                            int mainPos = Volatile.Read(ref MainThreadTxIndex);
+
+                            // Peek at next available tx without claiming it yet
+                            int nextTx = Volatile.Read(ref _nextWarmupIndex);
+
+                            // Wait if we're too far ahead of the main thread
+                            if (nextTx > mainPos + WindowSize)
+                            {
+                                Thread.Sleep(0);
+                                continue;
+                            }
+
+                            // Atomically claim the next tx
                             int myTx = Interlocked.Increment(ref _nextWarmupIndex) - 1;
                             if (myTx >= txCount) break;
 
                             // Skip txs the main thread already processed
-                            if (myTx <= Volatile.Read(ref MainThreadTxIndex)) continue;
+                            if (myTx <= mainPos) continue;
 
                             WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
                         }
