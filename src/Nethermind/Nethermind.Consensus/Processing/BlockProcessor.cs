@@ -225,9 +225,12 @@ public partial class BlockProcessor(
     // Timing sinks — forward elapsed ticks into the appropriate EVM metric counters.
     // CommitStateAndStorageRoots and ComputeStateRoot both feed StateHashTime (sum of the two),
     // so each sink also bumps StateHashTime alongside its specific metric.
+    // Each sink wires IsEnabled to ExecutionMetricsFlag.IsActive: when the flag is off, the JIT
+    // folds the surrounding MetricsTimer's Stopwatch calls and AddTicks dispatch to nothing.
     private readonly struct CommitTimeSink : IMetricSink
     {
         public static void AddTicks(long ticks) => Evm.Metrics.IncrementCommitTime(ticks);
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
     }
 
     private readonly struct StorageMerkleTimeSink : IMetricSink
@@ -237,6 +240,7 @@ public partial class BlockProcessor(
             Evm.Metrics.IncrementStateHashTime(ticks);
             Evm.Metrics.IncrementStorageMerkleTime(ticks);
         }
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
     }
 
     private readonly struct StateRootTimeSink : IMetricSink
@@ -246,16 +250,19 @@ public partial class BlockProcessor(
             Evm.Metrics.IncrementStateHashTime(ticks);
             Evm.Metrics.IncrementStateRootTime(ticks);
         }
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
     }
 
     private readonly struct ReceiptsRootTimeSink : IMetricSink
     {
         public static void AddTicks(long ticks) => Evm.Metrics.IncrementReceiptsRootTime(ticks);
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
     }
 
     private readonly struct BloomsTimeSink : IMetricSink
     {
         public static void AddTicks(long ticks) => Evm.Metrics.IncrementBloomsTime(ticks);
+        public static bool IsEnabled => ExecutionMetricsFlag.IsActive;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

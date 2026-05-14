@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
@@ -73,6 +74,9 @@ public partial class BlockProcessor
 
         public void SetupTxTimingMetrics(Block block)
         {
+            // Compile-time switch: when ExecutionMetricsFlag.IsActive folds to false the JIT
+            // elides the entire setup path (and the StartTxTimer/StopTxTimer bodies below).
+            if (!ExecutionMetricsFlag.IsActive) return;
             _enableTxTimingMetrics = PerTxTimingCollector.IsEnabled;
             if (_enableTxTimingMetrics)
             {
@@ -80,11 +84,17 @@ public partial class BlockProcessor
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public long StartTxTimer()
-            => _enableTxTimingMetrics ? Stopwatch.GetTimestamp() : 0;
+        {
+            if (!ExecutionMetricsFlag.IsActive) return 0;
+            return _enableTxTimingMetrics ? Stopwatch.GetTimestamp() : 0;
+        }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StopTxTimer(int i, long txStart)
         {
+            if (!ExecutionMetricsFlag.IsActive) return;
             if (_enableTxTimingMetrics)
             {
                 PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
