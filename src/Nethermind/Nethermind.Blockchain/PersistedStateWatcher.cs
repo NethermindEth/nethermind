@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain.Find;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -12,7 +11,10 @@ namespace Nethermind.Blockchain
     /// <summary>
     /// Watches state persistence in <see cref="IWorldStateManager"/> with <see cref="IWorldStateManager.ReorgBoundaryReached"/> and saves it in <see cref="IBlockFinder.BestPersistedState"/>.
     /// </summary>
-    public class PersistedStateWatcher : IDisposable
+    // No IDisposable: the subscription is safe to leave open because both this watcher and IWorldStateManager
+    // share the same container lifetime. Explicit unsubscription would fire before the trie store disposes,
+    // causing the final PersistOnShutdown ReorgBoundaryReached event to be missed.
+    public class PersistedStateWatcher
     {
         private readonly IWorldStateManager _worldStateManager;
         private readonly IBlockTree _blockTree;
@@ -31,7 +33,5 @@ namespace Nethermind.Blockchain
             if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
             _blockTree.BestPersistedState = e.BlockNumber;
         }
-
-        public void Dispose() => _worldStateManager.ReorgBoundaryReached -= OnReorgBoundaryReached;
     }
 }
