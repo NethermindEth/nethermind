@@ -135,6 +135,32 @@ public class BlockAccessListValidationIndexTests
     }
 
     [Test]
+    public void ChangesEqual_does_not_detect_surplus_read_only_account_in_generated()
+    {
+        // A generated slice containing a read-only account that the suggested BAL doesn't
+        // declare is invisible to the column-index fast path: no row data lands in either
+        // index for that address (read-only entries have no balance/nonce/code/storage
+        // changes to populate a lane). ChangesEqual therefore returns true. The
+        // BlockAccessListManager wraps this index with the _hasGeneratedRequiredReadAccountMismatch
+        // flag, set inside RegisterGeneratedSlice, to force the fallback walk that does
+        // catch the surplus.
+        ReadOnlyBlockAccessList suggested = Bal(
+            Account(TestItem.AddressA, balance: new BalanceChange(1, 1)));
+
+        BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, txCount: 1, _addressIndex);
+        BlockAccessListValidationIndex generatedIndex = new(1, _addressIndex, suggestedIndex);
+
+        // Generated slice: AddressA matches, AddressB has only a read.
+        BlockAccessListAtIndex slice = new() { Index = 1 };
+        slice.AddBalanceChange(TestItem.AddressA, before: 2, after: 1);
+        slice.AddAccountRead(TestItem.AddressB);
+        generatedIndex.Add(slice);
+
+        Assert.That(generatedIndex.ChangesEqual(suggestedIndex, 1), Is.True,
+            "ChangesEqual is intentionally blind to read-only surplus accounts; the manager-side flag covers it.");
+    }
+
+    [Test]
     public void ChangesEqual_ignores_read_only_accounts()
     {
         ReadOnlyBlockAccessList suggested = Bal(

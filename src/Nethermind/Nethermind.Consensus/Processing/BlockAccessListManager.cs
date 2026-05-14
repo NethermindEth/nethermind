@@ -79,6 +79,13 @@ public partial class BlockAccessListManager(
     private int _suggestedChargeableStorageReads;
     private int _generatedChargeableStorageReads;
     private bool _hasGeneratedValidationIndexUpdates;
+    // Latched true if any tx-level slice introduces an account that has no state changes
+    // and isn't a tolerated read-only entry (system-user at index 0 or any storage-read row),
+    // and that account isn't declared in the suggested BAL. The column-index fast path can't
+    // detect this — no lane data lands for such an account on either side, so ChangesEqual
+    // says "equal". The flag forces ValidateBlockAccessList's fallback walk, which produces
+    // the same "missing account changes" error the sequential path surfaces.
+    private bool _hasGeneratedRequiredReadAccountMismatch;
 
     public class ParallelExecutionException(InvalidBlockException innerException)
         : InvalidTransactionException(
@@ -203,6 +210,12 @@ public partial class BlockAccessListManager(
         }
     }
 
+    /// <summary>Detach the slice for <paramref name="balIndex"/>, fold it into
+    /// <see cref="GeneratedBlockAccessList"/>, and feed it to <see cref="RegisterGeneratedSlice"/>
+    /// so the column-index fast path and read-only-account mismatch flag stay in sync.</summary>
+    private void MergeAndReturnBal(uint balIndex)
+        => _txProcessorWithWorldStateManager!.MergeAndReturnBal(balIndex, GeneratedBlockAccessList, RegisterGeneratedSlice);
+
     private void CheckInitialized()
     {
         if (_txProcessorWithWorldStateManager is null) ThrowNotInitialized(nameof(_txProcessorWithWorldStateManager));
@@ -222,6 +235,7 @@ public partial class BlockAccessListManager(
         _suggestedChargeableStorageReads = 0;
         _generatedChargeableStorageReads = 0;
         _hasGeneratedValidationIndexUpdates = false;
+        _hasGeneratedRequiredReadAccountMismatch = false;
     }
 
     [DoesNotReturn]

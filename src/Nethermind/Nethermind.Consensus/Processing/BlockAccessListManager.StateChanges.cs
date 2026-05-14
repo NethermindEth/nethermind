@@ -99,7 +99,7 @@ public partial class BlockAccessListManager
         {
             CheckInitialized();
 
-            _txProcessorWithWorldStateManager.MergeAndReturnBal(uint.MaxValue, GeneratedBlockAccessList);
+            MergeAndReturnBal(uint.MaxValue);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);

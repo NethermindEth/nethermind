@@ -32,7 +32,7 @@ public partial class BlockAccessListManager
 
         // balIndex 0 (pre-execution) is held by main-thread system contract handlers — never
         // went through Return, so MergeAndReturnBal will detach it before merging.
-        _txProcessorWithWorldStateManager.MergeAndReturnBal(0u, GeneratedBlockAccessList, RegisterGeneratedSlice);
+        MergeAndReturnBal(0u);
         ValidateBlockAccessList(block, 0u);
 
         long totalRegularGas = 0;
@@ -77,7 +77,7 @@ public partial class BlockAccessListManager
                 // the target now, in order, so incremental validation sees only data from
                 // txs 0..(j+1).
                 bool validateStorageReads = j == chunkEnd - 1;
-                _txProcessorWithWorldStateManager.MergeAndReturnBal((uint)(j + 1), GeneratedBlockAccessList, RegisterGeneratedSlice);
+                MergeAndReturnBal((uint)(j + 1));
                 ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
             }
         }
@@ -147,11 +147,14 @@ public partial class BlockAccessListManager
         // Fast path: when the column-oriented validation index is populated for this index,
         // a single ChangesEqual call compares both sides row-by-row in bulk. On match, only
         // the surplus-storage-reads gas check remains — no per-account dict lookups, no
-        // sorted merge walk. On mismatch (or when the index isn't ready), fall through to
-        // the streaming walk below which produces precise diagnostics.
+        // sorted merge walk. On mismatch (or when the index isn't ready, or when a generated
+        // slice contained a read-only account the suggested side never declared — invisible
+        // to ChangesEqual), fall through to the streaming walk below which produces precise
+        // diagnostics.
         if (_hasGeneratedValidationIndexUpdates &&
             _suggestedValidationIndex is not null &&
             _generatedValidationIndex is not null &&
+            !_hasGeneratedRequiredReadAccountMismatch &&
             _generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
         {
             int fastSurplus = _suggestedChargeableStorageReads - _generatedChargeableStorageReads;
@@ -229,8 +232,10 @@ public partial class BlockAccessListManager
     /// Hook called by <see cref="ITxProcessorWithWorldStateManager.MergeAndReturnBal"/> after
     /// each per-tx slice merges into the cumulative <see cref="GeneratedBlockAccessList"/>.
     /// Pushes the slice's rows into <see cref="_generatedValidationIndex"/> so the next
-    /// <see cref="ValidateBlockAccessList"/> call at this index can take the fast path, and
-    /// rolls the chargeable-storage-reads counter forward.
+    /// <see cref="ValidateBlockAccessList"/> call at this index can take the fast path, rolls
+    /// the chargeable-storage-reads counter forward, and latches the read-only-mismatch flag
+    /// if any account in the slice is missing from the suggested BAL (and isn't a tolerated
+    /// read-only entry).
     /// </summary>
     private void RegisterGeneratedSlice(BlockAccessListAtIndex slice)
     {
@@ -247,8 +252,39 @@ public partial class BlockAccessListManager
                 _generatedChargeableStorageReads += ac.StorageReads.Count;
             }
         }
+
+        if (_suggestedValidationIndex is not null && !_hasGeneratedRequiredReadAccountMismatch)
+        {
+            _hasGeneratedRequiredReadAccountMismatch = HasRequiredReadAccountMissing(slice, _suggestedValidationIndex);
+        }
+
         _hasGeneratedValidationIndexUpdates = true;
     }
+
+    /// <summary>True iff any account in <paramref name="slice"/> has no state changes, isn't a
+    /// tolerated read-only entry (system-user at index 0 or any storage-read row), and isn't
+    /// declared in <paramref name="suggestedValidationIndex"/>. Such an account is invisible to
+    /// the column-index fast path (no lane rows land for it on either side) but must still be
+    /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.</summary>
+    private static bool HasRequiredReadAccountMissing(BlockAccessListAtIndex slice, BlockAccessListValidationIndex suggestedValidationIndex)
+    {
+        foreach (AccountChangesAtIndex ac in slice.AccountChanges)
+        {
+            if (HasStateChanges(ac)) continue;
+            if (IsSystemUserReadAt0(ac, slice.Index) || ac.StorageReads.Count > 0) continue;
+            if (!suggestedValidationIndex.HasAccount(ac.Address)) return true;
+        }
+        return false;
+    }
+
+    private static bool HasStateChanges(AccountChangesAtIndex ac)
+        => ac.BalanceChange is not null
+        || ac.NonceChange is not null
+        || ac.CodeChange is not null
+        || ac.StorageChangeCount > 0;
+
+    private static bool IsSystemUserReadAt0(AccountChangesAtIndex ac, uint index)
+        => index == 0 && ac.Address == Address.SystemUser && !HasStateChanges(ac) && ac.StorageReads.Count == 0;
 
     private static bool IsSystemContract(Address address)
         => address == Eip7002Constants.WithdrawalRequestPredeployAddress
