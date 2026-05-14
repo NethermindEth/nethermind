@@ -37,18 +37,12 @@ AuRaContractGasLimitOverride.Cache cache,
         private readonly IGasLimitCalculator _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
         private readonly ILogger _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimitOverride = null)
-        {
-            long? contractLimit = GetGasLimitFromContract(parentHeader);
-            if (contractLimit is not null
-                && targetGasLimitOverride is not null
-                && contractLimit != targetGasLimitOverride
-                && _logger.IsWarn)
-            {
-                _logger.Warn($"AuRa gas-limit contract ({contractLimit}) overrides CL targetGasLimit ({targetGasLimitOverride}) for block {parentHeader.Number + 1}.");
-            }
-            return contractLimit ?? _innerCalculator.GetGasLimit(parentHeader, targetGasLimitOverride);
-        }
+        // CL-supplied targetGasLimit (PayloadAttributesV4) takes precedence over the on-chain
+        // contract value so validators can steer per-FCU; contract value is the fallback.
+        public long GetGasLimit(BlockHeader parentHeader, long? targetGasLimitOverride = null) =>
+            targetGasLimitOverride is not null
+                ? _innerCalculator.GetGasLimit(parentHeader, targetGasLimitOverride)
+                : GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
 
         private long? GetGasLimitFromContract(BlockHeader parentHeader)
         {

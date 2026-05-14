@@ -34,9 +34,16 @@ public class PayloadAttributes
     /// the parent block, so the resulting <see cref="BlockHeader.GasLimit"/> may differ from this
     /// target. Replaces the static EL-side target configuration for V4+ FCUs.
     /// </summary>
-    public ulong? TargetGasLimit { get; set; }
+    public long? TargetGasLimit { get; set; }
 
-    public virtual long? GetGasLimit() => null;
+    /// <summary>
+    /// Resolves the gas limit for the block being built from these attributes. The default
+    /// implementation routes <see cref="TargetGasLimit"/> through <paramref name="gasLimitCalculator"/>
+    /// so the standard parent ± delta adjustment is applied. Subclasses that supply an unadjusted
+    /// value directly (e.g. Boost, Optimism, Taiko) override this.
+    /// </summary>
+    public virtual long GetGasLimit(BlockHeader parent, IGasLimitCalculator gasLimitCalculator)
+        => gasLimitCalculator.GetGasLimit(parent, TargetGasLimit);
 
     public override string ToString() => ToString(string.Empty);
 
@@ -144,8 +151,8 @@ public class PayloadAttributes
 
         if (TargetGasLimit is not null)
         {
-            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(position, sizeof(ulong)), TargetGasLimit.Value);
-            position += sizeof(ulong);
+            BinaryPrimitives.WriteInt64BigEndian(inputSpan.Slice(position, sizeof(long)), TargetGasLimit.Value);
+            position += sizeof(long);
         }
 
         return position;
@@ -235,8 +242,6 @@ public class PayloadAttributes
             >= PayloadAttributesVersions.V3 when ParentBeaconBlockRoot is null => $"{nameof(ParentBeaconBlockRoot)} must be provided",
             >= PayloadAttributesVersions.V4 when SlotNumber is null => $"{nameof(SlotNumber)} must be provided",
             >= PayloadAttributesVersions.V4 when TargetGasLimit is null => $"{nameof(TargetGasLimit)} must be provided",
-            // Internally gas limits are signed Int64; reject values that would overflow when narrowed.
-            >= PayloadAttributesVersions.V4 when TargetGasLimit > long.MaxValue => $"{nameof(TargetGasLimit)} must not exceed {long.MaxValue}",
             _ => null
         };
     }
