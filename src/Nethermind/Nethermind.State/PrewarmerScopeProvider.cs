@@ -3,12 +3,13 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Evm.State;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
 using Nethermind.Db;
-using Nethermind.Evm.State;
 using Nethermind.Int256;
 
 namespace Nethermind.State;
@@ -128,6 +129,7 @@ public class PrewarmerScopeProvider(
                 {
                     account = GetFromBaseTree(in addressAsKey);
                     preBlockCache.Set(in addressAsKey, account);
+                    Interlocked.Increment(ref PreBlockCaches.DiagAccountSets);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -139,10 +141,12 @@ public class PrewarmerScopeProvider(
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
+                    Interlocked.Increment(ref PreBlockCaches.DiagAccountHits);
                 }
                 else
                 {
                     account = GetFromBaseTree(in addressAsKey);
+                    Interlocked.Increment(ref PreBlockCaches.DiagAccountMisses);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -185,6 +189,7 @@ public class PrewarmerScopeProvider(
                 {
                     value = LoadFromTreeStorage(in storageCell);
                     preBlockCache.Set(in storageCell, value);
+                    Interlocked.Increment(ref PreBlockCaches.DiagStorageSets);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
@@ -195,10 +200,12 @@ public class PrewarmerScopeProvider(
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                     Db.Metrics.IncrementStorageTreeCache();
+                    Interlocked.Increment(ref PreBlockCaches.DiagStorageHits);
                 }
                 else
                 {
                     value = LoadFromTreeStorage(in storageCell);
+                    Interlocked.Increment(ref PreBlockCaches.DiagStorageMisses);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
