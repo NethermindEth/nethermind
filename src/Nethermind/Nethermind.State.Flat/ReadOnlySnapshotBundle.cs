@@ -152,10 +152,9 @@ public sealed class ReadOnlySnapshotBundle(
         }
 
         long psw = Stopwatch.GetTimestamp();
-        // Slot bloom alone is sufficient: the (addr, slot) key is seeded from the address
-        // key (XOR-mixed in SlotKey), so a per-snapshot slot-bloom hit already implies the
-        // address could be present. Skipping the separate address-bloom probe saves one
-        // memory access per snapshot in the negative path.
+        // Bloom checks both the address-key and the per-slot key before paying for a
+        // column seek into the persisted snapshot. PersistedSnapshot is keyed by raw
+        // Address; the bloom seed and TryGetSlot both consume address bytes directly.
         if (persistedSnapshots.Count > 0)
         {
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(address);
@@ -163,7 +162,7 @@ public sealed class ReadOnlySnapshotBundle(
             for (int i = persistedSnapshots.Count - 1; i >= 0; i--)
             {
                 PersistedSnapshotBloom bloom = persistedBlooms[i];
-                if (bloom.KeyBloom.MightContain(slotBloomKey))
+                if (bloom.KeyBloom.MightContain(addrBloomKey) && bloom.KeyBloom.MightContain(slotBloomKey))
                 {
                     SlotValue slotValue = default;
                     if (persistedSnapshots[i].TryGetSlot(address, in index, ref slotValue))
