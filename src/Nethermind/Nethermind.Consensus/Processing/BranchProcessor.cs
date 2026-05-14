@@ -80,11 +80,9 @@ public class BranchProcessor(
         void CancelBackgroundWork() => backgroundCancellation?.Cancel();
         blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
-        // Wire prewarmer to read from main thread's live WorldState and track tx progress
-        if (preWarmer is BlockCachePreWarmer bcpw && blockProcessor is BlockProcessor bp)
+        if (preWarmer is BlockCachePreWarmer bcpw)
         {
             bcpw.MainThreadWorldState = stateProvider;
-            bp.SetTxExecutedCallback((txIndex) => Volatile.Write(ref bcpw.MainThreadTxIndex, txIndex));
         }
 
         try
