@@ -293,21 +293,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
                             if (hammerMode)
                             {
-                                // Hammer: keep re-executing until main thread passes
+                                // Hammer: keep re-executing until main thread passes.
+                                // Reuse the same scope — avoids allocation/GC overhead per retry.
+                                // The scope accumulates state which helps subsequent executions.
+                                using IReadOnlyTxProcessingScope hammerScope = env.Build(blockState.Parent);
+                                BlockExecutionContext hammerCtx = new(block.Header, blockState.Spec);
+                                hammerScope.TransactionProcessor.SetBlockExecutionContext(hammerCtx);
+
+                                if (preWarmer.MainThreadWorldState is not null)
+                                    (hammerScope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
+
                                 while (!token.IsCancellationRequested)
                                 {
                                     if (Volatile.Read(ref MainThreadTxIndex) >= myTx) break;
-
-                                    using (IReadOnlyTxProcessingScope scope = env.Build(blockState.Parent))
-                                    {
-                                        BlockExecutionContext context = new(block.Header, blockState.Spec);
-                                        scope.TransactionProcessor.SetBlockExecutionContext(context);
-
-                                        if (preWarmer.MainThreadWorldState is not null)
-                                            (scope.WorldState as WorldState)?.SetReadFallback(preWarmer.MainThreadWorldState);
-
-                                        WarmupSingleTransaction(scope, block.Transactions[myTx], myTx, blockState);
-                                    }
+                                    WarmupSingleTransaction(hammerScope, block.Transactions[myTx], myTx, blockState);
                                 }
                             }
                             else
