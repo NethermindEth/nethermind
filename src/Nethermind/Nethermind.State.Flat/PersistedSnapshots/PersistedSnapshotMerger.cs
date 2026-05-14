@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
@@ -133,9 +134,8 @@ public static class PersistedSnapshotMerger
         int n = views.Length;
         using ArrayPoolList<HsstEnumerator> enums = new(n, n);
         using NativeMemoryList<bool> hasMore = new(n, n);
-        // Cache each source's current logical key once per MoveNext so the O(N) find-min
-        // and match-detection scans don't redo CopyCurrentLogicalKey 2-3x per output key.
-        // Slot i occupies keyBuf[i*keySize .. (i+1)*keySize].
+        // Cache each source's current logical key once per MoveNext so the O(log N) cursor
+        // and O(N) match-detection scans don't redo CopyCurrentLogicalKey per output key.
         int keyStride = Math.Max(1, keySize);
         using NativeMemoryList<byte> keyBufList = new(n * keyStride, n * keyStride);
         Span<byte> keyBuf = keyBufList.AsSpan();
@@ -150,57 +150,30 @@ public static class PersistedSnapshotMerger
                 enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
                 hasMore[i] = enums[i].MoveNext(in r);
                 if (hasMore[i])
-                    enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * keyStride, keyStride));
+                    enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * keyStride, keySize));
             }
+
+            int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, n));
+            Span<int> srcMap = stackalloc int[Math.Max(1, n)];
+            for (int i = 0; i < n; i++) srcMap[i] = i;
+            Span<int> matchingBuf = stackalloc int[Math.Max(1, n)];
+            Span<int> tree = stackalloc int[2 * pow2N];
+
+            NWayMergeCursor cursor = new(
+                enums.UnsafeGetInternalArray(), hasMore.AsSpan(),
+                views, srcMap, n, keySize, keyStride, keyBuf, matchingBuf, tree);
 
             using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
 
-            while (true)
+            while (cursor.MoveNext())
             {
-                // Find min key across all active enumerators, newest wins on tie. Compares
-                // operate on cached key slices — no re-copy per comparison.
-                int minIdx = -1;
-                for (int i = 0; i < n; i++)
-                {
-                    if (!hasMore[i]) continue;
-                    if (minIdx < 0)
-                    {
-                        minIdx = i;
-                        continue;
-                    }
-                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * keyStride, keyStride);
-                    ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * keyStride, keyStride);
-                    int cmp = kI.SequenceCompareTo(kM);
-                    if (cmp < 0) minIdx = i;
-                    else if (cmp == 0) minIdx = i; // newer (higher index) wins
-                }
-
-                if (minIdx < 0) break;
-
-                ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * keyStride, keyStride);
+                int minIdx = cursor.MinIdx;
                 Bound valBound = enums[minIdx].CurrentValue;
                 WholeReadSessionReader minIdxReader = Reader(views[minIdx]);
                 using NoOpPin valPin = minIdxReader.PinBuffer(valBound.Offset, valBound.Length);
-                builder.Add(minKey, valPin.Buffer);
+                builder.Add(cursor.MinKey, valPin.Buffer);
 
-                for (int i = 0; i < n; i++)
-                {
-                    if (i == minIdx || !hasMore[i]) continue;
-                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * keyStride, keyStride);
-                    if (kI.SequenceCompareTo(minKey) == 0)
-                    {
-                        WholeReadSessionReader rI = Reader(views[i]);
-                        hasMore[i] = enums[i].MoveNext(in rI);
-                        if (hasMore[i])
-                            enums[i].CopyCurrentLogicalKey(in rI, keyBuf.Slice(i * keyStride, keyStride));
-                    }
-                }
-                {
-                    WholeReadSessionReader r = Reader(views[minIdx]);
-                    hasMore[minIdx] = enums[minIdx].MoveNext(in r);
-                    if (hasMore[minIdx])
-                        enums[minIdx].CopyCurrentLogicalKey(in r, keyBuf.Slice(minIdx * keyStride, keyStride));
-                }
+                cursor.AdvanceMatching();
             }
 
             builder.Build();
@@ -210,405 +183,6 @@ public static class PersistedSnapshotMerger
             for (int i = 0; i < n; i++) enums[i].Dispose();
         }
     }
-
-    /// <summary>
-    /// N-way nested streaming merge: outer keys merged across N sources,
-    /// when M sources share an outer key their inner HSST values are merged via NWayStreamingMerge.
-    /// Single-source keys are copied as-is.
-    /// </summary>
-    private static void NWayNestedStreamingMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] enums, Span<bool> hasMore, int n,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-        ref TWriter writer,
-        int outerKeyLength, int innerKeyLength,
-        int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
-
-        // Temp list for collecting matching source indices
-        using NativeMemoryList<int> matchingSourcesList = new(n, n);
-        Span<int> matchingSources = matchingSourcesList.AsSpan();
-
-        // Cache each source's current outer key once per MoveNext. 64 covers every key
-        // size that ends up in this merge: storage-hash address prefixes (≤32) and storage
-        // path prefixes for the BTree variants (≤33). Slot i occupies keyBuf[i*64 .. ).
-        const int KeyStride = 64;
-        Span<byte> keyBuf = stackalloc byte[n * KeyStride];
-        for (int i = 0; i < n; i++)
-        {
-            if (!hasMore[i]) continue;
-            WholeReadSessionReader r = Reader(views[i]);
-            enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * KeyStride, outerKeyLength));
-        }
-
-        while (true)
-        {
-            int minIdx = -1;
-            for (int i = 0; i < n; i++)
-            {
-                if (!hasMore[i]) continue;
-                if (minIdx < 0)
-                {
-                    minIdx = i;
-                    continue;
-                }
-                ReadOnlySpan<byte> kI = keyBuf.Slice(i * KeyStride, outerKeyLength);
-                ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * KeyStride, outerKeyLength);
-                int cmp = kI.SequenceCompareTo(kM);
-                if (cmp < 0) minIdx = i;
-            }
-
-            if (minIdx < 0) break;
-
-            ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * KeyStride, outerKeyLength);
-
-            // Collect all sources with this key
-            int matchCount = 0;
-            for (int i = 0; i < n; i++)
-            {
-                if (!hasMore[i]) continue;
-                ReadOnlySpan<byte> kI = keyBuf.Slice(i * KeyStride, outerKeyLength);
-                if (kI.SequenceCompareTo(minKey) == 0)
-                    matchingSources[matchCount++] = i;
-            }
-
-            if (matchCount == 1)
-            {
-                // Single source: copy as-is
-                int srcIdx = matchingSources[0];
-                Bound vb = enums[srcIdx].CurrentValue;
-                WholeReadSessionReader srcReader = Reader(views[srcIdx]);
-                using NoOpPin valPin = srcReader.PinBuffer(vb.Offset, vb.Length);
-                builder.Add(minKey, valPin.Buffer);
-            }
-            else
-            {
-                // M sources: create M inner enumerators and merge
-                ref TWriter innerWriter = ref builder.BeginValueWrite();
-                NWayInnerMerge<TWriter, TReader, TPin>(enums, matchingSources, matchCount, views,
-                    ref innerWriter, innerKeyLength, innerMinSep);
-                builder.FinishValueWrite(minKey);
-            }
-
-            // Advance all matching, refilling cached outer keys.
-            for (int j = 0; j < matchCount; j++)
-            {
-                int i = matchingSources[j];
-                WholeReadSessionReader r = Reader(views[i]);
-                hasMore[i] = enums[i].MoveNext(in r);
-                if (hasMore[i])
-                    enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * KeyStride, outerKeyLength));
-            }
-        }
-
-        builder.Build();
-    }
-
-    /// <summary>
-    /// Merge inner HSST values from M sources (identified by matchingSources indices).
-    /// Each source's current value (from outer enumerator) is an inner HSST.
-    /// Creates M inner MergeEnumerators and performs N-way merge with newest-wins.
-    /// </summary>
-    private static void NWayInnerMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-        ref TWriter writer,
-        int innerKeyLength,
-        int minSeparatorLength = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        using ArrayPoolList<HsstEnumerator> innerEnums = new(matchCount, matchCount);
-        using NativeMemoryList<bool> innerHasMore = new(matchCount, matchCount);
-        // Cache each inner enumerator's current key once per MoveNext. innerKeyLength ≤ 33
-        // for any caller; 64 stride covers comfortably with room for future growth.
-        const int KeyStride = 64;
-        Span<byte> innerKeyBuf = stackalloc byte[matchCount * KeyStride];
-
-        try
-        {
-            for (int j = 0; j < matchCount; j++)
-            {
-                int srcIdx = matchingSources[j];
-                Bound vb = outerEnums[srcIdx].CurrentValue;
-                WholeReadSessionReader r = Reader(views[srcIdx]);
-                innerEnums[j] = new HsstEnumerator(in r, new Bound(vb.Offset, vb.Length));
-                innerHasMore[j] = innerEnums[j].MoveNext(in r);
-                if (innerHasMore[j])
-                    innerEnums[j].CopyCurrentLogicalKey(in r, innerKeyBuf.Slice(j * KeyStride, innerKeyLength));
-            }
-
-            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, innerKeyLength, new HsstBTreeOptions { MinSeparatorLength = minSeparatorLength });
-            while (true)
-            {
-                int minIdx = -1;
-                for (int j = 0; j < matchCount; j++)
-                {
-                    if (!innerHasMore[j]) continue;
-                    if (minIdx < 0) { minIdx = j; continue; }
-                    ReadOnlySpan<byte> kJ = innerKeyBuf.Slice(j * KeyStride, innerKeyLength);
-                    ReadOnlySpan<byte> kM = innerKeyBuf.Slice(minIdx * KeyStride, innerKeyLength);
-                    int cmp = kJ.SequenceCompareTo(kM);
-                    if (cmp < 0) minIdx = j;
-                    else if (cmp == 0) minIdx = j; // newer (higher j = higher source index) wins
-                }
-                if (minIdx < 0) break;
-
-                Bound vb = innerEnums[minIdx].CurrentValue;
-                WholeReadSessionReader rMin = Reader(views[matchingSources[minIdx]]);
-                ReadOnlySpan<byte> minKey = innerKeyBuf.Slice(minIdx * KeyStride, innerKeyLength);
-                using NoOpPin valPin = rMin.PinBuffer(vb.Offset, vb.Length);
-                builder.Add(minKey, valPin.Buffer);
-
-                for (int j = 0; j < matchCount; j++)
-                {
-                    if (j == minIdx || !innerHasMore[j]) continue;
-                    ReadOnlySpan<byte> kJ = innerKeyBuf.Slice(j * KeyStride, innerKeyLength);
-                    if (kJ.SequenceCompareTo(minKey) == 0)
-                    {
-                        WholeReadSessionReader rJ = Reader(views[matchingSources[j]]);
-                        innerHasMore[j] = innerEnums[j].MoveNext(in rJ);
-                        if (innerHasMore[j])
-                            innerEnums[j].CopyCurrentLogicalKey(in rJ, innerKeyBuf.Slice(j * KeyStride, innerKeyLength));
-                    }
-                }
-                {
-                    WholeReadSessionReader r = Reader(views[matchingSources[minIdx]]);
-                    innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(in r);
-                    if (innerHasMore[minIdx])
-                        innerEnums[minIdx].CopyCurrentLogicalKey(in r, innerKeyBuf.Slice(minIdx * KeyStride, innerKeyLength));
-                }
-            }
-            builder.Build();
-        }
-        finally
-        {
-            for (int j = 0; j < matchCount; j++) innerEnums[j].Dispose();
-        }
-    }
-
-    /// <summary>
-    /// N-way nested streaming merge across N persisted snapshots.
-    /// Initializes enumerators from snapshot data and delegates to the core merge method.
-    /// </summary>
-    private static void NWayNestedStreamingMerge<TWriter, TReader, TPin>(
-        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
-        int outerKeyLength, int innerKeyLength,
-        int outerMinSep = 0, int innerMinSep = 0) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        int n = snapshots.Count;
-        using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
-        using NativeMemoryList<bool> hasMoreList = new(n, n);
-        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
-        HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
-        Span<bool> hasMore = hasMoreList.AsSpan();
-        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
-        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
-
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                sessions[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessions[i].GetRawView();
-                WholeReadSessionReader r = Reader(views[i]);
-                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-                (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
-                enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
-                hasMore[i] = enums[i].MoveNext(in r);
-            }
-
-            NWayNestedStreamingMerge<TWriter, TReader, TPin>(enums, hasMore, n, views,
-                ref writer, outerKeyLength, innerKeyLength, outerMinSep, innerMinSep);
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++) enums[i].Dispose();
-            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Trie-specific nested streaming merge for storage trie columns (0x07/0x08). Outer
-    /// (storage hash prefix) keeps the BTree layout; inner (TreePath -> NodeRef) is built
-    /// as a fixed-size PackedArray since both inner key and value (NodeRef) are fixed.
-    /// </summary>
-    private static void NWayNestedStreamingMergeTrie<TWriter, TReader, TPin>(
-        PersistedSnapshotList snapshots, byte[] tag, ref TWriter writer,
-        int outerKeyLength, int outerMinSep, int innerKeySize) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        int n = snapshots.Count;
-        using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
-        using NativeMemoryList<bool> hasMoreList = new(n, n);
-        using ArrayPoolList<WholeReadSession> sessionsList = new(n, n);
-        using NativeMemoryList<(IntPtr Ptr, long Len)> viewsList = new(n, n);
-        using NativeMemoryList<int> matchingSourcesList = new(n, n);
-        HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
-        Span<bool> hasMore = hasMoreList.AsSpan();
-        WholeReadSession[] sessions = sessionsList.UnsafeGetInternalArray();
-        Span<(IntPtr Ptr, long Len)> views = viewsList.AsSpan();
-        Span<int> matchingSources = matchingSourcesList.AsSpan();
-
-        // Cache each source's current outer key once per MoveNext (outer keys ≤ 32 bytes).
-        const int KeyStride = 64;
-        Span<byte> keyBuf = stackalloc byte[n * KeyStride];
-
-        try
-        {
-            for (int i = 0; i < n; i++)
-            {
-                sessions[i] = snapshots[i].BeginWholeReadSession();
-                views[i] = sessions[i].GetRawView();
-                WholeReadSessionReader r = Reader(views[i]);
-                HsstReader<WholeReadSessionReader, NoOpPin> hsst = new(in r, new Bound(0, r.Length));
-                (long Offset, long Length) cb = hsst.TrySeek(tag, out Bound cbOut) ? (cbOut.Offset, cbOut.Length) : (0, 0);
-                enums[i] = new HsstEnumerator(in r, new Bound(cb.Offset, cb.Length));
-                hasMore[i] = enums[i].MoveNext(in r);
-                if (hasMore[i])
-                    enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * KeyStride, outerKeyLength));
-            }
-
-            using HsstBTreeBuilder<TWriter, TReader, TPin> outerBuilder = new(ref writer, outerKeyLength, new HsstBTreeOptions { MinSeparatorLength = outerMinSep });
-
-            while (true)
-            {
-                int minIdx = -1;
-                for (int i = 0; i < n; i++)
-                {
-                    if (!hasMore[i]) continue;
-                    if (minIdx < 0) { minIdx = i; continue; }
-                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * KeyStride, outerKeyLength);
-                    ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * KeyStride, outerKeyLength);
-                    int cmp = kI.SequenceCompareTo(kM);
-                    if (cmp < 0) minIdx = i;
-                }
-                if (minIdx < 0) break;
-
-                ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * KeyStride, outerKeyLength);
-
-                int matchCount = 0;
-                for (int i = 0; i < n; i++)
-                {
-                    if (!hasMore[i]) continue;
-                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * KeyStride, outerKeyLength);
-                    if (kI.SequenceCompareTo(minKey) == 0)
-                        matchingSources[matchCount++] = i;
-                }
-
-                if (matchCount == 1)
-                {
-                    int srcIdx = matchingSources[0];
-                    Bound vb = enums[srcIdx].CurrentValue;
-                    WholeReadSessionReader srcReader = Reader(views[srcIdx]);
-                    using NoOpPin valPin = srcReader.PinBuffer(vb.Offset, vb.Length);
-                    outerBuilder.Add(minKey, valPin.Buffer);
-                }
-                else
-                {
-                    ref TWriter innerWriter = ref outerBuilder.BeginValueWrite();
-                    NWayInnerMergeTrie<TWriter, TReader, TPin>(enums, matchingSources, matchCount, views,
-                        ref innerWriter, innerKeySize);
-                    outerBuilder.FinishValueWrite(minKey);
-                }
-
-                for (int j = 0; j < matchCount; j++)
-                {
-                    int i = matchingSources[j];
-                    WholeReadSessionReader r = Reader(views[i]);
-                    hasMore[i] = enums[i].MoveNext(in r);
-                    if (hasMore[i])
-                        enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * KeyStride, outerKeyLength));
-                }
-            }
-
-            outerBuilder.Build();
-        }
-        finally
-        {
-            for (int i = 0; i < n; i++) enums[i].Dispose();
-            for (int i = 0; i < n; i++) sessions[i]?.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// Trie-specific inner merge: M sources share an outer key; merge their inner trie HSSTs
-    /// (TreePath -> NodeRef, fixed-size both sides) into a single PackedArray.
-    /// </summary>
-    private static void NWayInnerMergeTrie<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
-        ReadOnlySpan<(IntPtr Ptr, long Len)> views,
-        ref TWriter writer,
-        int keySize) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
-    {
-        using ArrayPoolList<HsstEnumerator> innerEnums = new(matchCount, matchCount);
-        using NativeMemoryList<bool> innerHasMore = new(matchCount, matchCount);
-        // Cache each inner enumerator's current key (trie path, keySize ≤ 33).
-        const int KeyStride = 64;
-        Span<byte> keyBuf = stackalloc byte[matchCount * KeyStride];
-
-        try
-        {
-            for (int j = 0; j < matchCount; j++)
-            {
-                int srcIdx = matchingSources[j];
-                Bound vb = outerEnums[srcIdx].CurrentValue;
-                WholeReadSessionReader r = Reader(views[srcIdx]);
-                innerEnums[j] = new HsstEnumerator(in r, new Bound(vb.Offset, vb.Length));
-                innerHasMore[j] = innerEnums[j].MoveNext(in r);
-                if (innerHasMore[j])
-                    innerEnums[j].CopyCurrentLogicalKey(in r, keyBuf.Slice(j * KeyStride, keySize));
-            }
-
-            using HsstPackedArrayBuilder<TWriter> builder = new(ref writer, keySize, NodeRef.Size);
-
-            while (true)
-            {
-                int minIdx = -1;
-                for (int j = 0; j < matchCount; j++)
-                {
-                    if (!innerHasMore[j]) continue;
-                    if (minIdx < 0) { minIdx = j; continue; }
-                    ReadOnlySpan<byte> kJ = keyBuf.Slice(j * KeyStride, keySize);
-                    ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * KeyStride, keySize);
-                    int cmp = kJ.SequenceCompareTo(kM);
-                    if (cmp < 0) minIdx = j;
-                    else if (cmp == 0) minIdx = j; // newer wins
-                }
-                if (minIdx < 0) break;
-
-                Bound vb2 = innerEnums[minIdx].CurrentValue;
-                WholeReadSessionReader minReader = Reader(views[matchingSources[minIdx]]);
-                ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * KeyStride, keySize);
-                using NoOpPin valPin = minReader.PinBuffer(vb2.Offset, vb2.Length);
-                builder.Add(minKey, valPin.Buffer);
-
-                for (int j = 0; j < matchCount; j++)
-                {
-                    if (j == minIdx || !innerHasMore[j]) continue;
-                    ReadOnlySpan<byte> kJ = keyBuf.Slice(j * KeyStride, keySize);
-                    if (kJ.SequenceCompareTo(minKey) == 0)
-                    {
-                        WholeReadSessionReader jr = Reader(views[matchingSources[j]]);
-                        innerHasMore[j] = innerEnums[j].MoveNext(in jr);
-                        if (innerHasMore[j])
-                            innerEnums[j].CopyCurrentLogicalKey(in jr, keyBuf.Slice(j * KeyStride, keySize));
-                    }
-                }
-                {
-                    WholeReadSessionReader mr = Reader(views[matchingSources[minIdx]]);
-                    innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(in mr);
-                    if (innerHasMore[minIdx])
-                        innerEnums[minIdx].CopyCurrentLogicalKey(in mr, keyBuf.Slice(minIdx * KeyStride, keySize));
-                }
-            }
-
-            builder.Build();
-        }
-        finally
-        {
-            for (int j = 0; j < matchCount; j++) innerEnums[j].Dispose();
-        }
-    }
-
     /// <summary>
     /// N-way merge of the account column (tag 0x01) across N snapshots.
     /// Outer: 20-byte address keys (minSep=4). Addresses with a single matching source
@@ -622,10 +196,8 @@ public static class PersistedSnapshotMerger
         int n = views.Length;
         using ArrayPoolList<HsstEnumerator> enumsList = new(n, n);
         using NativeMemoryList<bool> hasMoreList = new(n, n);
-        using NativeMemoryList<int> matchingSourcesList = new(n, n);
         HsstEnumerator[] enums = enumsList.UnsafeGetInternalArray();
         Span<bool> hasMore = hasMoreList.AsSpan();
-        Span<int> matchingSources = matchingSourcesList.AsSpan();
 
         // Cache each source's current 20-byte address-hash key (stride 32 with room).
         const int KeyStride = 32;
@@ -654,37 +226,22 @@ public static class PersistedSnapshotMerger
                     enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * KeyStride, AddrKeyLen));
             }
 
+            int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, n));
+            Span<int> srcMap = stackalloc int[Math.Max(1, n)];
+            for (int i = 0; i < n; i++) srcMap[i] = i;
+            Span<int> matchingBuf = stackalloc int[Math.Max(1, n)];
+            Span<int> tree = stackalloc int[2 * pow2N];
+
+            NWayMergeCursor cursor = new(
+                enums, hasMore, views, srcMap, n, AddrKeyLen, KeyStride, keyBuf, matchingBuf, tree);
+
             using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, StorageHashPrefixLength, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
-            while (true)
+            while (cursor.MoveNext())
             {
-                int minIdx = -1;
-                for (int i = 0; i < n; i++)
-                {
-                    if (!hasMore[i]) continue;
-                    if (minIdx < 0)
-                    {
-                        minIdx = i;
-                        continue;
-                    }
-                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * KeyStride, AddrKeyLen);
-                    ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * KeyStride, AddrKeyLen);
-                    int cmp = kI.SequenceCompareTo(kM);
-                    if (cmp < 0) minIdx = i;
-                }
-
-                if (minIdx < 0) break;
-
-                ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * KeyStride, AddrKeyLen);
-
-                int matchCount = 0;
-                for (int i = 0; i < n; i++)
-                {
-                    if (!hasMore[i]) continue;
-                    ReadOnlySpan<byte> kI = keyBuf.Slice(i * KeyStride, AddrKeyLen);
-                    if (kI.SequenceCompareTo(minKey) == 0)
-                        matchingSources[matchCount++] = i;
-                }
+                ReadOnlySpan<byte> minKey = cursor.MinKey;
+                int matchCount = cursor.MatchCount;
+                ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
 
                 if (matchCount == 1)
                 {
@@ -728,14 +285,7 @@ public static class PersistedSnapshotMerger
                     builder.FinishValueWrite(minKey);
                 }
 
-                for (int j = 0; j < matchCount; j++)
-                {
-                    int i = matchingSources[j];
-                    WholeReadSessionReader r = Reader(views[i]);
-                    hasMore[i] = enums[i].MoveNext(in r);
-                    if (hasMore[i])
-                        enums[i].CopyCurrentLogicalKey(in r, keyBuf.Slice(i * KeyStride, AddrKeyLen));
-                }
+                cursor.AdvanceMatching();
             }
 
             builder.Build();
@@ -760,7 +310,7 @@ public static class PersistedSnapshotMerger
     /// - 0x06 SelfDestruct: iterate 0..M-1, apply TryAdd semantics
     /// </summary>
     private static void NWayMergePerAddressHsst<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
+        HsstEnumerator[] outerEnums, scoped ReadOnlySpan<int> matchingSources, int matchCount,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         scoped ref HsstBTreeBuilderBuffers slotPrefixBuffers,
@@ -979,7 +529,7 @@ public static class PersistedSnapshotMerger
     /// are content-addressable so duplicate keys carry identical NodeRefs in practice.
     /// </summary>
     private static void MergeStorageTrieSubTag<TWriter, TReader, TPin>(
-        ReadOnlySpan<int> matchingSources, int matchCount,
+        scoped ReadOnlySpan<int> matchingSources, int matchCount,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ReadOnlySpan<Bound> subTagBounds,
         ref HsstDenseByteIndexBuilder<TWriter> perAddrBuilder,
@@ -1015,10 +565,10 @@ public static class PersistedSnapshotMerger
             return;
         }
 
-        // Multi-source: streaming N-way merge into a PackedArray with cached inner keys.
-        // Cross-source min selection and the bytes handed to Add both go through
-        // CopyCurrentLogicalKey, which returns lex/BE bytes regardless of the source
-        // PackedArray's storage layout (BE-stored or auto-LE-stored at innerKeySize ∈ {2,4,8}).
+        // Multi-source: streaming N-way merge into a PackedArray driven by the shared
+        // loser-tree cursor. CopyCurrentLogicalKey returns lex/BE bytes regardless of the
+        // source PackedArray's storage layout, so cross-source min selection on cached
+        // keys works at innerKeySize ∈ {2,4,8} BE-stored or auto-LE-stored alike.
         using ArrayPoolList<HsstEnumerator> innerEnumsList = new(active, active);
         using NativeMemoryList<bool> innerHasMoreList = new(active, active);
         HsstEnumerator[] innerEnums = innerEnumsList.UnsafeGetInternalArray();
@@ -1036,48 +586,28 @@ public static class PersistedSnapshotMerger
                     innerEnums[j].CopyCurrentLogicalKey(in r, keyBuf.Slice(j * innerKeySize, innerKeySize));
             }
 
+            // Compose cursor sourceMap: cursor slot j → views[matchingSources[srcs[j]]].
+            int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)active);
+            Span<int> composedMap = stackalloc int[active];
+            for (int j = 0; j < active; j++) composedMap[j] = matchingSources[srcs[j]];
+            Span<int> matchingBuf = stackalloc int[active];
+            Span<int> tree = stackalloc int[2 * pow2N];
+
+            NWayMergeCursor cursor = new(
+                innerEnums, innerHasMore, views, composedMap,
+                active, innerKeySize, innerKeySize, keyBuf, matchingBuf, tree);
+
             ref TWriter subWriter = ref perAddrBuilder.BeginValueWrite();
             using HsstPackedArrayBuilder<TWriter> innerBuilder = new(ref subWriter, innerKeySize, NodeRef.Size);
 
-            while (true)
+            while (cursor.MoveNext())
             {
-                int minIdx = -1;
-                for (int j = 0; j < active; j++)
-                {
-                    if (!innerHasMore[j]) continue;
-                    if (minIdx < 0) { minIdx = j; continue; }
-                    ReadOnlySpan<byte> kJ = keyBuf.Slice(j * innerKeySize, innerKeySize);
-                    ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * innerKeySize, innerKeySize);
-                    int cmp = kJ.SequenceCompareTo(kM);
-                    if (cmp < 0) minIdx = j;
-                    else if (cmp == 0) minIdx = j; // newer (higher j) wins
-                }
-                if (minIdx < 0) break;
-
+                int minIdx = cursor.MinIdx;
                 Bound vb = innerEnums[minIdx].CurrentValue;
-                WholeReadSessionReader rMin = Reader(views[matchingSources[srcs[minIdx]]]);
-                ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * innerKeySize, innerKeySize);
+                WholeReadSessionReader rMin = Reader(views[composedMap[minIdx]]);
                 using NoOpPin valPin = rMin.PinBuffer(vb.Offset, vb.Length);
-                innerBuilder.Add(minKey, valPin.Buffer);
-
-                for (int j = 0; j < active; j++)
-                {
-                    if (j == minIdx || !innerHasMore[j]) continue;
-                    ReadOnlySpan<byte> kJ = keyBuf.Slice(j * innerKeySize, innerKeySize);
-                    if (kJ.SequenceCompareTo(minKey) == 0)
-                    {
-                        WholeReadSessionReader rJ = Reader(views[matchingSources[srcs[j]]]);
-                        innerHasMore[j] = innerEnums[j].MoveNext(in rJ);
-                        if (innerHasMore[j])
-                            innerEnums[j].CopyCurrentLogicalKey(in rJ, keyBuf.Slice(j * innerKeySize, innerKeySize));
-                    }
-                }
-                {
-                    WholeReadSessionReader r = Reader(views[matchingSources[srcs[minIdx]]]);
-                    innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(in r);
-                    if (innerHasMore[minIdx])
-                        innerEnums[minIdx].CopyCurrentLogicalKey(in r, keyBuf.Slice(minIdx * innerKeySize, innerKeySize));
-                }
+                innerBuilder.Add(cursor.MinKey, valPin.Buffer);
+                cursor.AdvanceMatching();
             }
 
             innerBuilder.Build();
@@ -1175,13 +705,12 @@ public static class PersistedSnapshotMerger
         BloomFilter? bloom, ulong addrBloomKey) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
     {
         const int OuterKeyLen = 30;
+        const int OuterStride = 32;
         using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref slotPrefixBuffers, OuterKeyLen, new HsstBTreeOptions { MinSeparatorLength = 4 });
 
-        using NativeMemoryList<int> matchingSourcesList = new(n, n);
-        Span<int> matchingSources = matchingSourcesList.AsSpan();
-
-        // Cache outer 30-byte keys (stride 32 for alignment).
-        const int OuterStride = 32;
+        // Prime cached outer 30-byte keys (stride 32 for alignment). The outerEnums have
+        // already been MoveNext'd once by the caller (NWayMergePerAddressHsst); we just
+        // copy the first key per still-live source so the cursor can build its tree.
         Span<byte> outerKeyBuf = stackalloc byte[n * OuterStride];
         for (int i = 0; i < n; i++)
         {
@@ -1190,30 +719,20 @@ public static class PersistedSnapshotMerger
             outerEnums[i].CopyCurrentLogicalKey(in r, outerKeyBuf.Slice(i * OuterStride, OuterKeyLen));
         }
 
-        while (true)
+        int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, n));
+        Span<int> srcMap = stackalloc int[Math.Max(1, n)];
+        for (int i = 0; i < n; i++) srcMap[i] = i;
+        Span<int> matchingBuf = stackalloc int[Math.Max(1, n)];
+        Span<int> tree = stackalloc int[2 * pow2N];
+
+        NWayMergeCursor cursor = new(
+            outerEnums, outerHasMore, views, srcMap, n, OuterKeyLen, OuterStride, outerKeyBuf, matchingBuf, tree);
+
+        while (cursor.MoveNext())
         {
-            int minIdx = -1;
-            for (int i = 0; i < n; i++)
-            {
-                if (!outerHasMore[i]) continue;
-                if (minIdx < 0) { minIdx = i; continue; }
-                ReadOnlySpan<byte> kI = outerKeyBuf.Slice(i * OuterStride, OuterKeyLen);
-                ReadOnlySpan<byte> kM = outerKeyBuf.Slice(minIdx * OuterStride, OuterKeyLen);
-                if (kI.SequenceCompareTo(kM) < 0) minIdx = i;
-            }
-            if (minIdx < 0) break;
-
-            ReadOnlySpan<byte> minKey = outerKeyBuf.Slice(minIdx * OuterStride, OuterKeyLen);
-
-            // Collect matching sources for this outer key.
-            int matchCount = 0;
-            for (int i = 0; i < n; i++)
-            {
-                if (!outerHasMore[i]) continue;
-                ReadOnlySpan<byte> kI = outerKeyBuf.Slice(i * OuterStride, OuterKeyLen);
-                if (kI.SequenceCompareTo(minKey) == 0)
-                    matchingSources[matchCount++] = i;
-            }
+            ReadOnlySpan<byte> minKey = cursor.MinKey;
+            int matchCount = cursor.MatchCount;
+            ReadOnlySpan<int> matchingSources = cursor.MatchingSources;
 
             // Bloom is keyed on the 30-byte slot prefix only, so one add per outer
             // bucket covers every slot key in this bucket regardless of matchCount.
@@ -1243,15 +762,7 @@ public static class PersistedSnapshotMerger
                 builder.FinishValueWrite(minKey);
             }
 
-            // Advance matching, refilling cached outer keys.
-            for (int j = 0; j < matchCount; j++)
-            {
-                int i = matchingSources[j];
-                WholeReadSessionReader r = Reader(views[i]);
-                outerHasMore[i] = outerEnums[i].MoveNext(in r);
-                if (outerHasMore[i])
-                    outerEnums[i].CopyCurrentLogicalKey(in r, outerKeyBuf.Slice(i * OuterStride, OuterKeyLen));
-            }
+            cursor.AdvanceMatching();
         }
 
         builder.Build();
@@ -1264,7 +775,7 @@ public static class PersistedSnapshotMerger
     /// the bloom.
     /// </summary>
     private static void NWayInnerSlotMerge<TWriter, TReader, TPin>(
-        HsstEnumerator[] outerEnums, ReadOnlySpan<int> matchingSources, int matchCount,
+        HsstEnumerator[] outerEnums, scoped ReadOnlySpan<int> matchingSources, int matchCount,
         ReadOnlySpan<(IntPtr Ptr, long Len)> views,
         ref TWriter writer,
         scoped ref HsstBTreeBuilderBuffers slotSuffixBuffers) where TWriter : IByteBufferWriterWithReader<TReader, TPin> where TReader : IHsstByteReader<TPin>, allows ref struct where TPin : struct, IBufferPin, allows ref struct
@@ -1287,47 +798,27 @@ public static class PersistedSnapshotMerger
                     innerEnums[j].CopyCurrentLogicalKey(in r, keyBuf.Slice(j * InnerKeyLen, InnerKeyLen));
             }
 
-            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref slotSuffixBuffers, InnerKeyLen, new HsstBTreeOptions { MinSeparatorLength = 2 });
-            while (true)
-            {
-                int minIdx = -1;
-                for (int j = 0; j < matchCount; j++)
-                {
-                    if (!innerHasMore[j]) continue;
-                    if (minIdx < 0) { minIdx = j; continue; }
-                    ReadOnlySpan<byte> kJ = keyBuf.Slice(j * InnerKeyLen, InnerKeyLen);
-                    ReadOnlySpan<byte> kM = keyBuf.Slice(minIdx * InnerKeyLen, InnerKeyLen);
-                    int cmp = kJ.SequenceCompareTo(kM);
-                    if (cmp < 0) minIdx = j;
-                    else if (cmp == 0) minIdx = j; // newer wins
-                }
-                if (minIdx < 0) break;
+            int pow2N = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, matchCount));
+            Span<int> matchingBuf = stackalloc int[Math.Max(1, matchCount)];
+            Span<int> tree = stackalloc int[2 * pow2N];
 
+            // sourceMap = matchingSources: cursor slot j → views[matchingSources[j]].
+            NWayMergeCursor cursor = new(
+                innerEnums.UnsafeGetInternalArray(), innerHasMore.AsSpan(),
+                views, matchingSources, matchCount, InnerKeyLen, InnerKeyLen, keyBuf, matchingBuf, tree);
+
+            using HsstBTreeBuilder<TWriter, TReader, TPin> builder = new(ref writer, ref slotSuffixBuffers, InnerKeyLen, new HsstBTreeOptions { MinSeparatorLength = 2 });
+
+            while (cursor.MoveNext())
+            {
+                int minIdx = cursor.MinIdx;
                 Bound vb = innerEnums[minIdx].CurrentValue;
                 WholeReadSessionReader rMin = Reader(views[matchingSources[minIdx]]);
-                ReadOnlySpan<byte> minKey = keyBuf.Slice(minIdx * InnerKeyLen, InnerKeyLen);
                 using NoOpPin valPin = rMin.PinBuffer(vb.Offset, vb.Length);
-                builder.Add(minKey, valPin.Buffer);
-
-                for (int j = 0; j < matchCount; j++)
-                {
-                    if (j == minIdx || !innerHasMore[j]) continue;
-                    ReadOnlySpan<byte> kJ = keyBuf.Slice(j * InnerKeyLen, InnerKeyLen);
-                    if (kJ.SequenceCompareTo(minKey) == 0)
-                    {
-                        WholeReadSessionReader rJ = Reader(views[matchingSources[j]]);
-                        innerHasMore[j] = innerEnums[j].MoveNext(in rJ);
-                        if (innerHasMore[j])
-                            innerEnums[j].CopyCurrentLogicalKey(in rJ, keyBuf.Slice(j * InnerKeyLen, InnerKeyLen));
-                    }
-                }
-                {
-                    WholeReadSessionReader r = Reader(views[matchingSources[minIdx]]);
-                    innerHasMore[minIdx] = innerEnums[minIdx].MoveNext(in r);
-                    if (innerHasMore[minIdx])
-                        innerEnums[minIdx].CopyCurrentLogicalKey(in r, keyBuf.Slice(minIdx * InnerKeyLen, InnerKeyLen));
-                }
+                builder.Add(cursor.MinKey, valPin.Buffer);
+                cursor.AdvanceMatching();
             }
+
             builder.Build();
         }
         finally
