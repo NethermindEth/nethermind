@@ -16,6 +16,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Container;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -366,6 +367,35 @@ public class BlockCachePreWarmerTests
         populatedAccount!.Balance.Should().Be(1_000_000.Ether);
         preBlockCaches.StorageCache.TryGetValue(in missedCell, out byte[]? populatedStorage).Should().BeTrue();
         new UInt256(populatedStorage, isBigEndian: true).Should().Be((UInt256)0x99);
+    }
+
+    [Test]
+    public void ClearCaches_DisablesNodeStorageCacheWithoutEvictingEntries()
+    {
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(maxPoolSize: 10);
+
+        NodeKey nodeKey = new(null, TreePath.Empty, Keccak.Zero);
+        byte[] cachedRlp = [0x01, 0x02, 0x03];
+        int loadCount = 0;
+
+        nodeStorageCache.Enabled = true;
+        nodeStorageCache.GetOrAdd(in nodeKey, (in NodeKey _) =>
+        {
+            loadCount++;
+            return cachedRlp;
+        }).Should().BeSameAs(cachedRlp);
+
+        preWarmer.ClearCaches().Should().HaveFlag(CacheType.Rlp);
+        nodeStorageCache.Enabled.Should().BeFalse();
+
+        nodeStorageCache.Enabled = true;
+        nodeStorageCache.GetOrAdd(in nodeKey, (in NodeKey _) =>
+        {
+            loadCount++;
+            return [0x04, 0x05, 0x06];
+        }).Should().BeSameAs(cachedRlp);
+        loadCount.Should().Be(1);
     }
 
     private BlockCachePreWarmer CreatePreWarmerFromConfig(bool parallelExecution, bool parallelExecutionBatchRead)
